@@ -24,6 +24,10 @@ Archive 写入和读取每 128 个条目交还一次事件循环，限制连续 
 
 调度依据 [GitHub matrix max-parallel](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/run-job-variations)，缓存依据 [GitHub cache scope](https://docs.github.com/en/actions/reference/workflows-and-actions/dependency-caching)。跨 job 产物另附字节清单；Bun 测试退出码和本次 lcov 仍是必需证据。
 
+原生 Workspace 的 macOS 与 Windows 验证进入同一计划和结果协议，保留平台专用进程树、PTY、文件语义与 Home 复制检查。平台 lcov 不能单独满足包阈值：任务依赖完整 Runtime Local suite，汇总仅接收当前任务的校验报告。执行前清理对应平台报告目录，构建或测试失败不能复用历史覆盖率；同一 runner 内的包任务顺序执行，隔离 runner 之间仍可并发。
+
+平台执行清单中的显式 TypeScript 入口由契约测试逐个检查真实文件存在性。Windows 进程所有权由当前原生 Workspace 套件统一执行，不再额外调用已经随旧进程实现删除的测试入口；后续 Harness、Util、Home 复制与 Desktop 检查仍完整保留。
+
 ## Alternatives considered
 
 **只增加并发或购买 runner。** 可缩短某个 job 的表面等待，但不消除重复测试、准备和校验成本，也会扩大共享容量争用。

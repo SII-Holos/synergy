@@ -7,7 +7,6 @@ import { Identifier } from "../id/id"
 import { Session } from "."
 import { SessionEvent } from "./event"
 import { Agent } from "../agent/agent"
-import { Snapshot } from "./snapshot"
 import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
@@ -220,7 +219,6 @@ export namespace SessionProcessor {
     const toolCallStateUpdates = new Map<string, Promise<void>>()
     const generatingAccum: Record<string, string> = {}
     const generatingBytes: Record<string, number> = {}
-    let snapshot: string | undefined
     let blocked = false
     let attempt = 0
     let fastAbort = input.abort.aborted
@@ -831,7 +829,6 @@ export namespace SessionProcessor {
       recordedToolFailures.clear()
       for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
       for (const callID of Object.keys(generatingBytes)) delete generatingBytes[callID]
-      snapshot = undefined
       log.info("processor disposed", {
         sessionID: input.sessionID,
         messageID: input.assistantMessage.id,
@@ -1492,12 +1489,10 @@ export namespace SessionProcessor {
                       throw value.error
 
                     case "start-step":
-                      snapshot = await Snapshot.track(input.sessionID, input.abort)
                       await Session.updatePart({
                         id: Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
                         sessionID: input.sessionID,
-                        snapshot,
                         type: "step-start",
                       })
                       break
@@ -1572,7 +1567,6 @@ export namespace SessionProcessor {
                       const step = await Session.updatePart({
                         id: Identifier.ascending("part"),
                         reason: value.finishReason,
-                        snapshot: await Snapshot.track(input.sessionID, input.abort),
                         messageID: input.assistantMessage.id,
                         sessionID: input.assistantMessage.sessionID,
                         type: "step-finish",
@@ -1584,23 +1578,6 @@ export namespace SessionProcessor {
                       })
                       if (step.type === "step-finish") stepFinishes.push(step)
                       await Session.updateMessage(input.assistantMessage)
-                      if (snapshot) {
-                        const patch = await Snapshot.patch(snapshot, input.sessionID, {
-                          indexFresh: true,
-                          signal: input.abort,
-                        })
-                        if (patch.files.length) {
-                          await Session.updatePart({
-                            id: Identifier.ascending("part"),
-                            messageID: input.assistantMessage.id,
-                            sessionID: input.sessionID,
-                            type: "patch",
-                            hash: patch.hash,
-                            files: patch.files,
-                          })
-                        }
-                        snapshot = undefined
-                      }
                       break
                     }
 
@@ -1905,22 +1882,6 @@ export namespace SessionProcessor {
               }
             }
             fastAbort ||= input.abort.aborted
-            if (snapshot) {
-              if (!fastAbort) {
-                const patch = await Snapshot.patch(snapshot, input.sessionID, { signal: input.abort })
-                if (patch.files.length) {
-                  await Session.updatePart({
-                    id: Identifier.ascending("part"),
-                    messageID: input.assistantMessage.id,
-                    sessionID: input.sessionID,
-                    type: "patch",
-                    hash: patch.hash,
-                    files: patch.files,
-                  })
-                }
-              }
-              snapshot = undefined
-            }
             await waitForTrackedSettlements()
             SessionMemoryPressure.probe("processor.after_tool_settlement", {
               sessionID: input.sessionID,

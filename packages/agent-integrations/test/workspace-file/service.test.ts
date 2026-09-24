@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
 import os from "os"
@@ -78,7 +78,11 @@ describe("WorkspaceFileService", () => {
               /escapes workspace/,
             )
             if (symlinkCreated) {
-              await expect(WorkspaceFileService.node("outside-link.txt")).rejects.toThrow(/escapes workspace/)
+              expect(await WorkspaceFileService.node("outside-link.txt")).toMatchObject({
+                path: "outside-link.txt",
+                symlink: true,
+              })
+              await expect(WorkspaceFileService.read({ path: "outside-link.txt" })).rejects.toThrow(/escapes workspace/)
             }
 
             const inside = await WorkspaceFileService.node("inside.txt")
@@ -773,21 +777,17 @@ while true; do :; done
           await Bun.write(path.join(dir, "src.ts"), "export const value = 1")
         },
         async () => {
-          const originalStatus = LSP.status
-          const originalWorkspaceSymbol = LSP.workspaceSymbol
-          ;(LSP as any).status = async () => []
-          ;(LSP as any).workspaceSymbol = async () => {
-            throw new Error("should not be called")
-          }
+          const count = spyOn(LSP, "connectionCount").mockResolvedValue(0)
+          const symbols = spyOn(LSP, "workspaceSymbol").mockRejectedValue(new Error("should not be called"))
           try {
             const result = await WorkspaceFileSearch.search({ kind: "symbol", query: "value", limit: 10 })
             expect(result.kind).toBe("symbol")
             expect(result.items).toEqual([])
             expect(result.capability?.available).toBe(false)
-            expect(result.capability?.reason).toContain("No active LSP")
+            expect(result.capability?.reason).toContain("No available language servers")
           } finally {
-            ;(LSP as any).status = originalStatus
-            ;(LSP as any).workspaceSymbol = originalWorkspaceSymbol
+            count.mockRestore()
+            symbols.mockRestore()
           }
         },
       )
@@ -800,10 +800,8 @@ while true; do :; done
           await Bun.write(path.join(dir, "src.ts"), "export const value = 1")
         },
         async (dir) => {
-          const originalStatus = LSP.status
-          const originalWorkspaceSymbol = LSP.workspaceSymbol
-          ;(LSP as any).status = async () => [{ id: "test", name: "test", root: "", status: "connected" }]
-          ;(LSP as any).workspaceSymbol = async () => [
+          const count = spyOn(LSP, "connectionCount").mockResolvedValue(1)
+          const symbols = spyOn(LSP, "workspaceSymbol").mockResolvedValue([
             {
               name: "value",
               kind: 13,
@@ -815,7 +813,7 @@ while true; do :; done
                 },
               },
             },
-          ]
+          ])
           try {
             const result = await WorkspaceFileSearch.search({ kind: "symbol", query: "value", limit: 10 })
             expect(result.kind).toBe("symbol")
@@ -827,8 +825,8 @@ while true; do :; done
               expect(symbol.path).toBe("src.ts")
             }
           } finally {
-            ;(LSP as any).status = originalStatus
-            ;(LSP as any).workspaceSymbol = originalWorkspaceSymbol
+            count.mockRestore()
+            symbols.mockRestore()
           }
         },
       )

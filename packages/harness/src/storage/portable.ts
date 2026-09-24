@@ -116,6 +116,7 @@ export namespace StoragePortable {
     filename: string,
     options: {
       accept?: (entry: StorageEntry, tx: StoreTransaction) => boolean | Promise<boolean>
+      transform?: (entry: StorageEntry, tx: StoreTransaction) => StorageEntry | Promise<StorageEntry>
       operationID?: string
       afterImport?: (tx: StoreTransaction) => Promise<void>
       progress?: (progress: StorageStartupProgress) => void
@@ -164,8 +165,9 @@ export namespace StoragePortable {
               hash.update(line + "\n")
               count++
               const entry = StorageEntry.parse(parsed)
-              if (options.accept && !(await options.accept(entry, tx))) continue
-              await tx.restoreEntry(entry)
+              const imported = options.transform ? StorageEntry.parse(await options.transform(entry, tx)) : entry
+              if (options.accept && !(await options.accept(imported, tx))) continue
+              await tx.restoreEntry(imported)
               accepted++
             }
             if (!header || !footer)

@@ -1,10 +1,31 @@
 import type { I18n } from "@lingui/core"
+import type { FileDiff } from "@ericsanchezok/synergy-sdk"
+import { reviewFileKey } from "./session-review-model"
 
-export type TurnChangeSummaryDiff = {
-  file: string
-  additions: number
-  deletions: number
-  binary?: boolean
+export type TurnChangeSummaryDiff = Pick<
+  FileDiff,
+  "file" | "workspace" | "legacyRoot" | "operationID" | "additions" | "deletions" | "binary"
+>
+
+export function turnChangeSummaryFiles(diffs: TurnChangeSummaryDiff[]) {
+  const files = new Map<string, TurnChangeSummaryDiff>()
+  for (const diff of diffs) {
+    const { operationID: _operationID, ...file } = diff
+    const key = reviewFileKey(file)
+    const previous = files.get(key)
+    files.set(
+      key,
+      previous
+        ? {
+            ...file,
+            additions: previous.additions + file.additions,
+            deletions: previous.deletions + file.deletions,
+            ...(previous.binary || file.binary ? { binary: true } : {}),
+          }
+        : file,
+    )
+  }
+  return [...files.values()]
 }
 
 const TITLE_DESC = /** i18n */ {

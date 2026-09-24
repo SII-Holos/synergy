@@ -348,6 +348,7 @@ export const assetsPanel = {
 // ── File workbench ───────────────────────────────────────────────────────────
 
 export const fileWorkbench = {
+  workspaceMissing: { id: "app.file.workspace.missing", message: "Reopen this file from its Workspace to continue." },
   openAFile: { id: "app.file.empty.openAFile", message: "Open a file" },
   chooseFromTree: { id: "app.file.empty.chooseFromTree", message: "Choose a file from the workspace tree." },
   loading: { id: "app.file.loading", message: "Loading {path}…" },
@@ -355,6 +356,10 @@ export const fileWorkbench = {
   retry: { id: "app.file.action.retry", message: "Retry" },
   close: { id: "app.file.action.close", message: "Close" },
   fileDeleted: { id: "app.file.banner.deleted", message: "File was deleted. Showing the last available content." },
+  draftBackupUnavailable: {
+    id: "app.file.banner.draftBackupUnavailable",
+    message: "Local draft backup is unavailable. Save or copy your edits before closing this window.",
+  },
   fileTruncated: { id: "app.file.banner.truncated", message: "Showing the first 512 KiB of this file." },
   binaryInfo: { id: "app.file.binary.info", message: "{mimeType} · {bytes} bytes" },
   addToContext: { id: "app.file.toolbar.addToContext", message: "Add to context" },
@@ -423,6 +428,30 @@ export const attachmentWorkbench = {
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── File explorer ────────────────────────────────────────────────────────────
+
+export const fileEntries = {
+  title: { id: "app.fileEntries.title", message: "File actions" },
+  operation: { id: "app.fileEntries.operation", message: "Operation" },
+  createFile: { id: "app.fileEntries.createFile", message: "New file" },
+  createDirectory: { id: "app.fileEntries.createDirectory", message: "New folder" },
+  move: { id: "app.fileEntries.move", message: "Move or rename" },
+  copy: { id: "app.fileEntries.copy", message: "Copy" },
+  remove: { id: "app.fileEntries.remove", message: "Delete permanently" },
+  path: { id: "app.fileEntries.path", message: "Path within Workspace" },
+  deleteWarning: {
+    id: "app.fileEntries.deleteWarning",
+    message: "This permanently deletes the selected entry and its contents. This action cannot be undone.",
+  },
+  draftsKept: { id: "app.fileEntries.draftsKept", message: "Unsaved drafts stay open at their original paths." },
+  refreshRequired: {
+    id: "app.fileEntries.refreshRequired",
+    message: "Refresh the file list before changing this entry.",
+  },
+  failed: { id: "app.fileEntries.failed", message: "The file operation failed." },
+  cancel: { id: "app.fileEntries.cancel", message: "Cancel" },
+  apply: { id: "app.fileEntries.apply", message: "Apply" },
+  working: { id: "app.fileEntries.working", message: "Working…" },
+} as const satisfies Record<string, AppMessageDescriptor>
 
 export const fileExplorer = {
   label: { id: "app.fileExplorer.label", message: "Files" },

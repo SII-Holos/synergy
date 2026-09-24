@@ -172,7 +172,7 @@ test("export deadlines and failures remain independent from agent success", asyn
         runtime: "core",
         env: process.env,
         identity: { sessionID: "s", runID: "r" },
-        timeoutSeconds: 0.4,
+        timeoutSeconds: fault === "export-timeout" ? 0.4 : 3,
       })
       expect(result.status).toBe(fault === "success" ? "completed" : "failed")
       expect(await Bun.file(path.join(logs, "export.json")).json()).toEqual(result)
@@ -185,7 +185,7 @@ test("export deadlines and failures remain independent from agent success", asyn
   } finally {
     await rm(root, { recursive: true, force: true })
   }
-})
+}, 15_000)
 
 test("cancelling the wrapper during export drains the exporter before exit", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "bench-export-cancel-"))

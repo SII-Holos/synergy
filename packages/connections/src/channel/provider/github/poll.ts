@@ -59,7 +59,10 @@ function isAbort(error: unknown, signal: AbortSignal) {
 
 async function readPollState(accountHash: string, repository: string): Promise<GithubChannelPollState | undefined> {
   const raw = await Storage.read<unknown>(StoragePath.githubChannelPollState(accountHash, repository)).catch(
-    () => undefined,
+    (error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    },
   )
   if (raw === undefined) return undefined
   const parsed = GithubChannelPollState.safeParse(raw)
@@ -114,7 +117,6 @@ export async function pollRepository(input: {
   const isFirstPoll = state === undefined
   if (!state) {
     state = initializeBaseline(input.repository)
-    await writePollState(input.accountHash, input.repository, state)
   }
 
   const overlapMs = Math.max(input.intervalMs, 5 * 60 * 1_000)
@@ -197,11 +199,10 @@ export async function pollRepository(input: {
     nextState.lastUpdatedAt = state.lastUpdatedAt
     log.warn("github poll truncated; watermark preserved for the next poll", { repository: input.repository })
   }
-  await writePollState(input.accountHash, input.repository, nextState)
-
   for (const event of events) {
     await deliverEvent(input, event)
   }
+  await writePollState(input.accountHash, input.repository, nextState)
 }
 
 function eventIssueNumber(event: GithubChannelEvent): number {

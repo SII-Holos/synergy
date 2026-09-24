@@ -74,7 +74,6 @@ import { WorkflowKindRegistry } from "./workflow-kind-registry"
 import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
 import { ObservabilitySpans } from "../observability/spans"
 import { ObservabilityContext } from "../observability/context"
-import { SkillSourceProfile } from "../instruction/source-profile"
 import { PausedTurnAbort } from "./error"
 import { SecretVault } from "../secrets/vault"
 
@@ -950,11 +949,7 @@ export namespace SessionInvoke {
                   sessionID: session?.id,
                   agentControlProfile: agent.controlProfile,
                 })
-                const trustedRoots = Scope.Root.executionRoots(
-                  ScopeContext.current.scope,
-                  workspaceInfo,
-                  SkillSourceProfile.allRootPaths(workspace),
-                )
+                const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                 const resolved = await ControlProfileCompiler.resolve(profileId, {
                   workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",

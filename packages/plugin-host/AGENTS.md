@@ -8,3 +8,5 @@ Plugin processes, discovery, configuration, trust, permissions and capability-ga
 - Tests live under test/ and use isolated homes through the testing support package.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
+
+File-capable invocations pin canonical Workspace generations. Restore the invocation async context for every IPC Host callback, drain Host work before releasing ownership, and preserve native file conflicts. Verify with `bun test test/plugin-runtime/workspace-context.test.ts test/plugin/tool-invocation.test.ts test/plugin/shell-host-service.test.ts`.

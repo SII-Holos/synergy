@@ -1,5 +1,5 @@
 import { RuntimeContext } from "../lifecycle/context"
-import type { ChildProcess } from "child_process"
+import type { ProcessHandle } from "./handle"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Observability } from "../observability"
@@ -141,7 +141,7 @@ export namespace ProcessRegistry {
     description?: string
     cwd?: string
     pid?: number
-    child?: ChildProcess
+    child?: ProcessHandle
     stdin?: Stdin
     startedAt: number
     maxOutputChars: number
@@ -242,7 +242,7 @@ export namespace ProcessRegistry {
     command: string
     description?: string
     cwd?: string
-    child?: ChildProcess
+    child?: ProcessHandle
     stdin?: Stdin
   }): Process {
     const instanceState = runtimeState()
@@ -693,7 +693,8 @@ export namespace ProcessRegistry {
 
     if (proc.pid === undefined) return {}
     try {
-      return instanceState.processInspector(proc.pid, proc)
+      const result = instanceState.processInspector(proc.pid, proc)
+      return proc.child?.alive ? { ...result, alive: proc.child.alive() } : result
     } catch (error) {
       log.warn("failed to inspect process", { id: proc.id, pid: proc.pid, error })
       return {}

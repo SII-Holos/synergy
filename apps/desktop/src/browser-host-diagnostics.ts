@@ -150,7 +150,9 @@ export class BrowserHostDiagnostics {
           throw new Error("Browser upload exceeds the 25 MB per-file or 50 MB request limit.")
         }
         const name = safeBasename(file.name, `upload-${index}`)
-        const filepath = path.join(uploadDir, `${index}-${name}`)
+        const directory = path.join(uploadDir, String(index))
+        await fs.mkdir(directory, { mode: 0o700 })
+        const filepath = path.join(directory, name)
         await fs.writeFile(filepath, data, { flag: "wx", mode: 0o600 })
         paths.push(filepath)
       }

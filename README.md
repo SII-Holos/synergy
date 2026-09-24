@@ -40,7 +40,7 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Durable by default** — Keep recoverable sessions attached to an explicit home or project Scope, with complete history even when older model context is compacted.
 - **One runtime, every surface** — Use the same sessions and state from the Web workbench, Desktop app, CLI, server API, and SDK.
 - **First-class agent coordination** — Delegate to specialist subagents, plan durable Blueprints, run independently reviewed BlueprintLoops, keep focused work moving with Light Loop, or orchestrate a tree of persistent specialist workers with Boss Mode.
-- **Files and Browser stay in context** — Work across project files and a session-owned Browser page without moving the task into a separate tool or disposable environment.
+- **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside a session-owned Browser page without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
 - **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins, Channels, and remote Synergy Link targets while keeping local ownership of projects and data.
 
@@ -156,7 +156,7 @@ For headless tasks, versioned experiment settings, durable execution evidence an
 
 Synergy is a Bun monorepo using TypeScript ESM modules. The pinned package manager is declared in [`package.json`](package.json).
 
-Prepare a source checkout:
+Install Rust with Cargo for the native PTY library, then prepare a source checkout:
 
 ```bash
 bun dev prepare

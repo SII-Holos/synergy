@@ -1,4 +1,6 @@
 import { describe, expect, test, beforeAll } from "bun:test"
+import fs from "node:fs/promises"
+import path from "node:path"
 import { tmpdir } from "../support/fixture"
 import { Session } from "../../src/session"
 import { SessionNav, SessionNavEntry, type ScopeNavIndex } from "../../src/session/nav"
@@ -589,9 +591,11 @@ describe("SessionNav session identity", () => {
   // be process-global and would leak into sibling suites in the same shard, so
   // this suite covers the identity the harness owns.
   async function identitySession(scope: Scope) {
+    const directory = path.join(scope.local!.directory, "identity-worktree")
+    await fs.mkdir(directory)
     return Session.create({
       title: "Identity Session",
-      workspace: { type: "git_worktree", path: scope.local!.directory, scopeID: scope.id },
+      workspace: { type: "git_worktree", path: directory, scopeID: scope.id },
       workflow: { kind: "plan" },
     })
   }

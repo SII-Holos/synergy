@@ -3,6 +3,7 @@ import os from "node:os"
 import type { RuntimeHost } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { RuntimeStorage } from "@ericsanchezok/synergy-harness/lifecycle"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
+import { identifyDirectory, readOrCreateIdentityFile } from "@ericsanchezok/synergy-util/filesystem-identity"
 
 export function createLocalHost(
   options: { home?: string; root?: string; env?: Record<string, string | undefined> } = {},
@@ -10,7 +11,16 @@ export function createLocalHost(
   const env = { ...(options.env ?? process.env) }
   const home = path.resolve(options.home ?? env.SYNERGY_HOME ?? env.SYNERGY_TEST_HOME ?? os.homedir())
   const root = path.resolve(options.root ?? env.SYNERGY_RUNTIME_ROOT ?? path.join(home, ".synergy"))
-  return { home, root, env: { ...env, SYNERGY_HOME: home, AGENT: "1", SYNERGY: "1" } }
+  let identity: Promise<string> | undefined
+  return {
+    home,
+    root,
+    env: { ...env, SYNERGY_HOME: home, AGENT: "1", SYNERGY: "1" },
+    workspaceLocation: {
+      hostID: () => (identity ??= readOrCreateIdentityFile(path.join(root, "workspace-host"))),
+      identify: identifyDirectory,
+    },
+  }
 }
 
 export function createLocalStorage(

@@ -135,8 +135,21 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     task("desktop", "desktop", 180, ["apps/desktop"], { prerequisites: ["desktop"] }),
     task("smoke", "smoke", 40, ["packages/product-runtime", "packages/server"]),
     task("sandbox", "sandbox", 100, ["packages/runtime-local"], { prerequisites: ["sandbox"] }),
-    task("windows", "windows", 450, ["apps/desktop", "packages/harness", "packages/runtime-local", "packages/util"], {
-      pool: "windows",
+    task(
+      "windows",
+      "windows",
+      450,
+      ["apps/desktop", "packages/cli", "packages/harness", "packages/runtime-local", "packages/util"],
+      {
+        pool: "windows",
+        package: "packages/runtime-local",
+        needs: ["suite-packages-runtime-local"],
+      },
+    ),
+    task("macos-workspace", "native-workspace", 300, ["packages/runtime-local", "packages/agent-integrations"], {
+      pool: "macos",
+      package: "packages/runtime-local",
+      needs: ["suite-packages-runtime-local"],
     }),
     ...[16, 17, 18].map((version) =>
       task(`postgres-${version}`, "postgres", 180, ["packages/harness"], {
@@ -225,24 +238,25 @@ export async function catalog(root = ROOT): Promise<Task[]> {
             ? "database"
             : "task-home"
     entry.outputs =
-      entry.kind === "suite"
-        ? ["junit", "lcov", "timing"]
-        : [
-              "policy",
-              "artifacts",
-              "desktop",
-              "sandbox",
-              "postgres",
-              "windows",
-              "rollout",
-              "web",
-              "benchmark-pure",
-              "benchmark-streams",
-              "benchmark-docker",
-              "benchmark-native",
-            ].includes(entry.kind) || entry.variant === "tests"
-          ? ["junit"]
-          : []
+      entry.kind === "native-workspace" || entry.kind === "windows"
+        ? ["junit", "lcov"]
+        : entry.kind === "suite"
+          ? ["junit", "lcov", "timing"]
+          : [
+                "policy",
+                "artifacts",
+                "desktop",
+                "sandbox",
+                "postgres",
+                "rollout",
+                "web",
+                "benchmark-pure",
+                "benchmark-streams",
+                "benchmark-docker",
+                "benchmark-native",
+              ].includes(entry.kind) || entry.variant === "tests"
+            ? ["junit"]
+            : []
     if (entry.kind === "benchmark-pure")
       entry.files = Array.from(new Bun.Glob("benchmark/test/test_*.py").scanSync({ cwd: root }))
         .filter((file) => !tasks.some((task) => task.kind === "benchmark-streams" && task.files?.includes(file)))

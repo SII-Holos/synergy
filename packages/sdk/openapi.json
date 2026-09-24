@@ -4747,10 +4747,14 @@
                     "type": "object",
                     "properties": {
                       "rows": {
-                        "type": "number"
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535
                       },
                       "cols": {
-                        "type": "number"
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 65535
                       }
                     },
                     "required": ["rows", "cols"]
@@ -8878,6 +8882,110 @@
         ]
       }
     },
+    "/session/{sessionID}/workspace": {
+      "post": {
+        "operationId": "session.selectWorkspace",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Select the Workspace for an idle session",
+        "responses": {
+          "200": {
+            "description": "Updated Session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionWorkspaceSelection"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.selectWorkspace({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/init": {
       "post": {
         "operationId": "session.init",
@@ -11695,6 +11803,23 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -11725,6 +11850,7 @@
                     "pattern": "^prt.*"
                   },
                   "files": {
+                    "maxItems": 10000,
                     "type": "array",
                     "items": {
                       "type": "string"
@@ -14625,6 +14751,25 @@
           },
           {
             "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -14676,6 +14821,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -14692,6 +14847,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
                 }
               }
             }
@@ -14732,6 +14904,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           },
           {
             "in": "query",
@@ -14797,6 +14988,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -14813,6 +15014,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
                 }
               }
             }
@@ -14856,6 +15074,25 @@
           },
           {
             "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -14876,6 +15113,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
           "403": {
             "description": "Forbidden",
             "content": {
@@ -14892,6 +15139,23 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
                 }
               }
             }
@@ -14932,6 +15196,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           },
           {
             "in": "query",
@@ -15030,6 +15313,25 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           }
         ],
         "summary": "Get workspace file status",
@@ -15084,6 +15386,25 @@
           },
           {
             "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -15092,7 +15413,7 @@
           }
         ],
         "summary": "Read workspace file bytes",
-        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.",
+        "description": "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{workspaceID}/{workspaceGeneration}/{path} instead.",
         "responses": {
           "200": {
             "description": "PDF file bytes"
@@ -15102,7 +15423,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceFileContentError"
+                  "$ref": "#/components/schemas/BadRequestError"
                 }
               }
             }
@@ -15127,6 +15448,23 @@
               }
             }
           },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
           "503": {
             "description": "Runtime shutting down",
             "content": {
@@ -15146,7 +15484,7 @@
         ]
       }
     },
-    "/workspace/files/raw/{token}/{path}": {},
+    "/workspace/files/raw/{token}/{workspaceID}/{workspaceGeneration}/{path}": {},
     "/workspace/files/write": {
       "post": {
         "operationId": "workspace.files.write",
@@ -15164,10 +15502,29 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
           }
         ],
         "summary": "Write workspace file",
-        "description": "Write content to an existing workspace file with optional optimistic concurrency control.",
+        "description": "Create or replace a workspace file using a content-version precondition and atomic local replacement.",
         "responses": {
           "200": {
             "description": "Workspace file write result",
@@ -15243,6 +15600,890 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.write({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/directory": {
+      "post": {
+        "operationId": "workspace.files.createDirectory",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Create a Workspace directory",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileCreateDirectoryInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.createDirectory({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/copy": {
+      "post": {
+        "operationId": "workspace.files.copy",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Copy a Workspace file or directory without replacing the destination",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileCopyInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.copy({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/move": {
+      "post": {
+        "operationId": "workspace.files.move",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Move a Workspace file or directory without replacing the destination",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileMoveInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.move({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/files/delete": {
+      "post": {
+        "operationId": "workspace.files.remove",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "workspaceGeneration",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Permanently remove a Workspace file or directory",
+        "responses": {
+          "200": {
+            "description": "Filesystem operation completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileDeleteResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Filesystem entry not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict or partially completed operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceFileEntryError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceFileDeleteInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace": {
+      "get": {
+        "operationId": "workspace.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List Workspaces in a Scope",
+        "responses": {
+          "200": {
+            "description": "Workspace catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "workspace.register",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Register an existing local directory as a Workspace",
+        "responses": {
+          "200": {
+            "description": "Registered Workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["path"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.register({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/sharing": {
+      "post": {
+        "operationId": "workspace.setSharing",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Set explicitly shared writable Workspaces",
+        "responses": {
+          "200": {
+            "description": "Updated Workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "workspaceIDs": {
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "required": ["expectedRevision", "workspaceIDs"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.setSharing({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/rebind": {
+      "post": {
+        "operationId": "workspace.rebind",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Rebind a Workspace to an existing local directory",
+        "responses": {
+          "200": {
+            "description": "Rebound Workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["expectedRevision", "path"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.rebind({\n  ...\n})"
           }
         ]
       }
@@ -33379,6 +34620,17 @@
             "description": "Session where the item was created",
             "type": "string"
           },
+          "workspaceID": {
+            "description": "Workspace captured when the item was created",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "endpoint": {
             "$ref": "#/components/schemas/SessionEndpoint"
           }
@@ -39906,7 +41158,34 @@
         },
         "additionalProperties": false
       },
-      "ScopeBootstrapPath": {
+      "SessionWorkspace": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["type", "path", "scopeID"],
+        "additionalProperties": {}
+      },
+      "Path": {
         "type": "object",
         "properties": {
           "home": {
@@ -39937,9 +41216,122 @@
                 "type": "null"
               }
             ]
+          },
+          "workspace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SessionWorkspace"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["home", "state", "config", "worktree", "directory"]
+        "required": ["home", "state", "config", "worktree", "directory", "workspace"]
+      },
+      "WorkspaceInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "binding": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": ["bound", "unbound"]
+              },
+              "hostID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "path": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "physicalID": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["state", "hostID", "path", "generation"]
+          },
+          "importedFrom": {
+            "type": "object",
+            "properties": {
+              "workspaceID": {
+                "type": "string"
+              },
+              "hostID": {
+                "type": "string"
+              }
+            },
+            "required": ["workspaceID", "hostID"]
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "sharedWritableWorkspaceIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": ["active", "deleting", "deleted"]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "scopeID",
+          "type",
+          "revision",
+          "binding",
+          "metadata",
+          "sharedWritableWorkspaceIDs",
+          "lifecycle",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": {}
       },
       "Command": {
         "type": "object",
@@ -40108,10 +41500,38 @@
           "type": "string"
         }
       },
+      "SnapshotWorkspace": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "generation": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "root": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["id", "generation", "root"]
+      },
       "FileDiff": {
         "type": "object",
         "properties": {
           "file": {
+            "type": "string"
+          },
+          "operationID": {
+            "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
+          },
+          "legacyRoot": {
             "type": "string"
           },
           "additions": {
@@ -40569,25 +41989,6 @@
           }
         ]
       },
-      "SessionWorkspace": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "minLength": 1
-          },
-          "path": {
-            "type": "string",
-            "minLength": 1
-          },
-          "scopeID": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": ["type", "path", "scopeID"],
-        "additionalProperties": {}
-      },
       "WorkflowExtension": {
         "type": "object",
         "properties": {
@@ -41014,6 +42415,19 @@
                 "type": "null"
               }
             ]
+          },
+          "workspaceID": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workspaceError": {
+            "type": "string"
           },
           "workflow": {
             "$ref": "#/components/schemas/SessionWorkflowInfo"
@@ -41603,7 +43017,13 @@
             "$ref": "#/components/schemas/Config"
           },
           "path": {
-            "$ref": "#/components/schemas/ScopeBootstrapPath"
+            "$ref": "#/components/schemas/Path"
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceInfo"
+            }
           },
           "command": {
             "type": "array",
@@ -41691,6 +43111,15 @@
           "cwd": {
             "type": "string"
           },
+          "workspaceID": {
+            "type": "string",
+            "pattern": "^wsp_.*"
+          },
+          "workspaceGeneration": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
           "status": {
             "type": "string",
             "enum": ["running", "exited"]
@@ -41699,7 +43128,7 @@
             "type": "number"
           }
         },
-        "required": ["id", "title", "command", "args", "cwd", "status", "pid"]
+        "required": ["id", "title", "command", "args", "cwd", "workspaceID", "workspaceGeneration", "status", "pid"]
       },
       "ConfigIssue": {
         "type": "object",
@@ -42839,41 +44268,6 @@
         "items": {
           "$ref": "#/components/schemas/ToolListItem"
         }
-      },
-      "Path": {
-        "type": "object",
-        "properties": {
-          "home": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string"
-          },
-          "config": {
-            "type": "string"
-          },
-          "worktree": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "directory": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["home", "state", "config", "worktree", "directory"]
       },
       "Worktree": {
         "type": "object",
@@ -45582,6 +46976,25 @@
             "properties": {
               "mode": {
                 "type": "string",
+                "const": "workspace"
+              },
+              "workspaceID": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workspaceGeneration": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["mode", "workspaceID", "workspaceGeneration"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
                 "const": "existing"
               },
               "target": {
@@ -46536,7 +47949,7 @@
                       },
                       "code": {
                         "type": "string",
-                        "enum": ["timeout", "git_failure", "unknown"]
+                        "enum": ["timeout", "git_failure", "unknown", "incomplete"]
                       }
                     },
                     "required": ["status", "code"]
@@ -47643,6 +49056,9 @@
           },
           "snapshot": {
             "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
           }
         },
         "required": ["id", "sessionID", "messageID", "type"]
@@ -47742,6 +49158,9 @@
           "snapshot": {
             "type": "string"
           },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
+          },
           "cost": {
             "type": "number"
           },
@@ -47793,6 +49212,9 @@
           },
           "snapshot": {
             "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
           }
         },
         "required": ["id", "sessionID", "messageID", "type", "snapshot"]
@@ -47815,6 +49237,56 @@
           },
           "hash": {
             "type": "string"
+          },
+          "operation": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "pending"
+                  },
+                  "toolCallID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["status", "toolCallID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "incomplete"
+                  },
+                  "toolCallID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["status", "toolCallID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "complete"
+                  },
+                  "toolCallID": {
+                    "type": "string"
+                  },
+                  "afterHash": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{40}$"
+                  }
+                },
+                "required": ["status", "toolCallID", "afterHash"]
+              }
+            ]
+          },
+          "workspace": {
+            "$ref": "#/components/schemas/SnapshotWorkspace"
           },
           "files": {
             "type": "array",
@@ -48262,6 +49734,24 @@
               "type": "string"
             }
           },
+          "failedFiles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["file", "code", "message"]
+            }
+          },
           "patchPartIDs": {
             "type": "array",
             "items": {
@@ -48282,7 +49772,7 @@
             "pattern": "^prt.*"
           }
         },
-        "required": ["restoredFiles", "patchPartIDs"]
+        "required": ["restoredFiles", "failedFiles", "patchPartIDs"]
       },
       "SessionVolatileState": {
         "type": "object",
@@ -49426,6 +50916,9 @@
           "path": {
             "type": "string"
           },
+          "entryVersion": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -49439,14 +50932,12 @@
             "maximum": 9007199254740991
           },
           "mtime": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
+            "type": "number",
+            "minimum": 0
           },
           "ctime": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
+            "type": "number",
+            "minimum": 0
           },
           "ignored": {
             "type": "boolean"
@@ -49511,7 +51002,13 @@
         "properties": {
           "name": {
             "type": "string",
-            "enum": ["WorkspaceFileAccessDeniedError", "WorkspaceFileWriteConflictError", "WorkspaceFileTooLargeError"]
+            "enum": [
+              "WorkspaceFileAccessDeniedError",
+              "WorkspaceFileWriteConflictError",
+              "WorkspaceFileTooLargeError",
+              "WorkspaceFileInvalidContentError",
+              "WorkspaceBusyError"
+            ]
           },
           "data": {
             "type": "object",
@@ -49557,6 +51054,9 @@
           "kind": {
             "type": "string",
             "const": "text"
+          },
+          "contentVersion": {
+            "type": "string"
           },
           "path": {
             "type": "string"
@@ -49606,6 +51106,9 @@
           "kind": {
             "type": "string",
             "const": "image"
+          },
+          "contentVersion": {
+            "type": "string"
           },
           "path": {
             "type": "string"
@@ -49915,29 +51418,6 @@
         },
         "required": ["files"]
       },
-      "WorkspaceFileContentError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "enum": [
-              "WorkspaceFileAccessDeniedError",
-              "WorkspaceFileUnsupportedPreviewError",
-              "WorkspaceFileTooLargeError"
-            ]
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
-      },
       "WorkspaceFileWriteResult": {
         "type": "object",
         "properties": {
@@ -49955,9 +51435,12 @@
           },
           "existed": {
             "type": "boolean"
+          },
+          "contentVersion": {
+            "type": "string"
           }
         },
-        "required": ["path", "mtime", "size", "existed"]
+        "required": ["path", "mtime", "size", "existed", "contentVersion"]
       },
       "WorkspaceFileWriteFileInput": {
         "type": "object",
@@ -49982,12 +51465,130 @@
             "type": "string",
             "enum": ["fail", "overwrite"]
           },
-          "expectedMtime": {
-            "type": "number",
-            "minimum": 0
+          "expectedVersion": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["path", "content"]
+        "required": ["path", "content", "expectedVersion"]
+      },
+      "WorkspaceFileEntryResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "node": {
+            "$ref": "#/components/schemas/WorkspaceFileNode"
+          }
+        },
+        "required": ["path", "node"]
+      },
+      "WorkspaceFileEntryError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "completed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorkspaceFileCreateDirectoryInput": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "createParents": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": ["path"]
+      },
+      "WorkspaceFileCopyInput": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "string",
+            "pattern": "^entry:[a-f0-9]{64}$"
+          }
+        },
+        "required": ["from", "to", "expectedVersion"]
+      },
+      "WorkspaceFileMoveInput": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "string",
+            "pattern": "^entry:[a-f0-9]{64}$"
+          }
+        },
+        "required": ["from", "to", "expectedVersion"]
+      },
+      "WorkspaceFileDeleteResult": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "removed": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["path", "removed"]
+      },
+      "WorkspaceFileDeleteInput": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "recursive": {
+            "default": false,
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "type": "string",
+            "pattern": "^entry:[a-f0-9]{64}$"
+          }
+        },
+        "required": ["path", "expectedVersion"]
       },
       "EmbeddingStatus": {
         "anyOf": [
@@ -54030,7 +55631,6 @@
                         },
                         "dataBase64": {
                           "type": "string",
-                          "minLength": 1,
                           "maxLength": 36700160
                         }
                       },
@@ -55708,6 +57308,19 @@
           }
         ]
       },
+      "Event.workspace.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "workspace.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/WorkspaceInfo"
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.scope.updated": {
         "type": "object",
         "properties": {
@@ -56307,6 +57920,14 @@
           "properties": {
             "type": "object",
             "properties": {
+              "workspaceID": {
+                "type": "string"
+              },
+              "workspaceGeneration": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
               "file": {
                 "type": "string"
               },
@@ -56326,12 +57947,14 @@
               "parent": {
                 "type": "string"
               },
-              "node": {},
+              "node": {
+                "$ref": "#/components/schemas/WorkspaceFileNode"
+              },
               "resync": {
                 "type": "boolean"
               }
             },
-            "required": ["file", "event"]
+            "required": ["workspaceID", "workspaceGeneration", "file", "event"]
           }
         },
         "required": ["type", "properties"]
@@ -56346,11 +57969,23 @@
           "properties": {
             "type": "object",
             "properties": {
+              "workspaceID": {
+                "type": "string"
+              },
+              "workspaceGeneration": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
               "file": {
                 "type": "string"
+              },
+              "contentVersion": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
               }
             },
-            "required": ["file"]
+            "required": ["workspaceID", "workspaceGeneration", "file", "contentVersion"]
           }
         },
         "required": ["type", "properties"]
@@ -57436,7 +59071,17 @@
           },
           "properties": {
             "type": "object",
-            "properties": {}
+            "properties": {
+              "workspaceID": {
+                "type": "string"
+              },
+              "workspaceGeneration": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["workspaceID", "workspaceGeneration"]
           }
         },
         "required": ["type", "properties"]
@@ -57509,10 +59154,19 @@
           "properties": {
             "type": "object",
             "properties": {
+              "workspaceID": {
+                "type": "string"
+              },
+              "workspaceGeneration": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
               "branch": {
                 "type": "string"
               }
-            }
+            },
+            "required": ["workspaceID", "workspaceGeneration"]
           }
         },
         "required": ["type", "properties"]
@@ -57547,6 +59201,9 @@
       },
       "Event": {
         "anyOf": [
+          {
+            "$ref": "#/components/schemas/Event.workspace.updated"
+          },
           {
             "$ref": "#/components/schemas/Event.scope.updated"
           },

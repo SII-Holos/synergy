@@ -97,7 +97,7 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
     }
 
     const target = await BrowserExport.fileTarget(ScopeContext.current.directory, params.path!)
-    const exported = await BrowserDownloads.exportTo(owner, params.id!, target)
+    const exported = await BrowserDownloads.exportTo(owner, params.id!, target, ctx.abort)
     return { title: `Download ${params.id} exported`, output: exported, metadata: { id: params.id, path: exported } }
   },
 })

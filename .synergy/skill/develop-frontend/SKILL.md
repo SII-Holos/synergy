@@ -16,6 +16,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 Observer targets delivered by asynchronous mount callbacks must be reactive element signals, with cleanup on unmount. Verify late mount and replacement against rendered layout or computed CSS properties instead of asserting implementation strings.
 
+Treat resource and operation keys as opaque strings. Escape them with `CSS.escape()` before placing them in selectors in both current-selection and keyboard-navigation paths. Cancel deferred scrolling on selection replacement and unmount. Test actual rendered scrolling and selection with composite JSON keys, quotes, backslashes, Unicode and empty strings. Follow the same identity through upstream controls and repeat the original installed interaction after a local fix. For patched dependencies, test every shipped module form and preserve canonical values; selector escaping must not become a second persisted identity.
+
 Solid JSX may evaluate to a function. Never distinguish a rendered trigger from a component with `typeof`; use an explicit component prop such as Popover `triggerAs`, and forward its event, ref, and accessibility props to the native button. Test click, keyboard activation, Escape, and focus return with the real Tooltip composition.
 
 1. Use stores for coherent keyed collections and signals for independent scalar state. Read project-overridable configuration from the current Scope through `useSync`; `useGlobalSync().data.config` contains global settings only. Test differing global and project values plus a Scope config refresh.
@@ -65,6 +67,8 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplicate glyph mappings, missing shared registrations, raw JSX icon literals, and raw icon object metadata outside the documented base/tool/plugin-data exceptions.
 
 ## Preserve Product Presentation
+
+For retained resource tabs, display the resource's owning Workspace independently of the Session's current selection. Keep encoded resource identifiers in persistence and routing; use the resolved panel title for visible labels, tooltips and accessible tab/close names. Verify the visible directory, file tree and recovered draft after switching and reloading.
 
 Derive activity steps and counts from canonical tool parts. Display preferences must not schedule background inference or make session completion depend on presentation work; historical derived summary metadata does not control grouping.
 
@@ -152,3 +156,13 @@ Keep question and permission ownership above replaceable session pages. Native p
 For navigation performance, test leaving the last Scope view for a global panel and returning, not only overlapping Session views. Retain recently viewed stores within the bounded inactive LRU, isolate panel data suspension below navigation controls, and verify canonical handoff convergence after a displayed timeout. A deadline sample must not replace the eventual completed navigation duration.
 
 When a mutation replaces a collection (such as session tags), serialize pending edits and use the accepted response as the next edit baseline. Do not wait for an asynchronous event to update that baseline. Preserve failed input, expose retryable errors, and test a second edit before the first event arrives. Query filters must reach canonical pagination; filtering only the loaded navigation window cannot represent all matching history.
+
+When changing file consumers, capture Workspace ID and binding generation before asynchronous work. Exercise the same relative filename in two Workspaces, switch while one read is pending, deliver stale-generation watcher events, and reopen a tab after a binding change. Preview URLs and editor models must retain the same owner as the file request.
+
+For editable file consumers, capture the complete-read content version when editing starts. Keep that baseline independent from watcher refresh, and preserve drafts through model remounts. Test a remote write during editing and new local input during a pending save; only the submitted revision may become clean.
+
+Workspace selection changes require catalog snapshot/event race coverage: deliver rebinding before an older bootstrap or Session response, retain the new Session generation without changing activity, and keep pinned file tabs on their captured generation. Conditional sharing/rebinding forms retain the revision observed when editing starts; incoming events must not silently authorize overwriting concurrent changes.
+
+For filesystem actions, capture the Workspace, binding generation and observed entry version when opening the form. Retain input on conflicts and keep dirty source and destination drafts independent across rename events. Native create/delete notifications alone cannot prove a rename; verify the editor behavior against unrelated sibling changes.
+
+For file-draft changes, verify reload as well as component remount, original content-version conflicts, Workspace generation separation, missing source files and local-storage quota failure. Preserve in-memory edits when durable backup fails and expose the recovery state in the existing editor.

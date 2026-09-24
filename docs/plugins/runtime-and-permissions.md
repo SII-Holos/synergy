@@ -38,6 +38,8 @@ interface PluginInvocationContext {
 
 The context is request state; do not cache it as a current Scope. `runtime` is read-only provenance identity for the active generation. Runtime startup never receives a raw SDK client, server URL, access token, or Scope/Session identity.
 
+File-capable invocations pin their canonical Workspace and binding generation until their Host calls drain. Host IPC restores the caller's task, write-evidence and capacity context; a shared plugin generation never supplies a current Session. Session selection changes affect the next invocation. File reads preserve UTF-8 BOM and byte versions; a later write in that invocation rejects conflicting disk edits. Writes use native admission and atomic replacement, preserve file modes, and reject physical path escapes and protected metadata. Plugin reads and writes share the native file service limits (50 MiB reads, 8 MiB writes); an invocation retains at most 256 read baselines. Cancellation drains admitted Host work before releasing the binding. Returning while a Host request is still pending is an invocation error.
+
 For a plugin Tool invoked by an Agent, `actor.messageId` is the assistant message that owns the Tool call and `actor.userMessageId`, when present, is the source user message resolved by the host. Plugins should use these IDs for provenance instead of asking the Agent to copy message identifiers into Tool input.
 
 External plugins use `process`. Trusted built-ins may use `inProcess`. The process boundary isolates crashes, timeouts, and cleanup; it is not an OS security sandbox and does not claim to restrict direct filesystem or network access by plugin code.

@@ -270,7 +270,7 @@ async function main() {
     outputs.diagnostic = JSON.stringify(
       plan.units.map((unit) => ({
         ...unit,
-        os: unit.pool === "windows" ? "windows-latest" : "ubuntu-24.04",
+        os: unit.pool === "windows" ? "windows-latest" : unit.pool === "macos" ? "macos-15" : "ubuntu-24.04",
         postgres:
           unit.pool === "postgres" ? `postgres:${plan.tasks.find((task) => task.id === unit.tasks[0])!.variant}` : "",
       })),

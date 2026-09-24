@@ -23,8 +23,9 @@ await runtime.run(async () => {
   const { scope } = await Scope.fromDirectory(process.cwd())
   await ScopeContext.provide({
     scope,
+    workspace: null,
     async fn() {
-      const session = await Session.create({})
+      const session = await Session.create({ workspace: null })
       const pending = await WorkflowSessionService.hasPendingExecution(session)
       const cleared = await WorkflowSessionService.setNone(session.id)
       if (pending || cleared.workflow) throw new Error("Empty workflow must remain idle")

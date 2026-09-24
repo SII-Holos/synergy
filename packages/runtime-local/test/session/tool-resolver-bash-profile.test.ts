@@ -49,21 +49,23 @@ function bashRegistryTool() {
 
 async function resolveBashTool(sessionID: string) {
   const session = await Session.get(sessionID)
+  const assistantMessage = {
+    id: "msg_tool_resolver_profile",
+    sessionID,
+    role: "assistant" as const,
+    parentID: "msg_user",
+    modelID: "test-model",
+    providerID: "test-provider",
+    mode: "build",
+    agent: "synergy",
+    path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    time: { created: 0 },
+  }
+  await Session.updateMessage(assistantMessage)
   const processor = SessionProcessor.create({
-    assistantMessage: {
-      id: "msg_tool_resolver_profile",
-      sessionID,
-      role: "assistant",
-      parentID: "msg_user",
-      modelID: "test-model",
-      providerID: "test-provider",
-      mode: "build",
-      agent: "synergy",
-      path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
-      cost: 0,
-      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      time: { created: 0 },
-    },
+    assistantMessage,
     sessionID,
     model,
     abort: new AbortController().signal,

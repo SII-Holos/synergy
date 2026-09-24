@@ -11,7 +11,7 @@ describe("MigrationRegistry", () => {
   test("registers all domains", () =>
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
-      expect(domainCount).toBe(14)
+      expect(domainCount).toBe(15)
     }))
 
   test("has expected domain names", () =>
@@ -21,6 +21,7 @@ describe("MigrationRegistry", () => {
         "agenda",
         "blueprint_loop",
         "browser",
+        "channel",
         "config",
         "holos",
         "lattice",

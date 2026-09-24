@@ -38,13 +38,18 @@ import { MDNS } from "./mdns"
 import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { MaintenanceAdmissionRoute } from "./maintenance-admission"
 import { SessionRoute } from "./session"
 import { PtyRoute } from "./pty"
 import { createProviderRoute } from "./provider"
 import { PermissionRoute } from "./permission"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { ScopePath } from "./scope-path"
 import { WorkspaceFilesRoute } from "./workspace-files"
+import { WorkspacesRoute } from "./workspaces"
 import { File as SynergyFile } from "@ericsanchezok/synergy-runtime-local/file"
 import { ConfigRoute } from "./config-route"
 import { SecretsRoute } from "./secrets-route"
@@ -326,8 +331,8 @@ export namespace Server {
       pathname.startsWith("/path/") ||
       pathname === "/experimental/worktree" ||
       pathname.startsWith("/experimental/worktree/") ||
-      pathname === "/workspace/files" ||
-      pathname.startsWith("/workspace/files/")
+      pathname === "/workspace" ||
+      pathname.startsWith("/workspace/")
     )
   }
 
@@ -355,16 +360,16 @@ export namespace Server {
 
   const RawHtmlScopePattern = /^\/workspace\/files\/raw\/([^/]+)\//
 
-  function rawHtmlScope(c: Context): { scopeID?: string; directory?: string } | undefined {
+  function rawHtmlScope(c: Context): { scopeID: string } | undefined {
     const token = RawHtmlScopePattern.exec(c.req.path)?.[1]
     if (!token) return undefined
     if (token === "home") return { scopeID: "home" }
     try {
-      const directory = Buffer.from(token, "base64url").toString("utf-8").trim()
-      if (!directory) return undefined
-      return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(directory) ? { directory } : { scopeID: directory }
+      const scopeID = Buffer.from(token, "base64url").toString("utf-8")
+      if (!scopeID || Buffer.from(scopeID).toString("base64url") !== token) throw new Error("Invalid Scope token")
+      return { scopeID }
     } catch {
-      return undefined
+      throw new Scope.RequiredError({ message: "A valid Scope token is required for a Workspace file URL" })
     }
   }
 
@@ -394,16 +399,17 @@ export namespace Server {
   async function provideRequestScope(c: Context, next: Next) {
     const directory = requestDirectory(c)
     const scopeID = requestScopeID(c)
-    const rawScope = !directory && !scopeID ? rawHtmlScope(c) : undefined
+    const rawScope = rawHtmlScope(c)
     const scope =
       isGlobalRoute(c.req.path) || (!directory && !scopeID && !rawScope && !isScopeRequiredRoute(c.req.path))
         ? Scope.home()
         : await Scope.resolve({
-            scopeID: scopeID ?? rawScope?.scopeID,
-            directory: directory ?? rawScope?.directory,
+            scopeID: rawScope?.scopeID ?? scopeID,
+            directory: rawScope ? undefined : directory,
           })
     return ScopeContext.provide({
       scope,
+      workspace: c.req.path === "/workspace" || c.req.path.startsWith("/workspace/") ? null : undefined,
       async fn() {
         // Snapshot watermark: capture the scope's event seq before the handler
         // reads data, then advertise it as a response header. It is a
@@ -495,6 +501,8 @@ export namespace Server {
       .onError((err, c) => {
         const instanceState = runtimeState()
 
+        if (err instanceof BusyError || err instanceof WorkspaceAccess.BusyError)
+          return c.json({ name: err.name, data: { message: err.message } }, 409)
         if (err instanceof Scope.NotFoundError) return c.json(err.toObject(), { status: 404 })
         if (err instanceof SessionPreparingError) {
           c.header("Retry-After", "2")
@@ -517,12 +525,15 @@ export namespace Server {
             err instanceof ConfigImport.RevisionConflictError ||
             err instanceof ConfigImport.LockedError ||
             err instanceof Worktree.UnavailableError ||
+            err instanceof WorkspaceCatalog.Unavailable ||
+            err instanceof WorkspaceCatalog.BindingChanged ||
             err instanceof Scope.WorkspaceUnavailableError ||
             err instanceof Session.ForkPointMissingError
           )
             status = 409
           else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
           else if (
+            err instanceof WorkspaceCatalog.Invalid ||
             err instanceof Scope.RequiredError ||
             err instanceof Scope.WorkspaceRequiredError ||
             err instanceof ConfigImport.ProjectScopeRequiredError ||
@@ -1093,32 +1104,14 @@ export namespace Server {
               description: "Path",
               content: {
                 "application/json": {
-                  schema: resolver(
-                    z
-                      .object({
-                        home: z.string(),
-                        state: z.string(),
-                        config: z.string(),
-                        worktree: z.string().nullable(),
-                        directory: z.string().nullable(),
-                      })
-                      .meta({
-                        ref: "Path",
-                      }),
-                  ),
+                  schema: resolver(ScopePath.Schema),
                 },
               },
             },
           },
         }),
         async (c) => {
-          return c.json({
-            home: Global.Path.home,
-            state: Global.Path.state,
-            config: Global.Path.config,
-            worktree: ScopeContext.current.scope.local?.worktree ?? null,
-            directory: ScopeContext.current.workspace?.path ?? null,
-          })
+          return c.json(ScopePath.current())
         },
       )
       .post(
@@ -1307,6 +1300,7 @@ export namespace Server {
       .route("/provider", createProviderRoute(instanceState.contributions?.providerRoutes))
       .route("/skill", SkillRoute())
       .route("/workspace/files", WorkspaceFilesRoute())
+      .route("/workspace", WorkspacesRoute())
       .route("", contributionRoutes("scoped-before-assets"))
       .route("/asset", AssetRoute())
       .route("", contributionRoutes("scoped-after-assets"))

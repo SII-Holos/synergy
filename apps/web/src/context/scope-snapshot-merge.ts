@@ -21,6 +21,7 @@ export function parseEventWriteStamp(
 
 export class ScopeWriteTracker {
   private epoch: string | undefined
+  private readonly workspaces = new Map<string, number>()
   private readonly sessions = new Map<string, { seq: number; present: boolean }>()
 
   sessionWrite(stamp: EventWriteStamp, sessionID: string, present: boolean) {
@@ -55,9 +56,26 @@ export class ScopeWriteTracker {
     return [...upserts, ...snapshot.filter((item) => !tombstones?.has(item.id) && !upsertIDs.has(item.id))]
   }
 
+  workspaceWrite(stamp: EventWriteStamp, workspaceID: string) {
+    this.syncEpoch(stamp)
+    this.workspaces.set(workspaceID, stamp.seq)
+  }
+
+  mergeWorkspaces<T extends { id: string }>(
+    version: EventWriteStamp | undefined,
+    snapshot: readonly T[],
+    local: readonly T[],
+  ): T[] {
+    if (!version || this.epoch !== version.epoch) return [...snapshot]
+    const newer = local.filter((record) => (this.workspaces.get(record.id) ?? -1) > version.seq)
+    const ids = new Set(newer.map((record) => record.id))
+    return [...snapshot.filter((record) => !ids.has(record.id)), ...newer]
+  }
+
   private syncEpoch(stamp: EventWriteStamp) {
     if (this.epoch === stamp.epoch) return
     this.epoch = stamp.epoch
     this.sessions.clear()
+    this.workspaces.clear()
   }
 }

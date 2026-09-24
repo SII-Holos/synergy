@@ -949,14 +949,24 @@ describe("Clarus task acceptance", () => {
             return true
           })
 
+          const dispatch = handleEvent(instance, connection, event)
+          let completed = false
+          const outcome = dispatch
+            .then(
+              () => ({ error: undefined }),
+              (error: unknown) => ({ error }),
+            )
+            .finally(() => {
+              completed = true
+            })
           try {
-            const dispatch = handleEvent(instance, connection, event)
-            const completedBeforeAck = await Promise.race([dispatch.then(() => true), Bun.sleep(100).then(() => false)])
-            expect(completedBeforeAck).toBe(true)
+            await waitFor(() => completed, Boolean)
+            const result = await outcome
+            if (result.error) throw result.error
             expect(order).toEqual(["accept", "wake"])
-            resolveAccept({ ...acceptedTaskPayload(event), type: "runtimeTaskAccepted" })
-            await dispatch
           } finally {
+            resolveAccept({ ...acceptedTaskPayload(event), type: "runtimeTaskAccepted" })
+            await outcome
             ;(SessionDrive.request as typeof SessionDrive.request) = originalRequest
           }
         },

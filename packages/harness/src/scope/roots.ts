@@ -1,7 +1,7 @@
 import path from "path"
 import { existsSync } from "fs"
 import { uniqueRoots } from "../sandbox/policy"
-import { Filesystem } from "../util/filesystem"
+import { WorkspaceBinding } from "../workspace/binding"
 import type { Scope } from "."
 import type { Workspace } from "../session/workspace-schema"
 
@@ -18,44 +18,15 @@ export namespace ScopeRoots {
     return uniqueRoots([worktree, ...sandboxes]).filter((root) => existsSync(root))
   }
 
-  /**
-   * Roots that the execution boundary treats as trusted project folders for
-   * the current session. In a git worktree session the original main checkout
-   * stays outside the trust boundary (explicit authorization required), while
-   * every other declared project folder is trusted automatically.
-   */
   export function trustRoots(scope: Scope, workspace?: Workspace | null): string[] {
-    if (workspace === null) return []
-    const roots = projectRoots(scope)
-    if (workspace?.type !== "git_worktree") return roots
-    // The original main checkout is never trusted inside a worktree session,
-    // even when the workspace metadata lacks an explicit originalCheckout —
-    // the persisted main worktree is the implicit original checkout. The
-    // exclusion covers the checkout itself, paths nested under it (e.g.
-    // subdirectories auto-recorded into `sandboxes` when they were opened
-    // previously), and any declared root that contains the checkout — all of
-    // which would otherwise grant write access into the original checkout
-    // from an isolated worktree session.
-    const originalCheckout =
-      (workspace as { originalCheckout?: string } | undefined)?.originalCheckout ?? scope.local?.worktree
-    if (!originalCheckout) return roots
-    const original = path.resolve(originalCheckout)
-    return roots.filter((root) => {
-      const resolved = path.resolve(root)
-      return !Filesystem.contains(original, resolved) && !Filesystem.contains(resolved, original)
-    })
+    if (!workspace) return []
+    if (workspace.scopeID !== scope.id) throw new Error("Workspace belongs to another Scope")
+    return [path.resolve(workspace.path)]
   }
-  /**
-   * The full trusted-root set used by the execution boundary: project trust
-   * roots merged with caller-provided extra roots (e.g. Skill source roots)
-   * and deduplicated. Every gate creation site must use this instead of
-   * building its own root list so project folders stay trusted automatically.
-   */
-  export function executionRoots(
-    scope: Scope,
-    workspace: Workspace | null | undefined,
-    extraRoots: string[] = [],
-  ): string[] {
-    return uniqueRoots([...trustRoots(scope, workspace), ...extraRoots])
+
+  export async function executionRoots(scope: Scope, workspace: Workspace | null | undefined): Promise<string[]> {
+    if (!workspace) return []
+    if (workspace.scopeID !== scope.id) throw new Error("Workspace belongs to another Scope")
+    return WorkspaceBinding.writableRoots(workspace)
   }
 }

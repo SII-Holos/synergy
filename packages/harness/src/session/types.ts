@@ -264,6 +264,8 @@ const BaseInfo = z.preprocess(
     cortex: CortexDelegationInfo.optional(),
     working: WorkingInfo.optional(),
     workspace: Workspace.nullable(),
+    workspaceID: z.string().nullable().optional(),
+    workspaceError: z.string().optional(),
     workflow: z
       .object({
         kind: z.string(),

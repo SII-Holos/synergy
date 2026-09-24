@@ -1,4 +1,4 @@
-import { Show, type Accessor } from "solid-js"
+import { Show, createSignal, type Accessor } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -7,6 +7,7 @@ import type { SessionRollbackSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { useSDK } from "@/context/sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import { fileRestoreFeedback } from "./file-restore-feedback"
 import "./rollback-dialog.css"
 
 interface RollbackDialogProps {
@@ -17,6 +18,7 @@ interface RollbackDialogProps {
 
 export function RollbackDialog(props: RollbackDialogProps) {
   const dialog = useDialog()
+  const [restoring, setRestoring] = createSignal(false)
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const numTurns = () => props.rollback().numTurns ?? 0
@@ -24,6 +26,7 @@ export function RollbackDialog(props: RollbackDialogProps) {
   const numFiles = () => props.rollback().files?.length ?? 0
 
   const handleRedo = async () => {
+    if (restoring()) return
     if (!props.rollback().canUnrollback) {
       showToast({
         type: "info",
@@ -57,24 +60,25 @@ export function RollbackDialog(props: RollbackDialogProps) {
 
   const handleRestoreFiles = async () => {
     const rollback = props.rollback()
-    if (numFiles() === 0) return
+    if (numFiles() === 0 || restoring()) return
+    setRestoring(true)
     try {
-      const result = await props.sdk.client.session.files.restore({
-        sessionID: props.sessionID,
-        rollbackID: rollback.id,
-      })
-      const count = result.data?.restoredFiles?.length ?? 0
-      showToast({
-        type: "success",
-        title: _(S.rollbackFilesRestored),
-        description: i18n._({ ...S.rollbackRestoreSuccessDesc, values: { count } }),
-      })
+      const result = await props.sdk.client.session.files.restore(
+        {
+          sessionID: props.sessionID,
+          rollbackID: rollback.id,
+        },
+        { throwOnError: true },
+      )
+      showToast(fileRestoreFeedback(result.data, i18n))
     } catch (err) {
       showToast({
         type: "error",
         title: _(S.rollbackFilesRestoreFailed),
         description: err instanceof Error ? err.message : _(S.rollbackRequestFailed),
       })
+    } finally {
+      setRestoring(false)
     }
   }
 
@@ -93,7 +97,13 @@ export function RollbackDialog(props: RollbackDialogProps) {
           {_(S.rollbackDismiss)}
         </Button>
         <Show when={numFiles() > 0}>
-          <Button type="button" variant="ghost" size="large" onClick={() => void handleRestoreFiles()}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="large"
+            disabled={restoring()}
+            onClick={() => void handleRestoreFiles()}
+          >
             {i18n._({ ...S.rollbackRestoreFiles, values: { count: numFiles() } })}
           </Button>
         </Show>
@@ -101,7 +111,7 @@ export function RollbackDialog(props: RollbackDialogProps) {
           type="button"
           variant="primary"
           size="large"
-          disabled={!props.rollback().canUnrollback}
+          disabled={restoring() || !props.rollback().canUnrollback}
           title={props.rollback().canUnrollback ? _(S.rollbackRestoreTooltip) : _(S.rollbackCannotRedoTooltip)}
           onClick={() => void handleRedo()}
         >

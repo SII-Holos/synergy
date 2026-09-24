@@ -12,9 +12,9 @@ PR 使用 base/head 两侧的 workspace、测试、动态资源导入关系计�
 
 ## 任务和报告
 
-普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness 使用四个稳定哈希分区，特殊隔离文件保持独立进程。每批拥有独立的 Home、fixture 根和 Link Home，fixture 自己分配数据库与动态端口。真实 sandbox、Windows、PostgreSQL 16/17/18、安装产物和三种 30 MiB 长流结果保持独立任务。
+普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness 使用四个稳定哈希分区，特殊隔离文件保持独立进程。每批拥有独立的 Home、fixture 根和 Link Home，fixture 自己分配数据库与动态端口。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18、安装产物和三种 30 MiB 长流结果保持独立任务。原生 Workspace 任务生成本次 JUnit 与 lcov，依赖完整 Runtime Local suite 的覆盖率基线；required check 等待两个平台的计划结果并共同计算覆盖率。
 
-普通 Linux、Docker、PostgreSQL、Windows 矩阵的并发上限分别为 6、3、2、1；小任务按历史估计耗时分配到 worker，worker 内顺序执行。构建准备作为独立前置节点，纯检查使用一个直接启动的 Linux worker，其余五个 worker 等待共享构建。Docker 的两个外部 harness worker 可与准备任务同时运行；准备完成后启动一条场景通道，外部任务退出后再开放其余两条通道，整个 DAG 最多占用三个 Docker runner。构建缓存包含输入、配方、Bun、runner 镜像、OS/架构/ABI 身份，恢复时校验完整文件列表、内容摘要和文件模式。缓存保存构建产物，不保存测试成功结论或运行 Home；冷运行跳过跨 run 缓存。core、full、benchmark 维持独立配方。
+普通 Linux、Docker、PostgreSQL、Windows、macOS 矩阵的并发上限分别为 6、3、2、1、1；小任务按历史估计耗时分配到 worker，worker 内顺序执行，避免独立包的原生写占用在同一宿主互相阻塞。构建准备作为独立前置节点，纯检查使用一个直接启动的 Linux worker，其余五个 worker 等待共享构建。Docker 的两个外部 harness worker 可与准备任务同时运行；准备完成后启动一条场景通道，外部任务退出后再开放其余两条通道，整个 DAG 最多占用三个 Docker runner。构建缓存包含输入、配方、Bun、runner 镜像、OS/架构/ABI 身份，恢复时校验完整文件列表、内容摘要和文件模式。缓存保存构建产物，不保存测试成功结论或运行 Home；冷运行跳过跨 run 缓存。core、full、benchmark 维持独立配方。
 
 `All checks passed` 始终执行。它核对计划摘要、测试 SHA、run、attempt、模式、全部选中任务、job 结果、报告摘要和逐文件执行清单。缺失、取消、失败、重复、诊断或陈旧结果均不能通过。产物名带 attempt，重跑 required CI 使用 Re-run all jobs；只重跑失败 job 会因旧计划身份而拒绝，单项排查使用诊断工作流。未选择任务在计划摘要中显示原因。覆盖率只合并本次完整成功任务的报告，未加载文件和 exemption 规则保持原样。
 

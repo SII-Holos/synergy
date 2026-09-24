@@ -50,6 +50,8 @@
     "./tools/bash/virtual-file": "./src/tools/bash/virtual-file.ts",
     "./skill/manifest": "./src/skill/manifest.ts",
     "./workspace/worktree": "./src/workspace/worktree.ts",
+    "./workspace/process": "./src/workspace/process.ts",
+    "./workspace/relocation": "./src/workspace/relocation.ts",
     "./index": "./src/index.ts",
     "./register": "./src/register.ts",
     "./client": "./src/client.ts",
@@ -87,14 +89,19 @@
     "./workspace-file/symbol-source": "./src/workspace-file/symbol-source.ts",
     "./workspace-file/indexer": "./src/workspace-file/indexer.ts",
     "./conflict/detect": "./src/conflict/detect.ts",
-    "./host": "./src/host.ts"
+    "./host": "./src/host.ts",
+    "./file/rename": "./src/file/rename.ts",
+    "./file/link": "./src/file/link.ts",
+    "./process/owned-process": "./src/process/owned-process.ts",
+    "./file/mutation": "./src/file/mutation.ts",
+    "./process/owned-worker": "./src/process/owned-worker.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
-    "test": "bun ../testing/script/test-ci.ts",
+    "test": "bun script/build-pty.ts && bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/runtime-local",
-    "test:ci": "bun ../testing/script/test-ci.ts",
-    "test:coverage": "bun ../testing/script/coverage-run.ts"
+    "test:ci": "bun script/build-pty.ts && bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun script/build-pty.ts && bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
     "@ai-sdk/amazon-bedrock": "3.0.57",
@@ -120,7 +127,6 @@
     "@openrouter/ai-sdk-provider": "1.5.2",
     "@parcel/watcher": "2.5.6",
     "@zip.js/zip.js": "2.8.26",
-    "bun-pty": "0.4.4",
     "diff": "catalog:",
     "fuzzysort": "3.1.0",
     "ignore": "7.0.5",

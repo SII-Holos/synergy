@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 
-export type Pool = "linux" | "docker" | "postgres" | "windows"
+export type Pool = "linux" | "docker" | "postgres" | "windows" | "macos"
 export type Mode = "full" | "shadow" | "affected" | "diagnostic"
 export type TaskKind =
   | "policy"
@@ -13,6 +13,7 @@ export type TaskKind =
   | "desktop"
   | "smoke"
   | "windows"
+  | "native-workspace"
   | "postgres"
   | "benchmark-pure"
   | "benchmark-streams"
@@ -76,7 +77,7 @@ export interface Plan {
   digest: string
 }
 
-export const LIMITS: Record<Pool, number> = { linux: 6, docker: 3, postgres: 2, windows: 1 }
+export const LIMITS: Record<Pool, number> = { linux: 6, docker: 3, postgres: 2, windows: 1, macos: 1 }
 export const QUEUES = [
   "contracts",
   "linux",
@@ -85,6 +86,7 @@ export const QUEUES = [
   "docker",
   "postgres",
   "windows",
+  "macos",
 ] as const
 
 export function needsBuild(task: Task): boolean {

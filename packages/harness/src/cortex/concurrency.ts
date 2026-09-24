@@ -93,10 +93,11 @@ export namespace CortexConcurrency {
     instanceState.memoryProbe = probe
   }
 
-  export async function acquire(key: string): Promise<void> {
+  export async function acquire(key: string, signal?: AbortSignal): Promise<void> {
     const instanceState = runtimeState()
 
     while (true) {
+      signal?.throwIfAborted()
       const perAgent = instanceState.counts.get(key) ?? 0
       const perAgentLimit = getLimit(key)
       const globalLimit = getGlobalLimit()
@@ -122,9 +123,20 @@ export namespace CortexConcurrency {
         globalRunning: instanceState.globalRunning,
         globalLimit,
       })
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         const queue = instanceState.queues.get(key) ?? []
-        queue.push(resolve)
+        const wake = () => {
+          signal?.removeEventListener("abort", abort)
+          resolve()
+        }
+        const abort = () => {
+          const index = queue.indexOf(wake)
+          if (index >= 0) queue.splice(index, 1)
+          signal?.removeEventListener("abort", abort)
+          reject(signal?.reason)
+        }
+        signal?.addEventListener("abort", abort, { once: true })
+        queue.push(wake)
         instanceState.queues.set(key, queue)
         schedulePressureRecheck()
       })

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { EventEmitter } from "node:events"
 import { BROWSER_MAX_DOWNLOAD_BYTES } from "@ericsanchezok/synergy-browser"
@@ -244,6 +244,7 @@ describe("Browser Host diagnostics", () => {
     expect(command.method).toBe("DOM.setFileInputFiles")
     const files = command.params.files as string[]
     expect(files).toHaveLength(1)
+    expect(path.basename(files[0]!)).toBe("notes.txt")
     expect(await readFile(files[0]!, "utf8")).toBe("hello world")
     expect(command.params.backendNodeId).toBe(7)
 
@@ -361,6 +362,35 @@ describe("Browser Host diagnostics", () => {
     expect(fileEvent.entry.warning).toContain("unsafe")
   })
 
+  test("stages an empty upload as an actual zero-byte file", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const staged = await fixture.diagnostics.stageFiles([{ name: "empty.txt", data: "" }])
+    try {
+      expect(staged.paths).toHaveLength(1)
+      expect((await stat(staged.paths[0]!)).size).toBe(0)
+    } finally {
+      await staged.cleanup()
+    }
+  })
+
+  test("preserves duplicate upload filenames without replacing either file", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const staged = await fixture.diagnostics.stageFiles([
+      { name: "same.txt", data: Buffer.from("first").toString("base64") },
+      { name: "same.txt", data: Buffer.from("second").toString("base64") },
+    ])
+    try {
+      expect(staged.paths.map((file) => path.basename(file))).toEqual(["same.txt", "same.txt"])
+      expect(await Promise.all(staged.paths.map((file) => readFile(file, "utf8")))).toEqual(["first", "second"])
+      for (const file of staged.paths) expect((await stat(path.dirname(file))).mode & 0o777).toBe(0o700)
+    } finally {
+      await staged.cleanup()
+    }
+    for (const file of staged.paths) expect(await Bun.file(file).exists()).toBe(false)
+  })
+
   test("writes uploaded files with restricted permissions and cleans up on failure", async () => {
     const fixture = await createFixture()
     fixtures.push(fixture)
@@ -370,13 +400,13 @@ describe("Browser Host diagnostics", () => {
       { name: "b.txt", data: Buffer.from("two").toString("base64") },
     ])
     expect(staged.paths).toHaveLength(2)
-    const uploadDir = path.dirname(staged.paths[0]!)
-    expect((await stat(uploadDir)).mode & 0o777).toBe(0o700)
-    const entries = (await readdir(uploadDir)).toSorted()
-    expect(entries.length).toBe(2)
+    for (const file of staged.paths) {
+      expect((await stat(path.dirname(file))).mode & 0o777).toBe(0o700)
+      expect((await stat(file)).mode & 0o777).toBe(0o600)
+    }
 
     await staged.cleanup()
-    expect(await Bun.file(uploadDir).exists()).toBe(false)
+    for (const file of staged.paths) expect(await Bun.file(file).exists()).toBe(false)
   })
 
   test("blocks downloads by mime type even with a safe extension", async () => {

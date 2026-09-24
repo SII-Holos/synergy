@@ -1,94 +1,53 @@
 import { describe, expect, test } from "bun:test"
 import { buildWorkspaceFileBrowserUrl, buildWorkspaceFilePreviewUrl } from "../../src/utils/workspace-file-url"
 
+const home = { scopeID: "home", workspaceID: "wsp_local", workspaceGeneration: 3 }
+const project = { ...home, scopeID: "project" }
+
 describe("workspace file preview URL", () => {
-  test("uses the app origin when the SDK base is cross-origin (bun dev)", () => {
-    expect(
-      buildWorkspaceFilePreviewUrl("http://127.0.0.1:4096", "http://localhost:3000", "docs/page.html", {
-        scopeID: "home",
-      }),
-    ).toBe("http://localhost:3000/workspace/files/raw/home/docs/page.html")
+  test("changed content invalidates previews even when mtime and size are unchanged", () => {
+    const url = (contentVersion: string) =>
+      buildWorkspaceFilePreviewUrl("https://example.test", "https://example.test", "index.html", project, {
+        mtime: 1,
+        size: 5,
+        contentVersion,
+      })
+    expect(url("sha256:a")).not.toBe(url("sha256:b"))
+    expect(new URL(url("sha256:a")).searchParams.get("v")).toBe("sha256:a")
   })
-
-  test("keeps the SDK base when it is same-origin with the app (reverse proxy)", () => {
-    expect(
-      buildWorkspaceFilePreviewUrl("https://example.test/proxy/4096", "https://example.test", "index.html", {
-        scopeID: "home",
-      }),
-    ).toBe("https://example.test/proxy/4096/workspace/files/raw/home/index.html")
+  test("uses the app origin for a cross-origin SDK while retaining the Workspace", () => {
+    expect(buildWorkspaceFilePreviewUrl("http://127.0.0.1:4096", "http://localhost:3000", "docs/page.html", home)).toBe(
+      "http://localhost:3000/workspace/files/raw/home/wsp_local/3/docs/page.html",
+    )
   })
-
-  test("appends the version query when provided", () => {
+  test("keeps a same-origin reverse-proxy prefix and the file content version", () => {
     expect(
-      buildWorkspaceFilePreviewUrl(
-        "http://127.0.0.1:4096",
-        "http://127.0.0.1:4096",
-        "index.html",
-        { directory: "/workspace/demo" },
-        { mtime: 1725000000, size: 128 },
-      ),
-    ).toBe("http://127.0.0.1:4096/workspace/files/raw/L3dvcmtzcGFjZS9kZW1v/index.html?v=1725000000-128")
-  })
-
-  test("omits the version query when version is absent", () => {
-    expect(
-      buildWorkspaceFilePreviewUrl("http://127.0.0.1:4096", "http://127.0.0.1:4096", "index.html", {
-        scopeID: "home",
+      buildWorkspaceFilePreviewUrl("https://example.test/proxy/4096", "https://example.test", "index.html", project, {
+        mtime: 12,
+        size: 128,
       }),
-    ).toBe("http://127.0.0.1:4096/workspace/files/raw/home/index.html")
+    ).toBe("https://example.test/proxy/4096/workspace/files/raw/cHJvamVjdA/wsp_local/3/index.html?v=12-128")
   })
 })
 
 describe("workspace file browser URL", () => {
-  test("builds a path-based raw URL against the server base", () => {
-    expect(buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "docs/page.html", { scopeID: "home" })).toBe(
-      "http://127.0.0.1:4096/workspace/files/raw/home/docs/page.html",
+  test("encodes each filename segment and preserves the selected generation for relative resources", () => {
+    const url = buildWorkspaceFileBrowserUrl("https://example.test/prefix/", "my dir/你好 ?#%.html", project)
+    expect(url).toBe(
+      "https://example.test/prefix/workspace/files/raw/cHJvamVjdA/wsp_local/3/my%20dir/%E4%BD%A0%E5%A5%BD%20%3F%23%25.html",
+    )
+    expect(new URL("image.png", url).pathname).toBe(
+      "/prefix/workspace/files/raw/cHJvamVjdA/wsp_local/3/my%20dir/image.png",
     )
   })
-
-  test("strips a trailing slash from the base URL", () => {
-    expect(buildWorkspaceFileBrowserUrl("https://example.test/proxy/4096/", "index.htm", { scopeID: "home" })).toBe(
-      "https://example.test/proxy/4096/workspace/files/raw/home/index.htm",
-    )
+  test("requires a Workspace reference and distinguishes a rebind from an old preview", () => {
+    expect(() => buildWorkspaceFileBrowserUrl("http://localhost", "file.html")).toThrow("Workspace")
+    const first = buildWorkspaceFileBrowserUrl("http://localhost", "file.html", project)
+    const rebound = buildWorkspaceFileBrowserUrl("http://localhost", "file.html", {
+      ...project,
+      workspaceGeneration: 4,
+    })
+    expect(first).not.toBe(rebound)
+    expect(first).toContain("/wsp_local/3/")
   })
-
-  test("encodes spaces and special characters per segment but keeps slashes", () => {
-    expect(
-      buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "my dir/hello & world.html", { scopeID: "home" }),
-    ).toBe("http://127.0.0.1:4096/workspace/files/raw/home/my%20dir/hello%20%26%20world.html")
-  })
-
-  test("encodes the scope directory as a base64url token", () => {
-    expect(
-      buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "index.html", {
-        directory: "/home/user/my project",
-      }),
-    ).toBe("http://127.0.0.1:4096/workspace/files/raw/L2hvbWUvdXNlci9teSBwcm9qZWN0/index.html")
-  })
-
-  test("uses the literal home token for the home scope", () => {
-    expect(buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "index.html", { scopeID: "home" })).toBe(
-      "http://127.0.0.1:4096/workspace/files/raw/home/index.html",
-    )
-  })
-
-  test("prefers scopeID home over a directory", () => {
-    expect(
-      buildWorkspaceFileBrowserUrl("http://127.0.0.1:4096", "index.html", {
-        scopeID: "home",
-        directory: "/home/user/x",
-      }),
-    ).toBe("http://127.0.0.1:4096/workspace/files/raw/home/index.html")
-  })
-})
-
-test("requires an owner and keeps a project file link stable when its directory changes", () => {
-  expect(() => buildWorkspaceFileBrowserUrl("http://localhost", "file.html")).toThrow("Scope")
-  const first = buildWorkspaceFileBrowserUrl("http://localhost", "file.html", { scopeID: "project", directory: "/old" })
-  const moved = buildWorkspaceFileBrowserUrl("http://localhost", "file.html", {
-    scopeID: "project",
-    directory: "/moved",
-  })
-  expect(first).toBe(moved)
-  expect(first).toContain("/raw/cHJvamVjdA/")
 })

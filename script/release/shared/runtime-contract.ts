@@ -29,6 +29,8 @@ export function requiredRuntimeArtifactPaths(name: string, profile: RuntimeArtif
     // The watcher binding ships for every target: @parcel/watcher publishes
     // musl packages, so unlike ast-grep/sqlite-vec it is not glibc-only.
     "watcher.node",
+    target.os === "windows" ? "synergy_pty.dll" : target.os === "darwin" ? "libsynergy_pty.dylib" : "libsynergy_pty.so",
+    "PTY-LICENSE",
     "schema/config.schema.json",
     ...(profile === "full"
       ? [

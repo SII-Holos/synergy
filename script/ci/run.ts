@@ -179,23 +179,21 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             "packages/runtime-local/src/sandbox/helper/Cargo.toml",
           ],
         })),
-        test(
-          "windows-local",
-          [
-            "test/file/watcher-events.test.ts",
-            "test/sandbox/phase3-windows-config.test.ts",
-            "test/process/windows-process-job.test.ts",
-            "test/session/tool-resolver-bash-profile.test.ts",
-          ],
-          "packages/runtime-local",
-        ),
+        bun("native-pty", ["packages/runtime-local/script/build-pty.ts"]),
+        bun("native-workspace", ["script/native-workspace-coverage.ts"]),
         test(
           "windows-harness",
           ["test/global/schema-publish.test.ts", "test/util/server-process-lock.test.ts"],
           "packages/harness",
         ),
         test("windows-util", ["test/fs-lock.test.ts", "test/process-identity.test.ts"], "packages/util"),
+        test("windows-home-copy", ["test/cli/data-files.test.ts"], "packages/cli"),
         test("windows-desktop", ["test/server-manager.test.ts", "test/windows-installer.test.ts"], "apps/desktop"),
+      ]
+    case "native-workspace":
+      return [
+        bun("native-pty", ["packages/runtime-local/script/build-pty.ts"]),
+        bun("native-workspace", ["script/native-workspace-coverage.ts"]),
       ]
     case "benchmark-pure":
       return [
@@ -306,12 +304,19 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
   }
 }
 
+function nativeCoverageDirectory(task: Task, root: string): string | undefined {
+  if (task.kind !== "native-workspace" && task.kind !== "windows") return undefined
+  return path.join(root, task.package!, "coverage/shards", task.pool === "windows" ? "1000001" : "1000000")
+}
+
 async function captureReports(task: Task, root: string, output: string): Promise<Report[]> {
   const reports: Report[] = []
   const sources =
     task.kind === "suite"
       ? await filesIn(path.join(root, task.package!, "coverage"))
       : await filesIn(path.join(root, OUTPUT, "raw", task.id))
+  const native = nativeCoverageDirectory(task, root)
+  if (native) sources.push(...(await filesIn(native)))
   const pytestFile = path.join(root, OUTPUT, "pytest", `${task.id}.xml`)
   if (await Bun.file(pytestFile).exists()) sources.push(pytestFile)
   for (const file of sources) {
@@ -323,14 +328,17 @@ async function captureReports(task: Task, root: string, output: string): Promise
           ? "timing"
           : undefined
     if (!kind) continue
-    const relative = path.relative(
-      task.package
-        ? path.join(root, task.package!, "coverage")
-        : file === pytestFile
-          ? path.join(root, OUTPUT, "pytest")
-          : path.join(root, OUTPUT, "raw", task.id),
-      file,
-    )
+    const relative =
+      native && file.startsWith(native + path.sep)
+        ? path.join("native", path.relative(native, file))
+        : path.relative(
+            task.kind === "suite"
+              ? path.join(root, task.package!, "coverage")
+              : file === pytestFile
+                ? path.join(root, OUTPUT, "pytest")
+                : path.join(root, OUTPUT, "raw", task.id),
+            file,
+          )
     const destination = path.join(output, task.id, "reports", relative)
     await mkdir(path.dirname(destination), { recursive: true })
     if (kind === "lcov") {
@@ -359,6 +367,8 @@ export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<
   await rm(path.join(root, OUTPUT, "pytest", `${task.id}.xml`), { force: true })
   await mkdir(raw, { recursive: true })
   if (task.kind === "suite") await rm(path.join(root, task.package!, "coverage"), { recursive: true, force: true })
+  const native = nativeCoverageDirectory(task, root)
+  if (native) await rm(native, { recursive: true, force: true })
   const result: TaskResult = {
     version: 1,
     task: task.id,

@@ -6,6 +6,8 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 
 const log = Log.create({ service: "agenda.migration" })
 
@@ -162,6 +164,27 @@ export const migrations: Migration[] = [
       }
 
       log.info("agenda run index migration complete")
+    },
+  },
+  {
+    id: "20260923-agenda-workspace-reference",
+    description: "Capture the existing default Workspace for historical Agenda execution",
+    scope: "global",
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await Storage.scan(["agenda", "items"])) {
+        for (const itemID of await Storage.scan(StoragePath.agendaItemsRoot(Identifier.asScopeID(scopeID)))) {
+          const key = StoragePath.agendaItem(Identifier.asScopeID(scopeID), itemID)
+          const item = await Storage.read<AgendaTypes.Item>(key)
+          if (item.origin.workspaceID !== undefined) continue
+          const scope = item.origin.scope
+          const workspace = await WorkspaceBinding.migrate(ScopeContext.defaultWorkspace(scope), scope.id)
+          await Storage.update<AgendaTypes.Item>(key, (current) => {
+            if (current.origin.workspaceID === undefined) current.origin.workspaceID = workspace?.id ?? null
+          })
+          progress(++done, done)
+        }
+      }
     },
   },
 ]

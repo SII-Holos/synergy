@@ -151,7 +151,7 @@ If the task is still running after this wait, continue other work or use a later
     })
 
     if ((task.status === "running" || task.status === "queued") && params.block) {
-      await Cortex.waitFor(params.task_id, params.timeoutSeconds ?? DEFAULT_WAIT_S)
+      await Cortex.waitFor(params.task_id, params.timeoutSeconds ?? DEFAULT_WAIT_S, ctx.abort)
     }
 
     const current = (await Cortex.getVisibleTaskForOutput(ctx.sessionID, params.task_id)) ?? task

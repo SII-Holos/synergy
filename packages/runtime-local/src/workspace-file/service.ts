@@ -1,3 +1,11 @@
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { FileMutation } from "../file/mutation"
+import { FileEntry } from "../file/entry"
+import { FileWatcherEvent } from "../file/watcher-event"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { WorkspaceFileIndexer } from "./indexer"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { WorkspaceFileStream } from "./stream"
 import { fileURLToPath } from "url"
 import fs from "fs/promises"
 import path from "path"
@@ -31,10 +39,6 @@ function isControlPath(input: string) {
   return /[\x00-\x1f]/.test(input)
 }
 
-async function realpathIfExists(input: string) {
-  return fs.realpath(input).catch(() => undefined)
-}
-
 function displayRelative(input: string) {
   const rel = normalizeSlashes(path.relative(root(), input))
   return rel === "." ? "" : rel
@@ -47,18 +51,12 @@ function hiddenPath(relativePath: string) {
 }
 
 export namespace WorkspaceFileService {
-  export class AccessDeniedError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = "WorkspaceFileAccessDeniedError"
-    }
-  }
-
-  export class WriteConflictError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = "WorkspaceFileWriteConflictError"
-    }
+  export const AccessDeniedError = FileMutation.AccessDeniedError
+  export const WriteConflictError = FileMutation.ConflictError
+  export const PartialMutationError = FileEntry.PartialError
+  export const EntryLimitError = FileEntry.LimitError
+  export class InvalidContentError extends Error {
+    override name = "WorkspaceFileInvalidContentError"
   }
   export class NotFoundError extends Error {
     constructor(message: string) {
@@ -67,19 +65,14 @@ export namespace WorkspaceFileService {
     }
   }
 
-  export class TooLargeError extends Error {
-    constructor(message: string) {
-      super(message)
-      this.name = "WorkspaceFileTooLargeError"
-    }
-  }
+  export const TooLargeError = WorkspaceFileStream.TooLargeError
 
-  export function resolve(input = "") {
+  export function resolve(input = "", options?: { followFinalSymlink?: boolean }) {
     if (isControlPath(input)) throw new AccessDeniedError("Path contains control characters")
-    const cleaned = stripFileProtocol(input.trim())
+    const cleaned = stripFileProtocol(input)
     const workspace = root()
     const absolute = path.resolve(workspace, cleaned || ".")
-    if (!isPathContained(workspace, absolute)) {
+    if (!isPathContained(workspace, absolute, options)) {
       throw new AccessDeniedError("Access denied: path escapes workspace")
     }
     return absolute
@@ -87,21 +80,14 @@ export namespace WorkspaceFileService {
 
   export function relative(input: string) {
     const absolute = path.isAbsolute(input) ? path.resolve(input) : resolve(input)
-    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
+    if (!isPathContained(root(), absolute, { followFinalSymlink: false }))
+      throw new AccessDeniedError("Access denied: path escapes workspace")
     return displayRelative(absolute)
   }
 
   export async function assertRealpathInside(absolute: string) {
-    // Resolve both sides of the containment check to their physical paths.
-    // The workspace root may itself be reached through a symlink (e.g. the
-    // scope directory is a link), in which case comparing a real path
-    // against the lexical root would falsely report an escape. Falling back
-    // to the lexical root when it cannot be resolved preserves the old
-    // (conservative) behavior rather than silently widening access.
-    const [real, realRoot] = await Promise.all([realpathIfExists(absolute), realpathIfExists(root())])
-    if (real && !isPathContained(realRoot ?? root(), real)) {
-      throw new AccessDeniedError("Access denied: real path escapes workspace")
-    }
+    const [real, realRoot] = await Promise.all([FileMutation.canonical(absolute), fs.realpath(root())])
+    if (!isPathContained(realRoot, real)) throw new AccessDeniedError("Access denied: real path escapes workspace")
   }
 
   export function isIgnored(relativePath: string) {
@@ -113,14 +99,21 @@ export namespace WorkspaceFileService {
     input: string,
     options?: { resolveGitStatus?: boolean; gitStatus?: WorkspaceFile.GitStatus },
   ): Promise<WorkspaceFile.Node> {
-    const absolute = path.isAbsolute(input) ? input : resolve(input)
-    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
-    await assertRealpathInside(absolute)
+    const absolute = path.isAbsolute(input) ? input : resolve(input, { followFinalSymlink: false })
+    if (!isPathContained(root(), absolute, { followFinalSymlink: false }))
+      throw new AccessDeniedError("Access denied: path escapes workspace")
+    await assertEntryInside(absolute)
 
     const relativePath = displayRelative(absolute)
-    const stat = await fs.lstat(absolute)
+    const entry = await FileEntry.inspect(absolute)
+    if (!entry) throw Object.assign(new NotFoundError("Filesystem entry not found"), { code: "ENOENT" })
+    const stat = entry.stat
     const symlink = stat.isSymbolicLink()
-    const targetStat = symlink ? await fs.stat(absolute).catch(() => undefined) : stat
+    const targetStat = symlink
+      ? await assertRealpathInside(absolute)
+          .then(() => fs.stat(absolute, { bigint: true }))
+          .catch(() => undefined)
+      : stat
     const type: WorkspaceFile.NodeType = targetStat?.isDirectory()
       ? "directory"
       : targetStat?.isFile()
@@ -128,6 +121,7 @@ export namespace WorkspaceFileService {
         : symlink
           ? "symlink"
           : "unknown"
+    const metadata = targetStat ?? stat
     const file = Bun.file(absolute)
     const mime = file.type
     const binary = type === "file" && (mime?.startsWith("text/") ? false : likelyBinaryByExtension(absolute))
@@ -136,18 +130,180 @@ export namespace WorkspaceFileService {
 
     return {
       path: relativePath,
+      entryVersion: entry.version,
       name: relativePath ? path.basename(relativePath) : path.basename(root()),
       type,
-      size: stat.size,
-      mtime: stat.mtimeMs,
-      ctime: stat.ctimeMs,
+      size: Number(metadata.size),
+      mtime: Number(metadata.mtimeNs) / 1e6,
+      ctime: Number(metadata.ctimeNs) / 1e6,
       ignored: isIgnored(relativePath),
       hidden: hiddenPath(relativePath),
-      readonly: (stat.mode & 0o200) === 0,
+      readonly: (metadata.mode & 0o200n) === 0n,
       symlink,
       binary,
       gitStatus,
     }
+  }
+
+  async function assertEntryInside(absolute: string) {
+    const [entry, realRoot] = await Promise.all([FileEntry.canonical(absolute), fs.realpath(root())])
+    if (!isPathContained(realRoot, entry, { followFinalSymlink: false }))
+      throw new AccessDeniedError("Access denied: entry parent escapes workspace")
+  }
+
+  async function validateEntry(absolute: string, operation: "read" | "write") {
+    await assertEntryInside(absolute)
+    const [entry, realRoot] = await Promise.all([FileEntry.canonical(absolute), fs.realpath(root())])
+    if (entry === realRoot && operation === "write")
+      throw new AccessDeniedError("Access denied: Workspace root cannot be modified")
+    assertWritableTarget(absolute)
+    const match = SensitivePathPolicy.classify(path.relative(realRoot, entry), {
+      mode: "write",
+      workspaceRoot: realRoot,
+    })
+    if (match.matched) throw new AccessDeniedError("Access denied: protected filesystem entry")
+  }
+
+  async function changedEntry(absolute: string, oldPath?: string) {
+    WorkspaceFileStatus.invalidate()
+    WorkspaceFileIndexer.invalidate()
+    const result = { path: displayRelative(absolute), node: await node(absolute, { resolveGitStatus: false }) }
+    try {
+      await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+        file: result.path,
+        event: oldPath ? "renamed" : "added",
+        oldPath: oldPath ? displayRelative(oldPath) : undefined,
+        parent: displayRelative(path.dirname(absolute)),
+        node: result.node,
+      })
+    } catch (cause) {
+      throw new PartialMutationError("Filesystem changed, but publishing the update failed", [absolute], { cause })
+    }
+    return result
+  }
+  async function entryOperation<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn()
+    } catch (error) {
+      if (error instanceof PartialMutationError) {
+        WorkspaceFileStatus.invalidate()
+        WorkspaceFileIndexer.invalidate()
+        await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+          file: "",
+          event: "changed",
+          parent: "",
+          resync: true,
+        }).catch((cause) => {
+          Log.create({ service: "workspace-files" }).warn("partial filesystem update could not be published", {
+            error: cause,
+          })
+        })
+      }
+      throw error
+    }
+  }
+
+  export async function createDirectory(input: WorkspaceFile.CreateDirectoryInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const absolute = resolve(input.path, { followFinalSymlink: false })
+      await FileEntry.mkdir({ ...input, path: absolute, signal, validate: validateEntry })
+      return changedEntry(absolute)
+    })
+  }
+  export async function move(input: WorkspaceFile.MoveInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const from = resolve(input.from, { followFinalSymlink: false }),
+        to = resolve(input.to, { followFinalSymlink: false })
+      await validateEntry(from, "write")
+      try {
+        await FileEntry.move({ ...input, from, to, signal, validate: validateEntry })
+        return await changedEntry(to, from)
+      } finally {
+        WorkspaceFileStatus.invalidate()
+        WorkspaceFileIndexer.invalidate()
+      }
+    })
+  }
+  export async function copy(input: WorkspaceFile.CopyInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const from = resolve(input.from, { followFinalSymlink: false }),
+        to = resolve(input.to, { followFinalSymlink: false })
+      await FileEntry.copy({ ...input, from, to, signal, validate: validateEntry })
+      return changedEntry(to)
+    })
+  }
+  export async function importEntry(
+    input: {
+      from: string
+      to: string
+      validateSource: (source: string) => Promise<void>
+    },
+    signal?: AbortSignal,
+  ) {
+    const from = await FileEntry.canonical(input.from)
+    const source = await FileEntry.inspect(from)
+    if (!source) throw new NotFoundError("Import source is unavailable")
+    await input.validateSource(from)
+    const to = resolve(input.to, { followFinalSymlink: false })
+    return WorkspaceAccess.withinTask(
+      () =>
+        entryOperation(async () => {
+          await WorkspaceAccess.reserveWrite([root(), path.dirname(from)], signal)
+          await validateEntry(to, "write")
+          if (await FileEntry.inspect(to)) throw new WriteConflictError()
+          const parent = path.dirname(to)
+          let createdParent = false
+          try {
+            if (!(await FileEntry.inspect(parent))) {
+              await FileEntry.mkdir({ path: parent, createParents: true, mode: 0o700, signal, validate: validateEntry })
+              createdParent = true
+            }
+            await FileEntry.copy({
+              from,
+              to,
+              expectedVersion: source.version,
+              signal,
+              async validate(target, operation) {
+                if (operation === "write") return validateEntry(target, operation)
+                if (!isPathContained(from, target, { followFinalSymlink: false }))
+                  throw new AccessDeniedError("Import source escaped its owner")
+                await input.validateSource(target)
+              },
+            })
+            return await changedEntry(to)
+          } catch (cause) {
+            if (createdParent && !(cause instanceof PartialMutationError))
+              throw new PartialMutationError(
+                "Import did not publish its target; parent directories were created",
+                [parent],
+                { cause },
+              )
+            throw cause
+          }
+        }),
+      signal,
+    )
+  }
+
+  export async function remove(input: WorkspaceFile.DeleteInput, signal?: AbortSignal) {
+    return entryOperation(async () => {
+      const absolute = resolve(input.path, { followFinalSymlink: false })
+      await validateEntry(absolute, "write")
+      try {
+        await FileEntry.remove({ ...input, path: absolute, signal, validate: validateEntry })
+        await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+          file: displayRelative(absolute),
+          event: "deleted",
+          parent: displayRelative(path.dirname(absolute)),
+        }).catch((cause) => {
+          throw new PartialMutationError("Entry removed, but publishing the update failed", [absolute], { cause })
+        })
+        return { path: displayRelative(absolute), removed: true as const }
+      } finally {
+        WorkspaceFileStatus.invalidate()
+        WorkspaceFileIndexer.invalidate()
+      }
+    })
   }
 
   export async function maybeNode(
@@ -245,7 +401,12 @@ export namespace WorkspaceFileService {
     preview?: boolean
     mode?: "range" | "document"
   }): Promise<WorkspaceFile.ReadResult> {
-    return WorkspaceFileRead.read(input, { resolve, node })
+    const lease = await WorkspaceAccess.pin()
+    try {
+      return await WorkspaceFileRead.read(input, { resolve, node, validate: assertRealpathInside })
+    } finally {
+      await lease.release()
+    }
   }
   const PREVIEW_MAX_BYTES = 50 * 1024 * 1024
   const PREVIEW_MIME_PDF = "application/pdf"
@@ -259,6 +420,7 @@ export namespace WorkspaceFileService {
 
   export async function content(input: {
     path: string
+    signal?: AbortSignal
   }): Promise<{ absolute: string; node: WorkspaceFile.Node; stream: ReadableStream }> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
@@ -274,15 +436,22 @@ export namespace WorkspaceFileService {
     if (info.size > PREVIEW_MAX_BYTES) {
       throw new TooLargeError(`File too large to preview (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
     }
+    const opened = await WorkspaceFileStream.open({
+      path: absolute,
+      limit: PREVIEW_MAX_BYTES,
+      signal: input.signal,
+      validate: assertRealpathInside,
+    })
     return {
       absolute,
-      node: info,
-      stream: file.stream(),
+      node: { ...info, size: opened.stat.size, mtime: opened.stat.mtimeMs, ctime: opened.stat.ctimeMs },
+      stream: opened.stream,
     }
   }
 
   export async function serveFile(input: {
     path: string
+    signal?: AbortSignal
   }): Promise<{ absolute: string; node: WorkspaceFile.Node; stream: ReadableStream; mime: string }> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
@@ -294,10 +463,16 @@ export namespace WorkspaceFileService {
       throw new TooLargeError(`File too large to serve (${info.size} bytes, limit ${PREVIEW_MAX_BYTES})`)
     }
     const file = Bun.file(absolute)
+    const opened = await WorkspaceFileStream.open({
+      path: absolute,
+      limit: PREVIEW_MAX_BYTES,
+      signal: input.signal,
+      validate: assertRealpathInside,
+    })
     return {
       absolute,
-      node: info,
-      stream: file.stream(),
+      node: { ...info, size: opened.stat.size, mtime: opened.stat.mtimeMs, ctime: opened.stat.ctimeMs },
+      stream: opened.stream,
       mime: file.type,
     }
   }
@@ -316,65 +491,35 @@ export namespace WorkspaceFileService {
   }
 
   async function assertRealpathWritable(absolute: string) {
-    // The lexical path check above can be bypassed through a symlink whose
-    // target is a sensitive file (for example `link.env` -> `.env`). Bun.write
-    // follows symlinks, so re-check the resolved target with the same policy.
-    const real = await realpathIfExists(absolute)
-    if (!real || real === absolute) return
-    assertWritableTarget(real)
+    assertWritableTarget(await FileMutation.canonical(absolute))
   }
 
-  export async function write(input: WorkspaceFile.WriteFileInput): Promise<WorkspaceFile.WriteFileResult> {
+  export async function write(
+    input: WorkspaceFile.WriteFileInput,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceFile.WriteFileResult> {
     const absolute = resolve(input.path)
     await assertRealpathInside(absolute)
     assertWritableTarget(absolute)
     await assertRealpathWritable(absolute)
-
-    let stat: Awaited<ReturnType<typeof fs.stat>>
-    try {
-      stat = await fs.stat(absolute)
-    } catch {
-      throw new NotFoundError(`File does not exist: ${displayRelative(absolute)}`)
-    }
-    const existed = true
-    if (!stat.isFile()) {
-      throw new AccessDeniedError(`Access denied: path is not a file (${displayRelative(absolute)})`)
-    }
-    if ((stat.mode & 0o200) === 0) {
-      throw new AccessDeniedError(`Access denied: file is read-only (${displayRelative(absolute)})`)
-    }
-
-    if (input.expectedMtime !== undefined && Math.abs(stat.mtimeMs - input.expectedMtime) > 1) {
-      if (input.conflictPolicy !== "overwrite") {
-        throw new WriteConflictError(`File changed on disk since it was loaded (${displayRelative(absolute)})`)
-      }
-    }
-
-    const content = input.encoding === "base64" ? Buffer.from(input.content, "base64").toString("utf-8") : input.content
-    const byteLength = Buffer.byteLength(content, "utf-8")
-    if (byteLength > WRITE_MAX_BYTES) {
+    const content = input.encoding === "base64" ? Buffer.from(input.content, "base64") : input.content
+    if (typeof content !== "string" && content.toString("base64") !== input.content)
+      throw new InvalidContentError("Content must be canonical base64")
+    const byteLength = Buffer.byteLength(content)
+    if (byteLength > WRITE_MAX_BYTES)
       throw new TooLargeError(`File too large to write (${byteLength} bytes, limit ${WRITE_MAX_BYTES})`)
-    }
-
-    const parentDir = path.dirname(absolute)
-    if (input.createParents) {
-      await fs.mkdir(parentDir, { recursive: true }).catch(() => {})
-    } else {
-      const parentStat = await fs.stat(parentDir).catch(() => undefined)
-      if (!parentStat?.isDirectory()) {
-        throw new NotFoundError(`Parent directory does not exist: ${displayRelative(parentDir)}`)
-      }
-    }
-
-    await Bun.write(absolute, content)
+    const result = await FileMutation.write({
+      path: absolute,
+      content,
+      expectedVersion: input.conflictPolicy === "overwrite" ? undefined : input.expectedVersion,
+      createParents: input.createParents,
+      signal,
+      async validate(target) {
+        await assertRealpathInside(target)
+        assertWritableTarget(target)
+      },
+    })
     WorkspaceFileStatus.invalidate()
-
-    const after = await Bun.file(absolute).stat()
-    return {
-      path: displayRelative(absolute),
-      mtime: after.mtimeMs,
-      size: after.size,
-      existed,
-    }
+    return { path: displayRelative(absolute), ...result }
   }
 }

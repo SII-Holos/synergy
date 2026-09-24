@@ -1,23 +1,17 @@
-import z from "zod"
+import { FileMutation } from "../file/mutation"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./save-file.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { trimDiff } from "./edit"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { detectConflicts } from "../conflict/detect"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
 import { formatCompactReloadResult } from "@ericsanchezok/synergy-harness/config/reload-schema"
-import {
-  diffStats,
-  displayPath,
-  ensureParentDir,
-  hashlineHeaderFor,
-  recordSeenSessionLines,
-  resolveFilePath,
-} from "./anchored-file"
+import { diffStats, displayPath, hashlineHeaderFor, recordSeenSessionLines, resolveFilePath } from "./anchored-file"
 import { stripHashlineDisplayPrefixes } from "../hashline/format"
 import { splitContentLines } from "../hashline/tag"
 import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
@@ -42,9 +36,8 @@ export const SaveFileTool = Tool.define(
         async () => {
           const file = Bun.file(filePath)
           const exists = await file.exists()
-          const oldContent = exists ? await file.text() : ""
+          const oldContent = exists ? await FileMutation.readText(filePath) : ""
           const previousConflict = detectConflicts(oldContent)
-          if (exists) await FileTime.assert(ctx.sessionID, filePath).catch(() => {})
 
           const content = stripHashlineDisplayPrefixes(params.content)
           const contentConflict = detectConflicts(content)
@@ -76,12 +69,17 @@ export const SaveFileTool = Tool.define(
 
           const beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
-          await ensureParentDir(filePath)
-          await Bun.write(filePath, content)
-          await Bus.publish(File.Event.Edited, { file: filePath })
-          const finalContent = await Bun.file(filePath).text()
+          const written = await FileMutation.write({
+            path: filePath,
+            content,
+            expectedVersion: exists ? FileTime.version(oldContent) : null,
+            createParents: true,
+            signal: ctx.abort,
+          })
+          await WorkspaceEvents.publish(File.Event.Edited, { file: filePath, contentVersion: written.contentVersion })
+          const finalContent = await FileMutation.readText(filePath)
           const finalConflict = detectConflicts(finalContent)
-          FileTime.read(ctx.sessionID, filePath)
+          FileTime.read(ctx.sessionID, filePath, finalContent)
 
           const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
           const runtimeReloadTargets = RuntimeReloadPath.detectTargetsForFile(filePath)

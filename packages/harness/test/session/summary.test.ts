@@ -357,7 +357,7 @@ describe("SessionSummary", () => {
             if (storedUser?.summary?.diffs?.length) break
             await Bun.sleep(10)
           }
-          expect(storedUser?.summary?.diffs).toEqual([diff])
+          expect(storedUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
           expect(messages).toEqual(before)
           expect(historyReads).toBeGreaterThan(0)
 
@@ -462,7 +462,7 @@ describe("SessionSummary", () => {
 
           const messages = await Session.messages({ sessionID: session.id })
           const storedUser = messages.find((message) => message.info.id === user.id)?.info as MessageV2.User | undefined
-          expect(storedUser?.summary?.diffs).toEqual([diff])
+          expect(storedUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
 
           await Session.remove(session.id)
         },
@@ -647,7 +647,10 @@ describe("SessionSummary", () => {
 
           expect(ranges).toContain(`${second.from}:${second.to}`)
           expect(ranges).toContain(`${first.from}:${second.to}`)
-          expect(await Session.diff(session.id)).toEqual([first.diff, second.diff])
+          expect(await Session.diff(session.id)).toEqual([
+            { ...first.diff, legacyRoot: tmp.path },
+            { ...second.diff, legacyRoot: tmp.path },
+          ])
 
           await Session.remove(session.id)
         },
@@ -756,7 +759,7 @@ describe("SessionSummary", () => {
           expect(diffSummary.mock.calls.length).toBeGreaterThanOrEqual(2)
           const messages = await Session.messages({ sessionID: session.id })
           const storedUser = messages.find((message) => message.info.id === user.id)?.info as MessageV2.User | undefined
-          expect(storedUser?.summary?.diffs).toEqual([diff])
+          expect(storedUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
 
           await Session.remove(session.id)
         },
@@ -874,7 +877,7 @@ describe("SessionSummary", () => {
             const storedUser = messages.find((message) => message.info.id === user.id)?.info as
               | MessageV2.User
               | undefined
-            expect(storedUser?.summary?.diffs).toEqual([diff])
+            expect(storedUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
 
             await Session.remove(session.id)
           },
@@ -948,7 +951,7 @@ describe("SessionSummary", () => {
             llmText.resolve("Generated summary")
             await summarizing
 
-            expect(beforeEnrichment?.summary?.diffs).toEqual([turn.diff])
+            expect(beforeEnrichment?.summary?.diffs).toEqual([{ ...turn.diff, legacyRoot: tmp.path }])
             expect(beforeEnrichment?.summary?.diffState).toEqual({ status: "ready" })
             expect(beforeEnrichment?.summary?.title).toBeUndefined()
             expect(beforeEnrichment?.summary?.body).toBeUndefined()
@@ -1075,7 +1078,7 @@ describe("SessionSummary", () => {
             expect(failed?.summary?.title).toBe("Recovered title")
             expect(JSON.stringify(failed?.summary)).not.toContain("/private/worktree")
             expect(JSON.stringify(failed?.summary)).not.toContain("stderr")
-            expect(queued?.summary?.diffs).toEqual([second.diff])
+            expect(queued?.summary?.diffs).toEqual([{ ...second.diff, legacyRoot: tmp.path }])
             expect(queued?.summary?.diffState).toEqual({ status: "ready" })
 
             await Session.remove(session.id)
@@ -1218,7 +1221,10 @@ describe("SessionSummary", () => {
           firstResult.resolve([first.diff])
           await Promise.all([firstRun, secondRun])
 
-          expect((await storedUser(session.id, first.user.id))?.summary?.diffs).toEqual([first.diff, continuation.diff])
+          expect((await storedUser(session.id, first.user.id))?.summary?.diffs).toEqual([
+            { ...first.diff, legacyRoot: tmp.path },
+            { ...continuation.diff, legacyRoot: tmp.path },
+          ])
           expect(ranges).toContain(`${first.from}:${continuation.to}`)
 
           await Session.remove(session.id)
@@ -1273,13 +1279,19 @@ describe("SessionSummary", () => {
               status: "error",
               code: "timeout",
             })
-            expect(await Session.diff(session.id)).toEqual([first.diff, second.diff])
+            expect(await Session.diff(session.id)).toEqual([
+              { ...first.diff, legacyRoot: tmp.path },
+              { ...second.diff, legacyRoot: tmp.path },
+            ])
 
             firstMessageResult.resolve([first.diff])
             firstSessionResult.resolve([first.diff])
             await Bun.sleep(10)
 
-            expect(await Session.diff(session.id)).toEqual([first.diff, second.diff])
+            expect(await Session.diff(session.id)).toEqual([
+              { ...first.diff, legacyRoot: tmp.path },
+              { ...second.diff, legacyRoot: tmp.path },
+            ])
 
             await Session.remove(session.id)
           },

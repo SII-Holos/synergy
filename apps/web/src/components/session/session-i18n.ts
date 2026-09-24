@@ -144,6 +144,11 @@ export const S = {
     message: "New messages have been added. This rollback can no longer be redone.",
   },
   rollbackFilesRestored: { id: "session.rollback.filesRestored", message: "Files restored" },
+  rollbackPartialRestore: {
+    id: "session.rollback.partialRestore",
+    message:
+      "{restored, plural, one {# file restored} other {# files restored}}; {failed, plural, one {# file could not be restored} other {# files could not be restored}}.",
+  },
   rollbackFilesRestoreFailed: { id: "session.rollback.filesRestoreFailed", message: "Failed to restore files" },
   rollbackRedo: { id: "session.rollback.redo", message: "Redo" },
   rollbackRestoreFiles: { id: "session.rollback.restoreFiles", message: "Restore files ({count})" },

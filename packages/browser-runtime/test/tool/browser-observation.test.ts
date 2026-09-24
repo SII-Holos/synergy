@@ -19,7 +19,8 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+const runtime = await testRuntime(registerLocalRuntime)
 
 const original = {
   getOrCreateSession: BrowserToolHelper.getOrCreateSession,

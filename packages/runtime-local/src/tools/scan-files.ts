@@ -214,7 +214,7 @@ export const ScanFilesTool = Tool.define(
 
         const contentLines = splitDisplayLines(smallContent)
         const { tag } = formatRecordedBlock(ctx.sessionID, filePath, smallContent)
-        markFileRead(ctx.sessionID, filePath)
+        markFileRead(ctx.sessionID, filePath, smallContent)
         const conflict = detectConflicts(smallContent)
         const warning = conflictWarning(conflict)
         const lines = lineWindow(entry.lines)

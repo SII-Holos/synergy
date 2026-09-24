@@ -10,9 +10,88 @@ import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutJournal } from "../../src/session/rollout/journal"
+import { MessageV2 } from "../../src/session/message-v2"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+test("startup marks unfinished file evidence incomplete without recapturing or changing completed evidence", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const scope = await tmp.scope()
+    const fixture = await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        const owner = RolloutLifecycle.owner(session)
+        const root = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          agent: "test",
+          model: { providerID: "test", modelID: "test" },
+          time: { created: 1 },
+        })
+        const message = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "assistant",
+          parentID: root.id,
+          agent: "test",
+          mode: "test",
+          modelID: "test",
+          providerID: "test",
+          time: { created: 2 },
+          path: { cwd: tmp.path, root: tmp.path },
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+        })
+        const tool = await RolloutLedger.beginTool({
+          owner,
+          runID: root.id,
+          messageID: message.id,
+          toolCallID: "file-write",
+          tool: "write",
+          args: {},
+        })
+        const pending = await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: message.id,
+          sessionID: session.id,
+          type: "patch",
+          hash: "a".repeat(40),
+          files: [],
+          operation: { toolCallID: tool.toolCallID, status: "pending" },
+          workspace: { id: session.workspaceID!, generation: session.workspace!.generation!, root: tmp.path },
+        })
+        if (pending.type !== "patch") throw new Error("Expected file operation evidence")
+        const completed = await Session.updatePart({
+          ...pending,
+          id: Identifier.ascending("part"),
+          operation: { toolCallID: "completed-write", status: "complete", afterHash: "b".repeat(40) },
+        })
+        // A detached process can outlive the tool result, so completed tools
+        // still own pending operation evidence after a Runtime crash.
+        await RolloutLedger.writeTool({ ...tool, status: "completed", ended: Date.now() })
+        return { session, owner, message, pending, completed }
+      },
+    })
+    await RolloutRecovery.owner(fixture.owner)
+    const parts = await MessageV2.parts({
+      scopeID: scope.id,
+      sessionID: fixture.session.id,
+      messageID: fixture.message.id,
+    })
+    expect(parts.find((part) => part.id === fixture.pending.id)).toEqual({
+      ...fixture.pending,
+      operation: { toolCallID: "file-write", status: "incomplete" },
+    })
+    expect(parts.find((part) => part.id === fixture.completed.id)).toEqual(fixture.completed)
+    await RolloutRecovery.owner(fixture.owner)
+    expect(
+      await MessageV2.parts({ scopeID: scope.id, sessionID: fixture.session.id, messageID: fixture.message.id }),
+    ).toEqual(parts)
+  }))
 
 test("recovery preserves committed evidence, interrupts side effects, and resumes in a new segment", () =>
   runtime.run(async () => {

@@ -5,6 +5,7 @@ import { Scope } from "."
 import { ScopeContext } from "./context"
 import { ScopedState } from "./scoped-state"
 import { ScopeStartup } from "./startup"
+import { WorkspaceRuntime } from "../workspace/runtime"
 
 export namespace ScopeRuntime {
   type StartingListener = (scope: Scope.Project) => void
@@ -73,7 +74,14 @@ export namespace ScopeRuntime {
     ensure?: boolean
   }): Promise<Awaited<R>> {
     if (input.ensure !== false) await ensure(input.scope)
-    return ScopeContext.provide(input)
+    return ScopeContext.provide({
+      ...input,
+      fn: async () => {
+        const workspace = ScopeContext.current.workspace
+        if (input.ensure !== false && workspace) await WorkspaceRuntime.ensure(input.scope, workspace)
+        return input.fn()
+      },
+    })
   }
 
   export async function dispose(scopeID?: string) {
@@ -88,7 +96,11 @@ export namespace ScopeRuntime {
       .catch((error) => log.warn("scope startup failed before disposal", { scopeID: id, error }))
       .then(async () => {
         const errors: unknown[] = []
-        for (const dispose of [() => ScopeStartup.dispose(id), () => ScopedState.dispose(id)]) {
+        for (const dispose of [
+          () => WorkspaceRuntime.disposeScope(id),
+          () => ScopeStartup.dispose(id),
+          () => ScopedState.dispose(id),
+        ]) {
           try {
             await dispose()
           } catch (error) {
@@ -104,6 +116,7 @@ export namespace ScopeRuntime {
 
   export function stop() {
     runtimeState().stopped = true
+    WorkspaceRuntime.stop()
     return disposeAll()
   }
 
@@ -112,6 +125,7 @@ export namespace ScopeRuntime {
     return (state.disposal ??= (async () => {
       const results = await Promise.allSettled([...state.started.keys()].map((id) => dispose(id)))
       results.push(...(await Promise.allSettled(state.disposing.values())))
+      results.push(...(await Promise.allSettled([WorkspaceRuntime.disposeAll()])))
       results.push(...(await Promise.allSettled([ScopedState.disposeAll()])))
       const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
       if (errors.length) throw new AggregateError(errors, "Scope resources cleanup failed")

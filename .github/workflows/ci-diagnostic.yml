@@ -41,6 +41,8 @@ jobs:
       postgres_count: ${{ steps.plan.outputs.postgres_count }}
       windows: ${{ steps.plan.outputs.windows }}
       windows_count: ${{ steps.plan.outputs.windows_count }}
+      macos: ${{ steps.plan.outputs.macos }}
+      macos_count: ${{ steps.plan.outputs.macos_count }}
       diagnostic: ${{ steps.plan.outputs.diagnostic }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4

@@ -364,8 +364,8 @@ describe("session input acceptance", () => {
             expect(await response.json()).toEqual({
               name: "WorkspaceUnavailable",
               data: {
-                message: "The workspace for this session is no longer available.",
-                path: worktree.path,
+                message: "The Workspace directory is unavailable",
+                workspaceID: (await Session.get(session.id)).workspaceID,
               },
             })
             expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)

@@ -88,7 +88,7 @@ describe("github channel workspace — directory resolution", () => {
       expect(records).toEqual([])
     }))
 
-  test("sweep removes expired checkouts but preserves the workspace index record", () =>
+  test("sweep retains unverified legacy checkouts and their workspace index record", () =>
     runtime.run(async () => {
       const accountId = `sweep-${crypto.randomUUID()}`
       const accountHash = externalIdentityHash(accountId)
@@ -113,8 +113,8 @@ describe("github channel workspace — directory resolution", () => {
       await Storage.write(StoragePath.githubChannelWorkspaceIndexEntry(accountHash, workspaceHash), record)
 
       const removed = await GithubChannelWorkspace.sweep({ accountId, workspaceTtlHours: 24 })
-      expect(removed).toBe(1)
-      await expect(fs.stat(directory)).rejects.toThrow()
+      expect(removed).toBe(0)
+      await expect(fs.stat(directory)).resolves.toBeDefined()
 
       // The index record survives so the thread's session history stays intact.
       const stored = await GithubChannelWorkspace.find({

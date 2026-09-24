@@ -5,7 +5,6 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 import { BrowserAssets } from "../assets"
 import { BrowserExport } from "../export"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser"
 
 const assetType = z.enum(["image", "script", "stylesheet", "font", "media", "document", "other"])
@@ -30,6 +29,7 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
       }
     }),
   async execute(params, ctx) {
+    const workspace = params.action === "export" ? BrowserExport.capture() : undefined
     const page = await BrowserToolHelper.resolvePage(ctx)
     const network = await BrowserToolHelper.execute(
       ctx,
@@ -55,48 +55,53 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
     let exported: string | undefined
     if (params.action === "export") {
       if (!params.outputDir) throw new Error("outputDir is required for asset export.")
-      const outputDir = await BrowserExport.createDirectory(ScopeContext.current.directory, params.outputDir)
-      const manifest: Array<BrowserAssets.PageAsset & { file?: string; error?: string }> = []
-      let totalSize = 0
-      try {
-        for (const [index, asset] of assets.entries()) {
-          const detail = await BrowserToolHelper.execute(
-            ctx,
+      const outputDir = await BrowserExport.bundle(
+        workspace!,
+        params.outputDir,
+        async (staging) => {
+          const manifest: Array<BrowserAssets.PageAsset & { file?: string; error?: string }> = []
+          let totalSize = 0
+          for (const [index, asset] of assets.entries()) {
+            const detail = await BrowserToolHelper.execute(
+              ctx,
+              {
+                type: "network",
+                action: "get",
+                id: asset.id,
+                includeBody: true,
+                includeSensitive: true,
+                maxBodyBytes: 10 * 1024 * 1024,
+              },
+              `assets-get-${index}`,
+            )
+            const data = detail.type === "data" ? (detail.data as Record<string, unknown> | null) : null
+            if (!data || typeof data.body !== "string") {
+              manifest.push({ ...asset, error: "Response body is no longer available." })
+              continue
+            }
+            if (data.bodyTruncated) {
+              manifest.push({ ...asset, error: "Response body exceeded the 10 MB per-asset limit." })
+              continue
+            }
+            const content = data.base64Encoded ? Buffer.from(data.body, "base64") : Buffer.from(data.body, "utf8")
+            totalSize += content.byteLength
+            if (totalSize > 50 * 1024 * 1024) throw new Error("Asset bundle exceeds the 50 MB total limit.")
+            const fileName = assetFileName(asset.url, index)
+            await fs.writeFile(path.join(staging, fileName), content, { flag: "wx", mode: 0o600 })
+            manifest.push({ ...asset, size: content.byteLength, file: fileName })
+          }
+          await fs.writeFile(
+            path.join(staging, "manifest.json"),
+            JSON.stringify({ assets: manifest, totalSize }, null, 2),
             {
-              type: "network",
-              action: "get",
-              id: asset.id,
-              includeBody: true,
-              includeSensitive: true,
-              maxBodyBytes: 10 * 1024 * 1024,
+              flag: "wx",
+              mode: 0o600,
             },
-            `assets-get-${index}`,
           )
-          const data = detail.type === "data" ? (detail.data as Record<string, unknown> | null) : null
-          if (!data || typeof data.body !== "string") {
-            manifest.push({ ...asset, error: "Response body is no longer available." })
-            continue
-          }
-          if (data.bodyTruncated) {
-            manifest.push({ ...asset, error: "Response body exceeded the 10 MB per-asset limit." })
-            continue
-          }
-          const content = data.base64Encoded ? Buffer.from(data.body, "base64") : Buffer.from(data.body, "utf8")
-          totalSize += content.byteLength
-          if (totalSize > 50 * 1024 * 1024) throw new Error("Asset bundle exceeds the 50 MB total limit.")
-          const fileName = assetFileName(asset.url, index)
-          await fs.writeFile(path.join(outputDir, fileName), content, { flag: "wx", mode: 0o600 })
-          manifest.push({ ...asset, size: content.byteLength, file: fileName })
-        }
-        exported = path.join(outputDir, "manifest.json")
-        await fs.writeFile(exported, JSON.stringify({ assets: manifest, totalSize }, null, 2), {
-          flag: "wx",
-          mode: 0o600,
-        })
-      } catch (error) {
-        await fs.rm(outputDir, { recursive: true, force: true })
-        throw error
-      }
+        },
+        ctx.abort,
+      )
+      exported = path.join(outputDir, "manifest.json")
     }
     const formatted = formatBrowserJSON(assets)
     return {

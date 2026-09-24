@@ -1,3 +1,4 @@
+import path from "node:path"
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeLeaveTool } from "@ericsanchezok/synergy-workbench/project/tools/worktree-leave"
 import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
@@ -100,8 +101,9 @@ describe("tool.worktree_leave", () => {
     test("returns noop when session has no workspace", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const initialized = await WorktreeLeaveTool.init()
             const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
@@ -117,12 +119,13 @@ describe("tool.worktree_leave", () => {
     test("returns noop when workspace is not git_worktree type", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "main",
-            path: "/home/user/project",
-            scopeID: "scope_123",
+            path: tmp.path,
+            scopeID: scope.id,
           },
           fn: async () => {
             const initialized = await WorktreeLeaveTool.init()
@@ -138,13 +141,14 @@ describe("tool.worktree_leave", () => {
     test("noop does not call Worktree.leave or Worktree.status", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         const leaveSpy = mock(async () => {})
         const statusSpy = mock(async () => ({ dirty: undefined }))
         ;(Worktree as any).leave = leaveSpy
         ;(Worktree as any).status = statusSpy
 
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const initialized = await WorktreeLeaveTool.init()
             const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
@@ -162,12 +166,13 @@ describe("tool.worktree_leave", () => {
     test("returns semantic denial on RejectedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/brave-cactus",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/brave-cactus"),
+            scopeID: scope.id,
             worktreeID: "wt_existing",
             name: "brave-cactus",
           },
@@ -191,12 +196,13 @@ describe("tool.worktree_leave", () => {
     test("returns semantic denial on DeniedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/brave-cactus",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/brave-cactus"),
+            scopeID: scope.id,
             worktreeID: "wt_existing",
             name: "brave-cactus",
           },
@@ -219,12 +225,13 @@ describe("tool.worktree_leave", () => {
     test("throws non-permission errors", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/test",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/test"),
+            scopeID: scope.id,
             worktreeID: "wt_test",
             name: "test",
           },
@@ -247,12 +254,13 @@ describe("tool.worktree_leave", () => {
     test("leaves worktree and returns to main without removing", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/brave-cactus",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/brave-cactus"),
+            scopeID: scope.id,
             worktreeID: "wt_existing",
             name: "brave-cactus",
           },
@@ -267,7 +275,7 @@ describe("tool.worktree_leave", () => {
             expect(result.metadata.action).toBe("left")
             expect(result.metadata.previous).toBeDefined()
             expect(result.metadata.previous?.type).toBe("git_worktree")
-            expect(result.metadata.previous?.path).toBe("/tmp/worktrees/brave-cactus")
+            expect(result.metadata.previous?.path).toBe(path.join(tmp.path, "worktrees/brave-cactus"))
             expect(result.metadata.restored).toBeDefined()
             expect(result.metadata.restored?.type).toBe("main")
             expect(result.metadata.cleanup?.performed).toBe(false)
@@ -280,12 +288,13 @@ describe("tool.worktree_leave", () => {
     test("calls Worktree.leave with correct sessionID", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt"),
+            scopeID: scope.id,
             worktreeID: "wt_abc",
             name: "test",
           },
@@ -310,12 +319,13 @@ describe("tool.worktree_leave", () => {
     test("does not call Worktree.remove when cleanup=keep", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt"),
+            scopeID: scope.id,
             worktreeID: "wt_abc",
             name: "test",
           },
@@ -339,12 +349,13 @@ describe("tool.worktree_leave", () => {
     test("removes clean worktree after leaving", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/clean-wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/clean-wt"),
+            scopeID: scope.id,
             worktreeID: "wt_clean",
             name: "clean-wt",
           },
@@ -370,12 +381,13 @@ describe("tool.worktree_leave", () => {
     test("keeps dirty worktree when cleanup=remove_if_clean", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/dirty-wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/dirty-wt"),
+            scopeID: scope.id,
             worktreeID: "wt_dirty",
             name: "dirty-wt",
           },
@@ -401,12 +413,13 @@ describe("tool.worktree_leave", () => {
     test("reports unknown dirty state distinctly instead of claiming dirty", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/unknown-wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/unknown-wt"),
+            scopeID: scope.id,
             worktreeID: "wt_unknown",
             name: "unknown-wt",
           },
@@ -431,12 +444,13 @@ describe("tool.worktree_leave", () => {
     test("keeps the session left and reports the error when removal fails", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/failing-wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/failing-wt"),
+            scopeID: scope.id,
             worktreeID: "wt_failing",
             name: "failing-wt",
           },
@@ -465,12 +479,13 @@ describe("tool.worktree_leave", () => {
     test("checks Worktree.status before deciding on cleanup", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt"),
+            scopeID: scope.id,
             worktreeID: "wt_test",
             name: "test",
           },

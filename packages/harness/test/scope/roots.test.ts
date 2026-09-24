@@ -45,7 +45,7 @@ describe("Scope.Root.projectRoots", () => {
 })
 
 describe("Scope.Root.trustRoots", () => {
-  test("main workspace keeps all project roots", async () => {
+  test("main workspace does not grant writes to sibling project folders", async () => {
     await using tmp = await tmpdir()
     const folder = path.join(tmp.path, "folder")
     await $`mkdir -p ${folder}`.quiet()
@@ -55,7 +55,7 @@ describe("Scope.Root.trustRoots", () => {
       path: tmp.path,
       scopeID: "d_test",
     })
-    expect(roots).toEqual([tmp.path, folder])
+    expect(roots).toEqual([tmp.path])
   })
 
   test("git_worktree session excludes the original checkout but keeps sibling folders", async () => {
@@ -107,13 +107,13 @@ describe("Scope.Root.trustRoots", () => {
     expect(roots).not.toContain(nested)
   })
 
-  test("no workspace keeps all roots", async () => {
+  test("no workspace conveys no write authority", async () => {
     await using tmp = await tmpdir()
     const folder = path.join(tmp.path, "folder")
     await $`mkdir -p ${folder}`.quiet()
 
     const roots = Scope.Root.trustRoots(projectScope({ worktree: tmp.path, sandboxes: [folder] }))
-    expect(roots).toEqual([tmp.path, folder])
+    expect(roots).toEqual([])
   })
 })
 

@@ -1,9 +1,9 @@
-import z from "zod"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./revise-file.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { trimDiff } from "./edit"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { detectConflicts } from "../conflict/detect"
@@ -35,8 +35,8 @@ class SynergyFilesystem extends BunFilesystem {
   override async readText(p: string): Promise<string> {
     return super.readText(resolveFilePath(p))
   }
-  override async writeText(p: string, content: string): Promise<WriteResult> {
-    return super.writeText(resolveFilePath(p), content)
+  override async writeText(p: string, content: string, expectedContent?: string | null): Promise<WriteResult> {
+    return super.writeText(resolveFilePath(p), content, expectedContent)
   }
   override async exists(p: string): Promise<boolean> {
     return super.exists(resolveFilePath(p))
@@ -251,7 +251,10 @@ export const ReviseFileTool = Tool.define(
               result = await patcher.commit(p)
 
               // Fire format-on-write before recording final hash
-              await Bus.publish(File.Event.Edited, { file: p.canonicalPath })
+              await WorkspaceEvents.publish(File.Event.Edited, {
+                file: p.canonicalPath,
+                contentVersion: FileTime.version(result.written),
+              })
 
               // Re-read to pick up format-on-write changes (the formatter may have
               // rewritten the file asynchronously). Re-record the snapshot with
@@ -270,7 +273,7 @@ export const ReviseFileTool = Tool.define(
               // Reset noop guard after successful edit
               NoopLoopGuard.reset(ctx.sessionID, p.canonicalPath)
 
-              FileTime.read(ctx.sessionID, p.canonicalPath)
+              FileTime.read(ctx.sessionID, p.canonicalPath, formattedContent)
             },
             { signal: ctx.abort },
           )

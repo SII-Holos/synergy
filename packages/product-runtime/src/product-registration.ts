@@ -32,6 +32,7 @@ import { registerWorkbenchAgents } from "@ericsanchezok/synergy-workbench/agents
 import { registerWorkflowsAgents } from "@ericsanchezok/synergy-workflows/agents"
 import { registerAgendaMigrations } from "@ericsanchezok/synergy-workflows/agenda/migration"
 import { registerBlueprintMigrations } from "@ericsanchezok/synergy-workflows/blueprint/migration"
+import { registerChannelMigrations } from "@ericsanchezok/synergy-connections/channel/migration"
 import { registerHolosMigrations } from "@ericsanchezok/synergy-connections/holos/migration"
 import { registerLatticeMigrations } from "@ericsanchezok/synergy-workflows/lattice/migration"
 import { registerPluginMigrations } from "@ericsanchezok/synergy-plugin-host/plugin/migration"
@@ -91,6 +92,7 @@ export function registerProductRuntime() {
   registerAgendaMigrations()
   registerBlueprintMigrations()
   registerHolosMigrations()
+  registerChannelMigrations()
   registerLatticeMigrations()
   registerPluginMigrations()
   Plugin.registerLifecycle()

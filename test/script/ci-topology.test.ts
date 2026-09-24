@@ -38,6 +38,7 @@ describe("required CI topology", () => {
       "docker-ready": 1,
       postgres: LIMITS.postgres,
       windows: LIMITS.windows,
+      macos: LIMITS.macos,
     })) {
       const job = workflow.jobs[pool]!
       expect(job.strategy?.["max-parallel"]).toBe(limit)

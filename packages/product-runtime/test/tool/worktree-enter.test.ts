@@ -1,3 +1,4 @@
+import path from "node:path"
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeEnterTool } from "@ericsanchezok/synergy-workbench/project/tools/worktree-enter"
 import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
@@ -143,12 +144,13 @@ describe("tool.worktree_enter", () => {
     test("noop when target matches current worktree by name", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/brave-cactus",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/brave-cactus"),
+            scopeID: scope.id,
             worktreeID: "wt_existing",
             name: "brave-cactus",
           },
@@ -171,12 +173,13 @@ describe("tool.worktree_enter", () => {
     test("noop when target matches current worktree by ID", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/wt"),
+            scopeID: scope.id,
             worktreeID: "wt_abc",
             name: "some-name",
           },
@@ -194,19 +197,23 @@ describe("tool.worktree_enter", () => {
     test("noop when target matches current worktree by path", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/brave-cactus",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/brave-cactus"),
+            scopeID: scope.id,
             worktreeID: "wt_x",
             name: "brave-cactus",
           },
           fn: async () => {
             const initialized = await WorktreeEnterTool.init()
             const ctx: any = { ...baseCtx, ask: mock(async () => {}) }
-            const result = await initialized.execute(params({ target: "/tmp/worktrees/brave-cactus" }), ctx)
+            const result = await initialized.execute(
+              params({ target: path.join(tmp.path, "worktrees/brave-cactus") }),
+              ctx,
+            )
 
             expect(result.metadata.action).toBe("entered")
             expect(result.metadata.reason).toBe("already_in_this_worktree")
@@ -217,12 +224,13 @@ describe("tool.worktree_enter", () => {
     test("noop when target matches current worktree by branch", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt"),
+            scopeID: scope.id,
             worktreeID: "wt_br",
             name: "some-name",
             branch: "feature/experiment",
@@ -241,28 +249,29 @@ describe("tool.worktree_enter", () => {
     test("switches to different existing worktree", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         const leaveSpy = mock(async () => {})
         const enterSpy = mock(async () => ({
           id: "wt_other",
           name: "other-wt",
           branch: "synergy/other-wt",
-          path: "/tmp/wt/other",
-          scopeID: "scope_123",
+          path: path.join(tmp.path, "wt/other"),
+          scopeID: scope.id,
         }))
         const statusSpy = mock(async () => ({ dirty: false, workspace: undefined }))
         ;(Worktree as any).list = mock(async () => [
-          { id: "wt_other", name: "other-wt", path: "/tmp/wt/other", scopeID: "scope_123" },
+          { id: "wt_other", name: "other-wt", path: path.join(tmp.path, "wt/other"), scopeID: scope.id },
         ])
         ;(Worktree as any).leave = leaveSpy
         ;(Worktree as any).enter = enterSpy
         ;(Worktree as any).status = statusSpy
 
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt/current",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt/current"),
+            scopeID: scope.id,
             worktreeID: "wt_current",
             name: "current-wt",
           },
@@ -284,13 +293,14 @@ describe("tool.worktree_enter", () => {
     test("switches to new worktree when no target given", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         const leaveSpy = mock(async () => {})
         const createSpy = mock(async () => ({
           id: "wt_new",
           name: "brave-cactus-abc",
           branch: "synergy/brave-cactus-abc",
-          path: "/tmp/wt/new",
-          scopeID: "scope_123",
+          path: path.join(tmp.path, "wt/new"),
+          scopeID: scope.id,
         }))
         const statusSpy = mock(async () => ({ dirty: false, workspace: undefined }))
         ;(Worktree as any).leave = leaveSpy
@@ -298,11 +308,11 @@ describe("tool.worktree_enter", () => {
         ;(Worktree as any).status = statusSpy
 
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt/current",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt/current"),
+            scopeID: scope.id,
             worktreeID: "wt_current",
             name: "current-wt",
           },
@@ -323,6 +333,7 @@ describe("tool.worktree_enter", () => {
     test("denies switch when current worktree is dirty and force is false", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         const leaveSpy = mock(async () => {})
         const statusSpy = mock(async () => ({ dirty: true, workspace: undefined }))
         ;(Worktree as any).list = mock(async () => [])
@@ -330,11 +341,11 @@ describe("tool.worktree_enter", () => {
         ;(Worktree as any).status = statusSpy
 
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt/dirty-one",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt/dirty-one"),
+            scopeID: scope.id,
             worktreeID: "wt_dirty",
             name: "dirty-wt",
           },
@@ -354,28 +365,29 @@ describe("tool.worktree_enter", () => {
     test("allows switch with force when current worktree is dirty", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         const leaveSpy = mock(async () => {})
         const statusSpy = mock(async () => ({ dirty: true, workspace: undefined }))
         const enterSpy = mock(async () => ({
           id: "wt_other",
           name: "other-wt",
           branch: "synergy/other-wt",
-          path: "/tmp/wt/other",
-          scopeID: "scope_123",
+          path: path.join(tmp.path, "wt/other"),
+          scopeID: scope.id,
         }))
         ;(Worktree as any).list = mock(async () => [
-          { id: "wt_other", name: "other-wt", path: "/tmp/wt/other", scopeID: "scope_123" },
+          { id: "wt_other", name: "other-wt", path: path.join(tmp.path, "wt/other"), scopeID: scope.id },
         ])
         ;(Worktree as any).leave = leaveSpy
         ;(Worktree as any).enter = enterSpy
         ;(Worktree as any).status = statusSpy
 
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt/dirty-one",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt/dirty-one"),
+            scopeID: scope.id,
             worktreeID: "wt_dirty",
             name: "dirty-wt",
           },
@@ -395,28 +407,29 @@ describe("tool.worktree_enter", () => {
     test("allows switch when current worktree is clean (dirty = false)", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         const leaveSpy = mock(async () => {})
         const statusSpy = mock(async () => ({ dirty: false, workspace: undefined }))
         const enterSpy = mock(async () => ({
           id: "wt_other",
           name: "other-wt",
           branch: "synergy/other-wt",
-          path: "/tmp/wt/other",
-          scopeID: "scope_123",
+          path: path.join(tmp.path, "wt/other"),
+          scopeID: scope.id,
         }))
         ;(Worktree as any).list = mock(async () => [
-          { id: "wt_other", name: "other-wt", path: "/tmp/wt/other", scopeID: "scope_123" },
+          { id: "wt_other", name: "other-wt", path: path.join(tmp.path, "wt/other"), scopeID: scope.id },
         ])
         ;(Worktree as any).leave = leaveSpy
         ;(Worktree as any).enter = enterSpy
         ;(Worktree as any).status = statusSpy
 
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/wt/clean-wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "wt/clean-wt"),
+            scopeID: scope.id,
             worktreeID: "wt_clean",
             name: "clean-wt",
           },
@@ -438,8 +451,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial metadata on RejectedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const initialized = await WorktreeEnterTool.init()
             const ctx: any = {
@@ -460,8 +474,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial with feedback message on CorrectedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const initialized = await WorktreeEnterTool.init()
             const ctx: any = {
@@ -482,8 +497,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial on DeniedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const initialized = await WorktreeEnterTool.init()
             const ctx: any = {
@@ -504,8 +520,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial on EnforcementError.PolicyDenied", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const initialized = await WorktreeEnterTool.init()
             const ctx: any = {
@@ -526,8 +543,9 @@ describe("tool.worktree_enter", () => {
     test("rethrows non-permission errors", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const initialized = await WorktreeEnterTool.init()
             const ctx: any = {
@@ -547,15 +565,16 @@ describe("tool.worktree_enter", () => {
     test("enters by name match", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const mockWt = {
               id: "wt_match",
               name: "my-worktree",
               branch: "synergy/my-worktree",
-              path: "/tmp/worktrees/my-worktree",
-              scopeID: "scope_123",
+              path: path.join(tmp.path, "worktrees/my-worktree"),
+              scopeID: scope.id,
             }
             ;(Worktree as any).list = mock(async () => [mockWt])
             ;(Worktree as any).enter = mock(async () => mockWt)
@@ -577,15 +596,16 @@ describe("tool.worktree_enter", () => {
     test("enters by ID match", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const mockWt = {
               id: "wt_target_id",
               name: "other-name",
               branch: "synergy/other-name",
-              path: "/tmp/worktrees/other-name",
-              scopeID: "scope_123",
+              path: path.join(tmp.path, "worktrees/other-name"),
+              scopeID: scope.id,
             }
             ;(Worktree as any).list = mock(async () => [mockWt])
             ;(Worktree as any).enter = mock(async () => mockWt)
@@ -603,15 +623,16 @@ describe("tool.worktree_enter", () => {
     test("enters by branch match", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const mockWt = {
               id: "wt_123",
               name: "random-name",
               branch: "feature/experiment",
-              path: "/tmp/wt",
-              scopeID: "scope_123",
+              path: path.join(tmp.path, "wt"),
+              scopeID: scope.id,
             }
             ;(Worktree as any).list = mock(async () => [mockWt])
             ;(Worktree as any).enter = mock(async () => mockWt)
@@ -628,14 +649,15 @@ describe("tool.worktree_enter", () => {
     test("enters by path match", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const mockWt = {
               id: "wt_path",
               name: "path-worktree",
               path: "/home/user/project/.synergy/worktrees/path-worktree",
-              scopeID: "scope_123",
+              scopeID: scope.id,
             }
             ;(Worktree as any).list = mock(async () => [mockWt])
             ;(Worktree as any).enter = mock(async () => mockWt)
@@ -658,15 +680,16 @@ describe("tool.worktree_enter", () => {
     test("creates new worktree when target does not match any existing", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const createdWt = {
               id: "wt_new",
               name: "new-worktree",
               branch: "synergy/new-worktree",
-              path: "/tmp/worktrees/new-worktree",
-              scopeID: "scope_123",
+              path: path.join(tmp.path, "worktrees/new-worktree"),
+              scopeID: scope.id,
             }
             ;(Worktree as any).list = mock(async () => []) // no match
             ;(Worktree as any).create = mock(async () => createdWt)
@@ -687,15 +710,16 @@ describe("tool.worktree_enter", () => {
     test("creates with auto-generated name when no target", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const createdWt = {
               id: "wt_auto",
               name: "brave-cactus-abc123",
               branch: "synergy/brave-cactus-abc123",
-              path: "/tmp/worktrees/brave-cactus-abc123",
-              scopeID: "scope_123",
+              path: path.join(tmp.path, "worktrees/brave-cactus-abc123"),
+              scopeID: scope.id,
             }
             ;(Worktree as any).create = mock(async () => createdWt)
 
@@ -713,14 +737,15 @@ describe("tool.worktree_enter", () => {
     test("passes baseRef to Worktree.create", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const createdWt = {
               id: "wt_fresh",
               name: "fresh-wt",
-              path: "/tmp/worktrees/fresh-wt",
-              scopeID: "scope_123",
+              path: path.join(tmp.path, "worktrees/fresh-wt"),
+              scopeID: scope.id,
             }
             const createSpy = mock(async () => createdWt)
             ;(Worktree as any).list = mock(async () => [])
@@ -744,8 +769,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial when list throws NotGitError during match phase", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => {
               throw new Worktree.NotGitError({ message: "Current scope is not a Git repository" })
@@ -765,8 +791,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial when create throws NotGitError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => []) // no match, falls through to create
             ;(Worktree as any).create = mock(async () => {
@@ -789,8 +816,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial on NameGenerationFailedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => [])
             ;(Worktree as any).create = mock(async () => {
@@ -811,8 +839,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial on CreateFailedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => [])
             ;(Worktree as any).create = mock(async () => {
@@ -833,8 +862,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial on SetupConfigError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => [])
             ;(Worktree as any).create = mock(async () => {
@@ -854,8 +884,9 @@ describe("tool.worktree_enter", () => {
     test("returns denial on StartCommandFailedError", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => [])
             ;(Worktree as any).create = mock(async () => {
@@ -876,8 +907,9 @@ describe("tool.worktree_enter", () => {
     test("rethrows unknown errors during create", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => [])
             ;(Worktree as any).create = mock(async () => {
