@@ -21,7 +21,6 @@ defaults:
 
 env:
   HUSKY: "0"
-  FORCE_COLOR: "1"
 
 jobs:
   plan:
