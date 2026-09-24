@@ -62,3 +62,7 @@ Current prompt assembly and compaction contracts live in [LLM loop and compactio
 ### 网络重试与恢复边界
 
 [网络重试覆盖与恢复边界审查](2026-09-15-network-retry-audit.md) 记录 DNS/连接错误、SDK 与 worker 信息传递、HTTP/流错误、网页读取和工具重放的审查证据，并列出跨会话冷却与流式文本投影的后续范围。
+
+### 编码观察与等待成本
+
+[Local-24 最终修复研究](context-efficiency/2026-09-23-local24-glm-fault-repair-study.md) 保存完整配对结果与受干扰项的来源；[CompCert 与 Mailman 等待提示实验](context-efficiency/2026-09-24-process-waiting-study.md) 单独记录后续两项的原生测试、逐请求用量、等待行为、资源条件和完整最终数据。
