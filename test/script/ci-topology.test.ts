@@ -1,125 +1,64 @@
 import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
-import { gatesForMode } from "../../script/gates"
+import { LIMITS } from "../../script/ci/plan"
 
-const root = path.resolve(import.meta.dir, "..", "..")
-const ciSource = await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")
-
-const REQUIRED_NEEDS = [
-  "runtime-artifacts",
-  "oryn-validation",
-  "quality",
-  "typecheck",
-  "windows",
-  "test",
-  "package-validation",
-  "workflow-validation",
-  "secret-scan",
-  "desktop",
-  "smoke",
-  "coverage",
-]
-
-function parseJobNames(source: string): string[] {
-  const names: string[] = []
-  for (const match of source.matchAll(/^  ([a-z][a-z0-9-]*):\n    name:/gm)) {
-    names.push(match[1]!)
-  }
-  return names
+const root = path.resolve(import.meta.dir, "../..")
+interface Job {
+  name?: string
+  if?: string
+  needs?: string[]
+  strategy?: { "max-parallel": number; "fail-fast": boolean }
+  steps?: { run?: string; uses?: string; with?: Record<string, unknown> }[]
+}
+const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8")) as {
+  on: { push: { branches: string[] }; schedule: unknown[] }
+  concurrency: { "cancel-in-progress": string }
+  jobs: Record<string, Job>
 }
 
-function parseJobNeeds(source: string, job: string): string[] {
-  const jobBlock = source.split(new RegExp(`^  ${job}:`, "m"))[1] ?? ""
-  const needsBlock = jobBlock.split("\n    steps:", 1)[0] ?? ""
-  const needsSection = needsBlock.match(/needs:\n([\s\S]*?)(?=\n    \w|\n  \w|$)/)?.[1] ?? ""
-  return needsSection
-    .split("\n")
-    .map((line) => line.trim().replace(/^-\s*/, ""))
-    .filter(Boolean)
-}
-
-describe("CI topology", () => {
-  test("all-checks-passed exists with if: always()", () => {
-    const block = ciSource.split("  all-checks-passed:")[1] ?? ""
-    expect(block).toContain("if: always()")
-    expect(block).toContain("name: All checks passed")
-  })
-
-  test("all-checks-passed needs exactly the blocking matrix", () => {
-    const needs = parseJobNeeds(ciSource, "all-checks-passed")
-    expect(needs.sort()).toEqual([...REQUIRED_NEEDS].sort())
-  })
-
-  test("all-checks-passed hard-fails on any non-success result", () => {
-    const block = ciSource.split("  all-checks-passed:")[1] ?? ""
-    expect(block).toContain('if [ "$result" != "success" ]')
-    expect(block).toContain("exit 1")
-    expect(block).toContain("GitHub counts a skipped required check as passing")
-  })
-
-  test("installed runtime builds match the executable Linux ABI and staged helper", () => {
-    const workflow = Bun.YAML.parse(ciSource) as {
-      jobs: Record<string, { "runs-on": string; env?: Record<string, string> }>
-    }
-    const job = workflow.jobs["runtime-artifacts"]!
-    expect(job["runs-on"]).toBe("ubuntu-latest")
-    expect(job.env?.SYNERGY_BUILD_TARGETS).toBe("linux-x64")
-  })
-
-  test("workspace suites bound concurrent native processes on every test shard", () => {
-    const workflow = Bun.YAML.parse(ciSource) as {
-      jobs: Record<string, { steps?: Array<{ name?: string; run?: string }> }>
-    }
-    const turboSteps = workflow.jobs["test-shards"]!.steps?.filter((step) => step.run?.includes("bun turbo test")) ?? []
-    expect(turboSteps).toHaveLength(1)
-    expect(turboSteps[0]!.run).toContain("--concurrency=2")
-  })
-
-  test("quality job runs the ci-static gate cluster", () => {
-    const block = ciSource.split("  quality:")[1]?.split("  typecheck:")[0] ?? ""
-    expect(block).toContain("bun script/gates.ts ci-static")
-    expect(block).toContain("SYNERGY_GATE_CONCURRENCY: 4")
-  })
-
-  test("coverage aggregates shard reports instead of running the gate cluster", () => {
-    const block = ciSource.split("  coverage:")[1]?.split("  all-checks-passed:")[0] ?? ""
-    expect(block).toContain("bun script/coverage-check.ts --aggregate")
-    expect(block).toContain("timeout-minutes: 10")
-    expect(block).not.toContain("gates.ts")
-  })
-
-  test("the blocking matrix has exactly the required jobs plus coverage and test shards", () => {
-    const jobs = parseJobNames(ciSource)
-    const blocking = jobs.filter((job) => job !== "all-checks-passed")
-    expect(blocking.sort()).toEqual(
-      [
-        ...REQUIRED_NEEDS,
-        "coverage-shards",
-        "test-shards",
-        "test-aux",
-        "test-harness",
-        "test-benchmark",
-        "test-rollout-long",
-      ].sort(),
+describe("required CI topology", () => {
+  test("the stable required check waits for every executor, including PostgreSQL", () => {
+    const gate = workflow.jobs["all-checks-passed"]!
+    expect(gate.name).toBe("All checks passed")
+    expect(gate.if).toBe("always()")
+    expect(gate.needs?.toSorted()).toEqual(
+      Object.keys(workflow.jobs)
+        .filter((id) => id !== "all-checks-passed")
+        .sort(),
     )
+    expect(gate.steps?.some((step) => step.run?.includes("ci.ts verify"))).toBe(true)
   })
-})
-
-describe("gate modes", () => {
-  test("ci-static excludes secrets and workflow", () => {
-    const ids = gatesForMode("ci-static").map((gate) => gate.id)
-    expect(ids).not.toContain("secrets:check")
-    expect(ids).not.toContain("workflow:check")
-    expect(ids).toContain("doc:check")
-    expect(ids).toContain("decision:check")
-    expect(ids).toContain("browser-crypto:check")
+  test("all execution queues are bounded and preserve failed reports", () => {
+    for (const [pool, limit] of Object.entries({
+      linux: LIMITS.linux - 1,
+      contracts: 1,
+      docker: LIMITS.docker - 1,
+      "docker-external": 2,
+      "docker-ready": 1,
+      postgres: LIMITS.postgres,
+      windows: LIMITS.windows,
+    })) {
+      const job = workflow.jobs[pool]!
+      expect(job.strategy?.["max-parallel"]).toBe(limit)
+      expect(job.strategy?.["fail-fast"]).toBe(false)
+      expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
+    }
+    expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
+    expect(workflow.jobs["docker-external"]!.needs).toEqual(["plan"])
+    expect(workflow.jobs.docker!.needs).toContain("docker-external")
+    expect(workflow.jobs["docker-ready"]!.needs).toEqual(["plan", "benchmark-prepare"])
   })
-
-  test("local excludes browser-crypto but keeps the rest", () => {
-    const ids = gatesForMode("local").map((gate) => gate.id)
-    expect(ids).not.toContain("browser-crypto:check")
-    expect(ids).toContain("format:check")
-    expect(ids).toContain("workflow:check")
+  test("every dev/main push and the daily cold run remain enabled", () => {
+    expect(workflow.on.push.branches).toEqual(["dev", "main"])
+    expect(workflow.on.schedule.length).toBe(1)
+    expect(workflow.concurrency["cancel-in-progress"]).toContain("pull_request")
+  })
+  test("diagnostics has one execution matrix capped at two and no required check", async () => {
+    const diagnostic = Bun.YAML.parse(
+      await readFile(path.join(root, ".github/workflows/ci-diagnostic.yml"), "utf8"),
+    ) as { jobs: Record<string, Job> }
+    expect(diagnostic.jobs.execute?.strategy?.["max-parallel"]).toBe(2)
+    expect(Object.values(diagnostic.jobs).some((job) => job.name === "All checks passed")).toBe(false)
   })
 })

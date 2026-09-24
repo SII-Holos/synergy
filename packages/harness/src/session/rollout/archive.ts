@@ -19,6 +19,7 @@ import { RolloutJournal } from "./journal"
 import { SnapshotArchive } from "../snapshot-archive"
 import { SnapshotRecords } from "../snapshot-records"
 import { SnapshotLifecycle } from "../snapshot-lifecycle"
+import { setImmediate } from "node:timers/promises"
 
 export namespace RolloutArchive {
   const MAX_ENTRY_BYTES = 64 * 1024 * 1024
@@ -136,6 +137,9 @@ export namespace RolloutArchive {
         throw new Error("Rollout ZIP size limit exceeded")
       await zip.add(path, new Uint8ArrayReader(data))
       manifest.files.push({ path, bytes: data.byteLength, sha256: digest(data) })
+      // Provenance: docs/decisions/implemented/testing/2026-09-24-ci-verification-plans.md
+      // Local adaptation: bound deferred stream cleanup between event-loop turns, including in-memory ZIPs.
+      if (manifest.files.length % 128 === 0) await setImmediate()
     }
     async function json(path: string, data: unknown) {
       await add(path, new TextEncoder().encode(JSON.stringify(data)))
@@ -306,6 +310,7 @@ export namespace RolloutArchive {
           throw new Error("Invalid rollout ZIP size or duplicate path")
         entries.set(entry.filename, entry)
       }
+      let reads = 0
       async function bytes(path: string) {
         const entry = entries.get(path)
         if (!entry) throw new Error(`Rollout ZIP integrity: missing ${path}`)
@@ -322,6 +327,7 @@ export namespace RolloutArchive {
           }),
         )
         if (size !== entry.uncompressedSize) throw new Error("Rollout ZIP integrity: size mismatch")
+        if (++reads % 128 === 0) await setImmediate()
         return Buffer.concat(chunks, size)
       }
       const manifest = Manifest.parse(JSON.parse((await bytes("manifest.json")).toString()))

@@ -84,6 +84,16 @@ for (const format of [2, 3]) {
         expect(await store.scan(["unrelated"])).toHaveLength(200)
         expect(await store.scan(["inbox"])).toEqual([])
         expect((await store.verify()).issues).toEqual([])
+        const prefix = ["retired", "owner"]
+        const keys = Array.from({ length: 5000 }, (_, index) => [...prefix, "chunks", String(index)])
+        keys.push([...prefix, ...Array.from({ length: 32 }, (_, index) => `level-${index}`)])
+        await store.transaction((tx) => tx.writeMany(keys.map((key) => ({ key, value: { saved: true } }))))
+        statements.length = 0
+        await store.removeTree(prefix)
+        expect(statements.length).toBeLessThanOrEqual(prefix.length)
+        expect(await store.scan(["retired"])).toEqual([])
+        expect(await store.scan(["unrelated"])).toHaveLength(200)
+        expect((await store.verify()).issues).toEqual([])
       } finally {
         await store.close()
       }
