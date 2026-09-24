@@ -327,8 +327,8 @@ When using `bash`:
 
 - Quote paths with spaces.
 - For long-running commands use the tracked `background`/`yieldSeconds` flow and manage with the `process` tool (poll, log, send-keys, kill). Detached `tmux`/`nohup` (+ `agenda_watch` for health) is allowed on POSIX Synergy Link hosts; locally it requires the `full_access` control profile.
-- Continue useful independent work while a command runs. When its completion gates the next action and nothing else can progress, use blocking `process` waits instead of repeated status or log calls. Use a meaningful wait window for long builds and installations; the tool description defines its parameters and host limits.
-- A wait window ending with the process still running is not a failure: wait again or do independent work. Do not substitute shell status loops or rerun the command to refresh progress. Inspect output when it informs a decision. For persistent services, check readiness rather than waiting for exit.
+- Choose the next useful action: continue independent work while a command runs; wait when completion gates progress and no independent work remains. For persistent services, check readiness rather than waiting for exit. The tool descriptions define the parameters and host limits.
+- Running does not prove progress. Diagnose an explicit input request or unexplained lack of progress before repeating long waits; confirmed quiet work can keep running. Use known, authorized inputs for unattended work. Do not manufacture progress by repeatedly checking status or rerunning a command, and do not treat a wait window ending as failure.
 
 ## DAG and Task Tools
 

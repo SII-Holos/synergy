@@ -3,7 +3,7 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 ## Actions
 
 - **list**: List all running and recently finished background processes
-- **poll**: Check whether a process is running and get recent output. Non-blocking by default. When the next action depends on completion and you have no useful independent work, use `block: true` to wait until exit or the wait window ends (`timeoutSeconds` in seconds, default 30s). For a known long local build or installation, use a 300-second window; an earlier exit returns sooner. Synergy Link hosts cap blocking waits at 25 seconds so a still-running result returns before the 30-second transport deadline; pass a shorter `timeoutSeconds` to wait less.
+- **poll**: Check status and recent output. Non-blocking by default. `block: true` waits until exit or the wait window ends (`timeoutSeconds` in seconds, default 30s); an earlier exit returns sooner. Synergy Link hosts cap blocking waits at 25 seconds, below the 30-second transport deadline.
 - **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far.
 - **write**: Write raw data to a process's stdin
 - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"])
@@ -13,7 +13,12 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 
 ## Notes
 
-Continue useful independent work while a command runs. Use a non-blocking status or log check when it can inform a decision, not as a repeated progress refresh. If a blocking wait returns `running`, the command is still active: wait again or do independent work. Do not immediately follow with repeated `poll`/`log`, substitute shell `ps`/`tail` loops, or rerun the command just to check progress. A wait window ending is not a command failure or permission to restart it.
+Choose according to the next useful action:
+
+- Continue independent work while the process runs. Check status or logs when the result can change a decision, not merely to refresh progress.
+- If completion gates the next action and no independent work remains, use a blocking poll with a window appropriate to the expected work. A long local operation can use `block: true, timeoutSeconds: 300`; this is a wait window, not an execution deadline.
+- `running` means the process is alive, not that it is making progress. If output requests input, or an initial wait provides no progress evidence and interaction or a stalled dependency is plausible, inspect the relevant output or process state once before deciding what to do. Redirected output may require reading the command's log file. Confirmed quiet work can continue waiting; silence alone does not prove a stall.
+- Supply input only when its value is known and authorized; do not guess confirmations. If a required decision is unavailable, surface the blocker instead of waiting for nonexistent input. Do not kill or rerun a command merely because a wait ends, and do not replace repeated polls with shell status loops.
 
 For a persistent service, check readiness rather than waiting for exit. If you deliberately end the current turn to check external work later, set one `agenda_watch` with a delay such as `5m`, then yield. Visible running subagents already notify you on completion and prevent watch creation; do not add an Agenda wake-up for them.
 
@@ -46,9 +51,9 @@ process(action: "poll", processId: "proc_xxx", block: true)
 process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 300)
 ```
 
-Send input:
+Send known task input (not guessed answers to prompts):
 ```
-process(action: "write", processId: "proc_xxx", data: "y\n")
+process(action: "write", processId: "proc_xxx", data: "<known input>\n")
 ```
 
 Send Ctrl+C to interrupt:

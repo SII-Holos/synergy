@@ -27,7 +27,10 @@ regexes = [
   '''example[_-]?(api|auth)?[_-]?key''',
   '''fake[_-]?(token|secret|key)''',
   '''dummy[_-]?(token|secret|key)''',
-  '''placeholder[_-]?(token|secret|key)'''
+  '''placeholder[_-]?(token|secret|key)''',
+  # Public evidence SHA-256 values next to the credential-owner error in
+  # docs/research/context-efficiency/2026-09-24-process-waiting-study.csv.
+  '''^(54f763e95755d5e1faf433c0b40c7fde516f517cc839e77dee94456bb040d209|1b10242832688931d059961b6cff6900280c10453c44a06b2e772ed0b0295317)$'''
 ]
 stopwords = [
   # Public Feishu wiki node / doc tokens used in release-log-workflow skill:

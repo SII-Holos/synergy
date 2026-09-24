@@ -8,25 +8,25 @@ Before executing the command:
 - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`).
 - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works.
 - Capture the output of the command.
+- For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible.
+- Preserve the main operation's exit status when adding pipelines or diagnostic commands; a successful trailing command does not prove the main operation succeeded.
 
 User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable).
 
 Usage notes:
-- `command` and `description` are required. The `description` is what the model does, written clearly in 5-10 words.
+- `command` and `description` are required; describe the action briefly.
 - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly.
 - `linkID` is the legacy Synergy Link instance ID; prefer `targetID`. Omit both for intentional local execution — a supplied remote target never falls back locally, and placeholders like `":local"`, `"local"`, `"localhost"`, or `"undefined"` are rejected. Remote linkIDs always start with `link_`. When targeting a remote `synergy-link` host, open a remote collaboration session first with the `connect` tool — remote bash does not implicitly create sessions.
 - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally. For remote Synergy Link execution the host clamps `yieldSeconds` to at most 5 seconds. A timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote command was cancelled. Reconnect and inspect session/process state; never auto-retry a mutating or ambiguous remote command.
-- After backgrounding, continue useful independent work. If completion gates your next action and no independent work remains, use a blocking `process` poll as described by that tool. Check logs or status when they inform a decision; do not repeatedly refresh unchanged output or rerun a command to monitor it. A wait window ending does not terminate the command. For a persistent service, check readiness rather than waiting for exit.
+- After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status.
 - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are allowed on POSIX Synergy Link hosts (the tracked flow is still preferred); locally they are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). Windows Link hosts reject all detached launchers — split oversized work into tracked `bash`/`process` operations.
 - For outbound text the user should review before it is published (PR body, commit message, channel message), draft it as a Note and let the user edit first; local bash can pass `/synergy/note/<note-id>` as a file argument (e.g. `gh pr create --body-file /synergy/note/<note-id>`). Prefer a command's file-input option over command substitution — the virtual path keeps content out of shell parsing. Note virtual paths materialize only for local bash execution.
 
-Prefer dedicated tools over shell equivalents: Glob for file search (not find/ls), Grep for content search (not grep/rg), Read for files (not cat/head/tail), Edit/Write for edits (not sed/awk/echo), and output text directly (not echo/printf).
+Prefer the available file, search and editing tools over shell equivalents; output text directly when no command is needed.
 
-When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). AVOID `cd <dir> && <cmd>` — use the `workdir` parameter.
+When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings).
 
 # Committing changes with git
-
-Only create commits when requested by the user. If unclear, ask first.
 
 Git Safety Protocol:
 - NEVER update the git config.

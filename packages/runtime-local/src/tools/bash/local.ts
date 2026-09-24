@@ -885,8 +885,8 @@ export const LocalBashBackend = {
               `Command: ${params.command}\n` +
               `Status: running\n\n` +
               `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
-              `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-              `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
+              `Continue independent work if available. If completion gates the next action, use \`process(action: "poll", processId: "${regProc.id}", block: true)\`.\n` +
+              `Use \`process(action: "log", processId: "${regProc.id}")\` when output can inform a decision. Running does not prove progress; see process guidance for diagnosis and service readiness.\n` +
               `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
           ),
         }
