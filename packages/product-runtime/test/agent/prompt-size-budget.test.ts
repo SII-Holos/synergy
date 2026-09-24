@@ -48,11 +48,8 @@ describe("static prompt and tool context size budgets", () => {
   test("rendered primary prompts stay within budget with the production agent catalog", () => {
     const infos = productionAgentInfos()
     expect(infos.length).toBeGreaterThanOrEqual(50)
-    // Thresholds are measured production values with ~2% headroom. The
-    // generated agent table dominates synergy-max's rendered size, and the
-    // shared memory section (4,363 chars) is explicitly out of scope.
-    expect(buildSynergyPrompt(infos).length).toBeLessThanOrEqual(46_000)
-    expect(buildSynergyMaxPrompt(infos).length).toBeLessThanOrEqual(42_500)
+    expect(Buffer.byteLength(buildSynergyPrompt(infos), "utf8")).toBeLessThanOrEqual(46_000)
+    expect(Buffer.byteLength(buildSynergyMaxPrompt(infos), "utf8")).toBeLessThanOrEqual(28_500)
   })
 
   test("synergy base prompt source stays within budget", () => {
@@ -62,7 +59,9 @@ describe("static prompt and tool context size budgets", () => {
   test("slimmed tool descriptions stay within budget", () => {
     expect(sourceBytes("bash.txt")).toBeLessThanOrEqual(7_000)
     expect(sourceBytes("revise-file.txt")).toBeLessThanOrEqual(5_000)
-    expect(sourceBytes("dagwrite.txt")).toBeLessThanOrEqual(6_500)
+    expect(sourceBytes("dagwrite.txt")).toBeLessThanOrEqual(3_250)
+    expect(sourceBytes("process.txt")).toBeLessThanOrEqual(5_050)
+    expect(Bun.file(path.join(PROMPT_DIR, "../../cortex/tools/task.txt")).size).toBeLessThanOrEqual(3_950)
   })
 
   test("skill descriptions truncate to a single bounded line", () => {

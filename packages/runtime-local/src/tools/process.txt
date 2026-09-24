@@ -22,7 +22,7 @@ Choose according to the next useful action:
 
 For a persistent service, check readiness rather than waiting for exit. If you deliberately end the current turn to check external work later, set one `agenda_watch` with a delay such as `5m`, then yield. Visible running subagents already notify you on completion and prevent watch creation; do not add an Agenda wake-up for them.
 
-On Windows Synergy Link hosts, remote Bash rejects known detached launchers, dynamic or opaque script entry points, and commands beyond the 16 KiB per-command, 64 nested-shell, or 128 KiB cumulative inspection budgets. Use the tracked Bash background flow and split oversized work into smaller `bash`/`process` operations because a detached descendant cannot be recovered safely after its launcher exits.
+On Windows Link hosts, use tracked Bash operations. Detached launchers and opaque script entry points are rejected; split commands exceeding the 16 KiB command, 64 nested-shell or 128 KiB cumulative inspection limits.
 
 ## Usage
 
@@ -30,39 +30,19 @@ On Windows Synergy Link hosts, remote Bash rejects known detached launchers, dyn
 For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely.
 When targeting a remote `synergy-link` host, open a remote collaboration session first using the `connect` tool and use a heartbeat-verified session. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. Remote process management does not implicitly create sessions, never falls back locally, and a timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote action was not applied. Reconnect and inspect state; never auto-retry mutating actions after an ambiguous failure.
 
-After a bash command auto-backgrounds:
-```
-bash(command: "npm run build", yieldSeconds: 30) → { processId: "proc_xxx" }
-```
+Examples (use the processId returned by Bash):
 
-Read output when needed to diagnose or decide the next action:
 ```
-process(action: "log", processId: "proc_xxx")
-```
-
-Check status once while doing independent work:
-```
+// One status check when it can change a decision:
 process(action: "poll", processId: "proc_xxx")
-```
-
-Wait when completion gates the next action and no independent work remains:
-```
-process(action: "poll", processId: "proc_xxx", block: true)
+// Completion gates progress and no independent work remains:
 process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 300)
-```
-
-Send known task input (not guessed answers to prompts):
-```
+// Diagnose output; offset/limit can select the relevant part:
+process(action: "log", processId: "proc_xxx")
+// Supply known, authorized task input:
 process(action: "write", processId: "proc_xxx", data: "<known input>\n")
-```
-
-Send Ctrl+C to interrupt:
-```
+// Interrupt or terminate when appropriate:
 process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"])
-```
-
-Terminate:
-```
 process(action: "kill", processId: "proc_xxx")
 ```
 
