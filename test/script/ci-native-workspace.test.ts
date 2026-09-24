@@ -3,6 +3,7 @@ import { catalog } from "../../script/ci/catalog"
 import { createPlan, executionQueue } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 import { verifyResults } from "../../script/ci/evidence"
+import path from "node:path"
 
 test("native Workspace verification stays in the plan with fresh platform coverage", async () => {
   const tasks = await catalog()
@@ -27,6 +28,14 @@ test("native Workspace verification stays in the plan with fresh platform covera
     expect(task.outputs).toContain("junit")
     expect(task.needs).toContain("suite-packages-runtime-local")
     const recipe = await commands(task, plan)
+    const missing: string[] = []
+    for (const command of recipe) {
+      for (const file of command.args.filter((arg) => arg.endsWith(".ts"))) {
+        const target = path.resolve(command.cwd ?? ".", file)
+        if (!(await Bun.file(target).exists())) missing.push(target)
+      }
+    }
+    expect(missing).toEqual([])
     expect(recipe.some((command) => command.args.includes("packages/runtime-local/script/build-pty.ts"))).toBe(true)
     expect(recipe.some((command) => command.args.includes("script/native-workspace-coverage.ts"))).toBe(true)
     const result = {

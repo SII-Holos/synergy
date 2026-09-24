@@ -181,7 +181,6 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         })),
         bun("native-pty", ["packages/runtime-local/script/build-pty.ts"]),
         bun("native-workspace", ["script/native-workspace-coverage.ts"]),
-        test("windows-local", ["test/process/windows-process-job.test.ts"], "packages/runtime-local"),
         test(
           "windows-harness",
           ["test/global/schema-publish.test.ts", "test/util/server-process-lock.test.ts"],
