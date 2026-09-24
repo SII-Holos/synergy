@@ -45,7 +45,7 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y xvfb libarchive-tools rpm libgtk-3-0 libnss3 libxss1 libxtst6 libatspi2.0-0 libgbm1 libasound2t64
-        node node_modules/electron/install.js
+        node apps/desktop/node_modules/electron/install.js
     - if: runner.os == 'Linux' && inputs.dependencies == 'true'
       shell: bash
       run: |
