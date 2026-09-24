@@ -1,831 +1,598 @@
 name: CI
-
 on:
   push:
     branches: [dev, main]
   pull_request:
     branches: [dev, main]
   workflow_dispatch:
+  schedule:
+    - cron: "17 19 * * *"
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
-concurrency:
-  # Provenance: https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
-  # Local adaptation: only PRs share a group; unique push groups preserve pending commits as well as active runs.
-  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  actions: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  HUSKY: "0"
+  FORCE_COLOR: "1"
 
 jobs:
-  runtime-artifacts:
-    name: Installed Runtime Artifacts
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      SYNERGY_BUILD_TARGETS: linux-x64
+  plan:
+    name: Verification plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      mode: ${{ steps.plan.outputs.mode }}
+      build: ${{ steps.plan.outputs.build }}
+      sandbox: ${{ steps.plan.outputs.sandbox }}
+      benchmark: ${{ steps.plan.outputs.benchmark }}
+      build_key: ${{ steps.plan.outputs.build_key }}
+      contracts: ${{ steps.plan.outputs.contracts }}
+      contracts_count: ${{ steps.plan.outputs.contracts_count }}
+      docker-external: ${{ steps.plan.outputs.docker-external }}
+      docker-external_count: ${{ steps.plan.outputs.docker-external_count }}
+      docker-ready: ${{ steps.plan.outputs.docker-ready }}
+      docker-ready_count: ${{ steps.plan.outputs.docker-ready_count }}
+      linux: ${{ steps.plan.outputs.linux }}
+      linux_count: ${{ steps.plan.outputs.linux_count }}
+      docker: ${{ steps.plan.outputs.docker }}
+      docker_count: ${{ steps.plan.outputs.docker_count }}
+      postgres: ${{ steps.plan.outputs.postgres }}
+      postgres_count: ${{ steps.plan.outputs.postgres_count }}
+      windows: ${{ steps.plan.outputs.windows }}
+      windows_count: ${{ steps.plan.outputs.windows_count }}
+      diagnostic: ${{ steps.plan.outputs.diagnostic }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
           persist-credentials: false
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+          fetch-depth: 0
+      - uses: ./.github/actions/ci-setup
+      - name: Load admission evidence when affected mode is requested
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_FORCE_FULL: ${{ vars.SYNERGY_CI_FORCE_FULL }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$CI_FORCE_FULL" != 1 ] && [ "$(bun -e 'console.log((await Bun.file("script/ci/rollout.json").json()).mode)')" = affected ]; then
+            bun script/ci.ts history
+          fi
+      - name: Resolve exact revisions and plan
+        id: plan
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+          CI_FORCE_FULL: ${{ vars.SYNERGY_CI_FORCE_FULL }}
+        run: |
+          tested="$(git rev-parse HEAD)"
+          base="${PR_BASE:-${PUSH_BASE:-}}"
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD^)"
+          fi
+          args=(--base "$base" --head "${PR_HEAD:-$tested}" --sha "$tested")
+          if [ "$GITHUB_EVENT_NAME" != pull_request ] || [ "$CI_FORCE_FULL" = 1 ]; then
+            args+=(--mode full)
+          fi
+          bun script/ci.ts plan "${args[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          bun-version: "1.3.14"
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Prepare Linux runtime dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep
-          cargo build --locked --release --manifest-path packages/runtime-local/src/sandbox/helper-linux/Cargo.toml
-          mkdir -p packages/runtime-local/sandbox-assets/linux-x64
-          cp packages/runtime-local/src/sandbox/helper-linux/target/release/synergy-sandbox-linux packages/runtime-local/sandbox-assets/linux-x64/
-      - name: Verify watcher coexistence with ONNX and signal recovery in Bun
-        run: bun test --config /dev/null test/script/watcher-native.test.ts
-      - name: Build the core profile
-        run: bun packages/cli/script/build.ts --single --skip-install
-        env:
-          SYNERGY_HOME: ${{ runner.temp }}/synergy-core-build
-          SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
-      - name: Verify installed model, tools, budget, cancellation and import/export outcomes
-        working-directory: packages/cli
-        run: bun test test/cli/artifact.test.ts
-        env:
-          SYNERGY_TEST_ARTIFACT_BIN: ${{ github.workspace }}/packages/cli/dist/synergy-linux-x64/bin/synergy
-      - name: Build the complete product profile
-        run: bun packages/product-runtime/script/build.ts --single --skip-install
-        env:
-          SYNERGY_HOME: ${{ runner.temp }}/synergy-product-build
-          SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
-      - name: Verify complete product execution outside the repository
-        working-directory: packages/cli
-        run: bun test test/cli/artifact.test.ts
-        env:
-          SYNERGY_TEST_ARTIFACT_BIN: ${{ github.workspace }}/packages/product-runtime/dist/synergy-linux-x64/bin/synergy
-      - name: Build and verify installable core workspace archives
-        run: |
-          bun script/pack-workspace.ts packages/cli "${{ runner.temp }}/core-packages"
-          bun script/package-install-check.ts "${{ runner.temp }}/core-packages"
-      - name: Build and verify optional and full runtime compositions
-        run: |
-          bun script/pack-workspace.ts packages/product-runtime "${{ runner.temp }}/runtime-packages"
-          bun script/runtime-composition-check.ts "${{ runner.temp }}/runtime-packages"
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci/plan.json
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
 
-  agent-storage:
-    name: Agent Storage (PostgreSQL ${{ matrix.postgres }})
-    runs-on: ubuntu-latest
+  prepare:
+    name: Verified Linux build
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      cache_hit: ${{ steps.cache.outputs.cache-hit }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/ci-setup
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: cache
+        if: github.event_name != 'schedule'
+        with:
+          path: .artifacts/ci/build
+          key: ci-build-${{ needs.plan.outputs.build_key }}
+      - name: Build or validate cached outputs
+        env:
+          CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: |
+          if [ "$CACHE_HIT" = true ]; then
+            bun script/ci.ts restore
+          else
+            bun script/ci.ts prepare
+          fi
+          tar -cf .artifacts/ci/build.tar -C .artifacts/ci build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-build-${{ github.run_attempt }}
+          path: .artifacts/ci/build.tar
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+
+  benchmark-prepare:
+    name: Frozen benchmark preparation
+    needs: plan
+    if: needs.plan.outputs.benchmark == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+      - run: bun script/ci.ts run --unit benchmark-prepare
+      - run: tar -I 'zstd -T2 -3' -cf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci benchmark/prepared
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ci-benchmark-prepared-${{ github.run_attempt }}
+          path: .artifacts/ci/benchmark.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-benchmark-prepare-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+
+  contracts:
+    name: contracts (${{ matrix.id }})
+    needs: [plan]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.contracts_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        postgres: [16, 17, 18]
+        include: ${{ fromJSON(needs.plan.outputs.contracts) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+  linux:
+    name: linux (${{ matrix.id }})
+    needs: [plan, prepare]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.linux_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.linux) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.build
+        with:
+          name: ci-build-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - name: Verify shared build
+        if: matrix.build
+        shell: bash
+        run: |
+          tar -xf .artifacts/ci/build.tar -C .artifacts/ci
+          bun script/ci.ts restore
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+  docker-external:
+    name: docker-external (${{ matrix.id }})
+    needs: [plan]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker-external_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.docker-external) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+      - name: Collect bounded benchmark evidence
+        if: always()
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark-evidence
+          include-hidden-files: true
+          retention-days: 7
+  docker-ready:
+    name: docker-ready (${{ matrix.id }})
+    needs: [plan, benchmark-prepare]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker-ready_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.docker-ready) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: contains(matrix.tasks, 'native-synergy') || contains(matrix.tasks, 'benchmark-docker-normal') || contains(matrix.tasks, 'benchmark-docker-faults')
+        with:
+          name: ci-benchmark-prepared-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - name: Unpack read-only benchmark input
+        if: contains(matrix.tasks, 'native-synergy') || contains(matrix.tasks, 'benchmark-docker-normal') || contains(matrix.tasks, 'benchmark-docker-faults')
+        shell: bash
+        run: tar --zstd -xf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+      - name: Collect bounded benchmark evidence
+        if: always()
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark-evidence
+          include-hidden-files: true
+          retention-days: 7
+  docker:
+    name: docker (${{ matrix.id }})
+    needs: [plan, benchmark-prepare, docker-external]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.docker) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.14"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: contains(matrix.tasks, 'native-synergy') || contains(matrix.tasks, 'benchmark-docker-normal') || contains(matrix.tasks, 'benchmark-docker-faults')
+        with:
+          name: ci-benchmark-prepared-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - name: Unpack read-only benchmark input
+        if: contains(matrix.tasks, 'native-synergy') || contains(matrix.tasks, 'benchmark-docker-normal') || contains(matrix.tasks, 'benchmark-docker-faults')
+        shell: bash
+        run: tar --zstd -xf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
+      - name: Collect bounded benchmark evidence
+        if: always()
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark-evidence
+          include-hidden-files: true
+          retention-days: 7
+  postgres:
+    name: postgres (${{ matrix.id }})
+    needs: [plan]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.postgres_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.postgres) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     services:
       postgres:
         image: postgres:${{ matrix.postgres }}
         env:
+          POSTGRES_USER: postgres
           POSTGRES_PASSWORD: storage-ci-only
           POSTGRES_DB: synergy_storage_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s --health-timeout 5s --health-retries 12
+        ports: [5432:5432]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.3.14"
-      - run: bun install --frozen-lockfile
-      - name: Verify both database implementations against the same contract
-        working-directory: packages/harness
-        run: bun test --timeout 30000 test/storage
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
         env:
-          SYNERGY_REQUIRE_POSTGRES_TESTS: "1"
-          SYNERGY_TEST_POSTGRES_URL: postgres://postgres:storage-ci-only@127.0.0.1:5432/synergy_storage_test
-
-  oryn-validation:
-    name: Oryn Configuration
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - run: bun test --config /dev/null test/script/oryn-validation.test.ts
-      - run: bun .github/oryn/validate.ts snapshot
-
-  quality:
-    name: Quality
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-
-      - name: Run static gate cluster
-        run: bun script/gates.ts ci-static
-        env:
-          SYNERGY_GATE_CONCURRENCY: 4
-
-  typecheck:
-    name: Typecheck
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-
-      - name: Typecheck
-        run: bun run typecheck
-
-  windows:
-    name: Windows Checks
-    runs-on: windows-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-
-      - name: Typecheck Synergy
-        run: bun run --cwd packages/harness typecheck
-      - name: Typecheck local runtime
-        run: bun run --cwd packages/runtime-local typecheck
-
-      - name: Typecheck Desktop
-        run: bun run --cwd apps/desktop typecheck
-
-      - name: Check sandbox helper Rust crate
-        shell: pwsh
-        run: |
-          $manifest = "packages/runtime-local/src/sandbox/helper/Cargo.toml"
-          # These two WFP tests are known to fail on Windows because they assert
-          # the non-Windows stub behavior. They are intentionally excluded here;
-          # the WFP implementation is out of scope for this CI fix.
-          cargo test --locked --manifest-path $manifest -- `
-            --skip install_wfp_filters_returns_zero_on_non_windows `
-            --skip install_wfp_filters_for_account_stub_returns_ok_zero
-          cargo check --locked --manifest-path $manifest
-          cargo build --locked --manifest-path $manifest
-
-      - name: Run Synergy Windows-focused tests
-        run: |
-          bun test --timeout 30000 --cwd packages/runtime-local test/file/watcher-events.test.ts test/sandbox/phase3-windows-config.test.ts test/process/windows-process-job.test.ts
-          bun test --timeout 30000 --cwd packages/harness test/global/schema-publish.test.ts
-          bun test --timeout 30000 --cwd packages/harness test/util/server-process-lock.test.ts
-          bun test --timeout 30000 --cwd packages/runtime-local test/session/tool-resolver-bash-profile.test.ts
-
-      - name: Run util lock tests
-        run: bun test --timeout 30000 --cwd packages/util test/fs-lock.test.ts test/process-identity.test.ts
-
-      - name: Run Desktop Windows-focused tests
-        run: >-
-          bun test --cwd apps/desktop
-          test/server-manager.test.ts
-          test/windows-installer.test.ts
-
-  test-shards:
-    name: Test Shards (${{ matrix.shard }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - shard: app-light
-            packages: "@ericsanchezok/synergy-app,@ericsanchezok/synergy-secret-detection,@ericsanchezok/synergy-testing,@ericsanchezok/synergy-link-protocol,@ericsanchezok/synergy-computer,@ericsanchezok/synergy-computer-runtime"
-          - shard: runtime
-            packages: "@ericsanchezok/synergy-product-runtime,@ericsanchezok/synergy-runtime-local,@ericsanchezok/synergy-server"
-          - shard: server-tools
-            packages: "@ericsanchezok/synergy-ui,@ericsanchezok/synergy-plugin-host,@ericsanchezok/synergy-workflows,@ericsanchezok/synergy-cli,@ericsanchezok/synergy-note"
-          - shard: channels
-            packages: "@ericsanchezok/synergy-connections,@ericsanchezok/synergy-link,@ericsanchezok/synergy-browser-runtime,@ericsanchezok/synergy-agent-integrations,@ericsanchezok/synergy-plugin-kit,@ericsanchezok/synergy-workbench,@ericsanchezok/synergy-util,@ericsanchezok/synergy-library,@ericsanchezok/synergy-plugin,@ericsanchezok/synergy-media,@ericsanchezok/synergy-browser"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Install Playwright Chromium
-        run: bun run --cwd apps/web playwright install chromium
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: Install sandbox e2e prerequisites
-        if: matrix.shard == 'runtime'
-        run: |
-          sudo apt-get update && sudo apt-get install -y bubblewrap apparmor
-          # Runner images restrict unprivileged user namespaces
-          # (kernel.apparmor_restrict_unprivileged_userns=1); the operator
-          # userns profile lets /usr/bin/bwrap create its sandbox so the
-          # real-helper e2e in runtime-local executes instead of silently
-          # skipping behind a green build.
-          cat <<'PROFILE' | sudo tee /etc/apparmor.d/synergy-bwrap
-          abi <abi/4.0>,
-          include <tunables/global>
-
-          profile synergy-bwrap /usr/bin/bwrap flags=(unconfined) {
-            userns,
-
-            include if exists <local/bwrap>
-          }
-          PROFILE
-          sudo apparmor_parser -r /etc/apparmor.d/synergy-bwrap
-          cargo build --locked --release --manifest-path packages/runtime-local/src/sandbox/helper-linux/Cargo.toml
-          mkdir -p "$HOME/.synergy/sandbox-helper"
-          cp packages/runtime-local/src/sandbox/helper-linux/target/release/synergy-sandbox-linux "$HOME/.synergy/sandbox-helper/synergy-sandbox-linux"
-      - name: Configure git identity
-        run: |
-          git config --global user.email "ci@synergy.dev"
-          git config --global user.name "CI Runner"
-      - name: Run shard package tests
-        run: |
-          filters=()
-          IFS=',' read -ra shard_packages <<< "$TEST_PACKAGES"
-          for package in "${shard_packages[@]}"; do
-            filters+=(--filter="$package")
-          done
-          bun turbo test --concurrency=2 "${filters[@]}"
-        env:
-          SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
-          SYNERGY_TEST_LINUX_SANDBOX_E2E: ${{ matrix.shard == 'runtime' && '1' || '' }}
-          TEST_PACKAGES: ${{ matrix.packages }}
-
-  test-aux:
-    name: Test Aux Contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Install Playwright Chromium
-        run: bun run --cwd apps/web playwright install chromium
-      - name: Build plugin and app dist
-        run: |
-          bun turbo build --filter=@ericsanchezok/synergy-plugin
-          bun run --cwd apps/web build
-      - name: Configure git identity
-        run: |
-          git config --global user.email "ci@synergy.dev"
-          git config --global user.name "CI Runner"
-      - name: Run private HTTP browser smoke
-        run: bun apps/web/script/private-http-smoke.ts
-      - name: Run plugin UI contracts against the production host
-        run: bun run plugin-ui:test
-      - name: Run release contract tests
-        run: bun run release:test
-
-  test-harness:
-    name: Test Harness
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: Configure git identity
-        run: |
-          git config --global user.email "ci@synergy.dev"
-          git config --global user.name "CI Runner"
-      - name: Run Harness tests
-        run: bun run test:ci
-        working-directory: packages/harness
-        env:
-          SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
-          SYNERGY_TEST_JUNIT_DIR: coverage/ci-tests
-      - name: Upload Harness test reports
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: synergy-test-reports
-          path: packages/harness/coverage/ci-tests/*.xml
-          if-no-files-found: warn
-
-  test-benchmark:
-    name: Local Benchmark Contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install uv in an isolated tool environment
-        run: |
-          python3 -m venv "$RUNNER_TEMP/benchmark-tools"
-          "$RUNNER_TEMP/benchmark-tools/bin/pip" install uv==0.9.2
-          echo "$RUNNER_TEMP/benchmark-tools/bin" >> "$GITHUB_PATH"
-      - name: Install workspace dependencies
-        run: bun install --frozen-lockfile
-      - name: Prepare verified Linux watcher
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Check Python contracts
-        run: |
-          uv run --locked --project benchmark ruff check benchmark
-          uv run --locked --project benchmark ruff format --check benchmark
-          uv run --locked --project benchmark mypy --config-file benchmark/pyproject.toml benchmark/src/synergy_bench
-          uv run --locked --project benchmark pytest benchmark/test --ignore=benchmark/test/test_gateway.py --ignore=benchmark/test/test_gateway_faults.py
-      - name: Check runtime recipes
-        run: bun run --cwd benchmark test
-
-  test-benchmark-docker:
-    name: Benchmark Docker Lifecycle
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install uv in an isolated tool environment
-        run: |
-          python3 -m venv "$RUNNER_TEMP/benchmark-tools"
-          "$RUNNER_TEMP/benchmark-tools/bin/pip" install uv==0.9.2
-          echo "$RUNNER_TEMP/benchmark-tools/bin" >> "$GITHUB_PATH"
-      - name: Install workspace dependencies
-        run: bun install --frozen-lockfile
-      - name: Prepare verified Linux watcher
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Verify Docker rollout with a deterministic local provider
-        run: uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py benchmark/test/test_native.py benchmark/test/test_recovery.py benchmark/test/test_parent_death_docker.py benchmark/test/test_oom_docker.py benchmark/test/test_oracle.py benchmark/test/test_compaction_docker.py
-        env:
-          SYNERGY_BENCH_DOCKER: "1"
-      - name: Collect benchmark test evidence
-        if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration --output "$RUNNER_TEMP/benchmark-evidence"
-      - name: Preserve benchmark test evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: local-benchmark-evidence
-          path: ${{ runner.temp }}/benchmark-evidence
-          if-no-files-found: warn
-
-  test-benchmark-matrix:
-    name: Native Harness Matrix (${{ matrix.harness }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        harness: [synergy, codex, opencode, pi, deepseek]
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install uv in an isolated tool environment
-        run: |
-          python3 -m venv "$RUNNER_TEMP/benchmark-tools"
-          "$RUNNER_TEMP/benchmark-tools/bin/pip" install uv==0.9.2
-          echo "$RUNNER_TEMP/benchmark-tools/bin" >> "$GITHUB_PATH"
-      - name: Install workspace dependencies
-        run: bun install --frozen-lockfile
-      - name: Prepare verified Linux watcher
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Verify two models and both protocols through the native harness
-        run: uv run --locked --project benchmark pytest -s benchmark/test/test_matrix_docker.py
-        env:
-          SYNERGY_BENCH_DOCKER: "1"
-          SYNERGY_BENCH_TEST_HARNESSES: ${{ matrix.harness }}
-      - name: Collect matrix evidence
-        if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
-      - name: Preserve matrix evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: benchmark-matrix-${{ matrix.harness }}
-          path: ${{ runner.temp }}/benchmark-evidence
-          if-no-files-found: warn
-
-  test-benchmark-streams:
-    name: Benchmark Streaming Faults
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install uv in an isolated tool environment
-        run: |
-          python3 -m venv "$RUNNER_TEMP/benchmark-tools"
-          "$RUNNER_TEMP/benchmark-tools/bin/pip" install uv==0.9.2
-          echo "$RUNNER_TEMP/benchmark-tools/bin" >> "$GITHUB_PATH"
-      - name: Install workspace dependencies
-        run: bun install --frozen-lockfile
-      - name: Prepare verified Linux watcher
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Verify transport failure and parent termination contracts
-        run: |
-          uv run --locked --project benchmark pytest benchmark/test/test_gateway.py benchmark/test/test_gateway_faults.py
-          bun test --config /dev/null benchmark/test/capture.test.ts benchmark/test/deadline.test.ts
-
-  test-rollout-long:
-    name: Long Rollout Contracts (${{ matrix.outcome }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        outcome: [completed, cancelled, failed]
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install workspace dependencies
-        run: bun install --frozen-lockfile
-      - name: Verify long rollout persistence and cancellation
-        run: 'bun test --cwd packages/harness test/session/rollout-long.test.ts --test-name-pattern ": ${{ matrix.outcome }}$"'
-        env:
-          SYNERGY_ROLLOUT_LONG_STREAM: "1"
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    if: always()
-    needs:
-      [
-        test-shards,
-        test-aux,
-        test-harness,
-        test-benchmark,
-        test-benchmark-docker,
-        test-benchmark-matrix,
-        test-benchmark-streams,
-        test-rollout-long,
-      ]
-    steps:
-      - name: Verify all test jobs passed
-        run: |
-          # GitHub counts a skipped required check as passing, so this job
-          # always runs and fails on any non-success result, including skips.
-          failed=""
-          for result in "${{ needs.test-shards.result }}" "${{ needs.test-aux.result }}" "${{ needs.test-harness.result }}" "${{ needs.test-benchmark.result }}" "${{ needs.test-benchmark-docker.result }}" "${{ needs.test-benchmark-matrix.result }}" "${{ needs.test-benchmark-streams.result }}" "${{ needs.test-rollout-long.result }}"; do
-            if [ "$result" != "success" ]; then
-              failed="$failed $result"
-            fi
-          done
-          if [ -n "$failed" ]; then
-            echo "::error::One or more test jobs did not pass:$failed"
-            exit 1
-          fi
-          echo "All test jobs passed."
-
-  package-validation:
-    name: Package Validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-
-      - name: Validate publishable packages
-        run: bun run package:check
-
-  workflow-validation:
-    name: Workflow Validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Run actionlint
-        run: |
-          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash) 1.7.12
-          ./actionlint -color
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
-
-      - name: Run zizmor
-        run: uvx zizmor==1.26.1 .
-
-  secret-scan:
-    name: Secret Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Install Gitleaks
-        run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o gitleaks.tar.gz
-          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
-          tar -xzf gitleaks.tar.gz gitleaks
-          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
-
-      - name: Run Gitleaks
-        run: gitleaks detect --source . --redact --config .gitleaks.toml --verbose --exit-code 1
-
-  desktop:
-    name: Desktop Checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-
-      - name: Install Linux smoke dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            xvfb \
-            libarchive-tools \
-            rpm \
-            libgtk-3-0 \
-            libnss3 \
-            libxss1 \
-            libxtst6 \
-            libatspi2.0-0 \
-            libgbm1 \
-            libasound2t64
-
-      - name: Desktop typecheck and unit tests
-        run: bun run --cwd apps/desktop desktop:test
-
-      - name: Desktop package config validation
-        run: |
-          bun run --cwd apps/desktop desktop:build
-          cd apps/desktop
-          SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never
-
-      - name: Desktop runtime smoke
-        run: xvfb-run -a bun run --cwd apps/desktop test:runtime
-
-  smoke:
-    name: Smoke Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-
-      - name: Start server and check health
-        env:
-          SYNERGY_HOME: ${{ runner.temp }}/synergy-health-smoke
-          SYNERGY_DISABLE_MODELS_FETCH: "true"
-          MODELS_DEV_API_JSON: ${{ github.workspace }}/packages/testing/fixtures/models-api.json
-        run: |
-          bun run packages/product-runtime/src/index.ts server --hostname 127.0.0.1 --port 4800 &
-          SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true; wait "$SERVER_PID" 2>/dev/null || true' EXIT
-
-          # Wait for server to be ready (max 30 seconds)
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:4800/global/health > /dev/null 2>&1; then
-              echo "Server is healthy after ${i}s"
-              break
-            fi
-            if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "::error::Server process exited unexpectedly"
-              exit 1
-            fi
-            sleep 1
-          done
-
-          # Verify health response
-          HEALTH=$(curl -sf http://localhost:4800/global/health)
-          echo "Health response: $HEALTH"
-
-          if echo "$HEALTH" | grep -q '"healthy":true'; then
-            echo "Smoke test passed"
-          else
-            echo "::error::Health check failed: $HEALTH"
-            exit 1
-          fi
-
-  coverage-shards:
-    name: Coverage Shards (${{ matrix.group }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - group: product-platform
-            packages: packages/product-runtime,packages/workbench,packages/agent-integrations,packages/library,packages/note,packages/computer-runtime,packages/computer,packages/synergy-link-protocol
-          - group: web-plugin
-            packages: apps/web,packages/plugin,packages/plugin-kit,packages/sdk/js,packages/util,packages/secret-detection
-          - group: harness
-            packages: packages/harness
-          - group: core-server
-            packages: packages/connections,packages/cli,packages/server,packages/plugin-host
-          - group: runtime-media
-            packages: packages/media,packages/browser-runtime,packages/runtime-local,packages/workflows,packages/testing,packages/ui,apps/desktop,packages/browser,packages/synergy-link
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          persist-credentials: false
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - name: Install dependencies
-        run: bun install
-      - name: Prepare verified Linux watcher
-        if: runner.os == 'Linux'
-        run: bun packages/runtime-local/script/build-watcher.ts
-      - name: Install Playwright Chromium
-        run: bun run --cwd apps/web playwright install chromium
-      - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: Configure git identity
-        run: |
-          git config --global user.email "ci@synergy.dev"
-          git config --global user.name "CI Runner"
-      - name: Build plugin dist for coverage commands
-        run: bun turbo build --filter=@ericsanchezok/synergy-plugin
-      - name: Run coverage commands for this shard
-        run: bun script/coverage-check.ts --execute-only --package "$COVERAGE_PACKAGES"
-        env:
-          SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
-          COVERAGE_PACKAGES: ${{ matrix.packages }}
-      - name: Anchor artifact layout at the repository root
-        run: echo "$GROUP" > coverage-shard-anchor.txt
-        env:
-          GROUP: ${{ matrix.group }}
-      - name: Upload lcov reports
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: coverage-lcov-${{ matrix.group }}
-          path: |
-            coverage-shard-anchor.txt
-            packages/*/coverage/lcov.info
-            packages/*/*/coverage/lcov.info
-            packages/*/coverage/shards/*/lcov.info
-            packages/*/*/coverage/shards/*/lcov.info
-            apps/*/coverage/lcov.info
-            apps/*/coverage/shards/*/lcov.info
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
           if-no-files-found: error
-          retention-days: 3
-
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    needs: [coverage-shards]
-    timeout-minutes: 10
+          include-hidden-files: true
+          retention-days: 7
+  windows:
+    name: windows (${{ matrix.id }})
+    needs: [plan]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.windows_count != '0' }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.windows) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
+          ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.3.14"
-      - name: Download shard lcov reports
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: ./.github/actions/ci-setup
         with:
-          pattern: coverage-lcov-*
-          merge-multiple: true
-          path: .
-      - name: Evaluate unioned thresholds across shard reports
-        run: bun script/coverage-check.ts --aggregate
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 7
 
   all-checks-passed:
     name: All checks passed
-    runs-on: ubuntu-latest
     if: always()
     needs:
-      - runtime-artifacts
-      - oryn-validation
-      - quality
-      - typecheck
-      - windows
-      - test
-      - package-validation
-      - workflow-validation
-      - secret-scan
-      - desktop
-      - smoke
-      - coverage
+      [plan, prepare, benchmark-prepare, contracts, linux, docker-external, docker-ready, docker, postgres, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
-      - name: Verify all required checks passed
-        run: |
-          # GitHub counts a skipped required check as passing, so this job
-          # always runs and fails on any non-success result, including skips.
-          failed=""
-          for result in "${{ needs.oryn-validation.result }}" "${{ needs.runtime-artifacts.result }}" "${{ needs.quality.result }}" "${{ needs.typecheck.result }}" "${{ needs.windows.result }}" "${{ needs.test.result }}" "${{ needs.package-validation.result }}" "${{ needs.workflow-validation.result }}" "${{ needs.secret-scan.result }}" "${{ needs.desktop.result }}" "${{ needs.smoke.result }}" "${{ needs.coverage.result }}"; do
-            if [ "$result" != "success" ]; then
-              failed="$failed $result"
-            fi
-          done
-          if [ -n "$failed" ]; then
-            echo "::error::One or more required checks did not pass:$failed"
-            exit 1
-          fi
-          echo "All required checks passed."
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: ci-results-*-${{ github.run_attempt }}
+          merge-multiple: true
+          path: .artifacts/ci/results
+      - name: Verify completion and current coverage
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: bun script/ci.ts verify
+      - name: Measure queues and compute time
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_CACHE_STATE: ${{ github.event_name == 'schedule' && 'cold' || needs.prepare.outputs.cache_hit == 'true' && 'hit' || 'miss' }}
+        run: bun script/ci/metrics.ts
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-admission-${{ github.run_attempt }}
+          path: .artifacts/ci/admission
+          include-hidden-files: true
+          retention-days: 30
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-summary-${{ github.run_attempt }}
+          path: |
+            .artifacts/ci/summary.json
+            .artifacts/ci/metrics.json
+          include-hidden-files: true
+          retention-days: 30

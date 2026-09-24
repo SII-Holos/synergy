@@ -42,6 +42,8 @@ test("a browser-only isolated suite runs once with browser conditions and separa
     expect(await Bun.file(path.join(root, "server.runs")).text()).toBe("run\n")
     expect(await Bun.file(path.join(root, "coverage/shards/0/lcov.info")).exists()).toBe(true)
     expect(await Bun.file(path.join(root, "coverage/shards/1/lcov.info")).exists()).toBe(true)
+    expect(await Bun.file(path.join(root, "coverage/shards/0/junit.xml")).text()).toContain("<testcase")
+    expect(await Bun.file(path.join(root, "coverage/shards/1/junit.xml")).text()).toContain("<testcase")
   } finally {
     await rm(root, { recursive: true, force: true })
   }

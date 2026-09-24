@@ -75,6 +75,8 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0026 | [A started runtime stranded saved input](0026-started-runtime-stranded-saved-input.md) | implemented | 2026-09-22 |
 
+| 0027 | [Archive 的运行时收尾延迟被计入长会话清理](0027-archive-work-delayed-rollout-cleanup.md) | implemented | 2026-09-24 |
+
 ## History rules
 
 Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.

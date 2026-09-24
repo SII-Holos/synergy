@@ -51,6 +51,9 @@
     "prepare": "husky",
     "test": "echo 'Root test is intentionally disabled. Use bun run quality, bun turbo test, or cd packages/harness && bun test.' && exit 1",
     "plugin-ui:test": "bun script/plugin-ui-test.ts",
+    "ci:plan": "bun script/ci.ts plan",
+    "ci:run": "bun script/ci.ts run",
+    "ci:verify": "bun script/ci.ts verify",
     "bench": "uv run --locked --project benchmark synergy-bench"
   },
   "workspaces": {
