@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test"
 import { ExecutionCapacity } from "../../src/session/execution-capacity"
 import { WorkspaceAccess } from "../../src/workspace/access"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
 test("process admission uses the compiled write footprint separately from binding lifetime", async () => {
@@ -97,6 +99,55 @@ for (const operation of ["write", "metadata", "process", "exclusive", "retire"] 
       })
     })
   }
+}
+
+for (const failure of ["cancel", "resume-error"] as const) {
+  test(`file pin releases admission when capacity resume ${failure}`, async () => {
+    const claims = new Set<string>()
+    await using runtime = await testRuntime({
+      register: () =>
+        WorkspaceAccess.register({
+          async acquire(input) {
+            input.signal?.throwIfAborted()
+            claims.add(input.id)
+            return {
+              id: input.id,
+              async release() {
+                claims.delete(input.id)
+              },
+              async bindProcess() {},
+            }
+          },
+        }),
+    })
+    await runtime.run(async () => {
+      await using files = await tmpdir()
+      await ScopeContext.provide({
+        scope: await files.scope(),
+        fn: async () => {
+          const controller = new AbortController()
+          const result = WorkspaceAccess.task({ signal: controller.signal }, () =>
+            ExecutionCapacity.provide(
+              "tool",
+              {
+                pause() {},
+                async resume() {
+                  expect(claims.size).toBe(1)
+                  if (failure === "cancel") controller.abort(new Error("cancelled while resuming"))
+                  else throw new Error("capacity resume failed")
+                },
+              },
+              () => WorkspaceAccess.pin(controller.signal),
+            ),
+          )
+          await expect(result).rejects.toThrow(
+            failure === "cancel" ? "cancelled while resuming" : "capacity resume failed",
+          )
+          expect(claims.size).toBe(0)
+        },
+      })
+    })
+  })
 }
 
 test("maintenance can finish after its caller's capacity and write observer close", async () => {

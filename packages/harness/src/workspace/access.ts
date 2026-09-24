@@ -442,22 +442,23 @@ export namespace WorkspaceAccess {
     const workspace = ScopeContext.current.workspace
     if (!workspace?.id) throw new Error("A resolved Workspace is required for file resources")
     const active = current()
-    const lease = await ExecutionCapacity.wait(() =>
-      host().acquire({
-        id: randomUUID(),
-        owner: active?.owner ?? JSON.stringify([RuntimeContext.current().host.root, randomUUID()]),
-        ancestors: active?.ancestors ?? [],
-        kind: "use",
-        roots: [workspace.path],
-        signal,
-      }),
-    )
+    let lease: Lease | undefined
     try {
+      await ExecutionCapacity.wait(async () => {
+        lease = await host().acquire({
+          id: randomUUID(),
+          owner: active?.owner ?? JSON.stringify([RuntimeContext.current().host.root, randomUUID()]),
+          ancestors: active?.ancestors ?? [],
+          kind: "use",
+          roots: [workspace.path],
+          signal,
+        })
+      })
       signal?.throwIfAborted()
       await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.generation)
-      return lease
+      return lease!
     } catch (error) {
-      await lease.release()
+      await lease?.release()
       throw error
     }
   }

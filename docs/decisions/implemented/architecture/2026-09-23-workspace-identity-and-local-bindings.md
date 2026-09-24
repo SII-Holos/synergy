@@ -82,6 +82,8 @@ Workspace write reservations belong to whole Session turns, with independent cla
 
 Tool and Cortex capacity is relinquished while waiting for a Workspace. Parallel tools use separate activity branches so one waiting tool cannot release capacity still used by another. Cortex parent handoff drops the turn reservation before child admission or output waiting, while physical operations retain their own claims. This avoids capacity exhaustion caused by tasks that cannot perform work, at the cost of revalidating binding and cancellation after every resume.
 
+Standalone file pins capture their acquired use lease inside the capacity-wait callback, before scheduler resumption. Resumption can fail after native admission succeeded, so the outer cleanup releases that lease even when the wait never returns it. A pin cannot rely on task cleanup because its lifetime belongs to the retained file resource. Regressions cover both cancellation and a thrown resume error after admission.
+
 Coordination tests use real temporary directories and child processes. Session and Cortex integration tests cover same-Workspace write ordering, disjoint work, parent-child handoff, one-slot capacity, parallel tool branches, cancelled waiters and post-admission cancellation. Scheduler tests verify that queued work retains its dispatch context and nested plugin tools relinquish borrowed capacity together.
 
 Write authority follows the selected Workspace and its direct explicit shares, rather than Scope folder membership or Skill installation. Sharing changes metadata revision without changing binding generation. A native use claim pins each shared binding for the turn; rebind and sharing updates exclude active users before committing their catalog change and sequenced event.
