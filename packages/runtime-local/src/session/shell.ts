@@ -185,9 +185,10 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
         `,
                 ],
               },
-              // Windows cmd
+              // cmd strips one outer quote pair; preserve the command's own quotes.
+              // https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd
               cmd: {
-                args: ["/c", input.command],
+                args: ["/d", "/s", "/c", `"${input.command}"`],
               },
               // Windows PowerShell
               powershell: {

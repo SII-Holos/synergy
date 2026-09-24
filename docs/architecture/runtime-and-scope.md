@@ -140,7 +140,7 @@ New sessions default to the Scope local directory, or `null` for Home and other 
 Workspace selection supports:
 
 - `none` — persist `null` and retain the session Scope
-- `current` — use the Scope local directory; reject a Scope with no local binding
+- `current` — retain an existing Workspace reference or an absent nonlocal binding; otherwise use the Scope local directory
 - `workspace` — select a registered Workspace ID with an expected binding generation
 - `existing` — bind to an existing worktree target
 - `create` — create an isolated worktree, optionally from the current or a fresh base
