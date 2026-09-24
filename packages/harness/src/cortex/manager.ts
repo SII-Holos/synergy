@@ -204,7 +204,6 @@ export namespace Cortex {
           owner: input.owner,
           timeoutMs: input.timeoutMs,
         },
-        workspace: (parent as import("../session/types").Info).workspace,
         completionNotice: { silent: input.visibility === "hidden" },
       })
     }

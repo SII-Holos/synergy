@@ -46,7 +46,7 @@ export function DialogWorkspace(props: {
   const [error, setError] = createSignal("")
   const record = createMemo(() => records.data.find((item) => item.id === selected()))
   const available = (item: WorkspaceInfo) =>
-    item.lifecycle === "active" && item.binding.state === "bound" && !!item.binding.path
+    item.lifecycle === "active" && item.binding.state === "bound" && !!item.binding.path && !!item.binding.physicalID
   const filtered = createMemo(() =>
     records.data.filter((item) =>
       `${item.binding.path ?? item.id} ${item.id}`.toLowerCase().includes(search().toLowerCase()),

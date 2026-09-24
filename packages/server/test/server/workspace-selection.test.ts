@@ -6,11 +6,52 @@ import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harne
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Server } from "../../src/server/server"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { testRuntime } from "../support/runtime"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("busy sessions reject Workspace changes with a conflict and preserve their selection", () =>
+  runtime.run(async () => {
+    await using files = await tmpdir()
+    await using target = await tmpdir()
+    const scope = await files.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create()
+        const workspace = await WorkspaceBinding.register(scope.id, target.path)
+        const select = (selection: Session.WorkspaceSelection) =>
+          Server.App().request(`/session/${session.id}/workspace?scopeID=${scope.id}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(selection),
+          })
+        const selection: Session.WorkspaceSelection = {
+          mode: "workspace",
+          workspaceID: workspace.id,
+          workspaceGeneration: workspace.binding.generation,
+        }
+        const lease = SessionManager.acquire(session.id)
+        expect(lease).toBeDefined()
+        try {
+          for (const requested of [selection, { mode: "none" } as const]) {
+            const response = await select(requested)
+            expect(response.status).toBe(409)
+            expect(await response.json()).toMatchObject({ data: { message: `Session ${session.id} is busy` } })
+            expect((await Session.get(session.id)).workspaceID).toBe(session.workspaceID)
+          }
+        } finally {
+          await SessionManager.release(lease!)
+        }
+        const response = await select(selection)
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({ workspaceID: workspace.id })
+      },
+    })
+  }))
 
 test("creating a Home session with current selection preserves its absent Workspace", () =>
   runtime.run(async () => {

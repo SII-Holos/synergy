@@ -20,6 +20,8 @@ Sessions persist a nullable Workspace ID and hydrate public directory descriptor
 
 Selecting current preserves an absent Home Workspace and an unresolved historical reference. Selecting none explicitly clears the reference. Route regressions and the real plugin composer verify that a Home conversation can reach its provider without acquiring local file authority.
 
+Cortex delegates default Workspace inheritance to `Session.create` instead of copying its nullable directory projection. An unresolved parent reference must remain unresolved in the child, even under another ambient Scope; copying a null projection would incorrectly turn it into an explicitly absent Workspace. The HTTP boundary maps Session ownership conflicts to 409, preserving the current selection until its execution lease is released.
+
 Transcript and Rollout exports include the referenced catalog records. Imports retain their historical locations but mark bindings unbound and discard shared-write grants. If the original identity is already bound locally, import creates a separate historical identity so an uploaded transcript cannot authorize file access.
 
 Untrusted Home merges apply the same authority boundary to the full portable record stream. Harness owns Session and file-history reference conversion; Workflows owns Agenda origins; Product Runtime coordinates the catalog mapping and publication. Imported Workspace IDs cannot alias an existing bound record. Missing metadata and legacy directory selections become explicit unbound identities, while raw evidence and unknown owner data remain unchanged. Repeated merges reuse matching imported identities. Original archive checksums remain authoritative even when owner transforms publish new local references.

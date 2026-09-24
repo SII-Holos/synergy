@@ -8,6 +8,7 @@ import { testRuntime } from "../support/runtime"
 import path from "node:path"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 const runtime = await testRuntime()
 
 describe("session shell", () => {
@@ -79,10 +80,24 @@ test(
             model: { providerID: "test", modelID: "test" },
             command: `"${process.execPath}" "${root}"`,
           })
-          void running.catch(() => {})
+          let completed: Awaited<typeof running> | undefined
+          let failed: unknown
+          void running.then(
+            (result) => {
+              completed = result
+            },
+            (error) => {
+              failed = error
+            },
+          )
           try {
             const deadline = Date.now() + 10000
             while (!(await Bun.file(marker).exists())) {
+              if (failed) throw failed
+              if (completed)
+                throw new Error(
+                  `User shell exited before descendant startup (${Shell.preferred()}): ${JSON.stringify(completed.parts.filter((part) => part.type === "tool"))}`,
+                )
               if (Date.now() >= deadline) throw new Error("User shell descendant did not start")
               await Bun.sleep(10)
             }

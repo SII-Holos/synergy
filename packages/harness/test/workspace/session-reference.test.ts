@@ -10,6 +10,51 @@ import { tmpdir } from "../support/fixture"
 import { SessionExport } from "../../src/session/session-export"
 import { SessionImport } from "../../src/session/session-import"
 import { SessionManager } from "../../src/session/manager"
+import { Cortex } from "../../src/cortex"
+
+test.each(["resolved", "unresolved", "none"] as const)(
+  "Cortex children preserve the parent's %s Workspace reference across ambient Scopes",
+  async (binding) => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using files = await tmpdir()
+      await using ambient = await tmpdir()
+      const scope = await files.scope()
+      const parent = await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          if (binding === "none") return Session.create({ workspace: null })
+          if (binding === "resolved") return Session.create()
+          const missing = await WorkspaceCatalog.importMissingReference("wsp_cortex_unresolved", scope.id)
+          return Session.create({ workspaceID: missing.id })
+        },
+      })
+      await ScopeContext.provide({
+        scope: await ambient.scope(),
+        fn: async () => {
+          const task = await Cortex.prepare({
+            description: "Inherit Workspace",
+            prompt: "Inspect inherited context",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_workspace_inheritance",
+            notifyParentOnComplete: false,
+          })
+          try {
+            const child = await Session.get(task.sessionID)
+            expect(child.scope.id).toBe(scope.id)
+            expect(child.workspaceID).toBe(parent.workspaceID)
+            expect(child.workspace).toEqual(parent.workspace)
+            if (binding === "unresolved") await expect(Session.assertWorkspaceAvailable(child.id)).rejects.toThrow()
+            else await Session.assertWorkspaceAvailable(child.id)
+          } finally {
+            await Cortex.cancel(task.id)
+          }
+        },
+      })
+    })
+  },
+)
 
 test("creation, children and forks preserve an unresolved Workspace reference", async () => {
   await using runtime = await testRuntime()

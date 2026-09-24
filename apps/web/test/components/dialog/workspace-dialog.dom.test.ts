@@ -18,8 +18,9 @@ beforeAll(async () => {
   await Bun.write(
     stubs,
     `
-    const record = (id, p, state="bound") => ({id,scopeID:"scope",type:"directory",revision:1,binding:{hostID:"host",path:p,generation:1,state},metadata:{},sharedWritableWorkspaceIDs:[],lifecycle:"active",createdAt:1,updatedAt:1})
-    const rows=[record("wsp_a","/first"),record("wsp_b","/second"),record("wsp_history","/foreign","unbound")]
+    const record = (id, p, state="bound") => ({id,scopeID:"scope",type:"directory",revision:1,binding:{hostID:"host",path:p,generation:1,state,physicalID:state==="bound" ? "physical:"+id : undefined},metadata:{},sharedWritableWorkspaceIDs:[],lifecycle:"active",createdAt:1,updatedAt:1})
+    const rows=[record("wsp_a","/first"),record("wsp_b","/second"),record("wsp_history","/foreign","unbound"),record("wsp_unverified","/unverified")]
+    delete rows[3].binding.physicalID
     const listeners = new Set()
     const requests=[]
     const h=window.fixture={ requests, rows, selected:[], fail:false, pick:"/new", emit(record){listeners.forEach(fn=>fn({properties:record}))} }
@@ -27,7 +28,7 @@ beforeAll(async () => {
       async list(){return {data:structuredClone(rows)}},
       async register(input){requests.push({kind:"register",...input});const next=record("wsp_new",input.path);rows.push(next);return {data:next}},
       async setSharing(input){requests.push({kind:"share",...input});if(h.fail)throw new Error("Workspace changed before sharing");const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.sharedWritableWorkspaceIDs=input.workspaceIDs;return {data:structuredClone(row)}},
-      async rebind(input){requests.push({kind:"rebind",...input});const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.binding={...row.binding,state:"bound",path:input.path,generation:row.binding.generation+1};return {data:structuredClone(row)}}},
+      async rebind(input){requests.push({kind:"rebind",...input});const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.binding={...row.binding,state:"bound",path:input.path,physicalID:"physical:"+row.id,generation:row.binding.generation+1};return {data:structuredClone(row)}}},
       session:{async selectWorkspace(input){requests.push({kind:"select",...input});if(h.fail)throw new Error("Session is busy");return {data:{}}}}},
       event:{on(type,fn){listeners.add(fn);return()=>listeners.delete(fn)}}})
     export const useSync=()=>({data:{path:{workspace:{id:"wsp_a"}}},session:{get:()=>({workspaceID:"wsp_a"})}})
@@ -166,5 +167,24 @@ test("unbound history needs an explicit rebind and Escape returns focus", async 
   await page.keyboard.press("Escape")
   await page.getByRole("dialog").waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.id === "open")
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("a bound directory without a verified identity requires rebind before selection or sharing", async () => {
+  await open()
+  expect(await page.getByRole("checkbox", { name: "/unverified", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: /\/unverified/ }).click()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
+  expect(await page.getByRole("button", { name: "Save sharing", exact: true }).count()).toBe(0)
+  await page.locator("summary").click()
+  await page.getByLabel("New local directory", { exact: true }).fill("/verified")
+  await page.getByRole("button", { name: "Rebind Workspace", exact: true }).click()
+  await page.getByRole("button", { name: "/verified", exact: true }).waitFor()
+  await page.getByRole("button", { name: "Use Workspace", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "select",
+    sessionWorkspaceSelection: { mode: "workspace", workspaceID: "wsp_unverified", workspaceGeneration: 2 },
+  })
   expect(errors).toEqual([])
 }, 20_000)

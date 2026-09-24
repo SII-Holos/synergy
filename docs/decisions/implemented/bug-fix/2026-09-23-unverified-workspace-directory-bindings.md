@@ -10,6 +10,8 @@ A legacy directory can be absent when its Workspace reference is migrated. The c
 
 `WorkspaceBinding.validate` requires a stored physical directory identity before admitting local execution or files. A missing identity reports `WorkspaceUnavailable` and requires explicit rebinding. Historical metadata and Session references remain readable. Re-registering a location preserves the existing record and does not silently add authority. Rebinding verifies the selected directory, captures its identity and advances the binding generation.
 
+The Workspace chooser applies the same verified-identity requirement to selection and sharing. A retained `bound` path without a physical identity remains visible for explicit rebinding; successful rebinding enables selection with the new generation.
+
 ## Alternatives considered
 
 **Adopt the first directory found later.** Availability does not prove continuity with the historical files. This would authorize unrelated bytes under an old Session and generation.

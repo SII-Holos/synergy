@@ -38,6 +38,7 @@ import { MDNS } from "./mdns"
 import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
 import { LoopJob } from "@ericsanchezok/synergy-harness/session/loop-job"
 import { MaintenanceAdmissionRoute } from "./maintenance-admission"
 import { SessionRoute } from "./session"
@@ -500,7 +501,7 @@ export namespace Server {
       .onError((err, c) => {
         const instanceState = runtimeState()
 
-        if (err instanceof WorkspaceAccess.BusyError)
+        if (err instanceof BusyError || err instanceof WorkspaceAccess.BusyError)
           return c.json({ name: err.name, data: { message: err.message } }, 409)
         if (err instanceof Scope.NotFoundError) return c.json(err.toObject(), { status: 404 })
         if (err instanceof SessionPreparingError) {
