@@ -66,3 +66,5 @@ Current prompt assembly and compaction contracts live in [LLM loop and compactio
 ### 编码观察与等待成本
 
 [Local-24 最终修复研究](context-efficiency/2026-09-23-local24-glm-fault-repair-study.md) 保存完整配对结果与受干扰项的来源；[CompCert 与 Mailman 等待提示实验](context-efficiency/2026-09-24-process-waiting-study.md) 单独记录后续两项的原生测试、逐请求用量、等待行为、资源条件和完整最终数据。
+
+[等待提示后续诊断](context-efficiency/2026-09-24-process-waiting-followup.md) 区分子进程交互等待、命令失败、工具目录和缓存成本，并说明定向验证与完整 24 题覆盖分别回答的问题。
