@@ -25,3 +25,5 @@ This refines the [conditional wait guidance](2026-09-24-process-waiting-guidance
 ## Consequences
 
 Execution mechanics remain unchanged; free lifecycle and remote timeout tests establish that the choices are usable, not that a model chooses correctly. Formal task evidence must distinguish productive waiting, hidden input, command recovery and independent work, retaining actual tests, usage and resource conditions. README concepts and public APIs remain unchanged; generated tool documentation follows the authoritative descriptions.
+
+The [completed two-task study](../../../research/context-efficiency/2026-09-24-general-guidance-study.md) retains passing native tests while observing supported noninteractive installation and useful work during a background operation. It also retains diagnostic commands that mask primary failures. Prompt guidance improves available choices without enforcing them; joint catalog changes, single samples and historical resource differences prevent attributing the complete token or time reduction to this decision.

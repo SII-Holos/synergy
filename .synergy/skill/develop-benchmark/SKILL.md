@@ -104,6 +104,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 3. Measure prompt regions and repeated tool results in bytes unless the actual provider supplies token attribution. Exact content repetition or unchanged history does not prove removable work or a provider cache hit. Keep request-body duplicate association explicitly weaker than a unique match.
 4. Use interval unions for parallel model/tool time. Do not add nested spans, streaming checkpoints, or repeated telemetry gauges as independent work. Native token metrics may use different cache inclusion rules from wire usage.
 5. Separate observed quota debits from estimates under dated public plan coefficients. Do not infer the user's plan generation from the API endpoint or equate a subscription unit with one model call. Read failing native test details before attributing unsuccessful tasks to runtime overhead.
+6. For waiting-prompt studies, verify useful independent work through overlapping command intervals, inspect compound-command output as well as final exit status, and distinguish semantic retries from exact-string repeats. Silence or a repeated warning alone does not establish a stall. Report cached and uncached input separately: fewer total tokens can coexist with nearly unchanged uncached input. Keep joint prompt changes and single samples distinct from causal attribution, as in the [general-guidance study](../../../docs/research/context-efficiency/2026-09-24-general-guidance-study.md).
 
 ## Runtime cache boundaries
 
