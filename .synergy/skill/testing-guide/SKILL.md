@@ -186,3 +186,5 @@ When integrating new tests after Runtime ownership changes, adapt every newly in
 For large in-memory stream/archive loops, measure the first subsequent I/O as well as the loop itself. Bound work between event-loop turns; deferred runtime cleanup can otherwise be misattributed to storage or fixture removal. Keep byte-integrity and responsiveness regressions alongside the owning archive tests.
 
 Build reuse must cover the transitive workspace inputs and outputs of the recipe, including build-time dependencies. Compile the committed SDK with `--compile-only` during CI preparation; regenerating source while preparing a cache breaks its input identity. Keep native tests that require prepared outputs out of the pure contract task inventory.
+
+Compute cross-run cache keys on the producer with its actual compiler and runner image. Validate cross-job reuse against source and runtime ABI compatibility; hosted image rollouts can assign different image versions within one workflow. Exercise that transfer while retaining byte, mode and inventory rejection tests.

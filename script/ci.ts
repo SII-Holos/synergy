@@ -3,7 +3,7 @@ import { parseArgs } from "node:util"
 import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { execFileSync } from "node:child_process"
 import path from "node:path"
-import { buildCommands, buildIdentity, filesIn, publishBuild, restoreBuild } from "./ci/artifacts"
+import { buildCacheIdentity, buildCommands, filesIn, publishBuild, restoreBuild } from "./ci/artifacts"
 import { catalog, changedFiles, OUTPUT, ROOT, workspaceInputs } from "./ci/catalog"
 import { verifyCoverage } from "./ci/coverage"
 import { verifyResults, type TaskResult } from "./ci/evidence"
@@ -11,11 +11,12 @@ import { createPlan, executionQueue, needsBuild, QUEUES, validatePlan, type Mode
 import { executeUnit } from "./ci/run"
 import { policyIdentity, rolloutErrors, shadowEvidence, type ShadowEvidence } from "./ci/rollout"
 
-const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|history|rollout-check> [options]
+const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|build-key|history|rollout-check> [options]
 plan --base SHA --head SHA --sha SHA --mode full|shadow|affected|diagnostic --only task[,task] --package workspace --file package/test/file.test.ts
 run --plan FILE --unit ID
 verify --plan FILE --results DIRECTORY --jobs JSON
 prepare / restore: produce or validate the input-addressed Linux build bundle.
+build-key: resolve the cache identity on the runner that will build the bundle.
 history: download full-run admission evidence from this repository's successful CI runs.
 rollout-check --history DIRECTORY: require 20 matching full-run samples before affected admission.
 Diagnostic plans never satisfy All checks passed. CI defaults to shadow mode.`
@@ -254,7 +255,6 @@ async function main() {
       build: String(requiresBuild(plan)),
       sandbox: sandbox ? "1" : "0",
       benchmark: String(plan.selected.includes("benchmark-prepare")),
-      build_key: await buildIdentity(),
     }
     const selectedTasks = plan.tasks.filter((task) => plan.selected.includes(task.id))
     for (const pool of QUEUES) {
@@ -297,6 +297,12 @@ async function main() {
         units: plan.units.length,
       }),
     )
+    return
+  }
+  if (operation === "build-key") {
+    const key = await buildCacheIdentity()
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `key=${key}\n`)
+    console.log(key)
     return
   }
   if (operation === "prepare") {

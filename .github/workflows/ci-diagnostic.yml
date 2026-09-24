@@ -34,7 +34,6 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       sandbox: ${{ steps.plan.outputs.sandbox }}
       benchmark: ${{ steps.plan.outputs.benchmark }}
-      build_key: ${{ steps.plan.outputs.build_key }}
       linux: ${{ steps.plan.outputs.linux }}
       linux_count: ${{ steps.plan.outputs.linux_count }}
       docker: ${{ steps.plan.outputs.docker }}
@@ -85,12 +84,15 @@ jobs:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: ./.github/actions/ci-setup
+      - name: Resolve build toolchain identity
+        id: build-key
+        run: bun script/ci.ts build-key
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: cache
         if: github.event_name != 'schedule'
         with:
           path: .artifacts/ci/build
-          key: ci-build-${{ needs.plan.outputs.build_key }}
+          key: ci-build-${{ steps.build-key.outputs.key }}
       - name: Build or validate cached outputs
         env:
           CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}

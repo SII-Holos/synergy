@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { execFileSync } from "node:child_process"
 import { cp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { ROOT, OUTPUT } from "./catalog"
@@ -82,8 +83,12 @@ function buildPaths(root: string) {
 }
 
 export async function buildIdentity(root = ROOT): Promise<string> {
+  const abi =
+    process.platform === "linux"
+      ? execFileSync("getconf", ["GNU_LIBC_VERSION"], { encoding: "utf8" }).trim()
+      : process.platform
   const hash = createHash("sha256").update(
-    `ci-build-v3:${process.platform}:${process.arch}:${Bun.version}:glibc:node22.14.0-bullseye:${process.env.ImageVersion ?? "local"}:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}`,
+    `ci-build-v4:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}`,
   )
   const files = [...BUILD_INPUTS]
   for (const entry of buildWorkspaces(root)) {
@@ -111,6 +116,20 @@ export async function buildIdentity(root = ROOT): Promise<string> {
       .update(await readFile(source))
   }
   return hash.digest("hex")
+}
+
+export async function buildCacheIdentity(root = ROOT): Promise<string> {
+  const toolchain = [process.env.ImageVersion ?? "local"]
+  if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1")
+    for (const [command, args] of [
+      ["rustc", ["-vV"]],
+      ["cc", ["--version"]],
+    ] as const)
+      toolchain.push(execFileSync(command, [...args], { encoding: "utf8" }).trim())
+  return createHash("sha256")
+    .update(await buildIdentity(root))
+    .update(JSON.stringify(toolchain))
+    .digest("hex")
 }
 
 export async function publishBuild(root = ROOT) {

@@ -2,7 +2,14 @@ import { expect, test } from "bun:test"
 import { chmod, mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { BUILD_INPUTS, buildCommands, buildIdentity, publishBuild, restoreBuild } from "../../script/ci/artifacts"
+import {
+  BUILD_INPUTS,
+  buildCacheIdentity,
+  buildCommands,
+  buildIdentity,
+  publishBuild,
+  restoreBuild,
+} from "../../script/ci/artifacts"
 
 async function inputs(root: string) {
   for (const file of BUILD_INPUTS) await Bun.write(path.join(root, file), "fixture inputs")
@@ -26,6 +33,7 @@ async function inputs(root: string) {
   )
   await Bun.write(path.join(root, "packages/shared/src/index.ts"), "export const value = 1")
   await Bun.write(path.join(root, "packages/shared/dist/index.js"), "verified dependency")
+  await Bun.write(path.join(root, "packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
 }
 
 test("build identity follows newly added transitive workspace inputs", async () => {
@@ -48,6 +56,27 @@ test("shared preparation compiles the committed SDK without regenerating its inp
   const recipes = buildCommands()
   expect(recipes.find((command) => command.cwd.endsWith("packages/sdk/js"))!.args).toContain("--compile-only")
   expect(recipes.at(-1)!.cwd).toEndWith("packages/plugin")
+})
+
+test("build outputs transfer between compatible runners during an image rollout", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-images-"))
+  const previous = process.env.ImageVersion
+  try {
+    await inputs(root)
+    await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
+    await Bun.write(path.join(root, "packages/runtime-local/.artifacts/watcher/watcher"), "verified watcher")
+    process.env.ImageVersion = "20260907.300.1"
+    const key = await buildCacheIdentity(root)
+    await publishBuild(root)
+    process.env.ImageVersion = "20260920.314.1"
+    expect(await buildCacheIdentity(root)).not.toBe(key)
+    await restoreBuild(root)
+    expect(await Bun.file(path.join(root, "packages/plugin/dist/index.js")).text()).toBe("verified plugin")
+  } finally {
+    if (previous === undefined) delete process.env.ImageVersion
+    else process.env.ImageVersion = previous
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test("build reuse validates inputs, bytes, modes and complete inventory before replacing outputs", async () => {
