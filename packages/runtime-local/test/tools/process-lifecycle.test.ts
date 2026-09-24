@@ -6,6 +6,54 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { LocalProcessBackend } from "../../src/tools/process/local"
 
+test("blocking local polls preserve a running command and return when it exits", async () => {
+  await using directory = await tmpdir()
+  await ScopeContext.provide({
+    scope: await directory.scope(),
+    async fn() {
+      const child = spawn(
+        process.execPath,
+        ["-e", 'process.stdin.once("data", () => { console.log("done"); process.exit(0) }); console.log("ready")'],
+        { cwd: directory.path, stdio: "pipe" },
+      )
+      const ready = once(child.stdout, "data")
+      const closed = once(child, "close")
+      const processInfo = ProcessRegistry.create({ command: "wait for input", child })
+      child.stdout.on("data", (data: Buffer) => ProcessRegistry.appendOutput(processInfo, data.toString()))
+      child.on("close", (code, signal) => ProcessRegistry.markExited(processInfo, code, signal))
+      ProcessRegistry.markBackgrounded(processInfo)
+      try {
+        await ready
+        const pending = await LocalProcessBackend.execute({
+          action: "poll",
+          processId: processInfo.id,
+          block: true,
+          timeoutSeconds: 0.01,
+        })
+        expect(pending.metadata.status).toBe("running")
+        expect(ProcessRegistry.get(processInfo.id)?.pid).toBe(child.pid)
+        expect(child.exitCode).toBeNull()
+
+        const waiting = LocalProcessBackend.execute({
+          action: "poll",
+          processId: processInfo.id,
+          block: true,
+          timeoutSeconds: 300,
+        })
+        child.stdin.end("finish\n")
+        const result = await waiting
+        expect(result.metadata).toMatchObject({ status: "completed", exitCode: 0 })
+        expect(result.output).toContain("done")
+        await closed
+      } finally {
+        child.kill("SIGKILL")
+        await closed
+        ProcessRegistry.remove(processInfo.id)
+      }
+    },
+  })
+}, 15_000)
+
 test("local process operations require background ownership and preserve output through termination", async () => {
   await using directory = await tmpdir()
   await ScopeContext.provide({

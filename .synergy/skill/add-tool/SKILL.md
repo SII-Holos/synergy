@@ -55,6 +55,7 @@ The tool icon registry is separate from the product semantic-token registry. Loa
 2. Keep parameter names consistent across tools: use the same term for the same concept everywhere (for example, always `customer_id`, never `id` in one tool and `identifier` in another).
 3. Make error outputs actionable for agent recovery: state what went wrong, which input was invalid, and how to correct it (expected format plus an example). A generic "failed" message is not acceptable.
 4. Check the new tool against the consolidation principle: if a human cannot definitively say which tool to use for a given situation, the agent cannot either. Merge narrow overlapping tools unless independent invocation is required, and do not over-consolidate past roughly 8-10 parameters.
+5. Separate parameter defaults from recommended behavior. Background-command guidance must distinguish independent work, blocking completion waits, service readiness and delayed Agenda follow-up. Keep tool examples and primary-agent instructions consistent; a wait window ending does not authorize a restart. Verify existing execution with free process fixtures and measure model behavior in retained task trajectories, not prose-matching tests. See the [waiting guidance decision](../../../docs/decisions/implemented/bug-fix/2026-09-24-process-waiting-guidance.md).
 
 ## Verify
 

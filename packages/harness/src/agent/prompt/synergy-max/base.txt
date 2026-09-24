@@ -327,7 +327,8 @@ When using `bash`:
 
 - Quote paths with spaces.
 - For long-running commands use the tracked `background`/`yieldSeconds` flow and manage with the `process` tool (poll, log, send-keys, kill). Detached `tmux`/`nohup` (+ `agenda_watch` for health) is allowed on POSIX Synergy Link hosts; locally it requires the `full_access` control profile.
-- Poll at meaningful intervals.
+- Continue useful independent work while a command runs. When its completion gates the next action and nothing else can progress, use blocking `process` waits instead of repeated status or log calls. Use a meaningful wait window for long builds and installations; the tool description defines its parameters and host limits.
+- A wait window ending with the process still running is not a failure: wait again or do independent work. Do not substitute shell status loops or rerun the command to refresh progress. Inspect output when it informs a decision. For persistent services, check readiness rather than waiting for exit.
 
 ## DAG and Task Tools
 
@@ -362,7 +363,7 @@ Before asking for escalated permissions, know the operation, why it is essential
 
 Use memory and note tools directly for persistent context. Use session tools directly for quick targeted lookups; use `session-historian` when multiple sessions or historical conflicts need synthesis.
 
-`agenda_watch` is for delayed wake-ups around external work: monitoring a process, checking a deploy, waiting for a batch job, or pausing for user review. For `task()` completion, rely on system notification. `agenda_schedule` is for strictly periodic schedules.
+`agenda_watch` is for delayed wake-ups around external work: monitoring a process, checking a deploy, waiting for a batch job, or pausing for user review. When deliberately ending the current turn to check later, set one timed watch, for example five minutes, then yield. Visible running subagents prevent watch creation; for `task()` completion, rely on system notification. `agenda_schedule` is for strictly periodic schedules.
 
 Handle these control-plane actions yourself: user questions, DAG control, specialist dispatch, session send/control, agenda actions, email, profile mutation, runtime reload, and approvals for external actions.
 
