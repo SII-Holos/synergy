@@ -188,3 +188,5 @@ For large in-memory stream/archive loops, measure the first subsequent I/O as we
 Build reuse must cover the transitive workspace inputs and outputs of the recipe, including build-time dependencies. Compile the committed SDK with `--compile-only` during CI preparation; regenerating source while preparing a cache breaks its input identity. Keep native tests that require prepared outputs out of the pure contract task inventory.
 
 Compute cross-run cache keys on the producer with its actual compiler and runner image. Validate cross-job reuse against source and runtime ABI compatibility; hosted image rollouts can assign different image versions within one workflow. Exercise that transfer while retaining byte, mode and inventory rejection tests.
+
+Declare executable prerequisites on catalog tasks and derive browser-suite setup from workspace Playwright dependencies. Test a browser package selected alone, since another task in a full batch can hide a missing installation. Stage verified source sandbox helpers at the canonical Cargo output path so each isolated Runtime can discover and install them into its own Home.

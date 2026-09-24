@@ -1,9 +1,9 @@
-import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
 import { loadManifest } from "../coverage-check"
 import { collectTests } from "../../packages/testing/script/batches"
 import { type Task, type WorkspaceInput } from "./plan"
+import { workspaces } from "../workspace-manifest"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
 export const OUTPUT = ".artifacts/ci"
@@ -99,16 +99,14 @@ export function changedFiles(root: string, base: string, head: string): string[]
 
 export async function catalog(root = ROOT): Promise<Task[]> {
   const manifest = await loadManifest(root)
-  const workspaceManifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8")) as {
-    workspaces: { packages: string[] }
-  }
+  const packages = workspaces(root)
   const coverage = new Set(Object.keys(manifest.packages))
-  for (const directory of workspaceManifest.workspaces.packages) {
+  for (const { directory } of packages) {
     if (directory === "benchmark") continue
     if (!coverage.has(directory)) throw new Error(`Workspace has no CI coverage owner: ${directory}`)
   }
   for (const directory of coverage)
-    if (!workspaceManifest.workspaces.packages.includes(directory))
+    if (!packages.some((entry) => entry.directory === directory))
       throw new Error(`Unknown coverage workspace: ${directory}`)
   const task = (
     id: string,
@@ -125,17 +123,18 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     task("packages", "packages", 45, [...coverage]),
     task("installed-runtime", "artifacts", 400, ["packages/cli", "packages/product-runtime"], {
       files: ["test/script/watcher-native.test.ts"],
+      prerequisites: ["sandbox"],
     }),
-    task("web-integration", "web", 170, [
-      "apps/web",
-      "packages/ui",
-      "packages/plugin",
-      "packages/plugin-kit",
-      "packages/sdk/js",
-    ]),
-    task("desktop", "desktop", 180, ["apps/desktop"]),
+    task(
+      "web-integration",
+      "web",
+      170,
+      ["apps/web", "packages/ui", "packages/plugin", "packages/plugin-kit", "packages/sdk/js"],
+      { prerequisites: ["browser"] },
+    ),
+    task("desktop", "desktop", 180, ["apps/desktop"], { prerequisites: ["desktop"] }),
     task("smoke", "smoke", 40, ["packages/product-runtime", "packages/server"]),
-    task("sandbox", "sandbox", 100, ["packages/runtime-local"]),
+    task("sandbox", "sandbox", 100, ["packages/runtime-local"], { prerequisites: ["sandbox"] }),
     task("windows", "windows", 450, ["apps/desktop", "packages/harness", "packages/runtime-local", "packages/util"], {
       pool: "windows",
     }),
@@ -192,6 +191,9 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     "packages/library": 130,
   }
   for (const directory of [...coverage].sort()) {
+    const workspace = packages.find((entry) => entry.directory === directory)!
+    const dependencies = { ...workspace.dependencies, ...workspace.devDependencies }
+    const browser = ["playwright", "playwright-core", "@playwright/test"].some((name) => name in dependencies)
     const files = (await collectTests("test", path.join(root, directory))).sort()
     if (!files.length) throw new Error(`Workspace has no discovered tests: ${directory}`)
     const name = directory.replaceAll("/", "-")
@@ -203,7 +205,13 @@ export async function catalog(root = ROOT): Promise<Task[]> {
           "suite",
           directory === "packages/harness" ? 200 : (weights[directory] ?? 45),
           [directory],
-          { package: directory, partition, files, assets: ["watcher", "plugin"] },
+          {
+            package: directory,
+            partition,
+            files,
+            assets: ["watcher", "plugin"],
+            prerequisites: browser ? ["browser"] : [],
+          },
         ),
       )
   }

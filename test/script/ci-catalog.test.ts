@@ -3,8 +3,8 @@ import { execFileSync } from "node:child_process"
 import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { changedFiles, workspaceInputs } from "../../script/ci/catalog"
-import { createPlan, selectAffected, type Task } from "../../script/ci/plan"
+import { catalog, changedFiles, workspaceInputs } from "../../script/ci/catalog"
+import { buildUnits, createPlan, selectAffected, type Task } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 
 const tasks: Task[] = ["synergy", "codex", "opencode", "pi", "deepseek"].map((variant) => ({
@@ -34,6 +34,15 @@ test("single observer selects its harness while shared protocols select all five
   expect(plan(["benchmark/runtime/capture-pi.mjs"]).selected).toEqual(["native-pi"])
   expect(plan(["benchmark/runtime/capture-plugin.mjs"]).selected).toEqual(["native-opencode"])
   expect(plan(["benchmark/runtime/capture.mjs"]).selected).toHaveLength(5)
+})
+
+test("independent browser suite selection retains its executable prerequisites", async () => {
+  const entries = await catalog()
+  for (const directory of ["apps/web", "packages/ui", "packages/browser-runtime", "packages/product-runtime"]) {
+    const suite = entries.find((entry) => entry.kind === "suite" && entry.package === directory)!
+    expect(suite).toBeDefined()
+    expect(buildUnits([suite], "diagnostic")[0]!.browser).toBe(true)
+  }
 })
 
 test("affected type checks follow selected suites without expanding through shared check owners", async () => {

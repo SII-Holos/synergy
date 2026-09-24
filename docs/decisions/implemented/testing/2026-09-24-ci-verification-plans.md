@@ -14,6 +14,8 @@ Status: implemented
 
 构建缓存键在实际构建 runner 上计算，包含镜像及 Rust/C 工具链身份。跨 job 恢复另以源码、Bun、OS/架构和 libc ABI 校验兼容性；托管镜像滚动更新可能让同一工作流使用不同镜像版本，不能把消费端镜像版本等同于构建输入。完整字节和权限核验保持不变。
 
+任务目录声明浏览器、Desktop 和 sandbox 前置环境；包级浏览器需求从其 Playwright 依赖自动发现，调度器只合并这些声明。已验证的 sandbox helper 暂存到既有 Cargo 产物发现路径，再由源码 Runtime 安装到各自独立 Home，避免依赖 runner 默认 Home 的隐式共享状态。
+
 影响分析以 shadow 模式交付，20 个覆盖主要变更类型的完整样本和零漏选失败是 affected 的程序化准入条件。主线始终全量，诊断执行不能提供合并绿灯。性能目标与测量口径见 [CI 验证](../../../operations/ci.md)，本决策不表示托管性能验收已完成。
 
 Benchmark 采用单次操作内的完整字节 inventory 派生多种摘要；每次外部 prepare/resume 重新读取内容，保留原摘要格式与 evaluator 冻结约束。会话树删除先保留 record tombstone、revision 和 artifact GC，再通过 materialized recursive CTE 一次删除已清空的派生节点，只沿祖先链检查共享节点。持久化格式不变，单记录/批次删除保持原来的精确清理方式。

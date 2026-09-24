@@ -41,6 +41,7 @@ export interface Task {
   variant?: string
   files?: string[]
   assets?: string[]
+  prerequisites?: Array<"browser" | "desktop" | "sandbox">
   diagnosticFiles?: string[]
   outputs?: Array<"junit" | "lcov" | "timing">
   isolation?: "batch-home" | "task-home" | "container" | "database"
@@ -213,9 +214,9 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
       const target = bins.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
       target.tasks.push(task.id)
       target.seconds += task.seconds
-      target.browser ||= task.kind === "web" || ["apps/web", "packages/ui"].includes(task.package ?? "")
-      target.desktop ||= task.kind === "desktop"
-      target.sandbox ||= task.kind === "sandbox" || task.kind === "artifacts"
+      target.browser ||= task.prerequisites?.includes("browser") ?? false
+      target.desktop ||= task.prerequisites?.includes("desktop") ?? false
+      target.sandbox ||= task.prerequisites?.includes("sandbox") ?? false
       target.build ||= needsBuild(task)
       target.policy ||= task.kind === "policy"
     }
