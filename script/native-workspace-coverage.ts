@@ -56,6 +56,8 @@ try {
       "--timeout",
       "30000",
       "--coverage",
+      "--reporter=junit",
+      `--reporter-outfile=${path.join(output, "junit.xml")}`,
       "--coverage-reporter=lcov",
       `--coverage-dir=${output}`,
       ...suites,

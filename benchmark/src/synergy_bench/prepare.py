@@ -14,8 +14,10 @@ from typing import Any
 
 from .catalog import tree_digest
 from .config import Resources, Source
-from .source import entry, freeze_source, safe_path, verify_source
+from .inventory import Inventory
+from .source import EXCLUDED, freeze_source, safe_path
 from .storage import atomic_json, digest, read_json
+from .timing import measured
 
 BENCHMARK = Path(__file__).resolve().parents[2]
 
@@ -108,6 +110,7 @@ def retry_command(args: list[str], log: Path, *, timeout: float = 1800, backoff:
     raise RuntimeError("Preparation retry budget exhausted")
 
 
+@measured("cleanup")
 def remove_owned_container(file: Path) -> None:
     if not file.exists():
         return
@@ -121,6 +124,7 @@ def remove_owned_container(file: Path) -> None:
         command(["docker", "rm", "-f", container], timeout=30)
 
 
+@measured("verify")
 def verify_prepared(path: Path) -> dict[str, Any]:
     if (path / "cache.json").exists():
         from .cache import verify_object
@@ -131,25 +135,29 @@ def verify_prepared(path: Path) -> dict[str, Any]:
     receipt = read_json(path / "receipt.json")
     if receipt["id"] != digest(receipt["identity"]):
         raise ValueError("Prepared artifact identity changed")
-    verify_source(path / "bundle" / "source", receipt["source"])
-    if tree_digest(path / "bundle" / "runtime") != receipt["runtime_digest"]:
+    inventory = Inventory(path / "bundle")
+    verify_inventory_source(inventory, receipt["source"])
+    if inventory.tree_digest("runtime", excluded={"node_modules", "__pycache__", ".git"}) != receipt["runtime_digest"]:
         raise ValueError("Prepared runtime changed")
-    if tree_digest(path / "bundle" / "bin") != receipt["binary_digest"]:
+    if inventory.tree_digest("bin", excluded={"node_modules", "__pycache__", ".git"}) != receipt["binary_digest"]:
         raise ValueError("Prepared executable changed")
-    if bundle_digest(path / "bundle") != receipt["bundle_digest"]:
+    if inventory.tree_digest() != receipt["bundle_digest"]:
         raise ValueError("Prepared bundle or installed dependencies changed")
     return receipt
 
 
+def verify_inventory_source(inventory: Inventory, receipt: dict[str, Any]) -> None:
+    if digest(receipt["files"]) != receipt["digest"]:
+        raise ValueError("Source manifest changed")
+    if inventory.entries("source", excluded=EXCLUDED) != receipt["files"]:
+        raise ValueError("Source content or inventory changed")
+
+
 def bundle_digest(root: Path) -> str:
-    files = []
-    for directory, dirs, names in os.walk(root):
-        for name in names + [name for name in dirs if (Path(directory) / name).is_symlink()]:
-            files.append(entry(root, (Path(directory) / name).relative_to(root).as_posix()))
-    files.sort(key=lambda item: item["path"] if item else "")
-    return digest(files)
+    return Inventory(root).tree_digest()
 
 
+@measured("prepare")
 def prepare_source(
     source: Source,
     base: Path,
@@ -285,7 +293,9 @@ def prepare_source(
                 finally:
                     remove_owned_container(container_file)
                     container_file.unlink(missing_ok=True)
-                runtime_digest = tree_digest(stage / "bundle" / "runtime")
+                inventory = Inventory(stage / "bundle")
+                verify_inventory_source(inventory, receipt)
+                runtime_digest = inventory.tree_digest("runtime", excluded={"node_modules", "__pycache__", ".git"})
                 result = {
                     "version": 1,
                     "id": artifact_id,
@@ -295,16 +305,15 @@ def prepare_source(
                     "image": image,
                     "image_id": command(["docker", "image", "inspect", image, "--format", "{{.Id}}"]),
                     "runtime_digest": runtime_digest,
-                    "binary_digest": tree_digest(stage / "bundle" / "bin"),
-                    "bundle_digest": bundle_digest(stage / "bundle"),
+                    "binary_digest": inventory.tree_digest("bin", excluded={"node_modules", "__pycache__", ".git"}),
+                    "bundle_digest": inventory.tree_digest(),
                 }
                 atomic_json(stage / "receipt.json", result)
                 shutil.copyfile(log, stage / "prepare.log")
-                verify_source(stage / "bundle" / "source", receipt)
                 shutil.rmtree(stage / "source")
                 shutil.rmtree(stage / "runtime")
                 target.parent.mkdir(parents=True, exist_ok=True)
-                register_directory(cache, target, identity=identity, contents=stage)
+                register_directory(cache, target, identity=identity, contents=stage, prepared_inventory=inventory)
                 stage.rename(target)
                 parent = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
                 try:
@@ -314,6 +323,7 @@ def prepare_source(
                 return target
 
 
+@measured("preflight")
 def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform: str, logs: Path) -> dict[str, Any]:
     args = [
         "docker",

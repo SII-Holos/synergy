@@ -1,7 +1,6 @@
-import fs from "node:fs/promises"
 import path from "node:path"
-import { createIsolatedTestEnv } from "../src/env"
-import { batchInvocation, batchShardCount, collectTests, shardMainFiles, splitBatchFiles } from "./coverage-run"
+import { runTests } from "./run"
+import { batchInvocation, batchShardCount, collectTests, shardMainFiles, splitBatchFiles } from "./batches"
 
 export interface ShardPlan {
   batches: Array<{ files: string[]; shard: number }>
@@ -66,17 +65,4 @@ export async function runBunTest(args: string[], env: Record<string, string | un
   return child.exited
 }
 
-async function main() {
-  const reporterDirectory = process.env["SYNERGY_TEST_JUNIT_DIR"]
-  if (reporterDirectory) await fs.mkdir(path.resolve(process.cwd(), reporterDirectory), { recursive: true })
-  const isolated = await createIsolatedTestEnv()
-  try {
-    const files = (await collectTests("test")).toSorted()
-    const plan = planShards(files, isolated.env)
-    return await runSequentialShards(plan, (args) => runBunTest(args, isolated.env), reporterDirectory)
-  } finally {
-    await isolated.dispose()
-  }
-}
-
-if (import.meta.main) process.exit(await main())
+if (import.meta.main) process.exitCode = await runTests({ coverage: false })

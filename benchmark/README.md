@@ -185,7 +185,7 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py
 ```
 
-普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。依赖任务到期收尾的故障注入夹具显式选择 `timeout_seconds: native` 或独立短期限，不继承研究默认值。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
+普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。依赖任务到期收尾的故障注入夹具显式选择 `timeout_seconds: native` 或独立短期限，不继承研究默认值。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，保留独立的测试和清理期限，不改变正式原题时限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
 
 原生 Pi 压缩测试通过多次真实工具输出构造足够历史，并提供明确的确定性 usage 触发其原生阈值；要求会话记录包含 compaction、工具任务通过，且主调用与压缩调用均逐条核对。精确 token 差值要求全部请求关联覆盖和总量核对都完整，不能只靠累计用量相等。
 
@@ -223,3 +223,5 @@ CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence
 轨迹分析的输出目录必须与输入证据树互不包含，不能选输入目录、其子目录或祖先目录。缺失响应或未识别的非 SSE 响应标记为 `stream_framing: unknown`，正文与工具流指标保持未知；`stream_invalid_lines` 单独计数解析失败，原始响应字节仍来自 wire 记录。
 
 缺失终态证据或 native attempt 对应的 wire 记录时，用途分组与总体摘要的 `total_tokens` 都保持未知，已观察到的 token 下界仍保留；用途未知的缺口不能据此断言其他用途已完整。
+
+CI 的任务选择与诊断入口见 [CI 验证](../docs/operations/ci.md)。正常生命周期和故障恢复分别执行，共享只读准备产物，写入环境各自隔离。`SYNERGY_BENCH_TIMINGS=/隔离目录/timing.jsonl` 记录 prepare、verify、preflight、publish、cleanup 的耗时；`stages.json`、`export.json` 与 JUnit 分别保留场景执行、导出和用例耗时。完整性验证每次读取全部记录字节，在单次操作内复用同一 inventory 派生摘要。修改 evaluator 后必须冻结新实验，不能用新 evaluator 继续历史运行。

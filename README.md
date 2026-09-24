@@ -188,7 +188,7 @@ Core runtime tests run from `packages/harness`:
 ```bash
 cd packages/harness
 bun test
-bun run test:ci # CI-equivalent sequential shards
+bun run test:ci # Isolated batches; CI adds coverage in the same execution
 ```
 
 Frontend package suites run through their standard scripts and are included in `bun run quality`:
@@ -205,6 +205,8 @@ bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts
 bun run --cwd apps/web build
 bun apps/web/script/private-http-smoke.ts
 ```
+
+CI planning, bounded execution and diagnostics are documented in [CI verification](docs/operations/ci.md).
 
 Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
 

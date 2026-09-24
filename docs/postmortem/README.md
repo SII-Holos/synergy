@@ -32,7 +32,7 @@ Each postmortem is a file named `NNNN-kebab-case-title.md`, numbered sequentiall
 
 ## Index
 
-Entries are added only when an incident qualifies; the table stays empty until then.
+Add entries only for qualifying incidents.
 
 | Number | Title                                                                      | Status      | Date       |
 | ------ | -------------------------------------------------------------------------- | ----------- | ---------- |
@@ -75,13 +75,15 @@ Entries are added only when an incident qualifies; the table stays empty until t
 
 | 0026 | [A started runtime stranded saved input](0026-started-runtime-stranded-saved-input.md) | implemented | 2026-09-22 |
 
-| 0027 | [Concurrent Worktree retirement deadlock](0027-concurrent-worktree-retirement-deadlock.md) | implemented | 2026-09-23 |
+| 0027 | [Archive 的运行时收尾延迟被计入长会话清理](0027-archive-work-delayed-rollout-cleanup.md) | implemented | 2026-09-24 |
 
 | 0028 | [Unverified Workspace directory access](0028-unverified-workspace-directory-access.md) | implemented | 2026-09-23 |
 
 | 0029 | [Recreated GitHub checkout generation](0029-recreated-github-checkout-generation.md) | implemented | 2026-09-23 |
 
 | 0030 | [Review opaque resource keys](0030-review-opaque-resource-keys.md) | implemented | 2026-09-24 |
+
+| 0031 | [Concurrent Worktree retirement deadlock](0031-concurrent-worktree-retirement-deadlock.md) | implemented | 2026-09-23 |
 
 ## History rules
 

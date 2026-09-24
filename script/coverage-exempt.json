@@ -1199,7 +1199,7 @@
       ]
     },
     "packages/browser": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1491,7 +1491,7 @@
       ]
     },
     "packages/plugin": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1543,7 +1543,7 @@
       ]
     },
     "packages/plugin-kit": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1613,7 +1613,7 @@
       ]
     },
     "packages/sdk/js": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1677,7 +1677,7 @@
       ]
     },
     "packages/synergy-link": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1691,7 +1691,7 @@
       ]
     },
     "packages/synergy-link-protocol": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -2059,7 +2059,7 @@
       ]
     },
     "packages/util": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -2125,7 +2125,7 @@
       ]
     },
     "packages/secret-detection": {
-      "command": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage test/",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 85,

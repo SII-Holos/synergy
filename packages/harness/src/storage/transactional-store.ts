@@ -697,14 +697,28 @@ export class StoreTransaction {
         "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND body IS NOT NULL",
         [Date.now(), this.namespace],
       )
-      await this.cleanDanglingNodes([[]])
+      await this.connection.query("DELETE FROM storage_nodes WHERE namespace = ?", [this.namespace])
       return
     }
     await this.connection.query(
       "WITH RECURSIVE tree(key_id) AS (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree) AND body IS NOT NULL",
       [this.namespace, keyParameter(this.keys, prefix), this.namespace, Date.now(), this.namespace],
     )
-    await this.cleanDanglingNodes([prefix])
+    // Provenance: docs/decisions/implemented/testing/2026-09-24-ci-verification-plans.md
+    // Local adaptation: retain tombstones and GC intent, then delete only cleared derived nodes as a set.
+    // Materialize before deleting: records are already tombstoned, so every
+    // derived node in this subtree can be removed in the same set operation.
+    await this.connection.query(
+      "WITH RECURSIVE tree(key_id) AS MATERIALIZED (SELECT key_id FROM storage_nodes WHERE namespace = ? AND key_id = ? UNION ALL SELECT node.key_id FROM tree CROSS JOIN storage_nodes node WHERE node.namespace = ? AND node.parent_id = tree.key_id) DELETE FROM storage_nodes WHERE namespace = ? AND key_id IN (SELECT key_id FROM tree)",
+      [this.namespace, keyParameter(this.keys, prefix), this.namespace, this.namespace],
+    )
+    for (let depth = prefix.length - 1; depth > 0; depth--) {
+      const removed = await this.connection.query<SqlRow>(
+        "DELETE FROM storage_nodes WHERE namespace = ? AND key_id = ? AND NOT EXISTS (SELECT 1 FROM storage_records record WHERE record.namespace = ? AND record.key_id = storage_nodes.key_id AND record.body IS NOT NULL) AND NOT EXISTS (SELECT 1 FROM storage_nodes child WHERE child.namespace = ? AND child.parent_id = storage_nodes.key_id) RETURNING key_id",
+        [this.namespace, keyParameter(this.keys, prefix.slice(0, depth)), this.namespace, this.namespace],
+      )
+      if (!removed.length) break
+    }
   }
 
   // Provenance: docs/research/2026-09-22-interactive-storage-validation.md
