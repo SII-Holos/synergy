@@ -5,6 +5,7 @@ import path from "node:path"
 import { createHash } from "node:crypto"
 import { prepareApplications, verifyApplicationSignature } from "../../src/installation/applications"
 import type { AppArtifact } from "@ericsanchezok/synergy-plugin/package"
+import { InstallationGenerations } from "../../src/installation/generations"
 
 test("application payloads are checksum verified before they become launchable", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-app-install-"))
@@ -44,6 +45,37 @@ test("application payloads are checksum verified before they become launchable",
     expect(await Bun.file(path.join(directory, "applications.json")).json()).toEqual({
       "desktop-app": "applications/desktop-app/Synergy.AppImage",
     })
+    const stage = await InstallationGenerations.stage(directory)
+    await fs.cp(path.join(directory, "applications"), path.join(stage, "applications"), { recursive: true })
+    await fs.copyFile(path.join(directory, "applications.json"), path.join(stage, "applications.json"))
+    const previous = await InstallationGenerations.commit(directory, {
+      directory: stage,
+      hostVersion: "2.0.0",
+      roots: {},
+      packages,
+      trustHostCode: true,
+    })
+    const next = await InstallationGenerations.stage(directory)
+    await prepareApplications(next, packages, {
+      target: "linux-x64",
+      previous,
+      fetch: async () => {
+        throw new Error("unchanged payload must be reused")
+      },
+    })
+    expect(await Bun.file(path.join(next, "applications/desktop-app/Synergy.AppImage")).text()).toBe(
+      new TextDecoder().decode(data),
+    )
+    const signed = structuredClone(previous)
+    if (signed.packages["example-app"].metadata?.kind === "app")
+      signed.packages["example-app"].metadata.artifacts[0].signing = { type: "authenticode", publisher: "Example" }
+    await expect(
+      prepareApplications(next, packages, {
+        target: "linux-x64",
+        previous: signed,
+        fetch: async () => new Response(data),
+      }),
+    ).rejects.toThrow("signing")
   } finally {
     await fs.rm(directory, { recursive: true, force: true })
   }

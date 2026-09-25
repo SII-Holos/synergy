@@ -8,7 +8,7 @@ import type { InstalledGeneration, InstalledPackage } from "./generations"
 const core = new Set(["local-runtime", "plugin-host"])
 const harness = "@ericsanchezok/synergy-harness"
 
-export async function assertHarnessIdentity(generation: InstalledGeneration) {
+export async function assertHarnessIdentity(generation: Pick<InstalledGeneration, "files" | "directory">) {
   const copies = Object.keys(generation.files).filter((filename) =>
     filename.endsWith(`node_modules/${harness}/package.json`),
   )

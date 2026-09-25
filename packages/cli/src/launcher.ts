@@ -43,6 +43,7 @@ export async function launch() {
     version,
     ...(!standalone ? { installedCore: path.dirname(fileURLToPath(new URL("../package.json", import.meta.url))) } : {}),
     pin: runner ? process.env.SYNERGY_INSTALLATION_PIN : undefined,
+    resume: process.argv.includes("install") && process.argv.includes("--resume"),
     ...(standalone &&
     (await fs.access(path.join(seed, "generation.json")).then(
       () => true,

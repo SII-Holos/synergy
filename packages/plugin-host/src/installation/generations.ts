@@ -4,8 +4,10 @@ import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { SynergyPackage } from "@ericsanchezok/synergy-plugin/package"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { CORE_RUNNERS } from "@ericsanchezok/synergy-util/installed-launcher"
 import { withInstallationLock } from "./lock"
 import { sha256File } from "./files"
+import { assertHarnessIdentity } from "./component-loader"
 
 const RelativePath = z
   .string()
@@ -140,6 +142,11 @@ async function recoverGeneration(root: string) {
 }
 
 function validatePackages(input: GenerationInput) {
+  const cli = input.packages["@ericsanchezok/synergy-cli"]
+  if (cli && cli.version !== input.hostVersion)
+    throw new Error("The CLI version must match the generation host version")
+  const identities = new Set<string>()
+  const runners = new Set<string>(CORE_RUNNERS)
   const components = new Map<string, string>([
     ["local-runtime", input.hostVersion],
     ["plugin-host", input.hostVersion],
@@ -147,12 +154,19 @@ function validatePackages(input: GenerationInput) {
   for (const pkg of Object.values(input.packages)) {
     const metadata = pkg.metadata
     if (!metadata) continue
+    const identity = `${metadata.kind}:${metadata.id}`
+    if (identities.has(identity)) throw new Error(`Duplicate installed package identity: ${identity}`)
+    identities.add(identity)
     if (metadata.version !== pkg.version) throw new Error(`Package version mismatch: ${metadata.id}`)
     if (input.hostVersion !== "local" && !Bun.semver.satisfies(input.hostVersion, metadata.compatibility.synergy))
       throw new Error(`${metadata.id} requires Synergy ${metadata.compatibility.synergy}`)
     if (metadata.kind === "component") {
       if (components.has(metadata.id)) throw new Error(`Duplicate installed component: ${metadata.id}`)
       components.set(metadata.id, metadata.version)
+      for (const name of Object.keys(metadata.runners ?? {})) {
+        if (runners.has(name)) throw new Error(`Duplicate or reserved component runner: ${name}`)
+        runners.add(name)
+      }
     }
   }
   for (const pkg of Object.values(input.packages)) {
@@ -241,10 +255,15 @@ export namespace InstallationGenerations {
       if (!(await fs.lstat(input.directory)).isDirectory()) throw new Error("Installation stage must be a directory")
       validatePackages(input)
       const files = await inventory(input.directory, true)
+      if (input.packages["@ericsanchezok/synergy-cli"])
+        await assertHarnessIdentity({ directory: input.directory, files })
       for (const pkg of Object.values(input.packages)) {
         if (pkg.metadata?.kind === "component") {
           const entry = path.posix.join(pkg.directory, pkg.metadata.entry)
           if (!files[entry]) throw new Error(`Component entry is missing: ${pkg.metadata.id}`)
+          for (const [name, runner] of Object.entries(pkg.metadata.runners ?? {}))
+            if (files[path.posix.join(pkg.directory, runner.entry)]?.kind !== "file")
+              throw new Error(`Component runner entry is missing: ${name}`)
         }
       }
       const manifest = Manifest.parse({

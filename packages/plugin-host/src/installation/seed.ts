@@ -26,11 +26,21 @@ async function resolvePackage(directory: string, name: string) {
   }
 }
 
+export async function canSeedInstalledCore(cliDirectory: string, roots: Record<string, string>) {
+  for (const [name, spec] of Object.entries(roots)) {
+    const source = await resolvePackage(cliDirectory, name)
+    if (!source) return false
+    const pkg = Package.parse(await Bun.file(path.join(source, "package.json")).json())
+    if (!Bun.semver.satisfies(pkg.version, spec)) return false
+  }
+  return true
+}
+
 export async function seedInstalledCore(
   root: string,
   cliDirectory: string,
   version: string,
-  options: { roots?: Record<string, string> } = {},
+  options: { roots?: Record<string, string>; previous?: string } = {},
 ) {
   const directory = await InstallationGenerations.stage(root)
   const copied = new Map<string, string>()
@@ -129,6 +139,7 @@ export async function seedInstalledCore(
     )
     const generation = await InstallationGenerations.commit(root, {
       directory,
+      previous: options.previous,
       hostVersion: version,
       roots: options.roots ?? {},
       trustHostCode: true,

@@ -10,6 +10,9 @@ import { prepareInstallation, listInstalledPackages } from "./manager"
 import { InstallationGenerations } from "./generations"
 import { preparePluginActivation, activateInstalledPlugins } from "./plugin-activation"
 import * as Lockfile from "../plugin/lockfile"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
+import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 
 interface ChangeOptions {
   sources?: readonly string[]
@@ -23,6 +26,10 @@ interface ChangeOptions {
 }
 
 export async function changeInstalledPackages(options: ChangeOptions) {
+  if (Installation.isLocal())
+    throw new Error(
+      "Source runtimes compose components explicitly. Use an installed synergy CLI for package management, or plugin add for API4 development.",
+    )
   const root = RuntimeContext.current().host.root
   await ScopeContext.provide({
     scope: Scope.home(),
@@ -30,6 +37,7 @@ export async function changeInstalledPackages(options: ChangeOptions) {
       if (options.resume) {
         const current = await InstallationGenerations.current(root)
         if (!current) throw new Error("There is no installation to resume")
+        await using storage = Storage.available() ? undefined : await StorageMaintenance.open()
         await activateInstalledPlugins(current)
         UI.println("Installation activation completed.")
         return
@@ -41,9 +49,7 @@ export async function changeInstalledPackages(options: ChangeOptions) {
               .filter(([, pkg]) => !pkg.metadata)
               .map(([name, pkg]) => [name, pkg.spec]),
           )
-        : Installation.VERSION === "local"
-          ? {}
-          : { "@ericsanchezok/synergy-cli": Installation.VERSION }
+        : { "@ericsanchezok/synergy-cli": Installation.VERSION }
       await using plan = await prepareInstallation(root, {
         ...options,
         basePackages,
@@ -72,18 +78,25 @@ export async function changeInstalledPackages(options: ChangeOptions) {
         )
           throw new Error("Host code trust is required; review the selection and pass --trust-host-code")
       }
-      await preparePluginActivation(plan, async (plugin) => {
-        UI.println(`Plugin ${plugin.id}@${plugin.version} capability grant:\n${JSON.stringify(plugin.grant, null, 2)}`)
-        return (
-          options.approvePlugin?.includes(plugin.id) === true ||
-          (process.stdin.isTTY === true &&
-            (await prompts.confirm({ message: `Approve these capabilities for ${plugin.id}?` })) === true)
-        )
-      })
+      const plugins = [...Object.values(plan.packages), ...Object.values(previous?.packages ?? {})].some(
+        (pkg) => pkg.metadata?.kind === "plugin",
+      )
+      await using storage = plugins && !Storage.available() ? await StorageMaintenance.open() : undefined
+      if (plugins)
+        await preparePluginActivation(plan, async (plugin) => {
+          UI.println(
+            `Plugin ${plugin.id}@${plugin.version} capability grant:\n${JSON.stringify(plugin.grant, null, 2)}`,
+          )
+          return (
+            options.approvePlugin?.includes(plugin.id) === true ||
+            (process.stdin.isTTY === true &&
+              (await prompts.confirm({ message: `Approve these capabilities for ${plugin.id}?` })) === true)
+          )
+        })
       const { prepareApplications } = await import("./applications")
-      await prepareApplications(plan.directory, plan.packages)
+      await prepareApplications(plan.directory, plan.packages, { previous })
       const generation = await plan.commit({ trustHostCode: true })
-      await activateInstalledPlugins(generation)
+      if (plugins) await activateInstalledPlugins(generation)
       UI.println("Installation completed. New component selections apply on the next start.")
     },
   })
@@ -128,6 +141,20 @@ export const InstallCommand = cmd({
   },
 })
 
+async function legacyPlugins() {
+  if (Storage.available()) return (await Lockfile.read()).plugins
+  const runtime = RuntimeContext.current()
+  const handle = await StorageBootstrap.inspect(runtime.host.root)
+  if (!handle) return {}
+  runtime.storage = handle
+  try {
+    return (await Lockfile.read()).plugins
+  } finally {
+    runtime.storage = undefined
+    await handle.store.close()
+  }
+}
+
 export const PackageUpdateCommand = cmd({
   command: "update [name..]",
   describe: "update explicitly installed packages (all when no name is given)",
@@ -170,7 +197,7 @@ export const PackageListCommand = cmd({
   builder: (yargs: Argv) => yargs.option("json", { type: "boolean", default: false }),
   async handler(args) {
     const packages = await listInstalledPackages(RuntimeContext.current().host.root)
-    const plugins = (await Lockfile.read()).plugins
+    const plugins = await legacyPlugins()
     const legacy = Object.entries(plugins)
       .filter(([id]) => !packages.some((pkg) => pkg.kind === "plugin" && pkg.id === id))
       .map(([id, entry]) => ({ name: id, id, kind: "plugin", version: entry.version, explicit: true, requiredBy: [] }))

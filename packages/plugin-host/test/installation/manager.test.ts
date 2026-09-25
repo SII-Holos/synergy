@@ -37,6 +37,10 @@ test("installation plans remain inert until trusted, retain explicit roots, and 
       { name: "example-extension", id: "example", explicit: true },
     ])
     expect(await Bun.file(marker).exists()).toBe(false)
+    await Bun.write(path.join(directory, "component.js"), "export const updated = true")
+    await using replacement = await prepareInstallation(root, { hostVersion: "2.0.0", sources: [directory] })
+    expect(replacement.changes).toMatchObject([{ action: "update", id: "example", version: "2.0.0" }])
+    await replacement.commit({ trustHostCode: true })
     await using removal = await prepareInstallation(root, { hostVersion: "2.0.0", remove: ["example"] })
     expect(removal.changes.map((item) => item.action)).toEqual(["remove"])
     await removal.commit({ trustHostCode: true })

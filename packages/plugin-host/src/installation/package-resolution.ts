@@ -18,6 +18,16 @@ const PackageJson = z.object({
 })
 const Dependencies = z.record(SynergyPackageName, z.string().min(1))
 
+export class PackageResolutionError extends Error {
+  constructor(
+    readonly exitCode: number | null,
+    readonly output: string,
+  ) {
+    super(`Package resolution failed with exit code ${exitCode}${output ? `: ${output.trim()}` : ""}`)
+    this.name = "PackageResolutionError"
+  }
+}
+
 async function packageMetadata(directory: string, hostVersion: string) {
   const pkg = PackageJson.parse(await Bun.file(path.join(directory, "package.json")).json())
   let metadata = pkg.synergy
@@ -66,7 +76,11 @@ async function packageManager(root: string, directory: string, args: string[], o
     stdio: ["ignore", "pipe", "pipe"],
   })
   child.stdout.resume()
-  child.stderr.resume()
+  let stderr = ""
+  child.stderr.setEncoding("utf8")
+  child.stderr.on("data", (chunk: string) => {
+    stderr = (stderr + chunk).slice(-8192)
+  })
   let exited = false
   const closed = new Promise<void>((resolve) => child.once("close", () => resolve()))
   const result = new Promise<number | null>((resolve, reject) => {
@@ -88,7 +102,7 @@ async function packageManager(root: string, directory: string, args: string[], o
     await stop()
     await closed
     options.signal?.throwIfAborted()
-    if (code !== 0) throw new Error(`Package resolution failed with exit code ${code}`)
+    if (code !== 0) throw new PackageResolutionError(code, stderr)
   } finally {
     options.signal?.removeEventListener("abort", abort)
     await stop()
@@ -221,6 +235,17 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
     )
     const sources: string[] = []
     for (const spec of options.sources) sources.push(await sourceSpec(root, spec, options))
+    for (const spec of sources) {
+      if (!spec.startsWith("file:")) continue
+      const archive = await new Bun.Archive(await Bun.file(spec.slice(5)).bytes()).files()
+      const manifest = archive.get("package/package.json") ?? archive.get("./package/package.json")
+      if (!manifest) throw new Error("A package archive must contain package/package.json")
+      const pkg = PackageJson.parse(await manifest.json())
+      if (Object.hasOwn(basePackages, pkg.name))
+        throw new Error(`Upgrade core package ${pkg.name} through its launcher`)
+      if (Object.hasOwn(retained, pkg.name))
+        await packageManager(root, directory, ["remove", "--ignore-scripts", pkg.name], options)
+    }
     if (sources.length)
       await packageManager(root, directory, ["add", "--ignore-scripts", "--exact", ...sources], options)
     else if (Object.keys(basePackages).length || Object.keys(retained).length || options.previous)

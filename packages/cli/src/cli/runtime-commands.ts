@@ -19,7 +19,6 @@ export function runtimeCommands(
     },
     {
       command: "install [spec..]",
-      storage: "maintenance",
       describe: "install components, presets, plugins or applications",
       load: async () =>
         (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
@@ -27,7 +26,6 @@ export function runtimeCommands(
     },
     {
       command: "update [name..]",
-      storage: "maintenance",
       describe: "update explicitly installed packages",
       load: async () =>
         (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
@@ -35,7 +33,6 @@ export function runtimeCommands(
     },
     {
       command: "remove <name..>",
-      storage: "maintenance",
       describe: "remove packages and unused dependencies",
       load: async () =>
         (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
@@ -43,7 +40,6 @@ export function runtimeCommands(
     },
     {
       command: "list",
-      storage: "maintenance",
       describe: "list installed packages and legacy plugins",
       load: async () =>
         (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))

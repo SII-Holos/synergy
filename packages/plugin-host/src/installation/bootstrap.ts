@@ -6,7 +6,9 @@ import { InstallationPin } from "@ericsanchezok/synergy-util/installed-launcher"
 import { InstallationGenerations, type InstalledGeneration } from "./generations"
 import { prepareInstallation } from "./manager"
 import { assertHarnessIdentity } from "./component-loader"
-import { seedInstalledCore } from "./seed"
+import { seedInstalledCore, canSeedInstalledCore } from "./seed"
+import { initializeInstallationSelection } from "./selection"
+import { upgradeInstallationRoots, preservePluginActivation } from "./upgrade"
 
 export async function prepareInstalledLaunch(
   root: string,
@@ -16,6 +18,7 @@ export async function prepareInstalledLaunch(
     basePackages?: Record<string, string>
     seed?: string
     installedCore?: string
+    resume?: boolean
   },
 ) {
   if (options.pin) {
@@ -24,39 +27,44 @@ export async function prepareInstalledLaunch(
     return generation
   }
   let generation = await InstallationGenerations.current(root)
-  if (!generation) {
-    if (options.seed) {
-      const seed = await InstallationGenerations.readSeed(options.seed)
-      const directory = await InstallationGenerations.stage(root)
-      try {
-        await fs.cp(seed.directory, directory, {
-          recursive: true,
-          verbatimSymlinks: true,
-          filter: (filename) => filename !== path.join(seed.directory, "generation.json"),
-        })
-        generation = await InstallationGenerations.commit(root, {
-          directory,
-          hostVersion: seed.hostVersion,
-          roots: seed.roots,
-          packages: seed.packages,
-          trustHostCode: true,
-        })
-      } finally {
-        await fs.rm(directory, { recursive: true, force: true })
-      }
-    } else if (options.installedCore) {
-      generation = await seedInstalledCore(root, options.installedCore, options.version)
+  const minimum = generation?.minimumVersions["host:core"]
+  if (options.version !== "local" && minimum && minimum !== "local" && Bun.semver.order(options.version, minimum) < 0)
+    throw new Error(`This home requires Synergy ${minimum} or newer; upgrade the launcher before opening it`)
+  if (!generation || (!options.resume && Bun.semver.order(options.version, generation.hostVersion) > 0)) {
+    const seed = options.seed ? await InstallationGenerations.readSeed(options.seed) : undefined
+    if (seed && seed.hostVersion !== options.version)
+      throw new Error("The bundled modules do not match the launcher version")
+    const roots = generation
+      ? upgradeInstallationRoots(generation, options.version)
+      : Object.fromEntries(
+          (await initializeInstallationSelection(root, Object.keys(seed?.roots ?? {}))).map((name) => [
+            name,
+            options.version,
+          ]),
+        )
+    const cliDirectory = seed
+      ? path.join(seed.directory, "node_modules/@ericsanchezok/synergy-cli")
+      : options.installedCore
+    const hasActivation = Object.values(generation?.packages ?? {}).some(
+      (pkg) => pkg.metadata?.kind === "plugin" || pkg.metadata?.kind === "app",
+    )
+    if (cliDirectory && !hasActivation && (await canSeedInstalledCore(cliDirectory, roots))) {
+      generation = await seedInstalledCore(root, cliDirectory, options.version, { roots, previous: generation?.id })
     } else {
       await using prepared = await prepareInstallation(root, {
         hostVersion: options.version,
         basePackages: options.basePackages ?? { "@ericsanchezok/synergy-cli": options.version },
+        sources: Object.entries(roots)
+          .filter(([name, spec]) => generation?.roots[name] !== spec)
+          .map(([name, spec]) => `${name}@${spec}`),
       })
+      await preservePluginActivation(prepared, options.version)
+      await (
+        await import("./applications")
+      ).prepareApplications(prepared.directory, prepared.packages, { previous: prepared.previous })
       generation = await prepared.commit({ trustHostCode: true })
     }
   }
-  const minimum = generation.minimumVersions["host:core"]
-  if (options.version !== "local" && minimum && minimum !== "local" && Bun.semver.order(options.version, minimum) < 0)
-    throw new Error(`This home requires Synergy ${minimum} or newer; upgrade the launcher before opening it`)
   await assertHarnessIdentity(generation)
   return generation
 }

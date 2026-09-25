@@ -3,6 +3,7 @@ import { PluginMarketplaceRegistry } from "./plugin/marketplace-registry"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { registerPluginMigrations } from "./plugin/migration"
+import { registerInstallationMigrations } from "./installation/migration"
 import { Plugin } from "./plugin"
 import { registerPluginSkillSource } from "./plugin/skill-source"
 import { registerPluginToolContext } from "./plugin/tool-context"
@@ -48,6 +49,7 @@ export function plugins(): RuntimeComponent {
       registerReload()
       registerConfig()
       registerPluginMigrations()
+      registerInstallationMigrations()
       Plugin.registerLifecycle()
       registerPluginSkillSource()
       registerPluginToolContext()

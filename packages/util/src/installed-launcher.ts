@@ -2,6 +2,16 @@ import { z } from "zod"
 
 export const InstallationPin = z.object({ id: z.uuid(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 
+export const CORE_RUNNERS = [
+  "storage-worker-runner",
+  "owned-process-runner",
+  "observability-worker-runner",
+  "agent-turn-runner",
+  "policy-worker-runner",
+  "plugin-runtime-runner",
+  "storage-maintenance-runner",
+] as const
+
 export function installedWorkerEnvironment(env: Record<string, string | undefined>): Record<string, string> {
   return Object.fromEntries(
     [

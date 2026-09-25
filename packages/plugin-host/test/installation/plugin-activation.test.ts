@@ -8,6 +8,7 @@ import { preparePluginActivation, activateInstalledPlugins } from "../../src/ins
 import { InstallationGenerations } from "../../src/installation/generations"
 import * as Lockfile from "../../src/plugin/lockfile"
 import { getApproval } from "../../src/plugin/consent/approval-store"
+import { preservePluginActivation } from "../../src/installation/upgrade"
 
 test("module trust cannot approve API4 plugins, and committed activation recovers idempotently", async () => {
   await using runtime = await testRuntime()
@@ -42,6 +43,13 @@ test("module trust cannot approve API4 plugins, and committed activation recover
     expect((await getApproval(manifest.id))?.approvedBy).toBe("user")
     await activateInstalledPlugins(generation)
     expect((await Lockfile.read()).plugins[manifest.id]).toEqual(installed)
+    const approval = await getApproval(manifest.id)
+    await using upgrade = await prepareInstallation(root, { hostVersion: "local" })
+    await preservePluginActivation(upgrade, "3.0.11")
+    const upgraded = await upgrade.commit({ trustHostCode: true })
+    await activateInstalledPlugins(upgraded)
+    expect((await Lockfile.read()).plugins[manifest.id].version).toBe(installed.version)
+    expect((await getApproval(manifest.id))?.grant).toEqual(approval?.grant)
     await using removal = await prepareInstallation(root, { hostVersion: "local", remove: [manifest.id] })
     await preparePluginActivation(removal, async () => false)
     await activateInstalledPlugins(await removal.commit({ trustHostCode: true }))

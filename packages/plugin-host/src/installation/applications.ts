@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import { createWriteStream } from "node:fs"
 import { pipeline } from "node:stream/promises"
 import path from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import unzipper from "unzipper"
 import { z } from "zod"
 import type { AppArtifact } from "@ericsanchezok/synergy-plugin/package"
@@ -101,6 +102,7 @@ export async function prepareApplications(
     target?: string
     fetch?: (url: string) => Promise<Response>
     verify?: typeof verifyApplicationSignature
+    previous?: InstalledGeneration
   } = {},
 ) {
   const apps = Object.values(packages).flatMap((pkg) => (pkg.metadata?.kind === "app" ? [pkg.metadata] : []))
@@ -112,6 +114,31 @@ export async function prepareApplications(
     const artifact = app.artifacts.find((item) => item.target === target && ["zip", "AppImage"].includes(item.format))
     if (!artifact) throw new Error(`${app.id} has no portable application artifact for ${target}`)
     const destination = path.join(directory, "applications", app.id)
+    const before = Object.values(options.previous?.packages ?? {}).find(
+      (pkg) => pkg.metadata?.kind === "app" && pkg.metadata.id === app.id,
+    )?.metadata
+    const previousArtifact =
+      before?.kind === "app"
+        ? before.artifacts.find((item) => item.target === target && ["zip", "AppImage"].includes(item.format))
+        : undefined
+    if (
+      previousArtifact &&
+      previousArtifact.signing.type !== "checksum" &&
+      !isDeepStrictEqual(previousArtifact.signing, artifact.signing)
+    )
+      throw new Error(`Application signing identity changed: ${app.id}`)
+    if (options.previous && isDeepStrictEqual(previousArtifact, artifact)) {
+      const relative = path.posix.join("applications", app.id, artifact.executable)
+      if (options.previous.files[relative]?.kind !== "file")
+        throw new Error(`Previous application payload is incomplete: ${app.id}`)
+      await fs.cp(path.join(options.previous.directory, "applications", app.id), destination, {
+        recursive: true,
+        verbatimSymlinks: true,
+      })
+      await (options.verify ?? verifyApplicationSignature)(inside(directory, relative), artifact)
+      selected[app.id] = relative
+      continue
+    }
     const archive = path.join(directory, `.application-${app.id}.download`)
     try {
       const response = await (options.fetch ?? ((url: string) => fetch(url, { signal: AbortSignal.timeout(300_000) })))(

@@ -20,3 +20,5 @@ Add/update/remove preserves explicit roots and the package-manager lock; rebuild
 The dependency-light `installation/catalog` leaf owns the four first-party install selections and aliases. Source Presets, the installer and release tooling consume it without a core dependency on complete-product assembly.
 
 Installation CLI handlers use the metadata-first manager. API4 activation journals retain plugin transactions, source identity and capability consent; recovery must be idempotent and cannot replay an older generation over the current selection. Application checksums and native publisher checks precede activation. Test real local archives, script suppression, interrupted activation and subprocess generation pins.
+
+Launcher upgrades preserve roots, third-party pins and API4 grants; first-party versions advance with the core. Initial selection has a versioned pre-bootstrap owner registered with the central migration runner. Keep component-only changes independent of SQL maintenance and source composition independent of installed-package state.

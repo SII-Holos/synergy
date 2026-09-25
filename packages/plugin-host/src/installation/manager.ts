@@ -58,7 +58,12 @@ export async function prepareInstallation(
   for (const [name, pkg] of Object.entries(prepared.packages)) {
     if (!pkg.metadata) continue
     const before = previous?.packages[name]
-    if (before?.version === pkg.version && JSON.stringify(before.metadata) === JSON.stringify(pkg.metadata)) continue
+    if (
+      before?.version === pkg.version &&
+      before.spec === pkg.spec &&
+      JSON.stringify(before.metadata) === JSON.stringify(pkg.metadata)
+    )
+      continue
     changes.push({
       name,
       id: pkg.metadata.id,

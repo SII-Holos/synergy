@@ -22,22 +22,7 @@ import { InstallationGenerations, type InstalledGeneration } from "./generations
 import type { prepareInstallation } from "./manager"
 import { withInstallationLock } from "./lock"
 
-const Journal = z
-  .object({
-    version: z.literal(1),
-    installs: z.array(
-      z
-        .object({
-          name: z.string(),
-          manifestHash: z.string(),
-          source: z.enum(["local", "official", "npm", "git", "url", "builtin"]),
-          approval: z.unknown(),
-        })
-        .strict(),
-    ),
-    removes: z.array(z.object({ id: z.string(), resolved: z.string() }).strict()),
-  })
-  .strict()
+import { PluginActivationJournal as Journal } from "./activation-journal"
 
 export async function preparePluginActivation(
   plan: Awaited<ReturnType<typeof prepareInstallation>>,

@@ -10,6 +10,7 @@ import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Plugin } from ".."
 import { PluginSpec } from "@ericsanchezok/synergy-harness/util/plugin-spec"
+import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 
 import type { Argv, CommandModule } from "yargs"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -55,6 +56,10 @@ export const PluginAddCommand = cmd({
       demandOption: true,
     }),
   async handler(args) {
+    if (Installation.isLocal()) {
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => Plugin.add(args.spec as string) })
+      return
+    }
     const { changeInstalledPackages } = await import("../../installation/cli")
     await changeInstalledPackages({ sources: [args.spec as string], pluginOnly: true })
   },

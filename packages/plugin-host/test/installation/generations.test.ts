@@ -138,3 +138,62 @@ test("rejects dependency cycles before component code can be loaded", async () =
   ).rejects.toThrow("cycle")
   expect(await InstallationGenerations.current(temp.root)).toBeUndefined()
 })
+
+test("cannot replace a runnable generation with a graph missing its canonical Harness", async () => {
+  await using temp = await fixture()
+  const first = await InstallationGenerations.commit(temp.root, input(await stage(temp.root)))
+  await expect(
+    InstallationGenerations.commit(temp.root, {
+      ...input(await stage(temp.root)),
+      previous: first.id,
+      packages: {
+        "@ericsanchezok/synergy-cli": {
+          directory: "node_modules/@ericsanchezok/synergy-cli",
+          version: "2.0.0",
+          spec: "2.0.0",
+        },
+      },
+    }),
+  ).rejects.toThrow("canonical Harness")
+  expect((await InstallationGenerations.current(temp.root))?.id).toBe(first.id)
+})
+
+test("rejects duplicate application identities and runner collisions before activation", async () => {
+  await using temp = await fixture()
+  const app = {
+    formatVersion: 1 as const,
+    kind: "app" as const,
+    id: "desktop-app",
+    version: "2.0.0",
+    compatibility: { synergy: "^2.0.0" },
+    artifacts: [
+      {
+        target: "linux-x64" as const,
+        url: "https://example.test/app",
+        sha256: "a".repeat(64),
+        format: "AppImage" as const,
+        executable: "./app",
+        signing: { type: "checksum" as const },
+      },
+    ],
+  }
+  const application = { directory: "node_modules/example", version: "2.0.0", spec: "2.0.0", metadata: app }
+  await expect(
+    InstallationGenerations.commit(temp.root, {
+      ...input(await stage(temp.root)),
+      packages: { first: application, second: application },
+    }),
+  ).rejects.toThrow("Duplicate")
+  const cases: Array<Record<string, { entry: string; export: string }>> = [
+    { "storage-worker-runner": { entry: "./component.js", export: "run" } },
+    { "custom-runner": { entry: "./missing.js", export: "run" } },
+  ]
+  for (const runners of cases)
+    await expect(
+      InstallationGenerations.commit(temp.root, {
+        ...input(await stage(temp.root)),
+        packages: { example: { ...packages.example, metadata: { ...component, runners } } },
+      }),
+    ).rejects.toThrow(/runner/i)
+  expect(await InstallationGenerations.current(temp.root)).toBeUndefined()
+})
