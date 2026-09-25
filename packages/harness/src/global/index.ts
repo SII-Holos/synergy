@@ -115,7 +115,9 @@ export namespace Global {
     },
   }
 
-  export async function initialize(options: { cache?: boolean; configSchemaPath?: string } = {}) {
+  export async function initialize(
+    options: { cache?: boolean; configSchemaPath?: string; configSchema?: string } = {},
+  ) {
     await Promise.all([
       fs.mkdir(Global.Path.root, { recursive: true }),
       fs.mkdir(Global.Path.data, { recursive: true }),
@@ -129,15 +131,14 @@ export namespace Global {
       fs.mkdir(Global.Path.schema, { recursive: true }),
     ])
 
-    // Copy bundled config schema to ~/.synergy/schema/ so editors can resolve file:// $schema URLs.
-    // Checked on every startup to keep the schema in sync with the installed synergy version.
     {
-      const bundled = options.configSchemaPath
-      if (bundled) {
+      const bundledContents =
+        options.configSchema ??
+        (options.configSchemaPath ? await fs.readFile(options.configSchemaPath, "utf8") : undefined)
+      if (bundledContents !== undefined) {
         // Identical-content boots skip the lock entirely; competing publishers
         // serialize under the schema lock and publish through a same-volume
         // rename so readers never observe a partial schema file.
-        const bundledContents = await fs.readFile(bundled, "utf8")
         const current = await fs.readFile(Global.Path.configSchema, "utf8").catch(() => undefined)
         if (current !== bundledContents) {
           await withFileLock({ directory: path.join(Global.Path.schema, ".locks"), key: "config-schema" }, async () => {
@@ -145,7 +146,7 @@ export namespace Global {
             if (published === bundledContents) return
             const temporaryPath = `${Global.Path.configSchema}.${randomUUID()}.tmp`
             try {
-              await fs.copyFile(bundled, temporaryPath)
+              await fs.writeFile(temporaryPath, bundledContents)
               await fs.rename(temporaryPath, Global.Path.configSchema)
             } finally {
               await fs.rm(temporaryPath, { force: true }).catch(() => {})

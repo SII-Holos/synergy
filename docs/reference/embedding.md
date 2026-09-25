@@ -4,6 +4,12 @@ Use Bun for an in-process agent and the HTTP SDK for Node.js or an existing serv
 
 ## Bun
 
+Install only the host and selected components; a source checkout is unnecessary:
+
+```sh
+bun add @ericsanchezok/synergy-agent-runtime @ericsanchezok/synergy-mcp @ericsanchezok/synergy-lsp
+```
+
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { mcp } from "@ericsanchezok/synergy-mcp/component"
@@ -17,6 +23,22 @@ const client = runtime.client({ directory: process.cwd() })
 ```
 
 `home` is the data directory itself. Local execution and the process plugin host are included. HTTP, Browser, Library and other optional domains require their component factories. The component graph validates versions and dependencies before opening storage. See the [Agent Runtime API](../../packages/agent-runtime/README.md) for session execution.
+
+For the complete backend, install `@ericsanchezok/synergy-presets` and use its explicit composition. The programmatic preset does not assume a repository or bundled Web directory:
+
+```ts
+import { PresetRuntimeHandle } from "@ericsanchezok/synergy-presets"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
+
+await using runtime = await PresetRuntimeHandle.open({
+  mode: "server",
+  host: createLocalHost({ home: "./.agent-data", root: "./.agent-data" }),
+  network: { hostname: "127.0.0.1", port: 0 },
+  webAppDirectory: "/srv/company-agent/web",
+})
+```
+
+Omit `webAppDirectory` for an API-only backend; `openTask()` selects one-shot execution without an HTTP listener. The shared lifecycle publishes the active component configuration schema for editors. A host may explicitly supply `configSchemaPath` to override it.
 
 ## Node.js
 

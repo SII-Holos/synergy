@@ -264,7 +264,11 @@ export namespace RuntimeHandle {
       RuntimeContext.sealComposition()
       MigrationRegistry.lock()
       ConfigExtensions.lock()
-      await Global.initialize({ configSchemaPath: services.configSchemaPath })
+      await Global.initialize(
+        services.configSchemaPath
+          ? { configSchemaPath: services.configSchemaPath }
+          : { configSchema: JSON.stringify(Config.jsonSchema(), null, 2) + "\n" },
+      )
       await Log.init(options.logging ?? { print: false })
       await options.host.workspaceLocation?.hostID()
       options.signal?.throwIfAborted()

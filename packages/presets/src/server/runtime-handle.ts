@@ -1,19 +1,19 @@
-import path from "node:path"
-import { existsSync } from "node:fs"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { createLocalHost, type LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { fullComponents } from "../components"
-import { presetWebApp } from "./web-app"
+import { webApp } from "@ericsanchezok/synergy-server/web-app"
 
 export namespace PresetRuntimeHandle {
   export type Handle = Awaited<ReturnType<typeof open>>
 
-  function configSchemaPath() {
-    const installed = path.resolve(path.dirname(process.execPath), "../schema/config.schema.json")
-    return existsSync(installed) ? installed : path.resolve(import.meta.dirname, "../../schema/config.schema.json")
-  }
+  export type Options = LocalRuntimeOptions & { webAppDirectory?: string; configSchemaPath?: string }
 
-  export async function openTask(options: LocalRuntimeOptions) {
+  const components = (options: Options) => [
+    ...fullComponents(),
+    ...(options.webAppDirectory ? [webApp({ directory: options.webAppDirectory })] : []),
+  ]
+
+  export async function openTask(options: Options) {
     const host = options.host ?? createLocalHost()
     return openAgentRuntime({
       ...options,
@@ -21,19 +21,17 @@ export namespace PresetRuntimeHandle {
       home: host.root,
       mode: "oneshot",
       listen: false,
-      configSchemaPath: configSchemaPath(),
-      components: [...fullComponents(), presetWebApp()],
+      components: components(options),
     })
   }
 
-  export async function open(options: LocalRuntimeOptions) {
+  export async function open(options: Options) {
     const host = options.host ?? createLocalHost()
     const handle = await openAgentRuntime({
       ...options,
       host,
       home: host.root,
-      configSchemaPath: configSchemaPath(),
-      components: [...fullComponents(), presetWebApp()],
+      components: components(options),
     })
     if (!handle.server) {
       await handle.close()

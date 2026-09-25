@@ -2,7 +2,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
 import { main as runCli } from "@ericsanchezok/synergy-cli/index"
 import { fullComponents } from "./components"
-import { presetWebApp } from "./server/web-app"
+import { sourceWebApp } from "./server/web-app"
 import { selectComponents } from "@ericsanchezok/synergy-cli/component-selection"
 
 export async function main() {
@@ -26,10 +26,13 @@ export async function main() {
       await (await import("@ericsanchezok/synergy-browser-runtime/install-deps-runner")).installBrowserDependencies()
     })
   }
-  await runCli(selectComponents([...fullComponents(), presetWebApp()], process.env.SYNERGY_COMPONENTS))
+  await runCli(selectComponents([...fullComponents(), sourceWebApp()], process.env.SYNERGY_COMPONENTS))
 }
 
 if (import.meta.main) {
   await main()
   process.exit(process.exitCode ?? 0)
 }
+
+export { fullComponents } from "./components"
+export { PresetRuntimeHandle } from "./server/runtime-handle"

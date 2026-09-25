@@ -13,6 +13,8 @@ import * as Lockfile from "../plugin/lockfile"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
+import { DesktopInstallation } from "@ericsanchezok/synergy-harness/global/desktop-installation"
+import fs from "node:fs/promises"
 
 interface ChangeOptions {
   sources?: readonly string[]
@@ -216,6 +218,19 @@ export const DesktopCommand = cmd({
   command: "desktop",
   describe: "open the installed Synergy Desktop application",
   async handler() {
+    const direct = DesktopInstallation.applicationCommand({
+      platform: process.platform,
+      execPath: process.execPath,
+      realExecPath: await fs.realpath(process.execPath),
+      env: RuntimeContext.current().host.env,
+    })
+    if (direct) {
+      const child = Bun.spawn(direct, { stdin: "ignore", stdout: "ignore", stderr: "ignore" })
+      if (process.platform === "darwin") {
+        if ((await child.exited) !== 0) throw new Error("Desktop application could not be opened")
+      } else child.unref()
+      return
+    }
     const generation = await InstallationGenerations.current(RuntimeContext.current().host.root)
     if (
       !generation ||

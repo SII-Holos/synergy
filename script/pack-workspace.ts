@@ -94,9 +94,6 @@ export async function packWorkspace(
         nativeTargets.add(key)
       }
     }
-    if (pkg.directory === "packages/presets") {
-      await cp(path.join(sourceDirectory, "schema"), path.join(sourceDirectory, "dist/schema"), { recursive: true })
-    }
     const stage = await mkdtemp(path.join(os.tmpdir(), "synergy-library-pack-"))
     try {
       let manifest = createPublishablePackageJson({
@@ -122,7 +119,6 @@ export async function packWorkspace(
           files: ["src", nested ? "dist/modules" : "dist", "README.md", "AGENTS.md"],
           engines: { bun: ">=1.3.14" },
         }
-        if (pkg.directory === "packages/presets") (manifest.files as string[]).push("dist/schema")
         if (["packages/harness", "packages/local-runtime"].includes(pkg.directory))
           manifest.optionalDependencies = {
             ...manifest.optionalDependencies,

@@ -28,6 +28,8 @@ Shared terminal and command-definition primitives live in Util; network and Scop
 
 The same component objects can be reused by isolated runtimes. Domain owners can be selected independently without registering another owner's configuration. Presets replaces the ambiguous Product Runtime package and uses the same Agent Runtime factories for full startup. Server owns static asset routing through an explicit web-app component; app payloads stay application-owned. Runtime tests cover isolation, native worker readiness, failed-start cleanup and independent HTTP contributions; generated CLI documentation follows explicit authoring contributions.
 
+The public full backend takes an explicit Web asset directory; repository asset lookup is confined to source CLI composition. Runtime startup generates the editor schema from its sealed active configuration contracts, so installed and embedded subsets do not inherit unrelated product fields.
+
 ## Sources
 
 - [Pi package documentation](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/packages.md): independent packages and explicit composition metadata.

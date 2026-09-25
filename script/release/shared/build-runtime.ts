@@ -1,5 +1,4 @@
 import path from "node:path"
-import { z } from "zod"
 import { format, resolveConfig } from "prettier"
 import fs from "node:fs"
 import os from "node:os"
@@ -304,23 +303,24 @@ export async function generateSchema(directory: string, profile: RuntimeArtifact
   const { RuntimeContext } = await import("../../../packages/harness/src/lifecycle/context")
   const { createLocalHost } = await import("../../../packages/local-runtime/src/host")
   const { Config } = await import("../../../packages/harness/src/config/config")
-  const register =
+  const { ConfigExtensions } = await import("../../../packages/harness/src/config/extensions")
+  const registrations =
     profile === "full"
-      ? (await import("../../../packages/presets/src/configuration")).registerFullConfiguration
-      : (await import("../../../packages/local-runtime/src/config-schema")).registerConfig
+      ? [(await import("../../../packages/presets/src/configuration")).registerFullConfiguration]
+      : [
+          (await import("../../../packages/local-runtime/src/config-schema")).registerConfig,
+          (await import("../../../packages/plugin-host/src/config-schema")).registerConfig,
+        ]
   const context = RuntimeContext.create(createLocalHost())
   const schema = context.run(() => {
     try {
-      register()
-      return z.toJSONSchema(Config.schema(), { unrepresentable: "any" })
+      for (const register of registrations) register()
+      ConfigExtensions.completeRegistration()
+      return Config.jsonSchema()
     } finally {
       context.dispose()
     }
   })
-  if (schema.properties) {
-    delete schema.properties.keybinds
-    delete schema.properties.experimental
-  }
   const output = path.join(directory, "schema/config.schema.json")
   const options = await resolveConfig(
     path.join(profile === "core" ? CLI_DIR : PRESETS_DIR, "schema/config.schema.json"),

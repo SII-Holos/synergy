@@ -20,6 +20,10 @@ test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent s
     recoveryReporter: { progress: (current) => recovery.push(current), completed: () => recovery.push("completed") },
   })
   const events = runtime.run(() => GlobalBus())
+  expect(runtime.components.some((component) => component.id === "web-app")).toBe(false)
+  expect((await Bun.file(path.join(fixture.host.root, "schema/config.schema.json")).json()).properties).toHaveProperty(
+    "lsp",
+  )
   expect(recovery[0]).toBe(0)
   expect(recovery.at(-1)).toBe("completed")
   expect((await runtime.run(() => ServerProcessLock.read()))?.mode).toBe("oneshot")
@@ -36,6 +40,21 @@ test("one-shot owns its Home, omits autonomous recovery, and awaits idempotent s
   await Promise.all([runtime.close(), runtime.close()])
   expect(await RuntimeContext.create(fixture.host).run(() => ServerProcessLock.read())).toBeUndefined()
   expect(events.listenerCount("event")).toBe(0)
+}, 30_000)
+
+test("embedding the full backend serves only an explicitly selected Web application", async () => {
+  await using fixture = await runtimeHome()
+  const directory = path.join(fixture.host.root, "company-app")
+  await Bun.write(path.join(directory, "index.html"), "<!doctype html><html><body>Company UI fixture</body></html>")
+  await using runtime = await PresetRuntimeHandle.open({
+    host: fixture.host,
+    mode: "server",
+    network: { hostname: "127.0.0.1", port: 0 },
+    webAppDirectory: directory,
+  })
+  expect(runtime.components.some((component) => component.id === "web-app")).toBe(true)
+  const response = await fetch(`http://127.0.0.1:${runtime.server.port}/`)
+  expect(await response.text()).toContain("Company UI fixture")
 }, 30_000)
 
 test("failed recovery does not announce completion or retain home ownership", async () => {

@@ -62,6 +62,17 @@ export namespace DesktopInstallation {
     return isRuntimePath(input.platform, input.realExecPath)
   }
 
+  export function applicationCommand(context: Context): string[] | undefined {
+    if (!detectDesktopInstall(context)) return
+    if (context.platform === "darwin") {
+      const end = context.realExecPath.toLowerCase().lastIndexOf(".app/contents/resources/")
+      return ["open", context.realExecPath.slice(0, end + 4)]
+    }
+    const paths = context.platform === "win32" ? path.win32 : path
+    const executable = context.platform === "win32" ? "synergy-desktop.exe" : "synergy-desktop"
+    return [paths.resolve(context.realExecPath, "../../../..", executable)]
+  }
+
   export function expectedRuntimePath(platform: NodeJS.Platform) {
     if (platform === "darwin") return "/Applications/Synergy.app/Contents/Resources/synergy/bin/synergy"
     if (platform === "linux") return "/opt/Synergy/resources/synergy/bin/synergy"

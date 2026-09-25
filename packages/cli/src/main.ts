@@ -10,6 +10,7 @@ import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
 import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { coreCommands, type CommandEntry } from "./cli/commands"
 import type { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import type { CommandModule } from "yargs"
@@ -163,7 +164,8 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
         const inspect = selectedCommand === "migration" && (argv.includes("status") || argv.includes("--dry-run"))
         storage = await StorageMaintenance.open({ readonly: inspect, migrate: selectedCommand !== "migration" })
       }
-      if (!["send", "server"].includes(selectedCommand ?? "server")) await Global.initialize({ cache: false })
+      if (!["send", "server"].includes(selectedCommand ?? "server"))
+        await Global.initialize({ cache: false, configSchema: JSON.stringify(Config.jsonSchema(), null, 2) + "\n" })
       let configLogLevel: string | undefined
       try {
         const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")

@@ -5,10 +5,41 @@ import os from "node:os"
 import path from "node:path"
 import { Installation } from "../../src/global/installation"
 import { StandaloneInstallation } from "../../src/global/standalone-installation"
+import { DesktopInstallation } from "../../src/global/desktop-installation"
 
 const env = {}
 
 describe("Installation desktop detection", () => {
+  test("opens the native application that owns a directly installed runtime", () => {
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "darwin",
+        execPath: "/usr/local/bin/synergy",
+        realExecPath: "/Applications/Synergy.app/Contents/Resources/synergy/bin/synergy",
+      }),
+    ).toEqual(["open", "/Applications/Synergy.app"])
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "win32",
+        execPath: "C:\\Synergy\\resources\\synergy\\bin\\synergy.exe",
+        realExecPath: "C:\\Synergy\\resources\\synergy\\bin\\synergy.exe",
+      }),
+    ).toEqual(["C:\\Synergy\\synergy-desktop.exe"])
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "linux",
+        execPath: "/usr/bin/synergy",
+        realExecPath: "/opt/Synergy/resources/synergy/bin/synergy",
+      }),
+    ).toEqual(["/opt/Synergy/synergy-desktop"])
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "linux",
+        execPath: "/usr/bin/bun",
+        realExecPath: "/usr/bin/bun",
+      }),
+    ).toBeUndefined()
+  })
   test("detects macOS app bundle runtime paths", () => {
     expect(
       Installation.detectDesktopInstall({
