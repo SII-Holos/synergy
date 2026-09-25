@@ -179,7 +179,7 @@ Default local preflight:
 bun run quality:quick
 ```
 
-For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. See [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md) for lifecycle and installation contracts.
+For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/local-runtime` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. See [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md) for lifecycle and installation contracts.
 
 Local performance experiments use the [benchmark workspace](benchmark/README.md): independent harness/model matrices, frozen inputs, native rollout evidence and paired reports. Start with `bun bench plan benchmark/configs/ab.yaml`.
 

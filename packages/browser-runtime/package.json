@@ -28,7 +28,7 @@
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-browser": "workspace:*",
+    "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-server": "workspace:*",
@@ -39,7 +39,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",

@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { normalizeBrowserURL as normalizeBrowserURLInput } from "@ericsanchezok/synergy-browser"
+import { normalizeBrowserURL as normalizeBrowserURLInput } from "@ericsanchezok/synergy-browser-core"
 import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contain"
 
 export namespace BrowserPolicy {

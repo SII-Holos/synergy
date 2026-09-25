@@ -53,7 +53,7 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
     for (const file of files.split("\n").filter(Boolean)) {
       if (
         file.startsWith("packages/harness/") ||
-        file.startsWith("packages/runtime-local/") ||
+        file.startsWith("packages/local-runtime/") ||
         file.startsWith("packages/product-runtime/") ||
         file.startsWith("packages/cli/")
       )

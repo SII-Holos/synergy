@@ -52,7 +52,7 @@ export function rolloutErrors(evidence: ShadowEvidence[], policy: string): strin
   for (const [name, pattern] of Object.entries({
     docs: /^docs\//,
     frontend: /^(?:apps\/web|packages\/ui)\//,
-    runtime: /^packages\/(?:harness|runtime-local)\//,
+    runtime: /^packages\/(?:harness|local-runtime)\//,
     benchmark: /^benchmark\//,
     tooling: /^(?:script|test|\.github|packages\/testing)\//,
   })) {

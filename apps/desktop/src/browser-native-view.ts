@@ -4,7 +4,7 @@ import {
   type BrowserNativeAttachRequest,
   type BrowserNativeBounds,
   type BrowserNativeViewEvent,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import type { BrowserNativePagePool } from "./browser-native-page-pool.js"
 
 export class BrowserNativeViewManager {

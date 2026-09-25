@@ -20,7 +20,7 @@ import { ConfigLspCatalog } from "@ericsanchezok/synergy-harness/config/lsp-cata
 import { PermissionPluginSource } from "@ericsanchezok/synergy-harness/permission/plugin-source"
 import { ProviderPluginAuth } from "@ericsanchezok/synergy-harness/provider/plugin-auth-source"
 import { ScopeLibraryStore } from "@ericsanchezok/synergy-harness/scope/library-store"
-import { WorkspaceFileSymbolSource } from "@ericsanchezok/synergy-runtime-local/workspace-file/symbol-source"
+import { WorkspaceFileSymbolSource } from "@ericsanchezok/synergy-local-runtime/workspace-file/symbol-source"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

@@ -8,7 +8,7 @@ Synergy can operate its session-owned Browser, but tasks involving existing nati
 
 ## Decision
 
-Native Computer Use is implemented through first-party tools and a local Desktop host. The core runtime owns task identity, Full Access eligibility, persisted tool output, and image delivery. The private `packages/computer` package defines bounded commands and host messages. Desktop owns a private Cua Driver worker, launched lazily through its official TypeScript SDK. This is not a user-configured MCP server or plugin.
+Native Computer Use is implemented through first-party tools and a local Desktop host. The core runtime owns task identity, Full Access eligibility, persisted tool output, and image delivery. The private `packages/computer-protocol` package defines bounded commands and host messages. Desktop owns a private Cua Driver worker, launched lazily through its official TypeScript SDK. This is not a user-configured MCP server or plugin.
 
 Use Cua Driver 0.23.2's exact-window background operations. A task observes an explicit process/window pair and receives a short-lived, single-action observation reference. Desktop injects the driver session and snapshot identity; model input cannot choose either. Observation references are invalidated after an action, a replacement observation, or a host reconnect. Actions never retry automatically and never fall back to foreground delivery.
 

@@ -12,8 +12,8 @@ import { parseModelID } from "@ericsanchezok/synergy-harness/provider/model-id"
 import { readPipedStdin } from "../stdin"
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
-import { createLocalClient, type RuntimeClient } from "@ericsanchezok/synergy-runtime-local/client"
-import { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import { createLocalClient, type RuntimeClient } from "@ericsanchezok/synergy-local-runtime/client"
+import { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import { createRemoteClient } from "../remote-client"
 import { findRecordingError } from "@ericsanchezok/synergy-harness/session/rollout/error"
 
@@ -534,7 +534,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
       }
 
       const { withScopeContext } = await import("../scope")
-      const { Command } = await import("@ericsanchezok/synergy-runtime-local/command/command")
+      const { Command } = await import("@ericsanchezok/synergy-local-runtime/command/command")
       await using runtime = await runtimeFactory({
         mode: "oneshot",
         experiment,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
-import { WriteTool } from "@ericsanchezok/synergy-runtime-local/tools/write"
+import { WriteTool } from "@ericsanchezok/synergy-local-runtime/tools/write"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { RuntimeReload } from "@ericsanchezok/synergy-product-runtime/runtime/reload"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"

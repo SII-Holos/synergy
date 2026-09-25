@@ -2,7 +2,7 @@
 
 ## Ownership
 
-Computer Use operates existing macOS application windows through local Synergy Desktop. The core `computer` domain registers the first-party tools, checks the current effective control profile, derives ownership from the canonical session/root message, and persists tool output and screenshot attachments. The private `packages/computer` package owns the bounded protocol. Desktop translates commands into Cua Driver operations in a lazily started private worker through the official TypeScript SDK.
+Computer Use operates existing macOS application windows through local Synergy Desktop. The core `computer` domain registers the first-party tools, checks the current effective control profile, derives ownership from the canonical session/root message, and persists tool output and screenshot attachments. The private `packages/computer-protocol` package owns the bounded protocol. Desktop translates commands into Cua Driver operations in a lazily started private worker through the official TypeScript SDK.
 
 `computer_apps` lists on-screen windows. `computer_observe` binds an exact process/window pair and returns its accessibility tree, available screenshot, and an observation reference. `computer_action` accepts one action against that reference. The generated [tool catalog](../reference/tools.md) defines the public parameters.
 

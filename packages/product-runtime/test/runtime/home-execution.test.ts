@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { ProductRuntimeHandle } from "../../src/server/runtime-handle"
-import { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

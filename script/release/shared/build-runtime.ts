@@ -338,12 +338,12 @@ async function stageProductAssets(runtimeDir: string) {
 
 export async function generateSchema(directory: string, profile: RuntimeArtifactProfile) {
   const { RuntimeContext } = await import("../../../packages/harness/src/lifecycle/context")
-  const { createLocalHost } = await import("../../../packages/runtime-local/src/host")
+  const { createLocalHost } = await import("../../../packages/local-runtime/src/host")
   const { Config } = await import("../../../packages/harness/src/config/config")
   const register =
     profile === "full"
       ? (await import("../../../packages/product-runtime/src/configuration")).registerProductConfiguration
-      : (await import("../../../packages/runtime-local/src/config-schema")).registerConfig
+      : (await import("../../../packages/local-runtime/src/config-schema")).registerConfig
   const context = RuntimeContext.create(createLocalHost())
   const schema = context.run(() => {
     try {

@@ -167,7 +167,7 @@ function taskSelected(task: Task, packages: Set<string>, changed: string[], docs
   )
   if (storage && ["postgres", "rollout", "artifacts", "smoke", "sandbox", "benchmark-docker"].includes(task.kind))
     return true
-  const local = packages.has("packages/runtime-local")
+  const local = packages.has("packages/local-runtime")
   if (local && ["windows", "sandbox", "artifacts", "benchmark-docker"].includes(task.kind)) return true
   if (packages.has("apps/web") && ["web", "desktop"].includes(task.kind)) return true
   const benchmark = changed.some((file) => file.startsWith("benchmark/"))

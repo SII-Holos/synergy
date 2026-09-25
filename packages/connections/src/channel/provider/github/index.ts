@@ -1,7 +1,7 @@
 import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
-import { WorktreeProcess } from "@ericsanchezok/synergy-runtime-local/workspace/process"
+import { WorktreeProcess } from "@ericsanchezok/synergy-local-runtime/workspace/process"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/config-schema"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"

@@ -1,4 +1,4 @@
-import { WorkspaceFileSymbolSource } from "@ericsanchezok/synergy-runtime-local/workspace-file/symbol-source"
+import { WorkspaceFileSymbolSource } from "@ericsanchezok/synergy-local-runtime/workspace-file/symbol-source"
 import { LSP } from "."
 
 /**

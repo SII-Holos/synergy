@@ -1,6 +1,6 @@
 # computer-runtime Package
 
-Computer broker operations, tools, host attachment and transport lifecycle. Native drivers belong to apps/desktop; shared messages belong to packages/computer. Never import native Desktop implementations into the broker. Read the root AGENTS.md and the owning architecture document before changes.
+Computer broker operations, tools, host attachment and transport lifecycle. Native drivers belong to apps/desktop; shared messages belong to packages/computer-protocol. Never import native Desktop implementations into the broker. Read the root AGENTS.md and the owning architecture document before changes.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.

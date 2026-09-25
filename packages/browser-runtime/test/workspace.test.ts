@@ -4,7 +4,7 @@ import {
   BrowserHostMessageSchema,
   type BrowserHostMessage,
   type BrowserPresentation,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserHostBrokerProcess } from "../src/host-broker-process"
 import { BrowserNetworkGateway } from "../src/network-gateway"

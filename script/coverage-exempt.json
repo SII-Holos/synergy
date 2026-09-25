@@ -1198,7 +1198,7 @@
         }
       ]
     },
-    "packages/browser": {
+    "packages/browser-core": {
       "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
@@ -1283,7 +1283,7 @@
         }
       ]
     },
-    "packages/computer": {
+    "packages/computer-protocol": {
       "command": "bun run test:coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
@@ -1578,7 +1578,7 @@
         }
       ]
     },
-    "packages/runtime-local": {
+    "packages/local-runtime": {
       "command": "bun run test:coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {

@@ -9,7 +9,7 @@
         "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-workbench": "workspace:*",
         "@napi-rs/canvas": "1.0.0",
@@ -29,8 +29,8 @@
       "name": "@ericsanchezok/synergy-desktop",
       "version": "1.1.26",
       "dependencies": {
-        "@ericsanchezok/synergy-browser": "workspace:*",
-        "@ericsanchezok/synergy-computer": "workspace:*",
+        "@ericsanchezok/synergy-browser-core": "workspace:*",
+        "@ericsanchezok/synergy-computer-protocol": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@trycua/cua-driver": "0.23.2",
         "electron-updater": "6.6.8",
@@ -52,7 +52,7 @@
       "version": "1.1.26",
       "dependencies": {
         "@aarkue/tiptap-math-extension": "1.4.0",
-        "@ericsanchezok/synergy-browser": "workspace:*",
+        "@ericsanchezok/synergy-browser-core": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-ui": "workspace:*",
@@ -145,7 +145,7 @@
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-library": "workspace:*",
         "@ericsanchezok/synergy-product-runtime": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
       },
       "devDependencies": {
         "@tsconfig/bun": "catalog:",
@@ -164,7 +164,7 @@
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
@@ -193,8 +193,8 @@
         "typescript": "catalog:",
       },
     },
-    "packages/browser": {
-      "name": "@ericsanchezok/synergy-browser",
+    "packages/browser-core": {
+      "name": "@ericsanchezok/synergy-browser-core",
       "version": "1.1.26",
       "dependencies": {
         "zod": "catalog:",
@@ -208,7 +208,7 @@
       "name": "@ericsanchezok/synergy-browser-runtime",
       "version": "1.1.26",
       "dependencies": {
-        "@ericsanchezok/synergy-browser": "workspace:*",
+        "@ericsanchezok/synergy-browser-core": "workspace:*",
         "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
@@ -219,7 +219,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
@@ -240,7 +240,7 @@
         "@ai-sdk/openai-compatible": "1.0.42",
         "@clack/prompts": "1.0.0-alpha.1",
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "ai": "catalog:",
@@ -262,8 +262,8 @@
         "typescript": "catalog:",
       },
     },
-    "packages/computer": {
-      "name": "@ericsanchezok/synergy-computer",
+    "packages/computer-protocol": {
+      "name": "@ericsanchezok/synergy-computer-protocol",
       "version": "1.1.26",
       "dependencies": {
         "zod": "catalog:",
@@ -277,7 +277,7 @@
       "name": "@ericsanchezok/synergy-computer-runtime",
       "version": "1.1.26",
       "dependencies": {
-        "@ericsanchezok/synergy-computer": "workspace:*",
+        "@ericsanchezok/synergy-computer-protocol": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@hono/standard-validator": "^0.2.0",
         "hono": "catalog:",
@@ -301,7 +301,7 @@
         "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-link-protocol": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@ericsanchezok/synergy-workflows": "workspace:*",
@@ -398,7 +398,7 @@
       "dependencies": {
         "@ai-sdk/openai": "2.0.111",
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@zip.js/zip.js": "2.8.26",
         "ai": "catalog:",
@@ -430,7 +430,7 @@
       },
       "devDependencies": {
         "@ericsanchezok/synergy-link-protocol": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
@@ -468,7 +468,7 @@
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-plugin-kit": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "ajv": "8.18.0",
@@ -538,7 +538,7 @@
         "@ericsanchezok/synergy-media": "workspace:*",
         "@ericsanchezok/synergy-note": "workspace:*",
         "@ericsanchezok/synergy-plugin-host": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@ericsanchezok/synergy-workbench": "workspace:*",
@@ -568,8 +568,8 @@
         "typescript": "catalog:",
       },
     },
-    "packages/runtime-local": {
-      "name": "@ericsanchezok/synergy-runtime-local",
+    "packages/local-runtime": {
+      "name": "@ericsanchezok/synergy-local-runtime",
       "version": "1.1.26",
       "dependencies": {
         "@ai-sdk/amazon-bedrock": "3.0.57",
@@ -652,7 +652,7 @@
       "version": "1.1.26",
       "dependencies": {
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@hono/standard-validator": "^0.2.0",
         "bonjour-service": "1.3.0",
@@ -789,7 +789,7 @@
         "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-plugin-host": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "hono": "catalog:",
@@ -818,7 +818,7 @@
         "@ericsanchezok/synergy-note": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-plugin-host": "workspace:*",
-        "@ericsanchezok/synergy-runtime-local": "workspace:*",
+        "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-server": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "croner": "10.0.1",
@@ -1098,13 +1098,13 @@
 
     "@ericsanchezok/synergy-benchmark": ["@ericsanchezok/synergy-benchmark@workspace:benchmark"],
 
-    "@ericsanchezok/synergy-browser": ["@ericsanchezok/synergy-browser@workspace:packages/browser"],
+    "@ericsanchezok/synergy-browser-core": ["@ericsanchezok/synergy-browser-core@workspace:packages/browser-core"],
 
     "@ericsanchezok/synergy-browser-runtime": ["@ericsanchezok/synergy-browser-runtime@workspace:packages/browser-runtime"],
 
     "@ericsanchezok/synergy-cli": ["@ericsanchezok/synergy-cli@workspace:packages/cli"],
 
-    "@ericsanchezok/synergy-computer": ["@ericsanchezok/synergy-computer@workspace:packages/computer"],
+    "@ericsanchezok/synergy-computer-protocol": ["@ericsanchezok/synergy-computer-protocol@workspace:packages/computer-protocol"],
 
     "@ericsanchezok/synergy-computer-runtime": ["@ericsanchezok/synergy-computer-runtime@workspace:packages/computer-runtime"],
 
@@ -1132,7 +1132,7 @@
 
     "@ericsanchezok/synergy-product-runtime": ["@ericsanchezok/synergy-product-runtime@workspace:packages/product-runtime"],
 
-    "@ericsanchezok/synergy-runtime-local": ["@ericsanchezok/synergy-runtime-local@workspace:packages/runtime-local"],
+    "@ericsanchezok/synergy-local-runtime": ["@ericsanchezok/synergy-local-runtime@workspace:packages/local-runtime"],
 
     "@ericsanchezok/synergy-sdk": ["@ericsanchezok/synergy-sdk@workspace:packages/sdk/js"],
 

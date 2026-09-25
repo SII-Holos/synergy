@@ -1,6 +1,6 @@
-import { buildPty } from "../../../packages/runtime-local/script/build-pty"
+import { buildPty } from "../../../packages/local-runtime/script/build-pty"
 import { buildSqlite } from "../../../packages/harness/script/build-sqlite"
-import { buildWatcher } from "../../../packages/runtime-local/script/build-watcher"
+import { buildWatcher } from "../../../packages/local-runtime/script/build-watcher"
 import { existsSync } from "node:fs"
 import fs from "node:fs/promises"
 import { createRequire } from "node:module"
@@ -83,7 +83,7 @@ export async function prepareRuntimeAssets(name: string, profile: RuntimeArtifac
   const pty = await buildPty({ os: targetOs, arch: targetArch, libc: musl ? "musl" : "glibc" })
   await fs.copyFile(pty, path.join(runtimeDir, path.basename(pty)))
   await fs.copyFile(
-    path.join(REPO_ROOT, "packages/runtime-local/src/process/native-pty/LICENSE.bun-pty"),
+    path.join(REPO_ROOT, "packages/local-runtime/src/process/native-pty/LICENSE.bun-pty"),
     path.join(runtimeDir, "PTY-LICENSE"),
   )
   if (targetOs === "darwin") await fs.copyFile(await buildSqlite(), path.join(runtimeDir, "libsqlite3.dylib"))
@@ -145,7 +145,7 @@ async function removeUnsupportedMuslAssets(runtimeDir: string) {
 export async function runtimeDependencies(profile: RuntimeArtifactProfile = "full") {
   const entries =
     profile === "core"
-      ? [RELEASE_CATALOG.cli, RELEASE_CATALOG.harness, RELEASE_CATALOG.runtimeLocal]
+      ? [RELEASE_CATALOG.cli, RELEASE_CATALOG.harness, RELEASE_CATALOG.localRuntime]
       : Object.values(RELEASE_CATALOG)
   const dependencies: Record<string, string> = {}
   for (const entry of entries) {

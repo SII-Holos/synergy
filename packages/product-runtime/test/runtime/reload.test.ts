@@ -334,7 +334,7 @@ describe("runtime.reload", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          for (const owner of ["harness", "runtime-local", "product-runtime", "sdk/js"]) {
+          for (const owner of ["harness", "local-runtime", "product-runtime", "sdk/js"]) {
             const warning = RuntimeReload.builtinSourceEditWarning(
               path.join(tmp.path, "packages", owner, "src", "index.ts"),
             )

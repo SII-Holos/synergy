@@ -1,4 +1,4 @@
-import type { Question } from "@ericsanchezok/synergy-runtime-local/question"
+import type { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -105,7 +105,7 @@ export namespace QuestionCardRuntime {
         }
       }
       if (rejectQuestion) {
-        const { Question } = await import("@ericsanchezok/synergy-runtime-local/question")
+        const { Question } = await import("@ericsanchezok/synergy-local-runtime/question")
         await Question.reject(input.request.id)
       }
       log.warn("question card delivery failed", {
@@ -149,7 +149,7 @@ export namespace QuestionCardRuntime {
       return { status: "rejected" }
     }
 
-    const { Question } = await import("@ericsanchezok/synergy-runtime-local/question")
+    const { Question } = await import("@ericsanchezok/synergy-local-runtime/question")
     const replied = await Question.tryReply({ requestID: callback.requestId, answers })
     if (!replied) {
       runtime.registrations.delete(callback.requestId)

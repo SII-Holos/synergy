@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
-import { ReviseFileTool } from "@ericsanchezok/synergy-runtime-local/tools/revise-file"
+import { ReviseFileTool } from "@ericsanchezok/synergy-local-runtime/tools/revise-file"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { computeTag } from "@ericsanchezok/synergy-runtime-local/hashline/tag"
+import { computeTag } from "@ericsanchezok/synergy-local-runtime/hashline/tag"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -35,7 +35,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -114,7 +114,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -145,7 +145,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -175,7 +175,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -203,7 +203,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -231,7 +231,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -259,7 +259,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -287,7 +287,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -317,7 +317,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "file.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -348,7 +348,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "same.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -386,7 +386,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "short.txt") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -411,7 +411,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "conflict.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -438,7 +438,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "f.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -462,7 +462,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "clean.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -489,7 +489,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "mod.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -516,7 +516,7 @@ describe("tool.revise_file", () => {
         await ScopeContext.provide({
           scope: await tmp.scope(),
           fn: async () => {
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "same.ts") }, ctx)
             const tag = viewed.metadata.tag as string
@@ -569,7 +569,7 @@ describe("tool.revise_file", () => {
             const { Format } = await import("@ericsanchezok/synergy-agent-integrations/format")
             Format.init()
 
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "fmt.ts") }, formatAwareCtx(sessID))
             const tag = viewed.metadata.tag as string
@@ -613,7 +613,7 @@ describe("tool.revise_file", () => {
             const { Format } = await import("@ericsanchezok/synergy-agent-integrations/format")
             Format.init()
 
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "fmt2.ts") }, formatAwareCtx(sessID))
             const tag = viewed.metadata.tag as string

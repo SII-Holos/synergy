@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
-import { SaveFileTool } from "@ericsanchezok/synergy-runtime-local/tools/save-file"
+import { SaveFileTool } from "@ericsanchezok/synergy-local-runtime/tools/save-file"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { computeTag } from "@ericsanchezok/synergy-runtime-local/hashline/tag"
+import { computeTag } from "@ericsanchezok/synergy-local-runtime/hashline/tag"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -172,7 +172,7 @@ describe("tool.save_file", () => {
             const tag = result.metadata.tag as string
 
             // After saving, the snapshot should be available for revise_file
-            const { ReviseFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/revise-file")
+            const { ReviseFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/revise-file")
             const revise = await ReviseFileTool.init()
             const patchInput = `[test.txt#${tag}]\nreplace 1..1:\n+modified content\n`
             const reviseResult = await revise.execute({ input: patchInput }, ctx)
@@ -284,7 +284,7 @@ b
           scope: await tmp.scope(),
           fn: async () => {
             // View the conflicted file first (to confirm view_file sees it)
-            const { ViewFileTool } = await import("@ericsanchezok/synergy-runtime-local/tools/view-file")
+            const { ViewFileTool } = await import("@ericsanchezok/synergy-local-runtime/tools/view-file")
             const view = await ViewFileTool.init()
             const viewed = await view.execute({ filePath: path.join(tmp.path, "f.ts") }, ctx)
             // view_file should see the conflicts

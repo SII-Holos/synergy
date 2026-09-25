@@ -10,7 +10,7 @@ import {
   type BrowserNativePageRequest,
   type BrowserNativePresentationTicketRequest,
   type BrowserNativeResizeRequest,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 
 const nonEmptyString = z.string().trim().min(1)
 

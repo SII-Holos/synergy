@@ -3,7 +3,7 @@ import path from "path"
 import { ParseCodeTool } from "../../src/tools/parse-code"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { computeTag } from "@ericsanchezok/synergy-runtime-local/hashline/tag"
+import { computeTag } from "@ericsanchezok/synergy-local-runtime/hashline/tag"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

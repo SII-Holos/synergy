@@ -1,9 +1,9 @@
 import type { SynergyLinkBash, SynergyLinkProcess, SynergyLinkSession } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkRemoteError } from "@ericsanchezok/synergy-connections/remote/client"
-import { SynergyLinkExecution } from "@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution"
+import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
-import { BashTool } from "@ericsanchezok/synergy-runtime-local/tools/bash"
+import { BashTool } from "@ericsanchezok/synergy-local-runtime/tools/bash"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -15,7 +15,7 @@ import {
   detectDetachedDaemonRisk,
   LocalBashBackend,
   withLinuxChildOomPreference,
-} from "@ericsanchezok/synergy-runtime-local/tools/bash/local"
+} from "@ericsanchezok/synergy-local-runtime/tools/bash/local"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"

@@ -2,7 +2,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { createIsolatedTestEnv } from "../packages/testing/src/env"
 
-const directory = path.resolve(import.meta.dir, "../packages/runtime-local")
+const directory = path.resolve(import.meta.dir, "../packages/local-runtime")
 const windows = process.platform === "win32"
 // Keep native reports separate from the numeric batches produced on Linux.
 const output = path.join(directory, "coverage/shards", windows ? "1000001" : "1000000")

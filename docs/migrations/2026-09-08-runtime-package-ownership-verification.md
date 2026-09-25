@@ -1,6 +1,6 @@
 # 全仓业务分离迁移验收记录
 
-本记录对应迁移基线 `e11c17094` 及本次迁移代码。目录职责见[架构所有权图](../architecture/README.md#ownership-map)，逐文件去向见[迁移映射](2026-09-08-runtime-package-ownership.json)。本次保持唯一 `synergy` CLI，完整产品仍默认装配全部能力；Harness 和 Runtime Local 可由独立程序及同一 CLI 使用。
+本记录对应迁移基线 `e11c17094` 及本次迁移代码。目录职责见[架构所有权图](../architecture/README.md#ownership-map)，逐文件去向见[迁移映射](2026-09-08-runtime-package-ownership.json)。本次保持唯一 `synergy` CLI，完整产品仍默认装配全部能力；Harness 和 Local Runtime 可由独立程序及同一 CLI 使用。
 
 后续源码、开发流程与实际完整产品安装审计见[修复后全仓验收](2026-09-08-runtime-package-ownership-audit.md)；该记录包含后续实现提交及重新执行的完整覆盖率。本记录保留首轮验收快照。
 
@@ -51,10 +51,10 @@ SDK 的剩余文本差异是六个领域枚举的次序、Event 分支次序和 
 | apps/desktop                   | 90.16%   | 79.57%     | 60/50         | 0              |
 | apps/web                       | 65.37%   | 78.30%     | 60/50         | 0              |
 | packages/agent-integrations    | 75.08%   | 78.00%     | 75/75         | 0              |
-| packages/browser               | 91.22%   | 94.33%     | 80/75         | 0              |
+| packages/browser-core          | 91.22%   | 94.33%     | 80/75         | 0              |
 | packages/browser-runtime       | 76.12%   | 81.50%     | 75/75         | 0              |
 | packages/cli                   | 76.16%   | 75.57%     | 75/75         | 0              |
-| packages/computer              | 100.00%  | 100.00%    | 80/75         | 0              |
+| packages/computer-protocol     | 100.00%  | 100.00%    | 80/75         | 0              |
 | packages/computer-runtime      | 92.37%   | 83.33%     | 75/75         | 0              |
 | packages/connections           | 75.96%   | 81.99%     | 75/75         | 0              |
 | packages/harness               | 80.09%   | 83.61%     | 75/75         | 0              |
@@ -65,7 +65,7 @@ SDK 的剩余文本差异是六个领域枚举的次序、Event 分支次序和 
 | packages/plugin-host           | 79.54%   | 76.00%     | 75/75         | 0              |
 | packages/plugin-kit            | 81.11%   | 88.89%     | 80/75         | 0              |
 | packages/product-runtime       | 80.44%   | 80.69%     | 75/75         | 0              |
-| packages/runtime-local         | 76.86%   | 81.39%     | 75/75         | 0              |
+| packages/local-runtime         | 76.86%   | 81.39%     | 75/75         | 0              |
 | packages/sdk/js                | 87.28%   | 100.00%    | 80/75         | 0              |
 | packages/server                | 89.00%   | 75.00%     | 75/75         | 0              |
 | packages/synergy-link          | 80.29%   | 89.21%     | 80/75         | 0              |

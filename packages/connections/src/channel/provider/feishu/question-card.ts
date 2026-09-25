@@ -1,5 +1,5 @@
 import z from "zod"
-import type { Question } from "@ericsanchezok/synergy-runtime-local/question"
+import type { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import { sha256Content } from "@ericsanchezok/synergy-harness/util/crypto"
 import { QuestionCardCallback } from "../../types"
 import type { FeishuApiContext } from "./api-context"

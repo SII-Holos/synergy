@@ -1,7 +1,7 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
 import { registerProductRuntime } from "../product-registration"
-import { createLocalHost, createLocalStorage, type LocalRuntimeOptions } from "@ericsanchezok/synergy-runtime-local"
+import { createLocalHost, createLocalStorage, type LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { RuntimeHandle as HarnessRuntimeHandle, type RuntimeServices } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeReload } from "../runtime/reload"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"

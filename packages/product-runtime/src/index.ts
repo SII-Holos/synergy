@@ -1,5 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
 async function bootstrap(): Promise<void> {
   if (process.argv.includes("__storage-maintenance-runner")) {
     const { registerProductRuntime } = await import("./product-registration")
@@ -106,7 +106,7 @@ async function bootstrap(): Promise<void> {
 export async function main() {
   const workerIndex = process.argv.indexOf("__owned-process-runner")
   if (workerIndex >= 0) {
-    const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-runtime-local/process/owned-worker")
+    const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-local-runtime/process/owned-worker")
     await runOwnedProcessWorker(process.argv[workerIndex + 1]!)
     process.exit(0)
   }

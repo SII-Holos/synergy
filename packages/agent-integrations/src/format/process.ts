@@ -1,7 +1,7 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { OwnedProcess } from "@ericsanchezok/synergy-runtime-local/process/owned-process"
+import { OwnedProcess } from "@ericsanchezok/synergy-local-runtime/process/owned-process"
 
 export namespace FormatterProcess {
   export async function run(input: {

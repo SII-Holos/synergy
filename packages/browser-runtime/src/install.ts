@@ -15,7 +15,7 @@ import {
   chromiumReleaseTarget,
   type ChromiumReleaseArch,
   type ChromiumReleasePlatform,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contain"
 import { PlaywrightRuntime } from "./playwright-runtime.js"
 

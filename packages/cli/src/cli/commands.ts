@@ -1,5 +1,5 @@
 import type { CommandModule } from "yargs"
-import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import type { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 
 export interface CommandEntry {
   command: string | string[]

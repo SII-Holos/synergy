@@ -99,10 +99,10 @@ describe("coverage batch splitting", () => {
       "packages/product-runtime/test/server/skill-route.test.ts",
       "packages/product-runtime/test/server/storage-unavailable-escalation.test.ts",
       "packages/product-runtime/test/tool/auto-expand.test.ts",
-      "packages/runtime-local/test/file/watcher.test.ts",
-      "packages/runtime-local/test/provider/proxy.test.ts",
-      "packages/runtime-local/test/sandbox/helper-source.test.ts",
-      "packages/runtime-local/test/tools/session-search.test.ts",
+      "packages/local-runtime/test/file/watcher.test.ts",
+      "packages/local-runtime/test/provider/proxy.test.ts",
+      "packages/local-runtime/test/sandbox/helper-source.test.ts",
+      "packages/local-runtime/test/tools/session-search.test.ts",
       "packages/workbench/test/stats/engine.test.ts",
     ])
   })

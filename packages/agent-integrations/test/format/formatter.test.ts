@@ -98,7 +98,7 @@ test("formatter discovery combines executable availability with actual project o
 test("file edits invoke configured formatter processes and isolate failures from other formatters", () =>
   runtime.run(async () => {
     const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
-    const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+    const { File } = await import("@ericsanchezok/synergy-local-runtime/file")
     await using tmp = await tmpdir({
       config: {
         formatter: {
@@ -141,7 +141,7 @@ test("file edits invoke configured formatter processes and isolate failures from
 test("global formatter opt-out leaves file edits untouched", () =>
   runtime.run(async () => {
     const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
-    const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+    const { File } = await import("@ericsanchezok/synergy-local-runtime/file")
     await using tmp = await tmpdir({ config: { formatter: false } })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -165,7 +165,7 @@ test("formatting runs once in the owning Workspace when one Scope has multiple d
   runtime.run(async () => {
     const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
     const { Session } = await import("@ericsanchezok/synergy-harness/session")
-    const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+    const { File } = await import("@ericsanchezok/synergy-local-runtime/file")
     await using first = await tmpdir({
       config: {
         formatter: {
@@ -212,7 +212,7 @@ test("formatting runs once in the owning Workspace when one Scope has multiple d
 test("a stale edit cannot run a formatter over newer file content", () =>
   runtime.run(async () => {
     const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
-    const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+    const { File } = await import("@ericsanchezok/synergy-local-runtime/file")
     await using tmp = await tmpdir({
       config: {
         formatter: {
@@ -242,7 +242,7 @@ test(
   () =>
     runtime.run(async () => {
       const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
-      const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+      const { File } = await import("@ericsanchezok/synergy-local-runtime/file")
       await using tmp = await tmpdir({
         config: {
           formatter: {
@@ -297,7 +297,7 @@ test(
   () =>
     runtime.run(async () => {
       const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
-      const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+      const { File } = await import("@ericsanchezok/synergy-local-runtime/file")
       await using tmp = await tmpdir({
         config: {
           formatter: {
@@ -347,7 +347,7 @@ test(
   () =>
     runtime.run(async () => {
       const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
-      const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+      const { File } = await import("@ericsanchezok/synergy-local-runtime/file")
       await using control = await tmpdir()
       const ready = path.join(control.path, "ready"),
         finish = path.join(control.path, "finish")

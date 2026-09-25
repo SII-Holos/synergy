@@ -7,7 +7,7 @@ import type {
   SynergyLinkSession,
 } from "@ericsanchezok/synergy-link-protocol"
 import { ConnectTool } from "@ericsanchezok/synergy-agent-integrations/synergy-link/tools/connect"
-import { SynergyLinkExecution } from "@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution"
+import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

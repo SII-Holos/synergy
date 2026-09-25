@@ -9,7 +9,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 const runtime = await migrationFixture({ register: registerLocalRuntime })
 
 const domain = "cli-command-fixture"

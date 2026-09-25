@@ -1,4 +1,4 @@
-import { registerConfig as registerLocalConfig } from "@ericsanchezok/synergy-runtime-local/config-schema"
+import { registerConfig as registerLocalConfig } from "@ericsanchezok/synergy-local-runtime/config-schema"
 import { registerConfig as registerIntegrationsConfig } from "@ericsanchezok/synergy-agent-integrations/config-schema"
 import { registerConfig as registerLibraryConfig } from "@ericsanchezok/synergy-library/config-schema"
 import { registerConfig as registerConnectionsConfig } from "@ericsanchezok/synergy-connections/config-schema"

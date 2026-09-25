@@ -1,5 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { createLocalHost, registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import { createLocalHost, registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import {
   ObservabilityMetrics,
   ObservabilityStore,
@@ -10,7 +10,7 @@ import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
 import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { coreCommands, type CommandEntry } from "./cli/commands"
-import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import type { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import type { CommandModule } from "yargs"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"

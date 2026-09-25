@@ -1,7 +1,7 @@
 import path from "node:path"
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeListTool } from "@ericsanchezok/synergy-workbench/project/tools/worktree-list"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"

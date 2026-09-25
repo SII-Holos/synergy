@@ -38,7 +38,7 @@
   },
   "devDependencies": {
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",

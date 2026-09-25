@@ -16,7 +16,7 @@ import {
   formatCompactReloadResult,
 } from "@ericsanchezok/synergy-harness/config/reload-schema"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import type { Skill } from "@ericsanchezok/synergy-runtime-local/skill/skill"
+import type { Skill } from "@ericsanchezok/synergy-local-runtime/skill/skill"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import {
@@ -538,7 +538,7 @@ export namespace RuntimeReload {
         return
       }
       case "watcher": {
-        const { FileWatcher } = await import("@ericsanchezok/synergy-runtime-local/file/watcher")
+        const { FileWatcher } = await import("@ericsanchezok/synergy-local-runtime/file/watcher")
         await FileWatcher.reload()
         return
       }
@@ -559,7 +559,7 @@ export namespace RuntimeReload {
         return
       }
       case "command": {
-        const { Command } = await import("@ericsanchezok/synergy-runtime-local/command/command")
+        const { Command } = await import("@ericsanchezok/synergy-local-runtime/command/command")
         await Command.reload()
         return
       }
@@ -569,7 +569,7 @@ export namespace RuntimeReload {
         return
       }
       case "skill": {
-        const { Skill: SkillMod } = await import("@ericsanchezok/synergy-runtime-local/skill/skill")
+        const { Skill: SkillMod } = await import("@ericsanchezok/synergy-local-runtime/skill/skill")
         await SkillMod.reload()
         ctx.diagnostics.push(...mapSkillDiagnostics(await SkillMod.diagnostics()))
         return

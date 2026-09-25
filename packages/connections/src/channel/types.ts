@@ -1,6 +1,6 @@
 import z from "zod"
 import type { ChannelHost } from "./host"
-import type { Question } from "@ericsanchezok/synergy-runtime-local/question"
+import type { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ChannelTarget, Info, toKey } from "@ericsanchezok/synergy-harness/session/channel-endpoint"
 

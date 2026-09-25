@@ -10,7 +10,7 @@ export async function runCoreWorker(): Promise<boolean> {
   )
   if (!worker) return false
   if (worker === "__owned-process-runner") {
-    const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-runtime-local/process/owned-worker")
+    const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-local-runtime/process/owned-worker")
     await runOwnedProcessWorker(process.argv[process.argv.indexOf(worker) + 1]!)
     return true
   }
@@ -20,20 +20,20 @@ export async function runCoreWorker(): Promise<boolean> {
     return true
   }
   const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
-  const { createLocalHost } = await import("@ericsanchezok/synergy-runtime-local/host")
+  const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime/host")
   return RuntimeContext.create(createLocalHost()).run(async () => {
     const { Global } = await import("@ericsanchezok/synergy-harness/global")
     await Global.initialize({ cache: false })
     if (worker === "__observability-worker-runner")
       await import("@ericsanchezok/synergy-harness/observability/telemetry-worker")
     if (worker === "__agent-turn-runner") {
-      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-runtime-local/register")
+      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-local-runtime/register")
       registerLocalRuntime()
       const { startAgentWorker } = await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
       startAgentWorker()
     }
     if (worker === "__policy-worker-runner") {
-      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-runtime-local/register")
+      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-local-runtime/register")
       registerLocalRuntime()
       const { startPolicyWorker } = await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
       startPolicyWorker()
@@ -47,8 +47,8 @@ export async function main() {
   if (await runCoreWorker()) return
   const { runCli } = await import("./main")
   await runCli({
-    runtimeFactory: async (options) => (await import("@ericsanchezok/synergy-runtime-local")).openLocalRuntime(options),
-    beforeCommand: async () => (await import("@ericsanchezok/synergy-runtime-local/register")).registerLocalRuntime(),
+    runtimeFactory: async (options) => (await import("@ericsanchezok/synergy-local-runtime")).openLocalRuntime(options),
+    beforeCommand: async () => (await import("@ericsanchezok/synergy-local-runtime/register")).registerLocalRuntime(),
   })
 }
 

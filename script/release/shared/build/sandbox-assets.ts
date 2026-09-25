@@ -68,7 +68,7 @@ export function resolveSandboxAsset(
   const assetsRoot =
     options.assetsRoot ??
     process.env.SYNERGY_SANDBOX_ASSETS_DIR ??
-    path.resolve(import.meta.dir, "../../../../packages/runtime-local/sandbox-assets")
+    path.resolve(import.meta.dir, "../../../../packages/local-runtime/sandbox-assets")
   const key = sandboxAssetKey(target)
   const sourcePath = path.join(assetsRoot, key, binaryName)
   if (!fs.existsSync(sourcePath)) {

@@ -10,7 +10,7 @@ A single backend package made independent Harness use require product assembly k
 
 Workspace packages own runtime mechanisms, local implementation, transport, CLI, product assembly and individual business domains. Web and Desktop live under `apps/`; native Browser and Computer hosts remain in Desktop. Business services own their tools, routes, configuration, storage upgrades and command contributions. The [architecture ownership map](../../../architecture/README.md#ownership-map) defines the package responsibilities.
 
-Harness provides programmatic session execution, Scope, tools, context contributions, permissions, budgets, recovery and evidence through public exports. Runtime Local registers default host sources and concrete model SDK factories. Product Runtime explicitly registers the complete feature set before opening the shared lifecycle. Missing optional services produce explicit errors. There is one runtime and one home writer per process; the change does not introduce a multi-instance container or automatic package discovery.
+Harness provides programmatic session execution, Scope, tools, context contributions, permissions, budgets, recovery and evidence through public exports. Local Runtime registers default host sources and concrete model SDK factories. Product Runtime explicitly registers the complete feature set before opening the shared lifecycle. Missing optional services produce explicit errors. There is one runtime and one home writer per process; the change does not introduce a multi-instance container or automatic package discovery.
 
 Application hosts use eight explicit Harness entry points; adapter contracts are individually declared. Tool invocation owns the actual processor and durable execution path, while runtime statistics and rollout revisions expose read-only views. Exporting processor, resolver, scheduler or journal implementations would require consumers to reconstruct core invariants, so those remain private; integration test access is development-only and stripped from tarballs. Nested plugin tools borrow only a verified active parent's scheduling slot, preserving global admission while avoiding single-slot deadlock.
 
@@ -34,7 +34,7 @@ Current developer instructions are checked against the manifest-declared workspa
 
 ## Consequences
 
-A smaller installation can consume Harness and the local CLI without installing Browser, Library, MCP or Electron. The upstream `ai` execution library still includes its Gateway adapter as a transitive dependency; concrete provider selection and SDK factories belong to Runtime Local.
+A smaller installation can consume Harness and the local CLI without installing Browser, Library, MCP or Electron. The upstream `ai` execution library still includes its Gateway adapter as a transitive dependency; concrete provider selection and SDK factories belong to Local Runtime.
 
 Package boundaries add manifest, export and artifact checks. They also make test ownership and missing composition visible: domain tests initialize their own capability, while full product API tests use full assembly. Coverage exclusions follow their original files without lowering the existing thresholds. Exact exclusions also identify type-only extracted contracts and the source worker entry whose IPC and installed/compiled CLI behavior are verified in subprocess tests; Bun does not merge child-process coverage. The release build must verify both the complete asset set and the absence of optional heavy assets in core artifacts.
 

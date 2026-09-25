@@ -30,8 +30,8 @@
     "test:coverage": "SYNERGY_BATCH_SHARDS=1 bun ../../packages/testing/script/run.ts --coverage"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-browser": "workspace:*",
-    "@ericsanchezok/synergy-computer": "workspace:*",
+    "@ericsanchezok/synergy-browser-core": "workspace:*",
+    "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@trycua/cua-driver": "0.23.2",
     "electron-updater": "6.6.8",

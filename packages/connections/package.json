@@ -59,7 +59,7 @@
     "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@ericsanchezok/synergy-workflows": "workspace:*",

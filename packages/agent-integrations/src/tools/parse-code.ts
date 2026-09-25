@@ -3,7 +3,7 @@ import DESCRIPTION from "./parse-code.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { runSg } from "./ast-grep/cli"
 import { AST_GREP_LANGUAGES } from "./ast-grep/types"
-import { conflictWarning, detectConflicts } from "@ericsanchezok/synergy-runtime-local/conflict/detect"
+import { conflictWarning, detectConflicts } from "@ericsanchezok/synergy-local-runtime/conflict/detect"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import {
   displayPath,
@@ -14,7 +14,7 @@ import {
   resolveFilePath,
   splitDisplayLines,
   recordSeenSessionLines,
-} from "@ericsanchezok/synergy-runtime-local/tools/anchored-file"
+} from "@ericsanchezok/synergy-local-runtime/tools/anchored-file"
 
 const DEFAULT_AST_LIMIT = 50
 const MAX_AST_LIMIT = 100

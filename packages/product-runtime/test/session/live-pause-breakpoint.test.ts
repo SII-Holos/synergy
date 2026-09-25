@@ -26,7 +26,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { ExperienceEncoder } from "@ericsanchezok/synergy-library/experience-encoder"
-import { abandonSession, continueSession } from "@ericsanchezok/synergy-runtime-local/session-api"
+import { abandonSession, continueSession } from "@ericsanchezok/synergy-local-runtime/session-api"
 
 runtime.run(() => Log.init({ print: false }))
 

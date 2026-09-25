@@ -8,8 +8,8 @@ import type { StoreTransaction, TransactionalStore } from "@ericsanchezok/synerg
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { ScopeTransfer } from "@ericsanchezok/synergy-harness/scope/transfer"
 import { ChannelWorkspaceTransfer } from "@ericsanchezok/synergy-connections/channel/workspace-transfer"
-import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
-import { WorktreeRelocation } from "@ericsanchezok/synergy-runtime-local/workspace/relocation"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
+import { WorktreeRelocation } from "@ericsanchezok/synergy-local-runtime/workspace/relocation"
 
 export namespace WorkspaceHomeTransfer {
   export const roots = new Set(["workspace", "workspace_scope", "workspace_location"])

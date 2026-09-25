@@ -3,7 +3,7 @@ import path from "path"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { DaemonSpec } from "../../src/daemon/spec"
 import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 let runtime: Awaited<ReturnType<typeof migrationFixture>>
 let home: string
 const originalArgv = [...process.argv]

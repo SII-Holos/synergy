@@ -2,7 +2,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { OwnedProcess } from "@ericsanchezok/synergy-runtime-local/process/owned-process"
+import { OwnedProcess } from "@ericsanchezok/synergy-local-runtime/process/owned-process"
 import fs from "node:fs/promises"
 import path from "node:path"
 

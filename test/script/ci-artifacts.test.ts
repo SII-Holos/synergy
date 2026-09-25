@@ -33,7 +33,7 @@ async function inputs(root: string) {
   )
   await Bun.write(path.join(root, "packages/shared/src/index.ts"), "export const value = 1")
   await Bun.write(path.join(root, "packages/shared/dist/index.js"), "verified dependency")
-  await Bun.write(path.join(root, "packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
+  await Bun.write(path.join(root, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
 }
 
 test("build identity follows newly added transitive workspace inputs", async () => {
@@ -64,7 +64,7 @@ test("build outputs transfer between compatible runners during an image rollout"
   try {
     await inputs(root)
     await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
-    await Bun.write(path.join(root, "packages/runtime-local/.artifacts/watcher/watcher"), "verified watcher")
+    await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
     process.env.ImageVersion = "20260907.300.1"
     const key = await buildCacheIdentity(root)
     await publishBuild(root)
@@ -82,7 +82,7 @@ test("build outputs transfer between compatible runners during an image rollout"
 test("build reuse validates inputs, bytes, modes and complete inventory before replacing outputs", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-"))
   const plugin = "packages/plugin/dist/index.js"
-  const watcher = "packages/runtime-local/.artifacts/watcher/watcher"
+  const watcher = "packages/local-runtime/.artifacts/watcher/watcher"
   try {
     await inputs(root)
     await Bun.write(path.join(root, plugin), "verified plugin")

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { Hono } from "hono"
 import { Server } from "../../src/server/server"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 
 test("core application has core routes without product routes", async () => {

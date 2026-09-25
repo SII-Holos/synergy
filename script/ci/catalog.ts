@@ -75,7 +75,12 @@ export async function workspaceInputs(root: string, revision: string): Promise<W
   // Desktop embeds the Web host and launches the product runtime without a workspace import.
   const desktop = packages.find((entry) => entry.directory === "apps/desktop")
   if (desktop)
-    for (const directory of ["apps/web", "packages/product-runtime", "packages/browser-runtime", "packages/computer"]) {
+    for (const directory of [
+      "apps/web",
+      "packages/product-runtime",
+      "packages/browser-runtime",
+      "packages/computer-protocol",
+    ]) {
       const dependency = packages.find((entry) => entry.directory === directory)
       if (dependency) desktop.testDependencies.push(dependency.name)
     }
@@ -134,22 +139,22 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     ),
     task("desktop", "desktop", 180, ["apps/desktop"], { prerequisites: ["desktop"] }),
     task("smoke", "smoke", 40, ["packages/product-runtime", "packages/server"]),
-    task("sandbox", "sandbox", 100, ["packages/runtime-local"], { prerequisites: ["sandbox"] }),
+    task("sandbox", "sandbox", 100, ["packages/local-runtime"], { prerequisites: ["sandbox"] }),
     task(
       "windows",
       "windows",
       450,
-      ["apps/desktop", "packages/cli", "packages/harness", "packages/runtime-local", "packages/util"],
+      ["apps/desktop", "packages/cli", "packages/harness", "packages/local-runtime", "packages/util"],
       {
         pool: "windows",
-        package: "packages/runtime-local",
-        needs: ["suite-packages-runtime-local"],
+        package: "packages/local-runtime",
+        needs: ["suite-packages-local-runtime"],
       },
     ),
-    task("macos-workspace", "native-workspace", 300, ["packages/runtime-local", "packages/agent-integrations"], {
+    task("macos-workspace", "native-workspace", 300, ["packages/local-runtime", "packages/agent-integrations"], {
       pool: "macos",
-      package: "packages/runtime-local",
-      needs: ["suite-packages-runtime-local"],
+      package: "packages/local-runtime",
+      needs: ["suite-packages-local-runtime"],
     }),
     ...[16, 17, 18].map((version) =>
       task(`postgres-${version}`, "postgres", 180, ["packages/harness"], {
@@ -167,7 +172,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         `benchmark-docker-${variant}`,
         "benchmark-docker",
         600,
-        ["benchmark", "packages/harness", "packages/runtime-local"],
+        ["benchmark", "packages/harness", "packages/local-runtime"],
         {
           pool: "docker",
           variant,
@@ -200,7 +205,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     "apps/web": 220,
     "packages/connections": 180,
     "packages/ui": 160,
-    "packages/runtime-local": 150,
+    "packages/local-runtime": 150,
     "packages/library": 130,
   }
   for (const directory of [...coverage].sort()) {

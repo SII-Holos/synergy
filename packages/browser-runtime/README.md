@@ -2,7 +2,7 @@
 
 Browser backend state, page ownership, profiles, tools, routes, installation, lifecycle, and recovery.
 
-Keep one page per session. Native WebContentsView and WebRTC/data-channel modes are both supported. Browser cleanup consumes generic session terminal events; native hosting stays in apps/desktop and shared schemas in packages/browser.
+Keep one page per session. Native WebContentsView and WebRTC/data-channel modes are both supported. Browser cleanup consumes generic session terminal events; native hosting stays in apps/desktop and shared schemas in packages/browser-core.
 
 Cross-package imports use the explicit entries in `package.json`. Tests and fixtures belong in this package’s `test/` tree. Full API composition tests belong in `product-runtime/test/`.
 

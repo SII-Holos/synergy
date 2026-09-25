@@ -3,7 +3,7 @@ import { registerWorkspaceFileSymbolSource } from "../../src/lsp/workspace-symbo
 import { registerExternalAdapters } from "../../src/external-agent"
 import { registerLspToolSource } from "../../src/lsp/tool-source"
 import { testRuntime as harnessRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { registerConfig } from "../../src/config-schema"
 
 export function testRuntime() {

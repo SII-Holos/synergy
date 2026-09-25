@@ -1,5 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { createLocalHost } from "@ericsanchezok/synergy-runtime-local"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
 import { BenchmarkInputError } from "./input-error"
 import { loadComposition } from "./composition"
 import { Config } from "@ericsanchezok/synergy-harness/config"

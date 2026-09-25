@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-workflows/blueprint"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

@@ -161,7 +161,7 @@
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },
-    "packages/runtime-local": {
+    "packages/local-runtime": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
     },

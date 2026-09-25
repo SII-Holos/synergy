@@ -4,7 +4,7 @@ import z from "zod"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ControlProfileCompiler } from "@ericsanchezok/synergy-harness/control-profile/compiler"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { SandboxBackend } from "@ericsanchezok/synergy-runtime-local/sandbox/backend"
+import { SandboxBackend } from "@ericsanchezok/synergy-local-runtime/sandbox/backend"
 import { errors } from "./error"
 
 const ControlProfileSummary = z

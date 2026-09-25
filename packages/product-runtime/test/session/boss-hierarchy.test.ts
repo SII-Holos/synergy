@@ -10,7 +10,7 @@ import {
   BossProjectTool,
   DEFAULT_PROJECT_BOSS_INSTRUCTIONS,
 } from "@ericsanchezok/synergy-workflows/boss/tools/boss-project"
-import { SessionSendTool } from "@ericsanchezok/synergy-runtime-local/tools/session-send"
+import { SessionSendTool } from "@ericsanchezok/synergy-local-runtime/tools/session-send"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import path from "path"

@@ -8,7 +8,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 const runtime = await migrationFixture({ register: registerLocalRuntime })
 
 test("a filtered migration preserves unrelated repositories and reconstructs selected history", () =>

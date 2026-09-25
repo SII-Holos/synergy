@@ -1,5 +1,5 @@
 import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { expect, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { DaemonState } from "@ericsanchezok/synergy-harness/util/daemon-state"

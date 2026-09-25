@@ -50,7 +50,7 @@ A durable development convention is part of the implementation deliverable, not 
 
 Package ownership is machine-enforced. Before adding an import, identify both package owners in the [Ownership Map](../../../docs/architecture/README.md#ownership-map).
 
-1. Harness cannot import CLI, HTTP Server, the generated SDK, or business packages. Default model SDK factories, local tools, native PTY, filesystem watchers and OS sandbox implementations belong to `runtime-local`; Harness retains permission policy and typed host ports.
+1. Harness cannot import CLI, HTTP Server, the generated SDK, or business packages. Default model SDK factories, local tools, native PTY, filesystem watchers and OS sandbox implementations belong to `local-runtime`; Harness retains permission policy and typed host ports.
 2. Use an existing typed source or registry when core execution needs optional behavior. Register it from the owning capability or full product composition before runtime startup; do not add package scanning or a generic service container.
 3. Import only declared package exports. Keep one source module per export target; do not add private cross-package relative imports or forwarding copies to bypass a cycle.
 4. Put a business domain's tools, routes, configuration, migrations, storage and CLI commands with its service. Only generic tool execution and scheduling belong to Harness.

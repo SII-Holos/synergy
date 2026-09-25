@@ -116,7 +116,7 @@ When in doubt, look at a nearby file doing something similar and follow its lead
 
 ## Monorepo Structure
 
-Choose the owner by responsibility. Harness owns execution and lifecycle mechanisms; Runtime Local supplies model and local-system implementations; CLI and Server expose execution through command-line and HTTP/WS interfaces; Product Runtime explicitly assembles the complete product. Business packages own their services together with tools, routes, configuration, migrations and command contributions. Web and Desktop interfaces live under `apps/`.
+Choose the owner by responsibility. Harness owns execution and lifecycle mechanisms; Local Runtime supplies model and local-system implementations; CLI and Server expose execution through command-line and HTTP/WS interfaces; Product Runtime explicitly assembles the complete product. Business packages own their services together with tools, routes, configuration, migrations and command contributions. Web and Desktop interfaces live under `apps/`.
 
 Follow the [architecture ownership map](docs/architecture/README.md#ownership-map) and [package map](docs/reference/packages.md) for package responsibilities, public imports and standalone builds. A package is a dependency and distribution unit; creating a package does not create another process. Import only declared exports and keep generic execution independent of optional business capabilities. Inspect adjacent owners before changing a shared operation.
 

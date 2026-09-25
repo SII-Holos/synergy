@@ -9,13 +9,13 @@ import { createBuiltinPrimaryAgents } from "@ericsanchezok/synergy-harness/test/
 import { buildSynergyMaxPrompt } from "@ericsanchezok/synergy-harness/test/internal/agent/prompt/synergy-max/builder"
 import { buildSynergyPrompt } from "@ericsanchezok/synergy-harness/test/internal/agent/prompt/synergy/builder"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
-import { truncateSkillDescription } from "@ericsanchezok/synergy-runtime-local/tools/skill"
+import { truncateSkillDescription } from "@ericsanchezok/synergy-local-runtime/tools/skill"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
 const PROMPT_DIR = path.join(import.meta.dir, "../../../harness/src/agent/prompt")
-const TOOL_DIR = path.join(import.meta.dir, "../../../runtime-local/src/tools")
+const TOOL_DIR = path.join(import.meta.dir, "../../../local-runtime/src/tools")
 
 function sourceBytes(relativePath: string): number {
   const bytes = Bun.file(path.join(TOOL_DIR, relativePath)).size

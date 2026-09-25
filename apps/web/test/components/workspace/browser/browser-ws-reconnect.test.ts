@@ -4,7 +4,7 @@ import {
   BROWSER_PROTOCOL_VERSION,
   type BrowserNativePresentationCapabilityResult,
   type BrowserNativePresentationTicketResult,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import type { BrowserNativeViewBridge } from "../../../../src/context/platform"
 import { createBrowserStore } from "../../../../src/components/workspace/browser/browser-store"
 

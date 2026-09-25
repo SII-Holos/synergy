@@ -29,7 +29,7 @@
   "dependencies": {
     "@ai-sdk/openai": "2.0.111",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-server": "workspace:*",
     "@zip.js/zip.js": "2.8.26",
     "ai": "catalog:",

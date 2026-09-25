@@ -7,12 +7,12 @@ on:
     branches: [dev, main]
     paths:
       - ".github/workflows/build-helpers.yml"
-      - "packages/runtime-local/src/sandbox/helper-linux/**"
-      - "packages/runtime-local/src/sandbox/helper/**"
-      - "packages/runtime-local/script/build-helper.ts"
-      - "packages/runtime-local/script/build-watcher.ts"
-      - "packages/runtime-local/script/watcher/**"
-      - "packages/runtime-local/test/file/fixtures/watcher-*"
+      - "packages/local-runtime/src/sandbox/helper-linux/**"
+      - "packages/local-runtime/src/sandbox/helper/**"
+      - "packages/local-runtime/script/build-helper.ts"
+      - "packages/local-runtime/script/build-watcher.ts"
+      - "packages/local-runtime/script/watcher/**"
+      - "packages/local-runtime/test/file/fixtures/watcher-*"
       - "test/script/watcher-native.test.ts"
       - "packages/harness/script/build-sqlite.ts"
       - "packages/harness/src/storage/sqlite-engine.ts"
@@ -23,12 +23,12 @@ on:
     branches: [dev, main]
     paths:
       - ".github/workflows/build-helpers.yml"
-      - "packages/runtime-local/src/sandbox/helper-linux/**"
-      - "packages/runtime-local/src/sandbox/helper/**"
-      - "packages/runtime-local/script/build-helper.ts"
-      - "packages/runtime-local/script/build-watcher.ts"
-      - "packages/runtime-local/script/watcher/**"
-      - "packages/runtime-local/test/file/fixtures/watcher-*"
+      - "packages/local-runtime/src/sandbox/helper-linux/**"
+      - "packages/local-runtime/src/sandbox/helper/**"
+      - "packages/local-runtime/script/build-helper.ts"
+      - "packages/local-runtime/script/build-watcher.ts"
+      - "packages/local-runtime/script/watcher/**"
+      - "packages/local-runtime/test/file/fixtures/watcher-*"
       - "test/script/watcher-native.test.ts"
       - "packages/harness/script/build-sqlite.ts"
       - "packages/harness/src/storage/sqlite-engine.ts"
@@ -76,38 +76,38 @@ jobs:
       - name: Build and stage Linux helpers
         shell: bash
         run: |
-          bun run packages/runtime-local/script/build-helper.ts linux --target "${{ matrix.gnu_target }}"
-          bun run packages/runtime-local/script/build-helper.ts linux --target "${{ matrix.musl_target }}"
+          bun run packages/local-runtime/script/build-helper.ts linux --target "${{ matrix.gnu_target }}"
+          bun run packages/local-runtime/script/build-helper.ts linux --target "${{ matrix.musl_target }}"
           mkdir -p \
-            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}" \
-            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}-musl"
+            "packages/local-runtime/sandbox-assets/linux-${{ matrix.arch }}" \
+            "packages/local-runtime/sandbox-assets/linux-${{ matrix.arch }}-musl"
           cp \
-            "packages/runtime-local/src/sandbox/helper-linux/target/${{ matrix.gnu_target }}/release/synergy-sandbox-linux" \
-            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}/synergy-sandbox-linux"
+            "packages/local-runtime/src/sandbox/helper-linux/target/${{ matrix.gnu_target }}/release/synergy-sandbox-linux" \
+            "packages/local-runtime/sandbox-assets/linux-${{ matrix.arch }}/synergy-sandbox-linux"
           cp \
-            "packages/runtime-local/src/sandbox/helper-linux/target/${{ matrix.musl_target }}/release/synergy-sandbox-linux" \
-            "packages/runtime-local/sandbox-assets/linux-${{ matrix.arch }}-musl/synergy-sandbox-linux"
-          chmod 755 packages/runtime-local/sandbox-assets/linux-*/synergy-sandbox-linux
+            "packages/local-runtime/src/sandbox/helper-linux/target/${{ matrix.musl_target }}/release/synergy-sandbox-linux" \
+            "packages/local-runtime/sandbox-assets/linux-${{ matrix.arch }}-musl/synergy-sandbox-linux"
+          chmod 755 packages/local-runtime/sandbox-assets/linux-*/synergy-sandbox-linux
 
       - name: Build verified Linux watcher bindings
         run: |
           bun install --frozen-lockfile
-          bun packages/runtime-local/script/build-watcher.ts --arch "${{ matrix.arch }}"
-          bun packages/runtime-local/script/build-watcher.ts --arch "${{ matrix.arch }}" --libc musl
+          bun packages/local-runtime/script/build-watcher.ts --arch "${{ matrix.arch }}"
+          bun packages/local-runtime/script/build-watcher.ts --arch "${{ matrix.arch }}" --libc musl
       - name: Verify watcher coexistence with ONNX and signal recovery in Bun
         run: bun test --config /dev/null test/script/watcher-native.test.ts
       - name: Upload Linux watcher bindings
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: watcher-assets-linux-${{ matrix.arch }}
-          path: packages/runtime-local/.artifacts/watcher
+          path: packages/local-runtime/.artifacts/watcher
           include-hidden-files: true
           if-no-files-found: error
       - name: Upload Linux sandbox assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sandbox-assets-linux-${{ matrix.arch }}
-          path: packages/runtime-local/sandbox-assets
+          path: packages/local-runtime/sandbox-assets
           if-no-files-found: error
 
   windows:
@@ -131,17 +131,17 @@ jobs:
       - name: Build and stage Windows helper
         shell: bash
         run: |
-          bun run packages/runtime-local/script/build-helper.ts windows --target x86_64-pc-windows-msvc
-          mkdir -p packages/runtime-local/sandbox-assets/windows-x64
+          bun run packages/local-runtime/script/build-helper.ts windows --target x86_64-pc-windows-msvc
+          mkdir -p packages/local-runtime/sandbox-assets/windows-x64
           cp \
-            packages/runtime-local/src/sandbox/helper/target/x86_64-pc-windows-msvc/release/synergy-sandbox-windows.exe \
-            packages/runtime-local/sandbox-assets/windows-x64/synergy-sandbox-windows.exe
+            packages/local-runtime/src/sandbox/helper/target/x86_64-pc-windows-msvc/release/synergy-sandbox-windows.exe \
+            packages/local-runtime/sandbox-assets/windows-x64/synergy-sandbox-windows.exe
 
       - name: Upload Windows sandbox assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sandbox-assets-windows-x64
-          path: packages/runtime-local/sandbox-assets
+          path: packages/local-runtime/sandbox-assets
           if-no-files-found: error
 
   sqlite:

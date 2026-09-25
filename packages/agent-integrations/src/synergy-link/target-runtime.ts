@@ -1,5 +1,5 @@
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
-import { SynergyLinkExecution } from "@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution"
+import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
 import { SynergyLinkTargetService } from "./target-service"

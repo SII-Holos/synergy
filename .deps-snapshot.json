@@ -1,19 +1,19 @@
 {
   "@ericsanchezok/synergy-harness": ["@ericsanchezok/synergy-link-protocol", "@ericsanchezok/synergy-util"],
-  "@ericsanchezok/synergy-runtime-local": [
+  "@ericsanchezok/synergy-local-runtime": [
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-link-protocol",
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-cli": [
     "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-sdk",
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-server": [
     "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-product-runtime": [
@@ -27,18 +27,21 @@
     "@ericsanchezok/synergy-media",
     "@ericsanchezok/synergy-note",
     "@ericsanchezok/synergy-plugin-host",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-workbench",
     "@ericsanchezok/synergy-workflows"
   ],
   "@ericsanchezok/synergy-browser-runtime": [
-    "@ericsanchezok/synergy-browser",
+    "@ericsanchezok/synergy-browser-core",
     "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-server"
   ],
-  "@ericsanchezok/synergy-computer-runtime": ["@ericsanchezok/synergy-computer", "@ericsanchezok/synergy-harness"],
+  "@ericsanchezok/synergy-computer-runtime": [
+    "@ericsanchezok/synergy-computer-protocol",
+    "@ericsanchezok/synergy-harness"
+  ],
   "@ericsanchezok/synergy-library": [
     "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
@@ -55,7 +58,7 @@
     "@ericsanchezok/synergy-note",
     "@ericsanchezok/synergy-plugin",
     "@ericsanchezok/synergy-plugin-host",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util"
   ],
@@ -63,7 +66,7 @@
     "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-link-protocol",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util",
     "@ericsanchezok/synergy-workflows"
@@ -74,7 +77,7 @@
     "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-plugin-host",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util"
   ],
@@ -83,14 +86,14 @@
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-link-protocol",
     "@ericsanchezok/synergy-plugin",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-sdk",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-media": [
     "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-runtime-local",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-plugin-host": [
@@ -102,8 +105,8 @@
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-testing": [],
-  "@ericsanchezok/synergy-browser": [],
-  "@ericsanchezok/synergy-computer": [],
+  "@ericsanchezok/synergy-browser-core": [],
+  "@ericsanchezok/synergy-computer-protocol": [],
   "@ericsanchezok/synergy-link-protocol": [],
   "@ericsanchezok/synergy-link": ["@ericsanchezok/synergy-link-protocol", "@ericsanchezok/synergy-util"],
   "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-sdk", "@ericsanchezok/synergy-util"],
@@ -116,15 +119,15 @@
   ],
   "@ericsanchezok/synergy-util": [],
   "@ericsanchezok/synergy-app": [
-    "@ericsanchezok/synergy-browser",
+    "@ericsanchezok/synergy-browser-core",
     "@ericsanchezok/synergy-plugin",
     "@ericsanchezok/synergy-sdk",
     "@ericsanchezok/synergy-ui",
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-desktop": [
-    "@ericsanchezok/synergy-browser",
-    "@ericsanchezok/synergy-computer",
+    "@ericsanchezok/synergy-browser-core",
+    "@ericsanchezok/synergy-computer-protocol",
     "@ericsanchezok/synergy-util"
   ]
 }

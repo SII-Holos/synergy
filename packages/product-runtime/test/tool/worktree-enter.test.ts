@@ -1,7 +1,7 @@
 import path from "node:path"
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeEnterTool } from "@ericsanchezok/synergy-workbench/project/tools/worktree-enter"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { EnforcementError } from "@ericsanchezok/synergy-harness/enforcement/errors"

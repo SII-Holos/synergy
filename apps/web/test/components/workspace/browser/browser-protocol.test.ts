@@ -3,7 +3,7 @@ import {
   BROWSER_PROTOCOL_VERSION,
   parseBrowserPresentationPreference,
   selectBrowserPresentation,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 
 describe("browser presentation negotiation", () => {
   test("chooses native for desktop local clients", () => {

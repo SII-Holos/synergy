@@ -135,7 +135,7 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/connections/test/email/imap.test.ts",
   "packages/harness/test/global/test-home-guard.test.ts",
   "packages/harness/test/lifecycle/runtime.test.ts",
-  "packages/runtime-local/test/sandbox/helper-source.test.ts",
+  "packages/local-runtime/test/sandbox/helper-source.test.ts",
   "packages/connections/test/holos/runtime.test.ts",
   "packages/library/test/database.test.ts",
   "packages/library/test/embedding.test.ts",
@@ -144,8 +144,8 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/library/test/experience-reencode.test.ts",
   "packages/product-runtime/test/plugin/mcp-declarative-oauth.test.ts",
   "packages/harness/test/provider/catalog-stability.test.ts",
-  "packages/runtime-local/test/file/watcher.test.ts",
-  "packages/runtime-local/test/provider/proxy.test.ts",
+  "packages/local-runtime/test/file/watcher.test.ts",
+  "packages/local-runtime/test/provider/proxy.test.ts",
   "packages/product-runtime/test/server/nav-global-routes.test.ts",
   // Runtime startup must configure pools before any sibling suite has created them.
   "packages/product-runtime/test/server/resident-runtime.test.ts",
@@ -172,7 +172,7 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/harness/test/storage/storage-silent-not-found.test.ts",
   "packages/product-runtime/test/tool/auto-expand.test.ts",
   "packages/media/test/tools/openai-image-gen.test.ts",
-  "packages/runtime-local/test/tools/session-search.test.ts",
+  "packages/local-runtime/test/tools/session-search.test.ts",
   "packages/library/test/vector/embedding-standalone.test.ts",
 ])
 

@@ -39,7 +39,7 @@ test("resolves distinct core and product entrypoints under their owning packages
 
 test("version updates include the split runtime packages once each", () => {
   expect(new Set(VERSION_MANAGED_PACKAGE_PATHS).size).toBe(VERSION_MANAGED_PACKAGE_PATHS.length)
-  for (const id of ["cli", "harness", "runtimeLocal", "productRuntime"] as const) {
+  for (const id of ["cli", "harness", "localRuntime", "productRuntime"] as const) {
     expect(VERSION_MANAGED_PACKAGE_PATHS).toContain(path.join(releasePackageDirectory(id), "package.json"))
   }
 })

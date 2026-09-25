@@ -83,7 +83,7 @@ function directories(repoRoot: string) {
     desktop: path.join(repoRoot, RELEASE_CATALOG.desktop.directory),
     plugin: path.join(repoRoot, RELEASE_CATALOG.plugin.directory),
     product: path.join(repoRoot, RELEASE_CATALOG.productRuntime.directory),
-    local: path.join(repoRoot, RELEASE_CATALOG.runtimeLocal.directory),
+    local: path.join(repoRoot, RELEASE_CATALOG.localRuntime.directory),
   }
 }
 
@@ -835,10 +835,10 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   if (initial !== 0) return initial
 
   const platform = process.platform
-  await (await import("../packages/runtime-local/script/build-pty")).buildPty()
+  await (await import("../packages/local-runtime/script/build-pty")).buildPty()
   if (platform === "darwin") await (await import("../packages/harness/script/build-sqlite")).buildSqlite()
   if (platform === "linux") {
-    const { buildWatcher } = await import("../packages/runtime-local/script/build-watcher")
+    const { buildWatcher } = await import("../packages/local-runtime/script/build-watcher")
     await buildWatcher()
   }
   if (platform !== "linux" && platform !== "win32") return 0
@@ -866,7 +866,7 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   if (sandbox !== 0) return sandbox
   if (platform === "linux" && !(await commandExists("bwrap"))) {
     process.stderr.write(
-      "[sandbox] bwrap not found; install bubblewrap or run packages/runtime-local/script/download-bwrap.sh\n",
+      "[sandbox] bwrap not found; install bubblewrap or run packages/local-runtime/script/download-bwrap.sh\n",
     )
   }
   return 0

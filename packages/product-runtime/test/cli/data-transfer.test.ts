@@ -14,7 +14,7 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
-import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
 const runtime = await testRuntime()
 
 test("Home imports normalize historical directory selections without local adoption", () =>

@@ -1,5 +1,5 @@
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
-import { Question } from "@ericsanchezok/synergy-runtime-local/question"
+import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"

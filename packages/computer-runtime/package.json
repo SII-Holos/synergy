@@ -16,7 +16,7 @@
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-computer": "workspace:*",
+    "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@hono/standard-validator": "^0.2.0",
     "hono": "catalog:",

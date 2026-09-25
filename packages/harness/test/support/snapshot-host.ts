@@ -3,7 +3,7 @@ import path from "node:path"
 import { SnapshotRestore } from "../../src/session/snapshot-restore"
 
 // This permissive fixture checks Harness object selection and binding admission.
-// Atomic mutation, filesystem races and native ownership are tested in runtime-local.
+// Atomic mutation, filesystem races and native ownership are tested in local-runtime.
 export function registerSnapshotTestHost() {
   SnapshotRestore.register({
     async restore({ files, signal }) {

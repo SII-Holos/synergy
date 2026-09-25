@@ -1,5 +1,5 @@
 import { createEffect, onCleanup, onMount } from "solid-js"
-import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"

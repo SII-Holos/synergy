@@ -25,9 +25,9 @@ export const RELEASE_CATALOG = {
   productRuntime: { directory: "packages/product-runtime", registry: "@ericsanchezok/synergy", versioned: true },
   cli: { directory: "packages/cli", registry: null, versioned: true },
   harness: { directory: "packages/harness", registry: null, versioned: true },
-  runtimeLocal: { directory: "packages/runtime-local", registry: null, versioned: true },
-  browser: { directory: "packages/browser", registry: null, versioned: true },
-  computer: { directory: "packages/computer", registry: null, versioned: true },
+  localRuntime: { directory: "packages/local-runtime", registry: null, versioned: true },
+  browser: { directory: "packages/browser-core", registry: null, versioned: true },
+  computer: { directory: "packages/computer-protocol", registry: null, versioned: true },
   browserRuntime: { directory: "packages/browser-runtime", registry: null, versioned: true },
   computerRuntime: { directory: "packages/computer-runtime", registry: null, versioned: true },
   library: { directory: "packages/library", registry: null, versioned: true },
@@ -85,7 +85,7 @@ export const PLUGIN_KIT_DIR = releasePackageDirectory("pluginKit")
 export const PRODUCT_RUNTIME_DIR = releasePackageDirectory("productRuntime")
 export const CLI_DIR = releasePackageDirectory("cli")
 export const HARNESS_DIR = releasePackageDirectory("harness")
-export const RUNTIME_LOCAL_DIR = releasePackageDirectory("runtimeLocal")
+export const LOCAL_RUNTIME_DIR = releasePackageDirectory("localRuntime")
 export const WEB_DIR = releasePackageDirectory("web")
 export const DESKTOP_DIR = releasePackageDirectory("desktop")
 export const SYNERGY_LINK_DIR = releasePackageDirectory("link")

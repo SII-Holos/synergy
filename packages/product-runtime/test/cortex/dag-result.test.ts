@@ -1,4 +1,4 @@
-import { DagPatchTool } from "@ericsanchezok/synergy-runtime-local/tools/dag"
+import { DagPatchTool } from "@ericsanchezok/synergy-local-runtime/tools/dag"
 import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test"
 import { Dag } from "@ericsanchezok/synergy-harness/session/dag"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"

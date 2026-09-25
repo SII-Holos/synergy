@@ -6,7 +6,7 @@ import type { LSPClient } from "@ericsanchezok/synergy-agent-integrations/lsp/cl
 import {
   captureWriteDiagnosticsBefore,
   collectWriteDiagnostics,
-} from "@ericsanchezok/synergy-runtime-local/tools/write-quality"
+} from "@ericsanchezok/synergy-local-runtime/tools/write-quality"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

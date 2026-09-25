@@ -103,10 +103,10 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-library": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-note": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-plugin-host": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
     "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "croner": "10.0.1",

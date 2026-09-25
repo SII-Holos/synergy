@@ -1,5 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { createLocalHost } from "@ericsanchezok/synergy-runtime-local"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
 import { registerProductRuntime } from "../../../src/product-registration"
 import { registerProductRoutes } from "../../../src/server/routes"
 import path from "path"

@@ -1,5 +1,5 @@
 import type { CDPSession, Page } from "playwright-core"
-import { cdpCommandTimeoutMs, withCdpCommandTimeout, type CdpTransport } from "@ericsanchezok/synergy-browser"
+import { cdpCommandTimeoutMs, withCdpCommandTimeout, type CdpTransport } from "@ericsanchezok/synergy-browser-core"
 
 export class PlaywrightCdpTransport implements CdpTransport {
   private sessionPromise: Promise<CDPSession> | null = null

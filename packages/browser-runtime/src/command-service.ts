@@ -5,7 +5,7 @@ import {
   normalizeBrowserURL,
   type BrowserBackendCommand,
   type BrowserBackendResult,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserOwner } from "./owner.js"
 import { BrowserPolicy } from "./policy.js"
 import { BrowserRuntime, registerBrowserCommandExecutor } from "./runtime.js"

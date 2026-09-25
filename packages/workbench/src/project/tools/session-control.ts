@@ -10,7 +10,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import DESCRIPTION from "./session-control.txt"
 
 const Action = z.enum([
@@ -186,7 +186,7 @@ export const SessionControlTool = Tool.define("session_control", {
 
 async function handleStatus(sessionID: string) {
   const runtime = SessionManager.getRuntime(sessionID)
-  const { Question } = await import("@ericsanchezok/synergy-runtime-local/question")
+  const { Question } = await import("@ericsanchezok/synergy-local-runtime/question")
   const pendingQuestions = await Question.list()
   const sessionQuestions = pendingQuestions.filter((q) => q.sessionID === sessionID)
   const pendingPermissions = await PermissionNext.list()
@@ -695,7 +695,7 @@ async function handleWorktreeLeave(sessionID: string, params: Parameters) {
 }
 
 async function handleQuestionReply(requestID: string, answers: string[][]) {
-  const { Question } = await import("@ericsanchezok/synergy-runtime-local/question")
+  const { Question } = await import("@ericsanchezok/synergy-local-runtime/question")
   await Question.reply({ requestID, answers })
   const formatted = answers.map((a) => a.join(", ")).join("; ")
   return {
@@ -706,7 +706,7 @@ async function handleQuestionReply(requestID: string, answers: string[][]) {
 }
 
 async function handleQuestionReject(requestID: string) {
-  const { Question } = await import("@ericsanchezok/synergy-runtime-local/question")
+  const { Question } = await import("@ericsanchezok/synergy-local-runtime/question")
   await Question.reject(requestID)
   return {
     title: `Rejected question ${requestID}`,

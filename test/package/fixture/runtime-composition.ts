@@ -13,7 +13,7 @@ const enabled = (domain: string) => full || mode === domain
 const dispose: Array<() => Promise<void>> = []
 
 const { createLocalHost, createLocalStorage, registerLocalRuntime, RuntimeHandle } = await import(
-  "@ericsanchezok/synergy-runtime-local"
+  "@ericsanchezok/synergy-local-runtime"
 )
 const host = createLocalHost()
 const register: Array<() => void> = [registerLocalRuntime]
@@ -131,7 +131,7 @@ try {
           agent: "synergy",
           model: { providerID: "test", modelID: "test" },
         })
-        const { BashTool } = await import("@ericsanchezok/synergy-runtime-local/tools/bash")
+        const { BashTool } = await import("@ericsanchezok/synergy-local-runtime/tools/bash")
         const bash = await BashTool.init()
         const result = await bash.execute(
           { command: "printf composition-executed", description: "Verify installed local execution" },
@@ -147,7 +147,7 @@ try {
         assert.match(result.output, /composition-executed/)
         if (enabled("browser")) {
           const { BrowserRuntime } = await import("@ericsanchezok/synergy-browser-runtime/runtime")
-          const { browserOwnerKey } = await import("@ericsanchezok/synergy-browser")
+          const { browserOwnerKey } = await import("@ericsanchezok/synergy-browser-core")
           const { Storage } = await import("@ericsanchezok/synergy-harness/storage/storage")
           const owner = { mode: "session" as const, scopeID: scope.id, sessionID: session.id, directory }
           const stateKey = ["browser", "sessions-v4", createHash("sha256").update(browserOwnerKey(owner)).digest("hex")]

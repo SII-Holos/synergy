@@ -9,7 +9,7 @@ test("public compositions and CLI setup import without opening a Runtime or star
   const root = path.resolve(import.meta.dir, "../../../..")
   const entries = [
     "packages/harness/src/index.ts",
-    "packages/runtime-local/src/index.ts",
+    "packages/local-runtime/src/index.ts",
     "packages/server/src/server/server.ts",
     "packages/product-runtime/src/index.ts",
     "packages/product-runtime/src/daemon-entry.ts",

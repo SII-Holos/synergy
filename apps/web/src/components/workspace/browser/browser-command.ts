@@ -1,5 +1,5 @@
 import type { BrowserStoreAPI } from "./browser-store"
-import type { BrowserAPISessionState, BrowserBackendResult } from "@ericsanchezok/synergy-browser"
+import type { BrowserAPISessionState, BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 export function createBrowserCommandId() {

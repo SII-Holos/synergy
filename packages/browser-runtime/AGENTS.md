@@ -1,11 +1,11 @@
 # browser-runtime Package
 
-Browser backend state, page ownership, profiles, tools, routes, installation, lifecycle, and recovery. Keep one page per session. Native WebContentsView and WebRTC/data-channel modes are both supported. Browser cleanup consumes generic session terminal events; native hosting stays in apps/desktop and shared schemas in packages/browser. Read the root AGENTS.md and the owning architecture document before changes.
+Browser backend state, page ownership, profiles, tools, routes, installation, lifecycle, and recovery. Keep one page per session. Native WebContentsView and WebRTC/data-channel modes are both supported. Browser cleanup consumes generic session terminal events; native hosting stays in apps/desktop and shared schemas in packages/browser-core. Read the root AGENTS.md and the owning architecture document before changes.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
-- Workspace exports use the Harness file-import Host contract, implemented by Runtime Local. Capture the Workspace generation before collecting browser data, stage bundles privately, and publish through native write admission with cancellation and qualified file events. Keep native implementations out of this package's production dependency graph.
+- Workspace exports use the Harness file-import Host contract, implemented by Local Runtime. Capture the Workspace generation before collecting browser data, stage bundles privately, and publish through native write admission with cancellation and qualified file events. Keep native implementations out of this package's production dependency graph.
 
 Uploads pin the Workspace binding through dispatch, enforce actual bytes while reading, and revalidate open-handle and pathname identity. Keep shared protocol, headless staging and native-host staging behavior aligned, including zero-byte files.
 

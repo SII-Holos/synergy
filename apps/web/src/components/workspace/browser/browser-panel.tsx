@@ -1,5 +1,5 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, createResource, createSignal, lazy, Show } from "solid-js"

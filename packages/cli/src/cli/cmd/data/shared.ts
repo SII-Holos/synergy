@@ -5,9 +5,9 @@ import path from "path"
 import os from "os"
 import { UI } from "../../../util/ui"
 import { Global } from "@ericsanchezok/synergy-harness/global"
-import { FileRename } from "@ericsanchezok/synergy-runtime-local/file/rename"
-import { FileMutation } from "@ericsanchezok/synergy-runtime-local/file/mutation"
-import { FileLink } from "@ericsanchezok/synergy-runtime-local/file/link"
+import { FileRename } from "@ericsanchezok/synergy-local-runtime/file/rename"
+import { FileMutation } from "@ericsanchezok/synergy-local-runtime/file/mutation"
+import { FileLink } from "@ericsanchezok/synergy-local-runtime/file/link"
 
 export interface Category {
   key: string

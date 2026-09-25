@@ -10,7 +10,7 @@ import { SynergyLinkTargetRuntime } from "../../src/synergy-link/target-runtime"
 import { SynergyLinkTargetStore } from "../../src/synergy-link/target-store"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import { SynergyLinkExecution } from "@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution"
+import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

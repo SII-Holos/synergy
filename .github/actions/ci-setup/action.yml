@@ -67,10 +67,10 @@ runs:
         }
         PROFILE
         sudo apparmor_parser -r /etc/apparmor.d/synergy-bwrap
-        mkdir -p packages/runtime-local/src/sandbox/helper-linux/target/release
-        install -m 0755 packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux packages/runtime-local/src/sandbox/helper-linux/target/release/synergy-sandbox-linux
+        mkdir -p packages/local-runtime/src/sandbox/helper-linux/target/release
+        install -m 0755 packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux
         mkdir -p "$HOME/.synergy/sandbox-helper"
-        install -m 0755 packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux "$HOME/.synergy/sandbox-helper/synergy-sandbox-linux"
+        install -m 0755 packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux "$HOME/.synergy/sandbox-helper/synergy-sandbox-linux"
     - if: inputs.policy == 'true'
       shell: bash
       run: |

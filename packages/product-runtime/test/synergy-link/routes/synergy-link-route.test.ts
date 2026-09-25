@@ -113,7 +113,7 @@ describe("Synergy Link target routes", () => {
 
 test("relinks a target only when both locator fields are supplied", () =>
   runtime.run(async () => {
-    const { SynergyLinkExecution } = await import("@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution")
+    const { SynergyLinkExecution } = await import("@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution")
     const createdResponse = await Server.App().request("/synergy-link/targets", {
       method: "POST",
       headers: { "content-type": "application/json" },

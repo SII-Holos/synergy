@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { buildPty } from "../packages/runtime-local/script/build-pty"
-import { buildWatcher } from "../packages/runtime-local/script/build-watcher"
+import { buildPty } from "../packages/local-runtime/script/build-pty"
+import { buildWatcher } from "../packages/local-runtime/script/build-watcher"
 import { buildSqlite } from "../packages/harness/script/build-sqlite"
 import { cp, mkdir, mkdtemp, rm, chmod } from "node:fs/promises"
 import os from "node:os"
@@ -16,7 +16,7 @@ const root = path.resolve(import.meta.dir, "..")
 const runtimePackages = new Set(
   [
     "harness",
-    "runtime-local",
+    "local-runtime",
     "cli",
     "server",
     "product-runtime",
@@ -72,7 +72,7 @@ export async function packWorkspace(
     }
     if (pkg.directory === "packages/harness" && target.os === "darwin")
       await cp(await buildSqlite(), path.join(sourceDirectory, "dist/libsqlite3.dylib"))
-    if (pkg.directory === "packages/runtime-local") {
+    if (pkg.directory === "packages/local-runtime") {
       const pty = await buildPty({ os: target.os, arch: target.arch, libc: target.abi === "musl" ? "musl" : "glibc" })
       await cp(pty, path.join(sourceDirectory, "dist", path.basename(pty)))
       await stageWorkspaceSandbox(path.join(sourceDirectory, "dist"), target, options.assetsRoot)
@@ -110,8 +110,8 @@ export async function packWorkspace(
           engines: { bun: ">=1.3.14" },
         }
         if (pkg.directory === "packages/product-runtime") (manifest.files as string[]).push("dist/schema")
-        if (["packages/harness", "packages/runtime-local"].includes(pkg.directory)) manifest.os = [target.os]
-        if (pkg.directory === "packages/runtime-local") {
+        if (["packages/harness", "packages/local-runtime"].includes(pkg.directory)) manifest.os = [target.os]
+        if (pkg.directory === "packages/local-runtime") {
           manifest.cpu = [target.arch]
         }
         delete manifest.scripts

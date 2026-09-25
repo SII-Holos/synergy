@@ -13,7 +13,7 @@ import { SnapshotStore } from "@ericsanchezok/synergy-harness/session/snapshot-s
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"

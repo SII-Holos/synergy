@@ -10,7 +10,7 @@ import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { createLocalHost } from "@ericsanchezok/synergy-runtime-local/host"
+import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda/store"
 import { testRuntime } from "../support/runtime"
 

@@ -17,7 +17,7 @@ paths = [
   '''packages/note/test/.*/fixtures/.*''',
   '''packages/plugin-host/test/.*/fixtures/.*''',
   '''packages/product-runtime/test/.*/fixtures/.*''',
-  '''packages/runtime-local/test/.*/fixtures/.*''',
+  '''packages/local-runtime/test/.*/fixtures/.*''',
   '''packages/server/test/.*/fixtures/.*''',
   '''packages/testing/test/.*/fixtures/.*''',
   '''packages/workbench/test/.*/fixtures/.*''',

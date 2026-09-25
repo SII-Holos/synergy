@@ -1,6 +1,6 @@
 import { cmd } from "./cmd"
-import { detectPlatform } from "@ericsanchezok/synergy-runtime-local/sandbox/detect"
-import { getSandboxReadiness } from "@ericsanchezok/synergy-runtime-local/sandbox/readiness"
+import { detectPlatform } from "@ericsanchezok/synergy-local-runtime/sandbox/detect"
+import { getSandboxReadiness } from "@ericsanchezok/synergy-local-runtime/sandbox/readiness"
 import fs from "fs/promises"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { DesktopInstallation } from "@ericsanchezok/synergy-harness/global/desktop-installation"

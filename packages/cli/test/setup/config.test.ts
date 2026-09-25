@@ -3,7 +3,7 @@ import { ConfigSetup } from "../../src/setup/config"
 import { ProviderProfile } from "@ericsanchezok/synergy-harness/provider/profile"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "../../../harness/test/support/fixture"
-import { registerLocalProviderSdks } from "@ericsanchezok/synergy-runtime-local/provider/sdk-registry"
+import { registerLocalProviderSdks } from "@ericsanchezok/synergy-local-runtime/provider/sdk-registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

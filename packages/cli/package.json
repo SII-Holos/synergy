@@ -47,7 +47,7 @@
     "@ai-sdk/openai-compatible": "1.0.42",
     "@clack/prompts": "1.0.0-alpha.1",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "ai": "catalog:",

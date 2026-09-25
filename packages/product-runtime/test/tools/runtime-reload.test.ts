@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { RuntimeReloadTool } from "@ericsanchezok/synergy-runtime-local/tools/runtime-reload"
+import { RuntimeReloadTool } from "@ericsanchezok/synergy-local-runtime/tools/runtime-reload"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { RuntimeReload } from "@ericsanchezok/synergy-product-runtime/runtime/reload"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
