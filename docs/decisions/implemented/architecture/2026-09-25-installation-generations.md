@@ -45,3 +45,7 @@ Compiled releases use the same CLI launcher and package graph as npm installatio
 The release catalog now publishes the entire workspace dependency closure and native target family. Publication uses the same archives as package validation and does not change sealed file modes or leave tarballs inside runtime payloads. Desktop application metadata is a small npm package referencing verified portable assets from the same release; native jobs record signing identity and hashes before publication. Windows preserves its existing signing-continuity policy with an explicit checksum-only declaration for an unsigned distribution. Independently versioned Plugin Kit reads its declared host requirement so its package version does not imply a nonexistent host release.
 
 Explicit package removal and interrupted activation use the active core before attempting an upgrade. This gives incompatible third-party selections a recovery path while keeping ordinary launches strict. Internal runner dispatch uses the command position so a user prompt cannot accidentally select a subprocess role.
+
+Application ZIP extraction is verified after bundling. The thin launcher excludes unzipper’s unused optional S3 adapter dependency while retaining local archive extraction; a real packaged ZIP regression covers that boundary.
+
+Containerized native builds use the invoking user identity and a writable container Cargo cache. Build staging and cleanup must remain owned by the caller on Linux, including musl builds.
