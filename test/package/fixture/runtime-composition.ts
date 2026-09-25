@@ -67,7 +67,10 @@ try {
       assert.ok(spec.components?.schemas?.Config)
       if (full) assert.ok(Object.keys(spec.paths ?? {}).length > 100)
       const capabilities = await (await fetch(`http://127.0.0.1:${runtime.server.port}/global/capabilities`)).json()
-      assert.deepEqual(capabilities.components, runtime.components.toSorted((a, b) => a.id.localeCompare(b.id)))
+      assert.deepEqual(
+        capabilities.components,
+        runtime.components.toSorted((a, b) => a.id.localeCompare(b.id)),
+      )
     }
     for (const [domain, field] of [
       ["library", "library"],
