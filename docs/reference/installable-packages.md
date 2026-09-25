@@ -39,7 +39,7 @@ A preset is an ordinary npm package with declarative `synergy` metadata. It sele
 }
 ```
 
-The npm dependency map carries installation; `synergy.packages` declares the selected mechanism graph. Keep them aligned. Configure private registry access through Bun's user npm configuration, outside the published package. Test the directory or archive before publishing it to your company registry:
+The npm dependency map carries installation; `synergy.packages` declares the selected mechanism graph. Keep them aligned. Configure private registry access through [Bun's user npm configuration](https://bun.com/docs/pm/npmrc), outside the published package: `~/.npmrc`, or `$XDG_CONFIG_HOME/.npmrc` when that environment variable is set. Installation runs from a staged generation, so a project's local `.npmrc` is not the user configuration. Test the directory or archive before publishing it to your company registry:
 
 ```sh
 synergy install ./company-preset --trust-host-code

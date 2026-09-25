@@ -16,7 +16,7 @@ test.skipIf(process.platform !== "darwin")(
       const harness = archives.find((pkg) => pkg.name === "@ericsanchezok/synergy-harness")!
       expect(harness.manifest.os).toBeUndefined()
       expect(harness.manifest.private).not.toBe(true)
-      await withInstalledPackages(archives, [harness.name], async (installed) => {
+      await withInstalledPackages(archives, [harness.name], async (installed, env) => {
         const script = `
         import { mock } from "bun:test";
         import fs from "node:fs";
@@ -35,7 +35,7 @@ test.skipIf(process.platform !== "darwin")(
       `
         const child = Bun.spawn([process.execPath, "-e", script], {
           cwd: installed,
-          env: { ...process.env, NODE_PATH: undefined, NODE_OPTIONS: undefined },
+          env,
           stdout: "pipe",
           stderr: "pipe",
         })

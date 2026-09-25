@@ -7,13 +7,10 @@ export async function checkInstalledComposition(archiveDirectory: string) {
   const archives = await readPackedArchives(archiveDirectory)
   const prefix = "@ericsanchezok/synergy-"
   const version = archives.find((pkg) => pkg.name === prefix + "cli")!.version
-  await withInstalledPackages(archives, [prefix + "cli"], async (directory) => {
+  await withInstalledPackages(archives, [prefix + "cli"], async (directory, installedEnv) => {
     const root = path.join(directory, "home/.synergy")
     const env = {
-      ...process.env,
-      HOME: directory,
-      NODE_PATH: undefined,
-      NODE_OPTIONS: undefined,
+      ...installedEnv,
       SYNERGY_HOME: path.join(directory, "home"),
       SYNERGY_RUNTIME_ROOT: root,
       SYNERGY_TEST_HOME: path.join(directory, "home"),

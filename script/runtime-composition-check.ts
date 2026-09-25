@@ -26,7 +26,7 @@ export async function checkRuntimeCompositions(
       mode === "computer"
         ? ["@ericsanchezok/synergy-computer-runtime"]
         : ["@ericsanchezok/synergy-agent-runtime", ...(owner ? [`@ericsanchezok/synergy-${owner}`] : [])]
-    await withInstalledPackages(archives, entries, async (directory) => {
+    await withInstalledPackages(archives, entries, async (directory, installedEnv) => {
       const entry = path.join(directory, "composition.ts")
       await Bun.write(
         path.join(directory, "package-boundary.ts"),
@@ -47,7 +47,7 @@ export async function checkRuntimeCompositions(
         await Bun.file(path.resolve(import.meta.dir, "../packages/lsp/test/lsp/fixtures/owner-server.cjs")).text(),
       )
       const env: Record<string, string | undefined> = {
-        ...process.env,
+        ...installedEnv,
         SYNERGY_HOME: path.join(directory, "home"),
         SYNERGY_LINK_HOME: path.join(directory, "link"),
         SYNERGY_TEST_HOME: path.join(directory, "home"),

@@ -13,10 +13,20 @@ export interface PackedArchive {
 export async function withInstalledPackages<T>(
   archives: PackedArchive[],
   entries: string[],
-  verify: (directory: string) => Promise<T>,
+  verify: (directory: string, env: Record<string, string | undefined>) => Promise<T>,
   options: { target?: { os: string; arch: string }; env?: Record<string, string | undefined> } = {},
 ): Promise<T> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-package-install-"))
+  const env = {
+    ...process.env,
+    ...options.env,
+    HOME: directory,
+    USERPROFILE: directory,
+    XDG_CONFIG_HOME: path.join(directory, ".config"),
+    NODE_PATH: undefined,
+    NODE_OPTIONS: undefined,
+    BUN_INSTALL_CACHE_DIR: path.join(directory, "cache"),
+  }
   const packages = new Map(archives.map((item) => [item.name, item]))
   const registry = Bun.serve({
     hostname: "127.0.0.1",
@@ -51,7 +61,11 @@ export async function withInstalledPackages<T>(
       }),
     )
     await Bun.write(path.join(directory, "package.json"), JSON.stringify({ private: true, dependencies }))
-    await Bun.write(path.join(directory, ".npmrc"), `@ericsanchezok:registry=http://127.0.0.1:${registry.port}\n`)
+    // Nested installers use Bun's user configuration: https://bun.com/docs/pm/npmrc
+    const config = `@ericsanchezok:registry=http://127.0.0.1:${registry.port}\n`
+    await Promise.all(
+      [directory, env.XDG_CONFIG_HOME].map((location) => Bun.write(path.join(location, ".npmrc"), config)),
+    )
     const install = Bun.spawn(
       [
         "bun",
@@ -66,17 +80,11 @@ export async function withInstalledPackages<T>(
         cwd: directory,
         stdout: "inherit",
         stderr: "inherit",
-        env: {
-          ...process.env,
-          ...options.env,
-          NODE_PATH: undefined,
-          NODE_OPTIONS: undefined,
-          BUN_INSTALL_CACHE_DIR: path.join(directory, "cache"),
-        },
+        env,
       },
     )
     if (await install.exited) throw new Error("Installing packed workspace closure failed")
-    return await verify(directory)
+    return await verify(directory, env)
   } finally {
     registry.stop(true)
     await rm(directory, { recursive: true, force: true })
@@ -98,15 +106,13 @@ export async function readPackedArchives(archiveDirectory: string) {
 if (import.meta.main) {
   const archiveDirectory = path.resolve(process.argv[2] ?? ".artifacts/packages")
   const archives = await readPackedArchives(archiveDirectory)
-  await withInstalledPackages(archives, ["@ericsanchezok/synergy-cli"], async (directory) => {
+  await withInstalledPackages(archives, ["@ericsanchezok/synergy-cli"], async (directory, env) => {
     const command = Bun.spawn(["bun", path.join(directory, "node_modules/.bin/synergy"), "--help"], {
       cwd: directory,
       stdout: "inherit",
       stderr: "inherit",
       env: {
-        ...process.env,
-        NODE_PATH: undefined,
-        NODE_OPTIONS: undefined,
+        ...env,
         SYNERGY_HOME: path.join(directory, "home"),
         SYNERGY_LINK_HOME: path.join(directory, "link"),
       },
@@ -117,9 +123,7 @@ if (import.meta.main) {
       stdout: "inherit",
       stderr: "inherit",
       env: {
-        ...process.env,
-        NODE_PATH: undefined,
-        NODE_OPTIONS: undefined,
+        ...env,
         SYNERGY_TEST_ARTIFACT_BIN: "",
         SYNERGY_TEST_ARTIFACT_INSTALL: directory,
       },
