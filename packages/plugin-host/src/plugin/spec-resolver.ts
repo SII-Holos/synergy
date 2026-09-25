@@ -302,7 +302,7 @@ export async function resolvePluginSpec(
   if (options.refresh) {
     await BunProc.invalidateCache(pkg)
   }
-  const installed = await BunProc.install(pkg, version)
+  const installed = await BunProc.install(pkg, version, { ignoreScripts: true })
   const pluginDir = findPackageRoot(installed.entryPath)
   const manifest = await readPluginManifest(pluginDir)
   return {
