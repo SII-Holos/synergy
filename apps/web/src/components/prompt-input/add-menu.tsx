@@ -53,8 +53,7 @@ function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
 
 export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
   const { i18n } = useLocale()
-  const items = () =>
-    props.sections.flatMap((section) => section.items.map((item) => ({ ...item, category: section.label ?? "" })))
+  const items = () => props.sections.flatMap((section) => section.items)
   const currentItem = () => items().find((item) => item.selected)
 
   return (
@@ -80,7 +79,6 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
           class="p-1"
           items={items()}
           key={(item) => item.id}
-          groupBy={(item) => item.category}
           current={currentItem()}
           onSelect={(item) => {
             if (!item) return

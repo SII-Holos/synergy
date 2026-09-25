@@ -1,3 +1,4 @@
+import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
@@ -1147,29 +1148,7 @@ function SessionPageContent() {
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) return
-    const activeElement = document.activeElement as HTMLElement | undefined
-    if (activeElement) {
-      const isProtected = activeElement.closest("[data-prevent-autofocus]")
-      // Monaco's native EditContext input is a div with role="textbox" (not a
-      // TEXTAREA and not contenteditable); treat any textbox role as an input
-      // so type-anywhere does not steal focus from the file editor.
-      const isInput =
-        /^(INPUT|TEXTAREA|SELECT)$/.test(activeElement.tagName) ||
-        activeElement.isContentEditable ||
-        activeElement.getAttribute("role") === "textbox"
-      if (isProtected || isInput) return
-    }
-    if (dialog.active) return
-
-    if (activeElement === inputRef) {
-      if (event.key === "Escape") inputRef?.blur()
-      return
-    }
-
-    if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
-      inputRef?.focus()
-    }
+    handleComposerTypingAutofocus(event, inputRef, !!dialog.active)
   }
 
   const isWorking = createMemo(() => isWorkingStatus(status()))

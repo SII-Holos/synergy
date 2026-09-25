@@ -168,47 +168,56 @@ async function open(query = "") {
   expect(errors).toEqual([])
 }
 
-test("five peer categories expose their own entries without duplicate headings", async () => {
+test("five vertical categories retain independent disclosure state and unique headings", async () => {
   await open()
-  expect(await page.getByRole("tab").allTextContents()).toEqual(["最近", "首页", "频道", "后台", "项目"])
-  expect(await page.getByText("最近", { exact: true }).count()).toBe(1)
+  expect(await page.getByRole("tab").count()).toBe(0)
+  const categories = ["最近", "首页", "频道", "后台", "项目"]
+  for (const [index, label] of categories.entries()) {
+    const toggle = page.getByRole("button", { name: label, exact: true })
+    expect(await toggle.getAttribute("aria-expanded")).toBe(index === 0 || index === 4 ? "true" : "false")
+    expect(await page.getByText(label, { exact: true }).count()).toBe(1)
+  }
   for (const [label, title] of [
     ["首页", "Home session"],
     ["频道", "Channel session"],
     ["后台", "Background session"],
-    ["项目", "Project session"],
   ]) {
-    await page.getByRole("tab", { name: label, exact: true }).click()
-    expect(await page.getByRole("tabpanel").getByText(title, { exact: true }).isVisible()).toBe(true)
-    expect(await page.getByText(label, { exact: true }).count()).toBe(1)
-    expect(await page.locator('[data-session-id="recent-0"]').count()).toBe(0)
+    const toggle = page.getByRole("button", { name: label, exact: true })
+    await toggle.press("Enter")
+    await page.getByText(title, { exact: true }).waitFor({ state: "visible" })
+    expect(await page.getByRole("button", { name: "最近", exact: true }).getAttribute("aria-expanded")).toBe("true")
   }
-  await page.getByRole("tab", { name: "最近", exact: true }).click()
-  await page.getByRole("tab", { name: "最近", exact: true }).press("ArrowRight")
-  expect(await page.getByRole("tab", { name: "首页", exact: true }).getAttribute("aria-selected")).toBe("true")
+  for (const title of ["Home session", "Channel session", "Background session", "Project session"])
+    expect(await page.getByText(title, { exact: true }).isVisible()).toBe(true)
+  await page.getByRole("button", { name: "最近", exact: true }).press("Space")
+  expect(await page.locator('[data-session-id="recent-0"]').isVisible()).toBe(false)
+  expect(await page.locator('[data-session-id="recent-0"]').evaluate((el) => !!el.closest("[inert]"))).toBe(true)
+  expect(await page.getByText("Home session", { exact: true }).isVisible()).toBe(true)
+  await page.getByRole("button", { name: "最近", exact: true }).press("Enter")
+  expect(await page.locator('[data-session-id="recent-0"]').isVisible()).toBe(true)
   expect(errors).toEqual([])
 })
 
-test("tools and tags precede categories while only the list scrolls", async () => {
+test("tools precede tags and vertical categories while the list scrolls independently", async () => {
   await open()
   const before = await page.evaluate(() => {
     const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect()
     return {
       tools: rect(".sb-globals").bottom,
       tags: rect(".sb-session-tag-filter").bottom,
-      tabs: rect('[role="tablist"]').top,
+      recent: rect(".sb-recent-header").top,
       account: rect(".sidebar-account-hub").top,
     }
   })
   expect(before.tools).toBeLessThan(before.tags)
-  expect(before.tags).toBeLessThan(before.tabs)
+  expect(before.tags).toBeLessThanOrEqual(before.recent)
   expect(await page.locator(".sb-global-btn").allTextContents()).toEqual(["日程", "看板", "知识库", "性能", "插件"])
   await page.locator(".sb-scroll").evaluate((element) => {
     element.scrollTop = 500
   })
   expect(await page.locator(".sb-scroll").evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
-  expect(await page.locator('[role="tablist"]').evaluate((element) => element.getBoundingClientRect().top)).toBe(
-    before.tabs,
+  expect(await page.locator(".sb-globals").evaluate((element) => element.getBoundingClientRect().bottom)).toBe(
+    before.tools,
   )
   expect(await page.locator(".sidebar-account-hub").evaluate((element) => element.getBoundingClientRect().top)).toBe(
     before.account,
@@ -222,24 +231,23 @@ for (const width of [230, 300, 420])
       await open(`?width=${width}&locale=${locale}`)
       const geometry = await page.evaluate(() => {
         const root = document.querySelector(".sb-root")!
-        const list = document.querySelector('[role="tablist"]')!
+        const list = document.querySelector(".sb-scroll")!
         const bounds = root.getBoundingClientRect()
         return {
           listInside: list.getBoundingClientRect().right <= bounds.right,
-          contentOverflow:
-            document.querySelector(".sb-scroll")!.scrollWidth - document.querySelector(".sb-scroll")!.clientWidth,
-          listOverflow: list.scrollWidth - list.clientWidth,
-          outside: [...document.querySelectorAll('[role="tab"]')].filter((tab) => {
-            const rect = tab.getBoundingClientRect()
-            return rect.left < bounds.left || rect.right > bounds.right
+          contentOverflow: list.scrollWidth - list.clientWidth,
+          outside: [...list.querySelectorAll("button,input")].filter((element) => {
+            if (element.closest("[inert]")) return false
+            const rect = element.getBoundingClientRect()
+            return rect.width > 0 && (rect.left < bounds.left || rect.right > bounds.right)
           }).length,
         }
       })
-      expect(geometry).toEqual({ listInside: true, contentOverflow: 0, listOverflow: 0, outside: 0 })
+      expect(geometry).toEqual({ listInside: true, contentOverflow: 0, outside: 0 })
     }
   })
 
-test("tag search retains its global results, recent pagination and unread acknowledgement", async () => {
+test("tag search retains global results, recent pagination and unread acknowledgement", async () => {
   await open()
   await page.getByRole("button", { name: "全部标为已读", exact: true }).click()
   expect(await page.getByRole("button", { name: "全部标为已读", exact: true }).count()).toBe(0)
@@ -258,13 +266,12 @@ test("tag search retains its global results, recent pagination and unread acknow
 
 test("nested channel and project disclosures remain keyboard-operable", async () => {
   await open()
-  await page.getByRole("tab", { name: "频道", exact: true }).click()
+  await page.getByRole("button", { name: "频道", exact: true }).press("Enter")
   const channel = page.getByRole("button", { name: "Team channel", exact: true })
   await channel.press("Enter")
   await page.getByText("Channel session", { exact: true }).waitFor({ state: "hidden" })
   await channel.press("Space")
   await page.getByText("Channel session", { exact: true }).waitFor({ state: "visible" })
-  await page.getByRole("tab", { name: "项目", exact: true }).click()
   await page.getByRole("button", { name: "折叠项目", exact: true }).press("Enter")
   await page.getByText("Project session", { exact: true }).waitFor({ state: "hidden" })
   await page.getByRole("button", { name: "展开项目", exact: true }).press("Space")

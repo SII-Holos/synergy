@@ -12,6 +12,8 @@ The expanded desktop sidebar exposes Recent, Home, Channel, Background and Proje
 
 The tab strip uses the available inner width and five shrinkable grid columns. Long translated labels retain their full accessible name and native title while truncating visually when needed. Only collection entries scroll; the top controls and account stay fixed. This refines the desktop collection arrangement in [navigation, working location and browser recovery](2026-09-25-clarify-navigation-location-and-browser-recovery.md); its mobile, working-location and recovery decisions remain unchanged.
 
+The desktop tab presentation is superseded by [vertical sidebar sections and a flat Add menu](../simplification/2026-09-25-restore-vertical-sidebar-and-flat-add-menu.md). The category ownership, canonical tag query and sizing rationale remain applicable.
+
 ## Alternatives considered
 
 **Keep Home, Channel and Background under Projects.** This preserves two short tab labels but assigns unrelated session categories to the wrong owner and makes them harder to find.

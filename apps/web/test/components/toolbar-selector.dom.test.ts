@@ -1,9 +1,12 @@
-import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test, setDefaultTimeout } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import tailwindcss from "@tailwindcss/vite"
+
+setDefaultTimeout(30000)
 
 let browser: Browser
 let page: Page
@@ -19,15 +22,29 @@ beforeAll(async () => {
     '<div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
+    path.join(fixture, "locale.ts"),
+    'import { useLingui } from "@lingui/solid"; export const useLocale = () => ({i18n:{_: useLingui()._}})',
+  )
+  await Bun.write(
     path.join(fixture, "main.tsx"),
     `
-    import { createSignal } from "solid-js"
+    import { createSignal, onMount, onCleanup } from "solid-js"
+    import { handleComposerTypingAutofocus } from ${JSON.stringify(`/@fs/${components}/prompt-input/typing-autofocus.ts`)}
+    import { setupI18n } from "@lingui/core"
+    import { I18nProvider } from "@lingui/solid"
+    import { PromptAddMenu } from ${JSON.stringify(`/@fs/${components}/prompt-input/add-menu.tsx`)}
+    import "@ericsanchezok/synergy-ui/styles"
+    import ${JSON.stringify(`/@fs/${components}/../index.css`)}
     import { render } from "solid-js/web"
     import { ToolbarSelectorPopover } from ${JSON.stringify(`/@fs/${components}/toolbar-selector.tsx`)}
     import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
     import { SidebarSectionButton } from ${JSON.stringify(`/@fs/${components}/sidebar/sidebar-section-button.tsx`)}
     function Fixture() {
+      let input
+      onMount(()=>{ const handle=event=>handleComposerTypingAutofocus(event,input,false); document.addEventListener("keydown",handle); onCleanup(()=>document.removeEventListener("keydown",handle)) })
       const [expanded, setExpanded] = createSignal(false)
+      const [selected, setSelected] = createSignal("None")
+      const item = (id, label, extra={}) => ({id,label,icon:"plus",onSelect:()=>setSelected(id),...extra})
       return <>
         <button>Before toolbar</button>
         <ToolbarSelectorPopover title="Agent" triggerAs={props => <Tooltip value="Agent">
@@ -35,32 +52,56 @@ beforeAll(async () => {
           {close => <button onClick={close}>Choose agent</button>}
         </ToolbarSelectorPopover>
         <button>After toolbar</button>
+        <PromptAddMenu sections={[
+          {id:"context",label:"Context",items:[item("files","Add files")]},
+          {id:"workflow",label:"Workflow",items:[item("light-loop","Light Loop"),item("plan","Plan",{ariaDisabled:true}),item("lattice","Lattice",{disabled:true}),item("boss","Boss")]}
+        ]}/>
+        <output>{selected()}</output>
         <SidebarSectionButton open={expanded()} onClick={() => setExpanded(!expanded())}>Projects</SidebarSectionButton>
+        <div ref={input} contentEditable="true" aria-label="Composer"/>
+        <div data-testid="reading-area" style="height:80px">Read content</div>
       </>
     }
-    render(() => <Fixture />, document.getElementById("root"))
+    render(() => <I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><Fixture /></I18nProvider>, document.getElementById("root"))
   `,
   )
   server = await createServer({
     configFile: false,
     root: fixture,
-    plugins: [solidPlugin()],
+    plugins: [solidPlugin(), tailwindcss()],
+    resolve: {
+      alias: [
+        { find: "@/context/locale", replacement: path.join(fixture, "locale.ts") },
+        { find: "@", replacement: path.resolve(components, "..") },
+      ],
+    },
     cacheDir: path.join(fixture, ".vite"),
-    optimizeDeps: { include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime"], noDiscovery: true },
+    optimizeDeps: {
+      include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@lingui/core", "@lingui/solid", "fuzzysort"],
+      noDiscovery: true,
+    },
     server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(import.meta.dir, "../../../..")] } },
   })
   await server.listen()
   await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
-  page = await browser.newPage()
-  page.on("pageerror", (error) => errors.push(error.message))
-  await page.goto(server.resolvedUrls!.local[0]!)
 }, 60000)
 
 beforeEach(async () => {
   errors.length = 0
+  page = await browser.newPage()
+  page.on("pageerror", (error) => errors.push(error.message))
   await page.goto(server.resolvedUrls!.local[0]!)
-  await page.getByRole("button", { name: "Agent", exact: true }).waitFor()
+  await page
+    .getByRole("button", { name: "Agent", exact: true })
+    .waitFor({ timeout: 10000 })
+    .catch((error) => {
+      throw new Error([...errors, String(error)].join("\n"))
+    })
+})
+
+afterEach(async () => {
+  await page?.close()
 })
 
 afterAll(async () => {
@@ -98,5 +139,56 @@ test("sidebar disclosure supports native Enter and Space and announces its state
   expect(await button.getAttribute("aria-expanded")).toBe("true")
   await page.keyboard.press("Space")
   expect(await button.getAttribute("aria-expanded")).toBe("false")
+  expect(errors).toEqual([])
+})
+
+test("Add menu is continuous while preserving action guards and keyboard dismissal", async () => {
+  const trigger = page.getByRole("button", { name: "Add", exact: true })
+  await trigger.click()
+  const list = page.locator('[data-component="list"]')
+  await list.waitFor()
+  expect(await list.locator('[data-slot="list-item"]').allTextContents()).toEqual([
+    "Add files",
+    "Light Loop",
+    "Plan",
+    "Lattice",
+    "Boss",
+  ])
+  expect(await list.getByText("Context", { exact: true }).count()).toBe(0)
+  expect(await list.getByText("Workflow", { exact: true }).count()).toBe(0)
+  const gaps = await list
+    .locator('[data-slot="list-item"]')
+    .evaluateAll((items) =>
+      items
+        .slice(1)
+        .map((item, index) => item.getBoundingClientRect().top - items[index]!.getBoundingClientRect().bottom),
+    )
+  expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1)
+  for (const name of ["Plan", "Lattice"]) {
+    await list.getByText(name, { exact: true }).click()
+    expect(await page.locator("output").textContent()).toBe("None")
+    expect(await list.isVisible()).toBe(true)
+  }
+  await list.getByText("Boss", { exact: true }).click()
+  expect(await page.locator("output").textContent()).toBe("boss")
+  await list.waitFor({ state: "detached" })
+  await trigger.press("Enter")
+  await list.waitFor()
+  await page.keyboard.press("Escape")
+  await list.waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Add")
+  expect(errors).toEqual([])
+})
+
+test("typing outside controls focuses the composer while sidebar keys retain their owner", async () => {
+  const projects = page.getByRole("button", { name: "Projects", exact: true })
+  await projects.focus()
+  await page.keyboard.press("Space")
+  expect(await projects.getAttribute("aria-expanded")).toBe("true")
+  expect(await projects.evaluate((el) => el === document.activeElement)).toBe(true)
+  expect(await page.getByLabel("Composer").textContent()).toBe("")
+  await page.getByTestId("reading-area").click()
+  await page.keyboard.press("x")
+  expect(await page.getByLabel("Composer").evaluate((el) => el === document.activeElement)).toBe(true)
   expect(errors).toEqual([])
 })

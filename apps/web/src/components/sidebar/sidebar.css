@@ -239,6 +239,7 @@
 
 .sb-scroll {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -1698,63 +1699,6 @@ button.sb-session-group-header:focus-visible,
 .sb-projects-section-toggle:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: -2px;
-}
-
-.sb-collections[data-component="tabs"] {
-  flex: 1;
-  height: auto;
-  min-width: 0;
-  min-height: 0;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-weaker-base);
-
-  > [data-slot="tabs-list"] {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    flex-shrink: 0;
-    width: auto;
-    min-width: 0;
-    margin: 0 12px 6px;
-    padding: 3px;
-    gap: 2px;
-  }
-
-  [data-slot="tabs-trigger-wrapper"] {
-    min-width: 0;
-    width: 100%;
-  }
-
-  [data-slot="tabs-trigger"] {
-    display: block;
-    width: 100%;
-    min-width: 0;
-    padding: 0 2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  [data-slot="tabs-content"] {
-    overflow: visible;
-  }
-
-  .sb-scroll {
-    min-width: 0;
-  }
-}
-
-.sb-collection-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 0 4px 4px;
-}
-
-.sb-root > .sb-session-tag-filter {
-  flex-shrink: 0;
-  margin: 8px 12px 0;
 }
 
 .sb-logo-caption {
