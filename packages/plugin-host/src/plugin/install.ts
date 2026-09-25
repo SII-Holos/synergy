@@ -23,7 +23,7 @@ import * as Lockfile from "./lockfile"
 import { PluginInstallationTransaction, withPluginInstallationLock } from "./installation-transaction"
 import { pluginRuntimeManager } from "./runtime"
 import { peekRuntimeEndpointGeneration } from "@ericsanchezok/synergy-harness/util/runtime-endpoint"
-import { resolvePluginSpec } from "./spec-resolver"
+import { resolvePluginSpec, type ResolvedPluginSpec } from "./spec-resolver"
 import type { PluginSource } from "./trust"
 import { resolvePluginRuntimeLimits } from "../plugin-runtime/runtime-limits"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -121,17 +121,21 @@ export async function add(
     signer?: string
     official?: boolean
     preApproved?: PluginApprovalRecord
+    resolved?: ResolvedPluginSpec
   } = {},
 ): Promise<LoadedPlugin> {
   let stagingDir: string | undefined
   let preparedKey: string | undefined
   try {
-    const resolved = await resolvePluginSpec(spec, {
-      cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
-      install: !spec.startsWith("file://"),
-      refresh: !spec.startsWith("file://"),
-      stageLocalArchive: spec.startsWith("file://"),
-    })
+    const resolved =
+      options.resolved ??
+      (await resolvePluginSpec(spec, {
+        cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
+        install: !spec.startsWith("file://"),
+        refresh: !spec.startsWith("file://"),
+        stageLocalArchive: spec.startsWith("file://"),
+      }))
+    if (resolved.spec !== spec) throw new Error("Prepared plugin source does not match its installation")
     stagingDir = resolved.stagingDir
     const manifest = resolved.manifest
     const source = options.source ?? resolved.source

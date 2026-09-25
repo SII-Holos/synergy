@@ -17,3 +17,5 @@ The public `cli/maintenance-progress` leaf owns aggregate maintenance reporting 
 Use shared `synergy-util/terminal` and `cli-command` primitives; network and Scope host adapters belong to Local Runtime. Product branding remains here.
 
 `createRuntimeCli` assembles core and selected component commands into the single parser. Reject namespace collisions before parsing. Nested debug, plugin-authoring and data commands enter through typed lazy adapters; embedding does not discover ambient installations. Source selection uses the same component requirements as installed composition.
+
+The installed launcher must verify its selected generation before any Harness import. All installed subprocess roles return through that launcher with the same generation digest; keep source embedding independent from ambient installation discovery. Use metadata-owned special runners instead of importing optional product implementations into the CLI.

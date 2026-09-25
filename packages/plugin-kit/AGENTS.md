@@ -20,3 +20,5 @@ Definition inspection runs a fresh Bun CLI subprocess from the author's project;
 The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.
 
 Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
+
+Built plugin package metadata must identify the same API4 manifest, version and compatibility range. Keep flat archive support in the installer; author-facing build output must not require users to edit generated metadata.

@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -78,9 +79,11 @@ export namespace DataTransfer {
     for (const root of [...new Set(roots.map((root) => path.resolve(root)))].sort()) {
       const entry = fileURLToPath(new URL("../../index.ts", import.meta.url))
       const child = Bun.spawn({
-        cmd: existsSync(entry)
-          ? [process.execPath, "run", entry, "__storage-maintenance-runner"]
-          : [process.execPath, "__storage-maintenance-runner"],
+        cmd:
+          installedWorkerCommand(process.env, "__storage-maintenance-runner") ??
+          (existsSync(entry)
+            ? [process.execPath, "run", entry, "__storage-maintenance-runner"]
+            : [process.execPath, "__storage-maintenance-runner"]),
         env: { ...process.env, SYNERGY_HOME: path.dirname(root), SYNERGY_RUNTIME_ROOT: root },
         stdout: "ignore",
         stderr: "pipe",

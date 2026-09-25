@@ -19,6 +19,7 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 4. Give every command, positional, and option useful help text. Support structured output when the adjacent command family already does.
 5. Register a generic root command in the CLI’s core command catalog or a business command in its owning component’s `src/cli-adapter.ts`; register nested commands in their owning command-group builder. Preserve the injected runtime factory. Nested product Data commands enter through `runCli({ dataCommands })`; the core Data builder owns path, set-home and snapshots, while Presets contributes pack, merge and move and the root `migrate` alias.
 6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics.
+   Installation commands use Plugin Host's installation manager. Keep module trust separate from API4 grants, preserve activation journals, and verify both next-start selection and workers pinned to an older running generation.
 7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
 ## Command Contract

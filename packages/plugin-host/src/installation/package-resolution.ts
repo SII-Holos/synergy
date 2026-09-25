@@ -6,8 +6,10 @@ import { spawn } from "node:child_process"
 import { ProcessGroup } from "@ericsanchezok/synergy-util/process-group"
 import { z } from "zod"
 import { SynergyPackage, SynergyPackageName } from "@ericsanchezok/synergy-plugin/package"
+import { PluginManifestV4, normalizePluginArchiveEntry } from "@ericsanchezok/synergy-plugin"
 import { InstallationGenerations, type InstalledPackage, type InstalledGeneration } from "./generations"
 import { sha256File } from "./files"
+import { readPluginManifest } from "./plugin-manifest"
 
 const PackageJson = z.object({
   name: SynergyPackageName,
@@ -15,6 +17,25 @@ const PackageJson = z.object({
   synergy: SynergyPackage.optional(),
 })
 const Dependencies = z.record(SynergyPackageName, z.string().min(1))
+
+async function packageMetadata(directory: string, hostVersion: string) {
+  const pkg = PackageJson.parse(await Bun.file(path.join(directory, "package.json")).json())
+  let metadata = pkg.synergy
+  if (metadata?.kind === "plugin" || (!metadata && (await Bun.file(path.join(directory, "plugin.json")).exists()))) {
+    const manifest = await readPluginManifest(directory, hostVersion, metadata?.manifest)
+    if (metadata && (metadata.id !== manifest.id || metadata.version !== manifest.version))
+      throw new Error(`Plugin package identity does not match its API4 manifest: ${pkg.name}`)
+    metadata ??= SynergyPackage.parse({
+      formatVersion: 1,
+      kind: "plugin",
+      id: manifest.id,
+      version: manifest.version,
+      compatibility: manifest.compatibility,
+      manifest: "./plugin.json",
+    })
+  }
+  return { ...pkg, synergy: metadata }
+}
 
 export interface PackageGraphOptions {
   sources: readonly string[]
@@ -93,6 +114,24 @@ async function sourceSpec(root: string, spec: string, options: PackageGraphOptio
   const cache = path.join(root, "installations", "sources")
   await fs.mkdir(cache, { recursive: true, mode: 0o700 })
   if (!stat.isDirectory()) {
+    const files = await new Bun.Archive(await Bun.file(filename).bytes()).files()
+    const legacy = files.get("plugin.json") ?? files.get("./plugin.json")
+    if (legacy) {
+      const manifest = PluginManifestV4.parse(await legacy.json())
+      const wrapped: Record<string, Blob | string> = {}
+      for (const [entry, contents] of files) {
+        const normalized = normalizePluginArchiveEntry(entry)
+        if (normalized) wrapped[`package/${normalized}`] = contents
+      }
+      wrapped["package/package.json"] ??= JSON.stringify({
+        name: manifest.id,
+        version: manifest.version,
+        type: "module",
+      })
+      const archive = path.join(cache, crypto.randomUUID() + ".tgz")
+      await Bun.write(archive, Bun.gzipSync(await new Bun.Archive(wrapped).bytes()))
+      return "file:" + archive
+    }
     const digest = await sha256File(filename)
     const cached = path.join(cache, digest + ".tgz")
     await fs.copyFile(filename, cached, constants.COPYFILE_EXCL).catch((error: NodeJS.ErrnoException) => {
@@ -100,6 +139,47 @@ async function sourceSpec(root: string, spec: string, options: PackageGraphOptio
     })
     if ((await sha256File(cached)) !== digest) throw new Error("Cached package integrity mismatch")
     return "file:" + cached
+  }
+  const built = path.join(filename, "dist")
+  const pluginDirectory = (await Bun.file(path.join(built, "plugin.json")).exists()) ? built : filename
+  if (await Bun.file(path.join(pluginDirectory, "plugin.json")).exists()) {
+    const manifest = await readPluginManifest(pluginDirectory, options.hostVersion)
+    const files: Record<string, Uint8Array | string> = {}
+    const canonical = await fs.realpath(pluginDirectory)
+    async function collect(directory: string) {
+      for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name === ".git") continue
+        const file = path.join(directory, entry.name)
+        const relative = path.relative(canonical, await fs.realpath(file))
+        if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative))
+          throw new Error("Plugin artifact symlink escapes its directory")
+        const stat = await fs.stat(file)
+        if (stat.isDirectory()) {
+          if (entry.isSymbolicLink())
+            throw new Error("Plugin artifact directory links must be materialized before packing")
+          await collect(file)
+        } else if (stat.isFile())
+          files[`package/${path.relative(pluginDirectory, file).split(path.sep).join("/")}`] =
+            await Bun.file(file).bytes()
+        else throw new Error("Plugin artifact contains an unsupported file")
+      }
+    }
+    await collect(pluginDirectory)
+    const original = files["package/package.json"]
+    const pkg = z
+      .object({ name: SynergyPackageName, version: z.string() })
+      .passthrough()
+      .parse(
+        original
+          ? JSON.parse(typeof original === "string" ? original : new TextDecoder().decode(original))
+          : { name: manifest.id, version: manifest.version },
+      )
+    delete pkg.files
+    delete pkg.scripts
+    files["package/package.json"] = JSON.stringify(pkg)
+    const archive = path.join(cache, crypto.randomUUID() + ".tgz")
+    await Bun.write(archive, Bun.gzipSync(await new Bun.Archive(files).bytes()))
+    return "file:" + archive
   }
   const archive = path.join(cache, crypto.randomUUID() + ".tgz")
   await packageManager(root, filename, ["pm", "pack", "--ignore-scripts", "--filename", archive], options)
@@ -129,7 +209,10 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
       await fs.cp(options.previous.directory, directory, {
         recursive: true,
         verbatimSymlinks: true,
-        filter: (filename) => filename !== path.join(options.previous!.directory, "generation.json"),
+        filter: (filename) =>
+          !["generation.json", "plugin-activation.json"].some(
+            (name) => filename === path.join(options.previous!.directory, name),
+          ),
       })
     }
     await Bun.write(
@@ -147,7 +230,7 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
         if (!Object.hasOwn(retained, name))
           throw new Error(`Only explicitly installed packages can be updated: ${name}`)
       }
-      await packageManager(root, directory, ["update", "--ignore-scripts", ...options.update], options)
+      await packageManager(root, directory, ["update", "--latest", "--ignore-scripts", ...options.update], options)
     }
     const dependencies = async () =>
       Dependencies.parse((await Bun.file(path.join(directory, "package.json")).json()).dependencies ?? {})
@@ -163,7 +246,7 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
       for (const name of selected) {
         if (expanded.has(name)) continue
         const relative = `node_modules/${SynergyPackageName.parse(name)}`
-        const pkg = PackageJson.parse(await Bun.file(path.join(directory, relative, "package.json")).json())
+        const pkg = await packageMetadata(path.join(directory, relative), options.hostVersion)
         if (pkg.name !== name) throw new Error(`Package identity mismatch: ${name}`)
         const metadata = pkg.synergy
         if (!metadata && !Object.hasOwn(basePackages, name))
@@ -218,7 +301,7 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
         await packageManager(root, directory, ["install", "--ignore-scripts", "--frozen-lockfile"], options)
     }
     for (const [name, pkg] of Object.entries(packages)) {
-      const actual = PackageJson.parse(await Bun.file(path.join(directory, pkg.directory, "package.json")).json())
+      const actual = await packageMetadata(path.join(directory, pkg.directory), options.hostVersion)
       if (actual.version !== pkg.version || JSON.stringify(actual.synergy) !== JSON.stringify(pkg.metadata))
         throw new Error(`Package resolution changed a previously validated selection: ${name}`)
     }

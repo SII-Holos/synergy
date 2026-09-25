@@ -184,6 +184,14 @@ function validatePackages(input: GenerationInput) {
 export namespace InstallationGenerations {
   export const recoverUnlocked = recoverGeneration
 
+  export async function readSeed(directory: string): Promise<InstalledGeneration> {
+    const raw = await fs.readFile(path.join(directory, "generation.json"), "utf8")
+    const manifest = Manifest.parse(JSON.parse(raw))
+    if (JSON.stringify(await inventory(directory)) !== JSON.stringify(manifest.files))
+      throw new Error("Bundled installation seed integrity mismatch")
+    return { ...manifest, directory, sha256: digest(raw) }
+  }
+
   export function pin(root: string, selected: { id: string; sha256: string }) {
     return verify(root, Pointer.parse({ version: 1, ...selected }))
   }
@@ -209,6 +217,11 @@ export namespace InstallationGenerations {
       if (previous?.id !== input.previous) throw new Error("Installation changed while resolving packages; retry")
       if (!input.trustHostCode) throw new Error("Explicit trust of host code is required before installation")
       const previousGeneration = previous ? await verify(root, previous) : undefined
+      if (previousGeneration?.files["plugin-activation.json"]) {
+        const applied = await optionalJson(path.join(base(root), "activated", previousGeneration.id + ".json"))
+        if (applied !== previousGeneration.sha256)
+          throw new Error("The previous installation has pending plugin activation; run synergy install --resume")
+      }
       const minimumVersions = { ...previousGeneration?.minimumVersions }
       const versions = [
         ["host:core", input.hostVersion],

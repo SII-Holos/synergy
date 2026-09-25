@@ -28,4 +28,8 @@ Package resolution reads `package.json` metadata and expands explicit preset/com
 
 ## Consequences
 
+The installer records approved API4 activation actions inside the sealed generation. Activation keeps the existing SQL transaction owner and records idempotent completion; a failed action retains its journal and prevents a later generation from overtaking it. Recovery only applies the current generation, so a worker pinned to an older generation cannot restore older plugin code. Host-code trust and plugin grants remain separate decisions.
+
+The CLI owns a dependency-light launcher, while component packages declare their special subprocess runners in package metadata. Workers return through the verified launcher before importing their modules. Application payloads are downloaded and platform-signature checked during preparation; a failed download or publisher check cannot produce a launchable selection. Portable signed app bundles permit installation without mutating an already running Desktop bundle.
+
 Installation prepares a new generation and activation affects the next start. Integrity checking includes dependencies and native artifacts. Tests exercise explicit trust, stale-plan rejection, tampering, escaping links, host compatibility, interrupted publication and existing API4 recovery. The normal fresh-install and update command paths must use this owner rather than independently writing activation pointers.

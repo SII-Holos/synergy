@@ -18,3 +18,5 @@ Own the installation generation ledger under `src/installation`. Its pre-bootstr
 Add/update/remove preserves explicit roots and the package-manager lock; rebuild a stage from that lock to prune removed dependencies. Resolve the selected graph to one canonical Harness before importing component factories, compare executable declarations with approved metadata, and pin worker generations by their manifest digest.
 
 The dependency-light `installation/catalog` leaf owns the four first-party install selections and aliases. Source Presets, the installer and release tooling consume it without a core dependency on complete-product assembly.
+
+Installation CLI handlers use the metadata-first manager. API4 activation journals retain plugin transactions, source identity and capability consent; recovery must be idempotent and cannot replay an older generation over the current selection. Application checksums and native publisher checks precede activation. Test real local archives, script suppression, interrupted activation and subprocess generation pins.

@@ -16,6 +16,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `config` | manage synergy configuration |
 | `data` | manage synergy data location and storage |
 | `debug` | debugging and troubleshooting tools |
+| `desktop` | open the installed Synergy Desktop application |
 | `diagnostics` | create a local diagnostics package |
 | `doctor` | diagnose synergy sandbox and environment |
 | `embed` | manage the local embedding model |
@@ -23,13 +24,16 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `generate` | generate the OpenAPI contract |
 | `holos` | manage Holos identity and runtime |
 | `import` | import a session transcript or rollout ZIP |
+| `install` | install components, presets, plugins or applications |
 | `library` | manage library memory and learning |
+| `list` | list installed packages and legacy plugins |
 | `logs` | show synergy background service logs |
 | `mcp` | manage MCP (Model Context Protocol) servers |
 | `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
 | `plugin` | install, remove, update, and inspect plugins |
+| `remove` | remove packages and unused dependencies |
 | `secrets` | manage the secret vault |
 | `send` | send a message to synergy |
 | `server` | start synergy server |
@@ -39,6 +43,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `status` | show synergy background service status |
 | `stop` | stop synergy background service |
 | `uninstall` | uninstall synergy and remove all related files |
+| `update` | update explicitly installed packages |
 | `upgrade` | upgrade synergy to the latest or a specific version |
 | `web` | URL of a running synergy server |
 
@@ -180,6 +185,11 @@ delete a session using recovery-safe filesystem/index cleanup
 | `--scope` (string) | scope id when the session index is missing |
 | `--yes` (boolean) | confirm deletion |
 | `--json` (boolean) |  |
+
+## desktop
+
+open the installed Synergy Desktop application
+
 
 ## dev [path]
 
@@ -348,6 +358,16 @@ install verified managed Chromium for Browser tools
 | `--json` (boolean) | print the installation result as JSON |
 | `--deps` (boolean) | install required Linux system packages (use --no-deps to skip) |
 
+## install [spec..]
+
+install components, presets, plugins or applications
+
+| Option | Description |
+| --- | --- |
+| `--trust-host-code` (boolean) | trust the resolved component and application code to run with host privileges |
+| `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
+| `--resume` (boolean) | finish an interrupted plugin activation |
+
 ## install-deps
 
 install Linux system packages required by Chromium
@@ -368,13 +388,11 @@ manage library memory and learning
 
 ## list
 
-list sessions
+list installed packages and legacy plugins
 
 | Option | Description |
 | --- | --- |
-| `--max-count` (number) | limit to N most recent sessions |
-| `--format` (string) | output format |
-| `--with-health` (boolean) | include recovery-safe health data |
+| `--json` (boolean) |  |
 
 ## list <path>
 
@@ -598,6 +616,11 @@ register a secret value (read from a hidden prompt)
 ## remove <id>
 
 remove a secret; historical mask tokens stop resolving
+
+
+## remove <name..>
+
+remove explicitly installed packages and unused dependencies
 
 
 ## repair
@@ -844,6 +867,15 @@ update plugins to their latest version
 | Option | Description |
 | --- | --- |
 | `--auto-approve` (boolean) | auto-approve permission changes without prompting (low-security convenience) |
+
+## update [name..]
+
+update explicitly installed packages (all when no name is given)
+
+| Option | Description |
+| --- | --- |
+| `--trust-host-code` (boolean) | trust the resolved component and application code to run with host privileges |
+| `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
 
 ## usage [provider]
 

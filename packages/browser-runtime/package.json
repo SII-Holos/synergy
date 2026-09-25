@@ -72,6 +72,16 @@
     "export": "browser",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "runners": {
+      "browser-install-deps-runner": {
+        "entry": "./dist/install-deps-runner.js",
+        "export": "main"
+      },
+      "browser-playwright-runtime-check": {
+        "entry": "./dist/runtime-check.js",
+        "export": "main"
+      }
     }
   }
 }

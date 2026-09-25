@@ -55,6 +55,7 @@ describe("installable package metadata", () => {
       url: "https://example.com/desktop.zip",
       sha256: "a".repeat(64),
       format: "zip",
+      executable: "./Synergy.app/Contents/MacOS/Synergy",
       signing: { type: "apple", teamID: "ABCDEFGHIJ" },
     }
     expect(SynergyPackage.parse({ ...base, kind: "app", artifacts: [artifact] }).kind).toBe("app")

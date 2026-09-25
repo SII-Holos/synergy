@@ -11,6 +11,11 @@ export function createLocalHost(
   const env = { ...(options.env ?? process.env) }
   const home = path.resolve(options.home ?? env.SYNERGY_HOME ?? env.SYNERGY_TEST_HOME ?? os.homedir())
   const root = path.resolve(options.root ?? env.SYNERGY_RUNTIME_ROOT ?? path.join(home, ".synergy"))
+  if (env.SYNERGY_INSTALLATION_ROOT && path.resolve(env.SYNERGY_INSTALLATION_ROOT) !== root) {
+    delete env.SYNERGY_INSTALLATION_PIN
+    delete env.SYNERGY_INSTALLATION_ROOT
+    delete env.SYNERGY_LAUNCHER_COMMAND
+  }
   let identity: Promise<string> | undefined
   return {
     home,

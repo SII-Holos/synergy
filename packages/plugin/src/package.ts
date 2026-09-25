@@ -29,6 +29,12 @@ export const ComponentPackage = z
     apiVersion: z.literal(1),
     entry: RelativeFile,
     export: z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/),
+    runners: z
+      .record(
+        Identifier,
+        z.object({ entry: RelativeFile, export: z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/) }).strict(),
+      )
+      .optional(),
     requires: z.record(Identifier, z.string().min(1)).optional(),
     packages: Packages.optional(),
   })
@@ -47,6 +53,7 @@ export const AppArtifact = z
     target: z.enum(["darwin-arm64", "darwin-x64", "win32-arm64", "win32-x64", "linux-arm64", "linux-x64"]),
     url: z.url().refine((value) => new URL(value).protocol === "https:", "Application artifacts require HTTPS"),
     sha256: z.string().regex(/^[a-f0-9]{64}$/),
+    executable: RelativeFile,
     format: z.enum(["zip", "dmg", "exe", "AppImage", "deb", "tar.gz"]),
     signing: z.discriminatedUnion("type", [
       z.object({ type: z.literal("apple"), teamID: z.string().regex(/^[A-Z0-9]{10}$/) }).strict(),

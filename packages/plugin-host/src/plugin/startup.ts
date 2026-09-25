@@ -12,6 +12,8 @@ import { Plugin } from "."
 async function recoverInstallations() {
   const { PluginInstallationRecovery } = await import("./installation-recovery")
   await PluginInstallationRecovery.recover()
+  const { recoverInstalledPlugins } = await import("../installation/plugin-activation")
+  await recoverInstalledPlugins()
 }
 
 export function registerPluginStartup() {

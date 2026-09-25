@@ -50,7 +50,10 @@
     "./installation/generations": "./src/installation/generations.ts",
     "./installation/package-resolution": "./src/installation/package-resolution.ts",
     "./installation/component-loader": "./src/installation/component-loader.ts",
-    "./installation/catalog": "./src/installation/catalog.ts"
+    "./installation/catalog": "./src/installation/catalog.ts",
+    "./installation/manager": "./src/installation/manager.ts",
+    "./installation/cli": "./src/installation/cli.ts",
+    "./installation/bootstrap": "./src/installation/bootstrap.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -69,6 +72,7 @@
     "ajv": "8.18.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
+    "unzipper": "^0.12.3",
     "yargs": "18.0.0",
     "zod": "catalog:"
   },
@@ -77,6 +81,7 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
+    "@types/unzipper": "0.10.11",
     "@types/yargs": "17.0.33",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"

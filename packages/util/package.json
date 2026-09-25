@@ -29,7 +29,8 @@
       "types": "./src/io-retry.ts",
       "bun": "./src/io-retry.ts",
       "import": "./dist/io-retry.js"
-    }
+    },
+    "./installed-launcher": "./src/installed-launcher.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

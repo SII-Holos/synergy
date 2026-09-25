@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { preparePackageGraph } from "../../src/installation/package-resolution"
 import { InstallationGenerations } from "../../src/installation/generations"
+import { compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-package-test-"))
@@ -42,6 +43,59 @@ async function pack(root: string, name: string, synergy: unknown) {
 }
 
 const base = { formatVersion: 1, version: "2.0.0", compatibility: { synergy: "^2.0.0" } }
+
+test("legacy API4 packages retain their manifest identity without executing plugin code", async () => {
+  await using temp = await fixture()
+  const directory = path.join(temp.root, "legacy-plugin")
+  await Bun.write(path.join(directory, "package.json"), JSON.stringify({ name: "legacy-plugin", version: "2.0.0" }))
+  const manifest = compilePluginManifest(
+    definePlugin({ id: "legacy.plugin", version: "2.0.0", description: "legacy fixture", contributions: [] }),
+    { generation: "legacy-generation" },
+  )
+  await Bun.write(path.join(directory, "plugin.json"), JSON.stringify(manifest))
+  await using prepared = await preparePackageGraph(temp.root, { sources: [directory], hostVersion: "local" })
+  expect(prepared.packages["legacy-plugin"].metadata).toEqual({
+    formatVersion: 1,
+    kind: "plugin",
+    id: manifest.id,
+    version: manifest.version,
+    compatibility: manifest.compatibility,
+    manifest: "./plugin.json",
+  })
+  await InstallationGenerations.commit(temp.root, { ...prepared, hostVersion: "local", trustHostCode: true })
+})
+
+test("flat plugin archives without package.json remain installable", async () => {
+  await using temp = await fixture()
+  const manifest = compilePluginManifest(
+    definePlugin({ id: "legacy.archive", version: "2.0.0", description: "archive fixture", contributions: [] }),
+    { generation: "legacy-archive" },
+  )
+  const archive = path.join(temp.root, "old.synergy-plugin.tgz")
+  await Bun.write(archive, Bun.gzipSync(await new Bun.Archive({ "plugin.json": JSON.stringify(manifest) }).bytes()))
+  await using prepared = await preparePackageGraph(temp.root, { sources: [archive], hostVersion: "local" })
+  expect(prepared.packages["legacy.archive"].metadata?.kind).toBe("plugin")
+})
+
+test("a local plugin project installs its built artifact independently of source package files filters", async () => {
+  await using temp = await fixture()
+  const directory = path.join(temp.root, "project")
+  const pkg = { name: "built-plugin", version: "2.0.0", files: ["dist"] }
+  await Bun.write(path.join(directory, "package.json"), JSON.stringify(pkg))
+  await Bun.write(path.join(directory, "dist/package.json"), JSON.stringify(pkg))
+  await Bun.write(
+    path.join(directory, "dist/plugin.json"),
+    JSON.stringify(
+      compilePluginManifest(
+        definePlugin({ id: "built-plugin", version: "2.0.0", description: "built artifact", contributions: [] }),
+        { generation: "built-generation" },
+      ),
+    ),
+  )
+  await using prepared = await preparePackageGraph(temp.root, { sources: [directory], hostVersion: "local" })
+  expect(prepared.packages["built-plugin"].metadata?.kind).toBe("plugin")
+  expect(await Bun.file(path.join(prepared.directory, "node_modules/built-plugin/plugin.json")).exists()).toBe(true)
+})
 
 test("package sources cannot become package-manager options", async () => {
   await using temp = await fixture()

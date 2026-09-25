@@ -41,34 +41,6 @@ function readPkgVersion(pluginDir: string): string | undefined {
   }
 }
 
-interface ContributedSummary {
-  skills: number
-  agents: number
-  operations: number
-  mcpServers: number
-}
-
-function getContributed(manifest: PluginManifest): ContributedSummary {
-  return {
-    skills: manifest.contributions.filter((item) => item.kind === "skill").length,
-    agents: manifest.contributions.filter((item) => item.kind === "agent").length,
-    operations: manifest.contributions.filter((item) => item.kind === "operation").length,
-    mcpServers: manifest.contributions.filter((item) => item.kind === "mcp").length,
-  }
-}
-
-function printContributed(manifest: PluginManifest) {
-  const c = getContributed(manifest)
-  const parts: string[] = []
-  if (c.skills > 0) parts.push(`${c.skills} skill${c.skills !== 1 ? "s" : ""}`)
-  if (c.agents > 0) parts.push(`${c.agents} agent${c.agents !== 1 ? "s" : ""}`)
-  if (c.operations > 0) parts.push(`${c.operations} operation${c.operations !== 1 ? "s" : ""}`)
-  if (c.mcpServers > 0) parts.push(`${c.mcpServers} MCP server${c.mcpServers !== 1 ? "s" : ""}`)
-  if (parts.length > 0) {
-    UI.println(`  ${UI.Style.TEXT_DIM}Contributes:${UI.Style.TEXT_NORMAL} ${parts.join(", ")}`)
-  }
-}
-
 // ---------------------------------------------------------------------------
 // add <spec>
 // ---------------------------------------------------------------------------
@@ -83,55 +55,8 @@ export const PluginAddCommand = cmd({
       demandOption: true,
     }),
   async handler(args) {
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      async fn() {
-        const spec = args.spec as string
-        const spinner = prompts.spinner()
-        spinner.start(`Adding plugin ${spec}`)
-
-        try {
-          const plugin = await Plugin.add(spec)
-          const manifest = await Plugin.manifest(plugin.id)
-          if (!manifest) throw new Error(`Plugin manifest not found: ${plugin.id}`)
-
-          spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${plugin.name ?? plugin.id}`)
-          UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
-
-          const version = readPkgVersion(plugin.pluginDir)
-          if (version) {
-            UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
-          }
-
-          printContributed(manifest)
-
-          if (manifest.description) {
-            UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
-          }
-
-          const lifecycle = plugin.installLifecycle
-          if (lifecycle?.status === "pending") {
-            UI.println(
-              `  ${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
-                `lifecycle.install will run when the Synergy server picks up the plugin (next start or plugin reload).`,
-            )
-          } else if (lifecycle?.status === "failed") {
-            UI.println(
-              `${UI.Style.TEXT_DANGER}  Install setup failed:${UI.Style.TEXT_NORMAL} ${lifecycle.error ?? "unknown error"}`,
-            )
-            UI.println(
-              `  ${UI.Style.TEXT_DIM}Retry with:${UI.Style.TEXT_NORMAL} synergy plugin retry-install ${plugin.id}`,
-            )
-          } else if (lifecycle?.status === "completed") {
-            UI.println(`  ${UI.Style.TEXT_DIM}Install setup completed.${UI.Style.TEXT_NORMAL}`)
-          }
-        } catch (e: unknown) {
-          const message = e instanceof Error ? e.message : String(e)
-          spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${spec}`)
-          UI.error(message)
-        }
-      },
-    })
+    const { changeInstalledPackages } = await import("../../installation/cli")
+    await changeInstalledPackages({ sources: [args.spec as string], pluginOnly: true })
   },
 })
 
@@ -159,6 +84,11 @@ export const PluginRemoveCommand = cmd({
       scope: Scope.home(),
       async fn() {
         const pluginId = args.id as string
+        const { managedPackage, changeInstalledPackages } = await import("../../installation/cli")
+        if (await managedPackage(pluginId)) {
+          await changeInstalledPackages({ remove: [pluginId], trustHostCode: true })
+          return
+        }
 
         const plugin = await Plugin.get(pluginId)
         if (!plugin) {
@@ -259,6 +189,26 @@ export const PluginUpdateCommand = cmd({
     await ScopeContext.provide({
       scope: Scope.home(),
       async fn() {
+        const { managedPackage, changeInstalledPackages } = await import("../../installation/cli")
+        const { listInstalledPackages } = await import("../../installation/manager")
+        const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
+        const managed = (await listInstalledPackages(RuntimeContext.current().host.root)).filter(
+          (pkg) => pkg.kind === "plugin",
+        )
+        const target = args.id as string | undefined
+        if (target && (await managedPackage(target))) {
+          await changeInstalledPackages({
+            update: [target],
+            approvePlugin: args["auto-approve"] ? [target] : undefined,
+          })
+          return
+        }
+        const roots = managed.filter((pkg) => pkg.explicit)
+        if (!target && roots.length)
+          await changeInstalledPackages({
+            update: roots.map((pkg) => pkg.name),
+            approvePlugin: args["auto-approve"] ? roots.map((pkg) => pkg.id) : undefined,
+          })
         const config = await Config.globalResolved()
         const configSpecs = config.plugin ?? []
 
@@ -271,13 +221,15 @@ export const PluginUpdateCommand = cmd({
         const isInteractive = interactive()
 
         const targetId = args.id as string | undefined
-        const specsToUpdate = await resolvePluginUpdateTargets({
-          specs: configSpecs,
-          target: targetId,
-          lockfile: await Lockfile.read(),
-          read: readConfiguredPluginPackage,
-          matches: pluginMatches,
-        })
+        const specsToUpdate = (
+          await resolvePluginUpdateTargets({
+            specs: configSpecs,
+            target: targetId,
+            lockfile: await Lockfile.read(),
+            read: readConfiguredPluginPackage,
+            matches: pluginMatches,
+          })
+        ).filter((pkg) => !managed.some((item) => item.id === pkg.id))
 
         if (targetId && specsToUpdate.length === 0) {
           UI.error(`Plugin not found: ${targetId}`)

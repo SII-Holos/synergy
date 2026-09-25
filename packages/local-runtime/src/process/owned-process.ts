@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import fs from "node:fs/promises"
 import { existsSync } from "node:fs"
 import path from "node:path"
@@ -315,9 +316,11 @@ export namespace OwnedProcess {
       }
       await fs.writeFile(filename, JSON.stringify(configuration), { mode: 0o600 })
       const source = fileURLToPath(new URL("./owned-worker.ts", import.meta.url))
-      const command = existsSync(source)
-        ? [process.execPath, "run", source, filename]
-        : [process.execPath, "__owned-process-runner", filename]
+      const command =
+        installedWorkerCommand(process.env, "__owned-process-runner", [filename]) ??
+        (existsSync(source)
+          ? [process.execPath, "run", source, filename]
+          : [process.execPath, "__owned-process-runner", filename])
       startupTimer = setTimeout(() => fail(new Error("Native process startup timed out")), 30000)
       input.signal?.addEventListener("abort", abort, { once: true })
       input.signal?.throwIfAborted()

@@ -37,7 +37,8 @@
     "./cli/server": "./src/cli/server.ts",
     "./cli/web": "./src/cli/web.ts",
     "./runtime-cli": "./src/runtime-cli.ts",
-    "./component-selection": "./src/component-selection.ts"
+    "./component-selection": "./src/component-selection.ts",
+    "./launcher": "./src/launcher.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

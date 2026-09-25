@@ -16,3 +16,5 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 `atomic-file` and `io-retry` own durable file promotion and bounded transient filesystem retries. Installation bootstrap uses these without loading Harness. Keep shared directory synchronization and cross-process installation locks consistent with persisted-state recovery.
 
 `process-group` owns process-group anchoring, cancellation and bounded Windows taskkill. Shell execution and pre-bootstrap package installation use the same primitive; never replace whole-tree cleanup with killing only the direct child.
+
+`installed-launcher` validates generation pins and builds subprocess argument arrays from explicitly supplied environment metadata. It performs no discovery, import or shell evaluation.

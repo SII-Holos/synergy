@@ -11,6 +11,45 @@ export function runtimeCommands(
 ): CommandEntry[] {
   return [
     {
+      command: "desktop",
+      describe: "open the installed Synergy Desktop application",
+      load: async () =>
+        (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
+          .DesktopCommand as unknown as CommandModule,
+    },
+    {
+      command: "install [spec..]",
+      storage: "maintenance",
+      describe: "install components, presets, plugins or applications",
+      load: async () =>
+        (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
+          .InstallCommand as unknown as CommandModule,
+    },
+    {
+      command: "update [name..]",
+      storage: "maintenance",
+      describe: "update explicitly installed packages",
+      load: async () =>
+        (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
+          .PackageUpdateCommand as unknown as CommandModule,
+    },
+    {
+      command: "remove <name..>",
+      storage: "maintenance",
+      describe: "remove packages and unused dependencies",
+      load: async () =>
+        (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
+          .PackageRemoveCommand as unknown as CommandModule,
+    },
+    {
+      command: "list",
+      storage: "maintenance",
+      describe: "list installed packages and legacy plugins",
+      load: async () =>
+        (await import("@ericsanchezok/synergy-plugin-host/installation/cli"))
+          .PackageListCommand as unknown as CommandModule,
+    },
+    {
       command: "debug",
       storage: "maintenance",
       describe: "debugging and troubleshooting tools",

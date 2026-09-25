@@ -88,6 +88,12 @@
     "export": "library",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "runners": {
+      "embedding-runtime-check": {
+        "entry": "./dist/vector/runtime-check.js",
+        "export": "main"
+      }
     }
   }
 }

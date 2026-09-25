@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
@@ -232,9 +233,11 @@ export namespace ObservabilityTelemetryClient {
   function spawnWorker(input: { dbPath: string; config: TelemetryProtocol.WorkerConfig }): void {
     const instanceState = runtimeState()
 
-    const command = fs.existsSync(runnerPath)
-      ? [process.execPath, "run", runnerPath]
-      : [process.execPath, "__observability-worker-runner"]
+    const command =
+      installedWorkerCommand(RuntimeContext.current().host.env, "__observability-worker-runner") ??
+      (fs.existsSync(runnerPath)
+        ? [process.execPath, "run", runnerPath]
+        : [process.execPath, "__observability-worker-runner"])
     const env: Record<string, string | undefined> = {
       ...RuntimeContext.current().host.env,
       SYNERGY_OBSERVABILITY_PARENT_PID: String(process.pid),

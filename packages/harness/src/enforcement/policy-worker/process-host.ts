@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import { RuntimeContext } from "../../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
@@ -29,6 +30,8 @@ export interface SpawnPolicyWorkerProcessOptions {
 }
 
 export function resolvePolicyWorkerCommand(): string[] {
+  const installed = installedWorkerCommand(RuntimeContext.current().host.env, "__policy-worker-runner")
+  if (installed) return installed
   const entrypoint = state().entrypoint
   if (!entrypoint) throw new Error("No policy worker host is registered")
   if (fs.existsSync(entrypoint)) return [process.execPath, "run", entrypoint]

@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import { RuntimeContext } from "../../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
@@ -38,6 +39,8 @@ export interface SpawnAgentWorkerProcessOptions {
 
 export function resolveAgentWorkerCommand(): string[] {
   const instanceState = runtimeState()
+  const installed = installedWorkerCommand(RuntimeContext.current().host.env, "__agent-turn-runner")
+  if (installed) return installed
 
   if (instanceState.runtimeEntrypoint && fs.existsSync(instanceState.runtimeEntrypoint))
     return [process.execPath, "run", instanceState.runtimeEntrypoint]

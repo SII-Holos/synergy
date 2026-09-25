@@ -1,5 +1,22 @@
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 
+export async function runComponentRunner(entry: URL, name: string) {
+  const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
+  const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime/host")
+  const context = RuntimeContext.create(createLocalHost())
+  try {
+    await context.run(async () => {
+      const { Global } = await import("@ericsanchezok/synergy-harness/global")
+      await Global.initialize({ cache: false })
+      const module: Record<string, unknown> = await import(entry.href)
+      if (typeof module[name] !== "function") throw new Error(`Component runner export is missing: ${name}`)
+      await module[name]()
+    })
+  } finally {
+    context.dispose()
+  }
+}
+
 export async function runCoreWorker(components: readonly RuntimeComponent[] = []): Promise<boolean> {
   const worker = process.argv.find((arg) =>
     [

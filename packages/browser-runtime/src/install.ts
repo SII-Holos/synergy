@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
 import os from "os"
@@ -631,6 +632,8 @@ function unsupportedChromium(platform: string, arch: string, libc: string): Erro
 }
 
 function dependencyRunnerCommand(): string[] {
+  const installed = installedWorkerCommand(RuntimeContext.current().host.env, "__browser-install-deps-runner")
+  if (installed) return installed
   if (!Installation.isLocal()) return [process.execPath, "__browser-install-deps-runner"]
   const entrypoint = fileURLToPath(new URL("./install-deps-runner.ts", import.meta.url))
   return [process.execPath, "--conditions=browser", entrypoint]
