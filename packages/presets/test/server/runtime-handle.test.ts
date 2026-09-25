@@ -3,7 +3,7 @@ import { resolveAgentWorkerCapacity } from "@ericsanchezok/synergy-harness/execu
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { expect, test } from "bun:test"
 import path from "node:path"
-import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
+import { PresetRuntimeHandle } from "../../src"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"

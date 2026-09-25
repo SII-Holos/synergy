@@ -44,6 +44,8 @@ When a public operation returns a typed in-progress outcome at its foreground bu
 
 After splitting a package, evaluate each new owner against aggregate coverage; the former combined percentage can hide an uncovered protocol or lifecycle branch. Exercise worker registrars in an isolated Runtime context as well as through real IPC. Keep process-only coverage exclusions limited to exact entry files with named executable tests; do not exclude reusable registrars or lower the new package floor.
 
+Exercise a library's public package entry in its behavioral embedding tests, even when the same file also starts a CLI. Child-process bootstrap tests cannot establish the in-process import contract or contribute that entry's parent-process coverage.
+
 Inspect two nearby tests and `packages/harness/test/support/preload.ts` before introducing a new harness pattern.
 
 Importing an App `src/components/**` module directly from `bun:test` needs its module-load side effects satisfied first: `mock.module("@/locales/en/messages.po?lingui", () => ({ messages: {} }))` for the catalog, because the `.po?lingui` module is not Bun-loadable, and a stub for anything reaching `@ericsanchezok/synergy-ui/icon`, whose `lucide-solid` `Dynamic` chain throws "Client-only API called on the server side". Prefer extracting the logic under test into a plain module (a classifier, a resolver, a projection) and testing that directly; reach for the mocks only when the component's own wiring is the subject.
