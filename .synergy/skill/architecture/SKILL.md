@@ -67,3 +67,5 @@ For reusable native processes, trace idle lifetime separately from active reques
 ## Component composition changes
 
 Trace each selected package through its `./component` factory, configuration, reload handlers, service disposal and lazy HTTP/CLI adapters. Required dependencies must be explicit; optional ordering must not install a peer. Reuse Harness lifecycle ownership and test two Runtime instances, failure cleanup, role-specific worker readiness and a reduced HTTP schema. CLI helpers belong to shared terminal primitives or Local Runtime host adapters; authoring tools remain optional. Update package exports, the release catalog, test/coverage inventories and clean-directory install checks together.
+
+For packaging changes, verify public factories in a clean external installation without the CLI as an implicit dependency. Also run `script/installation-composition-check.ts` against complete release archives: installed CLI mutations and managed Node SDK startup exercise different resolution and lifecycle paths than direct Bun embedding. Keep public preset assets explicit and schema publication derived from active component registration.

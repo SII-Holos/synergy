@@ -79,6 +79,34 @@ await server.close() // The attached service remains running.
 
 Caller fetch implementations, headers and Scope selectors remain supported. HTTP clients for other languages can consume [OpenAPI](../../packages/sdk/openapi.json); session-owned operations must keep the same explicit directory or Scope selector as the TypeScript client.
 
+## Python and other HTTP clients
+
+Run a selected HTTP composition, then use the same API and explicit Scope headers from any language. This Python standard-library example attaches to an existing authenticated service and creates a Home session:
+
+```python
+import json
+import os
+from urllib.request import Request, urlopen
+
+base = os.environ["SYNERGY_URL"].rstrip("/")
+headers = {
+    "Authorization": "Bearer " + os.environ["SYNERGY_TOKEN"],
+    "Content-Type": "application/json",
+    "x-synergy-scope-id": "home",
+}
+
+def request(route, body=None):
+    data = None if body is None else json.dumps(body).encode()
+    with urlopen(Request(base + route, data=data, headers=headers), timeout=30) as response:
+        return json.load(response)
+
+print(request("/global/capabilities")["components"])
+session = request("/session", {"title": "Company agent"})
+print(session["id"])
+```
+
+This client does not own the service. For a filesystem project, resolve its Scope through the API and retain that Scope selector across session operations. Use the OpenAPI contract for input submission, streaming and cancellation rather than launching an independent agent loop in the client.
+
 ## Runtime capabilities
 
 `GET /global/capabilities` reports the active component IDs, versions and component API versions for this runtime. Use the generated `client.global.capabilities()` method before calling optional APIs. The endpoint requires no project Scope. Installed changes take effect at the next runtime start; the active response never claims that a newly installed component is already running. Component availability is distinct from permission approval.

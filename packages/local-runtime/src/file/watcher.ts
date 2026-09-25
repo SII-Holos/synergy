@@ -301,7 +301,7 @@ export namespace FileWatcher {
     const subs: SubscriptionRecovery[] = []
     let drain: ReturnType<typeof FileWatcherEvents.createDrain> | undefined
     try {
-      // Home context in GlobalRuntime watches global config and emits via GlobalBus().
+      // Home resident services watch global config and emits via GlobalBus().
       if (kind === "scope" && ScopeContext.current.scope.type === "home") {
         const globalConfigDir = Global.Path.config
         const globalRecovery = await subscribeWithRecovery({

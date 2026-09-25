@@ -34,7 +34,8 @@ export async function launch() {
   const home = path.resolve(process.env.SYNERGY_HOME ?? process.env.SYNERGY_TEST_HOME ?? os.homedir())
   const root = path.resolve(process.env.SYNERGY_RUNTIME_ROOT ?? path.join(home, ".synergy"))
   const seed = path.resolve(path.dirname(process.execPath), "../runtime")
-  const runner = process.argv.find((arg) => arg.startsWith("__"))
+  const command = process.argv[2]
+  const runner = command?.startsWith("__") ? command : undefined
   if (runner?.endsWith("-runner") && !process.env.SYNERGY_INSTALLATION_PIN)
     throw new Error("An installed worker requires its parent installation pin")
   const installationRoot =
@@ -43,7 +44,7 @@ export async function launch() {
     version,
     ...(!standalone ? { installedCore: path.dirname(fileURLToPath(new URL("../package.json", import.meta.url))) } : {}),
     pin: runner ? process.env.SYNERGY_INSTALLATION_PIN : undefined,
-    resume: process.argv.includes("install") && process.argv.includes("--resume"),
+    deferUpgrade: command === "remove" || (command === "install" && process.argv.slice(3).includes("--resume")),
     ...(standalone &&
     (await fs.access(path.join(seed, "generation.json")).then(
       () => true,

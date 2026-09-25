@@ -1,24 +1,20 @@
 #!/usr/bin/env bun
 import path from "node:path"
-import { withInstalledPackages, type PackedArchive } from "./package-install-check"
+import { withInstalledPackages, readPackedArchives } from "./package-install-check"
 
 export async function checkRuntimeCompositions(
   archiveDirectory: string,
-  modes = ["core", "browser", "library", "note", "computer", "full"],
+  modes = ["core", "mcp", "lsp", "server", "browser", "library", "note", "computer", "full"],
 ) {
-  const archives: PackedArchive[] = []
-  for await (const file of new Bun.Glob("*.tgz").scan(archiveDirectory)) {
-    const archive = path.join(archiveDirectory, file)
-    const process = Bun.spawn(["tar", "-xOf", archive, "package/package.json"], { stdout: "pipe", stderr: "inherit" })
-    const manifest = JSON.parse(await new Response(process.stdout).text())
-    if (await process.exited) throw new Error(`Cannot inspect ${archive}`)
-    archives.push({ name: manifest.name, version: manifest.version, archive, manifest })
-  }
+  const archives = await readPackedArchives(archiveDirectory)
   const fixture = await Bun.file(path.resolve(import.meta.dir, "../test/package/fixture/runtime-composition.ts")).text()
   for (const mode of modes) {
-    if (!["core", "browser", "library", "note", "computer", "full"].includes(mode))
+    if (!["core", "mcp", "lsp", "server", "browser", "library", "note", "computer", "full"].includes(mode))
       throw new Error(`Unknown runtime composition: ${mode}`)
     const owners: Record<string, string> = {
+      mcp: "mcp",
+      lsp: "lsp",
+      server: "server",
       browser: "browser-runtime",
       library: "library",
       note: "note",
@@ -29,7 +25,7 @@ export async function checkRuntimeCompositions(
     const entries =
       mode === "computer"
         ? ["@ericsanchezok/synergy-computer-runtime"]
-        : ["@ericsanchezok/synergy-cli", ...(owner ? [`@ericsanchezok/synergy-${owner}`] : [])]
+        : ["@ericsanchezok/synergy-agent-runtime", ...(owner ? [`@ericsanchezok/synergy-${owner}`] : [])]
     await withInstalledPackages(archives, entries, async (directory) => {
       const entry = path.join(directory, "composition.ts")
       await Bun.write(
@@ -42,6 +38,14 @@ export async function checkRuntimeCompositions(
           ? await Bun.file(path.resolve(import.meta.dir, "../test/package/fixture/computer-runtime.ts")).text()
           : fixture,
       )
+      await Bun.write(
+        path.join(directory, "mcp-server.cjs"),
+        await Bun.file(path.resolve(import.meta.dir, "../test/package/fixture/mcp-server.cjs")).text(),
+      )
+      await Bun.write(
+        path.join(directory, "lsp-server.cjs"),
+        await Bun.file(path.resolve(import.meta.dir, "../packages/lsp/test/lsp/fixtures/owner-server.cjs")).text(),
+      )
       const env: Record<string, string | undefined> = {
         ...process.env,
         SYNERGY_HOME: path.join(directory, "home"),
@@ -51,6 +55,16 @@ export async function checkRuntimeCompositions(
         SYNERGY_OBSERVABILITY_INLINE: "1",
         SYNERGY_CONFIG_CONTENT: JSON.stringify({
           execution: { agentWorkerMinIdle: 0 },
+          ...(mode === "full" || mode === "lsp"
+            ? {
+                lsp: {
+                  fixture: {
+                    command: [process.execPath, path.join(directory, "lsp-server.cjs")],
+                    extensions: [".fixture"],
+                  },
+                },
+              }
+            : {}),
           ...(mode === "full" ? { pluginMarketplace: { enabled: false }, boss: { enabled: false } } : {}),
           ...(mode === "full" || mode === "library"
             ? {
@@ -66,22 +80,8 @@ export async function checkRuntimeCompositions(
       delete env.NODE_PATH
       delete env.NODE_OPTIONS
       delete env.MODELS_DEV_API_JSON
-      if (mode === "core") {
-        const cli = Bun.spawn([process.execPath, path.join(directory, "node_modules/.bin/synergy"), "--help"], {
-          cwd: directory,
-          env,
-          stdout: "pipe",
-          stderr: "pipe",
-        })
-        const [code, help, error] = await Promise.all([
-          cli.exited,
-          new Response(cli.stdout).text(),
-          new Response(cli.stderr).text(),
-        ])
-        if (code || !help.includes("send")) throw new Error(`Installed CLI help failed: ${error}`)
-      }
       const child = Bun.spawn([process.execPath, entry, mode], { cwd: directory, env, stdout: "pipe", stderr: "pipe" })
-      const timeout = setTimeout(() => child.kill(), 45_000)
+      const timeout = setTimeout(() => child.kill(), 120_000)
       try {
         const [code, stdout, stderr] = await Promise.all([
           child.exited,

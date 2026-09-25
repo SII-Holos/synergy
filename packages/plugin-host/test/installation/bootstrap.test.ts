@@ -109,7 +109,21 @@ test("pending plugin activation can resume using the old core before a launcher 
   })
   const options = { version: "2.1.0", installedCore: await temp.release("2.1.0") }
   await expect(prepareInstalledLaunch(temp.root, options)).rejects.toThrow("pending plugin activation")
-  expect((await prepareInstalledLaunch(temp.root, { ...options, resume: true })).id).toBe(pending.id)
+  expect((await prepareInstalledLaunch(temp.root, { ...options, deferUpgrade: true })).id).toBe(pending.id)
   await Bun.write(path.join(temp.root, "installations/activated", pending.id + ".json"), JSON.stringify(pending.sha256))
   expect((await prepareInstalledLaunch(temp.root, options)).hostVersion).toBe("2.1.0")
+})
+
+test("explicit package removal can use the active core before a blocked host upgrade", async () => {
+  await using temp = await fixture()
+  const current = await seedInstalledCore(temp.root, await temp.release("2.0.0"), "2.0.0", {
+    roots: { [name("mcp")]: "2.0.0" },
+  })
+  const selected = await prepareInstalledLaunch(temp.root, {
+    version: "2.1.0",
+    installedCore: path.join(temp.directory, "unavailable-upgrade"),
+    deferUpgrade: true,
+  })
+  expect(selected.id).toBe(current.id)
+  expect(selected.roots).toEqual(current.roots)
 })

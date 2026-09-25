@@ -18,7 +18,7 @@ export async function prepareInstalledLaunch(
     basePackages?: Record<string, string>
     seed?: string
     installedCore?: string
-    resume?: boolean
+    deferUpgrade?: boolean
   },
 ) {
   if (options.pin) {
@@ -30,7 +30,7 @@ export async function prepareInstalledLaunch(
   const minimum = generation?.minimumVersions["host:core"]
   if (options.version !== "local" && minimum && minimum !== "local" && Bun.semver.order(options.version, minimum) < 0)
     throw new Error(`This home requires Synergy ${minimum} or newer; upgrade the launcher before opening it`)
-  if (!generation || (!options.resume && Bun.semver.order(options.version, generation.hostVersion) > 0)) {
+  if (!generation || (!options.deferUpgrade && Bun.semver.order(options.version, generation.hostVersion) > 0)) {
     const seed = options.seed ? await InstallationGenerations.readSeed(options.seed) : undefined
     if (seed && seed.hostVersion !== options.version)
       throw new Error("The bundled modules do not match the launcher version")

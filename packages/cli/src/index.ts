@@ -22,8 +22,8 @@ export async function runCoreWorker(
   components: readonly RuntimeComponent[] = [],
   ready?: () => void,
 ): Promise<boolean> {
-  const worker = process.argv.find((arg) => CORE_RUNNERS.some((name) => arg === `__${name}`))
-  if (!worker) return false
+  const worker = process.argv[2]
+  if (!CORE_RUNNERS.some((name) => worker === `__${name}`)) return false
   if (worker === "__owned-process-runner") {
     const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-local-runtime/process/owned-worker")
     await runOwnedProcessWorker(process.argv[process.argv.indexOf(worker) + 1]!)

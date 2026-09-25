@@ -293,14 +293,13 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         }),
         bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),
         bun("core-install", ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")]),
-        bun("product-pack", [
-          "script/pack-workspace.ts",
-          "packages/presets",
-          path.join(root, OUTPUT, "runtime-packages"),
-        ]),
         bun("product-composition", [
           "script/runtime-composition-check.ts",
-          path.join(root, OUTPUT, "runtime-packages"),
+          path.join(root, "packages/presets/dist/modules-packages"),
+        ]),
+        bun("installation-composition", [
+          "script/installation-composition-check.ts",
+          path.join(root, "packages/presets/dist/modules-packages"),
         ]),
       ]
   }

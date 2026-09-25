@@ -10,43 +10,33 @@ const mode = process.argv[2]!
 const prefix = "@ericsanchezok/synergy-"
 const full = mode === "full"
 const enabled = (domain: string) => full || mode === domain
-const dispose: Array<() => Promise<void>> = []
-
-const { createLocalHost, createLocalStorage, registerLocalRuntime, RuntimeHandle } = await import(
-  "@ericsanchezok/synergy-local-runtime"
-)
+const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime")
+const { openAgentRuntime } = await import("@ericsanchezok/synergy-agent-runtime")
 const host = createLocalHost()
-const register: Array<() => void> = [registerLocalRuntime]
-if (!full && enabled("browser")) {
-  const owner = await import("@ericsanchezok/synergy-browser-runtime/register")
-  register.push(owner.registerBrowser)
-  dispose.push(owner.disposeBrowser)
+const factories: Record<string, [string, string]> = {
+  browser: ["browser-runtime", "browser"],
+  library: ["library", "library"],
+  note: ["note", "note"],
+  mcp: ["mcp", "mcp"],
+  lsp: ["lsp", "lsp"],
+  server: ["server", "server"],
 }
-if (!full && enabled("library")) {
-  const owner = await import("@ericsanchezok/synergy-library/register")
-  register.push(owner.registerLibrary)
-  dispose.push(owner.disposeLibrary)
-}
-if (!full && enabled("note")) register.push((await import("@ericsanchezok/synergy-note/register")).registerNote)
-
+const selected = factories[mode]
+const components = selected ? [(await import(`${prefix}${selected[0]}/component`))[selected[1]]()] : []
 const runtime = full
   ? await (
-      await import("@ericsanchezok/synergy-presets/server/runtime-handle")
-    ).PresetRuntimeHandle.open({ host, mode: "server", network: { hostname: "127.0.0.1", port: 0 } })
-  : await RuntimeHandle.open({
+      await import("@ericsanchezok/synergy-presets")
+    ).PresetRuntimeHandle.open({
       host,
-      storage: createLocalStorage(host),
-      mode: "oneshot",
-      composition: {
-        register() {
-          for (const contribute of register) contribute()
-        },
-        services: () => ({
-          disposeExtensions: async () => {
-            for (const close of dispose.toReversed()) await close()
-          },
-        }),
-      },
+      mode: "server",
+      network: { hostname: "127.0.0.1", port: 0 },
+    })
+  : await openAgentRuntime({
+      home: host.root,
+      host,
+      components,
+      mode: mode === "server" ? "server" : "oneshot",
+      network: { hostname: "127.0.0.1", port: 0 },
     })
 
 const { Config, ConfigExtensions, ConfigRegistrationLockedError } = await import(
@@ -68,14 +58,16 @@ try {
     assert.throws(() => MigrationRegistry.register("late-fixture", []), MigrationRegistrationLockedError)
     assert.equal(MigrationRegistry.list().has("late-fixture"), false)
 
-    if (full) {
+    if (full || mode === "server") {
       assert.ok(runtime.server?.port)
       const health = await fetch(`http://127.0.0.1:${runtime.server.port}/global/health`)
       assert.equal(health.status, 200)
       const { Server } = await import("@ericsanchezok/synergy-server/server/server")
       const spec = await Server.openapi()
       assert.ok(spec.components?.schemas?.Config)
-      assert.ok(Object.keys(spec.paths ?? {}).length > 100)
+      if (full) assert.ok(Object.keys(spec.paths ?? {}).length > 100)
+      const capabilities = await (await fetch(`http://127.0.0.1:${runtime.server.port}/global/capabilities`)).json()
+      assert.deepEqual(capabilities.components, runtime.components)
     }
     for (const [domain, field] of [
       ["library", "library"],
@@ -83,8 +75,13 @@ try {
       ["connections", "channel"],
       ["plugin-host", "plugin"],
       ["mcp", "mcp"],
+      ["lsp", "lsp"],
     ]) {
-      assert.equal(field! in Config.Info.shape, enabled(domain!), `unexpected config owner ${domain}`)
+      assert.equal(
+        field! in Config.Info.shape,
+        domain === "plugin-host" || enabled(domain!),
+        `unexpected config owner ${domain}`,
+      )
     }
     for (const domain of ["browser", "library", "note"]) {
       assert.equal(ToolRegistry.toolProviderIDs().includes(domain), enabled(domain), `unexpected tool owner ${domain}`)
@@ -113,14 +110,16 @@ try {
           () => true,
           () => false,
         )
-        assert.equal(installed, mode === domain, `unexpected installed domain ${pkg}`)
+        assert.equal(installed, domain === "plugin-host" || mode === domain, `unexpected installed domain ${pkg}`)
         assert.equal(
           lockfile.includes(JSON.stringify(prefix + pkg)),
-          mode === domain,
+          domain === "plugin-host" || mode === domain,
           `unexpected locked domain ${pkg}`,
         )
       }
     }
+    const schema = await Bun.file(path.join(host.root, "schema/config.schema.json")).json()
+    assert.equal("lsp" in schema.properties, enabled("lsp"))
     const directory = path.join(process.cwd(), "workspace")
     await fs.mkdir(directory, { recursive: true })
     const scope = (await Scope.fromDirectory(directory)).scope
@@ -151,6 +150,39 @@ try {
           },
         )
         assert.match(result.output, /composition-executed/)
+        if (enabled("mcp")) {
+          const { MCP } = await import("@ericsanchezok/synergy-mcp")
+          await MCP.add("installed-fixture", {
+            type: "local",
+            command: [process.execPath, path.join(process.cwd(), "mcp-server.cjs")],
+            startup: "manual",
+          })
+          await MCP.connect("installed-fixture")
+          assert.equal((await MCP.status())["installed-fixture"].status, "connected")
+          assert.deepEqual(
+            (
+              await (
+                await MCP.clients()
+              )["installed-fixture"].callTool({ name: "echo", arguments: { text: "installed tool execution" } })
+            ).content,
+            [{ type: "text", text: "installed tool execution" }],
+          )
+          assert.equal(
+            (await MCP.readResource("installed-fixture", "fixture://evidence"))?.contents[0].text,
+            "installed MCP evidence",
+          )
+          await MCP.disconnect("installed-fixture")
+        }
+        if (enabled("lsp")) {
+          const { LSP } = await import("@ericsanchezok/synergy-lsp")
+          const file = path.join(directory, "source.fixture")
+          await Bun.write(file, "let ownerSymbol = 1")
+          await LSP.touchFile(file, true)
+          assert.equal((await LSP.diagnostics())[file]?.[0]?.message, "fixture warning")
+          assert.deepEqual(await LSP.hover({ file, line: 0, character: 1 }), [{ contents: "fixture hover" }])
+          await LSP.reload()
+          assert.equal(await LSP.connectionCount(), 0)
+        }
         if (enabled("browser")) {
           const { BrowserRuntime } = await import("@ericsanchezok/synergy-browser-runtime/runtime")
           const { browserOwnerKey } = await import("@ericsanchezok/synergy-browser-core")
