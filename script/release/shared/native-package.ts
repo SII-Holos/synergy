@@ -7,23 +7,18 @@ import { buildWatcher } from "../../../packages/local-runtime/script/build-watch
 import { buildSqlite } from "../../../packages/harness/script/build-sqlite"
 import { nativePackageName } from "../../../packages/util/src/native-assets"
 import { resolveSandboxAsset, type SandboxRuntimeTarget } from "./build/sandbox-assets"
-import { REPO_ROOT } from "./packages"
+import { REPO_ROOT, NATIVE_TARGETS } from "./packages"
 
-export const NATIVE_TARGETS: SandboxRuntimeTarget[] = [
-  { os: "darwin", arch: "arm64" },
-  { os: "darwin", arch: "x64" },
-  { os: "linux", arch: "arm64" },
-  { os: "linux", arch: "x64" },
-  { os: "linux", arch: "arm64", abi: "musl" },
-  { os: "linux", arch: "x64", abi: "musl" },
-  { os: "win32", arch: "arm64" },
-  { os: "win32", arch: "x64" },
-]
+export { NATIVE_TARGETS } from "./packages"
 
 export function nativeDependencies(version: string, platforms?: string[]) {
   return Object.fromEntries(
     NATIVE_TARGETS.filter((target) => !platforms || platforms.includes(target.os)).map((target) => [
-      nativePackageName({ platform: target.os, arch: target.arch, libc: target.abi ?? "glibc" }),
+      nativePackageName({
+        platform: target.os,
+        arch: target.arch,
+        libc: target.abi ?? "glibc",
+      }),
       version,
     ]),
   )
@@ -35,10 +30,18 @@ export async function packNativeWorkspace(
   target: SandboxRuntimeTarget,
   assetsRoot?: string,
 ) {
-  const name = nativePackageName({ platform: target.os, arch: target.arch, libc: target.abi ?? "glibc" })
+  const name = nativePackageName({
+    platform: target.os,
+    arch: target.arch,
+    libc: target.abi ?? "glibc",
+  })
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-native-pack-"))
   try {
-    const pty = await buildPty({ os: target.os, arch: target.arch, libc: target.abi ?? "glibc" })
+    const pty = await buildPty({
+      os: target.os,
+      arch: target.arch,
+      libc: target.abi ?? "glibc",
+    })
     await fs.copyFile(pty, path.join(stage, path.basename(pty)))
     await fs.copyFile(
       path.join(REPO_ROOT, "packages/local-runtime/src/process/native-pty/LICENSE.bun-pty"),

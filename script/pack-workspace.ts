@@ -10,7 +10,7 @@ import { nativeDependencies, packNativeWorkspace } from "./release/shared/native
 import type { SandboxRuntimeTarget } from "./release/shared/build/sandbox-assets"
 
 const root = path.resolve(import.meta.dir, "..")
-const runtimePackages = new Set(
+export const runtimePackages = new Set(
   [
     "harness",
     "local-runtime",

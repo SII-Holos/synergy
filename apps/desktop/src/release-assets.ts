@@ -6,7 +6,7 @@ export const DESKTOP_RELEASE_ARCHES = ["x64", "arm64"] as const
 export type DesktopReleasePlatform = (typeof DESKTOP_RELEASE_PLATFORMS)[number]
 export type DesktopReleaseArch = (typeof DESKTOP_RELEASE_ARCHES)[number]
 
-const DESKTOP_RELEASE_TARGETS: ReadonlyArray<{
+export const DESKTOP_RELEASE_TARGETS: ReadonlyArray<{
   platform: DesktopReleasePlatform
   arch: DesktopReleaseArch
 }> = [

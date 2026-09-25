@@ -17,6 +17,8 @@ export const BUILD_INPUTS = [
   ".github/actions/ci-setup/action.yml",
   "packages/local-runtime/package.json",
   "packages/local-runtime/script/build-watcher.ts",
+  "packages/local-runtime/script/build-pty.ts",
+  "packages/util/src/native-assets.ts",
   "tsconfig.json",
 ]
 
@@ -75,6 +77,7 @@ export function buildCommands(root = ROOT) {
 function buildPaths(root: string) {
   return [
     "packages/local-runtime/.artifacts/watcher",
+    "packages/local-runtime/.artifacts/pty",
     ...(process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1" ? ["packages/local-runtime/sandbox-assets/linux-x64"] : []),
     ...buildWorkspaces(root)
       .filter((entry) => entry.scripts?.build)
@@ -88,7 +91,7 @@ export async function buildIdentity(root = ROOT): Promise<string> {
       ? execFileSync("getconf", ["GNU_LIBC_VERSION"], { encoding: "utf8" }).trim()
       : process.platform
   const hash = createHash("sha256").update(
-    `ci-build-v4:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}`,
+    `ci-build-v5:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}`,
   )
   const files = [...BUILD_INPUTS]
   for (const entry of buildWorkspaces(root)) {
@@ -103,6 +106,7 @@ export async function buildIdentity(root = ROOT): Promise<string> {
   }
   for (const directory of [
     "packages/local-runtime/script/watcher",
+    "packages/local-runtime/src/process/native-pty",
     "packages/local-runtime/src/sandbox/helper-linux",
   ]) {
     for (const file of await filesIn(path.join(root, directory), ["target", "node_modules"]))

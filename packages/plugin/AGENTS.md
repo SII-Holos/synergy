@@ -15,3 +15,5 @@ Run `bun run typecheck` and root `bun turbo build --filter=@ericsanchezok/synerg
 The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.
 
 The separate `./package` export describes installable components, presets, applications and plugin wrappers. Keep Plugin API4 and UI API6 manifests unchanged; package metadata is read before code execution and never substitutes for plugin capability approval. Presets contain selections, not executable entrypoints.
+
+Application metadata distinguishes an Authenticode-signed Windows distribution from an explicit checksum-only distribution. macOS always requires an Apple identity. Release signing continuity is enforced by the owning publisher; do not label an unsigned artifact as signed.

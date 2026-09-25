@@ -19,11 +19,7 @@ import { buildSynergyLinkBinaries } from "./nodes/build-synergy-link-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
 import { validateSynergyLinkArtifacts } from "./nodes/validate-synergy-link-artifacts"
-import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
-import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
-import { publishUtilCandidate } from "./nodes/publish-util-candidate"
-import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
-import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
+import { publishModuleCandidates } from "./shared/publish-modules"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 // synergy-link npm publish removed — package too large for npm registry
 // import { publishSynergyLinkCandidate } from "./nodes/publish-synergy-link-candidate"
@@ -64,16 +60,12 @@ try {
   await validateLocalArtifacts(platformNames)
   await validateSynergyLinkArtifacts(synergyLinkPlatformNames)
 
-  await publishSdkCandidate(version, state.channel)
-  await publishSynergyLinkProtocolCandidate(version, state.channel)
-  await publishUtilCandidate(version, state.channel)
-  await publishPluginCandidate(version, state.channel)
-  await publishPluginKitCandidate(version, state.channel)
+  const modules = await publishModuleCandidates(version, state.channel)
   const synergy = await publishSynergyCandidate(version, state.channel)
   // synergy-link npm publish removed — package too large for npm registry (>512MB tgz)
   // await publishSynergyLinkCandidate(version, state.channel)
 
-  state.registryPackages.push(...platformPackages)
+  state.registryPackages = [...new Set([...state.registryPackages, ...modules, ...platformPackages])]
   const synergyAssets = await packageBinaryAssets(PRESETS_DIST_DIR, synergy.platformNames)
   const synergyLinkAssets = await packageBinaryAssets(SYNERGY_LINK_DIST_DIR, synergyLinkPlatformNames)
   state.binaryAssets = [...synergyAssets, ...synergyLinkAssets]

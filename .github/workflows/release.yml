@@ -32,8 +32,8 @@ on:
         default: latest
 
 jobs:
-  stable_sandbox_assets:
-    name: Build Stable Sandbox Assets
+  stable_native_assets:
+    name: Build Stable Native Assets
     if: ${{ inputs.target == 'product' }}
     uses: ./.github/workflows/build-helpers.yml
     permissions:
@@ -41,7 +41,7 @@ jobs:
 
   stable_candidate:
     name: Publish Stable Candidate
-    needs: [stable_sandbox_assets]
+    needs: [stable_native_assets]
     if: ${{ inputs.target == 'product' }}
     runs-on: ubuntu-latest
     permissions:
@@ -61,6 +61,13 @@ jobs:
         with:
           bun-version: "1.3.14"
 
+      - name: Download PTY libraries
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: packages/local-runtime/.artifacts/pty
+          pattern: pty-assets-*
+          merge-multiple: true
+
       - name: Download sandbox assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -73,6 +80,13 @@ jobs:
         with:
           name: sqlite-assets-darwin
           path: packages/harness/.artifacts/sqlite
+
+      - name: Download verified watcher assets
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: packages/local-runtime/.artifacts/watcher
+          pattern: watcher-assets-*
+          merge-multiple: true
 
       - name: Validate product release environment
         run: bun run ./script/release/validate-product-environment.ts
@@ -132,8 +146,8 @@ jobs:
 
   stable_desktop_package:
     name: Build Desktop Artifacts (${{ matrix.platform }})
-    needs: [stable_candidate, stable_sandbox_assets]
-    if: ${{ inputs.target == 'product' && needs.stable_candidate.result == 'success' && needs.stable_sandbox_assets.result == 'success' }}
+    needs: [stable_candidate, stable_native_assets]
+    if: ${{ inputs.target == 'product' && needs.stable_candidate.result == 'success' && needs.stable_native_assets.result == 'success' }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -177,6 +191,13 @@ jobs:
         # node_modules/.bun, so install all os/cpu variants instead of host-only.
         run: bun install --os='*' --cpu='*'
 
+      - name: Download PTY libraries
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: packages/local-runtime/.artifacts/pty
+          pattern: pty-assets-*
+          merge-multiple: true
+
       - name: Download sandbox assets
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -202,7 +223,6 @@ jobs:
           SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
           SYNERGY_CHANNEL: stable
           SYNERGY_BUILD_TARGETS: ${{ matrix.runtime_targets }}
-          SYNERGY_REUSE_PUBLISHED_RUNTIME: ${{ matrix.platform == 'win32' && '1' || '' }}
           SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_PUBLIC_KEY }}
           SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY: "1"
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
@@ -271,6 +291,13 @@ jobs:
             throw "Windows installer Authenticode signature is not valid: $($signature.Status)"
           }
 
+      - name: Record portable Desktop application identities
+        run: bun script/release/desktop-app-receipt.ts
+        env:
+          SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+
       - name: Package signed Browser Host artifacts
         shell: bash
         run: |
@@ -315,6 +342,7 @@ jobs:
             apps/desktop/release/browser-host/*.manifest.json.sig
             apps/desktop/release/chromium/*.manifest.json
             apps/desktop/release/chromium/*.manifest.json.sig
+            apps/desktop/release/synergy-desktop-app-*.json
 
   stable_desktop_publish:
     name: Upload Desktop Artifacts
@@ -357,6 +385,12 @@ jobs:
         run: gh release upload "v${RELEASE_VERSION}" desktop-release/* --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Desktop application package
+        run: bun script/release/publish-desktop-app.ts desktop-release
+        env:
+          SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   stable_finalize:
     name: Finalize Stable Release

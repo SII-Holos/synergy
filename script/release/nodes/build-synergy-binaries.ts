@@ -9,8 +9,11 @@ export async function buildSynergyBinaries(version: string, runtimeChannel: stri
     MODELS_DEV_API_JSON: PINNED_MODELS_CATALOG_PATH,
     SYNERGY_VERSION: version,
     SYNERGY_CHANNEL: runtimeChannel,
+    SYNERGY_RELEASE_MODULE_TARGETS: "all",
   })
 
   const directories = await Array.fromAsync(new Bun.Glob("*").scan({ cwd: PRESETS_DIST_DIR, onlyFiles: false }))
-  return directories.map(String).filter((entry) => !entry.includes(".") && entry !== "synergy")
+  return directories
+    .map(String)
+    .filter((entry) => /^synergy-(linux|darwin|windows)-(x64|arm64)(?:-(baseline|musl))*$/.test(entry))
 }

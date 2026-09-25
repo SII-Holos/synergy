@@ -4,7 +4,15 @@ import { format, resolveConfig } from "prettier"
 import fs from "node:fs"
 import os from "node:os"
 import { $ } from "bun"
-import { WEB_DIR, CLI_DIR, PRESETS_DIR, RUNTIME_RELEASE_TARGETS, type RuntimeArtifactProfile } from "./packages"
+import {
+  WEB_DIR,
+  CLI_DIR,
+  PRESETS_DIR,
+  LOCAL_RUNTIME_DIR,
+  RUNTIME_RELEASE_TARGETS,
+  NATIVE_TARGETS,
+  type RuntimeArtifactProfile,
+} from "./packages"
 import { resolveSandboxAsset, type SandboxRuntimeTarget } from "./build/sandbox-assets"
 import { prepareBuildModelsCatalog } from "./build/models-catalog"
 import { nativePlatformPackageNames } from "./build/native-build-packages"
@@ -146,7 +154,7 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
     profile,
     version: Script.version,
     output: path.resolve("dist/modules-packages"),
-    targets,
+    targets: process.env.SYNERGY_RELEASE_MODULE_TARGETS === "all" ? [...NATIVE_TARGETS] : targets,
   })
   for (const item of targets) {
     const name = [
@@ -253,7 +261,11 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
   }
 
   async function ensureNpmPackageExtracted(name: string, version: string) {
-    const destination = path.join(dir, "node_modules", ...name.split("/"))
+    const destination = path.join(
+      name.startsWith("@parcel/watcher-") ? LOCAL_RUNTIME_DIR : dir,
+      "node_modules",
+      ...name.split("/"),
+    )
     if (fs.existsSync(path.join(destination, "package.json"))) return
 
     const temp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-native-package-"))

@@ -1,60 +1,17 @@
-import { $ } from "bun"
-import path from "path"
-import { NPM_REGISTRY, PRESETS_DIST_DIR } from "../shared/packages"
-import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry } from "../shared/runtime"
+import path from "node:path"
+import fs from "node:fs/promises"
+import { PRESETS_DIST_DIR } from "../shared/packages"
+import { publishDirectory } from "../shared/publish-generic"
 
 export async function publishSynergyCandidate(version: string, channel: string) {
-  console.log("\n=== publish synergy candidate ===\n")
-
-  const mainPackagePath = path.join(PRESETS_DIST_DIR, "synergy")
-  const entries = await Array.fromAsync(new Bun.Glob("synergy-*").scan({ cwd: PRESETS_DIST_DIR, onlyFiles: false }))
-  const platformNames = entries.filter((entry) => entry !== "synergy")
-  const authArgs = npmAuthArgs()
-
-  for (let index = 0; index < platformNames.length; index += 3) {
-    const batch = platformNames.slice(index, index + 3)
-    await Promise.all(
-      batch.map(async (name) => {
-        const packageName = `@ericsanchezok/${name}`
-        const cwd = path.join(PRESETS_DIST_DIR, name)
-        if (!(await npmVersionExists(packageName, version))) {
-          if (process.platform !== "win32") {
-            await $`chmod -R 755 .`.cwd(cwd)
-          }
-          await $`rm -f *.tgz`.cwd(cwd).nothrow()
-          await $`bun pm pack`.cwd(cwd)
-          await retry(
-            () => $`npm publish *.tgz --registry ${NPM_REGISTRY} --tag ${channel} --access public ${authArgs}`.cwd(cwd),
-            {
-              attempts: 3,
-              delay: 15_000,
-            },
-          )
-        }
-        await npmEnsureDistTag(packageName, version, channel)
-      }),
+  const entries = await fs.readdir(PRESETS_DIST_DIR, { withFileTypes: true })
+  const platformNames = entries
+    .filter(
+      (entry) =>
+        entry.isDirectory() && /^synergy-(darwin|linux|windows)-(x64|arm64)(?:-(baseline|musl))*$/.test(entry.name),
     )
-  }
-
-  const mainPackageName = "@ericsanchezok/synergy"
-  if (!(await npmVersionExists(mainPackageName, version))) {
-    await $`rm -f *.tgz`.cwd(mainPackagePath).nothrow()
-    await $`bun pm pack`.cwd(mainPackagePath)
-    await retry(
-      () =>
-        $`npm publish *.tgz --registry ${NPM_REGISTRY} --tag ${channel} --access public ${authArgs}`.cwd(
-          mainPackagePath,
-        ),
-      {
-        attempts: 3,
-        delay: 15_000,
-      },
-    )
-  }
-  await npmEnsureDistTag(mainPackageName, version, channel)
-
-  return {
-    platformPackages: platformNames.map((name) => `@ericsanchezok/${name}`),
-    platformNames,
-  }
+    .map((entry) => entry.name)
+  for (const name of [...platformNames, "synergy"])
+    await publishDirectory({ dir: path.join(PRESETS_DIST_DIR, name), name: `@ericsanchezok/${name}`, version, channel })
+  return { platformPackages: platformNames.map((name) => `@ericsanchezok/${name}`), platformNames }
 }

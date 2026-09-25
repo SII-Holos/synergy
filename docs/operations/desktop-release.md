@@ -96,6 +96,14 @@ Updater metadata expected on stable releases:
 - `latest-linux.yml`
 - `latest-linux-arm64.yml`
 
+## Installable module and application packages
+
+The candidate publishes generic workspace modules and all eight target-specific native packages before their consumers. Core/full/Web/Desktop presets are declarative selections; the existing product wrapper remains the complete Web distribution. Both compiled profiles use `packages/cli/src/launcher.ts`. Native CI builds PTY libraries on matching hosts (including Windows ARM64 for the core), Linux watcher bindings and sandbox helpers, and universal macOS SQLite. Release jobs download the verified assets; static package validation consumes the same JavaScript archives as publication.
+
+Each native Desktop packaging job writes a `synergy-desktop-app-<platform>.json` receipt binding its portable archive checksum and executable to the actual signing identity. macOS requires the configured team and notarization. Windows records a valid Authenticode publisher when signed; the existing unsigned-distribution policy records checksum-only verification, and signing continuity still prevents a signed release from becoming unsigned. The upload job verifies the receipts against the uploaded files and publishes `@ericsanchezok/synergy-desktop-app`. Finalization verifies and promotes every declared module and the Desktop application package before completing the release.
+
+`synergy install desktop` can therefore add the native application to a core installation. It installs a portable application into a new generation; the embedded application uses the Web preset and does not include another Desktop application package.
+
 ## CLI Exposure
 
 Desktop installers expose the same packaged runtime used by managed server mode:

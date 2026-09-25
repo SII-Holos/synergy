@@ -24,3 +24,5 @@ Workspace file indexes, native subscriptions and edit evidence follow the resolv
 First-party native integrations use the declared `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports for native process ownership, byte-version validation and preservation of native symbolic-link kinds and exclusive file publication. Snapshot capture and restore share the Harness link encoding through the registered native link Host. They must still acquire Workspace claims before activation; the process module does not infer a writable footprint.
 
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
+
+Native release preparation builds and uploads each PTY target with its verified receipt. Build identity includes the PTY builder, native sources and libc target; shared CI preparation transfers the complete PTY output alongside watcher assets.

@@ -181,7 +181,16 @@ bun run quality:quick
 
 For Bun embedding, use `openAgentRuntime({ home, components })` from `packages/agent-runtime` and select optional component factories explicitly. For lower-level hosts, `packages/harness` exposes the execution and lifecycle APIs, and `packages/local-runtime` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command, with commands supplied by the selected components; the complete product composes optional capabilities in `packages/presets`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. Node.js uses the managed HTTP SDK or attaches to an existing runtime. See [Embedding](docs/reference/embedding.md), [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md).
 
-Use `synergy install`, `list`, `update` and `remove` to manage optional packages. Components, process plugins, company presets and native applications share package discovery while retaining distinct trust and capability approval. See [installation commands](docs/reference/packages.md#installation-commands) for sources, unattended approval and recovery.
+Install the minimal CLI with Bun, then select capabilities:
+
+```bash
+bun add --global @ericsanchezok/synergy-cli
+synergy install mcp lsp
+synergy install web
+synergy install desktop
+```
+
+The existing `@ericsanchezok/synergy` distribution and Desktop installer retain the complete product by default. Use `synergy install`, `list`, `update` and `remove` to manage optional packages. Components, process plugins, company presets and native applications share package discovery while retaining distinct trust and capability approval. See [installation commands](docs/reference/packages.md#installation-commands) for sources, unattended approval and recovery.
 
 Local performance experiments use the [benchmark workspace](benchmark/README.md): independent harness/model matrices, frozen inputs, native rollout evidence and paired reports. Start with `bun bench plan benchmark/configs/ab.yaml`.
 

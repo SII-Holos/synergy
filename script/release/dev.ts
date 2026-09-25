@@ -17,11 +17,7 @@ import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
-import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
-import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
-import { publishUtilCandidate } from "./nodes/publish-util-candidate"
-import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
-import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
+import { publishModuleCandidates } from "./shared/publish-modules"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 // synergy-link npm publish removed — package too large for npm registry
 // import { publishSynergyLinkCandidate } from "./nodes/publish-synergy-link-candidate"
@@ -55,15 +51,11 @@ try {
   const platformNames = await buildSynergyBinaries(version, channel)
   await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)
-  await publishSdkCandidate(version, channel)
-  await publishSynergyLinkProtocolCandidate(version, channel)
-  await publishUtilCandidate(version, channel)
-  await publishPluginCandidate(version, channel)
-  await publishPluginKitCandidate(version, channel)
+  const modules = await publishModuleCandidates(version, channel)
   const synergy = await publishSynergyCandidate(version, channel)
   // synergy-link npm publish removed — package too large for npm registry
   // await publishSynergyLinkCandidate(version, channel)
-  state.registryPackages.push(...synergy.platformPackages)
+  state.registryPackages = [...new Set([...state.registryPackages, ...modules, ...synergy.platformPackages])]
   console.log("dev release", JSON.stringify(summarizeState(state), null, 2))
 } finally {
   await restoreFiles(snapshot)

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
+import { parseArgs } from "node:util"
 import { NativePty } from "../src/process/native-pty"
 
 const owner = path.resolve(import.meta.dir, "..")
@@ -101,4 +102,14 @@ export async function buildPty(options: Target = {}) {
   }
 }
 
-if (import.meta.main) console.log(await buildPty())
+if (import.meta.main) {
+  const { values } = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      os: { type: "string" },
+      arch: { type: "string" },
+      libc: { type: "string" },
+    },
+  })
+  console.log(await buildPty(values))
+}

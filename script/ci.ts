@@ -307,6 +307,7 @@ async function main() {
   }
   if (operation === "prepare") {
     await command([process.execPath, "packages/local-runtime/script/build-watcher.ts"])
+    await command([process.execPath, "packages/local-runtime/script/build-pty.ts"])
     for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
     if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1") {
       await command([

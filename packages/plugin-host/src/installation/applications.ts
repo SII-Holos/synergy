@@ -63,7 +63,7 @@ async function extractZip(archivePath: string, directory: string) {
 
 export async function verifyApplicationSignature(executable: string, artifact: AppArtifact, execute: Run = run) {
   if (artifact.signing.type === "checksum") {
-    if (!artifact.target.startsWith("linux-")) throw new Error("This platform requires a signed application")
+    if (artifact.target.startsWith("darwin-")) throw new Error("This platform requires a signed application")
     return
   }
   if (artifact.signing.type === "apple") {

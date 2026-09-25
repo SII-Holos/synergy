@@ -65,8 +65,11 @@ export const AppArtifact = z
   .superRefine((artifact, context) => {
     if (artifact.target.startsWith("darwin-") && artifact.signing.type !== "apple")
       context.addIssue({ code: "custom", message: "macOS applications require an Apple signing identity" })
-    if (artifact.target.startsWith("win32-") && artifact.signing.type !== "authenticode")
-      context.addIssue({ code: "custom", message: "Windows applications require an Authenticode publisher" })
+    if (artifact.target.startsWith("win32-") && !["authenticode", "checksum"].includes(artifact.signing.type))
+      context.addIssue({
+        code: "custom",
+        message: "Windows applications require an Authenticode publisher or explicit checksum-only distribution",
+      })
   })
 
 export const SynergyPackage = z.discriminatedUnion("kind", [

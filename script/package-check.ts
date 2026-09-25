@@ -5,49 +5,30 @@ import { readFileSync } from "fs"
 import { access, mkdtemp, rm } from "fs/promises"
 import os from "os"
 import path from "path"
-import { PRESETS_DIST_DIR, PRESETS_DIR, CLI_DIR, SDK_DIR, RELEASE_CATALOG, REPO_ROOT } from "./release/shared/packages"
-import {
-  createPublishablePackageJson,
-  readCatalog,
-  type DependencyVersionMap,
-  type PackageJson,
-} from "./release/shared/package-manifest"
+import { PRESETS_DIST_DIR, PRESETS_DIR, CLI_DIR, RELEASE_CATALOG } from "./release/shared/packages"
+import type { PackageJson } from "./release/shared/package-manifest"
+import { packWorkspace, runtimePackages } from "./pack-workspace"
+import { readPackedArchives } from "./package-install-check"
 import { currentGitRemoteUrl } from "./release/shared/git"
 import { stageSynergyWrapper } from "./release/nodes/prepare-synergy-packages"
-
-const dependencyVersions = Object.fromEntries(
-  Object.values(RELEASE_CATALOG).map((entry) => {
-    const manifest = JSON.parse(readFileSync(path.join(REPO_ROOT, entry.directory, "package.json"), "utf8"))
-    return [manifest.name, manifest.version]
-  }),
-)
-
-const publishablePackages: PublishablePackage[] = Object.entries(RELEASE_CATALOG).flatMap(([id, entry]) => {
-  if (!entry.registry || id === "presets") return []
-  return [
-    {
-      name: entry.registry,
-      dir: path.join(REPO_ROOT, entry.directory),
-      build: true,
-      attw: id !== "linkProtocol",
-      dependencyVersions,
-    },
-  ]
-})
-
-type PublishablePackage = {
-  name: string
-  dir: string
-  build: boolean
-  attw: boolean
-  dependencyVersions?: DependencyVersionMap
-}
 
 async function main() {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "synergy-package-check-"))
   try {
-    for (const pkg of publishablePackages) {
-      await validateWorkspacePackage(pkg, tempDir)
+    const entries = Object.entries(RELEASE_CATALOG).filter(([, entry]) => entry.registry)
+    const output = path.join(tempDir, "modules")
+    await packWorkspace(
+      entries.map(([, entry]) => entry.directory),
+      output,
+      { targets: [] },
+    )
+    const archives = await readPackedArchives(output)
+    for (const [id, entry] of entries) {
+      const archive = archives.find((pkg) => pkg.name === entry.registry)
+      if (!archive) throw new Error(`Missing publishable package: ${entry.registry}`)
+      console.log(`\n=== package check: ${archive.name} ===\n`)
+      await runPublint(archive.archive)
+      if (!runtimePackages.has(entry.directory) && id !== "linkProtocol") await runAttw(archive.archive)
     }
     await validateSynergyWrapper(tempDir)
   } finally {
@@ -60,29 +41,6 @@ export async function stagePackablePackage(options: { sourceDir: string; package
   await $`cp -R ${options.sourceDir}/. ${stagedDir}/`
   await Bun.write(path.join(stagedDir, "package.json"), JSON.stringify(options.packageJson, null, 2))
   return pack(stagedDir, options.tempDir)
-}
-
-async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string) {
-  console.log(`\n=== package check: ${pkg.name} ===\n`)
-  if (pkg.build) {
-    if (pkg.dir === SDK_DIR) await $`bun run build --compile-only`.cwd(pkg.dir)
-    else await $`bun run build`.cwd(pkg.dir)
-  }
-
-  const originalText = await Bun.file(path.join(pkg.dir, "package.json")).text()
-  const sourcePackageJson = JSON.parse(originalText) as PackageJson
-  const publishablePackageJson = createPublishablePackageJson({
-    packageJson: sourcePackageJson,
-    version: String(sourcePackageJson.version),
-    catalog: await readCatalog(),
-    dependencyVersions: pkg.dependencyVersions,
-  })
-
-  const tarball = await stagePackablePackage({ sourceDir: pkg.dir, packageJson: publishablePackageJson, tempDir })
-  await runPublint(tarball)
-  if (pkg.attw) {
-    await runAttw(tarball)
-  }
 }
 
 async function validateSynergyWrapper(tempDir: string) {
@@ -123,7 +81,7 @@ async function availableSynergyPlatformVersions(version: string) {
 
 async function pack(dir: string, tempDir: string) {
   const packDir = await mkdtemp(path.join(tempDir, "pack-"))
-  await $`bun pm pack --destination ${packDir}`.cwd(dir)
+  await $`bun pm pack --ignore-scripts --destination ${packDir}`.cwd(dir)
   const tarballs = await Array.fromAsync(new Bun.Glob("*.tgz").scan({ cwd: packDir }))
   if (tarballs.length !== 1) {
     throw new Error(`Expected one tarball in ${packDir}, found ${tarballs.length}`)

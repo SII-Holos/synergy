@@ -55,16 +55,16 @@ export function createPublishablePackageJson(options: {
   return packageJson
 }
 
-export function versionPackage(original: PackageJson, version: string): PackageJson {
+export function versionPackage(original: PackageJson, version: string, hostVersion = version): PackageJson {
   const pkg = structuredClone(original)
   pkg.version = version
   if (!pkg.synergy) return pkg
   const previous = pkg.synergy.version
   pkg.synergy.version = version
-  if (pkg.synergy.compatibility.synergy === previous) pkg.synergy.compatibility.synergy = version
+  if (pkg.synergy.compatibility.synergy === previous) pkg.synergy.compatibility.synergy = hostVersion
   if (pkg.synergy.kind === "component")
     pkg.synergy.requires = Object.fromEntries(
-      Object.entries(pkg.synergy.requires ?? {}).map(([id, range]) => [id, range === previous ? version : range]),
+      Object.entries(pkg.synergy.requires ?? {}).map(([id, range]) => [id, range === previous ? hostVersion : range]),
     )
   if (pkg.synergy.kind === "component" || pkg.synergy.kind === "preset")
     pkg.synergy.packages = Object.fromEntries(

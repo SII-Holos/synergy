@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { FIXED_REGISTRY_PACKAGES } from "./shared/packages"
 import { configureNpmAuth, loadReleaseState } from "./shared/runtime"
 import { finalizeGitHubRelease } from "./nodes/finalize-github-release"
 import { promoteLatest, verifyLatest } from "./nodes/promote-latest"
@@ -14,9 +15,7 @@ if (!version) {
 
 await configureNpmAuth()
 const state = await loadReleaseState("stable", version)
-const extraPackages = state.registryPackages.filter((name) =>
-  /^@ericsanchezok\/synergy-(darwin|linux|windows)-/.test(name),
-)
+const extraPackages = state.registryPackages.filter((name) => !FIXED_REGISTRY_PACKAGES.includes(name))
 await verifyRegistryCandidate(state.version, state.channel, extraPackages)
 await verifyDraftAssets(state)
 await verifyDesktopDraftAssets(state)

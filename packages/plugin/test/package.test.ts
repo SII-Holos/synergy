@@ -71,3 +71,18 @@ describe("installable package metadata", () => {
     ).toBe(false)
   })
 })
+
+test("Windows package metadata can explicitly describe the existing unsigned distribution policy", () => {
+  const artifact = {
+    target: "win32-x64",
+    url: "https://example.com/desktop.zip",
+    sha256: "a".repeat(64),
+    format: "zip",
+    executable: "./synergy-desktop.exe",
+    signing: { type: "checksum" },
+  }
+  expect(SynergyPackage.safeParse({ ...base, kind: "app", artifacts: [artifact] }).success).toBe(true)
+  expect(
+    SynergyPackage.safeParse({ ...base, kind: "app", artifacts: [{ ...artifact, target: "darwin-x64" }] }).success,
+  ).toBe(false)
+})

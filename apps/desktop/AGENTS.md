@@ -29,3 +29,5 @@ For native Computer changes, read [Native Computer Use](../../docs/architecture/
 For keep-awake changes, run `bun test test/power-save.test.ts` and verify in an isolated Desktop that the assertion appears while a task runs, survives closing the window, and leaves nothing behind after quitting (macOS: `pmset -g assertions`).
 
 Packaging consumes the shared release `runtime-layout.cjs` contract and copies the sealed module seed as a unit. Preserve its complete inventory and reject unlisted payloads before copying.
+
+Portable application receipts bind release version, artifact hash, executable and actual native signing identity. Publish the application package only after all supported targets have receipts and their uploaded bytes match.

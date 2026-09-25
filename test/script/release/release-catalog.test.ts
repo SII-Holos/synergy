@@ -9,32 +9,38 @@ import {
   releasePackageDirectory,
 } from "../../../script/release/shared/packages"
 
-test("preserves the public registry names and keeps core a profile of the same CLI", () => {
-  expect(FIXED_REGISTRY_PACKAGES).toEqual([
-    "@ericsanchezok/synergy-sdk",
-    "@ericsanchezok/synergy-util",
-    "@ericsanchezok/synergy-link-protocol",
-    "@ericsanchezok/synergy-plugin",
-    "@ericsanchezok/synergy-plugin-kit",
-    "@ericsanchezok/synergy",
+test("publishes the entire runtime closure and preserves the complete-product npm entry", async () => {
+  for (const [id, entry] of Object.entries(RELEASE_CATALOG)) {
+    if (["testing", "web", "desktop", "ui", "link", "benchmark"].includes(id)) continue
+    const manifest = await Bun.file(path.join(REPO_ROOT, entry.directory, "package.json")).json()
+    expect(entry.registry).toBe(manifest.name)
+    expect(FIXED_REGISTRY_PACKAGES).toContain(manifest.name)
+  }
+  for (const suffix of [
+    "cli",
+    "core",
+    "full",
+    "web",
+    "desktop",
+    "web-app",
+    "native-win32-arm64",
+    "native-linux-arm64-musl",
   ])
-  expect(RUNTIME_RELEASE_TARGETS.core.executable).toBe("synergy")
-  expect(RUNTIME_RELEASE_TARGETS.full.executable).toBe("synergy")
-  expect(RUNTIME_RELEASE_TARGETS.core.registry).toBeNull()
+    expect(FIXED_REGISTRY_PACKAGES).toContain(`@ericsanchezok/synergy-${suffix}`)
+  expect(FIXED_REGISTRY_PACKAGES).toContain("@ericsanchezok/synergy")
+  expect(new Set(FIXED_REGISTRY_PACKAGES).size).toBe(FIXED_REGISTRY_PACKAGES.length)
+  expect(RUNTIME_RELEASE_TARGETS.core.registry).toBe("@ericsanchezok/synergy-cli")
   expect(RUNTIME_RELEASE_TARGETS.full.registry).toBe("@ericsanchezok/synergy")
   expect(RELEASE_CATALOG.link.registry).toBeNull()
 })
 
-test("resolves distinct core and product entrypoints under their owning packages", () => {
-  for (const [profile, expected] of [
-    ["core", "packages/cli/src/index.ts"],
-    ["full", "packages/presets/src/index.ts"],
-  ] as const) {
-    const target = RUNTIME_RELEASE_TARGETS[profile]
-    expect(path.join(releasePackageDirectory(target.package), target.entrypoint)).toBe(path.join(REPO_ROOT, expected))
+test("both profiles use the canonical CLI launcher", () => {
+  for (const target of Object.values(RUNTIME_RELEASE_TARGETS)) {
+    expect(target.executable).toBe("synergy")
+    expect(path.join(releasePackageDirectory(target.package), target.entrypoint)).toBe(
+      path.join(REPO_ROOT, "packages/cli/src/launcher.ts"),
+    )
   }
-  expect(releasePackageDirectory("web")).toBe(path.join(REPO_ROOT, "apps/web"))
-  expect(releasePackageDirectory("desktop")).toBe(path.join(REPO_ROOT, "apps/desktop"))
 })
 
 test("version updates include the split runtime packages once each", () => {

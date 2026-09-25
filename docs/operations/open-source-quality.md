@@ -78,18 +78,9 @@ Package suites execute once with coverage and JUnit. Harness keeps four stable p
 
 The `package:check` script validates every publishable npm package in the monorepo:
 
-| Package                                | Build | publint | attw (esm-only) |
-| -------------------------------------- | ----- | ------- | --------------- |
-| `@ericsanchezok/synergy-sdk`           | ✅    | ✅      | ✅              |
-| `@ericsanchezok/synergy-util`          | ✅    | ✅      | ✅              |
-| `@ericsanchezok/synergy-link-protocol` | ✅    | ✅      | —               |
-| `@ericsanchezok/synergy-plugin`        | ✅    | ✅      | ✅              |
-| `@ericsanchezok/synergy-plugin-kit`    | ✅    | ✅      | ✅              |
-| `@ericsanchezok/synergy` (wrapper)     | —     | ✅      | —               |
+The check uses the same module packer as releases for every registry entry in `script/release/shared/packages.ts`, including Harness, Local Runtime and all optional components. Every archive runs **publint**. Node-compatible SDK, Util, Plugin, Plugin Kit, protocol and detector packages also run **attw** with the ESM profile (Link Protocol retains its existing exclusion). Bun runtime packages carry source types and compiled Bun modules; their executable and worker contracts are tested through installation into a separate directory, rather than treating Node resolution as evidence of Bun execution.
 
-- **publint** validates package.json best practices (exports, types, module resolution)
-- **attw** (`--profile esm-only`) verifies the published package works with ESM consumers
-- The validation builds each package from source, packs a tarball from a temp-staged copy carrying the publishable manifest, and runs both tools; tracked package.json files are never rewritten
+Static package checks omit native binary construction; platform release jobs build and validate those binaries and the complete installed graph. Tracked manifests are never rewritten by package checks. The product wrapper remains a separate compatibility distribution and also runs publint.
 
 Run locally:
 

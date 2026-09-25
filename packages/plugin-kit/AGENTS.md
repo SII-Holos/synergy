@@ -22,3 +22,5 @@ The workspace `build` writes only this package’s outputs. Turbo and the releas
 Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
 
 Built plugin package metadata must identify the same API4 manifest, version and compatibility range. Keep flat archive support in the installer; author-facing build output must not require users to edit generated metadata.
+
+Independent Kit releases retain the published host requirement in component metadata. The factory reads that requirement instead of deriving it from the authoring package version.
