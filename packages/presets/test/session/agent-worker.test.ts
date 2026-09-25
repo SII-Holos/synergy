@@ -1,9 +1,5 @@
 import { expect, test } from "bun:test"
-import { fileURLToPath } from "node:url"
-import {
-  resolveAgentWorkerCommand,
-  spawnAgentWorkerProcess,
-} from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
+import { spawnAgentWorkerProcess } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -12,11 +8,6 @@ test(
   "full source assembly starts its registered agent worker and shuts it down",
   () =>
     runtime.run(async () => {
-      expect(resolveAgentWorkerCommand()).toEqual([
-        process.execPath,
-        "run",
-        fileURLToPath(new URL("../../src/agent-worker.ts", import.meta.url)),
-      ])
       const handshake = Promise.withResolvers<void>()
       let stopping = false
       const worker = spawnAgentWorkerProcess({

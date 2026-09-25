@@ -8,6 +8,8 @@ Independent libraries did not provide a complete embedding composition. Full pro
 
 ## Decision
 
+Full route registration delegates to the selected HTTP adapters. Server core routes have the same single owning adapter as domain routes; fixtures and exported entry points must not add a second direct registration. Application assets belong to the embedding host; only source CLI assembly selects repository Web assets. CLI worker dispatch keeps imports lazy, including its shared runner catalog.
+
 Harness owns a typed component definition and validates its graph before registration. Each Runtime owns registration and resource state independently. Agent Runtime provides the Bun embedding entry and in-process client with an explicit data home and selected components. Domain packages own component factories, reload contributions, lazy HTTP adapters and role-specific worker entries. HTTP transport combines registered owners before constructing the application. Local Runtime owns generic reload orchestration; optional domains supply handlers through a focused Harness port.
 
 Required versions, duplicate identities and dependency cycles fail before storage opens. Partial startup disposes started resources in reverse order. Resident ready hooks run after all selected residents have prepared, so scheduling can depend on active transports. Server started hooks run only after all readiness and background initialization finishes; Plugin Host owns pending install delivery and the runtime-started notification. CLI owns terminal reporting and process shutdown, with domain status callbacks supplied explicitly. Worker processes receive the host selection explicitly and reject absent or mismatched component metadata. Browser hosting and other foreground-only services are excluded from worker entry modules.
@@ -27,6 +29,8 @@ Shared terminal and command-definition primitives live in Util; network and Scop
 ## Consequences
 
 The same component objects can be reused by isolated runtimes. Domain owners can be selected independently without registering another owner's configuration. Presets replaces the ambiguous Product Runtime package and uses the same Agent Runtime factories for full startup. Server owns static asset routing through an explicit web-app component; app payloads stay application-owned. Runtime tests cover isolation, native worker readiness, failed-start cleanup and independent HTTP contributions; generated CLI documentation follows explicit authoring contributions.
+
+Installed-artifact acceptance includes cold generation verification, native worker startup and repeated export/import commands. Its correctness budget includes the complete workflow and reserves time to cancel and drain owned children before fixture removal. Explicit one-second cancellation scenarios keep their deadline; ordinary fixture turns use a separate startup-aware budget. The CI planner accounts for the expanded core/full/npm and downstream composition acceptance work when balancing shards.
 
 The public full backend takes an explicit Web asset directory; repository asset lookup is confined to source CLI composition. Runtime startup generates the editor schema from its sealed active configuration contracts, so installed and embedded subsets do not inherit unrelated product fields.
 

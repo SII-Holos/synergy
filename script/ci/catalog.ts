@@ -126,7 +126,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     task("root-tests", "static", 90, [], { variant: "tests" }),
     task("typecheck", "typecheck", 100),
     task("packages", "packages", 45, [...coverage]),
-    task("installed-runtime", "artifacts", 400, ["packages/cli", "packages/presets"], {
+    task("installed-runtime", "artifacts", 1800, ["packages/cli", "packages/presets"], {
       files: ["test/script/watcher-native.test.ts"],
       prerequisites: ["sandbox"],
     }),

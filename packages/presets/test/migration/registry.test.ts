@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test"
-// Side-effect imports: the L1 runner registers its own domains; product domains
-// register through the L4 product manifest that real entry points load.
-import "@ericsanchezok/synergy-harness/migration"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -11,7 +8,7 @@ describe("MigrationRegistry", () => {
   test("registers all domains", () =>
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
-      expect(domainCount).toBe(15)
+      expect(domainCount).toBe(16)
     }))
 
   test("has expected domain names", () =>
@@ -24,6 +21,7 @@ describe("MigrationRegistry", () => {
         "channel",
         "config",
         "holos",
+        "installation",
         "lattice",
         "library",
         "note",

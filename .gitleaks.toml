@@ -6,7 +6,7 @@ useDefault = true
 [allowlist]
 description = "Repository fixtures and explicit fake token markers."
 paths = [
-  '''packages/agent-integrations/test/.*/fixtures/.*''',
+  '''packages/(acp|code-tools|external-agents|formatter|link-client|lsp|mcp)/test/.*/fixtures/.*''',
   '''packages/browser-runtime/test/.*/fixtures/.*''',
   '''packages/cli/test/.*/fixtures/.*''',
   '''packages/computer-runtime/test/.*/fixtures/.*''',

@@ -1,5 +1,4 @@
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
-import { CORE_RUNNERS } from "@ericsanchezok/synergy-util/installed-launcher"
 
 export async function runComponentRunner(entry: URL, name: string) {
   const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
@@ -22,6 +21,7 @@ export async function runCoreWorker(
   components: readonly RuntimeComponent[] = [],
   ready?: () => void,
 ): Promise<boolean> {
+  const { CORE_RUNNERS } = await import("@ericsanchezok/synergy-util/installed-launcher")
   const worker = process.argv[2]
   if (!CORE_RUNNERS.some((name) => worker === `__${name}`)) return false
   if (worker === "__owned-process-runner") {
