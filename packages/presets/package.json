@@ -21,8 +21,7 @@
     "./cli/data/pack": "./src/cli/data/pack.ts",
     "./cli/data/move": "./src/cli/data/move.ts",
     "./cli/data/merge": "./src/cli/data/merge.ts",
-    "./component": "./src/component.ts",
-    "./catalog": "./src/catalog.ts"
+    "./component": "./src/component.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

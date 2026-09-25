@@ -14,3 +14,5 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 `terminal` owns explicit Bun terminal output primitives; product branding stays in CLI. `cli-command` supplies yargs definition typing without loading the CLI parser.
 
 `atomic-file` and `io-retry` own durable file promotion and bounded transient filesystem retries. Installation bootstrap uses these without loading Harness. Keep shared directory synchronization and cross-process installation locks consistent with persisted-state recovery.
+
+`process-group` owns process-group anchoring, cancellation and bounded Windows taskkill. Shell execution and pre-bootstrap package installation use the same primitive; never replace whole-tree cleanup with killing only the direct child.

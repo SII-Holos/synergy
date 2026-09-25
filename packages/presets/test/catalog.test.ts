@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test"
-import { FULL_COMPONENTS, presetPackage, resolveBuiltinPackage } from "../src/catalog"
+import {
+  FULL_COMPONENTS,
+  presetPackage,
+  resolveBuiltinPackage,
+} from "@ericsanchezok/synergy-plugin-host/installation/catalog"
 import { fullComponents } from "../src/components"
 import { SynergyPackage } from "@ericsanchezok/synergy-plugin/package"
 

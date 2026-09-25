@@ -48,6 +48,6 @@ Use `client.global.capabilities()` to inspect the active component selection. No
 
 See [Development](development.md) and [Open-source quality](../operations/open-source-quality.md) for repository commands and CI checks.
 
-The authoritative selection catalog is `packages/presets/src/catalog.ts`: core supplies execution and plugin hosting, full adds backend components, HTTP and Plugin Kit, Web adds its UI payload, and Desktop adds its application shell. Each first-party component publishes its factory entry, version and requirements under `package.json#synergy`.
+The authoritative selection catalog is `packages/plugin-host/src/installation/catalog.ts`: core supplies execution and plugin hosting, full adds backend components, HTTP and Plugin Kit, Web adds its UI payload, and Desktop adds its application shell. Each first-party component publishes its factory entry, version and requirements under `package.json#synergy`.
 
 Installation metadata is published through `synergy-plugin/package`. Plugin Host owns source resolution and verified immutable module generations; `atomic-file` and `io-retry` are public Util primitives used by both startup verification and existing plugin recovery.

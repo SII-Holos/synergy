@@ -10,7 +10,7 @@ import ts from "typescript"
 import path from "node:path"
 import { readFile } from "node:fs/promises"
 import { findAssign, findBlock, isFresh, REPO_ROOT, writeGenerated, resolveWorkspaceModule } from "./shared"
-import { FULL_COMPONENTS } from "../../packages/presets/src/catalog"
+import { FULL_COMPONENTS } from "../../packages/plugin-host/src/installation/catalog"
 
 const MAIN = path.join(REPO_ROOT, "packages/cli/src/cli/commands.ts")
 const RUNTIME_COMMANDS = path.join(REPO_ROOT, "packages/cli/src/cli/runtime-commands.ts")

@@ -1,6 +1,6 @@
 # Presets Package
 
-Own authoritative preset selections and complete-product integration fixtures. Generic Bun bootstrap belongs to Agent Runtime; CLI process lifecycle belongs to CLI, and HTTP asset serving belongs to Server. Read the root [AGENTS.md](../../AGENTS.md) and [architecture ownership map](../../docs/architecture/README.md#ownership-map) before changes.
+Own complete-product source composition, cross-domain data commands and integration fixtures. Generic Bun bootstrap belongs to Agent Runtime; CLI process lifecycle belongs to CLI, and HTTP asset serving belongs to Server. Read the root [AGENTS.md](../../AGENTS.md) and [architecture ownership map](../../docs/architecture/README.md#ownership-map) before changes.
 
 - Assemble configuration, session schemas, migrations, tools, agents, routes and services explicitly before opening the shared Harness lifecycle through `PresetRuntimeHandle`. Startup seals configuration and migration registration; late imports must not partially install a capability.
 - Keep business implementations with their owning packages. Presets connects typed sources and lifecycle contributions; do not move domain algorithms into assembly or introduce package scanning.
@@ -19,4 +19,4 @@ Review the owning Skill for CLI, persistence, execution, API, Browser or Channel
 
 `bun run build` compiles workspace modules into `dist/modules`. Use the package-owned `bun script/build.ts --single --skip-install` for a local executable; release tooling selects its target matrix through that same explicit binary entry.
 
-`src/catalog.ts` owns declarative core/full/Web/Desktop package selections. Full includes backend components, HTTP and authoring tools; Web adds the application payload and Desktop adds its signed shell. `dataManagement()` contributes cross-domain data commands through the same component API. Source development also selects the local Web assets explicitly.
+Consume declarative core/full/Web/Desktop selections from Plugin Host’s public `installation/catalog` leaf. Full includes backend components, HTTP and authoring tools; Web adds the application payload and Desktop adds its signed shell. `dataManagement()` contributes cross-domain data commands through the same component API. Source development also selects the local Web assets explicitly.

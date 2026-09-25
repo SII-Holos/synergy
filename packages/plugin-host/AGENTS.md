@@ -16,3 +16,5 @@ Expose composition through `./component`; keep registration side-effect free unt
 Own the installation generation ledger under `src/installation`. Its pre-bootstrap metadata, integrity verification and recovery must remain independent of Harness imports. Component activation and existing API4 plugin transactions share the same cross-process installation lock; retain old generations while processes may still use their modules. Host-code trust does not grant API4 plugin capabilities.
 
 Add/update/remove preserves explicit roots and the package-manager lock; rebuild a stage from that lock to prune removed dependencies. Resolve the selected graph to one canonical Harness before importing component factories, compare executable declarations with approved metadata, and pin worker generations by their manifest digest.
+
+The dependency-light `installation/catalog` leaf owns the four first-party install selections and aliases. Source Presets, the installer and release tooling consume it without a core dependency on complete-product assembly.

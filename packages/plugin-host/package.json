@@ -49,7 +49,8 @@
     "./startup-status": "./src/startup-status.ts",
     "./installation/generations": "./src/installation/generations.ts",
     "./installation/package-resolution": "./src/installation/package-resolution.ts",
-    "./installation/component-loader": "./src/installation/component-loader.ts"
+    "./installation/component-loader": "./src/installation/component-loader.ts",
+    "./installation/catalog": "./src/installation/catalog.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

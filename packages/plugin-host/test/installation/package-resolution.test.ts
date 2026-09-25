@@ -43,6 +43,59 @@ async function pack(root: string, name: string, synergy: unknown) {
 
 const base = { formatVersion: 1, version: "2.0.0", compatibility: { synergy: "^2.0.0" } }
 
+test("package sources cannot become package-manager options", async () => {
+  await using temp = await fixture()
+  for (const source of ["--dry-run", "npm:--dry-run"])
+    await expect(preparePackageGraph(temp.root, { sources: [source], hostVersion: "2.0.0" })).rejects.toThrow(
+      "Package source",
+    )
+  expect(await fs.readdir(path.join(temp.root, "installations/staging"))).toEqual([])
+})
+
+test.skipIf(process.platform === "win32")(
+  "cancelling Git resolution drains its owned subprocesses before removing the stage",
+  async () => {
+    await using temp = await fixture()
+    const script = path.join(temp.root, "ssh")
+    const receipt = path.join(temp.root, "children.json")
+    await Bun.write(
+      script,
+      `#!${process.execPath}\nconst child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdout: "ignore", stderr: "ignore" }); await Bun.write(${JSON.stringify(receipt)}, JSON.stringify([process.pid, child.pid])); await child.exited;`,
+    )
+    await fs.chmod(script, 0o755)
+    const controller = new AbortController()
+    const pending = preparePackageGraph(temp.root, {
+      sources: ["git+ssh://git@localhost/synergy-fixture.git"],
+      hostVersion: "2.0.0",
+      signal: controller.signal,
+      env: { ...process.env, GIT_SSH_COMMAND: script, GIT_SSH_VARIANT: "ssh" },
+    })
+    const outcome = pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    let children: number[] = []
+    try {
+      const deadline = Date.now() + 8000
+      while (!(await Bun.file(receipt).exists()) && Date.now() < deadline) await Bun.sleep(10)
+      children = await Bun.file(receipt).json()
+      controller.abort()
+      expect(await outcome).toBeInstanceOf(DOMException)
+      for (const pid of children) expect(() => process.kill(pid, 0)).toThrow()
+      expect(await fs.readdir(path.join(temp.root, "installations/staging"))).toEqual([])
+    } finally {
+      controller.abort()
+      for (const pid of children) {
+        try {
+          process.kill(pid, "SIGKILL")
+        } catch {}
+      }
+      await outcome
+    }
+  },
+  15_000,
+)
+
 test("resolves a local preset and its component without scripts or code evaluation", async () => {
   await using temp = await fixture()
   const component = await pack(temp.root, "esbuild", {

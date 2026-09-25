@@ -2,6 +2,8 @@ import fs from "node:fs/promises"
 import { constants } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { spawn } from "node:child_process"
+import { ProcessGroup } from "@ericsanchezok/synergy-util/process-group"
 import { z } from "zod"
 import { SynergyPackage, SynergyPackageName } from "@ericsanchezok/synergy-plugin/package"
 import { InstallationGenerations, type InstalledPackage, type InstalledGeneration } from "./generations"
@@ -31,33 +33,53 @@ async function packageManager(root: string, directory: string, args: string[], o
   const command = ["add", "install", "update"].includes(args[0])
     ? [args[0], "--linker=hoisted", ...args.slice(1)]
     : args
-  const child = Bun.spawn([process.execPath, ...command], {
+  const invocation = ProcessGroup.prepareOwnedProcessGroup({ command: process.execPath, args: command })
+  const child = spawn(invocation.command, invocation.args, {
     cwd: directory,
+    detached: process.platform !== "win32",
     env: {
       ...(options.env ?? process.env),
       BUN_BE_BUN: "1",
       BUN_INSTALL_CACHE_DIR: path.join(root, "cache", "bun-install"),
     },
-    stdout: "pipe",
-    stderr: "pipe",
+    stdio: ["ignore", "pipe", "pipe"],
   })
-  const abort = () => child.kill()
+  child.stdout.resume()
+  child.stderr.resume()
+  let exited = false
+  const closed = new Promise<void>((resolve) => child.once("close", () => resolve()))
+  const result = new Promise<number | null>((resolve, reject) => {
+    child.once("error", reject)
+    child.once("exit", (code) => {
+      exited = true
+      resolve(code)
+    })
+  })
+  let stopping: Promise<void> | undefined
+  const stop = () => (stopping ??= ProcessGroup.killTree(child, { exited: () => exited, allowExitedParent: true }))
+  const abort = () => {
+    void stop()
+  }
   options.signal?.addEventListener("abort", abort, { once: true })
   try {
-    const [code] = await Promise.all([
-      child.exited,
-      new Response(child.stdout).text(),
-      new Response(child.stderr).text(),
-    ])
+    if (options.signal?.aborted) await stop()
+    const code = await result
+    await stop()
+    await closed
     options.signal?.throwIfAborted()
-    if (code) throw new Error(`Package resolution failed with exit code ${code}`)
+    if (code !== 0) throw new Error(`Package resolution failed with exit code ${code}`)
   } finally {
     options.signal?.removeEventListener("abort", abort)
+    await stop()
+    await closed
+    ProcessGroup.releaseOwnedProcessGroup(child)
   }
 }
 
 async function sourceSpec(root: string, spec: string, options: PackageGraphOptions) {
-  if (spec.startsWith("npm:")) return spec.slice(4)
+  if (spec.startsWith("npm:")) spec = spec.slice(4)
+  if (!spec || spec.startsWith("-") || spec.includes("\0"))
+    throw new Error("Package source must name a package, Git URL, or local archive")
   const local = spec.startsWith("file:")
     ? spec.startsWith("file://")
       ? fileURLToPath(spec)
