@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import type { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import type { ScopeTransfer } from "@ericsanchezok/synergy-harness/scope/transfer"

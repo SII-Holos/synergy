@@ -46,7 +46,9 @@
     "./plugin-runtime/agent-call-runtime": "./src/plugin-runtime/agent-call-runtime.ts",
     "./component": "./src/component.ts",
     "./http": "./src/http.ts",
-    "./startup-status": "./src/startup-status.ts"
+    "./startup-status": "./src/startup-status.ts",
+    "./installation/generations": "./src/installation/generations.ts",
+    "./installation/package-resolution": "./src/installation/package-resolution.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

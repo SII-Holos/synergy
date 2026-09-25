@@ -13,3 +13,5 @@ This package is the published plugin-author contract. Load `change-plugin-runtim
 Run `bun run typecheck` and root `bun turbo build --filter=@ericsanchezok/synergy-plugin`, then the focused host/plugin-kit tests and root `bun run package:check` plus `bun run quality:quick`. Inspect the built package and public exports, not only source compilation.
 
 The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.
+
+The separate `./package` export describes installable components, presets, applications and plugin wrappers. Keep Plugin API4 and UI API6 manifests unchanged; package metadata is read before code execution and never substitutes for plugin capability approval. Presets contain selections, not executable entrypoints.

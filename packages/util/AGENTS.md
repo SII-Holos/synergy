@@ -12,3 +12,5 @@ This published package owns dependency-light primitives shared across runtime, S
 Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer tests, and root `bun run package:check` plus `bun run quality:quick`.
 
 `terminal` owns explicit Bun terminal output primitives; product branding stays in CLI. `cli-command` supplies yargs definition typing without loading the CLI parser.
+
+`atomic-file` and `io-retry` own durable file promotion and bounded transient filesystem retries. Installation bootstrap uses these without loading Harness. Keep shared directory synchronization and cross-process installation locks consistent with persisted-state recovery.

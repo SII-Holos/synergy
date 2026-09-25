@@ -4,7 +4,7 @@ import { z } from "zod"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspection"
-import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 

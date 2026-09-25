@@ -19,6 +19,16 @@
       "types": "./src/cli-command.ts",
       "bun": "./src/cli-command.ts",
       "import": "./dist/cli-command.js"
+    },
+    "./atomic-file": {
+      "types": "./src/atomic-file.ts",
+      "bun": "./src/atomic-file.ts",
+      "import": "./dist/atomic-file.js"
+    },
+    "./io-retry": {
+      "types": "./src/io-retry.ts",
+      "bun": "./src/io-retry.ts",
+      "import": "./dist/io-retry.js"
     }
   },
   "scripts": {

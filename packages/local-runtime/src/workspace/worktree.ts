@@ -1,5 +1,5 @@
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { FileMutation } from "../file/mutation"
 import { FileEntry } from "../file/entry"

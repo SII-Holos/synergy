@@ -1,11 +1,23 @@
 import path from "node:path"
 import fs from "node:fs/promises"
-import { isRetryableIOError } from "../util/io-retry"
+import { isRetryableIOError } from "./io-retry.js"
 
 export namespace AtomicFile {
   export interface WriteOptions {
     durable?: boolean
     private?: boolean
+  }
+
+  export async function syncDirectories(...directories: string[]) {
+    if (process.platform === "win32") return
+    for (const directory of new Set(directories)) {
+      const handle = await fs.open(directory, "r")
+      try {
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+    }
   }
   // Windows maps rename onto MoveFileEx: when another process (antivirus,
   // OneDrive, a cross-process reader of these JSON files) briefly holds a
@@ -41,14 +53,7 @@ export namespace AtomicFile {
           await Bun.write(tmp, content)
         }
         await fs.rename(tmp, target)
-        if (options?.durable && process.platform !== "win32") {
-          const directory = await fs.open(path.dirname(target), "r")
-          try {
-            await directory.sync()
-          } finally {
-            await directory.close()
-          }
-        }
+        if (options?.durable) await syncDirectories(path.dirname(target))
         return
       } catch (error) {
         if (!isRetryableIOError(error) || attempt >= ATOMIC_WRITE_ATTEMPTS) {

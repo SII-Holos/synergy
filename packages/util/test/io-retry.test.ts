@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import fs from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { isRetryableIOError, readFileWithRetry } from "../../src/util/io-retry"
+import { isRetryableIOError, readFileWithRetry } from "../src/io-retry"
 
 const dir = mkdtempSync(join(tmpdir(), "io-retry-"))
 const target = join(dir, "store.json")

@@ -47,3 +47,5 @@ Use `client.global.capabilities()` to inspect the active component selection. No
 `bun run deps:check` checks package imports, exports and dependency directions. `bun run monorepo:check` checks manifest consistency. `bun run package:check` validates existing public packages and their TypeScript resolution. Independent runtime archives additionally use the install check above. Tests and fixtures follow their domain owner; full composition tests live in `packages/presets/test`.
 
 See [Development](development.md) and [Open-source quality](../operations/open-source-quality.md) for repository commands and CI checks.
+
+Installation metadata is published through `synergy-plugin/package`. Plugin Host owns source resolution and verified immutable module generations; `atomic-file` and `io-retry` are public Util primitives used by both startup verification and existing plugin recovery.

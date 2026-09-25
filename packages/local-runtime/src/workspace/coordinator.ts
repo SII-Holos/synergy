@@ -7,7 +7,7 @@ import { FileLockTimeoutError, withFileLock } from "@ericsanchezok/synergy-util/
 import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
 import { retrySleep } from "@ericsanchezok/synergy-util/retry"
 import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
-import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { FileMutation } from "../file/mutation"
 import { OwnedTree } from "../process/owned-tree"
 
