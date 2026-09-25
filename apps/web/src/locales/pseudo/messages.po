@@ -7837,6 +7837,10 @@ msgstr ""
 msgid "app.sidebar.collapseAllProjects"
 msgstr ""
 
+#. Sections
+msgid "app.sidebar.collections"
+msgstr ""
+
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.dialog.addProject"
 msgstr ""
@@ -8037,7 +8041,7 @@ msgstr ""
 msgid "app.sidebar.section.home"
 msgstr ""
 
-#. Sections
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.recent"
 msgstr ""
 

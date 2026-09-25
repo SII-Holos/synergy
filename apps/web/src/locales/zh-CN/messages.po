@@ -7837,6 +7837,10 @@ msgstr "折叠侧边栏"
 msgid "app.sidebar.collapseAllProjects"
 msgstr "折叠所有项目"
 
+#. Sections
+msgid "app.sidebar.collections"
+msgstr "会话分类"
+
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.dialog.addProject"
 msgstr "添加项目"
@@ -8037,7 +8041,7 @@ msgstr "频道"
 msgid "app.sidebar.section.home"
 msgstr "首页"
 
-#. Sections
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.recent"
 msgstr "最近"
 

@@ -16,6 +16,8 @@ Show agenda series as the default schedule view, with expandable bounded planned
 
 For remote Browser recovery, read the current server state, validate its owner and existing page, resume an active page that needs recovery or a retained page in failed state, then reconnect the events socket and viewer. Keep intentionally suspended pages passive. Coalesce repeated attempts and cancel on unmount. Ignore callbacks from replaced sockets. Preserve the address and diagnostics during failure; do not create a new page or replay navigation and form actions.
 
+The desktop category arrangement is refined by [preserving sidebar collection categories](2026-09-25-preserve-sidebar-collection-categories.md).
+
 ## Alternatives considered
 
 **Infer execution location from the project.** Scope identity does not determine the selected Workspace, and a null selection is meaningful.

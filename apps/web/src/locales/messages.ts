@@ -751,6 +751,7 @@ export const sidebar = {
   agentMenu: { id: "app.sidebar.account.menu", message: "HOLOS account menu" },
   agent: { id: "app.sidebar.agent", message: "Agent" },
   // Sections
+  collections: { id: "app.sidebar.collections", message: "Session collections" },
   recent: { id: "app.sidebar.section.recent", message: "Recent" },
   markAllRead: { id: "app.sidebar.markAllRead", message: "Mark all read" },
   markingAllRead: { id: "app.sidebar.markingAllRead", message: "Marking all read…" },
