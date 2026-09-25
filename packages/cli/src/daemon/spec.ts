@@ -1,5 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { resolveNetworkArgv, loadNetworkConfig } from "../cli/network"
+import { resolveNetworkArgv, loadNetworkConfig } from "@ericsanchezok/synergy-local-runtime/cli/network"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
 import type { DaemonService } from "./service"

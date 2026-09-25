@@ -1,6 +1,6 @@
 import { Global } from "@ericsanchezok/synergy-harness/global"
-import { withScopeRuntime } from "../../scope"
-import { cmd } from "../cmd"
+import { withScopeRuntime } from "@ericsanchezok/synergy-local-runtime/cli/scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { ConfigCommand } from "./config"
 import { FileCommand } from "./file"
 import type { CommandModule } from "yargs"

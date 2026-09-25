@@ -21,7 +21,7 @@ import { registerConfig } from "./config-schema"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
-export function registerLocalRuntime() {
+export function registerLocalRuntime(options: { workers?: boolean } = {}) {
   const state = registration()
   if (state.complete) return
   registerHarness()
@@ -29,8 +29,10 @@ export function registerLocalRuntime() {
   registerLocalSandboxHelper()
   registerLocalNativeRuntime()
   registerLocalProviderSdks()
-  registerAgentWorkerEntrypoint(new URL("./agent-worker.ts", import.meta.url))
-  registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url))
+  if (options.workers !== false) {
+    registerAgentWorkerEntrypoint(new URL("./agent-worker.ts", import.meta.url))
+    registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url))
+  }
   registerLocalTools()
   registerInputTools()
   registerWorkspace()

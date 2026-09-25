@@ -1,6 +1,6 @@
-import { cmd } from "./cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { Diagnostics } from "@ericsanchezok/synergy-harness/observability/diagnostics"
-import { UI } from "../../util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 
 export const DiagnosticsCommand = cmd({
   command: "diagnostics",

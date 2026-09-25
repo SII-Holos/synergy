@@ -8,7 +8,8 @@
     "./session-bridge": "./src/session-bridge.ts",
     "./agent-source": "./src/agent-source.ts",
     "./config-schema": "./src/config-schema.ts",
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./component": "./src/component.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

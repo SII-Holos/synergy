@@ -1,5 +1,5 @@
 import net from "net"
-import { isServerReachable } from "../cli/network"
+import { isServerReachable } from "@ericsanchezok/synergy-local-runtime/cli/network"
 
 export namespace DaemonHealth {
   export async function isReachable(url: string) {

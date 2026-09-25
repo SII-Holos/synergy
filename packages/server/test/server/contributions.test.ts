@@ -1,3 +1,4 @@
+import { testRuntime as localTestRuntime } from "../support/runtime"
 import { expect, test } from "bun:test"
 import { Hono } from "hono"
 import { Server } from "../../src/server/server"
@@ -45,4 +46,31 @@ test("contributions preserve route ordering, Scope middleware, and construction 
     expect(scoped.headers.get("x-synergy-seq")).not.toBeNull()
     expect(() => Server.registerContributions({})).toThrow(/before opening|before constructing/)
   })
+})
+
+test("independent HTTP components retain their routes without sharing registries across runtimes", async () => {
+  await using first = await localTestRuntime(undefined, () => {
+    Server.registerContributions(
+      { routes: { "global-navigation": new Hono().get("/global/first", (c) => c.json("first")) } },
+      "first",
+    )
+    Server.registerContributions(
+      { routes: { "global-navigation": new Hono().get("/global/second", (c) => c.json("second")) } },
+      "second",
+    )
+  })
+  await using second = await localTestRuntime()
+  const response = (url: string) => first.run(() => Server.App().request(url))
+  expect(await (await response("/global/first")).json()).toBe("first")
+  expect(await (await response("/global/second")).json()).toBe("second")
+  expect((await second.run(() => Server.App().request("/global/first"))).status).toBe(404)
+})
+
+test("duplicate HTTP owners are rejected before constructing the application", async () => {
+  await expect(
+    localTestRuntime(undefined, () => {
+      Server.registerContributions({}, "repeated")
+      Server.registerContributions({}, "repeated")
+    }),
+  ).rejects.toThrow("already registered")
 })

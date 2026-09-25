@@ -4,10 +4,10 @@ import {
   createManagedStorageReporter,
   createManagedMaintenanceReporter,
 } from "./managed-startup"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { withNetworkOptions, resolveNetworkOptions } from "@ericsanchezok/synergy-cli/cli/network"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { withNetworkOptions, resolveNetworkOptions } from "@ericsanchezok/synergy-local-runtime/cli/network"
 import { run as runServerRuntime } from "../server/runtime"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { FormatError, FormatUnknownError } from "@ericsanchezok/synergy-cli/cli/error"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"

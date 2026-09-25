@@ -2189,6 +2189,15 @@
         "functions": 75
       },
       "exempt": []
+    },
+    "packages/agent-runtime": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
     }
   }
 }

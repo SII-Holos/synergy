@@ -344,7 +344,8 @@
     "./test/support/runtime": "./test/support/runtime.ts",
     "./test/support/runtime-home": "./test/support/runtime-home.ts",
     "./enforcement/policy-worker/process-host": "./src/enforcement/policy-worker/process-host.ts",
-    "./process/handle": "./src/process/handle.ts"
+    "./process/handle": "./src/process/handle.ts",
+    "./config/reload-contributions": "./src/config/reload-contributions.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

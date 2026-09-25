@@ -6,7 +6,7 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { DoctorCommand } from "../../src/cli/cmd/doctor"
-import { UI } from "../../src/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

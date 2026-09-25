@@ -10,3 +10,5 @@ Product Projects, statistics and performance read models, activity presentation 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
 The managed-worktree janitor schedules per Scope and drains active sweeps during disposal. Run `bun test test/project/worktree-janitor.test.ts` for scheduler ownership changes.
+
+Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.

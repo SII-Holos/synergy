@@ -1,28 +1,17 @@
-import { PluginPreviewCommand } from "./plugin-preview"
-import { PluginTypegenCommand } from "./plugin-typegen"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { permissionsHashPayload } from "@ericsanchezok/synergy-plugin/integrity"
 import { PluginRuntimeCommand } from "./plugin-runtime"
-import { PluginTestCommand } from "./plugin-test"
-import { PluginPublishMarketCommand } from "./plugin-publish-market"
-import { PluginEntryCommand } from "./plugin-entry"
 import { PluginInfoCommand } from "./plugin-info"
 import { PluginPermissionsCommand } from "./plugin-permissions"
 import { PluginApproveCommand } from "./plugin-approve"
-import { PluginBuildCommand } from "./plugin-build"
-import { PluginPackCommand } from "./plugin-pack"
-import { PluginValidateCommand } from "./plugin-validate"
-import { PluginSignCommand } from "./plugin-sign"
-import { PluginDevCommand } from "./plugin-dev"
-import { PluginCreateCommand } from "./plugin-create"
 import { pluginCliRequestTimeoutMs } from "./plugin-server"
 import { pluginStatusText, printPluginPermissionDiff } from "./plugin-consent"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Plugin } from ".."
 import { PluginSpec } from "@ericsanchezok/synergy-harness/util/plugin-spec"
 
-import type { Argv } from "yargs"
+import type { Argv, CommandModule } from "yargs"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -34,8 +23,8 @@ import { comparePluginAccess, diffPermissions } from "../consent/diff"
 import { buildApprovalRecord } from "../consent/approval-service"
 import type { PluginApprovalRecord } from "../consent/approval-store"
 import { baseCapabilities } from "../capability"
-import { Server } from "@ericsanchezok/synergy-server/server/server"
-import { isServerReachable } from "@ericsanchezok/synergy-cli/cli/network"
+import { DEFAULT_SERVER_URL } from "@ericsanchezok/synergy-harness/util/server-defaults"
+import { isServerReachable } from "@ericsanchezok/synergy-local-runtime/cli/network"
 import { resolvePluginSpec } from "../spec-resolver"
 import { doctor as runPluginDoctor } from "../doctor"
 import * as Lockfile from "../lockfile"
@@ -709,14 +698,14 @@ async function resolveNewManifest(
 }
 
 async function notifyServerPluginReload() {
-  if (!(await isServerReachable(Server.DEFAULT_URL))) {
+  if (!(await isServerReachable(DEFAULT_SERVER_URL))) {
     UI.println(
       UI.Style.TEXT_DIM + "Plugins updated. Start or reload the server to activate them." + UI.Style.TEXT_NORMAL,
     )
     return
   }
 
-  const response = await fetch(`${Server.DEFAULT_URL}/runtime/reload`, {
+  const response = await fetch(`${DEFAULT_SERVER_URL}/runtime/reload`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify({
@@ -752,33 +741,27 @@ function SpecToDisplay(spec: string): string {
 // Top-level plugin command
 // ---------------------------------------------------------------------------
 
-export const PluginCommand = cmd({
-  command: "plugin",
-  describe: "install, remove, update, and inspect plugins",
-  builder: (yargs: Argv) =>
-    yargs
-      .command(PluginCreateCommand)
-      .command(PluginAddCommand)
-      .command(PluginRetryInstallCommand)
-      .command(PluginRemoveCommand)
-      .command(PluginUpdateCommand)
-      .command(PluginBuildCommand)
-      .command(PluginTypegenCommand)
-      .command(PluginPreviewCommand)
-      .command(PluginSignCommand)
-      .command(PluginPackCommand)
-      .command(PluginListCommand)
-      .command(PluginSearchCommand)
-      .command(PluginDoctorCommand)
-      .command(PluginValidateCommand)
-      .command(PluginDevCommand)
-      .command(PluginRuntimeCommand)
-      .command(PluginTestCommand)
-      .command(PluginPublishMarketCommand)
-      .command(PluginEntryCommand)
-      .command(PluginInfoCommand)
-      .command(PluginPermissionsCommand)
-      .command(PluginApproveCommand)
-      .demandCommand(),
-  async handler() {},
-})
+export function createPluginCommand(authoringCommands: CommandModule[] = []) {
+  return cmd({
+    command: "plugin",
+    describe: "install, remove, update, and inspect plugins",
+    builder: (yargs: Argv) =>
+      yargs
+        .command(authoringCommands)
+        .command(PluginAddCommand)
+        .command(PluginRetryInstallCommand)
+        .command(PluginRemoveCommand)
+        .command(PluginUpdateCommand)
+        .command(PluginListCommand)
+        .command(PluginSearchCommand)
+        .command(PluginDoctorCommand)
+        .command(PluginRuntimeCommand)
+        .command(PluginInfoCommand)
+        .command(PluginPermissionsCommand)
+        .command(PluginApproveCommand)
+        .demandCommand(),
+    async handler() {},
+  })
+}
+
+export const PluginCommand = createPluginCommand()

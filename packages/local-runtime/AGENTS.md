@@ -1,6 +1,6 @@
 # local-runtime Package
 
-Own the local-runtime implementation and its public exports. Read the root AGENTS.md and the owning architecture document before changes.
+Own native execution, generic runtime reload, CLI network/Scope host adapters and public exports. Read the root AGENTS.md and the owning architecture document before changes.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
@@ -22,3 +22,5 @@ Native Workspace coordination owns canonical-root overlap and process identity f
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
 First-party native integrations use the declared `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports for native process ownership, byte-version validation and preservation of native symbolic-link kinds and exclusive file publication. Snapshot capture and restore share the Harness link encoding through the registered native link Host. They must still acquire Workspace claims before activation; the process module does not infer a writable footprint.
+
+Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.

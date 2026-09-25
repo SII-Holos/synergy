@@ -25,6 +25,7 @@ export const RELEASE_CATALOG = {
   productRuntime: { directory: "packages/product-runtime", registry: "@ericsanchezok/synergy", versioned: true },
   cli: { directory: "packages/cli", registry: null, versioned: true },
   harness: { directory: "packages/harness", registry: null, versioned: true },
+  agentRuntime: { directory: "packages/agent-runtime", registry: null, versioned: true },
   localRuntime: { directory: "packages/local-runtime", registry: null, versioned: true },
   browser: { directory: "packages/browser-core", registry: null, versioned: true },
   computer: { directory: "packages/computer-protocol", registry: null, versioned: true },

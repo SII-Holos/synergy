@@ -17,6 +17,7 @@ const runtimePackages = new Set(
   [
     "harness",
     "local-runtime",
+    "agent-runtime",
     "cli",
     "server",
     "product-runtime",

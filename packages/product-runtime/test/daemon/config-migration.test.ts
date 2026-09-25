@@ -9,7 +9,7 @@ import { DaemonSpec } from "@ericsanchezok/synergy-cli/daemon/spec"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability"
 import { resetMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { parse as parseJsonc } from "jsonc-parser"
-import { resolveNetworkOptions } from "@ericsanchezok/synergy-cli/cli/network"
+import { resolveNetworkOptions } from "@ericsanchezok/synergy-local-runtime/cli/network"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { compositionFixture } from "../support/composition"
 let runtime: Awaited<ReturnType<typeof compositionFixture>>

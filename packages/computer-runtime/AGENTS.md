@@ -9,3 +9,5 @@ Computer broker operations, tools, host attachment and transport lifecycle. Nati
 The route imports `hono-openapi`, whose optional peer `@hono/standard-validator` is a required static runtime import; declare it directly so this package installs without the full server.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
+
+Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.

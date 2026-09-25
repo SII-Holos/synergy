@@ -94,7 +94,11 @@
     "./file/link": "./src/file/link.ts",
     "./process/owned-process": "./src/process/owned-process.ts",
     "./file/mutation": "./src/file/mutation.ts",
-    "./process/owned-worker": "./src/process/owned-worker.ts"
+    "./process/owned-worker": "./src/process/owned-worker.ts",
+    "./cli/network": "./src/cli/network.ts",
+    "./cli/scope": "./src/cli/scope.ts",
+    "./component": "./src/component.ts",
+    "./reload": "./src/reload.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -152,6 +156,7 @@
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@types/turndown": "5.0.5",
+    "@types/yargs": "17.0.33",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "ai": "catalog:",
     "typescript": "catalog:"

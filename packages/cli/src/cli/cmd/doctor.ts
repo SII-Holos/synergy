@@ -1,4 +1,4 @@
-import { cmd } from "./cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { detectPlatform } from "@ericsanchezok/synergy-local-runtime/sandbox/detect"
 import { getSandboxReadiness } from "@ericsanchezok/synergy-local-runtime/sandbox/readiness"
 import fs from "fs/promises"

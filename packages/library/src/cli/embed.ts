@@ -1,6 +1,6 @@
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import * as prompts from "@clack/prompts"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Embedding } from "../vector/embedding"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"

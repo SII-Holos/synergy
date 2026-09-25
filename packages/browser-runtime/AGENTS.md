@@ -14,3 +14,5 @@ Commands and idle suspension acquire the Session binding lease before the comman
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
 Independent hosts call `registerBrowser()` from `./register` before opening Harness, then connect `disposeBrowser()` to their runtime extension cleanup. Registration restores no page and launches no Chromium process; Browser sessions and pages remain lazy. Routes are a separate host transport contribution.
+
+Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.

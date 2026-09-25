@@ -18,7 +18,9 @@
     "./tools/note-delete": "./src/tools/note-delete.ts",
     "./tools/note-read": "./src/tools/note-read.ts",
     "./register": "./src/register.ts",
-    "./session-contract": "./src/session-contract.ts"
+    "./session-contract": "./src/session-contract.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -29,8 +31,8 @@
   },
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "remeda": "catalog:",
@@ -45,5 +47,13 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
   }
 }

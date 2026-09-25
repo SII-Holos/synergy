@@ -5,9 +5,6 @@
   "private": false,
   "license": "MIT",
   "exports": {
-    "./cli/cmd/cmd": "./src/cli/cmd/cmd.ts",
-    "./cli/network": "./src/cli/network.ts",
-    "./util/ui": "./src/util/ui.ts",
     "./main": "./src/main.ts",
     "./daemon/log-rotate": "./src/daemon/log-rotate.ts",
     "./cli/maintenance-progress": "./src/cli/maintenance-progress.ts",
@@ -16,7 +13,6 @@
     "./index": "./src/index.ts",
     "./cli/commands": "./src/cli/commands.ts",
     "./cli/cmd/debug": "./src/cli/cmd/debug/index.ts",
-    "./cli/scope": "./src/cli/scope.ts",
     "./cli/error": "./src/cli/error.ts",
     "./cli/cmd/start": "./src/cli/cmd/start.ts",
     "./cli/cmd/stop": "./src/cli/cmd/stop.ts",
@@ -34,7 +30,8 @@
     "./cli/cmd/data/shared": "./src/cli/cmd/data/shared.ts",
     "./cli/cmd/data": "./src/cli/cmd/data/index.ts",
     "./cli/cmd/data/path": "./src/cli/cmd/data/path.ts",
-    "./cli/cmd/data/set-home": "./src/cli/cmd/data/set-home.ts"
+    "./cli/cmd/data/set-home": "./src/cli/cmd/data/set-home.ts",
+    "./branding": "./src/branding.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

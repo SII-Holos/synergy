@@ -1,9 +1,10 @@
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { logo } from "@ericsanchezok/synergy-cli/branding"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import open from "open"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { Access } from "../access"
-import { isServerReachable } from "@ericsanchezok/synergy-cli/cli/network"
+import { isServerReachable } from "@ericsanchezok/synergy-local-runtime/cli/network"
 
 async function hasRuntimeWebUi(url: string) {
   try {
@@ -47,7 +48,7 @@ export const WebCommand = cmd({
     const access = Access.fromServerUrl(serverUrl)
 
     UI.empty()
-    UI.println(UI.logo("  "))
+    UI.println(logo("  "))
     UI.empty()
     UI.println(UI.Style.TEXT_INFO_BOLD + "  API server:        ", UI.Style.TEXT_NORMAL, serverUrl)
 

@@ -1,4 +1,4 @@
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { createDataCommand } from "@ericsanchezok/synergy-cli/cli/cmd/data"
 import { DataMoveCommand } from "./move"
 import { DataPackCommand } from "./pack"

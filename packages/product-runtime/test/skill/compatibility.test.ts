@@ -176,7 +176,7 @@ describe.serial("skill compatibility toggles", () => {
             ConfigDomain.filepath("skills", path.join(tmp.path, ".synergy")),
             JSON.stringify({ skills: { compatibility: { claude: false } } }, null, 2),
           )
-          const { RuntimeReload } = await import("@ericsanchezok/synergy-product-runtime/runtime/reload")
+          const { RuntimeReload } = await import("@ericsanchezok/synergy-local-runtime/reload")
           const result = await RuntimeReload.reload({ targets: ["config"], scope: "project", reason: "test" })
 
           expect(result.cascaded).toContain("skill")

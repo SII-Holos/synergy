@@ -13,7 +13,7 @@ import { DaemonHealth } from "../../src/daemon/health"
 import { StartCommand } from "../../src/cli/cmd/start"
 import { StopCommand } from "../../src/cli/cmd/stop"
 import { StatusCommand } from "../../src/cli/cmd/status"
-import { UI } from "../../src/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 
 class RequestedExit extends Error {
   constructor(readonly code: number) {

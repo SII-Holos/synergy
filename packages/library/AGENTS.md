@@ -12,3 +12,5 @@ Knowledge storage, memory and experience retrieval, embedding, encoding, Chronic
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
 Independent hosts connect `disposeLibrary()` from `./register` to their runtime extension cleanup after execution and background jobs drain. It disposes embedding resources and closes the Library database; repeated disposal is safe.
+
+Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.

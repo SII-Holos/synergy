@@ -12,6 +12,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `models` | `10-models.jsonc` | merge |
 | `providers` | `20-providers.jsonc` | merge |
 | `library` | `30-library.jsonc` | merge |
+| `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
 | `skills` | `55-skills.jsonc` | merge |
 | `worktree` | `57-worktree.jsonc` | merge |
@@ -83,6 +84,15 @@ File: `30-library.jsonc` · Merge: merge
 | --- | --- | --- |
 | `library` | LibraryConfig |  |
 
+## MCP
+
+File: `40-mcp.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `mcp` | record (optional) | MCP (Model Context Protocol) server configurations |
+| `mcpDefaults` | McpDefaults.optional (optional) | Default settings applied to all MCP servers that don't override them |
+
 ## Plugins
 
 File: `50-plugins.jsonc` · Merge: merge
@@ -123,6 +133,7 @@ File: `60-agents.jsonc` · Merge: merge
 | `project_doc_max_bytes` | number (optional) | Maximum bytes to include from each automatically discovered instruction file (default: 32768; 0 disables automatic discovery) |
 | `category` | record (optional) | Custom category configurations for background tasks. Categories define model and prompt presets. |
 | `prompt` | object (optional) |  |
+| `external_agent` | record (optional) | External agent configurations (e.g. codex, claude-code) |
 
 ## Commands
 
@@ -193,6 +204,11 @@ File: `120-runtime.jsonc` · Merge: merge
 | `question` | object (optional) |  |
 | `compaction` | object (optional) |  |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
+| `formatter` | union (optional) |  |
+| `lsp` | boolean (optional) | Expose the LSP tool; permission checks still apply (default: false) |
+| `lspWriteDiagnostics` | boolean (optional) | Include LSP diagnostics after file-writing tools complete (default: true) |
+| `lspDiagnostics` | object (optional) | Severity and scope policy for diagnostics returned after file-writing tools |
+| `toolExposure` | object (optional) |  |
 | `boss` | object (optional) |  |
 
 ## Voice

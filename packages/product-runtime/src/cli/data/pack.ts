@@ -1,11 +1,12 @@
+import { logo } from "@ericsanchezok/synergy-cli/branding"
 import { getLibraryInfo, resolveLibraryDB } from "@ericsanchezok/synergy-library/cli/data"
 import { DataTransfer } from "./transfer"
 import fs from "fs/promises"
 import path from "path"
 import os from "os"
 import * as prompts from "@clack/prompts"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import {
   archiveExclusions,
   copyDirSkipExisting,
@@ -30,7 +31,7 @@ export const DataPackCommand = cmd({
     const outputArg = args.output as string
 
     UI.empty()
-    UI.println(UI.logo("  "))
+    UI.println(logo("  "))
     UI.empty()
     prompts.intro("Pack Synergy Data")
 

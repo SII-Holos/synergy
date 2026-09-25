@@ -1,7 +1,7 @@
 import { EOL } from "os"
 import { File } from "@ericsanchezok/synergy-local-runtime/file"
-import { withScopeRuntime } from "../../scope"
-import { cmd } from "../cmd"
+import { withScopeRuntime } from "@ericsanchezok/synergy-local-runtime/cli/scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { Ripgrep } from "@ericsanchezok/synergy-local-runtime/file/ripgrep"
 
 const FileSearchCommand = cmd({

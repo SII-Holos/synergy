@@ -164,7 +164,7 @@ await RuntimeContext.create(createLocalHost()).run(async () => {
         import("@ericsanchezok/synergy-harness/provider/models"),
         import("@ericsanchezok/synergy-server/server/server"),
         import("@ericsanchezok/synergy-harness/bus/global"),
-        import("@ericsanchezok/synergy-product-runtime/runtime/reload"),
+        import("@ericsanchezok/synergy-local-runtime/reload"),
         import("@ericsanchezok/synergy-harness/config/reload-executor"),
       ])
     RuntimeReloadExecutor.setExecutor((input, options) => RuntimeReload.reload(input, options))

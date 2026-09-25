@@ -6,7 +6,9 @@
   "license": "MIT",
   "exports": {
     "./tools": "./src/tools.ts",
-    "./routes/computer-route": "./src/routes/computer-route.ts"
+    "./routes/computer-route": "./src/routes/computer-route.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -30,5 +32,13 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
   }
 }

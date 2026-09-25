@@ -1,7 +1,7 @@
 import { EOL } from "os"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
-import { withScopeContext } from "../../scope"
-import { cmd } from "../cmd"
+import { withScopeContext } from "@ericsanchezok/synergy-local-runtime/cli/scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 
 export const ConfigCommand = cmd({
   command: "config",

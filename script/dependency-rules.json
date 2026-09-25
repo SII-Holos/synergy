@@ -3,15 +3,9 @@
   "packages/local-runtime": ["packages/harness", "packages/util", "packages/synergy-link-protocol"],
   "packages/cli": ["packages/harness", "packages/local-runtime", "packages/sdk/js", "packages/util"],
   "packages/server": ["packages/harness", "packages/local-runtime", "packages/util"],
-  "packages/browser-runtime": [
-    "packages/harness",
-    "packages/browser-core",
-    "packages/server",
-    "packages/cli",
-    "packages/util"
-  ],
-  "packages/computer-runtime": ["packages/harness", "packages/computer-protocol", "packages/util"],
-  "packages/library": ["packages/harness", "packages/server", "packages/cli", "packages/util"],
+  "packages/browser-runtime": ["packages/harness", "packages/browser-core", "packages/server", "packages/util"],
+  "packages/computer-runtime": ["packages/harness", "packages/computer-protocol", "packages/util", "packages/server"],
+  "packages/library": ["packages/harness", "packages/server", "packages/util"],
   "packages/note": ["packages/harness", "packages/server", "packages/util"],
   "packages/browser-core": [],
   "packages/computer-protocol": [],

@@ -1,6 +1,6 @@
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
-import { withScopeContext } from "../../scope"
-import { cmd } from "../cmd"
+import { withScopeContext } from "@ericsanchezok/synergy-local-runtime/cli/scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 
 export const SnapshotCommand = cmd({
   command: "snapshot",

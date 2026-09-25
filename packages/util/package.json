@@ -9,7 +9,17 @@
       "types": "./src/*.ts",
       "import": "./src/*.ts"
     },
-    "./pty-keys": "./src/pty-keys.ts"
+    "./pty-keys": "./src/pty-keys.ts",
+    "./terminal": {
+      "types": "./src/terminal.ts",
+      "bun": "./src/terminal.ts",
+      "import": "./dist/terminal.js"
+    },
+    "./cli-command": {
+      "types": "./src/cli-command.ts",
+      "bun": "./src/cli-command.ts",
+      "import": "./dist/cli-command.js"
+    }
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -24,6 +34,7 @@
   },
   "devDependencies": {
     "@types/bun": "catalog:",
+    "@types/yargs": "17.0.33",
     "typescript": "catalog:"
   }
 }

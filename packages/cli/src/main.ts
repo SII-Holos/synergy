@@ -1,3 +1,4 @@
+import { logo } from "./branding"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { createLocalHost, registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import {
@@ -15,7 +16,7 @@ import type { CommandModule } from "yargs"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { UI } from "./util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { EOL } from "os"
@@ -183,7 +184,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
         args: process.argv.slice(2),
       })
     })
-    .usage("\n" + UI.logo())
+    .usage("\n" + logo())
     .completion("completion", "generate shell completion script")
 
   const informational =

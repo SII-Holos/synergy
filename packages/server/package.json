@@ -9,7 +9,10 @@
     "./server/error": "./src/server/error.ts",
     "./server/request-body-limit": "./src/server/request-body-limit.ts",
     "./server/sse-metrics": "./src/server/sse-metrics.ts",
-    "./server/config-route": "./src/server/config-route.ts"
+    "./server/config-route": "./src/server/config-route.ts",
+    "./http": "./src/http.ts",
+    "./server/global-nav": "./src/server/global-nav.ts",
+    "./component": "./src/component.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

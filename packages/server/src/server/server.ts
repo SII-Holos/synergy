@@ -174,6 +174,7 @@ export namespace Server {
     maintenance: undefined as { token: string; expiresAt: number; timer: ReturnType<typeof setTimeout> } | undefined,
     requests: new Set<Promise<unknown>>(),
     contributions: undefined as Contributions | undefined,
+    contributionOwners: new Map<string, Contributions>(),
     appInitialized: false,
     app: new Hono(),
     _openapiSpecs: undefined as Promise<OpenAPISpecs> | undefined,
@@ -460,15 +461,53 @@ export namespace Server {
     listening?: (url: URL) => void
   }
 
-  export function registerContributions(value: Contributions) {
+  export function registerContributions(value: Contributions, owner = "application") {
     const instanceState = runtimeState()
 
-    if (instanceState.contributions === value) return
+    if (instanceState.contributionOwners.get(owner) === value) return
     RuntimeContext.assertCompositionOpen("Server contributions")
-    if (instanceState.contributions) throw new Error("Server contributions are already registered")
+    if (instanceState.contributionOwners.has(owner))
+      throw new Error(`Server contributions are already registered for ${owner}`)
     if (instanceState.appInitialized)
       throw new Error("Server contributions must be registered before constructing the application")
-    instanceState.contributions = value
+    const contributions = [...instanceState.contributionOwners.values(), value]
+    const routes: Partial<Record<RouteStage, Hono>> = {}
+    const bootstrap: BootstrapContributions = {}
+    const providerRoutes = new Hono()
+    const conflicts: z.ZodType[] = []
+    for (const contribution of contributions) {
+      for (const [stage, route] of Object.entries(contribution.routes ?? {})) {
+        const key = stage as RouteStage
+        ;(routes[key] ??= new Hono()).route("", route)
+      }
+      for (const key of Object.keys(contribution.bootstrap ?? {})) {
+        if (key in bootstrap) throw new Error(`Duplicate bootstrap contribution: ${key}`)
+      }
+      Object.assign(bootstrap, contribution.bootstrap)
+      if (contribution.providerRoutes) providerRoutes.route("", contribution.providerRoutes)
+      if (contribution.scopeConflictSchema) conflicts.push(contribution.scopeConflictSchema)
+    }
+    const applications = contributions.filter((contribution) => contribution.mountApp)
+    if (applications.length > 1) throw new Error("Multiple application asset owners")
+    instanceState.contributions = {
+      routes,
+      bootstrap,
+      providerRoutes,
+      scopeConflictSchema: conflicts.length > 1 ? z.union(conflicts) : conflicts[0],
+      isGlobalRoute: (pathname) => contributions.some((contribution) => contribution.isGlobalRoute?.(pathname)),
+      isScopeRequiredRoute: (pathname) =>
+        contributions.some((contribution) => contribution.isScopeRequiredRoute?.(pathname)),
+      errorStatus: (error) => {
+        for (const contribution of contributions) {
+          const status = contribution.errorStatus?.(error)
+          if (status !== undefined) return status
+        }
+      },
+      mountApp: applications[0]?.mountApp,
+      configureOrigins: (origins) => contributions.forEach((contribution) => contribution.configureOrigins?.(origins)),
+      listening: (url) => contributions.forEach((contribution) => contribution.listening?.(url)),
+    }
+    instanceState.contributionOwners.set(owner, value)
   }
 
   function contributionRoutes(stage: RouteStage): Hono {

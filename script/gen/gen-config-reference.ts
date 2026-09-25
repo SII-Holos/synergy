@@ -111,8 +111,12 @@ async function parseDomains(): Promise<Domain[]> {
     const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
     function collect(expression: ts.Expression) {
       const array = ts.isSatisfiesExpression(expression) ? expression.expression : expression
-      if (!ts.isArrayLiteralExpression(array)) return
-      for (const entry of array.elements) {
+      const entries = ts.isArrayLiteralExpression(array)
+        ? array.elements
+        : ts.isObjectLiteralExpression(array)
+          ? [array]
+          : []
+      for (const entry of entries) {
         const domain = ts.isObjectLiteralExpression(entry)
           ? parseDomainObject(entry.getText(source))
           : ts.isCallExpression(entry)
@@ -135,6 +139,8 @@ async function parseDomains(): Promise<Domain[]> {
       )
         collect(node.initializer)
       if (ts.isForOfStatement(node) && node.initializer.getText(source) === "const domain") collect(node.expression)
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "ConfigDomain.register" && node.arguments[0])
+        collect(node.arguments[0])
       ts.forEachChild(node, visit)
     }
     visit(source)

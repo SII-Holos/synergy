@@ -31,7 +31,6 @@
     "./plugin/status": "./src/plugin/status.ts",
     "./plugin/consent/schema": "./src/plugin/consent/schema.ts",
     "./plugin/cli/plugin-consent": "./src/plugin/cli/plugin-consent.ts",
-    "./plugin/cli/plugin-dev": "./src/plugin/cli/plugin-dev.ts",
     "./plugin/lockfile-schema": "./src/plugin/lockfile-schema.ts",
     "./plugin/cli/plugin-update-target": "./src/plugin/cli/plugin-update-target.ts",
     "./plugin-runtime/runtime-limits": "./src/plugin-runtime/runtime-limits.ts",
@@ -44,7 +43,9 @@
     "./plugin-runtime": "./src/plugin-runtime/index.ts",
     "./plugin/host-services-runtime": "./src/plugin/host-services-runtime.ts",
     "./plugin-runtime/context-factory": "./src/plugin-runtime/context-factory.ts",
-    "./plugin-runtime/agent-call-runtime": "./src/plugin-runtime/agent-call-runtime.ts"
+    "./plugin-runtime/agent-call-runtime": "./src/plugin-runtime/agent-call-runtime.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -55,13 +56,11 @@
   },
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.1",
-    "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
-    "@ericsanchezok/synergy-plugin-kit": "workspace:*",
-    "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
     "ajv": "8.18.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
@@ -76,5 +75,13 @@
     "@types/yargs": "17.0.33",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
   }
 }

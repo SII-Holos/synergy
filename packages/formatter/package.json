@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./config-schema": "./src/config-schema.ts",
-    "./startup": "./src/startup.ts"
+    "./startup": "./src/startup.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -19,6 +21,9 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
     "remeda": "catalog:",
     "zod": "catalog:"
   },
@@ -29,5 +34,13 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
   }
 }

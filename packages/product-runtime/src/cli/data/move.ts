@@ -1,3 +1,4 @@
+import { logo } from "@ericsanchezok/synergy-cli/branding"
 import {
   getLibraryInfo,
   resolveLibraryDB,
@@ -9,8 +10,8 @@ import fs from "fs/promises"
 import path from "path"
 import os from "os"
 import * as prompts from "@clack/prompts"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import {
   archiveExclusions,
@@ -355,7 +356,7 @@ export const DataMoveCommand = cmd({
       }),
   handler: async (args) => {
     UI.empty()
-    UI.println(UI.logo("  "))
+    UI.println(logo("  "))
     UI.empty()
     prompts.intro("Move Synergy Data")
 

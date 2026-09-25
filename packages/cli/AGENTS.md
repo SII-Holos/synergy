@@ -13,3 +13,5 @@ Storage maintenance commands own their Runtime lifecycle. Run their isolated sui
 Keep `runCli()` as the sole parser. Product runtime injects command metadata, a runtime factory and nested `dataCommands`; core CLI must not import product implementation packages. Test command-load failures and preserve send cancellation and recording-error exit codes.
 
 The public `cli/maintenance-progress` leaf owns aggregate maintenance reporting and cancellation for explicit CLI maintenance. Product runtime reuses its reporters; startup diagnostics stays independent of database bootstrap.
+
+Use shared `synergy-util/terminal` and `cli-command` primitives; network and Scope host adapters belong to Local Runtime. Product branding remains here.

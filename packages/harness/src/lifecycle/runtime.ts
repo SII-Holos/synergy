@@ -68,7 +68,11 @@ export interface RuntimeServices {
   reload?: { start(): void; stop(): Promise<unknown> | void }
   initializeExtensions?(): Promise<void>
   disposeExtensions?(): Promise<void>
-  resident?: { start(config: Config.Info): Promise<void>; stop(): Promise<void> }
+  resident?: {
+    start(config: Config.Info): Promise<void>
+    ready?(config: Config.Info): Promise<void>
+    stop(): Promise<void>
+  }
   transport?: {
     listen(network: RuntimeNetwork, mode: "server" | "oneshot"): RuntimeServer
     closeAdmission(): void
@@ -368,6 +372,7 @@ export namespace RuntimeHandle {
       if (options.mode === "server" && services.resident) {
         residentStarted = true
         await services.resident.start(config)
+        await services.resident.ready?.(config)
       }
       if (await SessionCompat.isActive())
         stopCompat = SessionCompat.startBackgroundMigrator({

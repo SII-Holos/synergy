@@ -1,6 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Agenda } from "@ericsanchezok/synergy-workflows/agenda"
-import { AnimaSchedule } from "../runtime/anima-schedule"
+import { AnimaSchedule } from "@ericsanchezok/synergy-workflows/anima-schedule"
 import { ChannelOutbound } from "@ericsanchezok/synergy-connections/channel/outbound"
 import { registerProviders } from "@ericsanchezok/synergy-connections/channel/provider"
 import { ResponseCardRuntime } from "@ericsanchezok/synergy-connections/channel/response-card"

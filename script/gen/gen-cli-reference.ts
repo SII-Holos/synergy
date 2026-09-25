@@ -67,7 +67,7 @@ export async function collectCommandSources(startFiles: string[]): Promise<strin
     for (const specifier of moduleSpecifiers(source)) {
       if (specifier.includes(".txt") || specifier.includes(".json")) continue
       const resolved = await resolveModuleFile(path.dirname(file), specifier)
-      if (resolved && /\/(?:cli|daemon)\//.test(resolved) && !seen.has(resolved)) queue.push(resolved)
+      if (resolved && /\/(?:cli|daemon|commands)\//.test(resolved) && !seen.has(resolved)) queue.push(resolved)
     }
   }
   return [...seen]

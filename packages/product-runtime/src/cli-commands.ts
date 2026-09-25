@@ -115,6 +115,10 @@ export const productCommands: CommandEntry[] = [
     storage: "maintenance",
     describe: "install, remove, update, and inspect plugins",
     load: async () =>
-      (await import("@ericsanchezok/synergy-plugin-host/plugin/cli/plugin")).PluginCommand as unknown as CommandModule,
+      (await import("@ericsanchezok/synergy-plugin-host/plugin/cli/plugin")).createPluginCommand(
+        Object.entries(await import("@ericsanchezok/synergy-plugin-kit/commands"))
+          .filter(([name]) => name.endsWith("Command"))
+          .map(([, command]) => command as CommandModule),
+      ) as unknown as CommandModule,
   },
 ]

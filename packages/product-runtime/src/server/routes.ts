@@ -25,7 +25,7 @@ import { RegistryRoute } from "@ericsanchezok/synergy-plugin-host/plugin/routes/
 import { StatsRoute } from "@ericsanchezok/synergy-workbench/stats/routes/stats"
 import { AgendaStore, AgendaTypes, AgendaWebhook } from "@ericsanchezok/synergy-workflows/agenda"
 import { HolosRoute, HolosDataRoute } from "@ericsanchezok/synergy-connections/holos/routes/holos"
-import { GlobalNavRoute } from "./global-nav"
+import { GlobalNavRoute } from "@ericsanchezok/synergy-server/server/global-nav"
 import { BrowserHostBrokerProcess } from "@ericsanchezok/synergy-browser-runtime/host-broker-process"
 import { BlueprintRoute } from "@ericsanchezok/synergy-workflows/blueprint/routes/blueprint"
 import { LatticeRoute } from "@ericsanchezok/synergy-workflows/lattice/routes/lattice"

@@ -1,6 +1,6 @@
 import { LSP } from "@ericsanchezok/synergy-lsp"
-import { withScopeRuntime } from "@ericsanchezok/synergy-cli/cli/scope"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { withScopeRuntime } from "@ericsanchezok/synergy-local-runtime/cli/scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { EOL } from "os"
 

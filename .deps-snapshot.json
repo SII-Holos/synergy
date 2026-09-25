@@ -38,6 +38,7 @@
     "@ericsanchezok/synergy-media",
     "@ericsanchezok/synergy-note",
     "@ericsanchezok/synergy-plugin-host",
+    "@ericsanchezok/synergy-plugin-kit",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util",
     "@ericsanchezok/synergy-workbench",
@@ -45,23 +46,24 @@
   ],
   "@ericsanchezok/synergy-browser-runtime": [
     "@ericsanchezok/synergy-browser-core",
-    "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-util",
     "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-computer-runtime": [
     "@ericsanchezok/synergy-computer-protocol",
-    "@ericsanchezok/synergy-harness"
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-library": [
-    "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-util",
     "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-note": [
     "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-server",
-    "@ericsanchezok/synergy-util"
+    "@ericsanchezok/synergy-util",
+    "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-workflows": [
     "@ericsanchezok/synergy-harness",
@@ -70,47 +72,50 @@
     "@ericsanchezok/synergy-note",
     "@ericsanchezok/synergy-plugin",
     "@ericsanchezok/synergy-plugin-host",
-    "@ericsanchezok/synergy-server",
-    "@ericsanchezok/synergy-util"
+    "@ericsanchezok/synergy-util",
+    "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-connections": [
-    "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-link-protocol",
     "@ericsanchezok/synergy-local-runtime",
-    "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util",
-    "@ericsanchezok/synergy-workflows"
+    "@ericsanchezok/synergy-workflows",
+    "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-workbench": [
     "@ericsanchezok/synergy-browser-runtime",
-    "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-mcp",
     "@ericsanchezok/synergy-plugin-host",
-    "@ericsanchezok/synergy-server",
-    "@ericsanchezok/synergy-util"
+    "@ericsanchezok/synergy-util",
+    "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-mcp": [
-    "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-plugin",
-    "@ericsanchezok/synergy-server",
-    "@ericsanchezok/synergy-util"
+    "@ericsanchezok/synergy-plugin-host",
+    "@ericsanchezok/synergy-util",
+    "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-lsp": [
-    "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-local-runtime",
-    "@ericsanchezok/synergy-util"
+    "@ericsanchezok/synergy-util",
+    "@ericsanchezok/synergy-server"
   ],
-  "@ericsanchezok/synergy-formatter": ["@ericsanchezok/synergy-harness", "@ericsanchezok/synergy-local-runtime"],
-  "@ericsanchezok/synergy-acp": [
-    "@ericsanchezok/synergy-cli",
+  "@ericsanchezok/synergy-formatter": [
     "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-local-runtime",
+    "@ericsanchezok/synergy-server"
+  ],
+  "@ericsanchezok/synergy-acp": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-mcp",
-    "@ericsanchezok/synergy-sdk"
+    "@ericsanchezok/synergy-sdk",
+    "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-external-agents": ["@ericsanchezok/synergy-harness"],
   "@ericsanchezok/synergy-link-client": [
@@ -126,13 +131,11 @@
     "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-plugin-host": [
-    "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-plugin",
-    "@ericsanchezok/synergy-plugin-kit",
-    "@ericsanchezok/synergy-server",
-    "@ericsanchezok/synergy-util"
+    "@ericsanchezok/synergy-util",
+    "@ericsanchezok/synergy-server"
   ],
   "@ericsanchezok/synergy-testing": [],
   "@ericsanchezok/synergy-browser-core": [],
@@ -167,5 +170,10 @@
     "@ericsanchezok/synergy-library",
     "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-product-runtime"
+  ],
+  "@ericsanchezok/synergy-agent-runtime": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-local-runtime",
+    "@ericsanchezok/synergy-plugin-host"
   ]
 }

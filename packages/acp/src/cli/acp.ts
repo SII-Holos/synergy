@@ -1,10 +1,10 @@
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk"
 import { ACP } from "../agent"
 import type { RuntimeHandle } from "@ericsanchezok/synergy-harness/lifecycle"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
-import { withNetworkOptions, resolveNetworkOptions } from "@ericsanchezok/synergy-cli/cli/network"
+import { withNetworkOptions, resolveNetworkOptions } from "@ericsanchezok/synergy-local-runtime/cli/network"
 
 const log = Log.create({ service: "acp-command" })
 

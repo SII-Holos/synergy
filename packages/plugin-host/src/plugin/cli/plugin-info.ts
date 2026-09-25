@@ -1,7 +1,7 @@
 import type { Argv } from "yargs"
 import type { PluginStatus } from "../status"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
 import { pluginInfoStateText } from "./plugin-consent"
 

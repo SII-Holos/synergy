@@ -8,7 +8,8 @@
     "./parse-code": "./src/parse-code.ts",
     "./ast-grep": "./src/ast-grep/index.ts",
     "./ast-grep/cli": "./src/ast-grep/cli.ts",
-    "./register-tools": "./src/register-tools.ts"
+    "./register-tools": "./src/register-tools.ts",
+    "./component": "./src/component.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

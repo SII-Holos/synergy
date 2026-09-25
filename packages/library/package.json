@@ -29,7 +29,9 @@
     "./script/embedding-runtime-assets": "./script/embedding-runtime-assets.ts",
     "./script/embedding-onnxruntime-web": "./script/embedding-onnxruntime-web.ts",
     "./anima-schedule": "./src/anima-schedule.ts",
-    "./cli/data": "./src/cli/data.ts"
+    "./cli/data": "./src/cli/data.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -41,9 +43,9 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "1.0.42",
     "@clack/prompts": "1.0.0-alpha.1",
-    "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-server": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
     "@huggingface/transformers": "4.2.0",
     "ai": "catalog:",
     "hono": "catalog:",
@@ -64,5 +66,13 @@
     "sqlite-vec-linux-x64": "0.1.7-alpha.2",
     "sqlite-vec-windows-x64": "0.1.7-alpha.2",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
   }
 }

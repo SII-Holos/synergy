@@ -2,8 +2,8 @@ import type { Argv } from "yargs"
 import { pathToFileURL } from "url"
 import path from "path"
 import { AsyncLocalStorage } from "node:async_hooks"
-import { UI } from "../../util/ui"
-import { cmd } from "./cmd"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
 import { EOL } from "os"
 import { select, multiselect, text, isCancel } from "@clack/prompts"
@@ -533,7 +533,7 @@ export function createSendCommand(runtimeFactory: typeof openLocalRuntime = open
         return
       }
 
-      const { withScopeContext } = await import("../scope")
+      const { withScopeContext } = await import("@ericsanchezok/synergy-local-runtime/cli/scope")
       const { Command } = await import("@ericsanchezok/synergy-local-runtime/command/command")
       await using runtime = await runtimeFactory({
         mode: "oneshot",

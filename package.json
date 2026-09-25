@@ -92,7 +92,8 @@
       "packages/util",
       "apps/web",
       "apps/desktop",
-      "benchmark"
+      "benchmark",
+      "packages/agent-runtime"
     ],
     "catalog": {
       "@babel/core": "7.28.4",

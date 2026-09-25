@@ -17,7 +17,9 @@
     "./register-tools": "./src/register-tools.ts",
     "./register-documents": "./src/register-documents.ts",
     "./agents": "./src/agents.ts",
-    "./voice": "./src/voice/index.ts"
+    "./voice": "./src/voice/index.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -30,7 +32,7 @@
     "@ai-sdk/openai": "2.0.111",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
-    "@ericsanchezok/synergy-server": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
     "@zip.js/zip.js": "2.8.26",
     "ai": "catalog:",
     "hono": "catalog:",
@@ -45,5 +47,13 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
   }
 }

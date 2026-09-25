@@ -1,4 +1,4 @@
-import { UI } from "../../src/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { expect, test } from "bun:test"
 import yargs from "yargs"
 import { MigrationCommand } from "../../src/cli/cmd/migration"

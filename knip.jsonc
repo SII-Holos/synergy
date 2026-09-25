@@ -116,6 +116,7 @@
   "rules": {
     "catalog": "off",
   },
+  // Domain HTTP adapters intentionally reference an optional Server peer; the host loads them only when selected.
   "workspaces": {
     "benchmark": {
       "entry": [
@@ -161,6 +162,11 @@
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },
+    "packages/agent-runtime": {
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "entry": ["test/**/*.ts", "src/*-worker.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+    },
     "packages/local-runtime": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
@@ -181,52 +187,56 @@
     "packages/browser-runtime": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/computer-runtime": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing", "@hono/standard-validator"],
+      "ignoreDependencies": [
+        "@ericsanchezok/synergy-server",
+        "@ericsanchezok/synergy-testing",
+        "@hono/standard-validator",
+      ],
     },
     "packages/library": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/note": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/workflows": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/connections": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/workbench": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/mcp": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/lsp": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/formatter": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/acp": {
       "entry": ["test/**/*.ts"],
@@ -241,7 +251,7 @@
     "packages/link-client": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/code-tools": {
       "entry": ["test/**/*.ts"],
@@ -251,11 +261,12 @@
     "packages/media": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server"],
     },
     "packages/plugin-host": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/testing": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
