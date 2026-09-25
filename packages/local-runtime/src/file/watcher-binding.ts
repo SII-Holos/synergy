@@ -1,7 +1,6 @@
 import path from "path"
 import { existsSync } from "fs"
-
-declare const SYNERGY_LIBC: string | undefined
+import { nativeAsset, nativeLibc } from "@ericsanchezok/synergy-util/native-assets"
 
 export namespace FileWatcherBinding {
   export function packageName(
@@ -14,7 +13,7 @@ export namespace FileWatcherBinding {
     const platform = input.platform ?? process.platform
     const arch = input.arch ?? process.arch
     if (platform !== "linux") return `@parcel/watcher-${platform}-${arch}`
-    const libc = input.libc ?? (typeof SYNERGY_LIBC === "string" ? SYNERGY_LIBC : "glibc")
+    const libc = input.libc ?? nativeLibc()
     return `@parcel/watcher-${platform}-${arch}-${libc}`
   }
 
@@ -40,6 +39,7 @@ export namespace FileWatcherBinding {
   export function available(
     input: { platform?: NodeJS.Platform; arch?: string; libc?: string; execPath?: string } = {},
   ): boolean {
+    if (!input.execPath && nativeAsset("watcher.node", import.meta.url)) return true
     if ((input.platform ?? process.platform) === "linux")
       return [builtPath(input), modulePath(), packagedPath(input)].some(existsSync)
     return resolvable(packageName(input)) || existsSync(packagedPath(input))
@@ -51,14 +51,19 @@ export namespace FileWatcherBinding {
 
   export function builtPath(input: { arch?: string; libc?: string } = {}) {
     const arch = input.arch ?? process.arch
-    const libc = input.libc ?? (typeof SYNERGY_LIBC === "string" ? SYNERGY_LIBC : "glibc")
+    const libc = input.libc ?? nativeLibc()
     return path.resolve(import.meta.dir, "../../.artifacts/watcher", `linux-${arch}-${libc}`, "watcher.node")
   }
 
   export function load(input: { platform?: NodeJS.Platform; arch?: string; libc?: string; execPath?: string } = {}) {
     if ((input.platform ?? process.platform) === "linux") {
-      for (const file of [builtPath(input), modulePath(), packagedPath(input)]) {
-        if (!existsSync(file)) continue
+      for (const file of [
+        !input.execPath ? nativeAsset("watcher.node", import.meta.url) : undefined,
+        builtPath(input),
+        modulePath(),
+        packagedPath(input),
+      ]) {
+        if (!file || !existsSync(file)) continue
         const binding = require(file)
         if (binding.synergyWatcherPatch !== "parcel-2.5.6-eintr-1")
           throw new Error("Linux watcher binding has no verified EINTR fix")
@@ -76,7 +81,7 @@ export namespace FileWatcherBinding {
   }
 
   export function loadPackaged(input: { execPath?: string } = {}) {
-    const packaged = packagedPath(input)
+    const packaged = (!input.execPath ? nativeAsset("watcher.node", import.meta.url) : undefined) ?? packagedPath(input)
     if (!existsSync(packaged)) {
       throw new Error(
         `@parcel/watcher platform binding is unavailable: tried ${packageName()} and ${packaged}. ` +

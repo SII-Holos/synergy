@@ -123,7 +123,7 @@ async function verify(root: string, selected: z.infer<typeof Pointer>): Promise<
   if (manifest.id !== selected.id) throw new Error("Installation generation identity mismatch")
   const actual = await inventory(directory)
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) throw new Error("Installation file integrity mismatch")
-  return { ...manifest, directory, sha256: selected.sha256 }
+  return { ...manifest, directory: await fs.realpath(directory), sha256: selected.sha256 }
 }
 
 async function recoverGeneration(root: string) {
@@ -189,7 +189,7 @@ export namespace InstallationGenerations {
     const manifest = Manifest.parse(JSON.parse(raw))
     if (JSON.stringify(await inventory(directory)) !== JSON.stringify(manifest.files))
       throw new Error("Bundled installation seed integrity mismatch")
-    return { ...manifest, directory, sha256: digest(raw) }
+    return { ...manifest, directory: await fs.realpath(directory), sha256: digest(raw) }
   }
 
   export function pin(root: string, selected: { id: string; sha256: string }) {
@@ -278,7 +278,7 @@ export namespace InstallationGenerations {
           private: true,
         })
         await fs.rm(pending)
-        return { ...manifest, directory, sha256: next.sha256 }
+        return { ...manifest, directory: await fs.realpath(directory), sha256: next.sha256 }
       } catch (error) {
         await recoverUnlocked(root)
         if (samePointer(await pointer(root), next)) return verify(root, next)

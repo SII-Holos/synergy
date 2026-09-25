@@ -6,6 +6,7 @@ import { InstallationPin } from "@ericsanchezok/synergy-util/installed-launcher"
 import { InstallationGenerations, type InstalledGeneration } from "./generations"
 import { prepareInstallation } from "./manager"
 import { assertHarnessIdentity } from "./component-loader"
+import { seedInstalledCore } from "./seed"
 
 export async function prepareInstalledLaunch(
   root: string,
@@ -14,6 +15,7 @@ export async function prepareInstalledLaunch(
     pin?: string
     basePackages?: Record<string, string>
     seed?: string
+    installedCore?: string
   },
 ) {
   if (options.pin) {
@@ -42,6 +44,8 @@ export async function prepareInstalledLaunch(
       } finally {
         await fs.rm(directory, { recursive: true, force: true })
       }
+    } else if (options.installedCore) {
+      generation = await seedInstalledCore(root, options.installedCore, options.version)
     } else {
       await using prepared = await prepareInstallation(root, {
         hostVersion: options.version,

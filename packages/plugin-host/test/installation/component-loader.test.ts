@@ -2,8 +2,10 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
+import { pathToFileURL } from "node:url"
 import { InstallationGenerations } from "../../src/installation/generations"
 import { loadInstalledComponents } from "../../src/installation/component-loader"
+import { verifyInstalledWorkerPlan } from "../../src/installation/bootstrap"
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-component-loader-"))
@@ -88,4 +90,23 @@ test("refuses factories whose executable declarations differ from the approved p
   )
   const generation = await InstallationGenerations.commit(temp.root, temp.input)
   await expect(loadInstalledComponents(generation)).rejects.toThrow("metadata")
+})
+
+test("home directory aliases preserve sealed component and worker identities", async () => {
+  await using temp = await fixture()
+  await Bun.write(
+    temp.entry,
+    `export function example() { return { id: "example", version: "2.0.0", apiVersion: 1, requires: { "local-runtime": "2.0.0" }, workers: { agent: new URL("./worker.js", import.meta.url) }, register() {} } }`,
+  )
+  await Bun.write(path.join(path.dirname(temp.entry), "worker.js"), "export const role = 'agent'")
+  await InstallationGenerations.commit(temp.root, temp.input)
+  const alias = path.join(temp.root, "home-alias")
+  await fs.symlink(temp.root, alias, "junction")
+  const generation = (await InstallationGenerations.current(alias))!
+  const [component] = await loadInstalledComponents(generation)
+  const plan = (entry: string) =>
+    JSON.stringify({ apiVersion: 1, agent: [{ id: "example", version: "2.0.0", entry }], policy: [] })
+  await verifyInstalledWorkerPlan(generation, plan(component!.workers!.agent!.href))
+  expect(generation.directory).toBe(await fs.realpath(generation.directory))
+  await expect(verifyInstalledWorkerPlan(generation, plan(pathToFileURL(temp.entry).href))).rejects.toThrow()
 })

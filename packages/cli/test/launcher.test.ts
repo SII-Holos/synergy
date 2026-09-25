@@ -8,6 +8,23 @@ import { version } from "../package.json" with { type: "json" }
 
 const launcher = fileURLToPath(new URL("../src/launcher.ts", import.meta.url))
 
+test("an installed worker cannot bootstrap an unpinned home", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-unpinned-worker-"))
+  try {
+    const child = Bun.spawn([process.execPath, launcher, "__owned-process-runner", "unused"], {
+      env: { ...process.env, SYNERGY_HOME: home, SYNERGY_RUNTIME_ROOT: home, SYNERGY_INSTALLATION_PIN: undefined },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    expect(code).toBe(1)
+    expect(stderr).toContain("requires its parent installation pin")
+    expect(await fs.readdir(home)).toEqual([])
+  } finally {
+    await fs.rm(home, { recursive: true, force: true })
+  }
+})
+
 test("the launcher verifies modules before import and workers retain the foreground generation", async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-launcher-"))
   const root = path.join(home, ".synergy")
@@ -28,7 +45,7 @@ test("the launcher verifies modules before import and workers retain the foregro
     )
     await Bun.write(
       path.join(modules, "synergy-cli/index.js"),
-      `export async function main() { console.log(JSON.stringify({tag:${JSON.stringify(tag)},version:globalThis.SYNERGY_VERSION,pin:JSON.parse(process.env.SYNERGY_INSTALLATION_PIN)})) }`,
+      `export async function main(components, ready) { console.log(JSON.stringify({tag:${JSON.stringify(tag)},version:globalThis.SYNERGY_VERSION,pin:JSON.parse(process.env.SYNERGY_INSTALLATION_PIN),command:JSON.parse(process.env.SYNERGY_LAUNCHER_COMMAND)})); if(process.send) { process.on("message", message => process.send({echo:message})); ready?.(); process.send({tag:${JSON.stringify(tag)}}); } }`,
     )
     return InstallationGenerations.commit(root, {
       directory,
@@ -39,8 +56,9 @@ test("the launcher verifies modules before import and workers retain the foregro
       trustHostCode: true,
     })
   }
-  async function run(pin?: { id: string; sha256: string }) {
-    const process = Bun.spawn([Bun.argv[0], "run", launcher, ...(pin ? ["__storage-worker-runner"] : [])], {
+  async function run(pin?: { id: string; sha256: string }, command = [Bun.argv[0], launcher]) {
+    const messages: unknown[] = []
+    const process = Bun.spawn([...command, ...(pin ? ["__storage-worker-runner"] : [])], {
       env: {
         ...globalThis.process.env,
         SYNERGY_HOME: home,
@@ -48,15 +66,18 @@ test("the launcher verifies modules before import and workers retain the foregro
         SYNERGY_INSTALLATION_PIN: pin ? JSON.stringify(pin) : undefined,
         SYNERGY_INSTALLATION_ROOT: root,
       },
+      ...(pin ? { ipc: (message: unknown) => messages.push(message) } : {}),
+      serialization: "advanced",
       stdout: "pipe",
       stderr: "pipe",
     })
+    if (pin) process.send({ early: true })
     const [code, stdout, stderr] = await Promise.all([
       process.exited,
       new Response(process.stdout).text(),
       new Response(process.stderr).text(),
     ])
-    return { code, stdout, stderr }
+    return { code, stdout, stderr, messages }
   }
   try {
     const first = await generation("first")
@@ -64,8 +85,10 @@ test("the launcher verifies modules before import and workers retain the foregro
     const foreground = await run()
     expect(foreground.code).toBe(0)
     expect(JSON.parse(foreground.stdout)).toMatchObject({ tag: "second", version, pin: { id: second.id } })
-    const worker = await run({ id: first.id, sha256: first.sha256 })
-    expect(worker.code).toBe(0)
+    const worker = await run({ id: first.id, sha256: first.sha256 }, JSON.parse(foreground.stdout).command)
+    expect(worker.code, worker.stderr).toBe(0)
+    expect(worker.messages).toContainEqual({ tag: "first" })
+    expect(worker.messages).toContainEqual({ echo: { early: true } })
     expect(JSON.parse(worker.stdout)).toMatchObject({ tag: "first", pin: { id: first.id } })
     await Bun.write(
       path.join(first.directory, "node_modules/@ericsanchezok/synergy-cli/index.js"),

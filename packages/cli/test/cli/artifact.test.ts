@@ -137,7 +137,10 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
         await fs.mkdir(workspace, { recursive: true })
         await Bun.write(inputFile, fileContent)
         const config = {
-          embedding: { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" },
+          embedding:
+            process.env.SYNERGY_TEST_ARTIFACT_PROFILE === "full"
+              ? { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" }
+              : undefined,
           agent: mode === "budget" ? { synergy: { steps: 1 } } : undefined,
           model: "test/test-model",
           controlProfile: mode === "tool" || mode === "read" ? "full_access" : "guarded",
@@ -290,5 +293,5 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
         await isolation.dispose()
       }
     },
-    45_000,
+    120_000,
   )

@@ -280,6 +280,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
         }),
         test("core-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
+          SYNERGY_TEST_ARTIFACT_PROFILE: "core",
           SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/cli/dist/synergy-linux-x64/bin/synergy"),
         }),
         bun("product-build", ["packages/presets/script/build.ts", "--single", "--skip-install"], undefined, {
@@ -287,6 +288,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
         }),
         test("product-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
+          SYNERGY_TEST_ARTIFACT_PROFILE: "full",
           SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/presets/dist/synergy-linux-x64/bin/synergy"),
         }),
         bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),

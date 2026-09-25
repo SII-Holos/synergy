@@ -1,5 +1,17 @@
 import { expect, test } from "bun:test"
-import { installedWorkerCommand } from "../src/installed-launcher"
+import { installedWorkerCommand, installedWorkerEnvironment } from "../src/installed-launcher"
+
+test("detached native supervisors receive only installation bootstrap variables", () => {
+  const env = {
+    SYNERGY_HOME: "/fixture",
+    SYNERGY_RUNTIME_ROOT: "/fixture/data",
+    SYNERGY_INSTALLATION_ROOT: "/fixture/code",
+    SYNERGY_INSTALLATION_PIN: "pin",
+    SYNERGY_LAUNCHER_COMMAND: "command",
+  }
+  expect(installedWorkerEnvironment({ ...env, SYNERGY_CONFIG_CONTENT: "private", API_KEY: "secret" })).toEqual(env)
+  expect(installedWorkerEnvironment({ SYNERGY_HOME: undefined })).toEqual({})
+})
 
 test("installed workers cannot bypass their pinned generation through source entrypoints", () => {
   expect(installedWorkerCommand({}, "__agent-turn-runner")).toBeUndefined()

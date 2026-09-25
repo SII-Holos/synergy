@@ -18,3 +18,5 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 `process-group` owns process-group anchoring, cancellation and bounded Windows taskkill. Shell execution and pre-bootstrap package installation use the same primitive; never replace whole-tree cleanup with killing only the direct child.
 
 `installed-launcher` validates generation pins and builds subprocess argument arrays from explicitly supplied environment metadata. It performs no discovery, import or shell evaluation.
+
+`native-assets` resolves platform resources from an explicit owning module. Linux ABI selection distinguishes musl and glibc; native resource packages remain separate from portable JavaScript.

@@ -2,8 +2,7 @@ import { dlopen, FFIType, ptr } from "bun:ffi"
 import { existsSync } from "node:fs"
 import path from "node:path"
 import { Readable, Writable } from "node:stream"
-
-declare const SYNERGY_LIBC: string | undefined
+import { nativeAsset, nativeLibc } from "@ericsanchezok/synergy-util/native-assets"
 
 export namespace NativePty {
   const CHUNK = 8192
@@ -16,15 +15,16 @@ export namespace NativePty {
   }
 
   export function libraryPath() {
-    const libc = typeof SYNERGY_LIBC === "string" ? SYNERGY_LIBC : "glibc"
+    const libc = nativeLibc()
     const target = `${process.platform}-${process.arch}${process.platform === "linux" ? `-${libc}` : ""}`
     const name = filename()
     const candidates = [
+      nativeAsset(name, import.meta.url),
       path.resolve(import.meta.dir, "../../.artifacts/pty", target, name),
       path.resolve(import.meta.dir, "../", name),
       path.resolve(path.dirname(process.execPath), "../", name),
     ]
-    const found = candidates.find(existsSync)
+    const found = candidates.find((file): file is string => Boolean(file && existsSync(file)))
     if (!found) throw new Error("Native PTY library is unavailable; run bun dev prepare or reinstall the runtime")
     return found
   }

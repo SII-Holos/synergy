@@ -1,7 +1,4 @@
 #!/usr/bin/env bun
-import { buildPty } from "../packages/local-runtime/script/build-pty"
-import { buildWatcher } from "../packages/local-runtime/script/build-watcher"
-import { buildSqlite } from "../packages/harness/script/build-sqlite"
 import { cp, mkdir, mkdtemp, rm, chmod } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -9,7 +6,7 @@ import { workspaces, workspaceGraph } from "./workspace-dependencies"
 import { buildWorkspace } from "./build-workspace"
 import { createPublishablePackageJson, readCatalog } from "./release/shared/package-manifest"
 
-import { stageWorkspaceSandbox } from "./release/shared/build/workspace-sandbox"
+import { nativeDependencies, packNativeWorkspace } from "./release/shared/native-package"
 import type { SandboxRuntimeTarget } from "./release/shared/build/sandbox-assets"
 
 const root = path.resolve(import.meta.dir, "..")
@@ -41,15 +38,25 @@ const runtimePackages = new Set(
 )
 
 export async function packWorkspace(
-  directory: string,
+  directory: string | string[],
   output: string,
-  options: { target?: SandboxRuntimeTarget; assetsRoot?: string } = {},
+  options: {
+    target?: SandboxRuntimeTarget
+    targets?: SandboxRuntimeTarget[]
+    assetsRoot?: string
+    version?: string
+  } = {},
 ) {
-  const target = options.target ?? { os: process.platform, arch: process.arch as "arm64" | "x64" }
+  const targets = options.targets ?? [options.target ?? { os: process.platform, arch: process.arch as "arm64" | "x64" }]
+  const nativeTargets = new Set<string>()
   const packages = workspaces(root)
   const byName = new Map(packages.map((pkg) => [pkg.name, pkg]))
-  const entry = packages.find((pkg) => pkg.directory === directory)
-  if (!entry) throw new Error(`Unknown workspace: ${directory}`)
+  const directories = typeof directory === "string" ? [directory] : directory
+  const entries = directories.map((directory) => {
+    const entry = packages.find((pkg) => pkg.directory === directory)
+    if (!entry) throw new Error(`Unknown workspace: ${directory}`)
+    return entry
+  })
   const graph = workspaceGraph(packages, { optionalPeers: false })
   const archivePaths = new Map<string, string>()
   const catalog = await readCatalog()
@@ -57,7 +64,7 @@ export async function packWorkspace(
     await Promise.all(
       packages.map(async (pkg) => {
         const manifest = await Bun.file(path.join(root, pkg.directory, "package.json")).json()
-        return [pkg.name, manifest.version]
+        return [pkg.name, options.version ?? manifest.version]
       }),
     ),
   )
@@ -68,6 +75,7 @@ export async function packWorkspace(
     for (const dependency of graph[name] ?? []) await pack(dependency)
     const sourceDirectory = path.join(root, pkg.directory)
     const original = await Bun.file(path.join(sourceDirectory, "package.json")).json()
+    const version = options.version ?? original.version
     const isRuntime = runtimePackages.has(pkg.directory)
     const nested = ["packages/cli", "packages/presets"].includes(pkg.directory)
     if (isRuntime) await buildWorkspace(pkg.directory, { output: nested ? "dist/modules" : "dist" })
@@ -77,15 +85,13 @@ export async function packWorkspace(
       const process = Bun.spawn(command, { cwd: sourceDirectory, stdout: "inherit", stderr: "inherit" })
       if (await process.exited) throw new Error(`Package build failed: ${name}`)
     }
-    if (pkg.directory === "packages/harness" && target.os === "darwin")
-      await cp(await buildSqlite(), path.join(sourceDirectory, "dist/libsqlite3.dylib"))
-    if (pkg.directory === "packages/local-runtime") {
-      const pty = await buildPty({ os: target.os, arch: target.arch, libc: target.abi === "musl" ? "musl" : "glibc" })
-      await cp(pty, path.join(sourceDirectory, "dist", path.basename(pty)))
-      await stageWorkspaceSandbox(path.join(sourceDirectory, "dist"), target, options.assetsRoot)
-      if (target.os === "linux") {
-        const binding = await buildWatcher({ arch: target.arch, libc: target.abi === "musl" ? "musl" : "glibc" })
-        await cp(binding, path.join(sourceDirectory, "dist/watcher.node"))
+    if (["packages/harness", "packages/local-runtime"].includes(pkg.directory)) {
+      for (const target of targets) {
+        const key = `${target.os}-${target.arch}-${target.abi ?? "glibc"}`
+        if (nativeTargets.has(key)) continue
+        const native = await packNativeWorkspace(output, version, target, options.assetsRoot)
+        archivePaths.set(native.name, native.archive)
+        nativeTargets.add(key)
       }
     }
     if (pkg.directory === "packages/presets") {
@@ -95,7 +101,7 @@ export async function packWorkspace(
     try {
       let manifest = createPublishablePackageJson({
         packageJson: original,
-        version: original.version,
+        version,
         catalog,
         dependencyVersions,
       })
@@ -117,13 +123,16 @@ export async function packWorkspace(
           engines: { bun: ">=1.3.14" },
         }
         if (pkg.directory === "packages/presets") (manifest.files as string[]).push("dist/schema")
-        if (["packages/harness", "packages/local-runtime"].includes(pkg.directory)) manifest.os = [target.os]
-        if (pkg.directory === "packages/local-runtime") {
-          manifest.cpu = [target.arch]
-        }
+        if (["packages/harness", "packages/local-runtime"].includes(pkg.directory))
+          manifest.optionalDependencies = {
+            ...manifest.optionalDependencies,
+            ...nativeDependencies(version, pkg.directory === "packages/harness" ? ["darwin"] : undefined),
+          }
+
         delete manifest.scripts
-        if (pkg.directory === "packages/cli") manifest.bin = { synergy: "./dist/modules/index.js" }
+        if (pkg.directory === "packages/cli") manifest.bin = { synergy: "./dist/modules/launcher.js" }
       }
+      delete manifest.private
       for (const item of (manifest.files as string[]) ?? ["dist", "README.md"]) {
         const source = path.join(sourceDirectory, item)
         if (!(await Bun.file(source).exists()) && !(await Bun.file(path.join(source, "index.js")).exists())) {
@@ -133,12 +142,12 @@ export async function packWorkspace(
         await cp(source, path.join(stage, item), { recursive: true })
       }
       if (pkg.directory === "packages/cli") {
-        const bin = path.join(stage, "dist/modules/index.js")
+        const bin = path.join(stage, "dist/modules/launcher.js")
         await Bun.write(bin, "#!/usr/bin/env bun\n" + (await Bun.file(bin).text()))
         await chmod(bin, 0o755)
       }
       await Bun.write(path.join(stage, "package.json"), JSON.stringify(manifest, null, 2) + "\n")
-      const archive = path.join(output, `${name.replace(/^@/, "").replaceAll("/", "-")}-${original.version}.tgz`)
+      const archive = path.join(output, `${name.replace(/^@/, "").replaceAll("/", "-")}-${version}.tgz`)
       const process = Bun.spawn(["bun", "pm", "pack", "--filename", archive, "--ignore-scripts"], {
         cwd: stage,
         stdout: "pipe",
@@ -151,8 +160,8 @@ export async function packWorkspace(
       await rm(stage, { recursive: true, force: true })
     }
   }
-  await pack(entry.name)
-  return { entry: archivePaths.get(entry.name)!, archives: Object.fromEntries(archivePaths) }
+  for (const entry of entries) await pack(entry.name)
+  return { entry: archivePaths.get(entries[0]!.name)!, archives: Object.fromEntries(archivePaths) }
 }
 
 if (import.meta.main) {

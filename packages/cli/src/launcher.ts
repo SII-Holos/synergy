@@ -3,6 +3,7 @@ import path from "node:path"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { z } from "zod"
+import { serialize } from "node:v8"
 import {
   prepareInstalledLaunch,
   verifyInstalledWorkerPlan,
@@ -15,16 +16,32 @@ declare const SYNERGY_LIBC: string | undefined
 declare const SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: string | undefined
 
 export async function launch() {
+  const earlyMessages: unknown[] = []
+  let earlyBytes = 0
+  const receive = (message: unknown) => {
+    earlyBytes += serialize(message).byteLength
+    if (earlyMessages.length >= 256 || earlyBytes > 64 * 1024 * 1024)
+      throw new Error("Worker bootstrap IPC queue exceeded its limit")
+    earlyMessages.push(message)
+  }
+  if (process.send) process.on("message", receive)
+  const resumeWorker = () => {
+    process.off("message", receive)
+    for (const message of earlyMessages.splice(0)) process.emit("message", message, undefined)
+  }
   const standalone = typeof SYNERGY_STANDALONE === "boolean" && SYNERGY_STANDALONE
   const version = typeof SYNERGY_VERSION === "string" ? SYNERGY_VERSION : packageVersion
   const home = path.resolve(process.env.SYNERGY_HOME ?? process.env.SYNERGY_TEST_HOME ?? os.homedir())
   const root = path.resolve(process.env.SYNERGY_RUNTIME_ROOT ?? path.join(home, ".synergy"))
   const seed = path.resolve(path.dirname(process.execPath), "../runtime")
   const runner = process.argv.find((arg) => arg.startsWith("__"))
+  if (runner?.endsWith("-runner") && !process.env.SYNERGY_INSTALLATION_PIN)
+    throw new Error("An installed worker requires its parent installation pin")
   const installationRoot =
     runner && process.env.SYNERGY_INSTALLATION_PIN ? path.resolve(process.env.SYNERGY_INSTALLATION_ROOT ?? root) : root
   const generation = await prepareInstalledLaunch(installationRoot, {
     version,
+    ...(!standalone ? { installedCore: path.dirname(fileURLToPath(new URL("../package.json", import.meta.url))) } : {}),
     pin: runner ? process.env.SYNERGY_INSTALLATION_PIN : undefined,
     ...(standalone &&
     (await fs.access(path.join(seed, "generation.json")).then(
@@ -49,7 +66,7 @@ export async function launch() {
   process.env.SYNERGY_INSTALLATION_ROOT = installationRoot
   process.env.SYNERGY_INSTALLATION_PIN = JSON.stringify({ id: generation.id, sha256: generation.sha256 })
   process.env.SYNERGY_LAUNCHER_COMMAND = JSON.stringify(
-    standalone ? [process.execPath] : [process.execPath, "run", fileURLToPath(import.meta.url)],
+    standalone ? [process.execPath] : [process.execPath, fileURLToPath(import.meta.url)],
   )
   if (runner === "__agent-turn-runner" || runner === "__policy-worker-runner")
     await verifyInstalledWorkerPlan(generation, process.env.SYNERGY_WORKER_COMPONENTS)
@@ -79,7 +96,7 @@ export async function launch() {
             ? z.record(z.string(), z.string()).parse(JSON.parse(process.env.SYNERGY_COMPONENTS))
             : undefined,
         )
-  await cli.main(components)
+  await cli.main(components, resumeWorker)
 }
 
 if (import.meta.main) {

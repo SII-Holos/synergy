@@ -54,7 +54,7 @@ Package ownership is machine-enforced. Before adding an import, identify both pa
 2. Use an existing typed source or registry when core execution needs optional behavior. Register it from the owning capability or full product composition before runtime startup; do not add package scanning or a generic service container.
 3. Import only declared package exports. Keep one source module per export target; do not add private cross-package relative imports or forwarding copies to bypass a cycle.
 4. Put a business domain's tools, routes, configuration, migrations, storage and CLI commands with its service. Only generic tool execution and scheduling belong to Harness.
-5. Run `bun run deps:check` after package/import changes. Workspace manifests own actual dependencies, `script/dependency-rules.json` owns allowed dependency directions, and the release catalog owns artifact selection.
+5. Run `bun run deps:check` after package/import changes. Workspace manifests own actual dependencies, `script/dependency-rules.json` owns allowed dependency directions, and the release catalog owns artifact selection. Keep platform-dependent assets in target-specific optional packages, and validate the packed closure outside the repository; generic package names must never carry different platform contents at the same version.
 
 ## Preserve External Provenance
 

@@ -1,4 +1,4 @@
-import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
+import { installedWorkerCommand, installedWorkerEnvironment } from "@ericsanchezok/synergy-util/installed-launcher"
 import fs from "node:fs/promises"
 import { existsSync } from "node:fs"
 import path from "node:path"
@@ -326,7 +326,7 @@ export namespace OwnedProcess {
       input.signal?.throwIfAborted()
       job =
         process.platform === "darwin"
-          ? await DarwinJob.start(command, directory)
+          ? await DarwinJob.start(command, directory, installedWorkerEnvironment(process.env))
           : process.platform === "win32"
             ? await WindowsJob.start(command, directory)
             : await LinuxTree.start(command, directory)

@@ -22,7 +22,7 @@ async function filesIn(directory: string): Promise<string[]> {
 export async function buildWorkspace(directory: string, options: { output?: string } = {}) {
   const root = path.resolve(repository, directory)
   const source = path.join(root, "src")
-  const output = path.join(root, options.output ?? "dist")
+  const output = path.resolve(root, options.output ?? "dist")
   const files = await filesIn(source)
   const known = new Set(files)
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"))
@@ -140,11 +140,6 @@ export async function buildWorkspace(directory: string, options: { output?: stri
         }),
       )
     await Bun.write(destination, compiled.outputText)
-  }
-  if (manifest.name === "@ericsanchezok/synergy-local-runtime") {
-    const { buildPty } = await import("../packages/local-runtime/script/build-pty")
-    const library = await buildPty()
-    await copyFile(library, path.join(output, path.basename(library)))
   }
   return { name: manifest.name as string, files: files.length, output }
 }

@@ -17,7 +17,10 @@ export async function runComponentRunner(entry: URL, name: string) {
   }
 }
 
-export async function runCoreWorker(components: readonly RuntimeComponent[] = []): Promise<boolean> {
+export async function runCoreWorker(
+  components: readonly RuntimeComponent[] = [],
+  ready?: () => void,
+): Promise<boolean> {
   const worker = process.argv.find((arg) =>
     [
       "__storage-worker-runner",
@@ -37,6 +40,7 @@ export async function runCoreWorker(components: readonly RuntimeComponent[] = []
   }
   if (worker === "__storage-worker-runner") {
     await import("@ericsanchezok/synergy-harness/storage/sqlite-worker")
+    ready?.()
     await new Promise(() => {})
     return true
   }
@@ -72,13 +76,14 @@ export async function runCoreWorker(components: readonly RuntimeComponent[] = []
       const { startPolicyWorker } = await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
       startPolicyWorker()
     }
+    ready?.()
     await new Promise(() => {})
     return true
   })
 }
 
-export async function main(components: readonly RuntimeComponent[] = []) {
-  if (await runCoreWorker(components)) return
+export async function main(components: readonly RuntimeComponent[] = [], workerReady?: () => void) {
+  if (await runCoreWorker(components, workerReady)) return
   const { runCli } = await import("./main")
   const { createRuntimeCli } = await import("./runtime-cli")
   await runCli(await createRuntimeCli(components))

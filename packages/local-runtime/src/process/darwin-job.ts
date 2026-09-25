@@ -31,16 +31,19 @@ export namespace DarwinJob {
     await fs.rmdir(directory)
     await launchctl(["bootout", target])
   }
-  export async function start(args: string[], directory: string) {
+  export async function start(args: string[], directory: string, environment: Record<string, string> = {}) {
     const uid = process.getuid?.()
     if (uid === undefined) throw new Error("Native process ownership requires a macOS user session")
     const gui = `gui/${uid}`
     const domain = (await launchctl(["print", gui])).code === 0 ? gui : `user/${uid}`
     const label = `com.synergy.process.${randomUUID()}`
     const filename = path.join(directory, "job.plist")
+    const variables = Object.entries({ ...environment, SYNERGY_OWNED_PROCESS_JOB: `${domain}/${label}` })
+      .map(([key, value]) => `<key>${xml(key)}</key><string>${xml(value)}</string>`)
+      .join("")
     await fs.writeFile(
       filename,
-      `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Label</key><string>${label}</string><key>ProgramArguments</key><array>${args.map((arg) => `<string>${xml(arg)}</string>`).join("")}</array><key>EnvironmentVariables</key><dict><key>SYNERGY_OWNED_PROCESS_JOB</key><string>${domain}/${label}</string></dict><key>RunAtLoad</key><true/><key>AbandonProcessGroup</key><true/><key>StandardOutPath</key><string>/dev/null</string><key>StandardErrorPath</key><string>${xml(path.join(directory, "startup.log"))}</string></dict></plist>`,
+      `<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>Label</key><string>${label}</string><key>ProgramArguments</key><array>${args.map((arg) => `<string>${xml(arg)}</string>`).join("")}</array><key>EnvironmentVariables</key><dict>${variables}</dict><key>RunAtLoad</key><true/><key>AbandonProcessGroup</key><true/><key>StandardOutPath</key><string>/dev/null</string><key>StandardErrorPath</key><string>${xml(path.join(directory, "startup.log"))}</string></dict></plist>`,
       { mode: 0o600 },
     )
     const result = await launchctl(["bootstrap", domain, filename])
