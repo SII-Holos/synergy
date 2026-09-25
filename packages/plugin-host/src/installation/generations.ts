@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createHash, randomUUID } from "node:crypto"
+import { isDeepStrictEqual } from "node:util"
 import { z } from "zod"
 import { SynergyPackage } from "@ericsanchezok/synergy-plugin/package"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
@@ -93,7 +94,7 @@ async function inventory(directory: string, durable = false) {
   const files: z.infer<typeof Manifest>["files"] = {}
   async function walk(current: string) {
     const entries = await fs.readdir(current, { withFileTypes: true })
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
       const filename = path.join(current, entry.name)
       const relative = path.relative(canonical, filename).split(path.sep).join("/")
       if (relative === "generation.json") continue
@@ -124,7 +125,7 @@ async function verify(root: string, selected: z.infer<typeof Pointer>): Promise<
   const manifest = Manifest.parse(JSON.parse(text))
   if (manifest.id !== selected.id) throw new Error("Installation generation identity mismatch")
   const actual = await inventory(directory)
-  if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) throw new Error("Installation file integrity mismatch")
+  if (!isDeepStrictEqual(actual, manifest.files)) throw new Error("Installation file integrity mismatch")
   return { ...manifest, directory: await fs.realpath(directory), sha256: selected.sha256 }
 }
 
@@ -201,7 +202,7 @@ export namespace InstallationGenerations {
   export async function readSeed(directory: string): Promise<InstalledGeneration> {
     const raw = await fs.readFile(path.join(directory, "generation.json"), "utf8")
     const manifest = Manifest.parse(JSON.parse(raw))
-    if (JSON.stringify(await inventory(directory)) !== JSON.stringify(manifest.files))
+    if (!isDeepStrictEqual(await inventory(directory), manifest.files))
       throw new Error("Bundled installation seed integrity mismatch")
     return { ...manifest, directory: await fs.realpath(directory), sha256: digest(raw) }
   }

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
+import { createHash } from "node:crypto"
 import { InstallationGenerations } from "../../src/installation/generations"
 
 async function fixture() {
@@ -65,6 +66,26 @@ test("does not activate host code without explicit trust or after tampering", as
   const generation = await InstallationGenerations.commit(temp.root, input(directory))
   await Bun.write(path.join(generation.directory, "node_modules/example/component.js"), "throw new Error('tampered')")
   await expect(InstallationGenerations.current(temp.root)).rejects.toThrow("integrity")
+})
+
+test("accepts sealed file inventories independent of key order while rejecting extra files", async () => {
+  await using temp = await fixture()
+  const directory = await stage(temp.root)
+  await Bun.write(path.join(directory, "README.md"), "portable installation")
+  const generation = await InstallationGenerations.commit(temp.root, input(directory))
+  const manifestFile = path.join(generation.directory, "generation.json")
+  const manifest = await Bun.file(manifestFile).json()
+  manifest.files = Object.fromEntries(Object.entries(manifest.files).reverse())
+  const sealed = JSON.stringify(manifest)
+  const selected = { version: 1, id: generation.id, sha256: createHash("sha256").update(sealed).digest("hex") }
+  await Bun.write(manifestFile, sealed)
+  await Bun.write(path.join(temp.root, "installations/active.json"), JSON.stringify(selected))
+  expect((await InstallationGenerations.current(temp.root))?.sha256).toBe(selected.sha256)
+  expect((await InstallationGenerations.readSeed(generation.directory)).sha256).toBe(selected.sha256)
+  expect((await InstallationGenerations.pin(temp.root, selected)).sha256).toBe(selected.sha256)
+  await Bun.write(path.join(generation.directory, "unlisted.js"), "export const injected = true")
+  await expect(InstallationGenerations.current(temp.root)).rejects.toThrow("integrity")
+  await expect(InstallationGenerations.readSeed(generation.directory)).rejects.toThrow("integrity")
 })
 
 test("rejects packages with external symlinks and incompatible host versions", async () => {

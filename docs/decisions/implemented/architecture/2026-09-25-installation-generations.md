@@ -49,3 +49,5 @@ Explicit package removal and interrupted activation use the active core before a
 Application ZIP extraction is verified after bundling. The thin launcher excludes unzipper’s unused optional S3 adapter dependency while retaining local archive extraction; a real packaged ZIP regression covers that boundary.
 
 Containerized native builds use the invoking user identity and a writable container Cargo cache. Build staging and cleanup must remain owned by the caller on Linux, including musl builds.
+
+File inventories use locale-independent ordering when written and structural comparison when verified. An existing sealed generation or bundled seed remains valid when its file-map key order differs across platforms or ICU versions; the manifest digest, every file digest, symlink target and complete file membership still have to match. Host-code consent applies to the complete resolved generation on install/update, including retained components, so unattended changes must explicitly supply the trust flag.

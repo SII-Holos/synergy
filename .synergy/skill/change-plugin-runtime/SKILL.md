@@ -68,3 +68,5 @@ Build authoring packages from the repository root with `bun turbo build --filter
 When changing package resolution, keep package-manager install scripts disabled before manifest and access validation, including default-trusted dependencies. Test through a local registry fixture with a real script marker; source-text or mocked argument checks do not establish that code stayed inert.
 
 For module upgrades, test old worker pins, minimal selections under a full launcher, existing-home adoption, equal-version local replacements and interrupted API4 activation. Preserve reviewed grants without invoking a second approval path, keep new host-code trust distinct, and verify that component-only installation does not acquire database maintenance. Reused application bytes must come from a verified generation and retain publisher continuity.
+
+Verify sealed installation inventories independently of locale and object-key order, including bundled seeds. Keep manifest digests, file membership, content hashes and symlink targets strict; test an equivalently sealed reordered inventory and an added unlisted file.
