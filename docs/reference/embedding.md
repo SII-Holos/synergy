@@ -62,3 +62,5 @@ Caller fetch implementations, headers and Scope selectors remain supported. HTTP
 `GET /global/capabilities` reports the active component IDs, versions and component API versions for this runtime. Use the generated `client.global.capabilities()` method before calling optional APIs. The endpoint requires no project Scope. Installed changes take effect at the next runtime start; the active response never claims that a newly installed component is already running. Component availability is distinct from permission approval.
 
 Managed SDK processes require the private bearer credential on HTTP requests. Existing service deployments retain their configured transport/authentication boundary; attaching does not create or replace credentials.
+
+The Web application discovers this selection before optional requests. Navigation, settings, composer mechanisms and workbench panels follow the active components; reconnecting replaces the previous selection. A Web client can therefore attach to a core server or a selected subset without polling absent component routes.

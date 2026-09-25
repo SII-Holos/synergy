@@ -1,3 +1,4 @@
+import { runtimeFeatureAvailable } from "../runtime-features"
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { createSessionTagFilter, type TagFilterState } from "./session-tag-filter"
@@ -102,7 +103,9 @@ export function Sidebar(props: SidebarProps) {
   const [navigationRegistryVersion, setNavigationRegistryVersion] = createSignal(0)
   const sidebarNavigation = createMemo(() => {
     navigationRegistryVersion()
-    return listNavigation("sidebar")
+    return listNavigation("sidebar").filter(
+      (entry) => entry.pluginId || runtimeFeatureAvailable("navigation", entry.id, globalSDK.capabilities.has),
+    )
   })
   const isNavigationActive = (entry: NavigationEntry) =>
     entry.active?.(location.pathname) ?? location.pathname === entry.path
@@ -745,70 +748,43 @@ export function Sidebar(props: SidebarProps) {
               />
 
               {/* Channel */}
-              <div class="sb-root-section">
-                <div
-                  class="sb-projects-header"
-                  onClick={() => setChannelSectionOpen((v) => !v)}
-                  role="button"
-                  tabindex="0"
-                >
-                  <span class="sb-section-title">{_(sidebar.channel)}</span>
-                  <Icon
-                    name={channelSectionOpen() ? "chevron-down" : "chevron-right"}
-                    size="small"
-                    class="sb-section-chevron"
-                  />
-                </div>
-                <SidebarDisclosure open={channelSectionOpen()}>
-                  <Show
-                    when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
-                    fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
+              <Show when={globalSDK.capabilities.has("connections")}>
+                <div class="sb-root-section">
+                  <div
+                    class="sb-projects-header"
+                    onClick={() => setChannelSectionOpen((v) => !v)}
+                    role="button"
+                    tabindex="0"
                   >
-                    <Show when={channelGroupedEntries().length > 0}>
-                      <div class="sb-session-group">
-                        <div
-                          class="sb-session-group-header"
-                          onClick={() => setFeishuGroupOpen((v) => !v)}
-                          role="button"
-                          tabindex="0"
-                        >
-                          <Icon
-                            name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
-                            size="small"
-                            class="sb-section-chevron"
-                          />
-                          <span>{_(sidebar.channelFeishu)}</span>
-                        </div>
-                        <SidebarDisclosure open={feishuGroupOpen()}>
-                          <For each={feishuChannelGroups()}>
-                            {(group) => (
-                              <ChannelChatPartnerGroup
-                                name={group.name}
-                                sessions={group.sessions}
-                                activeID={params.id}
-                                onSessionClick={handleNavEntryClick}
-                              />
-                            )}
-                          </For>
-                        </SidebarDisclosure>
-                      </div>
-                      <Show when={githubChannelGroups().length > 0}>
+                    <span class="sb-section-title">{_(sidebar.channel)}</span>
+                    <Icon
+                      name={channelSectionOpen() ? "chevron-down" : "chevron-right"}
+                      size="small"
+                      class="sb-section-chevron"
+                    />
+                  </div>
+                  <SidebarDisclosure open={channelSectionOpen()}>
+                    <Show
+                      when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
+                      fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
+                    >
+                      <Show when={channelGroupedEntries().length > 0}>
                         <div class="sb-session-group">
                           <div
                             class="sb-session-group-header"
-                            onClick={() => setGithubGroupOpen((v) => !v)}
+                            onClick={() => setFeishuGroupOpen((v) => !v)}
                             role="button"
                             tabindex="0"
                           >
                             <Icon
-                              name={githubGroupOpen() ? "chevron-down" : "chevron-right"}
+                              name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
                               size="small"
                               class="sb-section-chevron"
                             />
-                            <span>{_(sidebar.channelGithub)}</span>
+                            <span>{_(sidebar.channelFeishu)}</span>
                           </div>
-                          <SidebarDisclosure open={githubGroupOpen()}>
-                            <For each={githubChannelGroups()}>
+                          <SidebarDisclosure open={feishuGroupOpen()}>
+                            <For each={feishuChannelGroups()}>
                               {(group) => (
                                 <ChannelChatPartnerGroup
                                   name={group.name}
@@ -820,51 +796,80 @@ export function Sidebar(props: SidebarProps) {
                             </For>
                           </SidebarDisclosure>
                         </div>
-                      </Show>
-                      <Show when={layout.nav.hasMoreRootNavSection("channel")}>
-                        <button
-                          type="button"
-                          class="sb-load-more-btn"
-                          onClick={() => layout.nav.loadMoreRootNavSection("channel")}
-                        >
-                          {_(sidebar.loadMore)}
-                        </button>
-                      </Show>
-                    </Show>
-                    <For each={managedChannelGroups()}>
-                      {(group) => (
-                        <ChannelProviderGroup group={group} _={_}>
-                          <For each={group.projects}>
-                            {(project) => (
-                              <SidebarProjectGroup
-                                scope={() => layout.scopes.managed(project.directory)}
-                                activeID={params.id}
-                                currentDirectory={currentDirectory()}
-                                isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
-                                navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
-                                projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
-                                hasMoreForProject={hasMoreForProject}
-                                managedProject={project.managedProject}
-                                onProjectToggle={handleProjectToggle}
-                                onProjectClick={handleProjectClick}
-                                onProjectPlus={handleProjectPlus}
-                                onProjectEdit={handleProjectEdit}
-                                onProjectArchive={handleProjectArchive}
-                                onProjectPin={handleProjectPin}
-                                onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
-                                onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
-                                activeSessionID={params.id}
-                                onSessionClick={handleSessionClick}
-                                _={_}
+                        <Show when={githubChannelGroups().length > 0}>
+                          <div class="sb-session-group">
+                            <div
+                              class="sb-session-group-header"
+                              onClick={() => setGithubGroupOpen((v) => !v)}
+                              role="button"
+                              tabindex="0"
+                            >
+                              <Icon
+                                name={githubGroupOpen() ? "chevron-down" : "chevron-right"}
+                                size="small"
+                                class="sb-section-chevron"
                               />
-                            )}
-                          </For>
-                        </ChannelProviderGroup>
-                      )}
-                    </For>
-                  </Show>
-                </SidebarDisclosure>
-              </div>
+                              <span>{_(sidebar.channelGithub)}</span>
+                            </div>
+                            <SidebarDisclosure open={githubGroupOpen()}>
+                              <For each={githubChannelGroups()}>
+                                {(group) => (
+                                  <ChannelChatPartnerGroup
+                                    name={group.name}
+                                    sessions={group.sessions}
+                                    activeID={params.id}
+                                    onSessionClick={handleNavEntryClick}
+                                  />
+                                )}
+                              </For>
+                            </SidebarDisclosure>
+                          </div>
+                        </Show>
+                        <Show when={layout.nav.hasMoreRootNavSection("channel")}>
+                          <button
+                            type="button"
+                            class="sb-load-more-btn"
+                            onClick={() => layout.nav.loadMoreRootNavSection("channel")}
+                          >
+                            {_(sidebar.loadMore)}
+                          </button>
+                        </Show>
+                      </Show>
+                      <For each={managedChannelGroups()}>
+                        {(group) => (
+                          <ChannelProviderGroup group={group} _={_}>
+                            <For each={group.projects}>
+                              {(project) => (
+                                <SidebarProjectGroup
+                                  scope={() => layout.scopes.managed(project.directory)}
+                                  activeID={params.id}
+                                  currentDirectory={currentDirectory()}
+                                  isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
+                                  navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
+                                  projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
+                                  hasMoreForProject={hasMoreForProject}
+                                  managedProject={project.managedProject}
+                                  onProjectToggle={handleProjectToggle}
+                                  onProjectClick={handleProjectClick}
+                                  onProjectPlus={handleProjectPlus}
+                                  onProjectEdit={handleProjectEdit}
+                                  onProjectArchive={handleProjectArchive}
+                                  onProjectPin={handleProjectPin}
+                                  onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
+                                  onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
+                                  activeSessionID={params.id}
+                                  onSessionClick={handleSessionClick}
+                                  _={_}
+                                />
+                              )}
+                            </For>
+                          </ChannelProviderGroup>
+                        )}
+                      </For>
+                    </Show>
+                  </SidebarDisclosure>
+                </div>
+              </Show>
 
               {/* Background */}
               <RootNavSection
@@ -1544,7 +1549,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   }
 
   const holosMenuDisabled = () => {
-    if (!holos.loaded) return true
+    if (!props.globalSDK.capabilities.has("connections") || !holos.loaded) return true
     if (holos.state.connection.status === "connecting") return true
     return false
   }
@@ -1717,6 +1722,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 type="button"
                 class="sidebar-account-menuItem sidebar-account-menuItem--add"
                 role="menuitem"
+                disabled={!props.globalSDK.capabilities.has("connections")}
                 onClick={openImportExistingAgentDialog}
               >
                 <Icon name={getSemanticIcon("account.import")} size="small" />
@@ -1782,6 +1788,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                   type="button"
                   class="sidebar-account-menuItem"
                   role="menuitem"
+                  disabled={!props.globalSDK.capabilities.has("connections")}
                   onClick={openImportExistingAgentDialog}
                 >
                   <Icon name={getSemanticIcon("account.import")} size="small" />

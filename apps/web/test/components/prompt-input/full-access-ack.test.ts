@@ -51,6 +51,7 @@ mock.module("../../../src/context/global-sync", () => ({
 
 mock.module("../../../src/context/global-sdk", () => ({
   useGlobalSDK: () => ({
+    capabilities: { has: () => true },
     url: "http://127.0.0.1:0",
     client: {
       config: {

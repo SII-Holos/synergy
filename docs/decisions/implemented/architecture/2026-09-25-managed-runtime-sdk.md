@@ -12,6 +12,8 @@ Node.js uses an explicitly selected executable, exact host/component versions an
 
 Harness records component selection per Runtime. Server exposes the active selection through the global capabilities API, and the generated SDK retains the complete API surface. Header composition uses the generated client's merge helper so Scope selection preserves credentials and custom headers. Custom fetch remains supported.
 
+Web startup shares one capabilities request. Eager Holos, Channels, MCP and Agenda reads wait for discovery; optional navigation, settings, composer controls and workbench registrations use the active selection. Reconnection discards stale discovery results and clears removed component state. A missing discovery contract is an initialization error, rather than an assumption that every component is installed.
+
 ## Alternatives considered
 
 **Parse a human startup banner.** Presentation changes and translated output cannot provide a stable process protocol.

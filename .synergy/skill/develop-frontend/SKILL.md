@@ -14,6 +14,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 ## Preserve State and API Ownership
 
+For optional components, use `useGlobalSDK().capabilities` and the built-in surface requirements. Test a core server and one selected component, including eager resources and reconnecting to a different selection. Keep plugin-owned surfaces independent of the built-in map; configuration field ownership still comes from `/config/domains`.
+
 Observer targets delivered by asynchronous mount callbacks must be reactive element signals, with cleanup on unmount. Verify late mount and replacement against rendered layout or computed CSS properties instead of asserting implementation strings.
 
 Treat resource and operation keys as opaque strings. Escape them with `CSS.escape()` before placing them in selectors in both current-selection and keyboard-navigation paths. Cancel deferred scrolling on selection replacement and unmount. Test actual rendered scrolling and selection with composite JSON keys, quotes, backslashes, Unicode and empty strings. Follow the same identity through upstream controls and repeat the original installed interaction after a local fix. For patched dependencies, test every shipped module form and preserve canonical values; selector escaping must not become a second persisted identity.
