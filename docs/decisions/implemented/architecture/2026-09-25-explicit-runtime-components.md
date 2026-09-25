@@ -32,6 +32,8 @@ The same component objects can be reused by isolated runtimes. Domain owners can
 
 Installed-artifact acceptance includes cold generation verification, native worker startup and repeated export/import commands. Its correctness budget includes the complete workflow and reserves time to cancel and drain owned children before fixture removal. Explicit one-second cancellation scenarios keep their deadline; ordinary fixture turns use a separate startup-aware budget. The CI planner accounts for the expanded core/full/npm and downstream composition acceptance work when balancing shards.
 
+Worker registration is verified both through real child IPC and isolated configuration contexts, including subset isolation, sealing, duplicate identities and version mismatch rejection. Independently packaged mechanisms keep their own coverage floors; ACP event translation, external-agent discovery and code-tool pagination and oversized evidence have direct behavioral tests. Exact executable-only entries retain named artifact tests where Bun cannot merge child coverage.
+
 The public full backend takes an explicit Web asset directory; repository asset lookup is confined to source CLI composition. Runtime startup generates the editor schema from its sealed active configuration contracts, so installed and embedded subsets do not inherit unrelated product fields.
 
 ## Sources

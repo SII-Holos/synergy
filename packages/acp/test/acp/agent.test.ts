@@ -10,26 +10,36 @@ const runtime = await testRuntime()
 type QueueStream<T> = {
   stream: AsyncIterable<T>
   push: (event: T) => void
+  close: () => Promise<void>
 }
 
 function eventQueue<T>(): QueueStream<T> {
   const waiters: Array<() => void> = []
-  let buffer: T[] = []
+  const buffer: T[] = []
+  let closed = false
+  const done = Promise.withResolvers<void>()
   const stream = {
     async *[Symbol.asyncIterator](): AsyncGenerator<T> {
-      while (true) {
-        if (buffer.length > 0) {
-          yield buffer.shift()!
-          continue
+      try {
+        while (buffer.length || !closed) {
+          if (buffer.length > 0) {
+            yield buffer.shift()!
+            continue
+          }
+          await new Promise<void>((resolve) => waiters.push(resolve))
         }
-        await new Promise<void>((resolve) => {
-          waiters.push(resolve)
-        })
+      } finally {
+        done.resolve()
       }
     },
   }
   return {
     stream,
+    close() {
+      closed = true
+      for (const resolve of waiters.splice(0)) resolve()
+      return done.promise
+    },
     push(event: T) {
       buffer.push(event)
       waiters.shift()?.()
@@ -57,6 +67,8 @@ function makeSdk(
     agents?: Array<Record<string, unknown>>
     messages?: Array<Record<string, unknown>>
     messageData?: unknown
+    requestPermission?: AgentSideConnection["requestPermission"]
+    sessionUpdate?: AgentSideConnection["sessionUpdate"]
     providers?: Array<Record<string, unknown>>
   } = {},
 ) {
@@ -152,6 +164,8 @@ async function runAgent(
     config?: Record<string, unknown>
     messages?: Array<Record<string, unknown>>
     messageData?: unknown
+    requestPermission?: AgentSideConnection["requestPermission"]
+    sessionUpdate?: AgentSideConnection["sessionUpdate"]
     providers?: Array<Record<string, unknown>>
   },
   fn: (agent: ACP.Agent, harness: AgentHarness) => Promise<void>,
@@ -161,17 +175,24 @@ async function runAgent(
   const built = makeSdk(options)
   const sessionUpdates: SessionUpdateCall[] = []
   const connection = {
-    sessionUpdate: (update: unknown) => {
-      sessionUpdates.push(update as Record<string, unknown>)
-      return Promise.resolve()
+    sessionUpdate: async (update: Parameters<AgentSideConnection["sessionUpdate"]>[0]) => {
+      sessionUpdates.push(update as unknown as Record<string, unknown>)
+      await options.sessionUpdate?.(update)
     },
-    requestPermission: async () => ({ outcome: { outcome: "cancelled" as const } }),
+    requestPermission: options.requestPermission ?? (async () => ({ outcome: { outcome: "cancelled" as const } })),
   } as unknown as AgentSideConnection
-  const agent = new ACP.Agent(connection, { sdk: built.sdk as never, ...options.config } as never)
+  const factory = await ACP.init({ sdk: built.sdk as never })
+  const agent = factory.create(connection, { sdk: built.sdk as never, ...options.config } as never)
   const harness: AgentHarness = { calls: built.calls, eventStreams: built.eventStreams, sessionUpdates }
   await ScopeContext.provide({
     scope,
-    fn: () => fn(agent, harness),
+    async fn() {
+      try {
+        await fn(agent, harness)
+      } finally {
+        await Promise.all(harness.eventStreams.map((stream) => stream.close()))
+      }
+    },
   })
   return harness
 }
@@ -456,6 +477,215 @@ describe("ACP agent lifecycle", () => {
 })
 
 describe("ACP event subscriptions", () => {
+  test("a rejected client update does not discard later transcript events", () =>
+    runtime.run(async () => {
+      const harness = await runAgent(
+        {
+          messageData: { info: { role: "assistant", sessionID: "session-/tmp/acp" } },
+          sessionUpdate: async ({ update }) => {
+            if (
+              ["tool_call", "tool_call_update", "plan", "agent_thought_chunk"].includes(update.sessionUpdate) ||
+              (update.sessionUpdate === "agent_message_chunk" &&
+                update.content.type === "text" &&
+                update.content.text === "Dropped")
+            )
+              throw new Error("Transient client failure")
+          },
+        },
+        async (agent, h) => {
+          await agent.newSession(newSessionArgs())
+          const stream = h.eventStreams[0]!
+          const base = { sessionID: "session-/tmp/acp", messageID: "msg-1" }
+          stream.push({
+            type: "message.part.updated",
+            properties: {
+              part: { ...base, type: "tool", tool: "read", callID: "call-1", state: { status: "pending" } },
+            },
+          })
+          for (const state of [
+            { status: "running", input: { filePath: "/fixture/a.ts" } },
+            { status: "completed", input: {}, output: "Read evidence", title: "Read", metadata: {} },
+            { status: "error", input: {}, error: "Missing file" },
+          ])
+            stream.push({
+              type: "message.part.updated",
+              properties: { part: { ...base, type: "tool", tool: "read", callID: "call-1", state } },
+            })
+          for (const [tool, output] of [
+            ["todowrite", JSON.stringify([{ id: "todo", content: "Todo", status: "pending", priority: "medium" }])],
+            ["dagwrite", JSON.stringify({ nodes: [{ id: "node", content: "Node", status: "pending", deps: [] }] })],
+          ])
+            stream.push({
+              type: "message.part.updated",
+              properties: {
+                part: {
+                  ...base,
+                  type: "tool",
+                  tool,
+                  callID: tool,
+                  state: { status: "completed", input: {}, output, title: "Plan", metadata: {} },
+                },
+              },
+            })
+          stream.push({
+            type: "message.part.updated",
+            properties: { part: { ...base, type: "text", text: "Dropped" }, delta: "Dropped" },
+          })
+          stream.push({
+            type: "message.part.updated",
+            properties: { part: { ...base, type: "reasoning", text: "thought" }, delta: "thought" },
+          })
+          stream.push({
+            type: "message.part.updated",
+            properties: { part: { ...base, type: "text", text: "Recovered" }, delta: "Recovered" },
+          })
+        },
+      )
+      expect(harness.sessionUpdates.at(-1)?.update).toEqual({
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Recovered" },
+      })
+    }))
+
+  test("live tool transitions retain diffs, failures, plans and reasoning in protocol updates", () =>
+    runtime.run(async () => {
+      const harness = await runAgent(
+        { messageData: { info: { role: "assistant", sessionID: "session-/tmp/acp" } } },
+        async (agent, h) => {
+          await agent.newSession(newSessionArgs())
+          const stream = h.eventStreams[0]!
+          const tool = (callID: string, name: string, state: Record<string, unknown>) =>
+            stream.push({
+              type: "message.part.updated",
+              properties: {
+                part: { sessionID: "session-/tmp/acp", messageID: "msg-1", type: "tool", callID, tool: name, state },
+              },
+            })
+          tool("edit-1", "edit", { status: "pending" })
+          tool("edit-1", "edit", {
+            status: "running",
+            input: { filePath: "/fixture/a.ts", oldString: "old", newString: "new" },
+          })
+          tool("edit-1", "edit", {
+            status: "completed",
+            input: { filePath: "/fixture/a.ts", oldString: "old", newString: "new" },
+            output: "Updated",
+            title: "Edit fixture",
+            metadata: {},
+          })
+          tool("write-1", "write", {
+            status: "completed",
+            input: { filePath: "/fixture/b.ts", content: "created" },
+            output: "Created",
+            title: "Write fixture",
+            metadata: {},
+          })
+          tool("read-1", "read", { status: "error", input: { filePath: "/fixture/missing" }, error: "File is missing" })
+          tool("todos-1", "todowrite", {
+            status: "completed",
+            input: {},
+            output: JSON.stringify([{ id: "todo", content: "Cancelled todo", status: "cancelled", priority: "high" }]),
+            title: "Todos",
+            metadata: {},
+          })
+          tool("dag-1", "dagwrite", {
+            status: "completed",
+            input: {},
+            output: JSON.stringify({
+              nodes: [
+                { id: "a", content: "Running node", status: "running", deps: [] },
+                { id: "b", content: "Failed node", status: "failed", deps: [] },
+                { id: "c", content: "Pending node", status: "pending", deps: [] },
+              ],
+            }),
+            title: "Plan",
+            metadata: {},
+          })
+          stream.push({
+            type: "message.part.updated",
+            properties: {
+              part: { sessionID: "session-/tmp/acp", messageID: "msg-1", type: "reasoning", text: "full thought" },
+              delta: "Thought delta",
+            },
+          })
+        },
+      )
+      const updates = harness.sessionUpdates.map((event) => event.update)
+      expect(updates).toContainEqual(
+        expect.objectContaining({ sessionUpdate: "tool_call", toolCallId: "edit-1", status: "pending" }),
+      )
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "edit-1",
+          status: "in_progress",
+          locations: [{ path: "/fixture/a.ts" }],
+        }),
+      )
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "edit-1",
+          status: "completed",
+          content: expect.arrayContaining([{ type: "diff", path: "/fixture/a.ts", oldText: "old", newText: "new" }]),
+        }),
+      )
+      expect(updates).toContainEqual(
+        expect.objectContaining({
+          toolCallId: "write-1",
+          content: expect.arrayContaining([{ type: "diff", path: "/fixture/b.ts", oldText: "", newText: "created" }]),
+        }),
+      )
+      expect(updates).toContainEqual(
+        expect.objectContaining({ toolCallId: "read-1", status: "failed", rawOutput: { error: "File is missing" } }),
+      )
+      expect(updates).toContainEqual({
+        sessionUpdate: "plan",
+        entries: [{ priority: "medium", status: "completed", content: "Cancelled todo" }],
+      })
+      expect(updates).toContainEqual({
+        sessionUpdate: "plan",
+        entries: [
+          { priority: "medium", status: "in_progress", content: "Running node" },
+          { priority: "medium", status: "completed", content: "Failed node" },
+          { priority: "medium", status: "pending", content: "Pending node" },
+        ],
+      })
+      expect(updates).toContainEqual({
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "Thought delta" },
+      })
+    }))
+
+  for (const outcome of ["once", "reject", "error"] as const)
+    test(`permission responses preserve ${outcome} semantics`, () =>
+      runtime.run(async () => {
+        const harness = await runAgent(
+          {
+            requestPermission: async (request) => {
+              expect(request.options.map((option) => option.optionId)).toEqual(["once", "reject"])
+              expect(request.toolCall.toolCallId).toBe("call-1")
+              if (outcome === "error") throw new Error("Connection closed")
+              return { outcome: { outcome: "selected", optionId: outcome } }
+            },
+          },
+          async (agent, h) => {
+            await agent.newSession(newSessionArgs())
+            h.eventStreams[0]!.push({
+              type: "permission.asked",
+              properties: {
+                id: "perm-1",
+                permission: "edit",
+                metadata: { filePath: "/fixture/a.ts" },
+                sessionID: "session-/tmp/acp",
+                tool: { callID: "call-1" },
+              },
+            })
+          },
+        )
+        expect(harness.calls.permissionReply).toEqual([
+          { requestID: "perm-1", reply: outcome === "once" ? "once" : "reject", directory: "/tmp/acp" },
+        ])
+      }))
+
   test("permission.asked with a cancelled outcome replies reject", () =>
     runtime.run(async () => {
       const harness = await runAgent({}, async (agent, h) => {
@@ -464,7 +694,6 @@ describe("ACP event subscriptions", () => {
           type: "permission.asked",
           properties: { id: "perm-2", permission: "bash", metadata: {}, sessionID: "session-/tmp/acp" },
         })
-        await Bun.sleep(30)
       })
       expect(harness.calls.permissionReply).toHaveLength(1)
       expect(harness.calls.permissionReply[0]).toEqual({
@@ -489,7 +718,6 @@ describe("ACP event subscriptions", () => {
               delta: "chunk",
             },
           })
-          await Bun.sleep(30)
         },
       )
       expect(

@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { PlaywrightRuntime } from "../src/playwright-runtime"
+import { main as checkRuntime } from "../src/runtime-check"
 
 const temporaryDirectories: string[] = []
 
@@ -13,6 +14,11 @@ afterEach(async () => {
 })
 
 describe("PlaywrightRuntime", () => {
+  test("the public runtime probe resolves its owning Playwright installation", async () => {
+    await expect(checkRuntime()).resolves.toBeUndefined()
+    expect(PlaywrightRuntime.version()).toMatch(/^\d+\.\d+\.\d+/)
+  })
+
   test("loads Playwright Core from the runtime beside a packaged executable", async () => {
     const runtime = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-playwright-runtime-"))
     temporaryDirectories.push(runtime)

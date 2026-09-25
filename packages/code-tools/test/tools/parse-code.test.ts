@@ -4,6 +4,7 @@ import { ParseCodeTool } from "../../src/parse-code"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { computeTag } from "@ericsanchezok/synergy-local-runtime/hashline/tag"
+import { SNAPSHOT_MAX_BYTES } from "@ericsanchezok/synergy-local-runtime/tools/anchored-file"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -184,6 +185,60 @@ describe("tool.parse_code", () => {
   })
 
   describe("metadata", () => {
+    test("oversized matches retain their location without inventing an anchored snapshot", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "large.ts"), "const marker = 1\n//" + "x".repeat(SNAPSHOT_MAX_BYTES))
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute({ pattern: "const $NAME = $VALUE", lang: "typescript" }, ctx)
+            expect(result.metadata.oversizedFiles).toEqual(["large.ts"])
+            expect(result.metadata.matchLines["large.ts"]).toEqual([1])
+            expect(result.metadata.truncated).toBe(true)
+            expect(result.output).toContain("file too large for anchored tag")
+            expect(result.output).not.toContain("[large.ts#")
+          },
+        })
+      }))
+
+    test("paginates structural matches without dropping their file evidence", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "page.ts"), "const a = 1\nconst b = 2\nconst c = 3\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const first = await tool.execute(
+              { pattern: "const $NAME = $VALUE", lang: "typescript", limit: 2, paths: ["page.ts"], globs: ["*.ts"] },
+              ctx,
+            )
+            expect(first.metadata.nextSkip).toBe(2)
+            expect(first.metadata.limitReached).toBe(true)
+            expect(first.metadata.matchLines["page.ts"]).toEqual([1, 2])
+            expect(first.output).toContain("skip=2")
+            const second = await tool.execute(
+              { pattern: "const $NAME = $VALUE", lang: "typescript", limit: 2, skip: first.metadata.nextSkip },
+              ctx,
+            )
+            expect(second.metadata.matchLines["page.ts"]).toEqual([3])
+            expect(second.metadata.nextSkip).toBeUndefined()
+            expect(second.metadata.limitReached).toBe(false)
+            expect(second.output).toContain("3:const c = 3")
+          },
+        })
+      }))
+
     test("reports match count and snapshotted files", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({

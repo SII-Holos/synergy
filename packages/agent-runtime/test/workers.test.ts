@@ -5,7 +5,7 @@ import { spawnAgentWorkerProcess } from "@ericsanchezok/synergy-harness/session/
 import { spawnPolicyWorkerProcess } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
-import { registerWorkerComponents } from "../src/workers"
+import { registerWorkerComponents, workerPlan } from "../src/workers"
 
 test("real agent and policy workers start from the host's explicit component selection", async () => {
   await using fixture = await runtimeHome()
@@ -44,3 +44,22 @@ test("worker entrypoints refuse to guess a composition without the owning host's
     context.dispose()
   }
 })
+
+for (const invalid of ["version", "duplicate"] as const)
+  test(`workers reject a ${invalid} mismatch in their pinned composition`, async () => {
+    await using fixture = await runtimeHome()
+    const plan = workerPlan([lsp()])
+    if (invalid === "version") plan.agent[0]!.version = "999.0.0"
+    else plan.agent.push({ ...plan.agent[0]! })
+    const context = RuntimeContext.create({
+      ...fixture.host,
+      env: { ...fixture.host.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify(plan) },
+    })
+    try {
+      await expect(context.run(() => registerWorkerComponents("agent"))).rejects.toThrow(
+        invalid === "version" ? "does not match the host composition" : "Duplicate worker component",
+      )
+    } finally {
+      context.dispose()
+    }
+  })

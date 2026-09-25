@@ -1254,6 +1254,10 @@
         {
           "glob": "src/server/runtime.ts",
           "reason": "Server process lifetime, terminal banner and signal/storage-failure drainage run in real child-process integration tests in packages/presets; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/launcher.ts",
+          "reason": "Installed executable bootstrap executes in its own process before loading the selected modules. test/cli/artifact.test.ts verifies real compiled core/full and npm installations, execution, cancellation and archive roundtrips; Plugin Host installation tests cover the shared generation verification and loader. Bun does not merge child coverage."
         }
       ]
     },
@@ -1438,6 +1442,10 @@
         {
           "glob": "src/stats/index.ts",
           "reason": "barrel re-export"
+        },
+        {
+          "glob": "src/vector/runtime-check.ts",
+          "reason": "Standalone ONNX probe entry must run with the compiled WASM backend in a fresh process. test/vector/embedding-standalone.test.ts compiles and invokes this entry through its fixture, and release artifact validation invokes its registered runner. Bun does not merge child coverage."
         }
       ]
     },
@@ -2185,7 +2193,16 @@
         "lines": 75,
         "functions": 75
       },
-      "exempt": []
+      "exempt": [
+        {
+          "glob": "src/agent-worker.ts",
+          "reason": "Top-level agent worker entry executes only in a child process. test/workers.test.ts verifies pinned component selection and real readiness/shutdown; Presets test/session/worker-composition.test.ts measures the shared registrars in-process. Bun does not merge child coverage."
+        },
+        {
+          "glob": "src/policy-worker.ts",
+          "reason": "Top-level policy worker entry executes only in a child process. test/workers.test.ts verifies real policy IPC readiness/shutdown and missing-plan rejection; the shared worker loader remains measured. Bun does not merge child coverage."
+        }
+      ]
     }
   }
 }

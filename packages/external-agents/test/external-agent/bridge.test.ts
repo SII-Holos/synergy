@@ -134,4 +134,25 @@ test("adapter that does not consume config still satisfies discovery contract", 
     expect(results.has(name)).toBe(true)
   }))
 
+test("single-adapter discovery preserves identity and isolates unavailable or failing adapters", () =>
+  runtime.run(async () => {
+    const { ExternalAgentDiscovery } = await import("../../src/discovery")
+    expect(await ExternalAgentDiscovery.discoverOne("unregistered-fixture")).toBeUndefined()
+    for (const outcome of ["available", "missing", "failure"] as const) {
+      const name = `single-${outcome}`
+      class FixtureAdapter extends TestAdapter {
+        override async discover(config?: Record<string, unknown>) {
+          expect(config).toEqual({ path: "fixture-executable" })
+          if (outcome === "failure") throw new Error("Executable discovery failed")
+          return { available: outcome === "available", path: "fixture-executable", version: "fixture-1" }
+        }
+      }
+      ExternalAgent.register(name, () => new FixtureAdapter())
+      const result = await ExternalAgentDiscovery.discoverOne(name, { path: "fixture-executable" })
+      expect(result).toEqual(
+        outcome === "available" ? { adapter: name, path: "fixture-executable", version: "fixture-1" } : undefined,
+      )
+    }
+  }))
+
 afterRuntimeTests(() => runtime.close())
