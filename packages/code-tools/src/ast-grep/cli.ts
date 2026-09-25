@@ -2,7 +2,8 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { spawn } from "bun"
 import { existsSync, realpathSync, statSync } from "fs"
 import path from "path"
-import { fileURLToPath } from "url"
+import { createRequire } from "node:module"
+import { nativeLibc } from "@ericsanchezok/synergy-util/native-assets"
 import type { AstGrepLanguage, CliMatch, SgResult } from "./types"
 import { DEFAULT_TIMEOUT_MS, DEFAULT_MAX_OUTPUT_BYTES, DEFAULT_MAX_MATCHES } from "./types"
 import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
@@ -40,6 +41,15 @@ function findSgCliPath(): string | null {
   const pkgName = PLATFORM_PACKAGES[platformKey]
   const npmBinaryName = process.platform === "win32" ? "ast-grep.exe" : "ast-grep"
 
+  if (pkgName && !(process.platform === "linux" && nativeLibc() === "musl")) {
+    try {
+      const binary = createRequire(import.meta.url).resolve(`${pkgName}/${npmBinaryName}`)
+      if (isValidBinary(binary)) return binary
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "MODULE_NOT_FOUND") throw error
+    }
+  }
+
   // Check for packaged binary next to compiled executable (global install via npm)
   try {
     const execDir = path.dirname(realpathSync(process.execPath))
@@ -48,23 +58,6 @@ function findSgCliPath(): string | null {
       return packagedPath
     }
   } catch {}
-
-  // Check the owning integration package's node_modules
-  // The npm package uses "ast-grep" as binary name
-  if (pkgName) {
-    const thisDir = path.dirname(fileURLToPath(import.meta.url))
-    const packageRoot = path.resolve(thisDir, "../../..")
-    const bundledPaths = [
-      path.join(packageRoot, "node_modules", pkgName, npmBinaryName),
-      path.join(packageRoot, "node_modules", "@ast-grep", "cli", npmBinaryName),
-    ]
-
-    for (const p of bundledPaths) {
-      if (existsSync(p) && isValidBinary(p)) {
-        return p
-      }
-    }
-  }
 
   // Check homebrew/cargo installed "sg" binary
   const sgBinaryName = process.platform === "win32" ? "sg.exe" : "sg"

@@ -21,14 +21,10 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ast-grep/cli-darwin-arm64": "0.40.5",
-    "@ast-grep/cli-darwin-x64": "0.40.5",
-    "@ast-grep/cli-linux-arm64-gnu": "0.40.5",
-    "@ast-grep/cli-linux-x64-gnu": "0.40.5",
-    "@ast-grep/cli-win32-x64-msvc": "0.40.5",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
@@ -50,5 +46,12 @@
     "requires": {
       "local-runtime": "1.1.26"
     }
+  },
+  "optionalDependencies": {
+    "@ast-grep/cli-darwin-arm64": "0.40.5",
+    "@ast-grep/cli-darwin-x64": "0.40.5",
+    "@ast-grep/cli-linux-arm64-gnu": "0.40.5",
+    "@ast-grep/cli-linux-x64-gnu": "0.40.5",
+    "@ast-grep/cli-win32-x64-msvc": "0.40.5"
   }
 }

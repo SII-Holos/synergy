@@ -127,7 +127,7 @@ synergy doctor
 synergy stop
 ```
 
-The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`; setting `SYNERGY_HOME=/path` changes that root to `/path/.synergy/`. It does not install the Electron Desktop app.
+The CLI installer places the launcher and its sealed module graph under `~/.synergy/`; setting `SYNERGY_HOME=/path` changes that root to `/path/.synergy/`. It does not install the Electron Desktop app.
 
 You can keep one Synergy installation per channel — the standalone CLI, a supported package-manager install (`npm`, `yarn`, `pnpm`, or `bun`), and the Desktop app — but only one should be the `synergy` command your shell runs. `synergy doctor` lists every detected installation channel and exits nonzero when channels conflict or an installed version cannot be verified. The curl installer and the npm package postinstall warn about other channels they detect and never auto-uninstall them. Homebrew's `synergy` formula is unrelated to this project and is not detected or managed.
 

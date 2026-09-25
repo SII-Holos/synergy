@@ -26,18 +26,19 @@ interface LoadOptions {
 export namespace PlaywrightRuntime {
   export function load(options: LoadOptions = {}): PlaywrightModule {
     const packaged = packagedPath(options.executablePath, "index.js")
-    if (existsSync(packaged)) return createRequire(packaged)(packaged) as PlaywrightModule
+    if (options.executablePath && existsSync(packaged)) return createRequire(packaged)(packaged) as PlaywrightModule
     const sourceRequire = options.sourceRequire ?? createRequire(import.meta.url)
     return sourceRequire("playwright-core") as PlaywrightModule
   }
 
   export function version(options: LoadOptions = {}): string {
     const packaged = packagedPath(options.executablePath, "package.json")
-    const metadata = existsSync(packaged)
-      ? (createRequire(packaged)(packaged) as { version?: unknown })
-      : ((options.sourceRequire ?? createRequire(import.meta.url))("playwright-core/package.json") as {
-          version?: unknown
-        })
+    const metadata =
+      options.executablePath && existsSync(packaged)
+        ? (createRequire(packaged)(packaged) as { version?: unknown })
+        : ((options.sourceRequire ?? createRequire(import.meta.url))("playwright-core/package.json") as {
+            version?: unknown
+          })
     if (typeof metadata.version !== "string") throw new Error("Playwright Core version metadata is invalid.")
     return metadata.version
   }
@@ -58,7 +59,7 @@ export namespace PlaywrightRuntime {
 
 function loadCoreBundle(options: LoadOptions): PlaywrightCoreBundle {
   const packaged = packagedPath(options.executablePath, "lib", "coreBundle.js")
-  if (existsSync(packaged)) return createRequire(packaged)(packaged) as PlaywrightCoreBundle
+  if (options.executablePath && existsSync(packaged)) return createRequire(packaged)(packaged) as PlaywrightCoreBundle
   const sourceRequire = options.sourceRequire ?? createRequire(import.meta.url)
   return sourceRequire("playwright-core/lib/coreBundle") as PlaywrightCoreBundle
 }

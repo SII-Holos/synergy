@@ -1,6 +1,7 @@
 const fs = require("node:fs")
 const crypto = require("node:crypto")
 const path = require("node:path")
+const { requiredRuntimeArtifactPaths } = require("../../../script/release/shared/runtime-layout.cjs")
 
 exports.default = async function afterPack(context) {
   const runtimeName = runtimePackageName(context.electronPlatformName, context.arch)
@@ -13,7 +14,7 @@ exports.default = async function afterPack(context) {
     throw new Error(`Synergy runtime is missing for desktop package: ${source}`)
   }
 
-  assertRuntimeAssets(source, context.electronPlatformName)
+  assertRuntimeAssets(source, context.electronPlatformName, archName(context.arch))
 
   const destination = path.join(resourcesPath(context), "synergy")
   fs.rmSync(destination, { recursive: true, force: true })
@@ -21,25 +22,27 @@ exports.default = async function afterPack(context) {
   writeDesktopPackageMetadata(destination, context)
 }
 
-function assertRuntimeAssets(runtimeDir, platform) {
+function assertRuntimeAssets(runtimeDir, platform, arch = "x64") {
   const manifestPath = path.join(runtimeDir, "runtime-manifest.sha256")
   if (!fs.existsSync(manifestPath)) {
     throw new Error(`Synergy runtime manifest is missing: ${manifestPath}`)
   }
 
-  assertNoRuntimeSymlinks(runtimeDir)
+  const files = runtimeFiles(runtimeDir)
 
   const entries = new Map()
   for (const line of fs.readFileSync(manifestPath, "utf8").trim().split("\n")) {
-    const match = /^([a-f0-9]{64})  ([^/\\\s]+(?:\/[^/\\\s]+)*)$/.exec(line)
+    const match = /^([a-f0-9]{64})  (.+)$/.exec(line)
     const checksum = match?.[1]
     const relative = match?.[2]
     const components = relative?.split("/")
     if (
       !checksum ||
       !relative ||
+      relative.startsWith("/") ||
+      /[\\\x00-\x1f\x7f]/.test(relative) ||
       /^[A-Za-z]:/.test(relative) ||
-      components?.some((component) => component === "." || component === "..")
+      components?.some((component) => !component || component === "." || component === "..")
     ) {
       throw new Error(`Synergy runtime manifest contains an invalid entry: ${manifestPath}`)
     }
@@ -49,7 +52,10 @@ function assertRuntimeAssets(runtimeDir, platform) {
     entries.set(relative, checksum)
   }
 
-  for (const relative of requiredRuntimeAssets(platform)) {
+  for (const file of files) {
+    if (!entries.has(file)) throw new Error(`Synergy runtime manifest contains an unlisted file: ${file}`)
+  }
+  for (const relative of requiredRuntimeArtifactPaths(runtimePackageName(platform, arch))) {
     if (!entries.has(relative)) {
       throw new Error(`Synergy runtime manifest is missing required entry ${relative}: ${runtimeDir}`)
     }
@@ -83,7 +89,8 @@ function runtimeFileIsSafe(runtimeDir, relative) {
   return true
 }
 
-function assertNoRuntimeSymlinks(runtimeDir) {
+function runtimeFiles(runtimeDir) {
+  const files = []
   const pending = [runtimeDir]
   while (pending.length > 0) {
     const directory = pending.pop()
@@ -93,39 +100,13 @@ function assertNoRuntimeSymlinks(runtimeDir) {
         throw new Error(`Synergy runtime contains a symbolic link: ${path.relative(runtimeDir, absolute)}`)
       }
       if (entry.isDirectory()) pending.push(absolute)
+      else if (entry.isFile()) {
+        const relative = path.relative(runtimeDir, absolute).split(path.sep).join("/")
+        if (!["package.json", "runtime-manifest.sha256"].includes(relative)) files.push(relative)
+      } else throw new Error(`Synergy runtime contains an unsupported file: ${absolute}`)
     }
   }
-}
-
-function requiredRuntimeAssets(platform) {
-  const binary = platform === "win32" ? "bin/synergy.exe" : "bin/synergy"
-  const astGrep = platform === "win32" ? "bin/ast-grep.exe" : "bin/ast-grep"
-  const sqliteVec = platform === "win32" ? "vec0.dll" : platform === "darwin" ? "vec0.dylib" : "vec0.so"
-  return [
-    binary,
-    astGrep,
-    sqliteVec,
-    "watcher.node",
-    "app/index.html",
-    "schema/config.schema.json",
-    "browser-runtime/playwright-core/package.json",
-    "browser-runtime/playwright-core/index.js",
-    "browser-runtime/playwright-core/lib/coreBundle.js",
-    "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
-    "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
-    "lib/resvg-wasm/index_bg.wasm",
-    "lib/resvg-wasm/LICENSE-MPL-2.0.txt",
-    "lib/resvg-wasm/THIRD_PARTY_NOTICES.txt",
-    "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
-    "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
-    "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
-    "lib/holos-cli/index.js",
-    "lib/holos-cli/vendor/clarus-shared/index.js",
-    "lib/holos-cli/node_modules/ws/package.json",
-    "lib/holos-cli/node_modules/zod/package.json",
-    ...(platform === "linux" ? ["sandbox/synergy-sandbox-linux"] : []),
-    ...(platform === "win32" ? ["sandbox/synergy-sandbox-windows.exe"] : []),
-  ]
+  return files
 }
 
 exports.assertRuntimeAssets = assertRuntimeAssets

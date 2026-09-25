@@ -546,3 +546,43 @@ describe("standalone installation", () => {
     }
   })
 })
+
+test("standalone upgrades verify and remove the sealed module payload", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-module-upgrade-"))
+  const root = path.join(home, ".synergy")
+  const required = [
+    "bin/synergy",
+    "runtime/generation.json",
+    "runtime-assets.txt",
+    "runtime/node_modules/@ericsanchezok/synergy-harness/package.json",
+    "runtime/node_modules/@ericsanchezok/synergy-cli/dist/modules/index.js",
+    "runtime/Third Party.txt",
+  ]
+  const context = {
+    platform: "darwin" as const,
+    execPath: path.join(root, "bin/synergy"),
+    realExecPath: path.join(root, "bin/synergy"),
+    env,
+  }
+  try {
+    const manifest: string[] = []
+    for (const relative of required) {
+      const content = relative === "runtime-assets.txt" ? required.join("\n") + "\n" : relative
+      await fs.mkdir(path.dirname(path.join(root, relative)), { recursive: true })
+      await fs.writeFile(path.join(root, relative), content)
+      manifest.push(`${createHash("sha256").update(content).digest("hex")}  ${relative}`)
+    }
+    await fs.writeFile(path.join(root, "runtime-manifest.sha256"), manifest.join("\n") + "\n")
+    expect(await StandaloneInstallation.verify(home, context)).toBe(true)
+    await fs.writeFile(path.join(root, "runtime/unlisted.js"), "unapproved code")
+    expect(await StandaloneInstallation.verify(home, context)).toBe(false)
+    await fs.rm(path.join(root, "runtime/unlisted.js"))
+    await fs.writeFile(path.join(root, "runtime/Third Party.txt"), "tampered")
+    expect(await StandaloneInstallation.verify(home, context)).toBe(false)
+    const result = await StandaloneInstallation.remove({ home, platform: "darwin" })
+    expect(result.removed).toContain(path.join(root, "runtime"))
+    expect(result.removed).toContain(path.join(root, "runtime-assets.txt"))
+  } finally {
+    await fs.rm(home, { recursive: true, force: true })
+  }
+})

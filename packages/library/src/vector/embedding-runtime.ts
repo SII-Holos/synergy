@@ -75,21 +75,23 @@ function installGlobalLocalFileFetch(): void {
   }) as typeof globalThis.fetch
 }
 
+async function configureOnnxRuntime(runtime: typeof import("onnxruntime-web/wasm"), assetRoot: string) {
+  const moduleUrl = pathToFileURL(path.join(assetRoot, EMBEDDING_RUNTIME_MODULE))
+  const wasmUrl = pathToFileURL(path.join(assetRoot, EMBEDDING_RUNTIME_WASM))
+  runtime.env.wasm.numThreads = 1
+  // transformers.js v4 only preloads the WASM binary and factory when both
+  // wasmPaths.wasm and wasmPaths.mjs are set; without them it falls back to
+  // importing the factory from import.meta.url, which resolves inside the
+  // bundled filesystem ($bunfs) where fetch() rejects the URL.
+  runtime.env.wasm.wasmPaths = { mjs: moduleUrl.href, wasm: wasmUrl.href }
+  runtime.env.wasm.wasmBinary = new Uint8Array(await Bun.file(wasmUrl).arrayBuffer())
+  return runtime
+}
+
 function loadStandaloneOnnxRuntime(): Promise<typeof import("onnxruntime-web/wasm")> {
-  standaloneOnnxRuntime ??= (async () => {
-    const runtime = await import("onnxruntime-web/wasm")
-    const assetRoot = path.resolve(path.dirname(process.execPath), "..", EMBEDDING_RUNTIME_PATH)
-    const moduleUrl = pathToFileURL(path.join(assetRoot, EMBEDDING_RUNTIME_MODULE))
-    const wasmUrl = pathToFileURL(path.join(assetRoot, EMBEDDING_RUNTIME_WASM))
-    runtime.env.wasm.numThreads = 1
-    // transformers.js v4 only preloads the WASM binary and factory when both
-    // wasmPaths.wasm and wasmPaths.mjs are set; without them it falls back to
-    // importing the factory from import.meta.url, which resolves inside the
-    // bundled filesystem ($bunfs) where fetch() rejects the URL.
-    runtime.env.wasm.wasmPaths = { mjs: moduleUrl.href, wasm: wasmUrl.href }
-    runtime.env.wasm.wasmBinary = new Uint8Array(await Bun.file(wasmUrl).arrayBuffer())
-    return runtime
-  })()
+  standaloneOnnxRuntime ??= import("onnxruntime-web/wasm").then((runtime) =>
+    configureOnnxRuntime(runtime, path.resolve(path.dirname(process.execPath), "..", EMBEDDING_RUNTIME_PATH)),
+  )
   return standaloneOnnxRuntime
 }
 
@@ -113,6 +115,18 @@ export async function loadEmbeddingTransformersRuntime(): Promise<{
   runtime: TransformersRuntime
   device?: "cpu"
 }> {
+  const moduleUrl = new URL("./packaged-embedding.js", import.meta.url)
+  if (await Bun.file(moduleUrl).exists()) {
+    const { runtime, onnx }: { runtime: TransformersRuntime; onnx: typeof import("onnxruntime-web/wasm") } =
+      await import(moduleUrl.href)
+    standaloneOnnxRuntime ??= configureOnnxRuntime(
+      onnx,
+      fileURLToPath(new URL(`../${EMBEDDING_RUNTIME_PATH}`, import.meta.url)),
+    )
+    await standaloneOnnxRuntime
+    installLocalFileFetch(runtime)
+    return { runtime, device: "cpu" }
+  }
   if (!isStandalone()) {
     const runtime = await import("@huggingface/transformers")
     installLocalFileFetch(runtime)

@@ -5,16 +5,13 @@ import fs from "node:fs"
 import os from "node:os"
 import { $ } from "bun"
 import { WEB_DIR, CLI_DIR, PRESETS_DIR, RUNTIME_RELEASE_TARGETS, type RuntimeArtifactProfile } from "./packages"
-import {
-  assertPackagedSandboxAsset,
-  copySandboxAsset,
-  resolveSandboxAsset,
-  type SandboxRuntimeTarget,
-} from "./build/sandbox-assets"
+import { resolveSandboxAsset, type SandboxRuntimeTarget } from "./build/sandbox-assets"
 import { prepareBuildModelsCatalog } from "./build/models-catalog"
 import { nativePlatformPackageNames } from "./build/native-build-packages"
-import { runtimeDependencies, prepareRuntimeAssets } from "./runtime-assets"
+import { runtimeDependencies } from "./runtime-assets"
+import { writeRuntimeManifest } from "./runtime-contract"
 import { runtimeBuildPlan } from "./runtime-build-plan"
+import { prepareModuleArchives, stageModuleSeed } from "./module-seed"
 
 export async function buildRuntime(profile: RuntimeArtifactProfile) {
   const dir = profile === "core" ? CLI_DIR : PRESETS_DIR
@@ -102,11 +99,14 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
     },
   ]
 
+  const supportedTargets = allTargets.filter(
+    (item) => profile !== "full" || item.os !== "win32" || item.arch !== "arm64",
+  )
   const targets =
     requestedTargets.size > 0
-      ? allTargets.filter((item) => requestedTargets.has(targetKey(item)))
+      ? supportedTargets.filter((item) => requestedTargets.has(targetKey(item)))
       : singleFlag
-        ? allTargets.filter((item) => {
+        ? supportedTargets.filter((item) => {
             if (item.os !== process.platform || item.arch !== process.arch) {
               return false
             }
@@ -119,8 +119,10 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
 
             return true
           })
-        : allTargets
+        : supportedTargets
 
+  const unmatched = [...requestedTargets].filter((key) => !targets.some((target) => targetKey(target) === key))
+  if (unmatched.length) throw new Error(`Unsupported ${profile} runtime targets: ${unmatched.join(", ")}`)
   if (targets.length === 0) {
     throw new Error(`No Synergy build targets matched SYNERGY_BUILD_TARGETS=${process.env.SYNERGY_BUILD_TARGETS}`)
   }
@@ -140,6 +142,12 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
   if (!skipInstall) {
     await ensureNativeBuildPackages()
   }
+  const archives = await prepareModuleArchives({
+    profile,
+    version: Script.version,
+    output: path.resolve("dist/modules-packages"),
+    targets,
+  })
   for (const item of targets) {
     const name = [
       executable,
@@ -152,15 +160,6 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
       .filter(Boolean)
       .join("-")
     console.log(`building ${name}`)
-    if (profile === "full" && shouldReusePublishedRuntime(item)) {
-      await extractPublishedRuntimePackage(name, Script.version)
-      await stageProductAssets(path.join("dist", name))
-      if (requireSandboxAssets) assertPackagedSandboxAsset(item, path.join("dist", name))
-      binaries[name] = Script.version
-      await prepareRuntimeAssets(name, profile)
-      continue
-    }
-
     const sandboxAsset = resolveSandboxAsset(item, { required: requireSandboxAssets })
 
     await $`mkdir -p dist/${name}/bin`
@@ -171,14 +170,6 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
         tsconfig: "./tsconfig.json",
         sourcemap: "external",
         external: plan.external,
-        plugins:
-          profile === "full"
-            ? [
-                (
-                  await import("../../../packages/library/script/embedding-runtime-assets")
-                ).standaloneEmbeddingBuildPlugin(),
-              ]
-            : [],
         compile: {
           autoloadBunfig: false,
           autoloadDotenv: false,
@@ -195,7 +186,7 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
           SYNERGY_COMMIT: JSON.stringify(/^[a-f0-9]{40,64}$/.test(buildCommit) ? buildCommit : ""),
           SYNERGY_VERSION: JSON.stringify(Script.version),
           SYNERGY_CHANNEL: JSON.stringify(Script.channel),
-          SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+          SYNERGY_LIBC: JSON.stringify(item.os === "linux" ? (item.abi ?? "glibc") : "glibc"),
           SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: JSON.stringify(browserManifestPublicKey),
           SYNERGY_SANDBOX_HELPER_SHA256: JSON.stringify(sandboxAsset?.sha256 ?? ""),
           SYNERGY_STANDALONE: "true",
@@ -216,14 +207,14 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
       ),
     )
     binaries[name] = Script.version
-    if (profile === "full") await stageProductAssets(path.join("dist", name))
-
-    if (sandboxAsset) {
-      copySandboxAsset(sandboxAsset, path.join("dist", name))
-    } else if (item.os !== "darwin") {
-      console.warn(`Sandbox asset is unavailable for ${targetKey(item)} — packaged runtime will not include a helper.`)
-    }
-    await prepareRuntimeAssets(name, profile)
+    await stageModuleSeed({
+      profile,
+      version: Script.version,
+      archives,
+      target: item,
+      destination: path.resolve("dist", name, "runtime"),
+    })
+    await writeRuntimeManifest(path.resolve("dist", name), name, profile)
   }
   return binaries
 
@@ -280,30 +271,6 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
     }
   }
 
-  function shouldReusePublishedRuntime(item: { os: string; arch: string }): boolean {
-    return process.env.SYNERGY_REUSE_PUBLISHED_RUNTIME === "1" && item.os === "win32" && item.arch === "arm64"
-  }
-
-  async function extractPublishedRuntimePackage(name: string, version: string) {
-    const packageName = `@ericsanchezok/${name}`
-    const destination = path.join(dir, "dist", name)
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-runtime-package-"))
-    try {
-      console.log(`reusing published runtime package ${packageName}@${version}`)
-      await retryCommand(packageName, () => $`npm pack ${`${packageName}@${version}`} --silent`.cwd(temp).quiet())
-      const tarball = fs.readdirSync(temp).find((entry) => entry.endsWith(".tgz"))
-      if (!tarball) {
-        throw new Error(`npm pack did not produce a tarball for ${packageName}@${version}`)
-      }
-
-      fs.rmSync(destination, { recursive: true, force: true })
-      fs.mkdirSync(destination, { recursive: true })
-      await $`tar -xzf ${path.join(temp, tarball)} -C ${destination} --strip-components=1`
-    } finally {
-      fs.rmSync(temp, { recursive: true, force: true })
-    }
-  }
-
   async function retryCommand(name: string, command: () => Promise<unknown>) {
     let lastError: unknown
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -319,21 +286,6 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
     }
     throw lastError
   }
-}
-
-async function stageProductAssets(runtimeDir: string) {
-  const [playwright, embedding, svg, holos] = await Promise.all([
-    import("../../../packages/presets/script/playwright-runtime-assets"),
-    import("../../../packages/library/script/embedding-runtime-assets"),
-    import("../../../packages/connections/script/svg-raster-runtime-assets"),
-    import("../../../packages/connections/script/holos-cli-assets"),
-  ])
-  await Promise.all([
-    playwright.stagePlaywrightCoreRuntime({ runtimeDir }),
-    embedding.stageEmbeddingRuntimeAssets({ runtimeDir }),
-    svg.stageSvgRasterRuntimeAssets({ runtimeDir }),
-  ])
-  holos.copyHolosCliAsset(runtimeDir)
 }
 
 export async function generateSchema(directory: string, profile: RuntimeArtifactProfile) {

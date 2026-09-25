@@ -1,4 +1,6 @@
 import path from "node:path"
+import { existsSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { Resvg, initWasm } from "@resvg/resvg-wasm"
 import {
   SVG_RASTER_RUNTIME_FONT_FAMILY,
@@ -15,6 +17,7 @@ const MAX_PREVIEW_BYTES = 10 * 1024 * 1024
 
 let initialized: Promise<void> | undefined
 let fontBuffers: Promise<Uint8Array[]> | undefined
+const moduleAssets = fileURLToPath(new URL(`../../../${SVG_RASTER_RUNTIME_PATH}/`, import.meta.url))
 
 self.onmessage = async (event: MessageEvent<{ svg: Uint8Array }>) => {
   try {
@@ -63,9 +66,12 @@ function previewFit(width: number, height: number): { mode: "width" | "height"; 
 
 function initialize(): Promise<void> {
   initialized ??= (async () => {
-    const wasmPath = isStandalone()
-      ? path.resolve(path.dirname(process.execPath), "..", SVG_RASTER_RUNTIME_PATH, SVG_RASTER_RUNTIME_WASM)
-      : Bun.resolveSync("@resvg/resvg-wasm/index_bg.wasm", import.meta.dir)
+    const packaged = path.join(moduleAssets, SVG_RASTER_RUNTIME_WASM)
+    const wasmPath = existsSync(packaged)
+      ? packaged
+      : isStandalone()
+        ? path.resolve(path.dirname(process.execPath), "..", SVG_RASTER_RUNTIME_PATH, SVG_RASTER_RUNTIME_WASM)
+        : Bun.resolveSync("@resvg/resvg-wasm/index_bg.wasm", import.meta.dir)
     const wasm = new Uint8Array(await Bun.file(wasmPath).arrayBuffer())
     await initWasm(wasm)
   })()
@@ -75,15 +81,18 @@ function initialize(): Promise<void> {
 function loadFonts(): Promise<Uint8Array[]> {
   fontBuffers ??= Promise.all(
     SVG_RASTER_RUNTIME_FONT_FILES.map(async (font) => {
-      const fontPath = isStandalone()
-        ? path.resolve(
-            path.dirname(process.execPath),
-            "..",
-            SVG_RASTER_RUNTIME_PATH,
-            SVG_RASTER_RUNTIME_FONT_PATH,
-            font,
-          )
-        : path.resolve(import.meta.dir, "../../../../script/assets/resvg-wasm", SVG_RASTER_RUNTIME_FONT_PATH, font)
+      const packaged = path.join(moduleAssets, SVG_RASTER_RUNTIME_FONT_PATH, font)
+      const fontPath = existsSync(packaged)
+        ? packaged
+        : isStandalone()
+          ? path.resolve(
+              path.dirname(process.execPath),
+              "..",
+              SVG_RASTER_RUNTIME_PATH,
+              SVG_RASTER_RUNTIME_FONT_PATH,
+              font,
+            )
+          : path.resolve(import.meta.dir, "../../../../script/assets/resvg-wasm", SVG_RASTER_RUNTIME_FONT_PATH, font)
       return new Uint8Array(await Bun.file(fontPath).arrayBuffer())
     }),
   )
