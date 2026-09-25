@@ -32,5 +32,24 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "acp",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "acp",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "server": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-server": "1.1.26"
+    }
   }
 }

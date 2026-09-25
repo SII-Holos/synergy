@@ -10,6 +10,7 @@ export function server(): RuntimeComponent {
     version,
     requires: { "local-runtime": version },
     hosts: ["http"],
+    adapters: { cli: new URL("./cli-adapter.ts", import.meta.url) },
     register: registerHttp,
     services: () => ({
       transport: {

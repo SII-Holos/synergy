@@ -12,7 +12,7 @@ export function library(): RuntimeComponent {
     requires: { "local-runtime": version },
     workers: { agent: new URL("./worker.ts", import.meta.url) },
     services: () => ({ disposeExtensions: disposeLibrary }),
-    adapters: { http: new URL("./http.ts", import.meta.url) },
+    adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register() {
       registerReload()
       registerLibrary()

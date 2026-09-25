@@ -1,22 +1,11 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime/host"
-async function bootstrap(): Promise<void> {
-  if (process.argv.includes("__storage-maintenance-runner")) {
-    const { registerFullPreset } = await import("./registration")
-    registerFullPreset()
-    const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
-    await using handle = await StorageMaintenance.open({ recover: true })
-    return
-  }
-  if (process.argv.includes("__storage-worker-runner")) {
-    await import("@ericsanchezok/synergy-harness/storage/sqlite-worker")
-    await new Promise(() => {})
-    return
-  }
-  if (process.argv.some((arg) => arg.startsWith("__") && arg.endsWith("-runner"))) {
-    const { Global } = await import("@ericsanchezok/synergy-harness/global")
-    await Global.initialize({ cache: false })
-  }
+import { main as runCli } from "@ericsanchezok/synergy-cli/index"
+import { fullComponents } from "./components"
+import { presetWebApp } from "./server/web-app"
+import { selectComponents } from "@ericsanchezok/synergy-cli/component-selection"
+
+export async function main() {
   if (process.argv.includes("__browser-playwright-runtime-check")) {
     const { PlaywrightRuntime } = await import("@ericsanchezok/synergy-browser-runtime/playwright-runtime")
     if (typeof PlaywrightRuntime.load().chromium.launch !== "function")
@@ -24,93 +13,23 @@ async function bootstrap(): Promise<void> {
     console.log(`Playwright Core ${PlaywrightRuntime.version()}`)
     return
   }
-
   if (process.argv.includes("__embedding-runtime-check")) {
     const { verifyStandaloneEmbeddingRuntime } = await import("@ericsanchezok/synergy-library/vector/embedding-runtime")
     await verifyStandaloneEmbeddingRuntime()
     console.log("Standalone embedding runtime ready")
     return
   }
-
   if (process.argv.includes("__browser-install-deps-runner")) {
-    const { installBrowserDependencies } = await import("@ericsanchezok/synergy-browser-runtime/install-deps-runner")
-    await installBrowserDependencies()
-    return
+    return RuntimeContext.create(createLocalHost()).run(async () => {
+      const { Global } = await import("@ericsanchezok/synergy-harness/global")
+      await Global.initialize({ cache: false })
+      await (await import("@ericsanchezok/synergy-browser-runtime/install-deps-runner")).installBrowserDependencies()
+    })
   }
+  await runCli(selectComponents([...fullComponents(), presetWebApp()], process.env.SYNERGY_COMPONENTS))
+}
 
-  const pluginRuntimeRunnerArgIndex = process.argv.indexOf("__plugin-runtime-runner")
-  if (pluginRuntimeRunnerArgIndex >= 0) {
-    const entryPath = process.argv[pluginRuntimeRunnerArgIndex + 1]
-    if (!entryPath) {
-      console.error("Missing plugin runtime entry path")
-      process.exit(1)
-    }
-    process.argv = [process.argv[0] ?? "synergy", process.argv[1] ?? "synergy", entryPath]
-    await import("@ericsanchezok/synergy-plugin-host/plugin-runtime/runner")
-    await new Promise(() => {})
-    return
-  }
-
-  if (process.argv.includes("__observability-worker-runner")) {
-    await import("@ericsanchezok/synergy-harness/observability/telemetry-worker")
-    await new Promise(() => {})
-    return
-  }
-
-  if (process.argv.includes("__agent-turn-runner")) {
-    const { registerWorkerComponents } = await import("@ericsanchezok/synergy-agent-runtime/workers")
-    await registerWorkerComponents("agent")
-    const { startAgentWorker } = await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
-    startAgentWorker()
-    await new Promise(() => {})
-    return
-  }
-
-  if (process.argv.includes("__policy-worker-runner")) {
-    const { registerWorkerComponents } = await import("@ericsanchezok/synergy-agent-runtime/workers")
-    await registerWorkerComponents("policy")
-    const { startPolicyWorker } = await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
-    startPolicyWorker()
-    await new Promise(() => {})
-    return
-  }
-
-  const { runCli } = await import("@ericsanchezok/synergy-cli/main")
-  const { fullCommands } = await import("./cli-commands")
-  await runCli({
-    dataCommands: async () => (await import("./cli/data")).commands,
-    defaultCommand: "server",
-    commands: fullCommands,
-    runtimeFactory: async (options) => (await import("./server/runtime-handle")).PresetRuntimeHandle.openTask(options),
-    beforeCommand: async (command) => {
-      if (command !== "send") {
-        const { registerFullPreset } = await import("./registration")
-        registerFullPreset()
-      }
-    },
-    pluginCommands: async (directory) => {
-      const { installedPluginCliMetadata } = await import("@ericsanchezok/synergy-plugin-host/plugin/cli-metadata")
-      const { createPluginCliCommandModule } = await import("@ericsanchezok/synergy-plugin-host/plugin/cli-command")
-      return (await installedPluginCliMetadata()).map((plugin) =>
-        createPluginCliCommandModule({
-          plugin,
-          resolveScope: async () =>
-            (await (await import("@ericsanchezok/synergy-harness/scope")).Scope.fromDirectory(directory)).scope,
-        }),
-      )
-    },
-  })
+if (import.meta.main) {
+  await main()
   process.exit(process.exitCode ?? 0)
 }
-
-export async function main() {
-  const workerIndex = process.argv.indexOf("__owned-process-runner")
-  if (workerIndex >= 0) {
-    const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-local-runtime/process/owned-worker")
-    await runOwnedProcessWorker(process.argv[workerIndex + 1]!)
-    process.exit(0)
-  }
-  await RuntimeContext.create(createLocalHost()).run(bootstrap)
-}
-
-if (import.meta.main) await main()

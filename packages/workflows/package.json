@@ -132,5 +132,27 @@
     "@ericsanchezok/synergy-server": {
       "optional": true
     }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "workflows",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "workflows",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "library": "1.1.26",
+      "note": "1.1.26",
+      "plugin-host": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-library": "1.1.26",
+      "@ericsanchezok/synergy-note": "1.1.26"
+    }
   }
 }

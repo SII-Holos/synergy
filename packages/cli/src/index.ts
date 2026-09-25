@@ -1,4 +1,6 @@
-export async function runCoreWorker(): Promise<boolean> {
+import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
+
+export async function runCoreWorker(components: readonly RuntimeComponent[] = []): Promise<boolean> {
   const worker = process.argv.find((arg) =>
     [
       "__storage-worker-runner",
@@ -6,6 +8,8 @@ export async function runCoreWorker(): Promise<boolean> {
       "__observability-worker-runner",
       "__agent-turn-runner",
       "__policy-worker-runner",
+      "__plugin-runtime-runner",
+      "__storage-maintenance-runner",
     ].includes(arg),
   )
   if (!worker) return false
@@ -22,19 +26,32 @@ export async function runCoreWorker(): Promise<boolean> {
   const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
   const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime/host")
   return RuntimeContext.create(createLocalHost()).run(async () => {
+    if (worker === "__storage-maintenance-runner") {
+      const { createRuntimeCli } = await import("./runtime-cli")
+      ;(await createRuntimeCli(components)).register!()
+      const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
+      await using handle = await StorageMaintenance.open({ recover: true })
+      return true
+    }
     const { Global } = await import("@ericsanchezok/synergy-harness/global")
     await Global.initialize({ cache: false })
+    if (worker === "__plugin-runtime-runner") {
+      const entry = process.argv[process.argv.indexOf(worker) + 1]
+      if (!entry) throw new Error("Missing plugin runtime entry path")
+      process.argv = [process.argv[0], process.argv[1], entry]
+      await import("@ericsanchezok/synergy-plugin-host/plugin-runtime/runner")
+    }
     if (worker === "__observability-worker-runner")
       await import("@ericsanchezok/synergy-harness/observability/telemetry-worker")
     if (worker === "__agent-turn-runner") {
-      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-local-runtime/register")
-      registerLocalRuntime()
+      const { registerWorkerComponents } = await import("@ericsanchezok/synergy-agent-runtime/workers")
+      await registerWorkerComponents("agent")
       const { startAgentWorker } = await import("@ericsanchezok/synergy-harness/session/agent-turn/runner")
       startAgentWorker()
     }
     if (worker === "__policy-worker-runner") {
-      const { registerLocalRuntime } = await import("@ericsanchezok/synergy-local-runtime/register")
-      registerLocalRuntime()
+      const { registerWorkerComponents } = await import("@ericsanchezok/synergy-agent-runtime/workers")
+      await registerWorkerComponents("policy")
       const { startPolicyWorker } = await import("@ericsanchezok/synergy-harness/enforcement/policy-worker/runner")
       startPolicyWorker()
     }
@@ -43,13 +60,11 @@ export async function runCoreWorker(): Promise<boolean> {
   })
 }
 
-export async function main() {
-  if (await runCoreWorker()) return
+export async function main(components: readonly RuntimeComponent[] = []) {
+  if (await runCoreWorker(components)) return
   const { runCli } = await import("./main")
-  await runCli({
-    runtimeFactory: async (options) => (await import("@ericsanchezok/synergy-local-runtime")).openLocalRuntime(options),
-    beforeCommand: async () => (await import("@ericsanchezok/synergy-local-runtime/register")).registerLocalRuntime(),
-  })
+  const { createRuntimeCli } = await import("./runtime-cli")
+  await runCli(await createRuntimeCli(components))
 }
 
 if (import.meta.main) {

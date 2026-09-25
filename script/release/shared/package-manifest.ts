@@ -1,9 +1,11 @@
 import path from "path"
 import { FIXED_REGISTRY_PACKAGES, REPO_ROOT } from "./packages"
+import type { SynergyPackage } from "../../../packages/plugin/src/package"
 
 export type DependencyVersionMap = Record<string, string>
 
 export type PackageJson = {
+  synergy?: SynergyPackage
   exports?: Record<string, unknown>
   dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
@@ -23,7 +25,7 @@ export function createPublishablePackageJson(options: {
   catalog: Record<string, string>
   dependencyVersions?: DependencyVersionMap
 }): PackageJson {
-  const packageJson = structuredClone(options.packageJson)
+  const packageJson = versionPackage(options.packageJson, options.version)
   if (packageJson.exports) {
     packageJson.exports = distExports(packageJson.exports)
   }
@@ -51,6 +53,27 @@ export function createPublishablePackageJson(options: {
   )
   delete packageJson.devDependencies
   return packageJson
+}
+
+export function versionPackage(original: PackageJson, version: string): PackageJson {
+  const pkg = structuredClone(original)
+  pkg.version = version
+  if (!pkg.synergy) return pkg
+  const previous = pkg.synergy.version
+  pkg.synergy.version = version
+  if (pkg.synergy.compatibility.synergy === previous) pkg.synergy.compatibility.synergy = version
+  if (pkg.synergy.kind === "component")
+    pkg.synergy.requires = Object.fromEntries(
+      Object.entries(pkg.synergy.requires ?? {}).map(([id, range]) => [id, range === previous ? version : range]),
+    )
+  if (pkg.synergy.kind === "component" || pkg.synergy.kind === "preset")
+    pkg.synergy.packages = Object.fromEntries(
+      Object.entries(pkg.synergy.packages ?? {}).map(([name, spec]) => [
+        name,
+        name.startsWith("@ericsanchezok/synergy-") && spec === previous ? version : spec,
+      ]),
+    )
+  return pkg
 }
 
 export function createSynergyWrapperPackageJson(options: {

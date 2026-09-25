@@ -13,6 +13,9 @@ import { media } from "@ericsanchezok/synergy-media/component"
 import { note } from "@ericsanchezok/synergy-note/component"
 import { workbench } from "@ericsanchezok/synergy-workbench/component"
 import { workflows } from "@ericsanchezok/synergy-workflows/component"
+import { pluginKit } from "@ericsanchezok/synergy-plugin-kit/component"
+import { dataManagement } from "./component"
+import { server } from "@ericsanchezok/synergy-server/component"
 
 export function fullComponents() {
   return [
@@ -31,5 +34,8 @@ export function fullComponents() {
     note(),
     workbench(),
     workflows(),
+    pluginKit(),
+    dataManagement(),
+    server(),
   ]
 }

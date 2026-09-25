@@ -4,7 +4,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { z } from "zod"
 import { SynergyPackage, SynergyPackageName } from "@ericsanchezok/synergy-plugin/package"
-import { InstallationGenerations, type InstalledPackage } from "./generations"
+import { InstallationGenerations, type InstalledPackage, type InstalledGeneration } from "./generations"
 import { sha256File } from "./files"
 
 const PackageJson = z.object({
@@ -18,6 +18,9 @@ export interface PackageGraphOptions {
   sources: readonly string[]
   hostVersion: string
   basePackages?: Record<string, string>
+  previous?: InstalledGeneration
+  remove?: readonly string[]
+  update?: readonly string[]
   cwd?: string
   env?: Record<string, string | undefined>
   signal?: AbortSignal
@@ -25,7 +28,10 @@ export interface PackageGraphOptions {
 
 async function packageManager(root: string, directory: string, args: string[], options: PackageGraphOptions) {
   options.signal?.throwIfAborted()
-  const child = Bun.spawn([process.execPath, ...args], {
+  const command = ["add", "install", "update"].includes(args[0])
+    ? [args[0], "--linker=hoisted", ...args.slice(1)]
+    : args
+  const child = Bun.spawn([process.execPath, ...command], {
     cwd: directory,
     env: {
       ...(options.env ?? process.env),
@@ -84,16 +90,43 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
   const dispose = () => fs.rm(directory, { recursive: true, force: true })
   try {
     const basePackages = Dependencies.parse(options.basePackages ?? {})
+    const retained = { ...options.previous?.roots }
+    for (const name of options.remove ?? []) {
+      if (Object.hasOwn(basePackages, name)) throw new Error(`Cannot remove core package ${name}`)
+      if (!Object.hasOwn(retained, name)) {
+        const owners = Object.entries(options.previous?.packages ?? {})
+          .filter(([, pkg]) => Object.hasOwn(pkg.dependencies ?? {}, name))
+          .map(([owner]) => owner)
+        throw new Error(
+          owners.length ? `${name} is required by ${owners.join(", ")}` : `Package is not installed: ${name}`,
+        )
+      }
+      delete retained[name]
+    }
+    if (options.previous) {
+      await fs.cp(options.previous.directory, directory, {
+        recursive: true,
+        verbatimSymlinks: true,
+        filter: (filename) => filename !== path.join(options.previous!.directory, "generation.json"),
+      })
+    }
     await Bun.write(
       path.join(directory, "package.json"),
-      JSON.stringify({ private: true, type: "module", dependencies: basePackages }),
+      JSON.stringify({ private: true, type: "module", dependencies: { ...basePackages, ...retained } }),
     )
     const sources: string[] = []
     for (const spec of options.sources) sources.push(await sourceSpec(root, spec, options))
     if (sources.length)
       await packageManager(root, directory, ["add", "--ignore-scripts", "--exact", ...sources], options)
-    else if (Object.keys(basePackages).length)
+    else if (Object.keys(basePackages).length || Object.keys(retained).length || options.previous)
       await packageManager(root, directory, ["install", "--ignore-scripts"], options)
+    if (options.update?.length) {
+      for (const name of options.update) {
+        if (!Object.hasOwn(retained, name))
+          throw new Error(`Only explicitly installed packages can be updated: ${name}`)
+      }
+      await packageManager(root, directory, ["update", "--ignore-scripts", ...options.update], options)
+    }
     const dependencies = async () =>
       Dependencies.parse((await Bun.file(path.join(directory, "package.json")).json()).dependencies ?? {})
     const initial = await dependencies()
@@ -130,7 +163,11 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
         if (metadata?.kind !== "preset" && metadata?.kind !== "component") continue
         const resolvedDependencies: Record<string, string> = {}
         for (const [dependency, spec] of Object.entries(metadata.packages ?? {})) {
-          const normalized = await sourceSpec(root, spec, { ...options, cwd: path.join(directory, relative) })
+          const previous = options.previous?.packages[name]
+          const pinned =
+            JSON.stringify(previous?.metadata) === JSON.stringify(metadata) && previous?.dependencies?.[dependency]
+          const normalized =
+            pinned || (await sourceSpec(root, spec, { ...options, cwd: path.join(directory, relative) }))
           resolvedDependencies[dependency] = normalized
           if (selected.has(dependency)) {
             const existing =
@@ -152,6 +189,16 @@ export async function preparePackageGraph(root: string, options: PackageGraphOpt
       await Bun.write(path.join(directory, "package.json"), JSON.stringify(manifest))
       await packageManager(root, directory, ["install", "--ignore-scripts"], options)
       for (const name of Object.keys(pending)) selected.add(name)
+    }
+    if (options.previous) {
+      await fs.rm(path.join(directory, "node_modules"), { recursive: true, force: true })
+      if (Object.keys(packages).length)
+        await packageManager(root, directory, ["install", "--ignore-scripts", "--frozen-lockfile"], options)
+    }
+    for (const [name, pkg] of Object.entries(packages)) {
+      const actual = PackageJson.parse(await Bun.file(path.join(directory, pkg.directory, "package.json")).json())
+      if (actual.version !== pkg.version || JSON.stringify(actual.synergy) !== JSON.stringify(pkg.metadata))
+        throw new Error(`Package resolution changed a previously validated selection: ${name}`)
     }
     return { directory, roots, packages, [Symbol.asyncDispose]: dispose }
   } catch (error) {

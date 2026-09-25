@@ -49,7 +49,7 @@ const Manifest = z
   })
   .strict()
 
-export type InstalledGeneration = z.infer<typeof Manifest> & { directory: string }
+export type InstalledGeneration = z.infer<typeof Manifest> & { directory: string; sha256: string }
 export type InstalledPackage = z.infer<typeof LockedPackage>
 export interface GenerationInput {
   directory: string
@@ -123,7 +123,7 @@ async function verify(root: string, selected: z.infer<typeof Pointer>): Promise<
   if (manifest.id !== selected.id) throw new Error("Installation generation identity mismatch")
   const actual = await inventory(directory)
   if (JSON.stringify(actual) !== JSON.stringify(manifest.files)) throw new Error("Installation file integrity mismatch")
-  return { ...manifest, directory }
+  return { ...manifest, directory, sha256: selected.sha256 }
 }
 
 async function recoverGeneration(root: string) {
@@ -183,6 +183,10 @@ function validatePackages(input: GenerationInput) {
 
 export namespace InstallationGenerations {
   export const recoverUnlocked = recoverGeneration
+
+  export function pin(root: string, selected: { id: string; sha256: string }) {
+    return verify(root, Pointer.parse({ version: 1, ...selected }))
+  }
 
   export async function stage(root: string) {
     const directory = path.join(base(root), "staging", randomUUID())
@@ -261,7 +265,7 @@ export namespace InstallationGenerations {
           private: true,
         })
         await fs.rm(pending)
-        return { ...manifest, directory }
+        return { ...manifest, directory, sha256: next.sha256 }
       } catch (error) {
         await recoverUnlocked(root)
         if (samePointer(await pointer(root), next)) return verify(root, next)

@@ -6,7 +6,8 @@ export function acp(): RuntimeComponent {
     id: "acp",
     apiVersion: 1,
     version,
-    requires: { "local-runtime": version },
+    requires: { "local-runtime": version, server: version },
+    adapters: { cli: new URL("./cli-adapter.ts", import.meta.url) },
     register() {},
   }
 }

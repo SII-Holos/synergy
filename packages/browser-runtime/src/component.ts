@@ -10,7 +10,7 @@ export function browser(): RuntimeComponent {
     version,
     requires: { "local-runtime": version },
     services: () => ({ disposeExtensions: disposeBrowser }),
-    adapters: { http: new URL("./http.ts", import.meta.url) },
+    adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register() {
       registerBrowser()
     },

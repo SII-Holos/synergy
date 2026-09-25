@@ -14,3 +14,5 @@ Run bun run typecheck and the affected tests, then the root package and dependen
 Independent hosts connect `disposeLibrary()` from `./register` to their runtime extension cleanup after execution and background jobs drain. It disposes embedding resources and closes the Library database; repeated disposal is safe.
 
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
+
+Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.

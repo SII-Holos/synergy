@@ -18,3 +18,5 @@ Run `bun run typecheck` and root `bun turbo build --filter=@ericsanchezok/synerg
 Definition inspection runs a fresh Bun CLI subprocess from the author's project; keep its JSON-only descriptor boundary identical for source, published package and compiled host execution. Compile the standalone CLI probe in a fresh Bun CLI process so earlier fixture builds cannot share compiler loader state. The compiled CLI behavioral test covers `typegen` and scoped CSS builds without sibling implementation files. Type generation formats through explicitly bundled Prettier parsers so it never depends on discovering parser files beside the executable.
 
 The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.
+
+Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.

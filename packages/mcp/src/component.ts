@@ -25,7 +25,7 @@ export function mcp(): RuntimeComponent {
         async stop() {},
       },
     }),
-    adapters: { http: new URL("./http.ts", import.meta.url) },
+    adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register() {
       registerReload()
       registerConfig()

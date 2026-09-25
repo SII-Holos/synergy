@@ -47,6 +47,7 @@ function printUnhandledFailure(kind: string, error: unknown) {
 }
 
 export interface CliOptions {
+  register?(): void
   runtimeFactory: typeof openLocalRuntime
   commands?: CommandEntry[]
   dataCommands?(): Promise<CommandModule[]>
@@ -61,7 +62,8 @@ export async function runCli(options: CliOptions): Promise<void> {
   const context = RuntimeContext.create(host)
   try {
     await context.run(async () => {
-      registerLocalRuntime({ workers: false })
+      if (options.register) options.register()
+      else registerLocalRuntime({ workers: false })
       try {
         const run = () =>
           runCliImplementation({
@@ -111,6 +113,15 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
     | Awaited<ReturnType<typeof import("@ericsanchezok/synergy-harness/storage/maintenance").StorageMaintenance.open>>
     | undefined
   const builtinCommands = [...coreCommands(options.runtimeFactory, options.dataCommands), ...(options.commands ?? [])]
+  const commandNames = new Set<string>()
+  for (const entry of builtinCommands) {
+    for (const name of (Array.isArray(entry.command) ? entry.command : [entry.command]).map(
+      (command) => command.split(" ")[0],
+    )) {
+      if (commandNames.has(name)) throw new Error(`CLI namespace ${name} conflicts with an existing command`)
+      commandNames.add(name)
+    }
+  }
   const onRejection = (error: unknown) => {
     process.exitCode = 1
     Log.Default.error("rejection", { error: error instanceof Error ? error.message : error })

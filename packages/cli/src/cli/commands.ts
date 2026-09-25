@@ -1,12 +1,8 @@
 import type { CommandModule } from "yargs"
 import type { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 
-export interface CommandEntry {
-  command: string | string[]
-  describe: string
-  storage?: "maintenance"
-  load(): Promise<CommandModule>
-}
+import type { CommandEntry } from "@ericsanchezok/synergy-util/cli-command"
+export type { CommandEntry } from "@ericsanchezok/synergy-util/cli-command"
 
 export function coreCommands(
   runtimeFactory: typeof openLocalRuntime,

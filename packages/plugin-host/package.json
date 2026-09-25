@@ -48,7 +48,8 @@
     "./http": "./src/http.ts",
     "./startup-status": "./src/startup-status.ts",
     "./installation/generations": "./src/installation/generations.ts",
-    "./installation/package-resolution": "./src/installation/package-resolution.ts"
+    "./installation/package-resolution": "./src/installation/package-resolution.ts",
+    "./installation/component-loader": "./src/installation/component-loader.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

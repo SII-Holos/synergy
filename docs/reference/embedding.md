@@ -41,7 +41,7 @@ try {
 }
 ```
 
-Supply the absolute installed executable path and exact host/component versions. Components must already be installed. `args` supplies executable-prefix arguments when explicitly running a source or module entry. The SDK uses a dynamic loopback port by default, gives the child a private bearer credential through its environment, and checks the versioned readiness record's process ID, version, home, endpoint and requested components. It does not parse a human startup banner. Timeout, abort and failed readiness drain only the process it created; `close()` is asynchronous and idempotent.
+Supply the absolute installed executable path and exact host/component versions. Components must already be installed. The managed selection enables exactly those components plus their declared requirements and the core host; unselected installed mechanisms stay inactive. `args` supplies executable-prefix arguments when explicitly running a source or module entry. The SDK uses a dynamic loopback port by default, gives the child a private bearer credential through its environment, and checks the versioned readiness record's process ID, version, home, endpoint and requested components. It does not parse a human startup banner. Timeout, abort and failed readiness drain only the process it created; `close()` is asynchronous and idempotent.
 
 To attach to a running service:
 

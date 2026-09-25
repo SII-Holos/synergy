@@ -10,3 +10,5 @@ Own the reusable HTTP server, core routes, transport middleware, and OpenAPI gen
 Run bun run typecheck and the affected tests, then the root package and dependency checks. Package test and coverage commands prepare the native PTY library before real WebSocket transport tests; direct test invocations require bun ../local-runtime/script/build-pty.ts first.
 
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
+
+Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.

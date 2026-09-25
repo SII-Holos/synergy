@@ -93,6 +93,12 @@ export async function buildWorkspace(directory: string, options: { output?: stri
           ts.isNewExpression(parent) && parent.expression.getText(syntax) === "URL" && parent.arguments?.[0] === node
         if (module || resource) {
           const base = path.resolve(path.dirname(file), node.text)
+          if (base === path.join(root, "package.json")) {
+            let value = path.relative(path.dirname(destination), base).split(path.sep).join("/")
+            if (!value.startsWith(".")) value = `./${value}`
+            replacements.push({ start: node.getStart(syntax) + 1, end: node.getEnd() - 1, value })
+            return
+          }
           const target = [
             base,
             base.replace(/\.js$/, ".ts"),
@@ -101,7 +107,11 @@ export async function buildWorkspace(directory: string, options: { output?: stri
             path.join(base, "index.ts"),
           ].find((candidate) => known.has(candidate))
           if (target && /\.(ts|tsx|mts)$/.test(target)) {
-            let value = path.relative(path.dirname(file), target).replace(/\.(ts|tsx|mts)$/, ".js")
+            let value = path
+              .relative(path.dirname(file), target)
+              .split(path.sep)
+              .join("/")
+              .replace(/\.(ts|tsx|mts)$/, ".js")
             if (!value.startsWith(".")) value = `./${value}`
             replacements.push({ start: node.getStart(syntax) + 1, end: node.getEnd() - 1, value })
           }

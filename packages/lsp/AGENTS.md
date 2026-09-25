@@ -7,3 +7,5 @@ Tests live under `test/` and use the shared isolated-home support. Run `bun run 
 LSP resources follow Workspace binding generations. Own server preparation, native process admission, cancellation and whole-tree cleanup. Retire idle clients under write contention and preserve diagnostics for lazy restart. Run `bun test test/lsp test/workspace-file` for native ownership changes.
 
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
+
+Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.

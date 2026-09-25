@@ -50,7 +50,7 @@ export async function packWorkspace(
   const byName = new Map(packages.map((pkg) => [pkg.name, pkg]))
   const entry = packages.find((pkg) => pkg.directory === directory)
   if (!entry) throw new Error(`Unknown workspace: ${directory}`)
-  const graph = workspaceGraph(packages)
+  const graph = workspaceGraph(packages, { optionalPeers: false })
   const archivePaths = new Map<string, string>()
   const catalog = await readCatalog()
   const dependencyVersions = Object.fromEntries(

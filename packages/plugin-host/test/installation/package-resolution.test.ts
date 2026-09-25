@@ -3,6 +3,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { preparePackageGraph } from "../../src/installation/package-resolution"
+import { InstallationGenerations } from "../../src/installation/generations"
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-package-test-"))
@@ -80,4 +81,57 @@ test("rejects incompatible metadata and cleans up the failed staging graph", asy
   )
   expect(await fs.readdir(path.join(temp.root, "installations/staging"))).toEqual([])
   expect(await Bun.file(path.join(temp.root, "executed")).exists()).toBe(false)
+})
+
+test("adding and removing roots preserves pinned preset dependencies and the running generation", async () => {
+  await using temp = await fixture()
+  const component = await pack(temp.root, "selected-component", {
+    ...base,
+    kind: "component",
+    id: "selected",
+    apiVersion: 1,
+    entry: "./component.js",
+    export: "example",
+  })
+  const preset = await pack(temp.root, "selected-preset", {
+    ...base,
+    kind: "preset",
+    id: "selected-preset",
+    packages: { "selected-component": "file:" + component },
+  })
+  await using first = await preparePackageGraph(temp.root, { sources: [preset], hostVersion: "2.0.0" })
+  const current = await InstallationGenerations.commit(temp.root, {
+    ...first,
+    hostVersion: "2.0.0",
+    trustHostCode: true,
+  })
+  await fs.rm(component)
+  await fs.rm(preset)
+  const extra = await pack(temp.root, "extra-preset", { ...base, kind: "preset", id: "extra", packages: {} })
+  await using next = await preparePackageGraph(temp.root, { sources: [extra], hostVersion: "2.0.0", previous: current })
+  expect(Object.keys(next.roots).sort()).toEqual(["extra-preset", "selected-preset"])
+  expect(next.packages["selected-component"].version).toBe("2.0.0")
+  expect((await InstallationGenerations.current(temp.root))?.id).toBe(current.id)
+  await expect(
+    preparePackageGraph(temp.root, {
+      sources: [],
+      hostVersion: "2.0.0",
+      previous: current,
+      remove: ["selected-component"],
+    }),
+  ).rejects.toThrow("required by")
+  await using removed = await preparePackageGraph(temp.root, {
+    sources: [],
+    hostVersion: "2.0.0",
+    previous: current,
+    remove: ["selected-preset"],
+  })
+  expect(removed.roots).toEqual({})
+  expect(removed.packages).toEqual({})
+  expect(await Bun.file(path.join(current.directory, "node_modules/selected-component/component.js")).exists()).toBe(
+    true,
+  )
+  expect(await Bun.file(path.join(removed.directory, "node_modules/selected-component/component.js")).exists()).toBe(
+    false,
+  )
 })

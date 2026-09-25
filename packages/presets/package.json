@@ -20,7 +20,9 @@
     "./server/routes": "./src/server/routes.ts",
     "./cli/data/pack": "./src/cli/data/pack.ts",
     "./cli/data/move": "./src/cli/data/move.ts",
-    "./cli/data/merge": "./src/cli/data/merge.ts"
+    "./cli/data/merge": "./src/cli/data/merge.ts",
+    "./component": "./src/component.ts",
+    "./catalog": "./src/catalog.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -48,6 +50,7 @@
     "@ericsanchezok/synergy-mcp": "workspace:*",
     "@ericsanchezok/synergy-media": "workspace:*",
     "@ericsanchezok/synergy-note": "workspace:*",
+    "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-plugin-host": "workspace:*",
     "@ericsanchezok/synergy-plugin-kit": "workspace:*",
     "@ericsanchezok/synergy-server": "workspace:*",
@@ -61,7 +64,6 @@
   },
   "devDependencies": {
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
-    "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@tsconfig/bun": "catalog:",
@@ -75,5 +77,27 @@
     "jsonc-parser": "3.3.1",
     "playwright-core": "1.61.0",
     "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "data-management",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/modules/component.js",
+    "export": "dataManagement",
+    "requires": {
+      "library": "1.1.26",
+      "workflows": "1.1.26",
+      "connections": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-library": "1.1.26",
+      "@ericsanchezok/synergy-workflows": "1.1.26",
+      "@ericsanchezok/synergy-connections": "1.1.26"
+    }
   }
 }

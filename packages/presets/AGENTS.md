@@ -4,7 +4,7 @@ Own authoritative preset selections and complete-product integration fixtures. G
 
 - Assemble configuration, session schemas, migrations, tools, agents, routes and services explicitly before opening the shared Harness lifecycle through `PresetRuntimeHandle`. Startup seals configuration and migration registration; late imports must not partially install a capability.
 - Keep business implementations with their owning packages. Presets connects typed sources and lifecycle contributions; do not move domain algorithms into assembly or introduce package scanning.
-- Preserve the single `runCli()` parser and `synergy` command. Inject the preset runtime factory, command catalog, default server command and nested Data contributions. Full-data pack, merge and move operations belong here; Library owns its SQLite merge algorithms.
+- Preserve the single `runCli()` parser and `synergy` command. Compose the same `createRuntimeCli` component adapters as an installed host. Full-data pack, merge and move operations belong here; Library owns its SQLite merge algorithms.
 - Source and compiled agent workers use Agent Runtime role entrypoints and the explicitly pinned component plan; never register the full foreground composition in workers. Preserve resource discovery, verified sandbox assets, cancellation, evidence failures and shutdown drainage.
 - Keep core-only tests in Harness or Local Runtime. Full API, cross-domain lifecycle and product configuration tests belong here and explicitly register their required services.
 - Preserve unloaded domain data and existing migration IDs and ledgers. Read [persistence guidance](../../.synergy/skill/change-persistence/SKILL.md) before changing upgrades, imports or data movement.
@@ -18,3 +18,5 @@ Run manual startup and CLI checks with an isolated `SYNERGY_HOME` using `develop
 Review the owning Skill for CLI, persistence, execution, API, Browser or Channel changes. Regenerate API contracts with the root `./script/generate.ts` and command documentation with `bun script/gen/gen-cli-reference.ts` when those public contracts change.
 
 `bun run build` compiles workspace modules into `dist/modules`. Use the package-owned `bun script/build.ts --single --skip-install` for a local executable; release tooling selects its target matrix through that same explicit binary entry.
+
+`src/catalog.ts` owns declarative core/full/Web/Desktop package selections. Full includes backend components, HTTP and authoring tools; Web adds the application payload and Desktop adds its signed shell. `dataManagement()` contributes cross-domain data commands through the same component API. Source development also selects the local Web assets explicitly.

@@ -2,7 +2,6 @@ import path from "node:path"
 import { existsSync } from "node:fs"
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { createLocalHost, type LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
-import { server } from "@ericsanchezok/synergy-server/component"
 import { fullComponents } from "../components"
 import { presetWebApp } from "./web-app"
 
@@ -23,7 +22,7 @@ export namespace PresetRuntimeHandle {
       mode: "oneshot",
       listen: false,
       configSchemaPath: configSchemaPath(),
-      components: [...fullComponents(), server(), presetWebApp()],
+      components: [...fullComponents(), presetWebApp()],
     })
   }
 
@@ -34,7 +33,7 @@ export namespace PresetRuntimeHandle {
       host,
       home: host.root,
       configSchemaPath: configSchemaPath(),
-      components: [...fullComponents(), server(), presetWebApp()],
+      components: [...fullComponents(), presetWebApp()],
     })
     if (!handle.server) {
       await handle.close()

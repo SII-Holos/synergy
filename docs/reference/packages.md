@@ -4,7 +4,7 @@ The root `package.json` selects workspace packages. Each package manifest owns i
 
 ## Runtime entry points
 
-`@ericsanchezok/synergy-harness` exposes programmatic execution and lifecycle APIs. `@ericsanchezok/synergy-local-runtime` registers the default local host and provides `openLocalRuntime`. The single CLI implementation lives in `packages/cli`; `packages/presets` invokes that same CLI with full product capabilities. Both entry points use the command name `synergy`.
+`@ericsanchezok/synergy-harness` exposes programmatic execution and lifecycle APIs. `@ericsanchezok/synergy-local-runtime` registers the default local host and provides `openLocalRuntime`. The single CLI implementation lives in `packages/cli`; `packages/presets` invokes that same CLI with full product capabilities. Both entry points use the command name `synergy`, and `createRuntimeCli()` derives available commands from the selected components.
 
 `packages/server` owns HTTP/WS transport and core routes. Domain packages contribute their own routes, tools and commands. Full OpenAPI generation includes those contributions, and Web clients use `@ericsanchezok/synergy-sdk`.
 
@@ -20,9 +20,9 @@ MCP, LSP, Formatter, ACP, External Agents, Link Client and Code Tools are separa
 
 `@ericsanchezok/synergy-agent-runtime` provides `openAgentRuntime({ home, components })` for Bun. `home` is the data directory itself, and the returned handle exposes `client({ directory })`, `run()`, `close()` and asynchronous disposal. It includes Local Runtime and the process plugin host; optional domains come only from the explicit component list. See the [Agent Runtime package](../../packages/agent-runtime/README.md) for an embedding example.
 
-Each optional package exports a factory from `./component`. Factories declare identity, API version, dependency versions, optional ordering, role-specific worker entries and lazy HTTP adapters. A missing dependency, incompatible version, duplicate identity or cycle rejects the composition before storage opens. Registration and service state belong to each Runtime, including when two runtimes reuse the same component objects. The HTTP host combines independent route owners while preserving Scope middleware, authentication and operation IDs.
+Each optional package exports a factory from `./component`. Factories declare identity, API version, dependency versions, optional ordering, role-specific worker entries and lazy CLI/HTTP adapters. A missing dependency, incompatible version, duplicate identity or cycle rejects the composition before storage opens. Registration and service state belong to each Runtime, including when two runtimes reuse the same component objects. The HTTP host combines independent route owners while preserving Scope middleware, authentication and operation IDs.
 
-Plugin Host owns plugin execution and installation. Plugin Kit is an explicit authoring dependency; complete products inject its commands into the same parser. Domain CLI modules use shared terminal/command primitives and Local Runtime's network/Scope adapters, without depending on the CLI application.
+Plugin Host owns plugin execution and installation. Plugin Kit is an explicit authoring dependency; the full preset selects its authoring commands through the same component adapter used by downstream hosts. Domain CLI modules use shared terminal/command primitives and Local Runtime's network/Scope adapters, without depending on the CLI application.
 
 ## Package builds
 
@@ -47,5 +47,7 @@ Use `client.global.capabilities()` to inspect the active component selection. No
 `bun run deps:check` checks package imports, exports and dependency directions. `bun run monorepo:check` checks manifest consistency. `bun run package:check` validates existing public packages and their TypeScript resolution. Independent runtime archives additionally use the install check above. Tests and fixtures follow their domain owner; full composition tests live in `packages/presets/test`.
 
 See [Development](development.md) and [Open-source quality](../operations/open-source-quality.md) for repository commands and CI checks.
+
+The authoritative selection catalog is `packages/presets/src/catalog.ts`: core supplies execution and plugin hosting, full adds backend components, HTTP and Plugin Kit, Web adds its UI payload, and Desktop adds its application shell. Each first-party component publishes its factory entry, version and requirements under `package.json#synergy`.
 
 Installation metadata is published through `synergy-plugin/package`. Plugin Host owns source resolution and verified immutable module generations; `atomic-file` and `io-retry` are public Util primitives used by both startup verification and existing plugin recovery.
