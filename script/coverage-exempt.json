@@ -1505,14 +1505,6 @@
         {
           "glob": "src/plugin/runtime-policy.ts",
           "reason": "plugin runtime requires a live plugin process"
-        },
-        {
-          "glob": "src/plugin/cli/plugin-preview.ts",
-          "reason": "CLI command surface; exercised through Plugin Kit compiled CLI and real-host integration flows, not the core unit suite"
-        },
-        {
-          "glob": "src/plugin/cli/plugin-typegen.ts",
-          "reason": "CLI command surface; exercised through Plugin Kit compiled CLI and real-host integration flows, not the core unit suite"
         }
       ]
     },

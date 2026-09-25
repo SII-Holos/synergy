@@ -6,7 +6,6 @@
       "name": "synergy",
       "devDependencies": {
         "@arethetypeswrong/cli": "0.18.4",
-        "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",

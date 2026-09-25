@@ -4,6 +4,18 @@ export type ClientOptions = {
   baseUrl: `${string}://${string}` | (string & {})
 }
 
+export type RuntimeComponentInfo = {
+  id: string
+  version: string
+  apiVersion: 1
+}
+
+export type RuntimeCapabilities = {
+  apiVersion: 1
+  hostVersion: string
+  components: Array<RuntimeComponentInfo>
+}
+
 export type GlobalPaths = {
   home: string
   root: string
@@ -1322,24 +1334,6 @@ export type HolosReconnectResponse = {
   success: true
 }
 
-export type PushVapidKey = {
-  publicKey: string
-}
-
-export type PushCategories = {
-  completion: boolean
-  error: boolean
-  input: boolean
-}
-
-export type PushSubscriptionInfo = {
-  id: string
-  endpoint: string
-  deviceLabel?: string
-  created: number
-  categories: PushCategories
-}
-
 export type SynergyLinkHostObservation = {
   type: "synergy_link.host.hello"
   /**
@@ -1481,6 +1475,24 @@ export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | Syner
 
 export type SynergyLinkTargetRemoveResult = {
   success: true
+}
+
+export type PushVapidKey = {
+  publicKey: string
+}
+
+export type PushCategories = {
+  completion: boolean
+  error: boolean
+  input: boolean
+}
+
+export type PushSubscriptionInfo = {
+  id: string
+  endpoint: string
+  deviceLabel?: string
+  created: number
+  categories: PushCategories
 }
 
 export type AgendaTriggerAt = {
@@ -2887,273 +2899,6 @@ export type WorktreeConfig = {
   janitor?: boolean
 }
 
-/**
- * Retry policy for connecting to this server
- */
-export type McpRetryConfig = {
-  /**
-   * Maximum connection attempts before giving up
-   */
-  maxAttempts?: number
-  /**
-   * Initial backoff delay in ms between retries
-   */
-  backoffMs?: number
-  /**
-   * Multiplier applied to backoff on each retry
-   */
-  backoffMultiplier?: number
-  /**
-   * Cooldown period in ms before a retry cycle resets
-   */
-  cooldownMs?: number
-}
-
-/**
- * Filter which tools are exposed from this server
- */
-export type McpToolFilterConfig = {
-  /**
-   * Tool names to include (allowlist)
-   */
-  include?: Array<string>
-  /**
-   * Tool names to exclude (blocklist)
-   */
-  exclude?: Array<string>
-}
-
-/**
- * Tool execution behavior config
- */
-export type McpToolsConfig = {
-  /**
-   * Tool approval mode
-   */
-  approval?: "auto" | "always" | "per_session"
-  /**
-   * Maximum tool output size in bytes
-   */
-  maxOutputBytes?: number
-}
-
-/**
- * Tool list caching behavior
- */
-export type McpToolCacheConfig = {
-  /**
-   * Tool list caching mode
-   */
-  mode?: "disabled" | "session" | "persistent"
-  /**
-   * Time-to-live for cached tool list in ms
-   */
-  ttlMs?: number
-}
-
-export type McpLocalConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "local"
-  /**
-   * Command and arguments to run the MCP server
-   */
-  command: Array<string>
-  /**
-   * Working directory for local MCP servers
-   */
-  cwd?: string
-  /**
-   * Environment variables to set when running the MCP server
-   */
-  environment?: {
-    [key: string]: string
-  }
-  /**
-   * Whether tools require a session workspace; defaults to true
-   */
-  requiresWorkspace?: boolean
-  /**
-   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
-   */
-  timeout?: number
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-}
-
-export type McpOAuthConfig = {
-  /**
-   * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
-   */
-  clientId?: string
-  /**
-   * OAuth client secret (if required by the authorization server)
-   */
-  clientSecret?: string
-  /**
-   * OAuth scopes to request during authorization
-   */
-  scope?: string
-}
-
-export type McpRemoteConfig = {
-  /**
-   * Type of MCP server connection
-   */
-  type: "remote"
-  /**
-   * URL of the remote MCP server
-   */
-  url: string
-  /**
-   * Headers to send with the request
-   */
-  headers?: {
-    [key: string]: string
-  }
-  /**
-   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
-   */
-  oauth?: McpOAuthConfig | false
-  /**
-   * Whether tools require a session workspace; defaults to true
-   */
-  requiresWorkspace?: boolean
-  /**
-   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
-   */
-  timeout?: number
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-}
-
-/**
- * Default settings applied to all MCP servers that don't override them
- */
-export type McpDefaultsConfig = {
-  /**
-   * MCP startup mode
-   */
-  startup?: "eager" | "lazy" | "manual"
-  /**
-   * If true, this MCP server is required for the configured workflow
-   */
-  required?: boolean
-  /**
-   * Timeout in ms for initial connection handshake
-   */
-  connectTimeout?: number
-  /**
-   * Timeout in ms for listing tools
-   */
-  listTimeout?: number
-  /**
-   * Timeout in ms for tool call execution
-   */
-  callTimeout?: number
-  retry?: McpRetryConfig
-  /**
-   * Idle time in ms after which the server is shut down
-   */
-  idleShutdownMs?: number
-  toolFilter?: McpToolFilterConfig
-  /**
-   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
-   */
-  expandByDefault?: boolean
-  tools?: McpToolsConfig
-  toolCache?: McpToolCacheConfig
-}
-
-export type ExternalAgentConfig = {
-  /**
-   * Disable this external agent
-   */
-  disabled?: boolean
-  /**
-   * Override path to the external agent binary
-   */
-  path?: string
-  /**
-   * Default model for this external agent
-   */
-  model?: string
-  /**
-   * Whether to auto-discover this agent on startup (default: true)
-   */
-  auto_discover?: boolean
-  [key: string]: unknown | boolean | string | undefined
-}
-
 export type MemoryConfig = {
   /**
    * Enable agent-initiated memory curation via chronicler (default: true)
@@ -3492,6 +3237,109 @@ export type RerankConfig = {
   model?: string
 }
 
+/**
+ * Default plugin runtime resource and request limits
+ */
+export type PluginRuntimeLimitsConfig = {
+  /**
+   * Maximum milliseconds for plugin runtime startup
+   */
+  startupTimeoutMs?: number
+  /**
+   * Maximum milliseconds for a plugin tool invocation
+   */
+  toolInvocationTimeoutMs?: number
+  /**
+   * Maximum milliseconds for one plugin Host Service request
+   */
+  hostServiceRequestTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin delegated task runs
+   */
+  taskRunTimeoutMs?: number
+  /**
+   * Graceful shutdown window before force kill
+   */
+  shutdownGraceMs?: number
+  /**
+   * Heartbeat interval in milliseconds
+   */
+  heartbeatIntervalMs?: number
+  /**
+   * External plugin runtime RSS limit in megabytes
+   */
+  maxMemoryMb?: number
+  /**
+   * External plugin runtime RSS sampling interval in milliseconds
+   */
+  memorySampleIntervalMs?: number
+  /**
+   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
+   */
+  agentCallMaxRuntimeMs?: number
+  /**
+   * Maximum milliseconds for one plugin hook handler invocation
+   */
+  hookTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
+   */
+  contributionInvokeTimeoutMs?: number
+  /**
+   * Default maximum milliseconds for plugin shell.run commands
+   */
+  shellRunTimeoutMs?: number
+  /**
+   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
+   */
+  taskRunWaitTimeoutMs?: number
+}
+
+/**
+ * Plugin runtime isolation policy configuration
+ */
+export type PluginRuntimePolicyConfig = {
+  limits?: PluginRuntimeLimitsConfig
+}
+
+/**
+ * Public plugin marketplace registry configuration
+ */
+export type PluginMarketplaceConfig = {
+  /**
+   * Enable the public GitHub-backed plugin marketplace
+   */
+  enabled?: boolean
+  /**
+   * URL of the official plugin registry.json index
+   */
+  registryUrl?: string
+  /**
+   * Include the local development registry in marketplace search and detail routes
+   */
+  includeLocalRegistry?: boolean
+  /**
+   * Remote marketplace cache TTL in milliseconds
+   */
+  cacheTtlMs?: number
+  /**
+   * Use stale marketplace cache for browsing when the remote registry cannot be reached
+   */
+  offlineCache?: boolean
+  /**
+   * Timeout in milliseconds for registry and entry metadata requests
+   */
+  requestTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for plugin artifact and signature downloads
+   */
+  artifactDownloadTimeoutMs?: number
+  /**
+   * Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server
+   */
+  cliRequestTimeoutMs?: number
+}
+
 export type ChannelFeishuAccountConfig = {
   enabled?: boolean
   /**
@@ -3794,107 +3642,271 @@ export type GithubConfig = {
   watch?: GithubWatchConfig
 }
 
-/**
- * Default plugin runtime resource and request limits
- */
-export type PluginRuntimeLimitsConfig = {
+export type ExternalAgentConfig = {
   /**
-   * Maximum milliseconds for plugin runtime startup
+   * Disable this external agent
    */
-  startupTimeoutMs?: number
+  disabled?: boolean
   /**
-   * Maximum milliseconds for a plugin tool invocation
+   * Override path to the external agent binary
    */
-  toolInvocationTimeoutMs?: number
+  path?: string
   /**
-   * Maximum milliseconds for one plugin Host Service request
+   * Default model for this external agent
    */
-  hostServiceRequestTimeoutMs?: number
+  model?: string
   /**
-   * Default maximum milliseconds for plugin delegated task runs
+   * Whether to auto-discover this agent on startup (default: true)
    */
-  taskRunTimeoutMs?: number
-  /**
-   * Graceful shutdown window before force kill
-   */
-  shutdownGraceMs?: number
-  /**
-   * Heartbeat interval in milliseconds
-   */
-  heartbeatIntervalMs?: number
-  /**
-   * External plugin runtime RSS limit in megabytes
-   */
-  maxMemoryMb?: number
-  /**
-   * External plugin runtime RSS sampling interval in milliseconds
-   */
-  memorySampleIntervalMs?: number
-  /**
-   * Maximum milliseconds for a plugin agent.call/agent.start model invocation
-   */
-  agentCallMaxRuntimeMs?: number
-  /**
-   * Maximum milliseconds for one plugin hook handler invocation
-   */
-  hookTimeoutMs?: number
-  /**
-   * Default maximum milliseconds for a plugin contribution invocation without a declared timeout
-   */
-  contributionInvokeTimeoutMs?: number
-  /**
-   * Default maximum milliseconds for plugin shell.run commands
-   */
-  shellRunTimeoutMs?: number
-  /**
-   * Maximum milliseconds a plugin task.run waits for a delegated task to reach a terminal state
-   */
-  taskRunWaitTimeoutMs?: number
+  auto_discover?: boolean
+  [key: string]: unknown | boolean | string | undefined
 }
 
 /**
- * Plugin runtime isolation policy configuration
+ * Retry policy for connecting to this server
  */
-export type PluginRuntimePolicyConfig = {
-  limits?: PluginRuntimeLimitsConfig
+export type McpRetryConfig = {
+  /**
+   * Maximum connection attempts before giving up
+   */
+  maxAttempts?: number
+  /**
+   * Initial backoff delay in ms between retries
+   */
+  backoffMs?: number
+  /**
+   * Multiplier applied to backoff on each retry
+   */
+  backoffMultiplier?: number
+  /**
+   * Cooldown period in ms before a retry cycle resets
+   */
+  cooldownMs?: number
 }
 
 /**
- * Public plugin marketplace registry configuration
+ * Filter which tools are exposed from this server
  */
-export type PluginMarketplaceConfig = {
+export type McpToolFilterConfig = {
   /**
-   * Enable the public GitHub-backed plugin marketplace
+   * Tool names to include (allowlist)
+   */
+  include?: Array<string>
+  /**
+   * Tool names to exclude (blocklist)
+   */
+  exclude?: Array<string>
+}
+
+/**
+ * Tool execution behavior config
+ */
+export type McpToolsConfig = {
+  /**
+   * Tool approval mode
+   */
+  approval?: "auto" | "always" | "per_session"
+  /**
+   * Maximum tool output size in bytes
+   */
+  maxOutputBytes?: number
+}
+
+/**
+ * Tool list caching behavior
+ */
+export type McpToolCacheConfig = {
+  /**
+   * Tool list caching mode
+   */
+  mode?: "disabled" | "session" | "persistent"
+  /**
+   * Time-to-live for cached tool list in ms
+   */
+  ttlMs?: number
+}
+
+export type McpLocalConfig = {
+  /**
+   * Type of MCP server connection
+   */
+  type: "local"
+  /**
+   * Command and arguments to run the MCP server
+   */
+  command: Array<string>
+  /**
+   * Working directory for local MCP servers
+   */
+  cwd?: string
+  /**
+   * Environment variables to set when running the MCP server
+   */
+  environment?: {
+    [key: string]: string
+  }
+  /**
+   * Whether tools require a session workspace; defaults to true
+   */
+  requiresWorkspace?: boolean
+  /**
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
+   */
+  timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
    */
   enabled?: boolean
+}
+
+export type McpOAuthConfig = {
   /**
-   * URL of the official plugin registry.json index
+   * OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted.
    */
-  registryUrl?: string
+  clientId?: string
   /**
-   * Include the local development registry in marketplace search and detail routes
+   * OAuth client secret (if required by the authorization server)
    */
-  includeLocalRegistry?: boolean
+  clientSecret?: string
   /**
-   * Remote marketplace cache TTL in milliseconds
+   * OAuth scopes to request during authorization
    */
-  cacheTtlMs?: number
+  scope?: string
+}
+
+export type McpRemoteConfig = {
   /**
-   * Use stale marketplace cache for browsing when the remote registry cannot be reached
+   * Type of MCP server connection
    */
-  offlineCache?: boolean
+  type: "remote"
   /**
-   * Timeout in milliseconds for registry and entry metadata requests
+   * URL of the remote MCP server
    */
-  requestTimeoutMs?: number
+  url: string
   /**
-   * Timeout in milliseconds for plugin artifact and signature downloads
+   * Headers to send with the request
    */
-  artifactDownloadTimeoutMs?: number
+  headers?: {
+    [key: string]: string
+  }
   /**
-   * Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server
+   * OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection.
    */
-  cliRequestTimeoutMs?: number
+  oauth?: McpOAuthConfig | false
+  /**
+   * Whether tools require a session workspace; defaults to true
+   */
+  requiresWorkspace?: boolean
+  /**
+   * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
+   */
+  timeout?: number
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
+}
+
+/**
+ * Default settings applied to all MCP servers that don't override them
+ */
+export type McpDefaultsConfig = {
+  /**
+   * MCP startup mode
+   */
+  startup?: "eager" | "lazy" | "manual"
+  /**
+   * If true, this MCP server is required for the configured workflow
+   */
+  required?: boolean
+  /**
+   * Timeout in ms for initial connection handshake
+   */
+  connectTimeout?: number
+  /**
+   * Timeout in ms for listing tools
+   */
+  listTimeout?: number
+  /**
+   * Timeout in ms for tool call execution
+   */
+  callTimeout?: number
+  retry?: McpRetryConfig
+  /**
+   * Idle time in ms after which the server is shut down
+   */
+  idleShutdownMs?: number
+  toolFilter?: McpToolFilterConfig
+  /**
+   * Keep this server's tools always visible to the model instead of folding them into an expandable MCP group. Defaults to false.
+   */
+  expandByDefault?: boolean
+  tools?: McpToolsConfig
+  toolCache?: McpToolCacheConfig
 }
 
 /**
@@ -4788,23 +4800,67 @@ export type Config = {
   }
   skills?: SkillsConfig
   worktree?: WorktreeConfig
+  library?: LibraryConfig
+  embedding?: EmbeddingConfig
+  rerank?: RerankConfig
+  plugin?: Array<string>
+  pluginRuntimePolicy?: PluginRuntimePolicyConfig
+  pluginMarketplace?: PluginMarketplaceConfig
   /**
-   * MCP (Model Context Protocol) server configurations
+   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
    */
-  mcp?: {
-    [key: string]:
-      | McpLocalConfig
-      | McpRemoteConfig
-      | {
-          enabled?: boolean
-          apiKey?: string
-          /**
-           * Keep this built-in server's tools always visible to the model instead of folding them into an expandable MCP group
-           */
-          expandByDefault?: boolean
-        }
+  pluginConfig?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
   }
-  mcpDefaults?: McpDefaultsConfig
+  boss?: {
+    /**
+     * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
+     */
+    enabled?: boolean
+    /**
+     * Optional colleague identity description injected into the runtime boss session
+     */
+    identityText?: string | null
+    /**
+     * Re-inject the versioned world-overview briefing every N days (default: disabled)
+     */
+    briefingIntervalDays?: number | null
+    /**
+     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.
+     */
+    persona?:
+      | {
+          preset: "project_manager"
+        }
+      | {
+          preset: "ops_assistant"
+        }
+      | {
+          preset: "custom"
+          formality: number
+          conciseness: number
+          proactiveness: number
+          warmth: number
+        }
+      | null
+  }
+  /**
+   * Channel configurations for messaging platform integrations
+   */
+  channel?: {
+    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
+  }
+  holos?: HolosConfig
+  email?: EmailConfig
+  github?: GithubConfig
+  enterprise?: {
+    /**
+     * Enterprise URL
+     */
+    url?: string
+  }
   /**
    * External agent configurations (e.g. codex, claude-code)
    */
@@ -4859,35 +4915,23 @@ export type Config = {
      */
     lsp?: boolean
   }
-  library?: LibraryConfig
-  embedding?: EmbeddingConfig
-  rerank?: RerankConfig
   /**
-   * Channel configurations for messaging platform integrations
+   * MCP (Model Context Protocol) server configurations
    */
-  channel?: {
-    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
+  mcp?: {
+    [key: string]:
+      | McpLocalConfig
+      | McpRemoteConfig
+      | {
+          enabled?: boolean
+          apiKey?: string
+          /**
+           * Keep this built-in server's tools always visible to the model instead of folding them into an expandable MCP group
+           */
+          expandByDefault?: boolean
+        }
   }
-  holos?: HolosConfig
-  email?: EmailConfig
-  github?: GithubConfig
-  enterprise?: {
-    /**
-     * Enterprise URL
-     */
-    url?: string
-  }
-  plugin?: Array<string>
-  pluginRuntimePolicy?: PluginRuntimePolicyConfig
-  pluginMarketplace?: PluginMarketplaceConfig
-  /**
-   * Per-plugin configuration namespaces. Keys are plugin IDs, values are plugin-specific config.
-   */
-  pluginConfig?: {
-    [key: string]: {
-      [key: string]: unknown
-    }
-  }
+  mcpDefaults?: McpDefaultsConfig
   voice?: VoiceConfig
   /**
    * UI locale (system = follow OS, default: system)
@@ -4926,38 +4970,6 @@ export type Config = {
     durationOverrides?: {
       [key: string]: number
     }
-  }
-  boss?: {
-    /**
-     * Enable Runtime Boss Mode: auto-provision a home-scope runtime boss session and route all Feishu messages to it
-     */
-    enabled?: boolean
-    /**
-     * Optional colleague identity description injected into the runtime boss session
-     */
-    identityText?: string | null
-    /**
-     * Re-inject the versioned world-overview briefing every N days (default: disabled)
-     */
-    briefingIntervalDays?: number | null
-    /**
-     * Colleague persona preset for the runtime boss: a built-in personality (project_manager or ops_assistant) or a custom blend of four 0..1 traits. Pass null to clear. When unset, identityText (legacy) or the default colleague identity is used.
-     */
-    persona?:
-      | {
-          preset: "project_manager"
-        }
-      | {
-          preset: "ops_assistant"
-        }
-      | {
-          preset: "custom"
-          formality: number
-          conciseness: number
-          proactiveness: number
-          warmth: number
-        }
-      | null
   }
 }
 
@@ -5472,6 +5484,13 @@ export type ScopeBootstrapFieldError = {
   message: string
 }
 
+export type LspStatus = {
+  id: string
+  name: string
+  root: string
+  status: "connected" | "error"
+}
+
 export type McpStatusUninitialized = {
   status: "uninitialized"
 }
@@ -5534,13 +5553,6 @@ export type McpStatus =
   | McpStatusNeedsClientRegistration
   | McpStatusStopping
 
-export type LspStatus = {
-  id: string
-  name: string
-  root: string
-  status: "connected" | "error"
-}
-
 export type VcsInfo = {
   branch: string
 }
@@ -5561,12 +5573,12 @@ export type ScopeBootstrapResponse = {
   _errors?: {
     [key: string]: ScopeBootstrapFieldError
   }
+  lsp?: Array<LspStatus>
   mcp?: {
     [key: string]: McpStatus
   }
-  agenda?: Array<AgendaItem>
-  lsp?: Array<LspStatus>
   vcs?: VcsInfo
+  agenda?: Array<AgendaItem>
 }
 
 export type Pty = {
@@ -5647,13 +5659,13 @@ export type ConfigDomainSummary = {
     | "storage"
     | "skills"
     | "worktree"
-    | "mcp"
     | "library"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "plugins"
+    | "mcp"
     | "voice"
   filename: string
   label: string
@@ -5705,13 +5717,13 @@ export type ConfigExportResult = {
     | "storage"
     | "skills"
     | "worktree"
-    | "mcp"
     | "library"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "plugins"
+    | "mcp"
     | "voice"
   >
   warnings: Array<string>
@@ -5765,13 +5777,13 @@ export type ConfigDomainImportDomainPlan = {
     | "storage"
     | "skills"
     | "worktree"
-    | "mcp"
     | "library"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "plugins"
+    | "mcp"
     | "voice"
   filename: string
   path: string
@@ -5820,13 +5832,13 @@ export type ConfigDomainImportPlanInput = {
     | "storage"
     | "skills"
     | "worktree"
-    | "mcp"
     | "library"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "plugins"
+    | "mcp"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -5905,13 +5917,13 @@ export type ConfigImportRevisionConflictError = {
       | "storage"
       | "skills"
       | "worktree"
-      | "mcp"
       | "library"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "plugins"
+      | "mcp"
       | "voice"
     >
   }
@@ -5938,13 +5950,13 @@ export type ConfigDomainImportApplyInput = {
     | "storage"
     | "skills"
     | "worktree"
-    | "mcp"
     | "library"
+    | "plugins"
     | "channels"
     | "holos"
     | "email"
     | "github"
-    | "plugins"
+    | "mcp"
     | "voice"
   >
   mode?: "merge" | "replace-domain" | "append"
@@ -8684,6 +8696,112 @@ export type MemoryInfo = {
   updatedAt: number
 }
 
+export type NoteMetaInfo = {
+  id: string
+  title: string
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  archived?: boolean
+  tags: Array<string>
+  kind?: "note" | "blueprint"
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+  searchText: string
+  previewHtml?: string
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    auditAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+}
+
+export type NoteMetaScopeGroup = {
+  scopeID: string
+  scopeType: "home" | "project"
+  notes: Array<NoteMetaInfo>
+}
+
+export type NoteInfo = {
+  id: string
+  title: string
+  content: unknown
+  pinned: boolean
+  global: boolean
+  originScope?: string
+  tags: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    auditAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+  archived: boolean
+  version: number
+  time: {
+    created: number
+    updated: number
+  }
+}
+
+export type NoteScopeGroup = {
+  scopeID: string
+  scopeType: "home" | "project"
+  notes: Array<NoteInfo>
+}
+
+export type NoteCreateInput = {
+  title: string
+  content?: unknown
+  tags?: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    auditAgent?: string
+    activeLoopID?: string
+    runCount?: number
+    lastRunAt?: number
+  }
+}
+
+export type NoteConflictError = {
+  name: "NoteConflictError"
+  data: {
+    noteID: string
+    expectedVersion: number
+    note: NoteInfo
+  }
+}
+
+export type NotePatchInput = {
+  title?: string
+  content?: unknown
+  pinned?: boolean
+  global?: boolean
+  archived?: boolean
+  tags?: Array<string>
+  kind?: "note" | "blueprint"
+  blueprint?: {
+    description?: string
+    defaultAgent?: string
+    auditAgent?: string
+    activeLoopID?: string | null
+    runCount?: number
+    lastRunAt?: number
+  } | null
+  expectedVersion?: number
+}
+
 export type AgendaRunLog = {
   /**
    * Run identifier
@@ -8820,112 +8938,6 @@ export type AgendaPatchInput = {
   sessionMode?: "ephemeral" | "persistent"
   sessionRefs?: Array<AgendaSessionRef>
   timeout?: number
-}
-
-export type NoteMetaInfo = {
-  id: string
-  title: string
-  pinned: boolean
-  global: boolean
-  originScope?: string
-  archived?: boolean
-  tags: Array<string>
-  kind?: "note" | "blueprint"
-  version: number
-  time: {
-    created: number
-    updated: number
-  }
-  searchText: string
-  previewHtml?: string
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    auditAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
-}
-
-export type NoteMetaScopeGroup = {
-  scopeID: string
-  scopeType: "home" | "project"
-  notes: Array<NoteMetaInfo>
-}
-
-export type NoteInfo = {
-  id: string
-  title: string
-  content: unknown
-  pinned: boolean
-  global: boolean
-  originScope?: string
-  tags: Array<string>
-  kind?: "note" | "blueprint"
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    auditAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
-  archived: boolean
-  version: number
-  time: {
-    created: number
-    updated: number
-  }
-}
-
-export type NoteScopeGroup = {
-  scopeID: string
-  scopeType: "home" | "project"
-  notes: Array<NoteInfo>
-}
-
-export type NoteCreateInput = {
-  title: string
-  content?: unknown
-  tags?: Array<string>
-  kind?: "note" | "blueprint"
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    auditAgent?: string
-    activeLoopID?: string
-    runCount?: number
-    lastRunAt?: number
-  }
-}
-
-export type NoteConflictError = {
-  name: "NoteConflictError"
-  data: {
-    noteID: string
-    expectedVersion: number
-    note: NoteInfo
-  }
-}
-
-export type NotePatchInput = {
-  title?: string
-  content?: unknown
-  pinned?: boolean
-  global?: boolean
-  archived?: boolean
-  tags?: Array<string>
-  kind?: "note" | "blueprint"
-  blueprint?: {
-    description?: string
-    defaultAgent?: string
-    auditAgent?: string
-    activeLoopID?: string | null
-    runCount?: number
-    lastRunAt?: number
-  } | null
-  expectedVersion?: number
 }
 
 export type BlueprintLoopInfo = {
@@ -9324,462 +9336,6 @@ export type AssetInfo = {
   size: number
 }
 
-export type VoiceTranscriptionResult = {
-  text: string
-}
-
-export type HolosCredentialsStatusResponse = {
-  exists: boolean
-  agentId?: string
-  maskedSecret?: string
-}
-
-export type HolosAccountMeta = {
-  agentId: string
-  createdAt: number
-  updatedAt: number
-  profile?: HolosAgentProfile | null
-  profileError?: string
-}
-
-export type HolosIdentityState = {
-  loggedIn: boolean
-  agentId: string | null
-  activeAccount: HolosAccountMeta | null
-  accounts: Array<HolosAccountMeta>
-}
-
-export type HolosConnectionState = {
-  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
-  error?: string
-}
-
-export type HolosReadinessState = {
-  ready: boolean
-  reason?: "not_logged_in" | "not_connected"
-}
-
-export type Contact = {
-  /**
-   * Holos Agent ID
-   */
-  id: string
-  /**
-   * Display name
-   */
-  name: string
-  /**
-   * Block messages from this contact
-   */
-  blocked?: boolean
-  /**
-   * Timestamp when contact was added
-   */
-  addedAt: number
-}
-
-export type HolosSocialState = {
-  profile: HolosAgentProfile | null
-  profileError?: string
-  contacts: Array<Contact>
-  presence: {
-    [key: string]: "online" | "offline" | "unknown"
-  }
-}
-
-export type HolosState = {
-  identity: HolosIdentityState
-  connection: HolosConnectionState
-  readiness: HolosReadinessState
-  social: HolosSocialState
-}
-
-export type HolosAgentMe = {
-  agentId: string
-  profile: HolosAgentProfile
-}
-
-export type HolosVerifyResponse = {
-  valid: true
-  agentId: string
-}
-
-export type HolosAccountsListResponse = {
-  activeAccountId: string | null
-  accounts: Array<HolosAccountMeta>
-}
-
-export type HolosAccountsSwitchResponse = {
-  success: true
-  activeAccountId: string
-  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
-}
-
-export type HolosAccountsRemoveResponse = {
-  success: true
-  activeAccountId: string | null
-  wasActive: boolean
-}
-
-export type HolosStatusResponse = {
-  agentId: string | null
-  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
-  error?: string
-  peerId: string | null
-}
-
-export type HolosPresenceMap = {
-  [key: string]: string
-}
-
-export type ServiceUnavailableError = {
-  message: string
-}
-
-export type RuntimeShuttingDownError = {
-  name: "RuntimeShuttingDown"
-  data: {
-    message: string
-  }
-}
-
-export type HolosSendResponse = {
-  messageId: string
-  sent: boolean
-  reason?: string
-}
-
-export type HolosRetryResponse = {
-  messageId: string
-  sent: boolean
-  reason?: string
-}
-
-export type MailboxMessageList = Array<unknown>
-
-export type BrowserViewerTicketResponse = {
-  protocolVersion: 3
-  ticket: string
-  expiresAt: number
-  iceServers: Array<{
-    urls: string | Array<string>
-    username?: string
-    credential?: string
-  }>
-}
-
-export type BrowserApiError = {
-  type: "error"
-  code: string
-  message: string
-  retryable: boolean
-  pageId?: string
-  commandId?: string
-  url?: string
-  snapshotId?: string
-  obstruction?: {
-    tag?: string
-    role?: string | null
-    name?: string
-    id?: string
-    class?: string
-    ref?: string
-    visible?: boolean
-    bounds?: {
-      x: number
-      y: number
-      width: number
-      height: number
-    }
-    frame?: string
-    receivesEvents?: boolean
-    candidates?: Array<{
-      tag?: string
-      role?: string | null
-      name?: string
-      id?: string
-      class?: string
-      ref?: string
-      visible?: boolean
-      bounds?: {
-        x: number
-        y: number
-        width: number
-        height: number
-      }
-      frame?: string
-      receivesEvents?: boolean
-    }>
-  }
-  suggestedAction?: string
-  locator?: unknown
-}
-
-export type BrowserViewerTicketRequest = {
-  protocolVersion: 3
-  pageId: string
-}
-
-export type BrowserAnnotationResponse = {
-  protocolVersion: 3
-  annotation: {
-    id: string
-    pageURL: string
-    pageID: string
-    element?: string
-    comment: string
-    styleFeedback?: {
-      [key: string]: string
-    }
-    resolved: boolean
-    createdAt: number
-  }
-}
-
-export type BrowserAnnotationRequest = {
-  protocolVersion: 3
-  pageId: string
-  x: number
-  y: number
-  comment: string
-  styleFeedback?: {
-    [key: string]: string
-  }
-}
-
-export type BrowserDiagnosticsResponse = {
-  protocolVersion: 3
-  pageId: string
-  action: string
-  data: unknown
-}
-
-export type BrowserDiagnosticsRequest = {
-  protocolVersion: 3
-  pageId: string
-  commandId: string
-  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
-  limit?: number
-}
-
-export type BrowserApiSessionState = {
-  type: "session.state"
-  protocolVersion: 3
-  ownerKey: string
-  status: "empty" | "suspended" | "active" | "migrating" | "failed"
-  page: {
-    id: string
-    url: string
-    title: string
-    isLoading: boolean
-    lastActiveAt: number | null
-  } | null
-  presentation: {
-    protocolVersion: 3
-    kind: "native" | "webrtc"
-    capabilities: {
-      native: boolean
-      webrtc: boolean
-    }
-    reason: "desktop-local" | "remote-client" | "requested"
-  } | null
-  hostStatus:
-    | "unavailable"
-    | "installing"
-    | "starting"
-    | "pending"
-    | "ready"
-    | "detached"
-    | "restarting"
-    | "idle"
-    | "failed"
-  seq: number
-  epoch: string
-  error?: BrowserApiError
-}
-
-export type BrowserControlResponse = {
-  type: "control.result"
-  protocolVersion: 3
-  result:
-    | {
-        type: "void"
-      }
-    | {
-        type: "page"
-        page: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-      }
-    | {
-        type: "navigation"
-        page: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-        snapshot?: unknown
-        settled?: boolean
-        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
-        settleElapsedMs?: number
-        inflightRequests?: number
-      }
-    | {
-        type: "snapshot"
-        pageId: string
-        snapshotId: string
-        elements: Array<{
-          ref: string
-          role: string
-          name: string
-          value?: string
-          description?: string
-          depth: number
-        }>
-        truncated: boolean
-      }
-    | {
-        type: "action"
-        pageId: string
-        action: string
-        snapshot?: unknown
-        page?: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-        settled?: boolean
-        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
-        settleElapsedMs?: number
-        inflightRequests?: number
-      }
-    | {
-        type: "wait"
-        pageId: string
-        matched: boolean
-        elapsedMs?: number
-        page?: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-      }
-    | {
-        type: "evaluation"
-        pageId: string
-        value: unknown
-      }
-    | {
-        type: "screenshot"
-        pageId: string
-        dataUrl: string
-        width: number
-        height: number
-      }
-    | {
-        type: "data"
-        pageId: string
-        data: unknown
-      }
-}
-
-export type BrowserControlRequest = {
-  protocolVersion: 3
-  command:
-    | {
-        type: "navigate"
-        url: string
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "history"
-        direction: "back" | "forward"
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "reload"
-        ignoreCache?: boolean
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "stop"
-      }
-    | {
-        type: "resume"
-      }
-    | {
-        type: "close"
-      }
-    | {
-        type: "setViewport"
-        width: number
-        height: number
-      }
-    | {
-        type: "dialog.respond"
-        requestId: string
-        accept: boolean
-        promptText?: string
-      }
-    | {
-        type: "filechooser.select"
-        requestId: string
-        files: Array<{
-          name: string
-          mimeType: string
-          dataBase64: string
-        }>
-      }
-  commandId: string
-  traceId?: string
-}
-
 export type GlobalThemeContribution = {
   pluginId: string
   name: string
@@ -9804,6 +9360,17 @@ export type GlobalThemeContribution = {
 
 export type ForbiddenError = {
   message: string
+}
+
+export type ServiceUnavailableError = {
+  message: string
+}
+
+export type RuntimeShuttingDownError = {
+  name: "RuntimeShuttingDown"
+  data: {
+    message: string
+  }
 }
 
 export type PluginConfigUpdate = {
@@ -10149,6 +9716,451 @@ export type RegistryPublishInput = {
   yankedVersions?: Array<string>
 }
 
+export type BrowserViewerTicketResponse = {
+  protocolVersion: 3
+  ticket: string
+  expiresAt: number
+  iceServers: Array<{
+    urls: string | Array<string>
+    username?: string
+    credential?: string
+  }>
+}
+
+export type BrowserApiError = {
+  type: "error"
+  code: string
+  message: string
+  retryable: boolean
+  pageId?: string
+  commandId?: string
+  url?: string
+  snapshotId?: string
+  obstruction?: {
+    tag?: string
+    role?: string | null
+    name?: string
+    id?: string
+    class?: string
+    ref?: string
+    visible?: boolean
+    bounds?: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    frame?: string
+    receivesEvents?: boolean
+    candidates?: Array<{
+      tag?: string
+      role?: string | null
+      name?: string
+      id?: string
+      class?: string
+      ref?: string
+      visible?: boolean
+      bounds?: {
+        x: number
+        y: number
+        width: number
+        height: number
+      }
+      frame?: string
+      receivesEvents?: boolean
+    }>
+  }
+  suggestedAction?: string
+  locator?: unknown
+}
+
+export type BrowserViewerTicketRequest = {
+  protocolVersion: 3
+  pageId: string
+}
+
+export type BrowserAnnotationResponse = {
+  protocolVersion: 3
+  annotation: {
+    id: string
+    pageURL: string
+    pageID: string
+    element?: string
+    comment: string
+    styleFeedback?: {
+      [key: string]: string
+    }
+    resolved: boolean
+    createdAt: number
+  }
+}
+
+export type BrowserAnnotationRequest = {
+  protocolVersion: 3
+  pageId: string
+  x: number
+  y: number
+  comment: string
+  styleFeedback?: {
+    [key: string]: string
+  }
+}
+
+export type BrowserDiagnosticsResponse = {
+  protocolVersion: 3
+  pageId: string
+  action: string
+  data: unknown
+}
+
+export type BrowserDiagnosticsRequest = {
+  protocolVersion: 3
+  pageId: string
+  commandId: string
+  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
+  limit?: number
+}
+
+export type BrowserApiSessionState = {
+  type: "session.state"
+  protocolVersion: 3
+  ownerKey: string
+  status: "empty" | "suspended" | "active" | "migrating" | "failed"
+  page: {
+    id: string
+    url: string
+    title: string
+    isLoading: boolean
+    lastActiveAt: number | null
+  } | null
+  presentation: {
+    protocolVersion: 3
+    kind: "native" | "webrtc"
+    capabilities: {
+      native: boolean
+      webrtc: boolean
+    }
+    reason: "desktop-local" | "remote-client" | "requested"
+  } | null
+  hostStatus:
+    | "unavailable"
+    | "installing"
+    | "starting"
+    | "pending"
+    | "ready"
+    | "detached"
+    | "restarting"
+    | "idle"
+    | "failed"
+  seq: number
+  epoch: string
+  error?: BrowserApiError
+}
+
+export type BrowserControlResponse = {
+  type: "control.result"
+  protocolVersion: 3
+  result:
+    | {
+        type: "void"
+      }
+    | {
+        type: "page"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "navigation"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        snapshot?: unknown
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
+      }
+    | {
+        type: "snapshot"
+        pageId: string
+        snapshotId: string
+        elements: Array<{
+          ref: string
+          role: string
+          name: string
+          value?: string
+          description?: string
+          depth: number
+        }>
+        truncated: boolean
+      }
+    | {
+        type: "action"
+        pageId: string
+        action: string
+        snapshot?: unknown
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
+      }
+    | {
+        type: "wait"
+        pageId: string
+        matched: boolean
+        elapsedMs?: number
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "evaluation"
+        pageId: string
+        value: unknown
+      }
+    | {
+        type: "screenshot"
+        pageId: string
+        dataUrl: string
+        width: number
+        height: number
+      }
+    | {
+        type: "data"
+        pageId: string
+        data: unknown
+      }
+}
+
+export type BrowserControlRequest = {
+  protocolVersion: 3
+  command:
+    | {
+        type: "navigate"
+        url: string
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "history"
+        direction: "back" | "forward"
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "reload"
+        ignoreCache?: boolean
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "stop"
+      }
+    | {
+        type: "resume"
+      }
+    | {
+        type: "close"
+      }
+    | {
+        type: "setViewport"
+        width: number
+        height: number
+      }
+    | {
+        type: "dialog.respond"
+        requestId: string
+        accept: boolean
+        promptText?: string
+      }
+    | {
+        type: "filechooser.select"
+        requestId: string
+        files: Array<{
+          name: string
+          mimeType: string
+          dataBase64: string
+        }>
+      }
+  commandId: string
+  traceId?: string
+}
+
+export type HolosCredentialsStatusResponse = {
+  exists: boolean
+  agentId?: string
+  maskedSecret?: string
+}
+
+export type HolosAccountMeta = {
+  agentId: string
+  createdAt: number
+  updatedAt: number
+  profile?: HolosAgentProfile | null
+  profileError?: string
+}
+
+export type HolosIdentityState = {
+  loggedIn: boolean
+  agentId: string | null
+  activeAccount: HolosAccountMeta | null
+  accounts: Array<HolosAccountMeta>
+}
+
+export type HolosConnectionState = {
+  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
+  error?: string
+}
+
+export type HolosReadinessState = {
+  ready: boolean
+  reason?: "not_logged_in" | "not_connected"
+}
+
+export type Contact = {
+  /**
+   * Holos Agent ID
+   */
+  id: string
+  /**
+   * Display name
+   */
+  name: string
+  /**
+   * Block messages from this contact
+   */
+  blocked?: boolean
+  /**
+   * Timestamp when contact was added
+   */
+  addedAt: number
+}
+
+export type HolosSocialState = {
+  profile: HolosAgentProfile | null
+  profileError?: string
+  contacts: Array<Contact>
+  presence: {
+    [key: string]: "online" | "offline" | "unknown"
+  }
+}
+
+export type HolosState = {
+  identity: HolosIdentityState
+  connection: HolosConnectionState
+  readiness: HolosReadinessState
+  social: HolosSocialState
+}
+
+export type HolosAgentMe = {
+  agentId: string
+  profile: HolosAgentProfile
+}
+
+export type HolosVerifyResponse = {
+  valid: true
+  agentId: string
+}
+
+export type HolosAccountsListResponse = {
+  activeAccountId: string | null
+  accounts: Array<HolosAccountMeta>
+}
+
+export type HolosAccountsSwitchResponse = {
+  success: true
+  activeAccountId: string
+  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
+}
+
+export type HolosAccountsRemoveResponse = {
+  success: true
+  activeAccountId: string | null
+  wasActive: boolean
+}
+
+export type HolosStatusResponse = {
+  agentId: string | null
+  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
+  error?: string
+  peerId: string | null
+}
+
+export type HolosPresenceMap = {
+  [key: string]: string
+}
+
+export type HolosSendResponse = {
+  messageId: string
+  sent: boolean
+  reason?: string
+}
+
+export type HolosRetryResponse = {
+  messageId: string
+  sent: boolean
+  reason?: string
+}
+
+export type MailboxMessageList = Array<unknown>
+
+export type VoiceTranscriptionResult = {
+  text: string
+}
+
 export type ModelRoleUsage = {
   name: string
   description?: string
@@ -10256,18 +10268,18 @@ export type ChannelRefreshError = {
   }
 }
 
+export type FormatterStatus = {
+  name: string
+  extensions: Array<string>
+  enabled: boolean
+}
+
 export type McpResource = {
   name: string
   uri: string
   description?: string
   mimeType?: string
   client: string
-}
-
-export type FormatterStatus = {
-  name: string
-  extensions: Array<string>
-  enabled: boolean
 }
 
 export type OAuth = {
@@ -10636,6 +10648,65 @@ export type EventCortexTasksUpdated = {
   }
 }
 
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
+  }
+}
+
+export type EventPluginUiUpdated = {
+  type: "plugin.ui.updated"
+  properties: {
+    scopeId: string
+  }
+}
+
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
+  }
+}
+
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
+  properties: {
+    name: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
+  }
+}
+
+export type EventChannelConnected = {
+  type: "channel.connected"
+  properties: {
+    channelType: string
+    accountId: string
+  }
+}
+
+export type EventChannelDisconnected = {
+  type: "channel.disconnected"
+  properties: {
+    channelType: string
+    accountId: string
+    reason?: string
+  }
+}
+
 export type EventHolosContactAdded = {
   type: "holos.contact.added"
   properties: {
@@ -10677,6 +10748,155 @@ export type EventHolosPresence = {
   properties: {
     peerId: string
     status: "online" | "offline"
+  }
+}
+
+export type EventAgendaItemCreated = {
+  type: "agenda.item.created"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemUpdated = {
+  type: "agenda.item.updated"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemDeleted = {
+  type: "agenda.item.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
+export type EventSynergyLinkTargetCreated = {
+  type: "synergy_link.target.created"
+  properties: {
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetUpdated = {
+  type: "synergy_link.target.updated"
+  properties: {
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetRemoved = {
+  type: "synergy_link.target.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventLspClientDiagnostics = {
+  type: "lsp.client.diagnostics"
+  properties: {
+    serverID: string
+    path: string
+  }
+}
+
+export type EventLspUpdated = {
+  type: "lsp.updated"
+  properties: {
+    workspaceID: string
+    workspaceGeneration: number
+  }
+}
+
+export type EventMcpToolsChanged = {
+  type: "mcp.tools.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpPromptsChanged = {
+  type: "mcp.prompts.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpResourcesChanged = {
+  type: "mcp.resources.changed"
+  properties: {
+    server: string
+  }
+}
+
+export type EventMcpReady = {
+  type: "mcp.ready"
+  properties: {
+    [key: string]: unknown
+  }
+}
+
+export type EventMcpFailed = {
+  type: "mcp.failed"
+  properties: {
+    server: string
+    error: string
+  }
+}
+
+export type EventNoteCreated = {
+  type: "note.created"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+  }
+}
+
+export type EventNoteUpdated = {
+  type: "note.updated"
+  properties: {
+    scopeID: string
+    note: NoteInfo
+    meta: NoteMetaInfo
+    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
+  }
+}
+
+export type EventNoteDeleted = {
+  type: "note.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
+export type EventNoteArchived = {
+  type: "note.archived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventNoteUnarchived = {
+  type: "note.unarchived"
+  properties: {
+    ids: Array<string>
+    scopeID: string
+    metas: Array<NoteMetaInfo>
+  }
+}
+
+export type EventVcsBranchUpdated = {
+  type: "vcs.branch.updated"
+  properties: {
+    workspaceID: string
+    workspaceGeneration: number
+    branch?: string
   }
 }
 
@@ -10731,140 +10951,6 @@ export type EventBlueprintLoopRejected = {
   }
 }
 
-export type EventNoteCreated = {
-  type: "note.created"
-  properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-  }
-}
-
-export type EventNoteUpdated = {
-  type: "note.updated"
-  properties: {
-    scopeID: string
-    note: NoteInfo
-    meta: NoteMetaInfo
-    changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
-  }
-}
-
-export type EventNoteDeleted = {
-  type: "note.deleted"
-  properties: {
-    id: string
-    scopeID: string
-  }
-}
-
-export type EventNoteArchived = {
-  type: "note.archived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
-  }
-}
-
-export type EventNoteUnarchived = {
-  type: "note.unarchived"
-  properties: {
-    ids: Array<string>
-    scopeID: string
-    metas: Array<NoteMetaInfo>
-  }
-}
-
-export type EventPluginUiUpdated = {
-  type: "plugin.ui.updated"
-  properties: {
-    scopeId: string
-  }
-}
-
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
-export type EventAgendaItemCreated = {
-  type: "agenda.item.created"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemUpdated = {
-  type: "agenda.item.updated"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemDeleted = {
-  type: "agenda.item.deleted"
-  properties: {
-    id: string
-    scopeID: string
-  }
-}
-
-export type EventMcpToolsChanged = {
-  type: "mcp.tools.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpPromptsChanged = {
-  type: "mcp.prompts.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpResourcesChanged = {
-  type: "mcp.resources.changed"
-  properties: {
-    server: string
-  }
-}
-
-export type EventMcpReady = {
-  type: "mcp.ready"
-  properties: {
-    [key: string]: unknown
-  }
-}
-
-export type EventMcpFailed = {
-  type: "mcp.failed"
-  properties: {
-    server: string
-    error: string
-  }
-}
-
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
 export type EventLatticeRunCreated = {
   type: "lattice.run.created"
   properties: {
@@ -10883,80 +10969,6 @@ export type EventLatticeEventAppended = {
   type: "lattice.event.appended"
   properties: {
     event: LatticeEvent
-  }
-}
-
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
-  properties: {
-    name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
-  }
-}
-
-export type EventChannelConnected = {
-  type: "channel.connected"
-  properties: {
-    channelType: string
-    accountId: string
-  }
-}
-
-export type EventChannelDisconnected = {
-  type: "channel.disconnected"
-  properties: {
-    channelType: string
-    accountId: string
-    reason?: string
-  }
-}
-
-export type EventLspClientDiagnostics = {
-  type: "lsp.client.diagnostics"
-  properties: {
-    serverID: string
-    path: string
-  }
-}
-
-export type EventLspUpdated = {
-  type: "lsp.updated"
-  properties: {
-    workspaceID: string
-    workspaceGeneration: number
-  }
-}
-
-export type EventSynergyLinkTargetCreated = {
-  type: "synergy_link.target.created"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetUpdated = {
-  type: "synergy_link.target.updated"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetRemoved = {
-  type: "synergy_link.target.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventVcsBranchUpdated = {
-  type: "vcs.branch.updated"
-  properties: {
-    workspaceID: string
-    workspaceGeneration: number
-    branch?: string
   }
 }
 
@@ -11017,12 +11029,37 @@ export type Event =
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventRuntimeReloaded
+  | EventPluginUiUpdated
+  | EventPluginEvent
+  | EventChannelCommandExecuted
+  | EventChannelConnected
+  | EventChannelDisconnected
   | EventHolosContactAdded
   | EventHolosContactRemoved
   | EventHolosContactUpdated
   | EventHolosConnected
   | EventHolosConnectionStatusChanged
   | EventHolosPresence
+  | EventAgendaItemCreated
+  | EventAgendaItemUpdated
+  | EventAgendaItemDeleted
+  | EventSynergyLinkTargetCreated
+  | EventSynergyLinkTargetUpdated
+  | EventSynergyLinkTargetRemoved
+  | EventLspClientDiagnostics
+  | EventLspUpdated
+  | EventMcpToolsChanged
+  | EventMcpPromptsChanged
+  | EventMcpResourcesChanged
+  | EventMcpReady
+  | EventMcpFailed
+  | EventNoteCreated
+  | EventNoteUpdated
+  | EventNoteDeleted
+  | EventNoteArchived
+  | EventNoteUnarchived
+  | EventVcsBranchUpdated
   | EventBlueprintLoopCreated
   | EventBlueprintLoopUpdated
   | EventBlueprintLoopCompleted
@@ -11030,36 +11067,36 @@ export type Event =
   | EventBlueprintLoopCancelled
   | EventBlueprintLoopAuditing
   | EventBlueprintLoopRejected
-  | EventNoteCreated
-  | EventNoteUpdated
-  | EventNoteDeleted
-  | EventNoteArchived
-  | EventNoteUnarchived
-  | EventPluginUiUpdated
-  | EventPluginEvent
-  | EventAgendaItemCreated
-  | EventAgendaItemUpdated
-  | EventAgendaItemDeleted
-  | EventMcpToolsChanged
-  | EventMcpPromptsChanged
-  | EventMcpResourcesChanged
-  | EventMcpReady
-  | EventMcpFailed
-  | EventRuntimeReloaded
   | EventLatticeRunCreated
   | EventLatticeRunUpdated
   | EventLatticeEventAppended
-  | EventChannelCommandExecuted
-  | EventChannelConnected
-  | EventChannelDisconnected
-  | EventLspClientDiagnostics
-  | EventLspUpdated
-  | EventSynergyLinkTargetCreated
-  | EventSynergyLinkTargetUpdated
-  | EventSynergyLinkTargetRemoved
-  | EventVcsBranchUpdated
   | EventServerConnected
   | EventGlobalDisposed
+
+export type GlobalCapabilitiesData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/capabilities"
+}
+
+export type GlobalCapabilitiesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalCapabilitiesError = GlobalCapabilitiesErrors[keyof GlobalCapabilitiesErrors]
+
+export type GlobalCapabilitiesResponses = {
+  /**
+   * Active runtime composition
+   */
+  200: RuntimeCapabilities
+}
+
+export type GlobalCapabilitiesResponse = GlobalCapabilitiesResponses[keyof GlobalCapabilitiesResponses]
 
 export type GlobalHealthData = {
   body?: never
@@ -12407,6 +12444,161 @@ export type HolosReconnectResponses = {
 
 export type HolosReconnectResponse2 = HolosReconnectResponses[keyof HolosReconnectResponses]
 
+export type SynergyLinkTargetsData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/synergy-link/targets"
+}
+
+export type SynergyLinkTargetsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SynergyLinkTargetsError = SynergyLinkTargetsErrors[keyof SynergyLinkTargetsErrors]
+
+export type SynergyLinkTargetsResponses = {
+  /**
+   * Persisted Synergy Link targets
+   */
+  200: Array<SynergyLinkTargetView>
+}
+
+export type SynergyLinkTargetsResponse = SynergyLinkTargetsResponses[keyof SynergyLinkTargetsResponses]
+
+export type SynergyLinkTargetCreateData = {
+  body?: SynergyLinkTargetCreateInput
+  path?: never
+  query?: never
+  url: "/synergy-link/targets"
+}
+
+export type SynergyLinkTargetCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SynergyLinkTargetCreateError = SynergyLinkTargetCreateErrors[keyof SynergyLinkTargetCreateErrors]
+
+export type SynergyLinkTargetCreateResponses = {
+  /**
+   * Created target
+   */
+  200: SynergyLinkTarget
+}
+
+export type SynergyLinkTargetCreateResponse = SynergyLinkTargetCreateResponses[keyof SynergyLinkTargetCreateResponses]
+
+export type SynergyLinkTargetRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/synergy-link/targets/{id}"
+}
+
+export type SynergyLinkTargetRemoveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SynergyLinkTargetRemoveError = SynergyLinkTargetRemoveErrors[keyof SynergyLinkTargetRemoveErrors]
+
+export type SynergyLinkTargetRemoveResponses = {
+  /**
+   * Target removed
+   */
+  200: SynergyLinkTargetRemoveResult
+}
+
+export type SynergyLinkTargetRemoveResponse = SynergyLinkTargetRemoveResponses[keyof SynergyLinkTargetRemoveResponses]
+
+export type SynergyLinkTargetUpdateData = {
+  body?: SynergyLinkTargetPatchInput
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/synergy-link/targets/{id}"
+}
+
+export type SynergyLinkTargetUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SynergyLinkTargetUpdateError = SynergyLinkTargetUpdateErrors[keyof SynergyLinkTargetUpdateErrors]
+
+export type SynergyLinkTargetUpdateResponses = {
+  /**
+   * Updated target
+   */
+  200: SynergyLinkTarget
+}
+
+export type SynergyLinkTargetUpdateResponse = SynergyLinkTargetUpdateResponses[keyof SynergyLinkTargetUpdateResponses]
+
+export type SynergyLinkTargetProbeData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/synergy-link/targets/{id}/probe"
+}
+
+export type SynergyLinkTargetProbeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SynergyLinkTargetProbeError = SynergyLinkTargetProbeErrors[keyof SynergyLinkTargetProbeErrors]
+
+export type SynergyLinkTargetProbeResponses = {
+  /**
+   * Observed target
+   */
+  200: SynergyLinkTargetView
+}
+
+export type SynergyLinkTargetProbeResponse = SynergyLinkTargetProbeResponses[keyof SynergyLinkTargetProbeResponses]
+
 export type PushGetVapidKeyData = {
   body?: never
   path?: never
@@ -12604,161 +12796,6 @@ export type PushUpdateCategoriesResponses = {
 }
 
 export type PushUpdateCategoriesResponse = PushUpdateCategoriesResponses[keyof PushUpdateCategoriesResponses]
-
-export type SynergyLinkTargetsData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetsErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetsError = SynergyLinkTargetsErrors[keyof SynergyLinkTargetsErrors]
-
-export type SynergyLinkTargetsResponses = {
-  /**
-   * Persisted Synergy Link targets
-   */
-  200: Array<SynergyLinkTargetView>
-}
-
-export type SynergyLinkTargetsResponse = SynergyLinkTargetsResponses[keyof SynergyLinkTargetsResponses]
-
-export type SynergyLinkTargetCreateData = {
-  body?: SynergyLinkTargetCreateInput
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetCreateError = SynergyLinkTargetCreateErrors[keyof SynergyLinkTargetCreateErrors]
-
-export type SynergyLinkTargetCreateResponses = {
-  /**
-   * Created target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetCreateResponse = SynergyLinkTargetCreateResponses[keyof SynergyLinkTargetCreateResponses]
-
-export type SynergyLinkTargetRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetRemoveErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetRemoveError = SynergyLinkTargetRemoveErrors[keyof SynergyLinkTargetRemoveErrors]
-
-export type SynergyLinkTargetRemoveResponses = {
-  /**
-   * Target removed
-   */
-  200: SynergyLinkTargetRemoveResult
-}
-
-export type SynergyLinkTargetRemoveResponse = SynergyLinkTargetRemoveResponses[keyof SynergyLinkTargetRemoveResponses]
-
-export type SynergyLinkTargetUpdateData = {
-  body?: SynergyLinkTargetPatchInput
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetUpdateError = SynergyLinkTargetUpdateErrors[keyof SynergyLinkTargetUpdateErrors]
-
-export type SynergyLinkTargetUpdateResponses = {
-  /**
-   * Updated target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetUpdateResponse = SynergyLinkTargetUpdateResponses[keyof SynergyLinkTargetUpdateResponses]
-
-export type SynergyLinkTargetProbeData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}/probe"
-}
-
-export type SynergyLinkTargetProbeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetProbeError = SynergyLinkTargetProbeErrors[keyof SynergyLinkTargetProbeErrors]
-
-export type SynergyLinkTargetProbeResponses = {
-  /**
-   * Observed target
-   */
-  200: SynergyLinkTargetView
-}
-
-export type SynergyLinkTargetProbeResponse = SynergyLinkTargetProbeResponses[keyof SynergyLinkTargetProbeResponses]
 
 export type GlobalAgendaListData = {
   body?: never
@@ -13826,13 +13863,13 @@ export type ConfigDomainGetData = {
       | "storage"
       | "skills"
       | "worktree"
-      | "mcp"
       | "library"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "plugins"
+      | "mcp"
       | "voice"
   }
   query?: {
@@ -13878,13 +13915,13 @@ export type ConfigDomainUpdateData = {
       | "storage"
       | "skills"
       | "worktree"
-      | "mcp"
       | "library"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "plugins"
+      | "mcp"
       | "voice"
   }
   query?: {
@@ -13930,13 +13967,13 @@ export type ConfigDomainOpenData = {
       | "storage"
       | "skills"
       | "worktree"
-      | "mcp"
       | "library"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "plugins"
+      | "mcp"
       | "voice"
   }
   query?: {
@@ -13990,13 +14027,13 @@ export type ConfigExportData = {
       | "storage"
       | "skills"
       | "worktree"
-      | "mcp"
       | "library"
+      | "plugins"
       | "channels"
       | "holos"
       | "email"
       | "github"
-      | "plugins"
+      | "mcp"
       | "voice"
       | Array<
           | "general"
@@ -14009,13 +14046,13 @@ export type ConfigExportData = {
           | "storage"
           | "skills"
           | "worktree"
-          | "mcp"
           | "library"
+          | "plugins"
           | "channels"
           | "holos"
           | "email"
           | "github"
-          | "plugins"
+          | "mcp"
           | "voice"
         >
     includeSecrets?: string
@@ -14845,6 +14882,34 @@ export type WorktreeRemoveResponses = {
 
 export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
 
+export type VcsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/vcs"
+}
+
+export type VcsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
+
+export type VcsGetResponses = {
+  /**
+   * VCS info
+   */
+  200: VcsInfo
+}
+
+export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
+
 export type SessionAgendaData = {
   body?: never
   path: {
@@ -14887,34 +14952,6 @@ export type SessionAgendaResponses = {
 }
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
-
-export type VcsGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/vcs"
-}
-
-export type VcsGetErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
-
-export type VcsGetResponses = {
-  /**
-   * VCS info
-   */
-  200: VcsInfo
-}
-
-export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
 
 export type SessionIndexData = {
   body?: never
@@ -19696,6 +19733,364 @@ export type LibraryListResponses = {
 
 export type LibraryListResponse = LibraryListResponses[keyof LibraryListResponses]
 
+export type NoteListMetaData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
+  }
+  url: "/note/meta"
+}
+
+export type NoteListMetaErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteListMetaError = NoteListMetaErrors[keyof NoteListMetaErrors]
+
+export type NoteListMetaResponses = {
+  /**
+   * Note metadata grouped by scope
+   */
+  200: Array<NoteMetaScopeGroup>
+}
+
+export type NoteListMetaResponse = NoteListMetaResponses[keyof NoteListMetaResponses]
+
+export type NoteListAllData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
+  }
+  url: "/note/all"
+}
+
+export type NoteListAllErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteListAllError = NoteListAllErrors[keyof NoteListAllErrors]
+
+export type NoteListAllResponses = {
+  /**
+   * Notes grouped by scope
+   */
+  200: Array<NoteScopeGroup>
+}
+
+export type NoteListAllResponse = NoteListAllResponses[keyof NoteListAllResponses]
+
+export type NoteExportData = {
+  body?: never
+  path: {
+    /**
+     * Note ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    /**
+     * Export format
+     */
+    format?: "md" | "html"
+  }
+  url: "/note/export/{id}"
+}
+
+export type NoteExportErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteExportError = NoteExportErrors[keyof NoteExportErrors]
+
+export type NoteExportResponses = {
+  /**
+   * Exported note content
+   */
+  200: unknown
+}
+
+export type NoteListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    /**
+     * Filter by archived state. Defaults to false (active notes only).
+     */
+    archived?: "true" | "false"
+  }
+  url: "/note"
+}
+
+export type NoteListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteListError = NoteListErrors[keyof NoteListErrors]
+
+export type NoteListResponses = {
+  /**
+   * List of notes
+   */
+  200: Array<NoteInfo>
+}
+
+export type NoteListResponse = NoteListResponses[keyof NoteListResponses]
+
+export type NoteCreateData = {
+  body?: NoteCreateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/note"
+}
+
+export type NoteCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteCreateError = NoteCreateErrors[keyof NoteCreateErrors]
+
+export type NoteCreateResponses = {
+  /**
+   * Created note
+   */
+  200: NoteInfo
+}
+
+export type NoteCreateResponse = NoteCreateResponses[keyof NoteCreateResponses]
+
+export type NoteRemoveData = {
+  body?: never
+  path: {
+    /**
+     * Note ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/note/{id}"
+}
+
+export type NoteRemoveErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteRemoveError = NoteRemoveErrors[keyof NoteRemoveErrors]
+
+export type NoteRemoveResponses = {
+  /**
+   * Deleted
+   */
+  200: boolean
+}
+
+export type NoteRemoveResponse = NoteRemoveResponses[keyof NoteRemoveResponses]
+
+export type NoteGetData = {
+  body?: never
+  path: {
+    /**
+     * Note ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/note/{id}"
+}
+
+export type NoteGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteGetError = NoteGetErrors[keyof NoteGetErrors]
+
+export type NoteGetResponses = {
+  /**
+   * Note
+   */
+  200: NoteInfo
+}
+
+export type NoteGetResponse = NoteGetResponses[keyof NoteGetResponses]
+
+export type NoteUpdateData = {
+  body?: NotePatchInput
+  path: {
+    /**
+     * Note ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/note/{id}"
+}
+
+export type NoteUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: NoteConflictError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteUpdateError = NoteUpdateErrors[keyof NoteUpdateErrors]
+
+export type NoteUpdateResponses = {
+  /**
+   * Updated note
+   */
+  200: NoteInfo
+}
+
+export type NoteUpdateResponse = NoteUpdateResponses[keyof NoteUpdateResponses]
+
+export type NoteBatchData = {
+  body?: {
+    /**
+     * Note IDs to act on
+     */
+    ids: Array<string>
+    /**
+     * Action: archive, unarchive, or delete
+     */
+    action: "archive" | "unarchive" | "delete"
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/note/batch"
+}
+
+export type NoteBatchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type NoteBatchError = NoteBatchErrors[keyof NoteBatchErrors]
+
+export type NoteBatchResponses = {
+  /**
+   * Batch operation result
+   */
+  200: {
+    archived?: Array<string>
+    deleted?: Array<string>
+  }
+}
+
+export type NoteBatchResponse = NoteBatchResponses[keyof NoteBatchResponses]
+
 export type AgendaActivityData = {
   body?: never
   path?: never
@@ -20192,364 +20587,6 @@ export type AgendaCreateResponses = {
 }
 
 export type AgendaCreateResponse = AgendaCreateResponses[keyof AgendaCreateResponses]
-
-export type NoteListMetaData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-    /**
-     * Filter by archived state. Defaults to false (active notes only).
-     */
-    archived?: "true" | "false"
-  }
-  url: "/note/meta"
-}
-
-export type NoteListMetaErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteListMetaError = NoteListMetaErrors[keyof NoteListMetaErrors]
-
-export type NoteListMetaResponses = {
-  /**
-   * Note metadata grouped by scope
-   */
-  200: Array<NoteMetaScopeGroup>
-}
-
-export type NoteListMetaResponse = NoteListMetaResponses[keyof NoteListMetaResponses]
-
-export type NoteListAllData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-    /**
-     * Filter by archived state. Defaults to false (active notes only).
-     */
-    archived?: "true" | "false"
-  }
-  url: "/note/all"
-}
-
-export type NoteListAllErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteListAllError = NoteListAllErrors[keyof NoteListAllErrors]
-
-export type NoteListAllResponses = {
-  /**
-   * Notes grouped by scope
-   */
-  200: Array<NoteScopeGroup>
-}
-
-export type NoteListAllResponse = NoteListAllResponses[keyof NoteListAllResponses]
-
-export type NoteExportData = {
-  body?: never
-  path: {
-    /**
-     * Note ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    /**
-     * Export format
-     */
-    format?: "md" | "html"
-  }
-  url: "/note/export/{id}"
-}
-
-export type NoteExportErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteExportError = NoteExportErrors[keyof NoteExportErrors]
-
-export type NoteExportResponses = {
-  /**
-   * Exported note content
-   */
-  200: unknown
-}
-
-export type NoteListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-    /**
-     * Filter by archived state. Defaults to false (active notes only).
-     */
-    archived?: "true" | "false"
-  }
-  url: "/note"
-}
-
-export type NoteListErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteListError = NoteListErrors[keyof NoteListErrors]
-
-export type NoteListResponses = {
-  /**
-   * List of notes
-   */
-  200: Array<NoteInfo>
-}
-
-export type NoteListResponse = NoteListResponses[keyof NoteListResponses]
-
-export type NoteCreateData = {
-  body?: NoteCreateInput
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/note"
-}
-
-export type NoteCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteCreateError = NoteCreateErrors[keyof NoteCreateErrors]
-
-export type NoteCreateResponses = {
-  /**
-   * Created note
-   */
-  200: NoteInfo
-}
-
-export type NoteCreateResponse = NoteCreateResponses[keyof NoteCreateResponses]
-
-export type NoteRemoveData = {
-  body?: never
-  path: {
-    /**
-     * Note ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/note/{id}"
-}
-
-export type NoteRemoveErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: NoteConflictError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteRemoveError = NoteRemoveErrors[keyof NoteRemoveErrors]
-
-export type NoteRemoveResponses = {
-  /**
-   * Deleted
-   */
-  200: boolean
-}
-
-export type NoteRemoveResponse = NoteRemoveResponses[keyof NoteRemoveResponses]
-
-export type NoteGetData = {
-  body?: never
-  path: {
-    /**
-     * Note ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/note/{id}"
-}
-
-export type NoteGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteGetError = NoteGetErrors[keyof NoteGetErrors]
-
-export type NoteGetResponses = {
-  /**
-   * Note
-   */
-  200: NoteInfo
-}
-
-export type NoteGetResponse = NoteGetResponses[keyof NoteGetResponses]
-
-export type NoteUpdateData = {
-  body?: NotePatchInput
-  path: {
-    /**
-     * Note ID
-     */
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/note/{id}"
-}
-
-export type NoteUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: NoteConflictError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteUpdateError = NoteUpdateErrors[keyof NoteUpdateErrors]
-
-export type NoteUpdateResponses = {
-  /**
-   * Updated note
-   */
-  200: NoteInfo
-}
-
-export type NoteUpdateResponse = NoteUpdateResponses[keyof NoteUpdateResponses]
-
-export type NoteBatchData = {
-  body?: {
-    /**
-     * Note IDs to act on
-     */
-    ids: Array<string>
-    /**
-     * Action: archive, unarchive, or delete
-     */
-    action: "archive" | "unarchive" | "delete"
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/note/batch"
-}
-
-export type NoteBatchErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type NoteBatchError = NoteBatchErrors[keyof NoteBatchErrors]
-
-export type NoteBatchResponses = {
-  /**
-   * Batch operation result
-   */
-  200: {
-    archived?: Array<string>
-    deleted?: Array<string>
-  }
-}
-
-export type NoteBatchResponse = NoteBatchResponses[keyof NoteBatchResponses]
 
 export type BlueprintLoopListData = {
   body?: never
@@ -21705,1006 +21742,6 @@ export type AssetGetResponses = {
   200: unknown
 }
 
-export type VoiceTranscribeData = {
-  body?: {
-    file: unknown
-    context?: string
-    language?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/voice/transcribe"
-}
-
-export type VoiceTranscribeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type VoiceTranscribeError = VoiceTranscribeErrors[keyof VoiceTranscribeErrors]
-
-export type VoiceTranscribeResponses = {
-  /**
-   * Transcribed text
-   */
-  200: VoiceTranscriptionResult
-}
-
-export type VoiceTranscribeResponse = VoiceTranscribeResponses[keyof VoiceTranscribeResponses]
-
-export type HolosCredentialsStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/credentials/status"
-}
-
-export type HolosCredentialsStatusErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosCredentialsStatusError = HolosCredentialsStatusErrors[keyof HolosCredentialsStatusErrors]
-
-export type HolosCredentialsStatusResponses = {
-  /**
-   * Credential status
-   */
-  200: HolosCredentialsStatusResponse
-}
-
-export type HolosCredentialsStatusResponse2 = HolosCredentialsStatusResponses[keyof HolosCredentialsStatusResponses]
-
-export type HolosStateData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/state"
-}
-
-export type HolosStateErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosStateError = HolosStateErrors[keyof HolosStateErrors]
-
-export type HolosStateResponses = {
-  /**
-   * Unified Holos state
-   */
-  200: HolosState
-}
-
-export type HolosStateResponse = HolosStateResponses[keyof HolosStateResponses]
-
-export type HolosProfileGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/profile"
-}
-
-export type HolosProfileGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosProfileGetError = HolosProfileGetErrors[keyof HolosProfileGetErrors]
-
-export type HolosProfileGetResponses = {
-  /**
-   * Current Holos profile
-   */
-  200: HolosAgentMe
-}
-
-export type HolosProfileGetResponse = HolosProfileGetResponses[keyof HolosProfileGetResponses]
-
-export type HolosProfileUpdateData = {
-  body?: HolosAgentProfileInput
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/profile"
-}
-
-export type HolosProfileUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosProfileUpdateError = HolosProfileUpdateErrors[keyof HolosProfileUpdateErrors]
-
-export type HolosProfileUpdateResponses = {
-  /**
-   * Updated Holos profile
-   */
-  200: HolosAgentMe
-}
-
-export type HolosProfileUpdateResponse = HolosProfileUpdateResponses[keyof HolosProfileUpdateResponses]
-
-export type HolosVerifyData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/verify"
-}
-
-export type HolosVerifyErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosVerifyError = HolosVerifyErrors[keyof HolosVerifyErrors]
-
-export type HolosVerifyResponses = {
-  /**
-   * Credentials valid
-   */
-  200: HolosVerifyResponse
-}
-
-export type HolosVerifyResponse2 = HolosVerifyResponses[keyof HolosVerifyResponses]
-
-export type HolosAccountsListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/accounts"
-}
-
-export type HolosAccountsListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosAccountsListError = HolosAccountsListErrors[keyof HolosAccountsListErrors]
-
-export type HolosAccountsListResponses = {
-  /**
-   * Account list
-   */
-  200: HolosAccountsListResponse
-}
-
-export type HolosAccountsListResponse2 = HolosAccountsListResponses[keyof HolosAccountsListResponses]
-
-export type HolosAccountsSwitchData = {
-  body?: {
-    agentId: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/accounts/switch"
-}
-
-export type HolosAccountsSwitchErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosAccountsSwitchError = HolosAccountsSwitchErrors[keyof HolosAccountsSwitchErrors]
-
-export type HolosAccountsSwitchResponses = {
-  /**
-   * Account switched
-   */
-  200: HolosAccountsSwitchResponse
-}
-
-export type HolosAccountsSwitchResponse2 = HolosAccountsSwitchResponses[keyof HolosAccountsSwitchResponses]
-
-export type HolosAccountsRemoveData = {
-  body?: never
-  path: {
-    agentId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/accounts/{agentId}"
-}
-
-export type HolosAccountsRemoveErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosAccountsRemoveError = HolosAccountsRemoveErrors[keyof HolosAccountsRemoveErrors]
-
-export type HolosAccountsRemoveResponses = {
-  /**
-   * Account removed
-   */
-  200: HolosAccountsRemoveResponse
-}
-
-export type HolosAccountsRemoveResponse2 = HolosAccountsRemoveResponses[keyof HolosAccountsRemoveResponses]
-
-export type HolosStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/status"
-}
-
-export type HolosStatusErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosStatusError = HolosStatusErrors[keyof HolosStatusErrors]
-
-export type HolosStatusResponses = {
-  /**
-   * Connection status
-   */
-  200: HolosStatusResponse
-}
-
-export type HolosStatusResponse2 = HolosStatusResponses[keyof HolosStatusResponses]
-
-export type HolosContactListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact"
-}
-
-export type HolosContactListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactListError = HolosContactListErrors[keyof HolosContactListErrors]
-
-export type HolosContactListResponses = {
-  /**
-   * List of contacts
-   */
-  200: Array<Contact>
-}
-
-export type HolosContactListResponse = HolosContactListResponses[keyof HolosContactListResponses]
-
-export type HolosContactAddData = {
-  body?: {
-    id: string
-    name: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact"
-}
-
-export type HolosContactAddErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactAddError = HolosContactAddErrors[keyof HolosContactAddErrors]
-
-export type HolosContactAddResponses = {
-  /**
-   * Added contact
-   */
-  200: Contact
-}
-
-export type HolosContactAddResponse = HolosContactAddResponses[keyof HolosContactAddResponses]
-
-export type HolosContactRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact/{id}"
-}
-
-export type HolosContactRemoveErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactRemoveError = HolosContactRemoveErrors[keyof HolosContactRemoveErrors]
-
-export type HolosContactRemoveResponses = {
-  /**
-   * Removed
-   */
-  200: boolean
-}
-
-export type HolosContactRemoveResponse = HolosContactRemoveResponses[keyof HolosContactRemoveResponses]
-
-export type HolosContactGetData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact/{id}"
-}
-
-export type HolosContactGetErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactGetError = HolosContactGetErrors[keyof HolosContactGetErrors]
-
-export type HolosContactGetResponses = {
-  /**
-   * Contact
-   */
-  200: Contact
-}
-
-export type HolosContactGetResponse = HolosContactGetResponses[keyof HolosContactGetResponses]
-
-export type HolosContactToggleBlockData = {
-  body?: {
-    blocked: boolean
-  }
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact/{id}/block"
-}
-
-export type HolosContactToggleBlockErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactToggleBlockError = HolosContactToggleBlockErrors[keyof HolosContactToggleBlockErrors]
-
-export type HolosContactToggleBlockResponses = {
-  /**
-   * Updated contact
-   */
-  200: Contact
-}
-
-export type HolosContactToggleBlockResponse = HolosContactToggleBlockResponses[keyof HolosContactToggleBlockResponses]
-
-export type HolosPresenceData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/presence"
-}
-
-export type HolosPresenceErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosPresenceError = HolosPresenceErrors[keyof HolosPresenceErrors]
-
-export type HolosPresenceResponses = {
-  /**
-   * Presence map
-   */
-  200: HolosPresenceMap
-}
-
-export type HolosPresenceResponse = HolosPresenceResponses[keyof HolosPresenceResponses]
-
-export type HolosAgentsListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-    limit?: number
-    offset?: number
-    need_active?: boolean
-  }
-  url: "/holos/agents"
-}
-
-export type HolosAgentsListErrors = {
-  /**
-   * Service unavailable or runtime shutting down
-   */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
-}
-
-export type HolosAgentsListError = HolosAgentsListErrors[keyof HolosAgentsListErrors]
-
-export type HolosAgentsListResponses = {
-  /**
-   * Agent list
-   */
-  200: {
-    code: number
-    message?: string
-    data: {
-      items: Array<{
-        agent_id?: string
-        agent_key?: string
-        owner_id: string
-        owner_name: string
-        is_active: boolean
-        profile?: {
-          [key: string]: unknown
-        }
-      }>
-      total: number
-    }
-  }
-}
-
-export type HolosAgentsListResponse = HolosAgentsListResponses[keyof HolosAgentsListResponses]
-
-export type HolosAgentsGetData = {
-  body?: never
-  path: {
-    agentId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/agents/{agentId}"
-}
-
-export type HolosAgentsGetErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Service unavailable or runtime shutting down
-   */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
-}
-
-export type HolosAgentsGetError = HolosAgentsGetErrors[keyof HolosAgentsGetErrors]
-
-export type HolosAgentsGetResponses = {
-  /**
-   * Agent detail
-   */
-  200: {
-    code: number
-    message?: string
-    data: {
-      agent_id?: string
-      agent_key?: string
-      owner_id: string
-      owner_name: string
-      is_active: boolean
-      profile?: {
-        [key: string]: unknown
-      }
-    }
-  }
-}
-
-export type HolosAgentsGetResponse = HolosAgentsGetResponses[keyof HolosAgentsGetResponses]
-
-export type HolosSendData = {
-  body?: {
-    /**
-     * Recipient Holos agent ID
-     */
-    toId: string
-    /**
-     * Message text
-     */
-    text: string
-    replyToMessageId?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/send"
-}
-
-export type HolosSendErrors = {
-  /**
-   * Service unavailable or runtime shutting down
-   */
-  503: ServiceUnavailableError | RuntimeShuttingDownError
-}
-
-export type HolosSendError = HolosSendErrors[keyof HolosSendErrors]
-
-export type HolosSendResponses = {
-  /**
-   * Send result
-   */
-  200: HolosSendResponse
-}
-
-export type HolosSendResponse2 = HolosSendResponses[keyof HolosSendResponses]
-
-export type HolosSendRetryData = {
-  body?: never
-  path: {
-    messageId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/send/{messageId}/retry"
-}
-
-export type HolosSendRetryErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosSendRetryError = HolosSendRetryErrors[keyof HolosSendRetryErrors]
-
-export type HolosSendRetryResponses = {
-  /**
-   * Retry result
-   */
-  200: HolosRetryResponse
-}
-
-export type HolosSendRetryResponse = HolosSendRetryResponses[keyof HolosSendRetryResponses]
-
-export type HolosInboxListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/inbox"
-}
-
-export type HolosInboxListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosInboxListError = HolosInboxListErrors[keyof HolosInboxListErrors]
-
-export type HolosInboxListResponses = {
-  /**
-   * Inbox messages
-   */
-  200: MailboxMessageList
-}
-
-export type HolosInboxListResponse = HolosInboxListResponses[keyof HolosInboxListResponses]
-
-export type HolosOutboxListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/outbox"
-}
-
-export type HolosOutboxListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosOutboxListError = HolosOutboxListErrors[keyof HolosOutboxListErrors]
-
-export type HolosOutboxListResponses = {
-  /**
-   * Outbox messages
-   */
-  200: MailboxMessageList
-}
-
-export type HolosOutboxListResponse = HolosOutboxListResponses[keyof HolosOutboxListResponses]
-
-export type HolosThreadGetData = {
-  body?: never
-  path: {
-    contactId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/thread/{contactId}"
-}
-
-export type HolosThreadGetErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosThreadGetError = HolosThreadGetErrors[keyof HolosThreadGetErrors]
-
-export type HolosThreadGetResponses = {
-  /**
-   * Thread messages
-   */
-  200: MailboxMessageList
-}
-
-export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
-
-export type BrowserCreateViewerTicketData = {
-  body?: BrowserViewerTicketRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/webrtc/ticket"
-}
-
-export type BrowserCreateViewerTicketErrors = {
-  /**
-   * Ticket request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
-
-export type BrowserCreateViewerTicketResponses = {
-  /**
-   * Browser viewer ticket
-   */
-  200: BrowserViewerTicketResponse
-}
-
-export type BrowserCreateViewerTicketResponse =
-  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
-
-export type BrowserCreateAnnotationData = {
-  body?: BrowserAnnotationRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/annotations"
-}
-
-export type BrowserCreateAnnotationErrors = {
-  /**
-   * Annotation request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
-
-export type BrowserCreateAnnotationResponses = {
-  /**
-   * Created Browser annotation
-   */
-  200: BrowserAnnotationResponse
-}
-
-export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
-
-export type BrowserDiagnosticsData = {
-  body?: BrowserDiagnosticsRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/diagnostics"
-}
-
-export type BrowserDiagnosticsErrors = {
-  /**
-   * Diagnostics request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
-
-export type BrowserDiagnosticsResponses = {
-  /**
-   * Browser diagnostics result
-   */
-  200: BrowserDiagnosticsResponse
-}
-
-export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
-
-export type BrowserSessionData = {
-  body?: never
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/session"
-}
-
-export type BrowserSessionErrors = {
-  /**
-   * Browser session error
-   */
-  500: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
-
-export type BrowserSessionResponses = {
-  /**
-   * Browser session state
-   */
-  200: BrowserApiSessionState
-}
-
-export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
-
-export type BrowserControlData = {
-  body?: BrowserControlRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/control"
-}
-
-export type BrowserControlErrors = {
-  /**
-   * Invalid browser command
-   */
-  400: BrowserApiError
-  /**
-   * Retryable browser error
-   */
-  409: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
-
-export type BrowserControlResponses = {
-  /**
-   * Browser control result
-   */
-  200: BrowserControlResponse
-}
-
-export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
-
-export type ComputerHostBrokerData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/computer/host/broker"
-}
-
-export type ComputerHostBrokerErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ComputerHostBrokerError = ComputerHostBrokerErrors[keyof ComputerHostBrokerErrors]
-
 export type PluginListGlobalThemeContributionsData = {
   body?: never
   path?: never
@@ -23696,6 +22733,1006 @@ export type RegistryPluginsPublishResponses = {
 
 export type RegistryPluginsPublishResponse = RegistryPluginsPublishResponses[keyof RegistryPluginsPublishResponses]
 
+export type BrowserCreateViewerTicketData = {
+  body?: BrowserViewerTicketRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/webrtc/ticket"
+}
+
+export type BrowserCreateViewerTicketErrors = {
+  /**
+   * Ticket request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
+
+export type BrowserCreateViewerTicketResponses = {
+  /**
+   * Browser viewer ticket
+   */
+  200: BrowserViewerTicketResponse
+}
+
+export type BrowserCreateViewerTicketResponse =
+  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
+
+export type BrowserCreateAnnotationData = {
+  body?: BrowserAnnotationRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/annotations"
+}
+
+export type BrowserCreateAnnotationErrors = {
+  /**
+   * Annotation request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
+
+export type BrowserCreateAnnotationResponses = {
+  /**
+   * Created Browser annotation
+   */
+  200: BrowserAnnotationResponse
+}
+
+export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
+
+export type BrowserDiagnosticsData = {
+  body?: BrowserDiagnosticsRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/diagnostics"
+}
+
+export type BrowserDiagnosticsErrors = {
+  /**
+   * Diagnostics request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
+
+export type BrowserDiagnosticsResponses = {
+  /**
+   * Browser diagnostics result
+   */
+  200: BrowserDiagnosticsResponse
+}
+
+export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
+
+export type BrowserSessionData = {
+  body?: never
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/session"
+}
+
+export type BrowserSessionErrors = {
+  /**
+   * Browser session error
+   */
+  500: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
+
+export type BrowserSessionResponses = {
+  /**
+   * Browser session state
+   */
+  200: BrowserApiSessionState
+}
+
+export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
+
+export type BrowserControlData = {
+  body?: BrowserControlRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/control"
+}
+
+export type BrowserControlErrors = {
+  /**
+   * Invalid browser command
+   */
+  400: BrowserApiError
+  /**
+   * Retryable browser error
+   */
+  409: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
+
+export type BrowserControlResponses = {
+  /**
+   * Browser control result
+   */
+  200: BrowserControlResponse
+}
+
+export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
+
+export type ComputerHostBrokerData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/computer/host/broker"
+}
+
+export type ComputerHostBrokerErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ComputerHostBrokerError = ComputerHostBrokerErrors[keyof ComputerHostBrokerErrors]
+
+export type HolosCredentialsStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/credentials/status"
+}
+
+export type HolosCredentialsStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosCredentialsStatusError = HolosCredentialsStatusErrors[keyof HolosCredentialsStatusErrors]
+
+export type HolosCredentialsStatusResponses = {
+  /**
+   * Credential status
+   */
+  200: HolosCredentialsStatusResponse
+}
+
+export type HolosCredentialsStatusResponse2 = HolosCredentialsStatusResponses[keyof HolosCredentialsStatusResponses]
+
+export type HolosStateData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/state"
+}
+
+export type HolosStateErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosStateError = HolosStateErrors[keyof HolosStateErrors]
+
+export type HolosStateResponses = {
+  /**
+   * Unified Holos state
+   */
+  200: HolosState
+}
+
+export type HolosStateResponse = HolosStateResponses[keyof HolosStateResponses]
+
+export type HolosProfileGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/profile"
+}
+
+export type HolosProfileGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosProfileGetError = HolosProfileGetErrors[keyof HolosProfileGetErrors]
+
+export type HolosProfileGetResponses = {
+  /**
+   * Current Holos profile
+   */
+  200: HolosAgentMe
+}
+
+export type HolosProfileGetResponse = HolosProfileGetResponses[keyof HolosProfileGetResponses]
+
+export type HolosProfileUpdateData = {
+  body?: HolosAgentProfileInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/profile"
+}
+
+export type HolosProfileUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosProfileUpdateError = HolosProfileUpdateErrors[keyof HolosProfileUpdateErrors]
+
+export type HolosProfileUpdateResponses = {
+  /**
+   * Updated Holos profile
+   */
+  200: HolosAgentMe
+}
+
+export type HolosProfileUpdateResponse = HolosProfileUpdateResponses[keyof HolosProfileUpdateResponses]
+
+export type HolosVerifyData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/verify"
+}
+
+export type HolosVerifyErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosVerifyError = HolosVerifyErrors[keyof HolosVerifyErrors]
+
+export type HolosVerifyResponses = {
+  /**
+   * Credentials valid
+   */
+  200: HolosVerifyResponse
+}
+
+export type HolosVerifyResponse2 = HolosVerifyResponses[keyof HolosVerifyResponses]
+
+export type HolosAccountsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/accounts"
+}
+
+export type HolosAccountsListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosAccountsListError = HolosAccountsListErrors[keyof HolosAccountsListErrors]
+
+export type HolosAccountsListResponses = {
+  /**
+   * Account list
+   */
+  200: HolosAccountsListResponse
+}
+
+export type HolosAccountsListResponse2 = HolosAccountsListResponses[keyof HolosAccountsListResponses]
+
+export type HolosAccountsSwitchData = {
+  body?: {
+    agentId: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/accounts/switch"
+}
+
+export type HolosAccountsSwitchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosAccountsSwitchError = HolosAccountsSwitchErrors[keyof HolosAccountsSwitchErrors]
+
+export type HolosAccountsSwitchResponses = {
+  /**
+   * Account switched
+   */
+  200: HolosAccountsSwitchResponse
+}
+
+export type HolosAccountsSwitchResponse2 = HolosAccountsSwitchResponses[keyof HolosAccountsSwitchResponses]
+
+export type HolosAccountsRemoveData = {
+  body?: never
+  path: {
+    agentId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/accounts/{agentId}"
+}
+
+export type HolosAccountsRemoveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosAccountsRemoveError = HolosAccountsRemoveErrors[keyof HolosAccountsRemoveErrors]
+
+export type HolosAccountsRemoveResponses = {
+  /**
+   * Account removed
+   */
+  200: HolosAccountsRemoveResponse
+}
+
+export type HolosAccountsRemoveResponse2 = HolosAccountsRemoveResponses[keyof HolosAccountsRemoveResponses]
+
+export type HolosStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/status"
+}
+
+export type HolosStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosStatusError = HolosStatusErrors[keyof HolosStatusErrors]
+
+export type HolosStatusResponses = {
+  /**
+   * Connection status
+   */
+  200: HolosStatusResponse
+}
+
+export type HolosStatusResponse2 = HolosStatusResponses[keyof HolosStatusResponses]
+
+export type HolosContactListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/contact"
+}
+
+export type HolosContactListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosContactListError = HolosContactListErrors[keyof HolosContactListErrors]
+
+export type HolosContactListResponses = {
+  /**
+   * List of contacts
+   */
+  200: Array<Contact>
+}
+
+export type HolosContactListResponse = HolosContactListResponses[keyof HolosContactListResponses]
+
+export type HolosContactAddData = {
+  body?: {
+    id: string
+    name: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/contact"
+}
+
+export type HolosContactAddErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosContactAddError = HolosContactAddErrors[keyof HolosContactAddErrors]
+
+export type HolosContactAddResponses = {
+  /**
+   * Added contact
+   */
+  200: Contact
+}
+
+export type HolosContactAddResponse = HolosContactAddResponses[keyof HolosContactAddResponses]
+
+export type HolosContactRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/contact/{id}"
+}
+
+export type HolosContactRemoveErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosContactRemoveError = HolosContactRemoveErrors[keyof HolosContactRemoveErrors]
+
+export type HolosContactRemoveResponses = {
+  /**
+   * Removed
+   */
+  200: boolean
+}
+
+export type HolosContactRemoveResponse = HolosContactRemoveResponses[keyof HolosContactRemoveResponses]
+
+export type HolosContactGetData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/contact/{id}"
+}
+
+export type HolosContactGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosContactGetError = HolosContactGetErrors[keyof HolosContactGetErrors]
+
+export type HolosContactGetResponses = {
+  /**
+   * Contact
+   */
+  200: Contact
+}
+
+export type HolosContactGetResponse = HolosContactGetResponses[keyof HolosContactGetResponses]
+
+export type HolosContactToggleBlockData = {
+  body?: {
+    blocked: boolean
+  }
+  path: {
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/contact/{id}/block"
+}
+
+export type HolosContactToggleBlockErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosContactToggleBlockError = HolosContactToggleBlockErrors[keyof HolosContactToggleBlockErrors]
+
+export type HolosContactToggleBlockResponses = {
+  /**
+   * Updated contact
+   */
+  200: Contact
+}
+
+export type HolosContactToggleBlockResponse = HolosContactToggleBlockResponses[keyof HolosContactToggleBlockResponses]
+
+export type HolosPresenceData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/presence"
+}
+
+export type HolosPresenceErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosPresenceError = HolosPresenceErrors[keyof HolosPresenceErrors]
+
+export type HolosPresenceResponses = {
+  /**
+   * Presence map
+   */
+  200: HolosPresenceMap
+}
+
+export type HolosPresenceResponse = HolosPresenceResponses[keyof HolosPresenceResponses]
+
+export type HolosAgentsListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+    limit?: number
+    offset?: number
+    need_active?: boolean
+  }
+  url: "/holos/agents"
+}
+
+export type HolosAgentsListErrors = {
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type HolosAgentsListError = HolosAgentsListErrors[keyof HolosAgentsListErrors]
+
+export type HolosAgentsListResponses = {
+  /**
+   * Agent list
+   */
+  200: {
+    code: number
+    message?: string
+    data: {
+      items: Array<{
+        agent_id?: string
+        agent_key?: string
+        owner_id: string
+        owner_name: string
+        is_active: boolean
+        profile?: {
+          [key: string]: unknown
+        }
+      }>
+      total: number
+    }
+  }
+}
+
+export type HolosAgentsListResponse = HolosAgentsListResponses[keyof HolosAgentsListResponses]
+
+export type HolosAgentsGetData = {
+  body?: never
+  path: {
+    agentId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/agents/{agentId}"
+}
+
+export type HolosAgentsGetErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type HolosAgentsGetError = HolosAgentsGetErrors[keyof HolosAgentsGetErrors]
+
+export type HolosAgentsGetResponses = {
+  /**
+   * Agent detail
+   */
+  200: {
+    code: number
+    message?: string
+    data: {
+      agent_id?: string
+      agent_key?: string
+      owner_id: string
+      owner_name: string
+      is_active: boolean
+      profile?: {
+        [key: string]: unknown
+      }
+    }
+  }
+}
+
+export type HolosAgentsGetResponse = HolosAgentsGetResponses[keyof HolosAgentsGetResponses]
+
+export type HolosSendData = {
+  body?: {
+    /**
+     * Recipient Holos agent ID
+     */
+    toId: string
+    /**
+     * Message text
+     */
+    text: string
+    replyToMessageId?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/send"
+}
+
+export type HolosSendErrors = {
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type HolosSendError = HolosSendErrors[keyof HolosSendErrors]
+
+export type HolosSendResponses = {
+  /**
+   * Send result
+   */
+  200: HolosSendResponse
+}
+
+export type HolosSendResponse2 = HolosSendResponses[keyof HolosSendResponses]
+
+export type HolosSendRetryData = {
+  body?: never
+  path: {
+    messageId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/send/{messageId}/retry"
+}
+
+export type HolosSendRetryErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosSendRetryError = HolosSendRetryErrors[keyof HolosSendRetryErrors]
+
+export type HolosSendRetryResponses = {
+  /**
+   * Retry result
+   */
+  200: HolosRetryResponse
+}
+
+export type HolosSendRetryResponse = HolosSendRetryResponses[keyof HolosSendRetryResponses]
+
+export type HolosInboxListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/inbox"
+}
+
+export type HolosInboxListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosInboxListError = HolosInboxListErrors[keyof HolosInboxListErrors]
+
+export type HolosInboxListResponses = {
+  /**
+   * Inbox messages
+   */
+  200: MailboxMessageList
+}
+
+export type HolosInboxListResponse = HolosInboxListResponses[keyof HolosInboxListResponses]
+
+export type HolosOutboxListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/outbox"
+}
+
+export type HolosOutboxListErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosOutboxListError = HolosOutboxListErrors[keyof HolosOutboxListErrors]
+
+export type HolosOutboxListResponses = {
+  /**
+   * Outbox messages
+   */
+  200: MailboxMessageList
+}
+
+export type HolosOutboxListResponse = HolosOutboxListResponses[keyof HolosOutboxListResponses]
+
+export type HolosThreadGetData = {
+  body?: never
+  path: {
+    contactId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/holos/thread/{contactId}"
+}
+
+export type HolosThreadGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type HolosThreadGetError = HolosThreadGetErrors[keyof HolosThreadGetErrors]
+
+export type HolosThreadGetResponses = {
+  /**
+   * Thread messages
+   */
+  200: MailboxMessageList
+}
+
+export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
+
+export type VoiceTranscribeData = {
+  body?: {
+    file: unknown
+    context?: string
+    language?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/voice/transcribe"
+}
+
+export type VoiceTranscribeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VoiceTranscribeError = VoiceTranscribeErrors[keyof VoiceTranscribeErrors]
+
+export type VoiceTranscribeResponses = {
+  /**
+   * Transcribed text
+   */
+  200: VoiceTranscriptionResult
+}
+
+export type VoiceTranscribeResponse = VoiceTranscribeResponses[keyof VoiceTranscribeResponses]
+
 export type AppLogData = {
   body?: {
     /**
@@ -23802,6 +23839,389 @@ export type AppAgentModelRolesResponses = {
 }
 
 export type AppAgentModelRolesResponse = AppAgentModelRolesResponses[keyof AppAgentModelRolesResponses]
+
+export type ChannelStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel"
+}
+
+export type ChannelStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStatusError = ChannelStatusErrors[keyof ChannelStatusErrors]
+
+export type ChannelStatusResponses = {
+  /**
+   * Channel status
+   */
+  200: {
+    [key: string]: ChannelStatus
+  }
+}
+
+export type ChannelStatusResponse = ChannelStatusResponses[keyof ChannelStatusResponses]
+
+export type ChannelStartData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/start"
+}
+
+export type ChannelStartErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStartError = ChannelStartErrors[keyof ChannelStartErrors]
+
+export type ChannelStartResponses = {
+  /**
+   * Channel status
+   */
+  200: {
+    [key: string]: ChannelStatus
+  }
+}
+
+export type ChannelStartResponse = ChannelStartResponses[keyof ChannelStartResponses]
+
+export type ChannelStopData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/stop"
+}
+
+export type ChannelStopErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStopError = ChannelStopErrors[keyof ChannelStopErrors]
+
+export type ChannelStopResponses = {
+  /**
+   * Channel status
+   */
+  200: {
+    [key: string]: ChannelStatus
+  }
+}
+
+export type ChannelStopResponse = ChannelStopResponses[keyof ChannelStopResponses]
+
+export type ChannelStartOneData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/start"
+}
+
+export type ChannelStartOneErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStartOneError = ChannelStartOneErrors[keyof ChannelStartOneErrors]
+
+export type ChannelStartOneResponses = {
+  /**
+   * Channel status
+   */
+  200: {
+    [key: string]: ChannelStatus
+  }
+}
+
+export type ChannelStartOneResponse = ChannelStartOneResponses[keyof ChannelStartOneResponses]
+
+export type ChannelStopOneData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/stop"
+}
+
+export type ChannelStopOneErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelStopOneError = ChannelStopOneErrors[keyof ChannelStopOneErrors]
+
+export type ChannelStopOneResponses = {
+  /**
+   * Channel status
+   */
+  200: {
+    [key: string]: ChannelStatus
+  }
+}
+
+export type ChannelStopOneResponse = ChannelStopOneResponses[keyof ChannelStopOneResponses]
+
+export type ChannelDisconnectData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/disconnect"
+}
+
+export type ChannelDisconnectErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelDisconnectError = ChannelDisconnectErrors[keyof ChannelDisconnectErrors]
+
+export type ChannelDisconnectResponses = {
+  /**
+   * Channel disconnected
+   */
+  200: {
+    success: true
+  }
+}
+
+export type ChannelDisconnectResponse = ChannelDisconnectResponses[keyof ChannelDisconnectResponses]
+
+export type ChannelAppSessionData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/app/session"
+}
+
+export type ChannelAppSessionErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelAppSessionError = ChannelAppSessionErrors[keyof ChannelAppSessionErrors]
+
+export type ChannelAppSessionResponses = {
+  /**
+   * App channel session
+   */
+  200: Session
+}
+
+export type ChannelAppSessionResponse = ChannelAppSessionResponses[keyof ChannelAppSessionResponses]
+
+export type ChannelAppResetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/app/reset"
+}
+
+export type ChannelAppResetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelAppResetError = ChannelAppResetErrors[keyof ChannelAppResetErrors]
+
+export type ChannelAppResetResponses = {
+  /**
+   * Session archived
+   */
+  200: {
+    success: true
+  }
+}
+
+export type ChannelAppResetResponse = ChannelAppResetResponses[keyof ChannelAppResetResponses]
+
+export type ChannelRefreshProjectsData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/projects/refresh"
+}
+
+export type ChannelRefreshProjectsErrors = {
+  /**
+   * Channel account is still connecting and cannot refresh projects yet
+   */
+  409: ChannelRefreshUnavailable
+  /**
+   * Refresh failed
+   */
+  500: ChannelRefreshError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelRefreshProjectsError = ChannelRefreshProjectsErrors[keyof ChannelRefreshProjectsErrors]
+
+export type ChannelRefreshProjectsResponses = {
+  /**
+   * Refresh completed
+   */
+  200: {
+    completed: true
+  }
+}
+
+export type ChannelRefreshProjectsResponse = ChannelRefreshProjectsResponses[keyof ChannelRefreshProjectsResponses]
+
+export type ChannelDownloadDiagnosticsData = {
+  body?: never
+  path: {
+    channelType: string
+    accountId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/channel/{channelType}/{accountId}/diagnostics.ndjson"
+}
+
+export type ChannelDownloadDiagnosticsErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ChannelDownloadDiagnosticsError = ChannelDownloadDiagnosticsErrors[keyof ChannelDownloadDiagnosticsErrors]
+
+export type ChannelDownloadDiagnosticsResponses = {
+  /**
+   * NDJSON diagnostic stream
+   */
+  200: Array<{
+    timestamp: number
+    level: string
+    message: string
+    data?: {
+      [key: string]: unknown
+    }
+  }>
+}
+
+export type ChannelDownloadDiagnosticsResponse =
+  ChannelDownloadDiagnosticsResponses[keyof ChannelDownloadDiagnosticsResponses]
+
+export type FormatterStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/formatter"
+}
+
+export type FormatterStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type FormatterStatusError = FormatterStatusErrors[keyof FormatterStatusErrors]
+
+export type FormatterStatusResponses = {
+  /**
+   * Formatter status
+   */
+  200: Array<FormatterStatus>
+}
+
+export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
+
+export type LspStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/lsp"
+}
+
+export type LspStatusErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type LspStatusError = LspStatusErrors[keyof LspStatusErrors]
+
+export type LspStatusResponses = {
+  /**
+   * LSP server status
+   */
+  200: Array<LspStatus>
+}
+
+export type LspStatusResponse = LspStatusResponses[keyof LspStatusResponses]
 
 export type McpStatusData = {
   body?: never
@@ -24265,333 +24685,6 @@ export type McpTestResponses = {
 
 export type McpTestResponse = McpTestResponses[keyof McpTestResponses]
 
-export type ChannelStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel"
-}
-
-export type ChannelStatusErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelStatusError = ChannelStatusErrors[keyof ChannelStatusErrors]
-
-export type ChannelStatusResponses = {
-  /**
-   * Channel status
-   */
-  200: {
-    [key: string]: ChannelStatus
-  }
-}
-
-export type ChannelStatusResponse = ChannelStatusResponses[keyof ChannelStatusResponses]
-
-export type ChannelStartData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/start"
-}
-
-export type ChannelStartErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelStartError = ChannelStartErrors[keyof ChannelStartErrors]
-
-export type ChannelStartResponses = {
-  /**
-   * Channel status
-   */
-  200: {
-    [key: string]: ChannelStatus
-  }
-}
-
-export type ChannelStartResponse = ChannelStartResponses[keyof ChannelStartResponses]
-
-export type ChannelStopData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/stop"
-}
-
-export type ChannelStopErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelStopError = ChannelStopErrors[keyof ChannelStopErrors]
-
-export type ChannelStopResponses = {
-  /**
-   * Channel status
-   */
-  200: {
-    [key: string]: ChannelStatus
-  }
-}
-
-export type ChannelStopResponse = ChannelStopResponses[keyof ChannelStopResponses]
-
-export type ChannelStartOneData = {
-  body?: never
-  path: {
-    channelType: string
-    accountId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/{channelType}/{accountId}/start"
-}
-
-export type ChannelStartOneErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelStartOneError = ChannelStartOneErrors[keyof ChannelStartOneErrors]
-
-export type ChannelStartOneResponses = {
-  /**
-   * Channel status
-   */
-  200: {
-    [key: string]: ChannelStatus
-  }
-}
-
-export type ChannelStartOneResponse = ChannelStartOneResponses[keyof ChannelStartOneResponses]
-
-export type ChannelStopOneData = {
-  body?: never
-  path: {
-    channelType: string
-    accountId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/{channelType}/{accountId}/stop"
-}
-
-export type ChannelStopOneErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelStopOneError = ChannelStopOneErrors[keyof ChannelStopOneErrors]
-
-export type ChannelStopOneResponses = {
-  /**
-   * Channel status
-   */
-  200: {
-    [key: string]: ChannelStatus
-  }
-}
-
-export type ChannelStopOneResponse = ChannelStopOneResponses[keyof ChannelStopOneResponses]
-
-export type ChannelDisconnectData = {
-  body?: never
-  path: {
-    channelType: string
-    accountId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/{channelType}/{accountId}/disconnect"
-}
-
-export type ChannelDisconnectErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelDisconnectError = ChannelDisconnectErrors[keyof ChannelDisconnectErrors]
-
-export type ChannelDisconnectResponses = {
-  /**
-   * Channel disconnected
-   */
-  200: {
-    success: true
-  }
-}
-
-export type ChannelDisconnectResponse = ChannelDisconnectResponses[keyof ChannelDisconnectResponses]
-
-export type ChannelAppSessionData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/app/session"
-}
-
-export type ChannelAppSessionErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelAppSessionError = ChannelAppSessionErrors[keyof ChannelAppSessionErrors]
-
-export type ChannelAppSessionResponses = {
-  /**
-   * App channel session
-   */
-  200: Session
-}
-
-export type ChannelAppSessionResponse = ChannelAppSessionResponses[keyof ChannelAppSessionResponses]
-
-export type ChannelAppResetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/app/reset"
-}
-
-export type ChannelAppResetErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelAppResetError = ChannelAppResetErrors[keyof ChannelAppResetErrors]
-
-export type ChannelAppResetResponses = {
-  /**
-   * Session archived
-   */
-  200: {
-    success: true
-  }
-}
-
-export type ChannelAppResetResponse = ChannelAppResetResponses[keyof ChannelAppResetResponses]
-
-export type ChannelRefreshProjectsData = {
-  body?: never
-  path: {
-    channelType: string
-    accountId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/{channelType}/{accountId}/projects/refresh"
-}
-
-export type ChannelRefreshProjectsErrors = {
-  /**
-   * Channel account is still connecting and cannot refresh projects yet
-   */
-  409: ChannelRefreshUnavailable
-  /**
-   * Refresh failed
-   */
-  500: ChannelRefreshError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelRefreshProjectsError = ChannelRefreshProjectsErrors[keyof ChannelRefreshProjectsErrors]
-
-export type ChannelRefreshProjectsResponses = {
-  /**
-   * Refresh completed
-   */
-  200: {
-    completed: true
-  }
-}
-
-export type ChannelRefreshProjectsResponse = ChannelRefreshProjectsResponses[keyof ChannelRefreshProjectsResponses]
-
-export type ChannelDownloadDiagnosticsData = {
-  body?: never
-  path: {
-    channelType: string
-    accountId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/channel/{channelType}/{accountId}/diagnostics.ndjson"
-}
-
-export type ChannelDownloadDiagnosticsErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ChannelDownloadDiagnosticsError = ChannelDownloadDiagnosticsErrors[keyof ChannelDownloadDiagnosticsErrors]
-
-export type ChannelDownloadDiagnosticsResponses = {
-  /**
-   * NDJSON diagnostic stream
-   */
-  200: Array<{
-    timestamp: number
-    level: string
-    message: string
-    data?: {
-      [key: string]: unknown
-    }
-  }>
-}
-
-export type ChannelDownloadDiagnosticsResponse =
-  ChannelDownloadDiagnosticsResponses[keyof ChannelDownloadDiagnosticsResponses]
-
 export type ExperimentalResourceListData = {
   body?: never
   path?: never
@@ -24622,62 +24715,6 @@ export type ExperimentalResourceListResponses = {
 
 export type ExperimentalResourceListResponse =
   ExperimentalResourceListResponses[keyof ExperimentalResourceListResponses]
-
-export type LspStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/lsp"
-}
-
-export type LspStatusErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type LspStatusError = LspStatusErrors[keyof LspStatusErrors]
-
-export type LspStatusResponses = {
-  /**
-   * LSP server status
-   */
-  200: Array<LspStatus>
-}
-
-export type LspStatusResponse = LspStatusResponses[keyof LspStatusResponses]
-
-export type FormatterStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/formatter"
-}
-
-export type FormatterStatusErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type FormatterStatusError = FormatterStatusErrors[keyof FormatterStatusErrors]
-
-export type FormatterStatusResponses = {
-  /**
-   * Formatter status
-   */
-  200: Array<FormatterStatus>
-}
-
-export type FormatterStatusResponse = FormatterStatusResponses[keyof FormatterStatusResponses]
 
 export type AuthSetData = {
   body?: Auth

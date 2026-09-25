@@ -40,6 +40,8 @@ Plugin authors compile against `packages/plugin`; `packages/plugin-kit` provides
 
 The HTTP SDK is generated from the complete Server API. Run `./script/generate.ts` after route/schema changes. A reduced server composition does not remove methods from the full public SDK.
 
+Use `client.global.capabilities()` to inspect the active component selection. Node.js hosts use an explicit managed process or attach to an existing service; see [Embedding](embedding.md) for version, home, authentication and shutdown ownership.
+
 ## Validation
 
 `bun run deps:check` checks package imports, exports and dependency directions. `bun run monorepo:check` checks manifest consistency. `bun run package:check` validates existing public packages and their TypeScript resolution. Independent runtime archives additionally use the install check above. Tests and fixtures follow their domain owner; full composition tests live in `packages/presets/test`.

@@ -149,6 +149,7 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/presets/test/server/nav-global-routes.test.ts",
   // Runtime startup must configure pools before any sibling suite has created them.
   "packages/presets/test/server/resident-runtime.test.ts",
+  "packages/presets/test/cli/managed-sdk.test.ts",
   "packages/presets/test/server/runtime-handle.test.ts",
   // Boots a second full Runtime in a child process to observe the storage-unavailable
   // escalation exit; runtime startup is load-sensitive alongside sibling fixtures.

@@ -25,6 +25,7 @@ export function createServerCommand(
           default: false,
           hidden: true,
         })
+        .option("managed-ready", { type: "boolean", default: false, hidden: true })
         .option("non-interactive", {
           type: "boolean",
           default: false,
@@ -43,6 +44,7 @@ export function createServerCommand(
         const managedService = args.managedService
 
         await runServerRuntime({
+          managedReady: args.managedReady,
           storageReporter: managed ? createManagedStorageReporter() : undefined,
           maintenanceReporter: managed ? createManagedMaintenanceReporter() : undefined,
           migrationReporter: managed ? createManagedMigrationReporter() : undefined,

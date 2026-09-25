@@ -1,4 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { timingSafeEqual } from "node:crypto"
 import { SessionPreparingError } from "@ericsanchezok/synergy-harness/persistence"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
@@ -617,6 +619,13 @@ export namespace Server {
         }),
       )
       .use(async (c, next) => {
+        const token = RuntimeContext.current().host.env.SYNERGY_SERVER_TOKEN
+        if (token) {
+          const expected = Buffer.from(`Bearer ${token}`)
+          const actual = Buffer.from(c.req.header("authorization") ?? "")
+          if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
+            return c.json({ name: "Unauthorized", data: { message: "Runtime credentials are required" } }, 401)
+        }
         if (instanceState._shuttingDown)
           return c.json({ name: "RuntimeShuttingDown", data: { message: "Synergy runtime is shutting down" } }, 503)
         if (
@@ -751,6 +760,38 @@ export namespace Server {
       .use(compress({ encoding: "gzip" }))
       .use(provideRequestScope)
       .use(cspMiddleware())
+      .get(
+        "/global/capabilities",
+        describeRoute({
+          summary: "Get runtime capabilities",
+          description: "List the components selected for this running instance. Installed changes apply after restart.",
+          operationId: "global.capabilities",
+          responses: {
+            200: {
+              description: "Active runtime composition",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        apiVersion: z.literal(1),
+                        hostVersion: z.string(),
+                        components: z.array(RuntimeComponents.Info),
+                      })
+                      .meta({ ref: "RuntimeCapabilities" }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        (c) =>
+          c.json({
+            apiVersion: 1 as const,
+            hostVersion: Installation.VERSION,
+            components: RuntimeComponents.selected(),
+          }),
+      )
       .get(
         "/global/health",
         describeRoute({

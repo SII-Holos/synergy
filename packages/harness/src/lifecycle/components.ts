@@ -2,6 +2,7 @@ import type { RuntimeComposition, RuntimeServices } from "./runtime"
 import { RuntimeContext } from "./context"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
+import { z } from "zod"
 
 // Provenance: docs/decisions/implemented/architecture/2026-09-25-explicit-runtime-components.md
 // Local adaptation: explicit package composition uses Runtime-owned state and separate process plugin execution.
@@ -20,6 +21,15 @@ export interface RuntimeComponent {
 }
 
 export namespace RuntimeComponents {
+  export const Info = z
+    .object({ id: z.string(), version: z.string(), apiVersion: z.literal(1) })
+    .meta({ ref: "RuntimeComponentInfo" })
+  const selection = RuntimeContext.state(() => new Map<string, z.infer<typeof Info>>())
+
+  export function selected(): z.infer<typeof Info>[] {
+    return [...selection().values()].map((item) => ({ ...item })).sort((a, b) => a.id.localeCompare(b.id))
+  }
+
   export function resolve(components: readonly RuntimeComponent[]): RuntimeComponent[] {
     const byID = new Map<string, RuntimeComponent>()
     for (const component of components) {
@@ -67,6 +77,8 @@ export namespace RuntimeComponents {
         if (state().registered) return
         RuntimeContext.assertCompositionOpen("runtime components")
         for (const component of ordered) component.register()
+        for (const { id, version, apiVersion } of ordered)
+          selection().set(id, Object.freeze({ id, version, apiVersion }))
         state().registered = true
       },
       services() {

@@ -1,5 +1,7 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { RuntimeHandle } from "@ericsanchezok/synergy-harness/lifecycle"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { runtimeReadyLine } from "@ericsanchezok/synergy-sdk/runtime-ready"
 import type { LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
@@ -20,6 +22,7 @@ const log = Log.create({ service: "server-runtime" })
 type Network = import("@ericsanchezok/synergy-harness/lifecycle").RuntimeNetwork
 
 export interface RuntimeOptions {
+  managedReady?: boolean
   logging?: Log.Options
   storageReporter?: LocalRuntimeOptions["storageReporter"]
   maintenanceReporter?: LocalRuntimeOptions["maintenanceReporter"]
@@ -34,6 +37,11 @@ export interface RuntimeOptions {
   network: Network | (() => Promise<Network>)
 }
 export async function run(options: RuntimeOptions) {
+  if (options.managedReady) {
+    if (!process.env.SYNERGY_SERVER_TOKEN) throw new Error("Managed runtime credentials are required")
+    if (process.env.SYNERGY_EXPECT_VERSION && process.env.SYNERGY_EXPECT_VERSION !== Installation.VERSION)
+      throw new Error("Managed runtime version does not match the requested host")
+  }
   let network: Network = { hostname: "127.0.0.1", port: 0 }
   const reporter = options.printBanner ? StartupReporter.create() : undefined
   await using handle = await options.runtimeFactory({
@@ -55,6 +63,19 @@ export async function run(options: RuntimeOptions) {
     if (!server) throw new Error("The selected runtime has no HTTP transport")
     reporter?.migration(handle.migration)
     registerShutdown(handle)
+    if (options.managedReady) {
+      const host = RuntimeContext.current().host
+      process.stdout.write(
+        runtimeReadyLine({
+          protocol: 1,
+          pid: process.pid,
+          version: Installation.VERSION,
+          home: host.root,
+          url: displayUrl(server.hostname ?? network.hostname, server.port ?? network.port),
+          components: RuntimeComponents.selected(),
+        }),
+      )
+    }
     await Observability.cleanup().catch(() => {})
     await Observability.emit("server.start", {
       data: {
