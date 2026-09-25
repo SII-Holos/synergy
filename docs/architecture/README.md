@@ -6,7 +6,7 @@ Code is authoritative. When code changes one of these contracts, update the owni
 
 ## System Shape
 
-Synergy separates execution mechanisms, concrete host implementations, optional business capabilities and product interfaces. Harness owns the session loop, scheduling, permissions, budgets, persistence and lifecycle. Local Runtime supplies the default model and local-system implementations. Product Runtime chooses the complete set of business services before startup; CLI and HTTP/WS are access paths to that runtime.
+Synergy separates execution mechanisms, concrete host implementations, optional business capabilities and product interfaces. Harness owns the session loop, scheduling, permissions, budgets, persistence and lifecycle. Local Runtime supplies the default model and local-system implementations. Presets chooses the complete set of business services before startup; CLI and HTTP/WS are access paths to that runtime.
 
 The full product is a client-server system built around the same persistent runtime:
 
@@ -45,7 +45,7 @@ Package boundaries express independently consumable code and dependency weight. 
 
 ```mermaid
 flowchart TD
-  Desktop[Desktop native host and UI] --> Product[Product Runtime]
+  Desktop[Desktop native host and UI] --> Product[Presets]
   Web[Web UI] --> Server[HTTP / WebSocket Server]
   Product --> CLI[Single CLI implementation]
   Product --> Server
@@ -87,7 +87,7 @@ Workspace membership and dependency versions come from the root and package `pac
 | `packages/agent-runtime`                                                                | Bun embedding, explicit component bootstrap and role-specific worker composition                                                           |
 | `packages/cli`                                                                          | The single `synergy` parser, command execution, local client and remote SDK client                                                         |
 | `packages/server`                                                                       | HTTP/WS transport, core routes and explicit route contributions                                                                            |
-| `packages/product-runtime`                                                              | Full configuration, tools, agents, services, routes and CLI composition; packaged product entry                                            |
+| `packages/presets`                                                                      | Full configuration, tools, agents, services, routes and CLI composition; packaged product entry                                            |
 | `packages/browser-runtime`, `packages/computer-runtime`                                 | Browser and Computer backend capabilities, tools, ownership, recovery and host connections                                                 |
 | `packages/library`, `packages/note`                                                     | Knowledge processing and retrieval; documents and note operations                                                                          |
 | `packages/workflows`                                                                    | Blueprint, Light Loop, Lattice, Agenda and Boss                                                                                            |
@@ -108,7 +108,7 @@ Business packages own their backend, tools, routes, configuration, storage upgra
 
 ### Composition and public imports
 
-Harness is callable without CLI, Server or optional product capabilities. Its `RuntimeHandle` owns admission, cancellation, draining, evidence flushing, worker cleanup and failed-start recovery. `local-runtime` registers the default host sources. `product-runtime` selects the complete capability set before opening the runtime. Each process owns one runtime and one home lock.
+Harness is callable without CLI, Server or optional product capabilities. Its `RuntimeHandle` owns admission, cancellation, draining, evidence flushing, worker cleanup and failed-start recovery. `local-runtime` registers the default host sources. `presets` selects the complete capability set before opening the runtime. Each process owns one runtime and one home lock.
 
 Public package exports are the cross-package resolution authority. Source development resolves these entries to the owning source files; package builds resolve the same entries to one corresponding compiled module. Private relative imports across workspace packages are rejected. Optional capabilities register through the existing registries and typed sources rather than automatic package discovery.
 

@@ -61,7 +61,7 @@ export async function runCli(options: CliOptions): Promise<void> {
   const context = RuntimeContext.create(host)
   try {
     await context.run(async () => {
-      registerLocalRuntime()
+      registerLocalRuntime({ workers: false })
       try {
         const run = () =>
           runCliImplementation({

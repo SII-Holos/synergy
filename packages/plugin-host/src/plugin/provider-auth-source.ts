@@ -5,7 +5,7 @@ import { authHook } from "./auth-provider"
 /**
  * S9d source inversion: plugin auth-provider contributions flow into the L1
  * provider domain through this registered source. Loaded through
- * src/product-registration.ts.
+ * src/registration.ts.
  */
 export function registerProviderPluginAuth() {
   ProviderPluginAuth.register({

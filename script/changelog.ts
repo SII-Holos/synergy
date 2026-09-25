@@ -54,7 +54,7 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
       if (
         file.startsWith("packages/harness/") ||
         file.startsWith("packages/local-runtime/") ||
-        file.startsWith("packages/product-runtime/") ||
+        file.startsWith("packages/presets/") ||
         file.startsWith("packages/cli/")
       )
         areas.add("core")

@@ -365,7 +365,7 @@ describe("relocated coverage enforcement", () => {
       "local-runtime",
       "server",
       "cli",
-      "product-runtime",
+      "presets",
       "library",
       "note",
       "browser-runtime",

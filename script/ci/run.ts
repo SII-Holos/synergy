@@ -282,18 +282,18 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         test("core-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
           SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/cli/dist/synergy-linux-x64/bin/synergy"),
         }),
-        bun("product-build", ["packages/product-runtime/script/build.ts", "--single", "--skip-install"], undefined, {
+        bun("product-build", ["packages/presets/script/build.ts", "--single", "--skip-install"], undefined, {
           SYNERGY_BUILD_TARGETS: "linux-x64",
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
         }),
         test("product-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-          SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/product-runtime/dist/synergy-linux-x64/bin/synergy"),
+          SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/presets/dist/synergy-linux-x64/bin/synergy"),
         }),
         bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),
         bun("core-install", ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")]),
         bun("product-pack", [
           "script/pack-workspace.ts",
-          "packages/product-runtime",
+          "packages/presets",
           path.join(root, OUTPUT, "runtime-packages"),
         ]),
         bun("product-composition", [

@@ -23,7 +23,7 @@ export async function checkRuntimeCompositions(
       library: "library",
       note: "note",
       computer: "computer-runtime",
-      full: "product-runtime",
+      full: "presets",
     }
     const owner = owners[mode]
     const entries =

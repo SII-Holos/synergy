@@ -4,7 +4,7 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { LspTool } from "./tools/lsp"
 
 /**
- * LSP domain tool registration. Loaded through src/product-registration.ts.
+ * LSP domain tool registration. Loaded through src/registration.ts.
  * The tool is experimental; the gate is evaluated per provider drain.
  */
 const runtimeState = RuntimeContext.state(() => ({

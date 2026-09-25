@@ -31,7 +31,10 @@
     "./cli/cmd/data": "./src/cli/cmd/data/index.ts",
     "./cli/cmd/data/path": "./src/cli/cmd/data/path.ts",
     "./cli/cmd/data/set-home": "./src/cli/cmd/data/set-home.ts",
-    "./branding": "./src/branding.ts"
+    "./branding": "./src/branding.ts",
+    "./server/runtime": "./src/server/runtime.ts",
+    "./cli/managed-startup": "./src/cli/managed-startup.ts",
+    "./cli/server": "./src/cli/server.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

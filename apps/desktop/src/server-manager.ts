@@ -944,6 +944,6 @@ function packagedServerBinary(resourcesPath: string): string | null {
 }
 
 export function sourceProductRoot(directory = dirname): string | null {
-  const candidate = path.resolve(directory, "../../../packages/product-runtime")
+  const candidate = path.resolve(directory, "../../../packages/presets")
   return fs.existsSync(path.join(candidate, "src/index.ts")) ? candidate : null
 }

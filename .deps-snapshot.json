@@ -20,7 +20,7 @@
     "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-util"
   ],
-  "@ericsanchezok/synergy-product-runtime": [
+  "@ericsanchezok/synergy-presets": [
     "@ericsanchezok/synergy-acp",
     "@ericsanchezok/synergy-browser-runtime",
     "@ericsanchezok/synergy-cli",
@@ -169,7 +169,7 @@
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-library",
     "@ericsanchezok/synergy-local-runtime",
-    "@ericsanchezok/synergy-product-runtime"
+    "@ericsanchezok/synergy-presets"
   ],
   "@ericsanchezok/synergy-agent-runtime": [
     "@ericsanchezok/synergy-harness",

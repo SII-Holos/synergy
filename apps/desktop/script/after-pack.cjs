@@ -4,7 +4,7 @@ const path = require("node:path")
 
 exports.default = async function afterPack(context) {
   const runtimeName = runtimePackageName(context.electronPlatformName, context.arch)
-  const source = path.resolve(__dirname, "../../../packages/product-runtime/dist", runtimeName)
+  const source = path.resolve(__dirname, "../../../packages/presets/dist", runtimeName)
   if (!fs.existsSync(source)) {
     if (process.env.SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME === "1") {
       console.warn(`Synergy runtime is missing for desktop package: ${source}`)

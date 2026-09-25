@@ -13,6 +13,8 @@ import { registerPermissionPluginSource } from "./plugin/permission-source"
 import { registerProviderPluginAuth } from "./plugin/provider-auth-source"
 import { registerToolPluginSource } from "./plugin/tool-source"
 import { registerConfig } from "./config-schema"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { peekRuntimeEndpointGeneration } from "@ericsanchezok/synergy-harness/util/runtime-endpoint"
 
 export function plugins(): RuntimeComponent {
   return {
@@ -23,6 +25,17 @@ export function plugins(): RuntimeComponent {
     workers: { agent: new URL("./worker.ts", import.meta.url) },
     services: () => ({
       initializeExtensions: () => Plugin.init(),
+      async started() {
+        const log = Log.create({ service: "plugin-host" })
+        await Plugin.runPendingInstallLifecycles().catch((error) =>
+          log.warn("pending plugin install lifecycles failed", { error }),
+        )
+        const endpointGeneration = peekRuntimeEndpointGeneration()
+        if (endpointGeneration)
+          void Plugin.trigger("runtime.started", { endpointGeneration }, {}).catch((error) =>
+            log.warn("plugin runtime.started hooks failed", { error }),
+          )
+      },
       resident: {
         async start() {
           PluginMarketplaceRegistry.prefetchRegistry()

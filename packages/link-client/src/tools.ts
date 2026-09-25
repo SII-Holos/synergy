@@ -3,7 +3,7 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { ConnectTool } from "./tools/connect"
 
 /**
- * Synergy Link domain tool registration. Loaded through src/product-registration.ts.
+ * Synergy Link domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

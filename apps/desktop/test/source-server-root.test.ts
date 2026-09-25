@@ -9,9 +9,7 @@ test("managed source startup resolves the full product entry from source and bui
   for (const directory of [path.join(desktop, "src"), path.join(desktop, "dist")]) {
     const product = sourceProductRoot(directory)
     expect(product).not.toBeNull()
-    expect((await Bun.file(path.join(product!, "package.json")).json()).name).toBe(
-      "@ericsanchezok/synergy-product-runtime",
-    )
+    expect((await Bun.file(path.join(product!, "package.json")).json()).name).toBe("@ericsanchezok/synergy-presets")
     expect(await Bun.file(path.join(product!, "src/index.ts")).exists()).toBe(true)
   }
 })

@@ -68,6 +68,7 @@ export interface RuntimeServices {
   reload?: { start(): void; stop(): Promise<unknown> | void }
   initializeExtensions?(): Promise<void>
   disposeExtensions?(): Promise<void>
+  started?(): Promise<void>
   resident?: {
     start(config: Config.Info): Promise<void>
     ready?(config: Config.Info): Promise<void>
@@ -386,6 +387,9 @@ export namespace RuntimeHandle {
       stopBackground.push(SessionManager.startIdleSweep())
       stopBackground.push(await ProviderCatalog.subscribeModelCatalog())
       if (options.mode === "server") stopBackground.push(startModelCatalogRefresh())
+      if (options.mode === "server")
+        await ScopeContext.provide({ scope: Scope.home(), fn: async () => services.started?.() })
+      options.signal?.throwIfAborted()
       phase = "ready"
       const boundClose = () => closing ?? instance.run(close)
       return {

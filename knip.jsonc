@@ -180,7 +180,7 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@hono/standard-validator", "zod-openapi"],
     },
-    "packages/product-runtime": {
+    "packages/presets": {
       "entry": ["script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
     },

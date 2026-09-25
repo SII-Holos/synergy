@@ -34,7 +34,7 @@ Agent 定义只能靠用户手改配置文件（`.synergy/agent/*.md` 或 `60-ag
 ## Consequences
 
 - 对话、CLI、手改文件三条路径共享同一套校验与刷新语义；手改路径至少有加载期 warn 兜底。
-- `default_agent: "developer"`（subagent）这类原本"意外可用"的配置现在会回退 `synergy` 并告警——有意的行为收紧，product-runtime 旧测试已随契约更新。
+- `default_agent: "developer"`（subagent）这类原本"意外可用"的配置现在会回退 `synergy` 并告警——有意的行为收紧，presets 旧测试已随契约更新。
 - 无持久 schema 变更、无迁移；markdown/jsonc 写的都是既有格式，单 PR 可整体回滚。
 - guarded 会话中通过 `agent_config` 写 agent 定义触发 `config:write` 审批（不可绕过）；读动作（list/describe）保持免审批。
 - re-enable 会把 disable 标记从 overlay 中整体移除（而非写 `disable: false`），markdown 上方的空 overlay 自动消失，独立的空 JSONC 定义保留，避免残留条目在 delete 后复活空白 agent。

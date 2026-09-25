@@ -62,7 +62,7 @@
       "packages/local-runtime",
       "packages/cli",
       "packages/server",
-      "packages/product-runtime",
+      "packages/presets",
       "packages/browser-runtime",
       "packages/computer-runtime",
       "packages/library",

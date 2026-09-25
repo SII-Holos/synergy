@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { EMBEDDING_RUNTIME_REQUIRED_PATHS } from "../../../packages/library/script/embedding-runtime-assets"
-import { PLAYWRIGHT_CORE_REQUIRED_PATHS } from "../../../packages/product-runtime/script/playwright-runtime-assets"
+import { PLAYWRIGHT_CORE_REQUIRED_PATHS } from "../../../packages/presets/script/playwright-runtime-assets"
 import { SVG_RASTER_RUNTIME_REQUIRED_PATHS } from "../../../packages/connections/script/svg-raster-runtime-assets"
 import type { RuntimeArtifactProfile } from "./packages"
 

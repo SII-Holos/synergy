@@ -4,7 +4,7 @@ The root `package.json` selects workspace packages. Each package manifest owns i
 
 ## Runtime entry points
 
-`@ericsanchezok/synergy-harness` exposes programmatic execution and lifecycle APIs. `@ericsanchezok/synergy-local-runtime` registers the default local host and provides `openLocalRuntime`. The single CLI implementation lives in `packages/cli`; `packages/product-runtime` invokes that same CLI with full product capabilities. Both entry points use the command name `synergy`.
+`@ericsanchezok/synergy-harness` exposes programmatic execution and lifecycle APIs. `@ericsanchezok/synergy-local-runtime` registers the default local host and provides `openLocalRuntime`. The single CLI implementation lives in `packages/cli`; `packages/presets` invokes that same CLI with full product capabilities. Both entry points use the command name `synergy`.
 
 `packages/server` owns HTTP/WS transport and core routes. Domain packages contribute their own routes, tools and commands. Full OpenAPI generation includes those contributions, and Web clients use `@ericsanchezok/synergy-sdk`.
 
@@ -30,7 +30,7 @@ Run `bun script/build-workspace.ts packages/harness` from the repository root to
 
 The Harness archive declares its build target OS; Local Runtime also declares its CPU. macOS Harness archives carry the verified universal SQLite engine in `dist/libsqlite3.dylib`, so consumers do not need Homebrew. Pass `--target=linux-x64`, `--target=linux-arm64-musl` or `--target=win32-x64` to select a target; Linux and Windows builds require matching helper assets through `SYNERGY_SANDBOX_ASSETS_DIR`. The build verifies the binary format and embeds its digest alongside the packaged helper. Missing required assets fail the build. Darwin uses the operating system sandbox.
 
-`bun script/package-install-check.ts .artifacts/packages` installs the archives through a temporary local registry into a fresh directory outside the repository and runs the same CLI artifact contracts used for compiled binaries. It does not publish packages. After packing `packages/product-runtime` into the same archive directory, `bun script/runtime-composition-check.ts .artifacts/packages` verifies the CLI core, Browser, Library, Notes and full server compositions. Package installation cannot rely on workspace symlinks or test preload dependencies.
+`bun script/package-install-check.ts .artifacts/packages` installs the archives through a temporary local registry into a fresh directory outside the repository and runs the same CLI artifact contracts used for compiled binaries. It does not publish packages. After packing `packages/presets` into the same archive directory, `bun script/runtime-composition-check.ts .artifacts/packages` verifies the CLI core, Browser, Library, Notes and full server compositions. Package installation cannot rely on workspace symlinks or test preload dependencies.
 
 Full product and Desktop distribution use the existing release workflow and the typed catalog in `script/release/shared/packages.ts`. Source directory changes do not rename the public product package, executable or installed resources.
 
@@ -42,6 +42,6 @@ The HTTP SDK is generated from the complete Server API. Run `./script/generate.t
 
 ## Validation
 
-`bun run deps:check` checks package imports, exports and dependency directions. `bun run monorepo:check` checks manifest consistency. `bun run package:check` validates existing public packages and their TypeScript resolution. Independent runtime archives additionally use the install check above. Tests and fixtures follow their domain owner; full composition tests live in `packages/product-runtime/test`.
+`bun run deps:check` checks package imports, exports and dependency directions. `bun run monorepo:check` checks manifest consistency. `bun run package:check` validates existing public packages and their TypeScript resolution. Independent runtime archives additionally use the install check above. Tests and fixtures follow their domain owner; full composition tests live in `packages/presets/test`.
 
 See [Development](development.md) and [Open-source quality](../operations/open-source-quality.md) for repository commands and CI checks.

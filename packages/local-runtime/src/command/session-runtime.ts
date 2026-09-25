@@ -5,7 +5,7 @@ import { Command } from "./command"
 /**
  * S9c source inversion: the L1 session invoke loop executes commands through
  * the SessionCommandRuntime registry instead of importing the command
- * product domain. Loaded through src/product-registration.ts.
+ * product domain. Loaded through src/registration.ts.
  */
 export function registerCommandSessionRuntime() {
   SessionCommandRuntime.register({

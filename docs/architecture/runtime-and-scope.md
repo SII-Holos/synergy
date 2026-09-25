@@ -39,7 +39,7 @@ Startup migrations finish before HTTP requests are admitted. Managed Desktop rec
 
 ## Global Runtime
 
-The full product’s `GlobalRuntime.start()` runs once per resident Runtime inside its Home Scope. Product Runtime selects the services below; a standalone local task enables its selected execution services without starting resident product services:
+The full product’s `GlobalRuntime.start()` runs once per resident Runtime inside its Home Scope. Presets selects the services below; a standalone local task enables its selected execution services without starting resident product services:
 
 - plugin discovery and runtime initialization
 - home-scope session recovery

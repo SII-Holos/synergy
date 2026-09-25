@@ -62,7 +62,7 @@ export namespace SessionCommandRuntime {
     const instanceState = runtimeState()
 
     if (!instanceState.provider) {
-      throw new Error("Command runtime is not registered (load src/product-registration)")
+      throw new Error("Command runtime is not registered (load src/registration)")
     }
     return instanceState.provider
   }

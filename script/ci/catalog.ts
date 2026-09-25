@@ -72,12 +72,12 @@ export async function workspaceInputs(root: string, revision: string): Promise<W
       if (dependency && dependency !== from) from.testDependencies.push(dependency.name)
     }
   }
-  // Desktop embeds the Web host and launches the product runtime without a workspace import.
+  // Desktop embeds the Web host and launches the preset runtime without a workspace import.
   const desktop = packages.find((entry) => entry.directory === "apps/desktop")
   if (desktop)
     for (const directory of [
       "apps/web",
-      "packages/product-runtime",
+      "packages/presets",
       "packages/browser-runtime",
       "packages/computer-protocol",
     ]) {
@@ -126,7 +126,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     task("root-tests", "static", 90, [], { variant: "tests" }),
     task("typecheck", "typecheck", 100),
     task("packages", "packages", 45, [...coverage]),
-    task("installed-runtime", "artifacts", 400, ["packages/cli", "packages/product-runtime"], {
+    task("installed-runtime", "artifacts", 400, ["packages/cli", "packages/presets"], {
       files: ["test/script/watcher-native.test.ts"],
       prerequisites: ["sandbox"],
     }),
@@ -138,7 +138,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       { prerequisites: ["browser"] },
     ),
     task("desktop", "desktop", 180, ["apps/desktop"], { prerequisites: ["desktop"] }),
-    task("smoke", "smoke", 40, ["packages/product-runtime", "packages/server"]),
+    task("smoke", "smoke", 40, ["packages/presets", "packages/server"]),
     task("sandbox", "sandbox", 100, ["packages/local-runtime"], { prerequisites: ["sandbox"] }),
     task(
       "windows",
@@ -201,7 +201,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     .filter((file) => !specialized.has(file))
     .sort()
   const weights: Record<string, number> = {
-    "packages/product-runtime": 360,
+    "packages/presets": 360,
     "apps/web": 220,
     "packages/connections": 180,
     "packages/ui": 160,

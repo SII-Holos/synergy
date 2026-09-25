@@ -2,7 +2,7 @@
 
 /**
  * Generates docs/reference/configuration.md from the static config domain
- * definitions and owner schemas selected by product-runtime configuration.
+ * definitions and owner schemas selected by presets configuration.
  * Deterministic; supports --check.
  */
 
@@ -22,7 +22,7 @@ import {
 } from "./shared"
 
 const SCHEMA = path.join(REPO_ROOT, "packages/harness/src/config/schema.ts")
-const COMPOSITION = path.join(REPO_ROOT, "packages/product-runtime/src/configuration.ts")
+const COMPOSITION = path.join(REPO_ROOT, "packages/presets/src/configuration.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/configuration.md")
 const GENERATOR = "gen-config-reference.ts"
 
@@ -169,7 +169,7 @@ export async function generate(): Promise<string> {
   const lines: string[] = [
     "# Configuration Reference",
     "",
-    "Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/product-runtime/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).",
+    "Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/presets/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).",
     "",
     "## Domains",
     "",

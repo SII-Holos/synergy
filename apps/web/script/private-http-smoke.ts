@@ -7,7 +7,7 @@ import { chromium } from "playwright"
 
 const appDirectory = path.resolve(import.meta.dir, "..")
 const repositoryRoot = path.resolve(appDirectory, "../..")
-const productRuntimeDirectory = path.join(repositoryRoot, "packages", "product-runtime")
+const presetsDirectory = path.join(repositoryRoot, "packages", "presets")
 const appDist = path.join(appDirectory, "dist", "index.html")
 
 if (!(await Bun.file(appDist).exists())) {
@@ -40,7 +40,7 @@ try {
       "--non-interactive",
       "--no-banner",
     ],
-    cwd: productRuntimeDirectory,
+    cwd: presetsDirectory,
     env: isolatedEnvironment(temporaryRoot, workspace, hostname),
     stdin: "ignore",
     stdout: "pipe",

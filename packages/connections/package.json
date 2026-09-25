@@ -47,7 +47,8 @@
     "./script/svg-raster-runtime-assets": "./script/svg-raster-runtime-assets.ts",
     "./workflow-settings": "./src/workflow-settings.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./startup-status": "./src/startup-status.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

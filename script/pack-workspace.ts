@@ -20,7 +20,7 @@ const runtimePackages = new Set(
     "agent-runtime",
     "cli",
     "server",
-    "product-runtime",
+    "presets",
     "browser-runtime",
     "computer-runtime",
     "library",
@@ -69,7 +69,7 @@ export async function packWorkspace(
     const sourceDirectory = path.join(root, pkg.directory)
     const original = await Bun.file(path.join(sourceDirectory, "package.json")).json()
     const isRuntime = runtimePackages.has(pkg.directory)
-    const nested = ["packages/cli", "packages/product-runtime"].includes(pkg.directory)
+    const nested = ["packages/cli", "packages/presets"].includes(pkg.directory)
     if (isRuntime) await buildWorkspace(pkg.directory, { output: nested ? "dist/modules" : "dist" })
     else if (original.scripts?.build) {
       const command = ["bun", "run", "build"]
@@ -88,7 +88,7 @@ export async function packWorkspace(
         await cp(binding, path.join(sourceDirectory, "dist/watcher.node"))
       }
     }
-    if (pkg.directory === "packages/product-runtime") {
+    if (pkg.directory === "packages/presets") {
       await cp(path.join(sourceDirectory, "schema"), path.join(sourceDirectory, "dist/schema"), { recursive: true })
     }
     const stage = await mkdtemp(path.join(os.tmpdir(), "synergy-library-pack-"))
@@ -116,7 +116,7 @@ export async function packWorkspace(
           files: ["src", nested ? "dist/modules" : "dist", "README.md", "AGENTS.md"],
           engines: { bun: ">=1.3.14" },
         }
-        if (pkg.directory === "packages/product-runtime") (manifest.files as string[]).push("dist/schema")
+        if (pkg.directory === "packages/presets") (manifest.files as string[]).push("dist/schema")
         if (["packages/harness", "packages/local-runtime"].includes(pkg.directory)) manifest.os = [target.os]
         if (pkg.directory === "packages/local-runtime") {
           manifest.cpu = [target.arch]

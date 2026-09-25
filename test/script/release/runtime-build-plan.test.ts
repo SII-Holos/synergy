@@ -16,7 +16,7 @@ test("core compile inputs contain only the CLI and harness workers", () => {
 
 test("full compile inputs add the product entry and owned product workers", () => {
   const files = runtimeBuildPlan("full").entrypoints.map((file) => path.relative(REPO_ROOT, file))
-  expect(files[0]).toBe("packages/product-runtime/src/index.ts")
+  expect(files[0]).toBe("packages/presets/src/index.ts")
   expect(files).toContain("packages/plugin-host/src/plugin-runtime/runner.ts")
   expect(files).toContain("packages/connections/src/channel/provider/feishu/svg-raster-worker.ts")
   expect(files).not.toContain("packages/cli/src/index.ts")

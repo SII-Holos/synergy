@@ -5,14 +5,7 @@ import { readFileSync } from "fs"
 import { access, mkdtemp, rm } from "fs/promises"
 import os from "os"
 import path from "path"
-import {
-  PRODUCT_RUNTIME_DIST_DIR,
-  PRODUCT_RUNTIME_DIR,
-  CLI_DIR,
-  SDK_DIR,
-  RELEASE_CATALOG,
-  REPO_ROOT,
-} from "./release/shared/packages"
+import { PRESETS_DIST_DIR, PRESETS_DIR, CLI_DIR, SDK_DIR, RELEASE_CATALOG, REPO_ROOT } from "./release/shared/packages"
 import {
   createPublishablePackageJson,
   readCatalog,
@@ -30,7 +23,7 @@ const dependencyVersions = Object.fromEntries(
 )
 
 const publishablePackages: PublishablePackage[] = Object.entries(RELEASE_CATALOG).flatMap(([id, entry]) => {
-  if (!entry.registry || id === "productRuntime") return []
+  if (!entry.registry || id === "presets") return []
   return [
     {
       name: entry.registry,
@@ -94,7 +87,7 @@ async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string
 
 async function validateSynergyWrapper(tempDir: string) {
   console.log(`\n=== package check: @ericsanchezok/synergy wrapper ===\n`)
-  const version = packageVersion(PRODUCT_RUNTIME_DIR)
+  const version = packageVersion(PRESETS_DIR)
   const wrapperDir = await stageSynergyWrapper({
     cliDir: CLI_DIR,
     runtimeDistDir: tempDir,
@@ -108,11 +101,11 @@ async function validateSynergyWrapper(tempDir: string) {
 }
 
 async function availableSynergyPlatformVersions(version: string) {
-  if (!(await exists(PRODUCT_RUNTIME_DIST_DIR))) {
+  if (!(await exists(PRESETS_DIST_DIR))) {
     console.warn("No Synergy dist directory found; validating wrapper manifest without optional platform packages.")
     return {}
   }
-  const entries = await Array.fromAsync(new Bun.Glob("synergy-*/package.json").scan({ cwd: PRODUCT_RUNTIME_DIST_DIR }))
+  const entries = await Array.fromAsync(new Bun.Glob("synergy-*/package.json").scan({ cwd: PRESETS_DIST_DIR }))
   if (entries.length === 0) {
     console.warn(
       "No built Synergy platform packages found; validating wrapper manifest without optional platform packages.",

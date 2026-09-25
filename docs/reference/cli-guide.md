@@ -1,6 +1,6 @@
 # CLI Reference
 
-The installed `synergy` CLI manages the product runtime and submits work to it. Source development uses the separate root `bun dev` orchestrator described in [Development](development.md).
+The installed `synergy` CLI manages the preset runtime and submits work to it. Source development uses the separate root `bun dev` orchestrator described in [Development](development.md).
 
 Run `synergy --help` or `synergy <command> --help` for the exact options supported by the installed version.
 

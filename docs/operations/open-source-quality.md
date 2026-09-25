@@ -238,7 +238,7 @@ When a change adds or modifies quality commands, scripts, CI tasks, or pre-push 
 2. `README.md` — the `### Quality commands` section
 3. `CONTRIBUTING.md` — PR preflight quality flow
 4. `AGENTS.md` — "Testing/Verification" and "Documentation Sync Rules" sections
-5. `packages/product-runtime/AGENTS.md` — scoped quality commands for core runtime
+5. `packages/presets/AGENTS.md` — scoped quality commands for core runtime
 6. `apps/web/AGENTS.md` — scoped frontend/app verification
 7. `.github/PULL_REQUEST_TEMPLATE.md` — checklist entries
 8. `.synergy/command/check.md` — agent check command

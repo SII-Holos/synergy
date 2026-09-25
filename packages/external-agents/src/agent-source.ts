@@ -16,7 +16,7 @@ import { ExternalAgentDiscovery } from "./discovery"
 /**
  * S9d source inversion: the L1 agent registry loads external-agent adapters
  * and discovers them through this registered source instead of importing the
- * external-agent product domain. Loaded through src/product-registration.ts.
+ * external-agent product domain. Loaded through src/registration.ts.
  */
 export function registerAgentExternalSource() {
   AgentExternalSource.register({

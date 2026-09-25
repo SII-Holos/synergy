@@ -2,7 +2,7 @@ import { RuntimeContext } from "../lifecycle/context"
 /**
  * L1 executor port for the L4 runtime reload orchestrator. L1 write paths
  * (tool file edits, config import/setup, provider auth, file watchers) call
- * `reload`/`reloadGlobal` here; src/product-registration.ts injects the real
+ * `reload`/`reloadGlobal` here; src/registration.ts injects the real
  * `RuntimeReload` implementation at entry-point boot so no L1 module imports
  * `runtime/`. Without a registered executor the calls degrade to a synthetic
  * success result carrying an explicit warning.

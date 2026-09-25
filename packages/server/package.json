@@ -12,7 +12,9 @@
     "./server/config-route": "./src/server/config-route.ts",
     "./http": "./src/http.ts",
     "./server/global-nav": "./src/server/global-nav.ts",
-    "./component": "./src/component.ts"
+    "./component": "./src/component.ts",
+    "./server/app-static": "./src/server/app-static.ts",
+    "./web-app": "./src/web-app.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

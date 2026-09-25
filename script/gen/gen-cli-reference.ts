@@ -12,8 +12,8 @@ import { readFile } from "node:fs/promises"
 import { findAssign, findBlock, isFresh, REPO_ROOT, writeGenerated, resolveWorkspaceModule } from "./shared"
 
 const MAIN = path.join(REPO_ROOT, "packages/cli/src/cli/commands.ts")
-const PRODUCT_COMMANDS = path.join(REPO_ROOT, "packages/product-runtime/src/cli-commands.ts")
-const PRODUCT_ENTRY = path.join(REPO_ROOT, "packages/product-runtime/src/index.ts")
+const PRODUCT_COMMANDS = path.join(REPO_ROOT, "packages/presets/src/cli-commands.ts")
+const PRODUCT_ENTRY = path.join(REPO_ROOT, "packages/presets/src/index.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/cli.md")
 const GENERATOR = "gen-cli-reference.ts"
 

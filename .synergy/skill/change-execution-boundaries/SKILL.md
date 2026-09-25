@@ -7,7 +7,7 @@ description: Add, modify, or review Synergy capability classification, control p
 
 ## Trace the Whole Decision
 
-1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/product-runtime/AGENTS.md`.
+1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.
 2. Start at `session/tool-resolver.ts`, then trace the operation through capability classification, the enforcement gate, profile compilation, saved/session permission layers, SmartAllow, approval side effects, sandbox policy, and the tool implementation.
 3. Inspect `packages/util/src/capability.ts` for the shared capability catalog and public severity/category metadata. Keep classification independent from profile policy: classifiers describe what an operation can do; profiles decide allow, ask, or deny.
 4. Check built-in tools, plugin and MCP envelopes, worktree/main-checkout reclassification, sensitive paths, remote execution, and platform fallback before assuming one call site owns the boundary.

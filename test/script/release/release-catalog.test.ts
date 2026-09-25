@@ -28,7 +28,7 @@ test("preserves the public registry names and keeps core a profile of the same C
 test("resolves distinct core and product entrypoints under their owning packages", () => {
   for (const [profile, expected] of [
     ["core", "packages/cli/src/index.ts"],
-    ["full", "packages/product-runtime/src/index.ts"],
+    ["full", "packages/presets/src/index.ts"],
   ] as const) {
     const target = RUNTIME_RELEASE_TARGETS[profile]
     expect(path.join(releasePackageDirectory(target.package), target.entrypoint)).toBe(path.join(REPO_ROOT, expected))
@@ -39,7 +39,7 @@ test("resolves distinct core and product entrypoints under their owning packages
 
 test("version updates include the split runtime packages once each", () => {
   expect(new Set(VERSION_MANAGED_PACKAGE_PATHS).size).toBe(VERSION_MANAGED_PACKAGE_PATHS.length)
-  for (const id of ["cli", "harness", "localRuntime", "productRuntime"] as const) {
+  for (const id of ["cli", "harness", "localRuntime", "presets"] as const) {
     expect(VERSION_MANAGED_PACKAGE_PATHS).toContain(path.join(releasePackageDirectory(id), "package.json"))
   }
 })

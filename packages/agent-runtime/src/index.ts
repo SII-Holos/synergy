@@ -1,8 +1,6 @@
 import path from "node:path"
 import { RuntimeComponents, RuntimeHandle, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
-import { registerAgentWorkerEntrypoint } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
-import { registerPolicyWorkerEntrypoint } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 import {
   createLocalClient,
   createLocalHost,
@@ -11,13 +9,15 @@ import {
 } from "@ericsanchezok/synergy-local-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
-import { workerPlan } from "./workers"
+import { workerPlan, registerRuntimeWorkers } from "./workers"
+import { loadHttpAdapters } from "./adapters"
 
 export type AgentRuntimeOptions = Omit<LocalRuntimeOptions, "mode"> & {
   home: string
   components?: readonly RuntimeComponent[]
   mode?: "oneshot" | "server"
   listen?: boolean
+  configSchemaPath?: string
 }
 
 export type AgentRuntime = Awaited<ReturnType<typeof openAgentRuntime>>
@@ -31,11 +31,7 @@ export async function openAgentRuntime(options: AgentRuntimeOptions) {
   ])
   const composition = RuntimeComponents.compose(components)
   const adapters = components.some((component) => component.hosts?.includes("http"))
-    ? await Promise.all(
-        components.flatMap((component) =>
-          component.adapters?.http ? [import(component.adapters.http.href) as Promise<{ registerHttp(): void }>] : [],
-        ),
-      )
+    ? await loadHttpAdapters(components)
     : []
   const root = path.resolve(options.home)
   const original = options.host ?? createLocalHost({ home: root, root })
@@ -53,11 +49,13 @@ export async function openAgentRuntime(options: AgentRuntimeOptions) {
         composition.register()
         for (const adapter of adapters) adapter.registerHttp()
         ConfigExtensions.completeRegistration()
-        registerAgentWorkerEntrypoint(new URL("./agent-worker.ts", import.meta.url))
-        registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url))
+        registerRuntimeWorkers(components)
       },
       services() {
-        const services = composition.services!()
+        const services = {
+          ...composition.services!(),
+          ...(options.configSchemaPath ? { configSchemaPath: options.configSchemaPath } : {}),
+        }
         if (options.listen !== false) return services
         const { transport: _, ...selected } = services
         return selected

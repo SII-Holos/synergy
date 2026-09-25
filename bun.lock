@@ -145,7 +145,7 @@
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-library": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "@ericsanchezok/synergy-product-runtime": "workspace:*",
+        "@ericsanchezok/synergy-presets": "workspace:*",
       },
       "devDependencies": {
         "@tsconfig/bun": "catalog:",
@@ -781,12 +781,13 @@
         "zod": ">=4.0.0",
       },
     },
-    "packages/product-runtime": {
-      "name": "@ericsanchezok/synergy-product-runtime",
+    "packages/presets": {
+      "name": "@ericsanchezok/synergy-presets",
       "version": "1.1.26",
       "dependencies": {
         "@clack/prompts": "1.0.0-alpha.1",
         "@ericsanchezok/synergy-acp": "workspace:*",
+        "@ericsanchezok/synergy-agent-runtime": "workspace:*",
         "@ericsanchezok/synergy-browser-runtime": "workspace:*",
         "@ericsanchezok/synergy-cli": "workspace:*",
         "@ericsanchezok/synergy-code-tools": "workspace:*",
@@ -809,7 +810,6 @@
         "@ericsanchezok/synergy-workbench": "workspace:*",
         "@ericsanchezok/synergy-workflows": "workspace:*",
         "hono": "catalog:",
-        "hono-openapi": "catalog:",
         "open": "10.1.2",
         "yargs": "18.0.0",
         "zod": "catalog:",
@@ -1365,7 +1365,7 @@
 
     "@ericsanchezok/synergy-plugin-kit": ["@ericsanchezok/synergy-plugin-kit@workspace:packages/plugin-kit"],
 
-    "@ericsanchezok/synergy-product-runtime": ["@ericsanchezok/synergy-product-runtime@workspace:packages/product-runtime"],
+    "@ericsanchezok/synergy-presets": ["@ericsanchezok/synergy-presets@workspace:packages/presets"],
 
     "@ericsanchezok/synergy-sdk": ["@ericsanchezok/synergy-sdk@workspace:packages/sdk/js"],
 

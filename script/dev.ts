@@ -82,7 +82,7 @@ function directories(repoRoot: string) {
     app: path.join(repoRoot, RELEASE_CATALOG.web.directory),
     desktop: path.join(repoRoot, RELEASE_CATALOG.desktop.directory),
     plugin: path.join(repoRoot, RELEASE_CATALOG.plugin.directory),
-    product: path.join(repoRoot, RELEASE_CATALOG.productRuntime.directory),
+    product: path.join(repoRoot, RELEASE_CATALOG.presets.directory),
     local: path.join(repoRoot, RELEASE_CATALOG.localRuntime.directory),
   }
 }

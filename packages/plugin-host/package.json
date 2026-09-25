@@ -45,7 +45,8 @@
     "./plugin-runtime/context-factory": "./src/plugin-runtime/context-factory.ts",
     "./plugin-runtime/agent-call-runtime": "./src/plugin-runtime/agent-call-runtime.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./startup-status": "./src/startup-status.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

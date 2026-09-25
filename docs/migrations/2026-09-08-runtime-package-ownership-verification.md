@@ -64,7 +64,7 @@ SDK 的剩余文本差异是六个领域枚举的次序、Event 分支次序和 
 | packages/plugin                | 94.24%   | 89.95%     | 80/75         | 0              |
 | packages/plugin-host           | 79.54%   | 76.00%     | 75/75         | 0              |
 | packages/plugin-kit            | 81.11%   | 88.89%     | 80/75         | 0              |
-| packages/product-runtime       | 80.44%   | 80.69%     | 75/75         | 0              |
+| packages/presets               | 80.44%   | 80.69%     | 75/75         | 0              |
 | packages/local-runtime         | 76.86%   | 81.39%     | 75/75         | 0              |
 | packages/sdk/js                | 87.28%   | 100.00%    | 80/75         | 0              |
 | packages/server                | 89.00%   | 75.00%     | 75/75         | 0              |

@@ -229,7 +229,7 @@ function normalizePluginToolId(toolId: string | undefined): string | undefined {
 }
 /**
  * Protocol 5 Blueprint adapter slot. The blueprint domain contributes its
- * start/get/cancel implementation through src/product-registration.ts so the
+ * start/get/cancel implementation through src/registration.ts so the
  * plugin host surface holds no static product-domain import (the plugin↔
  * blueprint cycle keeps only the allowed blueprint→plugin direction).
  */
@@ -275,7 +275,7 @@ function blueprintAdapterOrThrow(): PluginBlueprintAdapter {
 
   if (!instanceState.blueprintAdapter) {
     throw new Error(
-      "Blueprint host service invoked before the blueprint domain registered its adapter (load src/product-registration)",
+      "Blueprint host service invoked before the blueprint domain registered its adapter (load src/registration)",
     )
   }
   return instanceState.blueprintAdapter
@@ -334,7 +334,7 @@ function lightLoopAdapterOrThrow(): PluginLightLoopAdapter {
 
   if (!instanceState.lightLoopAdapter) {
     throw new Error(
-      "LightLoop host service invoked before the light-loop domain registered its adapter (load src/product-registration)",
+      "LightLoop host service invoked before the light-loop domain registered its adapter (load src/registration)",
     )
   }
   return instanceState.lightLoopAdapter

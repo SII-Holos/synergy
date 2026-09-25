@@ -2,6 +2,14 @@ import { z } from "zod"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 import { registerHarness, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
+import { registerAgentWorkerEntrypoint } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
+import { registerPolicyWorkerEntrypoint } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
+
+export function registerRuntimeWorkers(components: readonly RuntimeComponent[]) {
+  const environment = { SYNERGY_WORKER_COMPONENTS: JSON.stringify(workerPlan(components)) }
+  registerAgentWorkerEntrypoint(new URL("./agent-worker.ts", import.meta.url), environment)
+  registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url), environment)
+}
 
 const Entry = z
   .object({

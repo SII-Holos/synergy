@@ -6,7 +6,8 @@
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
-    "./workers": "./src/workers.ts"
+    "./workers": "./src/workers.ts",
+    "./adapters": "./src/adapters.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

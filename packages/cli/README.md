@@ -2,7 +2,7 @@
 
 The core `src/index.ts` entry invokes the single `runCli()` implementation with a local runtime factory. No arguments show core command help. `send` opens an in-process runtime; `send --attach` uses the generated HTTP SDK.
 
-The product runtime invokes the same parser with its runtime factory and additional command metadata. It supplies the existing server, browser, library and other product commands, plus the default server command. CLI command loaders are lazy. Commands absent from an installation fail with a nonzero status and an unavailable-command error.
+The preset runtime invokes the same parser with its runtime factory and additional command metadata. It supplies the existing server, browser, library and other product commands, plus the default server command. CLI command loaders are lazy. Commands absent from an installation fail with a nonzero status and an unavailable-command error.
 
 Runtime factories own initialization and shutdown. The CLI owns argument parsing, terminal presentation, JSON events, cancellation and exit codes. Domain packages own their contributed command implementations.
 

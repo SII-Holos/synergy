@@ -7,7 +7,7 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 
 ## Discover the Contract
 
-1. Read [CLI reference](../../../docs/reference/cli.md), the single parser in `packages/cli/src/main.ts`, and the product command catalog in `packages/product-runtime/src/cli-commands.ts`.
+1. Read [CLI reference](../../../docs/reference/cli.md), the single parser in `packages/cli/src/main.ts`, and the product command catalog in `packages/presets/src/cli-commands.ts`.
 2. Locate the nearest command with the same shape: local operation, server-attached operation, nested command group, streaming output, or destructive confirmation.
 3. Decide whether the behavior belongs in the installed `synergy` CLI or the source-only `bun dev` orchestrator. Edit `script/dev.ts` only for the latter.
 
@@ -17,7 +17,7 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 2. Add or update a named yargs command. CLI-dependent owners can use the public CLI `cmd()` helper; Local Runtime and Server must use their own typed command definitions to preserve the dependency direction. Generic commands belong to `packages/cli/src/cli/cmd/`; business commands live under the owning domain’s `cli/` directory and contribute to the product command catalog. Match neighboring yargs builder, positional, alias, and output patterns rather than imposing a parallel style.
 3. Keep domain logic in its owning module. Let the command parse input, establish Scope or server attachment, call the domain API, format output, and set an appropriate exit status.
 4. Give every command, positional, and option useful help text. Support structured output when the adjacent command family already does.
-5. Register a generic root command in the CLI’s core command catalog or a business command in `packages/product-runtime/src/cli-commands.ts`; register nested commands in their owning command-group builder. Preserve the injected runtime factory. Nested product Data commands enter through `runCli({ dataCommands })`; the core Data builder owns path, set-home and snapshots, while Product Runtime contributes pack, merge and move and the root `migrate` alias.
+5. Register a generic root command in the CLI’s core command catalog or a business command in `packages/presets/src/cli-commands.ts`; register nested commands in their owning command-group builder. Preserve the injected runtime factory. Nested product Data commands enter through `runCli({ dataCommands })`; the core Data builder owns path, set-home and snapshots, while Presets contributes pack, merge and move and the root `migrate` alias.
 6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics.
 7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
@@ -31,7 +31,7 @@ description: Add or modify a Synergy CLI command, command group, positional, opt
 ## Verify
 
 ```bash
-bun run packages/product-runtime/src/index.ts <command> --help
+bun run packages/presets/src/index.ts <command> --help
 ```
 
 Then run the narrow test from `packages/cli` or the command’s owning business package, followed by:

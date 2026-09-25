@@ -35,4 +35,4 @@ The advertised login path is `synergy auth login`. The ACP `authenticate` method
 synergy acp --cwd /absolute/project/path
 ```
 
-Use an ACP client or protocol fixture to exercise initialization, session creation/load, streaming parts, tools, permission replies, model/mode selection, and cancellation. Run protocol tests from `packages/acp` and complete command/startup integration tests from `packages/product-runtime`; do not test by restarting the active Synergy instance.
+Use an ACP client or protocol fixture to exercise initialization, session creation/load, streaming parts, tools, permission replies, model/mode selection, and cancellation. Run protocol tests from `packages/acp` and complete command/startup integration tests from `packages/presets`; do not test by restarting the active Synergy instance.

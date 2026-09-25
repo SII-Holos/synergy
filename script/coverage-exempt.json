@@ -1250,6 +1250,10 @@
         {
           "glob": "src/setup/service.ts",
           "reason": "system service setup (interactive or privileged)"
+        },
+        {
+          "glob": "src/server/runtime.ts",
+          "reason": "Server process lifetime, terminal banner and signal/storage-failure drainage run in real child-process integration tests in packages/presets; Bun does not merge child-process coverage"
         }
       ]
     },
@@ -1526,7 +1530,7 @@
         }
       ]
     },
-    "packages/product-runtime": {
+    "packages/presets": {
       "command": "bun run test:coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
@@ -1535,16 +1539,8 @@
       },
       "exempt": [
         {
-          "glob": "src/server/runtime.ts",
-          "reason": "HTTP server runtime requires full server bootstrap"
-        },
-        {
           "glob": "src/cli/data/move.ts",
           "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/agent-worker.ts",
-          "reason": "source worker composition entry runs in a child process; real full assembly IPC ready, ping/pong and shutdown behavior is verified by test/session/agent-worker.test.ts; Bun does not merge child-process coverage"
         }
       ]
     },

@@ -6,12 +6,12 @@ Status: implemented
 
 Two build/tooling surfaces duplicate logic that already lives in the repo root:
 
-- `packages/script` (`@ericsanchezok/synergy-script`) is a workspace package with a single consumer: `packages/product-runtime/script/build.ts:16`. Its version/channel computation (`packages/script/src/index.ts:21-48`) duplicates `script/release/shared/runtime.ts:207-208` (identical `0.0.0-${channel}-${timestamp}` format), and its Bun-version guard (`index.ts:12-13`) duplicates `script/check-bun-version.ts:10-12` (used by `.husky/pre-push`). The package is not published (no `version`, no `publishConfig`) and exists only for this one import.
+- `packages/script` (`@ericsanchezok/synergy-script`) is a workspace package with a single consumer: `packages/presets/script/build.ts:16`. Its version/channel computation (`packages/script/src/index.ts:21-48`) duplicates `script/release/shared/runtime.ts:207-208` (identical `0.0.0-${channel}-${timestamp}` format), and its Bun-version guard (`index.ts:12-13`) duplicates `script/check-bun-version.ts:10-12` (used by `.husky/pre-push`). The package is not published (no `version`, no `publishConfig`) and exists only for this one import.
 - `apps/web/script/test.ts` (99 lines) and `packages/ui/script/test.ts` (92 lines) implement the same sharded test runner — recursive test collection, coverage-shard handling (`coverage/shards/${shard}`), `Bun.spawn` batches with isolated/browser serial lists, identical failure aggregation; only the per-package test lists differ.
 
 ## Decision
 
-- `Script` (build helpers, `retry`, `npmVersionExists`) now lives in `script/release/shared/build/script-identity.ts` next to its sole consumer (`packages/product-runtime/script/build.ts`). The `packages/script` workspace package, its knip config entry, and the root devDependency are removed.
+- `Script` (build helpers, `retry`, `npmVersionExists`) now lives in `script/release/shared/build/script-identity.ts` next to its sole consumer (`packages/presets/script/build.ts`). The `packages/script` workspace package, its knip config entry, and the root devDependency are removed.
 - Version derivation calls into the canonical `script/release/shared/runtime.ts` (`computeDevVersion` / `computeStableVersion` / `npmVersionExists` / `retry`) instead of re-deriving the format.
 - The two per-package test runners now delegate to the shared `runBatchedTests()` helper in `script/shared/test-runner.ts`; `apps/web/script/test.ts` and `packages/ui/script/test.ts` only parameterize their per-package test lists.
 

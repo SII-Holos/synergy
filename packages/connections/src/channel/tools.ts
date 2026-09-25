@@ -8,7 +8,7 @@ import { ClarusExtendTaskTool } from "./tools/clarus-extend-task"
 import { GithubDeliverFixTool } from "./tools/github-deliver-fix"
 
 /**
- * Channel domain tool registration. Loaded through src/product-registration.ts.
+ * Channel domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

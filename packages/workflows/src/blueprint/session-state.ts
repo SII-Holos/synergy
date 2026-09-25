@@ -7,7 +7,7 @@ import type { Info as BlueprintLoopInfo } from "./types"
  * S9c source inversion: the L1 session domain reaches blueprint loop state
  * (store access, active-status semantics, loop prompt context) through the
  * SessionBlueprintState registry instead of importing the blueprint product
- * domain. Loaded through src/product-registration.ts.
+ * domain. Loaded through src/registration.ts.
  */
 export function registerBlueprintSessionState() {
   SessionBlueprintState.register({

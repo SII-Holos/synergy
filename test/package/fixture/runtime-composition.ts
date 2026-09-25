@@ -31,8 +31,8 @@ if (!full && enabled("note")) register.push((await import("@ericsanchezok/synerg
 
 const runtime = full
   ? await (
-      await import("@ericsanchezok/synergy-product-runtime/server/runtime-handle")
-    ).ProductRuntimeHandle.open({ host, mode: "server", network: { hostname: "127.0.0.1", port: 0 } })
+      await import("@ericsanchezok/synergy-presets/server/runtime-handle")
+    ).PresetRuntimeHandle.open({ host, mode: "server", network: { hostname: "127.0.0.1", port: 0 } })
   : await RuntimeHandle.open({
       host,
       storage: createLocalStorage(host),
@@ -107,7 +107,7 @@ try {
         ["code-tools", "code-tools"],
         ["workflows", "workflows"],
         ["workbench", "workbench"],
-        ["full", "product-runtime"],
+        ["full", "presets"],
       ]) {
         const installed = await fs.access(path.join(process.cwd(), "node_modules", prefix + pkg)).then(
           () => true,

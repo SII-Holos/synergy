@@ -22,7 +22,7 @@ export const RELEASE_CATALOG = {
   },
   plugin: { directory: "packages/plugin", registry: "@ericsanchezok/synergy-plugin", versioned: true },
   pluginKit: { directory: "packages/plugin-kit", registry: "@ericsanchezok/synergy-plugin-kit", versioned: true },
-  productRuntime: { directory: "packages/product-runtime", registry: "@ericsanchezok/synergy", versioned: true },
+  presets: { directory: "packages/presets", registry: "@ericsanchezok/synergy", versioned: true },
   cli: { directory: "packages/cli", registry: null, versioned: true },
   harness: { directory: "packages/harness", registry: null, versioned: true },
   agentRuntime: { directory: "packages/agent-runtime", registry: null, versioned: true },
@@ -60,10 +60,10 @@ export type RegistryPackageName = Exclude<(typeof RELEASE_CATALOG)[ReleasePackag
 export const RUNTIME_RELEASE_TARGETS = {
   core: { package: "cli", entrypoint: "src/index.ts", executable: "synergy", registry: null },
   full: {
-    package: "productRuntime",
+    package: "presets",
     entrypoint: "src/index.ts",
     executable: "synergy",
-    registry: RELEASE_CATALOG.productRuntime.registry,
+    registry: RELEASE_CATALOG.presets.registry,
   },
 } as const satisfies Record<
   string,
@@ -89,7 +89,7 @@ export const UTIL_DIR = releasePackageDirectory("util")
 export const SYNERGY_LINK_PROTOCOL_DIR = releasePackageDirectory("linkProtocol")
 export const PLUGIN_DIR = releasePackageDirectory("plugin")
 export const PLUGIN_KIT_DIR = releasePackageDirectory("pluginKit")
-export const PRODUCT_RUNTIME_DIR = releasePackageDirectory("productRuntime")
+export const PRESETS_DIR = releasePackageDirectory("presets")
 export const CLI_DIR = releasePackageDirectory("cli")
 export const HARNESS_DIR = releasePackageDirectory("harness")
 export const LOCAL_RUNTIME_DIR = releasePackageDirectory("localRuntime")
@@ -98,7 +98,7 @@ export const DESKTOP_DIR = releasePackageDirectory("desktop")
 export const SYNERGY_LINK_DIR = releasePackageDirectory("link")
 export const SYNERGY_LINK_DIST_DIR = path.join(SYNERGY_LINK_DIR, "dist")
 export const WEB_DIST_DIR = path.join(WEB_DIR, "dist")
-export const PRODUCT_RUNTIME_DIST_DIR = path.join(PRODUCT_RUNTIME_DIR, "dist")
+export const PRESETS_DIST_DIR = path.join(PRESETS_DIR, "dist")
 export const CORE_RUNTIME_DIST_DIR = path.join(CLI_DIR, "dist")
 export const DESKTOP_RELEASE_DIR = path.join(DESKTOP_DIR, "release")
 

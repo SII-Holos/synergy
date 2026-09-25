@@ -16,7 +16,7 @@ import { BossProjectTool } from "./tools/boss-project"
 
 /**
  * Boss domain registration (H1 continuation provider + H2 prompt
- * contribution + domain tools). Loaded through src/product-registration.ts.
+ * contribution + domain tools). Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

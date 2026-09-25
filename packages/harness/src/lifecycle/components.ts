@@ -111,6 +111,9 @@ export namespace RuntimeComponents {
         }
       },
       disposeExtensions: () => cleanup(extensions, (service) => service.disposeExtensions?.()),
+      async started() {
+        for (const service of services) await service.started?.()
+      },
       resident: {
         async start(config) {
           await ScopeContext.provide({

@@ -9,13 +9,13 @@ import {
   WEB_DIST_DIR,
   CLI_DIR,
   CORE_RUNTIME_DIST_DIR,
-  PRODUCT_RUNTIME_DIR,
-  PRODUCT_RUNTIME_DIST_DIR,
+  PRESETS_DIR,
+  PRESETS_DIST_DIR,
   RELEASE_CATALOG,
   REPO_ROOT,
   type RuntimeArtifactProfile,
 } from "./packages"
-import { stagePlaywrightCoreRuntime } from "../../../packages/product-runtime/script/playwright-runtime-assets"
+import { stagePlaywrightCoreRuntime } from "../../../packages/presets/script/playwright-runtime-assets"
 import { writeRuntimeManifest } from "./runtime-contract"
 
 type RuntimeAssetOptions = {
@@ -44,7 +44,7 @@ export async function prepareRuntimeApplicationAssets(options: RuntimeAssetOptio
   const profile = options.profile ?? "full"
   const appDistDir = options.appDistDir ?? WEB_DIST_DIR
   const schemaPath =
-    options.schemaPath ?? path.join(profile === "core" ? CLI_DIR : PRODUCT_RUNTIME_DIR, "schema/config.schema.json")
+    options.schemaPath ?? path.join(profile === "core" ? CLI_DIR : PRESETS_DIR, "schema/config.schema.json")
   const appIndexPath = path.join(appDistDir, "index.html")
 
   if (profile === "full" && !(await Bun.file(appIndexPath).exists())) {
@@ -71,7 +71,7 @@ export async function prepareRuntimeApplicationAssets(options: RuntimeAssetOptio
 }
 
 export async function prepareRuntimeAssets(name: string, profile: RuntimeArtifactProfile = "full") {
-  const runtimeDir = path.join(profile === "core" ? CORE_RUNTIME_DIST_DIR : PRODUCT_RUNTIME_DIST_DIR, name)
+  const runtimeDir = path.join(profile === "core" ? CORE_RUNTIME_DIST_DIR : PRESETS_DIST_DIR, name)
   if (!existsSync(path.join(runtimeDir, "bin"))) {
     throw new Error(`Runtime binary directory is missing: ${runtimeDir}`)
   }
@@ -219,7 +219,7 @@ function resolveDependencyAsset(packageName: string, version: string | undefined
     } catch {}
   }
 
-  let searchDir = PRODUCT_RUNTIME_DIR
+  let searchDir = PRESETS_DIR
   while (searchDir !== path.dirname(searchDir)) {
     const bunCacheBase = path.join(searchDir, "node_modules", ".bun")
     const candidates = [

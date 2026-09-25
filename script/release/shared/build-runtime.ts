@@ -4,7 +4,7 @@ import { format, resolveConfig } from "prettier"
 import fs from "node:fs"
 import os from "node:os"
 import { $ } from "bun"
-import { WEB_DIR, CLI_DIR, PRODUCT_RUNTIME_DIR, RUNTIME_RELEASE_TARGETS, type RuntimeArtifactProfile } from "./packages"
+import { WEB_DIR, CLI_DIR, PRESETS_DIR, RUNTIME_RELEASE_TARGETS, type RuntimeArtifactProfile } from "./packages"
 import {
   assertPackagedSandboxAsset,
   copySandboxAsset,
@@ -17,7 +17,7 @@ import { runtimeDependencies, prepareRuntimeAssets } from "./runtime-assets"
 import { runtimeBuildPlan } from "./runtime-build-plan"
 
 export async function buildRuntime(profile: RuntimeArtifactProfile) {
-  const dir = profile === "core" ? CLI_DIR : PRODUCT_RUNTIME_DIR
+  const dir = profile === "core" ? CLI_DIR : PRESETS_DIR
   process.chdir(dir)
   const plan = runtimeBuildPlan(profile)
   const executable = RUNTIME_RELEASE_TARGETS[profile].executable
@@ -323,7 +323,7 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
 
 async function stageProductAssets(runtimeDir: string) {
   const [playwright, embedding, svg, holos] = await Promise.all([
-    import("../../../packages/product-runtime/script/playwright-runtime-assets"),
+    import("../../../packages/presets/script/playwright-runtime-assets"),
     import("../../../packages/library/script/embedding-runtime-assets"),
     import("../../../packages/connections/script/svg-raster-runtime-assets"),
     import("../../../packages/connections/script/holos-cli-assets"),
@@ -342,7 +342,7 @@ export async function generateSchema(directory: string, profile: RuntimeArtifact
   const { Config } = await import("../../../packages/harness/src/config/config")
   const register =
     profile === "full"
-      ? (await import("../../../packages/product-runtime/src/configuration")).registerProductConfiguration
+      ? (await import("../../../packages/presets/src/configuration")).registerFullConfiguration
       : (await import("../../../packages/local-runtime/src/config-schema")).registerConfig
   const context = RuntimeContext.create(createLocalHost())
   const schema = context.run(() => {
@@ -359,7 +359,7 @@ export async function generateSchema(directory: string, profile: RuntimeArtifact
   }
   const output = path.join(directory, "schema/config.schema.json")
   const options = await resolveConfig(
-    path.join(profile === "core" ? CLI_DIR : PRODUCT_RUNTIME_DIR, "schema/config.schema.json"),
+    path.join(profile === "core" ? CLI_DIR : PRESETS_DIR, "schema/config.schema.json"),
   )
   await Bun.write(output, await format(JSON.stringify(schema), { ...options, parser: "json" }))
 }

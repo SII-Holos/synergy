@@ -7,7 +7,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 
 ## Trace the Shared Contract
 
-1. Read [Browser runtime](../../../docs/architecture/browser-runtime.md), `packages/product-runtime/AGENTS.md`, `apps/web/AGENTS.md`, and `apps/desktop/AGENTS.md`.
+1. Read [Browser runtime](../../../docs/architecture/browser-runtime.md), `packages/presets/AGENTS.md`, `apps/web/AGENTS.md`, and `apps/desktop/AGENTS.md`.
 2. Identify the owner key and whether the behavior is canonical runtime state, a `BrowserControl` command/result, a read-only event, presentation selection, host signaling, or Web UI state.
 3. Trace the change across Browser schemas/runtime, control and route handlers, persistence and reaping, Browser tools, Desktop host/view handlers, remote host/WebRTC data channel, generated SDK where applicable, and the Web Browser store/surface.
 4. Load `change-server-api` for route/schema changes, `develop-frontend` for product UI, `change-persistence` for saved Browser state, and `change-execution-boundaries` for navigation or evaluation policy.
