@@ -138,6 +138,7 @@ function expectExperienceCardFields(item: Record<string, unknown>) {
       intent: expect.any(String),
       sourceProviderID: expect.anything(),
       sourceModelID: expect.anything(),
+      rewardStatus: expect.any(String),
       reward: expect.anything(),
       rewards: expect.any(Object),
       qValue: expect.any(Number),
@@ -165,6 +166,51 @@ function expectMemoryCardFields(item: Record<string, unknown>) {
 }
 
 describe("Library API DTO contracts", () => {
+  test("experience list and detail preserve failed, pending and evaluated states", () =>
+    runtime.run(async () => {
+      await using project = await tmpdir({ git: true })
+      const scope = await project.scope()
+      const statuses = ["encoding_failed", "pending", "evaluated"] as const
+      for (const [index, rewardStatus] of statuses.entries()) {
+        insertExperience({
+          id: `exp_state_${index}`,
+          sessionID: `ses_state_${index}`,
+          scopeID: scope.id,
+          intent: rewardStatus === "encoding_failed" ? "" : "Inspect state",
+          rewardStatus,
+          reward: rewardStatus === "evaluated" ? 0 : null,
+          rewards: {},
+          qValues: {},
+          qVisits: 0,
+          turnsRemaining: null,
+          createdAt: index + 1,
+          updatedAt: index === 0 ? 10 : index + 1,
+        })
+      }
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const app = Server.App()
+          const page = await app.request("/library/experience/page?sort=oldest")
+          expect(page.status).toBe(200)
+          const body = (await page.json()) as { items: Array<{ rewardStatus: string }> }
+          expect(body.items.map((item) => item.rewardStatus)).toEqual([...statuses])
+          const recent = await app.request("/library/experience/page?sort=updated&limit=1")
+          expect(recent.status).toBe(200)
+          expect(await recent.json()).toMatchObject({ items: [{ id: "exp_state_0" }] })
+          for (const [index, rewardStatus] of statuses.entries()) {
+            const response = await app.request(`/library/experience/exp_state_${index}`)
+            expect(response.status).toBe(200)
+            expect(await response.json()).toMatchObject({
+              rewardStatus,
+              sessionID: `ses_state_${index}`,
+              scopeID: scope.id,
+            })
+          }
+        },
+      })
+    }))
+
   test("experience page returns stable card fields", () =>
     runtime.run(async () => {
       await using project = await tmpdir({ git: true })
@@ -332,6 +378,7 @@ describe("Library API DTO contracts", () => {
             intent: "Ship the search route",
             sourceProviderID: "provider-a",
             sourceModelID: "model-a",
+            rewardStatus: "evaluated",
             reward: 0.5,
             rewards: { outcome: 0.5 },
             qValue: 0.5,

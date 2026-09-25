@@ -160,7 +160,7 @@ export namespace Skill {
       openclaw: 0,
     }
 
-    for (const root of SkillSourceProfile.existingRoots(ScopeContext.current.directory)) {
+    for (const root of SkillSourceProfile.existingRoots(ScopeContext.current.workspace?.path ?? null)) {
       try {
         for await (const match of ENTRY_GLOB.scan({
           cwd: root.path,
@@ -405,7 +405,8 @@ export namespace Skill {
     const baseDir = path.resolve(skill.backing.baseDir)
     const entryFile = path.resolve(skill.backing.entryFile)
     if (entryFile !== path.join(baseDir, "SKILL.md")) return false
-    if (!(await SkillSourceProfile.containsCanonicalPath(baseDir, ScopeContext.current.directory))) return false
+    if (!(await SkillSourceProfile.containsCanonicalPath(baseDir, ScopeContext.current.workspace?.path ?? null)))
+      return false
     const normalized = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
     return normalized.value?.name === skill.name && normalized.diagnostics.length === 0
   }

@@ -55,7 +55,7 @@ When the session loop detects the same context-pressure signal that can initiate
 
 ### Library Inspection
 
-The Library surface exposes memories, experiences, filters, health, and aggregate statistics. Experience records can be inspected by Scope or session and sorted by recency, reward, learned value, or visits. The adjacent Usage view summarizes session and tool activity rather than Library records; see [Activity and Statistics](activity-and-statistics.md).
+The Library opens with unified search and recently updated Memory and Experience records. Search groups Memory, Experience and Skill matches; a failed group retains its own last successful results and can retry independently. Skills have no update timestamp in their public summaries and are not assigned a synthetic recency. Aggregate statistics have a separate tab. Experience records can be inspected by Scope or session and sorted by recency, reward, learned value, or visits. Cards use the persisted `encoding_failed`, `pending` and `evaluated` reward statuses, show source values and link to the original session. Technical reward and Q-value metrics are secondary details. A failed detail read keeps the card available and offers a read-only retry; it does not start encoding. The adjacent Usage view summarizes session and tool activity rather than Library records; see [Activity and Statistics](activity-and-statistics.md).
 
 ### Encoding Health and Re-encoding
 

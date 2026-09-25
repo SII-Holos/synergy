@@ -477,7 +477,7 @@ export namespace SkillArchive {
     }
   }
 
-  async function trustedFileBacking(skill: Skill.Info, instanceDirectory: string) {
+  async function trustedFileBacking(skill: Skill.Info, instanceDirectory: string | null) {
     if (skill.backing.kind !== "file") return false
     const baseDir = path.resolve(skill.backing.baseDir)
     const entryFile = path.resolve(skill.backing.entryFile)
@@ -490,7 +490,7 @@ export namespace SkillArchive {
     return SkillSourceProfile.containsCanonicalPath(realBase, instanceDirectory)
   }
 
-  async function strictExportValidation(skill: Skill.Info, instanceDirectory: string) {
+  async function strictExportValidation(skill: Skill.Info, instanceDirectory: string | null) {
     if (!(await trustedFileBacking(skill, instanceDirectory))) {
       throw new ExportUnavailableError({
         code: "skill.export_unavailable",
@@ -511,7 +511,7 @@ export namespace SkillArchive {
     return skill.backing.kind === "file" ? skill.backing.baseDir : ""
   }
 
-  export async function exportable(skill: Skill.Info, instanceDirectory: string) {
+  export async function exportable(skill: Skill.Info, instanceDirectory: string | null) {
     try {
       await strictExportValidation(skill, instanceDirectory)
       return true
@@ -547,7 +547,7 @@ export namespace SkillArchive {
 
   export async function createExport(input: {
     skill: Skill.Info
-    instanceDirectory: string
+    instanceDirectory: string | null
   }): Promise<{ bytes: Uint8Array }> {
     const baseDir = await strictExportValidation(input.skill, input.instanceDirectory)
     const writer = new ZipWriter(new Uint8ArrayWriter(), { useWebWorkers: false })

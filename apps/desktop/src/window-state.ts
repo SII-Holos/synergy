@@ -20,9 +20,9 @@ export async function loadWindowState(userDataPath: string): Promise<DesktopWind
     const content = await fs.readFile(windowStatePath(userDataPath), "utf8")
     const parsed = JSON.parse(content) as Partial<DesktopWindowState>
     const state = normalizeWindowState(parsed)
-    return isVisibleOnAnyDisplay(state) ? state : DEFAULT_WINDOW_STATE
+    return fitWindowState(state)
   } catch {
-    return DEFAULT_WINDOW_STATE
+    return fitWindowState(DEFAULT_WINDOW_STATE)
   }
 }
 
@@ -77,19 +77,35 @@ function positiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.round(value) : undefined
 }
 
-function isVisibleOnAnyDisplay(state: DesktopWindowState): boolean {
-  if (state.x === undefined || state.y === undefined) return true
-  const bounds: Rectangle = {
-    x: state.x,
-    y: state.y,
-    width: state.width,
-    height: state.height,
+function fitWindowState(state: DesktopWindowState): DesktopWindowState {
+  const primary = screen.getPrimaryDisplay().workArea
+  const areas = screen.getAllDisplays().map((display) => display.workArea)
+  const area =
+    state.x === undefined || state.y === undefined
+      ? primary
+      : areas.reduce(
+          (best, next) => (intersectionArea(state, next) > intersectionArea(state, best) ? next : best),
+          primary,
+        )
+  const width = Math.min(Math.max(640, state.width), area.width)
+  const height = Math.min(Math.max(480, state.height), area.height)
+  if (state.x === undefined || state.y === undefined) return { ...state, width, height }
+  return {
+    ...state,
+    width,
+    height,
+    x: Math.max(area.x, Math.min(state.x, area.x + area.width - width)),
+    y: Math.max(area.y, Math.min(state.y, area.y + area.height - height)),
   }
-  return screen.getAllDisplays().some((display) => intersects(bounds, display.workArea))
 }
 
-function intersects(a: Rectangle, b: Rectangle): boolean {
-  return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
+function intersectionArea(state: DesktopWindowState, area: Rectangle): number {
+  const x = state.x ?? area.x
+  const y = state.y ?? area.y
+  return (
+    Math.max(0, Math.min(x + state.width, area.x + area.width) - Math.max(x, area.x)) *
+    Math.max(0, Math.min(y + state.height, area.y + area.height) - Math.max(y, area.y))
+  )
 }
 
 function windowStatePath(userDataPath: string): string {

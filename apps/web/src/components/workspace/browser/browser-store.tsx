@@ -111,6 +111,7 @@ export function createBrowserStore() {
   })
   const [followAgent, setFollowAgentSignal] = createSignal(true)
   const [fileChooserRequest, setFileChooserRequest] = createSignal<FileChooserRequest | null>(null)
+  const [controlsOpen, setControlsOpen] = createSignal(false)
   const [dialogRequest, setDialogRequest] = createSignal<DialogRequest | null>(null)
   const [browserErrorState, setBrowserErrorState] = createSignal<BrowserErrorState | null>(null)
   const [annotationMode, setAnnotationMode] = createSignal(false)
@@ -321,6 +322,8 @@ export function createBrowserStore() {
     applyAgentActivity,
     fileChooserRequest,
     setFileChooserRequest,
+    controlsOpen,
+    setControlsOpen,
     dialogRequest,
     setDialogRequest,
     browserError,

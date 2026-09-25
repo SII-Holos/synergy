@@ -1140,6 +1140,7 @@ export class AgentWorkerPool {
   }
 
   private enqueue(task: PoolTask): void {
+    this.queuedBytes += task.requestBytes
     if (task.lane === "interactive") this.interactiveQueue.push(task)
     else this.backgroundQueue.push(task)
   }

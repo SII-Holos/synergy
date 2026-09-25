@@ -27,21 +27,17 @@ export function PermissionModeSelector(props: {
 
   return (
     <ToolbarSelectorPopover
-      trigger={
+      triggerAs={(triggerProps) => (
         <button
+          {...triggerProps}
           type="button"
           aria-label={i18n._({
             ...PI.permissionModeAria,
             values: { mode: translateModeCopy(props.activeMode().label) },
           })}
           aria-disabled={props.switching()}
-          onClick={(event) => {
-            if (props.switching()) {
-              event.preventDefault()
-              event.stopPropagation()
-            }
-          }}
-          class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
+          disabled={props.switching()}
+          class="prompt-input-toolbar-button flex items-center gap-1.5 transition-colors"
           classList={{
             "opacity-60 cursor-not-allowed": props.switching(),
           }}
@@ -55,19 +51,17 @@ export function PermissionModeSelector(props: {
                   size="small"
                   class={`shrink-0 ${props.activeMode().iconClass}`}
                 />
-                <span
-                  class={`prompt-input-compact-label text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}
-                >
+                <span class={`text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}>
                   {translateModeCopy(props.activeMode().shortLabel)}
                 </span>
-                <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
+                <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
               </>
             }
           >
             <Spinner class="text-icon-base" />
           </Show>
         </button>
-      }
+      )}
       title={i18n._(PI.permissionMode)}
       contentClass="w-80"
       placement="top-start"

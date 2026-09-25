@@ -1,3 +1,4 @@
+import { Lock } from "../util/lock"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -121,7 +122,8 @@ export namespace PermissionRules {
     try {
       const data = await Storage.read<Ruleset>(StoragePath.permissionRules())
       instanceState.userRulesCache = Array.isArray(data) ? data : []
-    } catch {
+    } catch (error) {
+      if (!(error instanceof Storage.NotFoundError)) throw error
       instanceState.userRulesCache = []
     }
     return instanceState.userRulesCache
@@ -130,22 +132,41 @@ export namespace PermissionRules {
   async function saveUserRules(rules: Ruleset) {
     const instanceState = runtimeState()
 
-    instanceState.userRulesCache = rules
     await Storage.write(StoragePath.permissionRules(), rules)
+    Storage.afterCommit(() => {
+      instanceState.userRulesCache = rules
+    })
     log.info("saved user rules", { count: rules.length })
   }
 
   export async function addUserRule(rule: Omit<Rule, "scope">) {
-    const current = await loadUserRules()
-    const exists = current.some(
-      (r) => r.permission === rule.permission && r.pattern === rule.pattern && r.action === rule.action,
-    )
-    if (!exists) {
-      await saveUserRules([...current, { ...rule, scope: "user" }])
-    }
+    return addUserRules([rule])
+  }
+
+  export async function addUserRules(rules: Omit<Rule, "scope">[]) {
+    using lock = await Lock.write("permission-user-rules")
+    await Storage.transaction(async () => {
+      const current = await Storage.read<Ruleset>(StoragePath.permissionRules()).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return []
+        throw error
+      })
+      const next = [...current]
+      for (const rule of rules) {
+        if (
+          !next.some(
+            (item) =>
+              item.permission === rule.permission && item.pattern === rule.pattern && item.action === rule.action,
+          )
+        ) {
+          next.push({ ...rule, scope: "user" })
+        }
+      }
+      await saveUserRules(next)
+    })
   }
 
   export async function removeUserRule(permission: string, pattern: string) {
+    using lock = await Lock.write("permission-user-rules")
     const current = await loadUserRules()
     await saveUserRules(current.filter((r) => !(r.permission === permission && r.pattern === pattern)))
   }

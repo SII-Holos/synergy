@@ -336,7 +336,7 @@ export function MemoryView(props: {
   )
 }
 
-function MemoryCard(props: {
+export function MemoryCard(props: {
   item: MemoryItem
   expanded: boolean
   similarity: number | undefined
@@ -344,7 +344,7 @@ function MemoryCard(props: {
   selecting: boolean
   selected: boolean
   onToggle: () => void
-  onDelete: (e: MouseEvent) => void
+  onDelete?: (e: MouseEvent) => void
 }) {
   const { _ } = useLingui()
   const { fmt } = useLocale()
@@ -355,13 +355,12 @@ function MemoryCard(props: {
   return (
     <div
       classList={{
-        [`${libraryCardBaseClass} cursor-pointer`]: true,
+        [libraryCardBaseClass]: true,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
         [libraryCardHoverClass]: !props.expanded && !props.selecting,
         "workbench-selected-surface ring-1 ring-inset ring-border-base/32": props.selecting && props.selected,
         "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
-      onClick={props.onToggle}
     >
       <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
@@ -371,13 +370,19 @@ function MemoryCard(props: {
             </div>
           </Show>
           {/* item.title is user/agent content — pass through */}
-          <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">
+          <button
+            type="button"
+            class="library-card-toggle text-left text-13-medium text-text-strong flex-1 min-w-0 leading-snug"
+            aria-expanded={props.selecting ? undefined : props.expanded}
+            aria-pressed={props.selecting ? props.selected : undefined}
+            onClick={props.onToggle}
+          >
             {props.expanded && !props.selecting ? (
               props.item.title
             ) : (
               <span class="line-clamp-2">{props.item.title}</span>
             )}
-          </span>
+          </button>
           <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             <Show when={category()}>
               <span
@@ -402,7 +407,7 @@ function MemoryCard(props: {
                 })}
               </span>
             </Show>
-            <Show when={props.expanded && !props.selecting}>
+            <Show when={props.expanded && !props.selecting && props.onDelete}>
               <button
                 type="button"
                 class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
@@ -449,14 +454,22 @@ function MemoryCard(props: {
                 </Show>
               </Show>
             </span>
-            <span
+            <button
+              type="button"
+              aria-label={
+                props.expanded
+                  ? _({ id: "app.library.memory.collapse", message: "Collapse memory" })
+                  : _({ id: "app.library.memory.expand", message: "Expand memory" })
+              }
+              aria-expanded={props.expanded}
+              onClick={props.onToggle}
               classList={{
                 "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
               <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
-            </span>
+            </button>
           </div>
         </Show>
 

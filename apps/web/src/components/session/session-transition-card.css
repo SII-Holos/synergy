@@ -256,3 +256,22 @@
     animation: none;
   }
 }
+
+.session-transition-card-diagnostics {
+  padding: 0 16px 12px;
+  color: var(--text-weak);
+  font-size: 12px;
+  summary {
+    cursor: pointer;
+  }
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 160px;
+    overflow: auto;
+  }
+}
+.session-transition-step-icon[data-state="error"],
+.session-transition-step-row[data-state="error"] .session-transition-step-status {
+  color: var(--text-error);
+}

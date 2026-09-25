@@ -1,3 +1,5 @@
+import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
+import { SidebarSectionButton } from "./sidebar-section-button"
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { createSessionTagFilter, type TagFilterState } from "./session-tag-filter"
@@ -473,7 +475,10 @@ export function Sidebar(props: SidebarProps) {
               class="sb-logo-img"
               draggable={false}
             />
-            <span class="sb-logo-text">{_(sidebar.logoAlt)}</span>
+            <div class="sb-logo-caption">
+              <span class="sb-logo-text">{_(sidebar.logoAlt)}</span>
+              <span class="sb-product-label">{_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}</span>
+            </div>
           </A>
           <div class="sb-header-actions">
             <Tooltip value={_(sidebar.search)} placement="right">
@@ -518,6 +523,425 @@ export function Sidebar(props: SidebarProps) {
         </Tooltip>
       </div>
 
+      {/* Unified scroll region */}
+      <Show
+        when={isExpanded()}
+        fallback={
+          <div class="sb-projects-collapsed">
+            <Tooltip value={_(sidebar.projects)} placement="right">
+              <button
+                type="button"
+                aria-label={_(sidebar.projects)}
+                classList={{
+                  "sb-icon-btn": true,
+                  "sb-projects-flyout-trigger": true,
+                }}
+                onClick={() => setProjectsFlyoutOpen((v) => !v)}
+              >
+                <Icon name={getSemanticIcon("workspace.add")} size="normal" />
+              </button>
+            </Tooltip>
+          </div>
+        }
+      >
+        <Tabs defaultValue="recent" variant="pill" class="sb-collections navigation-collections">
+          <Tabs.List aria-label={_(sidebar.projectsFlyout)}>
+            <Tabs.Trigger value="recent">{_(sidebar.recent)}</Tabs.Trigger>
+            <Tabs.Trigger value="projects">{_(sidebar.projects)}</Tabs.Trigger>
+          </Tabs.List>
+          <div class="sb-scroll">
+            <Show when={layout.nav.scopeIndexLoaded()}>
+              <div class="sb-session-tag-filter" onClick={(event) => event.stopPropagation()}>
+                <Icon name={getSemanticIcon("notes.tag")} size="small" class="text-icon-weak-base" />
+                <input
+                  type="search"
+                  aria-label={_(sessionTags.tags)}
+                  placeholder={tagFilter() ? `#${tagFilter()}` : _(sessionTags.tags)}
+                  value={tagSearch()}
+                  onFocus={() => setTagPickerOpen(true)}
+                  maxLength={40}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") setTagPickerOpen(false)
+                    if (event.key !== "Enter") return
+                    const tag = tagSearch()
+                      .trim()
+                      .replace(/^(?:#\s*)+/, "")
+                    setTagFilter(tag || undefined)
+                    setTagSearch("")
+                    setTagPickerOpen(false)
+                  }}
+                  onInput={(event) => {
+                    setTagSearch(event.currentTarget.value)
+                    setTagPickerOpen(true)
+                  }}
+                />
+                <Show when={tagFilter()}>
+                  <button
+                    type="button"
+                    class="sb-session-tag-filter-clear"
+                    aria-label={_(sessionTags.all)}
+                    onClick={() => {
+                      setTagFilter(undefined)
+                      setTagSearch("")
+                    }}
+                  >
+                    <Icon name={getSemanticIcon("action.close")} size="small" />
+                  </button>
+                </Show>
+                <Show when={tagPickerOpen()}>
+                  <div class="sb-session-tag-options">
+                    <button
+                      type="button"
+                      classList={{ "sb-session-tag-option": true, "sb-session-tag-option-active": !tagFilter() }}
+                      onClick={() => {
+                        setTagFilter(undefined)
+                        setTagSearch("")
+                        setTagPickerOpen(false)
+                      }}
+                    >
+                      {_(sessionTags.all)}
+                    </button>
+                    <For each={filteredTags()}>
+                      {(tag) => (
+                        <button
+                          type="button"
+                          classList={{
+                            "sb-session-tag-option": true,
+                            "sb-session-tag-option-active": tagFilter() === tag,
+                          }}
+                          onClick={() => {
+                            setTagFilter(tag)
+                            setTagSearch("")
+                            setTagPickerOpen(false)
+                          }}
+                        >
+                          #{tag}
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+            </Show>
+            <Show when={tagFilter()}>
+              <div class="sb-root-section" aria-busy={tagResults().loading}>
+                <div class="sb-projects-header">#{tagFilter()}</div>
+                <SidebarSessionList
+                  entries={tagResults().items}
+                  activeID={params.id}
+                  onSessionClick={handleNavEntryClick}
+                />
+                <Show when={tagResults().loading}>
+                  <Spinner />
+                </Show>
+                <Show when={tagResults().error}>
+                  <div role="alert" class="sb-section-empty">
+                    {_(sessionTags.loadFailed)}
+                  </div>
+                  <button type="button" class="sb-load-more-btn" onClick={() => void tagController.refresh()}>
+                    {_(sessionTags.retry)}
+                  </button>
+                </Show>
+                <Show when={!tagResults().loading && !tagResults().error && tagResults().items.length === 0}>
+                  <div class="sb-section-empty">{_(sessionTags.noMatches)}</div>
+                </Show>
+                <Show when={tagResults().nextCursor}>
+                  <button
+                    type="button"
+                    class="sb-load-more-btn"
+                    disabled={tagResults().loading}
+                    onClick={() => void tagController.more()}
+                  >
+                    {_(sidebar.loadMore)}
+                  </button>
+                </Show>
+              </div>
+            </Show>
+            <Show when={!tagFilter()}>
+              <Show
+                when={layout.nav.scopeIndexLoaded()}
+                fallback={
+                  <div class="flex flex-col items-center justify-center h-full min-h-[200px] gap-3">
+                    <Spinner class="text-text-weak size-8" />
+                    <span class="text-text-weak text-xs">{_(sidebar.loadingProjects)}</span>
+                  </div>
+                }
+              >
+                <Tabs.Content value="recent">
+                  {/* Recent */}
+                  <div class="sb-root-section">
+                    <div class="sb-projects-header sb-recent-header">
+                      <button
+                        type="button"
+                        class="sb-recent-toggle"
+                        aria-expanded={recentSectionOpen()}
+                        onClick={() => setRecentSectionOpen((v) => !v)}
+                      >
+                        <span class="sb-section-title">{_(sidebar.recent)}</span>
+                        <Icon
+                          name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
+                          size="small"
+                          class="sb-section-chevron"
+                        />
+                      </button>
+                      <Show when={(layout.nav.unreadCompletionCount() ?? 0) > 0}>
+                        <button
+                          type="button"
+                          class="sb-mark-all-read"
+                          disabled={acknowledgingCompletions()}
+                          aria-busy={acknowledgingCompletions()}
+                          onClick={() => void acknowledgeAllCompletions()}
+                        >
+                          {_(acknowledgingCompletions() ? sidebar.markingAllRead : sidebar.markAllRead)}
+                        </button>
+                      </Show>
+                    </div>
+                    <SidebarDisclosure open={recentSectionOpen()}>
+                      <Show
+                        when={recentEntries().length > 0}
+                        fallback={<div class="sb-section-empty">{_(sidebar.noRecentSessions)}</div>}
+                      >
+                        <SidebarSessionList
+                          entries={filterEntries(recentEntries())}
+                          activeID={params.id}
+                          onSessionClick={handleNavEntryClick}
+                        />
+                        <Show when={hasMoreRecent()}>
+                          <button
+                            type="button"
+                            class="sb-load-more-btn"
+                            onClick={() => layout.nav.loadMoreNav("__recent__")}
+                          >
+                            {_(sidebar.loadMore)}
+                          </button>
+                        </Show>
+                      </Show>
+                    </SidebarDisclosure>
+                  </div>
+                </Tabs.Content>
+                <Tabs.Content value="projects">
+                  {/* Home */}
+                  <RootNavSection
+                    title={_(sidebar.home)}
+                    open={homeSectionOpen}
+                    onToggle={() => setHomeSectionOpen((v) => !v)}
+                    entries={filterEntries(layout.nav.rootNavEntries("home"))}
+                    hasMore={layout.nav.hasMoreRootNavSection("home")}
+                    onLoadMore={() => layout.nav.loadMoreRootNavSection("home")}
+                    activeID={params.id}
+                    onSessionClick={handleNavEntryClick}
+                  />
+
+                  {/* Channel */}
+                  <div class="sb-root-section">
+                    <SidebarSectionButton
+                      class="sb-projects-header"
+                      onClick={() => setChannelSectionOpen((v) => !v)}
+                      open={channelSectionOpen()}
+                    >
+                      <span class="sb-section-title">{_(sidebar.channel)}</span>
+                      <Icon
+                        name={channelSectionOpen() ? "chevron-down" : "chevron-right"}
+                        size="small"
+                        class="sb-section-chevron"
+                      />
+                    </SidebarSectionButton>
+                    <SidebarDisclosure open={channelSectionOpen()}>
+                      <Show
+                        when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
+                        fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
+                      >
+                        <Show when={channelGroupedEntries().length > 0}>
+                          <div class="sb-session-group">
+                            <SidebarSectionButton
+                              class="sb-session-group-header"
+                              onClick={() => setFeishuGroupOpen((v) => !v)}
+                              open={feishuGroupOpen()}
+                            >
+                              <Icon
+                                name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
+                                size="small"
+                                class="sb-section-chevron"
+                              />
+                              <span>{_(sidebar.channelFeishu)}</span>
+                            </SidebarSectionButton>
+                            <SidebarDisclosure open={feishuGroupOpen()}>
+                              <For each={feishuChannelGroups()}>
+                                {(group) => (
+                                  <ChannelChatPartnerGroup
+                                    name={group.name}
+                                    sessions={group.sessions}
+                                    activeID={params.id}
+                                    onSessionClick={handleNavEntryClick}
+                                  />
+                                )}
+                              </For>
+                            </SidebarDisclosure>
+                          </div>
+                          <Show when={githubChannelGroups().length > 0}>
+                            <div class="sb-session-group">
+                              <SidebarSectionButton
+                                class="sb-session-group-header"
+                                onClick={() => setGithubGroupOpen((v) => !v)}
+                                open={githubGroupOpen()}
+                              >
+                                <Icon
+                                  name={githubGroupOpen() ? "chevron-down" : "chevron-right"}
+                                  size="small"
+                                  class="sb-section-chevron"
+                                />
+                                <span>{_(sidebar.channelGithub)}</span>
+                              </SidebarSectionButton>
+                              <SidebarDisclosure open={githubGroupOpen()}>
+                                <For each={githubChannelGroups()}>
+                                  {(group) => (
+                                    <ChannelChatPartnerGroup
+                                      name={group.name}
+                                      sessions={group.sessions}
+                                      activeID={params.id}
+                                      onSessionClick={handleNavEntryClick}
+                                    />
+                                  )}
+                                </For>
+                              </SidebarDisclosure>
+                            </div>
+                          </Show>
+                          <Show when={layout.nav.hasMoreRootNavSection("channel")}>
+                            <button
+                              type="button"
+                              class="sb-load-more-btn"
+                              onClick={() => layout.nav.loadMoreRootNavSection("channel")}
+                            >
+                              {_(sidebar.loadMore)}
+                            </button>
+                          </Show>
+                        </Show>
+                        <For each={managedChannelGroups()}>
+                          {(group) => (
+                            <ChannelProviderGroup group={group} _={_}>
+                              <For each={group.projects}>
+                                {(project) => (
+                                  <SidebarProjectGroup
+                                    scope={() => layout.scopes.managed(project.directory)}
+                                    activeID={params.id}
+                                    currentDirectory={currentDirectory()}
+                                    isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
+                                    navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
+                                    projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
+                                    hasMoreForProject={hasMoreForProject}
+                                    managedProject={project.managedProject}
+                                    onProjectToggle={handleProjectToggle}
+                                    onProjectClick={handleProjectClick}
+                                    onProjectPlus={handleProjectPlus}
+                                    onProjectEdit={handleProjectEdit}
+                                    onProjectArchive={handleProjectArchive}
+                                    onProjectPin={handleProjectPin}
+                                    onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
+                                    onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
+                                    activeSessionID={params.id}
+                                    onSessionClick={handleSessionClick}
+                                    _={_}
+                                  />
+                                )}
+                              </For>
+                            </ChannelProviderGroup>
+                          )}
+                        </For>
+                      </Show>
+                    </SidebarDisclosure>
+                  </div>
+
+                  {/* Background */}
+                  <RootNavSection
+                    title={_(sidebar.background)}
+                    open={backgroundSectionOpen}
+                    onToggle={() => setBackgroundSectionOpen((v) => !v)}
+                    entries={filterEntries(layout.nav.rootNavEntries("background"))}
+                    hasMore={layout.nav.hasMoreRootNavSection("background")}
+                    onLoadMore={() => layout.nav.loadMoreRootNavSection("background")}
+                    activeID={params.id}
+                    onSessionClick={handleNavEntryClick}
+                  />
+
+                  {/* Projects */}
+                  <div class="sb-projects">
+                    <div class="sb-projects-header sb-projects-header-actions">
+                      <SidebarSectionButton
+                        class="sb-projects-section-toggle"
+                        onClick={() => setProjectsSectionOpen((v) => !v)}
+                        open={projectsSectionOpen()}
+                      >
+                        <span class="sb-section-title">{_(sidebar.projects)}</span>
+                        <Icon
+                          name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
+                          size="small"
+                          class="sb-section-chevron"
+                        />
+                      </SidebarSectionButton>
+                      <span class="sb-projects-header-spacer" />
+                      <Show when={hasExpandedProject()}>
+                        <Tooltip value={_(sidebar.collapseAllProjects)} placement="top">
+                          <button
+                            type="button"
+                            class="sb-projects-header-expand-all"
+                            aria-label={_(sidebar.collapseAllProjects)}
+                            onClick={(e) => handleCollapseAllProjects(e)}
+                          >
+                            <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
+                          </button>
+                        </Tooltip>
+                      </Show>
+                      <Tooltip value={_(sidebar.addProject)} placement="top">
+                        <button
+                          type="button"
+                          class="sb-projects-header-plus"
+                          aria-label={_(sidebar.addProject)}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleAddProject()
+                          }}
+                        >
+                          <Icon name={getSemanticIcon("action.add")} size="small" />
+                        </button>
+                      </Tooltip>
+                    </div>
+
+                    <SidebarDisclosure open={projectsSectionOpen()}>
+                      <FlipList entries={genericScopeWorktrees()} selector="[data-scope-id]" dataKey="scopeId">
+                        <For each={genericScopeWorktrees()}>
+                          {(worktree) => (
+                            <SidebarProjectGroup
+                              scope={() => scopeByWorktree().get(worktree)}
+                              activeID={params.id}
+                              currentDirectory={currentDirectory()}
+                              isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
+                              navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
+                              projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
+                              hasMoreForProject={hasMoreForProject}
+                              onProjectToggle={handleProjectToggle}
+                              onProjectClick={handleProjectClick}
+                              onProjectPlus={handleProjectPlus}
+                              onProjectEdit={handleProjectEdit}
+                              onProjectArchive={handleProjectArchive}
+                              onProjectPin={handleProjectPin}
+                              onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
+                              onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
+                              activeSessionID={params.id}
+                              onSessionClick={handleSessionClick}
+                              _={_}
+                            />
+                          )}
+                        </For>
+                      </FlipList>
+                    </SidebarDisclosure>
+                  </div>
+                </Tabs.Content>
+              </Show>
+            </Show>
+          </div>
+        </Tabs>
+      </Show>
+
       {/* Global feature buttons */}
       <div class="sb-globals">
         <For each={sidebarNavigation()}>
@@ -541,417 +965,6 @@ export function Sidebar(props: SidebarProps) {
           )}
         </For>
       </div>
-
-      {/* Unified scroll region */}
-      <Show
-        when={isExpanded()}
-        fallback={
-          <div class="sb-projects-collapsed">
-            <Tooltip value={_(sidebar.projects)} placement="right">
-              <button
-                type="button"
-                aria-label={_(sidebar.projects)}
-                classList={{
-                  "sb-icon-btn": true,
-                  "sb-projects-flyout-trigger": true,
-                }}
-                onClick={() => setProjectsFlyoutOpen((v) => !v)}
-              >
-                <Icon name={getSemanticIcon("workspace.add")} size="normal" />
-              </button>
-            </Tooltip>
-          </div>
-        }
-      >
-        <div class="sb-scroll">
-          <Show when={layout.nav.scopeIndexLoaded()}>
-            <div class="sb-session-tag-filter" onClick={(event) => event.stopPropagation()}>
-              <Icon name={getSemanticIcon("notes.tag")} size="small" class="text-icon-weak-base" />
-              <input
-                type="search"
-                aria-label={_(sessionTags.tags)}
-                placeholder={tagFilter() ? `#${tagFilter()}` : _(sessionTags.tags)}
-                value={tagSearch()}
-                onFocus={() => setTagPickerOpen(true)}
-                maxLength={40}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setTagPickerOpen(false)
-                  if (event.key !== "Enter") return
-                  const tag = tagSearch()
-                    .trim()
-                    .replace(/^(?:#\s*)+/, "")
-                  setTagFilter(tag || undefined)
-                  setTagSearch("")
-                  setTagPickerOpen(false)
-                }}
-                onInput={(event) => {
-                  setTagSearch(event.currentTarget.value)
-                  setTagPickerOpen(true)
-                }}
-              />
-              <Show when={tagFilter()}>
-                <button
-                  type="button"
-                  class="sb-session-tag-filter-clear"
-                  aria-label={_(sessionTags.all)}
-                  onClick={() => {
-                    setTagFilter(undefined)
-                    setTagSearch("")
-                  }}
-                >
-                  <Icon name={getSemanticIcon("action.close")} size="small" />
-                </button>
-              </Show>
-              <Show when={tagPickerOpen()}>
-                <div class="sb-session-tag-options">
-                  <button
-                    type="button"
-                    classList={{ "sb-session-tag-option": true, "sb-session-tag-option-active": !tagFilter() }}
-                    onClick={() => {
-                      setTagFilter(undefined)
-                      setTagSearch("")
-                      setTagPickerOpen(false)
-                    }}
-                  >
-                    {_(sessionTags.all)}
-                  </button>
-                  <For each={filteredTags()}>
-                    {(tag) => (
-                      <button
-                        type="button"
-                        classList={{
-                          "sb-session-tag-option": true,
-                          "sb-session-tag-option-active": tagFilter() === tag,
-                        }}
-                        onClick={() => {
-                          setTagFilter(tag)
-                          setTagSearch("")
-                          setTagPickerOpen(false)
-                        }}
-                      >
-                        #{tag}
-                      </button>
-                    )}
-                  </For>
-                </div>
-              </Show>
-            </div>
-          </Show>
-          <Show when={tagFilter()}>
-            <div class="sb-root-section" aria-busy={tagResults().loading}>
-              <div class="sb-projects-header">#{tagFilter()}</div>
-              <SidebarSessionList
-                entries={tagResults().items}
-                activeID={params.id}
-                onSessionClick={handleNavEntryClick}
-              />
-              <Show when={tagResults().loading}>
-                <Spinner />
-              </Show>
-              <Show when={tagResults().error}>
-                <div role="alert" class="sb-section-empty">
-                  {_(sessionTags.loadFailed)}
-                </div>
-                <button type="button" class="sb-load-more-btn" onClick={() => void tagController.refresh()}>
-                  {_(sessionTags.retry)}
-                </button>
-              </Show>
-              <Show when={!tagResults().loading && !tagResults().error && tagResults().items.length === 0}>
-                <div class="sb-section-empty">{_(sessionTags.noMatches)}</div>
-              </Show>
-              <Show when={tagResults().nextCursor}>
-                <button
-                  type="button"
-                  class="sb-load-more-btn"
-                  disabled={tagResults().loading}
-                  onClick={() => void tagController.more()}
-                >
-                  {_(sidebar.loadMore)}
-                </button>
-              </Show>
-            </div>
-          </Show>
-          <Show when={!tagFilter()}>
-            <Show
-              when={layout.nav.scopeIndexLoaded()}
-              fallback={
-                <div class="flex flex-col items-center justify-center h-full min-h-[200px] gap-3">
-                  <Spinner class="text-text-weak size-8" />
-                  <span class="text-text-weak text-xs">{_(sidebar.loadingProjects)}</span>
-                </div>
-              }
-            >
-              {/* Recent */}
-              <div class="sb-root-section">
-                <div class="sb-projects-header sb-recent-header">
-                  <button
-                    type="button"
-                    class="sb-recent-toggle"
-                    aria-expanded={recentSectionOpen()}
-                    onClick={() => setRecentSectionOpen((v) => !v)}
-                  >
-                    <span class="sb-section-title">{_(sidebar.recent)}</span>
-                    <Icon
-                      name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
-                      size="small"
-                      class="sb-section-chevron"
-                    />
-                  </button>
-                  <Show when={(layout.nav.unreadCompletionCount() ?? 0) > 0}>
-                    <button
-                      type="button"
-                      class="sb-mark-all-read"
-                      disabled={acknowledgingCompletions()}
-                      aria-busy={acknowledgingCompletions()}
-                      onClick={() => void acknowledgeAllCompletions()}
-                    >
-                      {_(acknowledgingCompletions() ? sidebar.markingAllRead : sidebar.markAllRead)}
-                    </button>
-                  </Show>
-                </div>
-                <SidebarDisclosure open={recentSectionOpen()}>
-                  <Show
-                    when={recentEntries().length > 0}
-                    fallback={<div class="sb-section-empty">{_(sidebar.noRecentSessions)}</div>}
-                  >
-                    <SidebarSessionList
-                      entries={filterEntries(recentEntries())}
-                      activeID={params.id}
-                      onSessionClick={handleNavEntryClick}
-                    />
-                    <Show when={hasMoreRecent()}>
-                      <button
-                        type="button"
-                        class="sb-load-more-btn"
-                        onClick={() => layout.nav.loadMoreNav("__recent__")}
-                      >
-                        {_(sidebar.loadMore)}
-                      </button>
-                    </Show>
-                  </Show>
-                </SidebarDisclosure>
-              </div>
-
-              {/* Home */}
-              <RootNavSection
-                title={_(sidebar.home)}
-                open={homeSectionOpen}
-                onToggle={() => setHomeSectionOpen((v) => !v)}
-                entries={filterEntries(layout.nav.rootNavEntries("home"))}
-                hasMore={layout.nav.hasMoreRootNavSection("home")}
-                onLoadMore={() => layout.nav.loadMoreRootNavSection("home")}
-                activeID={params.id}
-                onSessionClick={handleNavEntryClick}
-              />
-
-              {/* Channel */}
-              <div class="sb-root-section">
-                <div
-                  class="sb-projects-header"
-                  onClick={() => setChannelSectionOpen((v) => !v)}
-                  role="button"
-                  tabindex="0"
-                >
-                  <span class="sb-section-title">{_(sidebar.channel)}</span>
-                  <Icon
-                    name={channelSectionOpen() ? "chevron-down" : "chevron-right"}
-                    size="small"
-                    class="sb-section-chevron"
-                  />
-                </div>
-                <SidebarDisclosure open={channelSectionOpen()}>
-                  <Show
-                    when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
-                    fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
-                  >
-                    <Show when={channelGroupedEntries().length > 0}>
-                      <div class="sb-session-group">
-                        <div
-                          class="sb-session-group-header"
-                          onClick={() => setFeishuGroupOpen((v) => !v)}
-                          role="button"
-                          tabindex="0"
-                        >
-                          <Icon
-                            name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
-                            size="small"
-                            class="sb-section-chevron"
-                          />
-                          <span>{_(sidebar.channelFeishu)}</span>
-                        </div>
-                        <SidebarDisclosure open={feishuGroupOpen()}>
-                          <For each={feishuChannelGroups()}>
-                            {(group) => (
-                              <ChannelChatPartnerGroup
-                                name={group.name}
-                                sessions={group.sessions}
-                                activeID={params.id}
-                                onSessionClick={handleNavEntryClick}
-                              />
-                            )}
-                          </For>
-                        </SidebarDisclosure>
-                      </div>
-                      <Show when={githubChannelGroups().length > 0}>
-                        <div class="sb-session-group">
-                          <div
-                            class="sb-session-group-header"
-                            onClick={() => setGithubGroupOpen((v) => !v)}
-                            role="button"
-                            tabindex="0"
-                          >
-                            <Icon
-                              name={githubGroupOpen() ? "chevron-down" : "chevron-right"}
-                              size="small"
-                              class="sb-section-chevron"
-                            />
-                            <span>{_(sidebar.channelGithub)}</span>
-                          </div>
-                          <SidebarDisclosure open={githubGroupOpen()}>
-                            <For each={githubChannelGroups()}>
-                              {(group) => (
-                                <ChannelChatPartnerGroup
-                                  name={group.name}
-                                  sessions={group.sessions}
-                                  activeID={params.id}
-                                  onSessionClick={handleNavEntryClick}
-                                />
-                              )}
-                            </For>
-                          </SidebarDisclosure>
-                        </div>
-                      </Show>
-                      <Show when={layout.nav.hasMoreRootNavSection("channel")}>
-                        <button
-                          type="button"
-                          class="sb-load-more-btn"
-                          onClick={() => layout.nav.loadMoreRootNavSection("channel")}
-                        >
-                          {_(sidebar.loadMore)}
-                        </button>
-                      </Show>
-                    </Show>
-                    <For each={managedChannelGroups()}>
-                      {(group) => (
-                        <ChannelProviderGroup group={group} _={_}>
-                          <For each={group.projects}>
-                            {(project) => (
-                              <SidebarProjectGroup
-                                scope={() => layout.scopes.managed(project.directory)}
-                                activeID={params.id}
-                                currentDirectory={currentDirectory()}
-                                isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
-                                navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
-                                projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
-                                hasMoreForProject={hasMoreForProject}
-                                managedProject={project.managedProject}
-                                onProjectToggle={handleProjectToggle}
-                                onProjectClick={handleProjectClick}
-                                onProjectPlus={handleProjectPlus}
-                                onProjectEdit={handleProjectEdit}
-                                onProjectArchive={handleProjectArchive}
-                                onProjectPin={handleProjectPin}
-                                onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
-                                onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
-                                activeSessionID={params.id}
-                                onSessionClick={handleSessionClick}
-                                _={_}
-                              />
-                            )}
-                          </For>
-                        </ChannelProviderGroup>
-                      )}
-                    </For>
-                  </Show>
-                </SidebarDisclosure>
-              </div>
-
-              {/* Background */}
-              <RootNavSection
-                title={_(sidebar.background)}
-                open={backgroundSectionOpen}
-                onToggle={() => setBackgroundSectionOpen((v) => !v)}
-                entries={filterEntries(layout.nav.rootNavEntries("background"))}
-                hasMore={layout.nav.hasMoreRootNavSection("background")}
-                onLoadMore={() => layout.nav.loadMoreRootNavSection("background")}
-                activeID={params.id}
-                onSessionClick={handleNavEntryClick}
-              />
-
-              {/* Projects */}
-              <div class="sb-projects">
-                <div
-                  class="sb-projects-header"
-                  onClick={() => setProjectsSectionOpen((v) => !v)}
-                  role="button"
-                  tabindex="0"
-                >
-                  <span class="sb-section-title">{_(sidebar.projects)}</span>
-                  <Icon
-                    name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
-                    size="small"
-                    class="sb-section-chevron"
-                  />
-                  <span class="sb-projects-header-spacer" />
-                  <Show when={hasExpandedProject()}>
-                    <Tooltip value={_(sidebar.collapseAllProjects)} placement="top">
-                      <button
-                        type="button"
-                        class="sb-projects-header-expand-all"
-                        aria-label={_(sidebar.collapseAllProjects)}
-                        onClick={(e) => handleCollapseAllProjects(e)}
-                      >
-                        <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
-                      </button>
-                    </Tooltip>
-                  </Show>
-                  <Tooltip value={_(sidebar.addProject)} placement="top">
-                    <button
-                      type="button"
-                      class="sb-projects-header-plus"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleAddProject()
-                      }}
-                    >
-                      <Icon name={getSemanticIcon("action.add")} size="small" />
-                    </button>
-                  </Tooltip>
-                </div>
-
-                <SidebarDisclosure open={projectsSectionOpen()}>
-                  <FlipList entries={genericScopeWorktrees()} selector="[data-scope-id]" dataKey="scopeId">
-                    <For each={genericScopeWorktrees()}>
-                      {(worktree) => (
-                        <SidebarProjectGroup
-                          scope={() => scopeByWorktree().get(worktree)}
-                          activeID={params.id}
-                          currentDirectory={currentDirectory()}
-                          isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
-                          navLoaded={(scope) => !!layout.nav.navEntries()[scope.id]}
-                          projectNavEntries={(scope) => filterEntries(layout.nav.projectNavEntries(scope))}
-                          hasMoreForProject={hasMoreForProject}
-                          onProjectToggle={handleProjectToggle}
-                          onProjectClick={handleProjectClick}
-                          onProjectPlus={handleProjectPlus}
-                          onProjectEdit={handleProjectEdit}
-                          onProjectArchive={handleProjectArchive}
-                          onProjectPin={handleProjectPin}
-                          onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.id)}
-                          onLoadMore={(scope) => layout.nav.loadMoreNav(scope.id)}
-                          activeSessionID={params.id}
-                          onSessionClick={handleSessionClick}
-                          _={_}
-                        />
-                      )}
-                    </For>
-                  </FlipList>
-                </SidebarDisclosure>
-              </div>
-            </Show>
-          </Show>
-        </div>
-      </Show>
 
       <SidebarAttentionNotice notice={attention()} isExpanded={isExpanded()} onAction={runAttentionAction} />
 
@@ -1304,10 +1317,10 @@ function RootNavSection(props: {
   const { _ } = useLingui()
   return (
     <div class="sb-root-section">
-      <div class="sb-projects-header" onClick={props.onToggle} role="button" tabindex="0">
+      <SidebarSectionButton class="sb-projects-header" onClick={props.onToggle} open={props.open()}>
         <span class="sb-section-title">{props.title}</span>
         <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
-      </div>
+      </SidebarSectionButton>
       <SidebarDisclosure open={props.open()}>
         <Show when={props.entries.length > 0} fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}>
           <SidebarSessionList entries={props.entries} activeID={props.activeID} onSessionClick={props.onSessionClick} />
@@ -1352,10 +1365,10 @@ function ChannelChatPartnerGroup(props: {
 
   return (
     <div class="sb-channel-partner-group">
-      <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
+      <SidebarSectionButton class="sb-session-group-header" onClick={() => setOpen((v) => !v)} open={open()}>
         <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
         <span>{props.name}</span>
-      </div>
+      </SidebarSectionButton>
       <SidebarDisclosure open={open()}>
         <SidebarSessionList entries={props.sessions} activeID={props.activeID} onSessionClick={props.onSessionClick} />
       </SidebarDisclosure>
@@ -1372,10 +1385,10 @@ function ChannelProviderGroup(props: {
 
   return (
     <div class="sb-channel-account-group">
-      <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
+      <SidebarSectionButton class="sb-session-group-header" onClick={() => setOpen((v) => !v)} open={open()}>
         <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
         <span>{props.group.label}</span>
-      </div>
+      </SidebarSectionButton>
       <SidebarDisclosure open={open()}>
         <Show
           when={props.group.projects.length > 0}
@@ -1481,16 +1494,17 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const activeAgentShortID = () => activeAgentId()?.slice(0, 8)
 
   const displayName = () => {
-    if (!holos.loaded) return "Synergy"
+    if (!holos.loaded) return "HOLOS"
     const profileName = holos.state.social.profile?.name
     if (holos.state.identity.loggedIn && profileName) return profileName
     if (holos.state.identity.loggedIn && activeAgentShortID()) return `Agent ${activeAgentShortID()}`
-    return "Synergy"
+    return _({ id: "sidebar.account.holos", message: "HOLOS account" })
   }
 
   const displayDescription = () => {
     if (!holos.loaded) return _(sidebar.loadingIdentity)
-    if (!holos.state.identity.loggedIn) return _(sidebar.localWorkspace)
+    if (!holos.state.identity.loggedIn)
+      return _({ id: "sidebar.account.signedOut", message: "Not signed in · local workspace" })
     if (holos.state.social.profileError) return _(sidebar.profileUnavailable)
     const description = holos.state.social.profile?.description?.trim()
     if (description) return description
@@ -1662,7 +1676,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               <span class="sidebar-account-card-copy">
                 <span class="sidebar-account-card-name">{displayName()}</span>
                 <span class="sidebar-account-card-description">{displayDescription()}</span>
-                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? sidebar.noAgent.message}</span>
+                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? _(sidebar.noAgent)}</span>
               </span>
               <Icon name={agentSwitcherOpen() || holosStatusOpen() ? "chevron-up" : "chevron-down"} size="small" />
             </button>

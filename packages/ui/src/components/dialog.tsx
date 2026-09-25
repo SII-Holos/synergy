@@ -14,6 +14,7 @@ export interface DialogProps extends ParentProps {
   title?: JSXElement
   description?: JSXElement
   action?: JSXElement
+  onEscapeKeyDown?: (event: KeyboardEvent) => void
   dismissible?: boolean
   size?: DialogSize
   placement?: DialogPlacement
@@ -34,6 +35,7 @@ export function Dialog(props: DialogProps) {
             data-slot="dialog-content"
             onEscapeKeyDown={(e) => {
               if (props.dismissible === false) e.preventDefault()
+              props.onEscapeKeyDown?.(e)
             }}
             onPointerDownOutside={(e) => {
               if (props.dismissible === false) e.preventDefault()

@@ -60,6 +60,7 @@ export interface PromptInputProps {
     handoff?: SessionTransitionHandoff
   }) => void
   sessionTransitionPending?: boolean
+  sessionTransitionError?: boolean
   hideAgentSelector?: boolean
   onPriorityControlChange?: (control: JSX.Element | undefined) => void
 }

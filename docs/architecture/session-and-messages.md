@@ -103,6 +103,12 @@ A client-supplied message ID identifies one input. Concurrent retries share a de
 
 `GET /session/{sessionID}/input/{messageID}/status` projects the durable Inbox item, canonical message and Rollout run in one storage snapshot. States are `accepted`, `preparing`, `queued_storage`, `materializing`, `running`, `retrying`, `completed`, `cancelled` and `failed`. Scheduling and queue detail is bounded Runtime-local telemetry published through the coalescible `session.input.progress` event; it is not another durable message state machine. Exhausted scheduling retries park the saved task. A paused saved input requires explicit retry and reports `SessionPaused`; time spent waiting alone never declares failure. A begun run stays running through detached settlement until its durable terminal state is recorded.
 
+### Inbox removal and restoration
+
+User removal moves the complete stored Inbox item into a session-owned recovery record in the same transaction as its queue removal. Internal consumption and cancellation keep their existing hard-removal paths. The removed-items API exposes only the ordinary public item projection. Restoration requeues the canonical stored item with its original mode, message ID, input and execution configuration; it cannot reconstruct an item from presentation data. A retained restoration receipt prevents a repeated restore request from resurrecting consumed input. Completed or cancelled runs cannot be restored. Restore schedules ordinary queue processing without clearing a pause or rearming a failed item; Continue and Retry remain explicit controls.
+
+Recovery records belong to the Session and are deleted with it. Whole-Home transfer preserves them; transcript exports and session forks exclude queue/recovery state. Existing installations require no rewrite because the collection is additive and absent means empty.
+
 ## Task Roots
 
 A session processes a serial sequence of tasks. One root user message `R` owns each task.

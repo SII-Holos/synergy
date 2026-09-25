@@ -949,3 +949,10 @@ a {
 :where([data-plugin-ui]) {
   display: contents;
 }
+
+[data-component="popover-content"].browser-options-popover {
+  width: 296px;
+  max-width: calc(100vw - 16px);
+  max-height: min(640px, calc(100dvh - 24px));
+  overflow: auto;
+}

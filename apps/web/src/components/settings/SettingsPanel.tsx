@@ -82,6 +82,8 @@ import { prepareLocaleSettingsSave, rejectLocaleSettingsSave } from "./settings-
 import { pluginSettingsResourceKey } from "./plugin-settings-resource"
 import { createSettingsComponentLoader } from "./settings-component-loader"
 import { createPluginSettingsDrafts } from "./plugin-settings-drafts"
+import { settingsSearchResults, locateSettingsField } from "./settings-search"
+import { createSettingsResource, type SettingsResourceState } from "./settings-resource"
 import { SettingsDialogFrame } from "./settings-dialog-frame"
 import { settingsSaveFooterStatus } from "./settings-save-status"
 import {
@@ -200,6 +202,15 @@ const copy = {
   emptyTitle: { id: "settings.panel.empty.title", message: "Settings" },
   emptyDescription: { id: "settings.panel.empty.description", message: "Select a settings section." },
   noSection: { id: "settings.panel.empty.noSection", message: "No section selected" },
+  sectionLoadFailed: {
+    id: "settings.panel.section.loadFailed",
+    message: "Could not load {label}. Your changes are kept.",
+  },
+  diagnosticsLoadFailed: {
+    id: "settings.panel.diagnostics.loadFailed",
+    message: "Could not check configuration issues.",
+  },
+  retrySection: { id: "settings.panel.section.retry", message: "Retry" },
   sectionUnavailable: {
     id: "settings.panel.section.unavailable",
     message: "{label} is not available",
@@ -239,14 +250,22 @@ const copy = {
 
 export type SettingsPanelProps = DialogSettingsProps & {
   onClose?: () => void
+  registerCloseRequest?: (close: () => void) => void
 }
 
 export function SettingsDialog(props: DialogSettingsProps) {
   const dialog = useDialog()
   const { _ } = useLingui()
+  let requestClose: (() => void) | undefined
   return (
-    <SettingsDialogFrame ariaLabel={_(copy.dialogLabel)}>
-      <SettingsPanel {...props} onClose={() => dialog.close()} />
+    <SettingsDialogFrame ariaLabel={_(copy.dialogLabel)} onRequestClose={() => requestClose?.()}>
+      <SettingsPanel
+        {...props}
+        onClose={() => dialog.close()}
+        registerCloseRequest={(close) => {
+          requestClose = close
+        }}
+      />
     </SettingsDialogFrame>
   )
 }
@@ -266,14 +285,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const holos = useHolos()
   const navigate = useNavigate()
   const personalizeController = createPersonalizeController({
-    get: async () => (await globalSDK.client.config.instructions.get()).data!,
+    get: async () => (await globalSDK.client.config.instructions.get({}, { throwOnError: true })).data!,
     update: async (content) =>
       (
-        await globalSDK.client.config.instructions.update({
-          configInstructionsUpdateInput: { content },
-        })
+        await globalSDK.client.config.instructions.update(
+          {
+            configInstructionsUpdateInput: { content },
+          },
+          { throwOnError: true },
+        )
       ).data!,
-    reset: async () => (await globalSDK.client.config.instructions.reset()).data!,
+    reset: async () => (await globalSDK.client.config.instructions.reset({}, { throwOnError: true })).data!,
   })
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
@@ -296,6 +318,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
   const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
   const [search, setSearch] = createSignal("")
+  const [searchTarget, setSearchTarget] = createSignal<{ section: string; label: string }>()
+  const [contentRoot, setContentRoot] = createSignal<HTMLDivElement>()
   const [initialized, setInitialized] = createSignal(false)
   const [saving, setSaving] = createSignal(false)
   const [aggregateSaveStatus, setAggregateSaveStatus] = createSignal<"idle" | "saving" | "saved" | "error">("idle")
@@ -328,25 +352,56 @@ export function SettingsPanel(props: SettingsPanelProps) {
     defaultSettingsState(input.sendShortcut(), theme.colorScheme()),
   )
 
-  const [config, { refetch: refetchConfig }] = createResource(async () => {
-    const res = await globalSDK.client.config.global()
+  const configSections = [
+    "general",
+    "models",
+    "github",
+    "learning",
+    "memory",
+    "experience",
+    "skills",
+    "mcp",
+    "channels",
+    "email",
+    "permissions",
+    "sandbox",
+    "control-profile",
+    "questions",
+    "compaction",
+    "timeouts",
+    "code-checks",
+    "observability",
+    "boss",
+    "storage",
+  ]
+  const sectionResourceStates: { sections: readonly string[]; state: SettingsResourceState }[] = []
+  function sectionResource<T>(loader: () => Promise<T>, sections: readonly string[]) {
+    const resource = createSettingsResource(loader, () => sections.includes(activeTab()))
+    sectionResourceStates.push({ sections, state: resource[1] })
+    return resource
+  }
+  const [config, configResource] = sectionResource(async () => {
+    const res = await globalSDK.client.config.global({}, { throwOnError: true })
     return res.data!
-  })
+  }, configSections)
+  const refetchConfig = configResource.refetch
 
-  const [channelStatuses, { refetch: refetchChannelStatuses }] = createResource(async () => {
-    const res = await globalSDK.client.channel.status()
+  const [channelStatuses, channelStatusesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.channel.status({}, { throwOnError: true })
     return (res.data ?? {}) as Record<string, ChannelStatus>
-  })
+  }, ["channels"])
+  const refetchChannelStatuses = channelStatusesResource.refetch
 
   const unsubscribeChannelStatuses = globalSDK.event.listen((event) => {
     if (shouldRefreshChannelStatuses(event.details?.type)) void refetchChannelStatuses()
   })
   onCleanup(unsubscribeChannelStatuses)
 
-  const [mcpStatuses, { refetch: refetchMcpStatuses }] = createResource(async () => {
-    const res = await globalSDK.client.mcp.status()
+  const [mcpStatuses, mcpStatusesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.mcp.status({}, { throwOnError: true })
     return (res.data ?? {}) as Record<string, McpStatus>
-  })
+  }, ["mcp"])
+  const refetchMcpStatuses = mcpStatusesResource.refetch
 
   // The builtin catalog resource is fetched once, so a server that finishes
   // connecting while the panel is open would otherwise keep reading as
@@ -356,23 +411,26 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
   onCleanup(unsubscribeMcpStatuses)
 
-  const [cortexConcurrencyStatus, { refetch: refetchCortexConcurrencyStatus }] = createResource(async () => {
-    const res = await globalSDK.client.cortex.concurrency()
+  const [cortexConcurrencyStatus, cortexConcurrencyStatusResource] = sectionResource(async () => {
+    const res = await globalSDK.client.cortex.concurrency({}, { throwOnError: true })
     return res.data as CortexConcurrencyStatus | undefined
-  })
+  }, ["timeouts"])
+  const refetchCortexConcurrencyStatus = cortexConcurrencyStatusResource.refetch
 
-  const [agentWorkerCapacityStatus, { refetch: refetchAgentWorkerCapacityStatus }] = createResource(async () => {
-    const res = await globalSDK.client.runtime.agentWorkers()
+  const [agentWorkerCapacityStatus, agentWorkerCapacityStatusResource] = sectionResource(async () => {
+    const res = await globalSDK.client.runtime.agentWorkers({}, { throwOnError: true })
     return res.data as AgentWorkerCapacityStatus | undefined
-  })
+  }, ["timeouts"])
+  const refetchAgentWorkerCapacityStatus = agentWorkerCapacityStatusResource.refetch
 
-  const [domainSummaries, { refetch: refetchDomains }] = createResource(async () => {
-    const res = await globalSDK.client.config.domain.list()
+  const [domainSummaries, domainSummariesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.config.domain.list({}, { throwOnError: true })
     return res.data ?? []
-  })
+  }, [...configSections, "import", "config-files", "formatter", "lsp"])
+  const refetchDomains = domainSummariesResource.refetch
 
-  const [configDiagnostics] = createResource(async () => {
-    const res = await globalSDK.client.config.diagnostics()
+  const [configDiagnostics, diagnosticsResource] = createSettingsResource(async () => {
+    const res = await globalSDK.client.config.diagnostics({}, { throwOnError: true })
     return res.data?.issues ?? []
   })
 
@@ -422,23 +480,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
 
-  const [modelRoleSummaries, { refetch: refetchModelRoleSummaries }] = createResource(async () => {
-    const res = await globalSDK.client.app.agentModelRoles()
+  const [modelRoleSummaries, modelRoleSummariesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.app.agentModelRoles({}, { throwOnError: true })
     return (res.data ?? []) as ModelRoleSummary[]
-  })
+  }, ["models"])
+  const refetchModelRoleSummaries = modelRoleSummariesResource.refetch
 
-  const [agents, { refetch: refetchAgents }] = createResource(async () => {
-    const res = await globalSDK.client.app.agents()
+  const [agents, agentsResource] = sectionResource(async () => {
+    const res = await globalSDK.client.app.agents({}, { throwOnError: true })
     return res.data ?? []
-  })
-  const [skillSources, { refetch: refetchSkillSources }] = createResource(async () => {
-    try {
-      const res = await globalSDK.client.skill.list()
-      return (res.data?.sources ?? []) as SkillList["sources"]
-    } catch {
-      return [] as SkillList["sources"]
-    }
-  })
+  }, ["timeouts"])
+  const refetchAgents = agentsResource.refetch
+  const [skillSources, skillSourcesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.skill.list({}, { throwOnError: true })
+    return (res.data?.sources ?? []) as SkillList["sources"]
+  }, ["skills"])
+  const refetchSkillSources = skillSourcesResource.refetch
 
   const providerModels = createMemo(() => {
     const data = globalSync.data.provider
@@ -496,24 +553,21 @@ export function SettingsPanel(props: SettingsPanelProps) {
     })
   })
 
-  const [controlProfiles] = createResource(async () => {
-    const res = await globalSDK.client.controlProfile.list()
+  const [controlProfiles, controlProfilesResource] = sectionResource(async () => {
+    const res = await globalSDK.client.controlProfile.list({}, { throwOnError: true })
     return (res.data ?? []) as ControlProfileSummary[]
-  })
+  }, ["control-profile"])
 
-  const [sandboxStatus] = createResource(async () => {
-    const res = await globalSDK.client.sandbox.status()
+  const [sandboxStatus, sandboxStatusResource] = sectionResource(async () => {
+    const res = await globalSDK.client.sandbox.status({}, { throwOnError: true })
     return res.data as SandboxStatus | undefined
-  })
+  }, ["sandbox"])
 
-  const [builtinMcps, { refetch: refetchBuiltinMcps }] = createResource(async () => {
-    try {
-      const res = await globalSDK.client.mcp.builtins()
-      return (res.data ?? []) as BuiltinMcpInfo[]
-    } catch {
-      return [] as BuiltinMcpInfo[]
-    }
-  })
+  const [builtinMcps, builtinMcpsResource] = sectionResource(async () => {
+    const res = await globalSDK.client.mcp.builtins({}, { throwOnError: true })
+    return (res.data ?? []) as BuiltinMcpInfo[]
+  }, ["mcp"])
+  const refetchBuiltinMcps = builtinMcpsResource.refetch
   const originalMcpsRef = { current: {} as Record<string, Record<string, unknown>> }
   let initializedForSet: string | undefined
 
@@ -539,30 +593,36 @@ export function SettingsPanel(props: SettingsPanelProps) {
     doEnsureInit()
   })
 
-  // The builtin list loads independently of config; re-seed the toggles
-  // whenever it (re)loads so late resolution and post-save refetches both
-  // converge. User draft toggles live in the same slice and are only
-  // replaced when the resource itself changes.
   createEffect(() => {
     const list = builtinMcps()
-    if (!list) return
-    // Read config untracked: the builtin list stays the only re-seed trigger,
-    // so an unrelated config refetch cannot wipe an in-progress key draft.
-    const cfg = untrack(() => config())
+    if (!list || untrack(refreshing)) return
+    const cfg = untrack(config)
+    const current = untrack(() => new Map(settings.mcps.builtins.map((entry) => [entry.name, entry])))
     setSettings(
       "mcps",
       "builtins",
-      list.map((info) => ({
-        ...info,
-        toggle: builtinServerEnabled(cfg, info.name),
-        apiKeyDraft: "",
-        clearApiKey: false,
-      })),
+      reconcile(
+        list.map((info) => {
+          const draft = current.get(info.name)
+          return {
+            ...info,
+            toggle: draft?.toggle ?? builtinServerEnabled(cfg, info.name),
+            apiKeyDraft: draft?.apiKeyDraft ?? "",
+            clearApiKey: draft?.clearApiKey ?? false,
+          }
+        }),
+      ),
     )
   })
 
-  // Include agents() — the Agents page requires the agent list for the Default Agent dropdown.
-  const ready = () => initialized() && !!domainSummaries() && !!modelRoleSummaries() && !!agents()
+  const activeResources = () =>
+    sectionResourceStates.filter((entry) => entry.sections.includes(activeTab())).map((entry) => entry.state)
+  const sectionReady = () => activeResources().every((resource) => resource.ready())
+  const failedResources = () => activeResources().filter((resource) => resource.error())
+  const sectionLoading = () => activeResources().some((resource) => resource.loading())
+  const retrySection = () => {
+    for (const resource of failedResources()) void resource.retry()
+  }
 
   function resetEditor() {
     setInitialized(false)
@@ -571,7 +631,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   async function refreshAfterConfigChange(changedFields: string[], submittedDraft?: SettingsState) {
     setRefreshing(true)
-    resetEditor()
     const changed = new Set(changedFields)
     // Refresh only the panel resources affected by the fields that actually
     // changed. The global sync store (provider/agent/command across scopes)
@@ -602,6 +661,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
     ])
     const currentDraft = submittedDraft ? snapshotSettingsDraft(settings) : undefined
     setRefreshing(false)
+    if (configResource.error()) throw configResource.error()
+    if (domainSummariesResource.error()) throw domainSummariesResource.error()
+    resetEditor()
     doEnsureInit()
     if (submittedDraft && currentDraft) {
       setSettings(reconcile(rebaseDraftAfterSave(snapshotSettingsDraft(settings), submittedDraft, currentDraft)))
@@ -694,9 +756,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
       await rejectLocaleSettingsSave(patch, locale.controller, globalSync.data.config.locale)
     },
     discardChanges,
-    closeDialog: () => props.onClose?.() ?? dialog.close(),
+    closeBlocked: () => saving() || personalizeController.status() === "saving",
+    closeDialog: () => {
+      if (props.onClose) props.onClose()
+      else dialog.close()
+    },
     showConfirm,
   })
+
+  props.registerCloseRequest?.(save.closeWithGuard)
 
   async function openBossSession() {
     // /boss/session/open refuses to run while boss_mode is disabled, so flush
@@ -740,11 +808,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   async function savePluginChanges() {
     return pluginDrafts.save(async (key, values) => {
-      const result = await globalSDK.client.plugin.updateConfig({
-        pluginId: key.pluginId,
-        scopeID: key.scopeId,
-        pluginConfigUpdate: values,
-      })
+      const result = await globalSDK.client.plugin.updateConfig(
+        {
+          pluginId: key.pluginId,
+          scopeID: key.scopeId,
+          pluginConfigUpdate: values,
+        },
+        { throwOnError: true },
+      )
       const saved = settingsValues(result.data, values)
       window.dispatchEvent(
         new CustomEvent("synergy:plugin-config-changed", {
@@ -778,10 +849,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
   const explicitSaveBlocked = createMemo(
     () =>
-      saving() || personalizeController.busy() || (personalizeController.dirty() && !personalizeController.canSave()),
+      saving() ||
+      save.status() === "saving" ||
+      personalizeController.busy() ||
+      (hasServerChanges() && !domainSummariesResource.ready()) ||
+      (personalizeController.dirty() && !personalizeController.canSave()),
   )
 
   async function saveExplicitChanges() {
+    if (explicitSaveBlocked()) return
     setSaving(true)
     setAggregateSaveStatus("saving")
     try {
@@ -1219,24 +1295,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
       .sort(compareSections)
   })
 
-  const filteredSections = createMemo(() => {
-    const query = normalizeSearch(search())
-    if (!query) return settingsSections()
-    const terms = query.split(/\s+/).filter(Boolean)
-    return settingsSections().filter((section) => {
-      const haystack = normalizeSearch(
-        [
-          section.label,
-          section.group,
-          section.description,
-          ...(section.keywords ?? []),
-          ...(section.domainIds ?? []),
-          ...(section.rowLabels ?? []),
-        ].join(" "),
-      )
-      return terms.every((term) => haystack.includes(term))
-    })
-  })
+  const searchResults = createMemo(() => settingsSearchResults(settingsSections(), search()))
+  const filteredSections = () => searchResults().map((result) => result.section)
+  const matchingFields = (id: string) => searchResults().find((result) => result.section.id === id)?.fields ?? []
 
   const navGroups = createMemo(() => {
     const map = new Map<string, { label: string; sections: RegisteredSettingsSection[] }>()
@@ -1266,163 +1327,230 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const activeSection = createMemo(() => settingsSections().find((section) => section.id === activeTab()))
 
-  const selectSection = (id: string) => setActiveTab(id)
+  const selectSection = (id: string) => {
+    setSearchTarget(undefined)
+    setActiveTab(id)
+  }
+  const selectField = (section: string, label: string) => {
+    setActiveTab(section)
+    setSearchTarget({ section, label })
+  }
+  createEffect(() => {
+    const target = searchTarget()
+    const root = contentRoot()
+    if (!root || !target || target.section !== activeTab() || !sectionReady()) return
+    onCleanup(locateSettingsField(root, target.label))
+  })
 
   createEffect(() => {
-    if (!ready()) return
     const sectionIDs = settingsSections().map((section) => section.id)
     setNavigation((state) => reduceSettingsMobileNavigation(state, { type: "validate", sectionIDs }))
   })
 
   createEffect(() => {
-    if (!ready() || isDesktop() || !mobileDetailOpen()) return
+    if (isDesktop() || !mobileDetailOpen()) return
     queueMicrotask(() => mobileBackButton?.focus())
   })
 
   return (
     <div class="settings-panel-frame">
-      <button type="button" class="settings-panel-close" aria-label={_(copy.closeLabel)} onClick={save.closeWithGuard}>
+      <button
+        type="button"
+        class="settings-panel-close"
+        aria-label={_(copy.closeLabel)}
+        disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+        onClick={save.closeWithGuard}
+      >
         <Icon name={getSemanticIcon("action.close")} size="small" />
       </button>
-      {ready() ? (
-        <AppPanel.Root class="settings-panel-root">
-          <AppPanel.Nav
-            ref={(element) => (settingsNavigation = element)}
-            class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
-          >
-            <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
-              <div>
-                <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <Show when={saveFooterStatus() === "error"}>
-                    <span class="settings-nav-badge settings-nav-badge-error">{_(copy.errorBadge)}</span>
-                  </Show>
-                  <Show when={saveFooterStatus() === "dirty"}>
-                    <span class="settings-nav-badge settings-nav-badge-dirty">{_(copy.unsavedBadge)}</span>
-                  </Show>
-                  <Show when={saveFooterStatus() === "saving"}>
-                    <span class="settings-nav-badge settings-nav-badge-saving">{_(copy.savingBadge)}</span>
-                  </Show>
-                  <Show when={saveFooterStatus() === "saved"}>
-                    <span class="settings-nav-badge settings-nav-badge-saved">{_(copy.savedBadge)}</span>
-                  </Show>
-                  <Show when={developerMode()}>
-                    <span class="settings-nav-badge settings-nav-badge-dev">{_(copy.developerBadge)}</span>
-                  </Show>
-                </div>
-              </div>
-              <div class="ds-settings-search">
-                <Icon name={getSemanticIcon("action.search")} size="small" />
-                <input
-                  value={search()}
-                  placeholder={_(copy.searchPlaceholder)}
-                  onInput={(event) => setSearch(event.currentTarget.value)}
-                />
+      <AppPanel.Root class="settings-panel-root">
+        <AppPanel.Nav
+          ref={(element) => (settingsNavigation = element)}
+          class={`settings-panel-navigation ${!isDesktop() && mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+        >
+          <div class="settings-panel-navigation-header px-3 pt-4 pb-2 flex flex-col gap-2">
+            <div>
+              <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <Show when={saveFooterStatus() === "error"}>
+                  <span class="settings-nav-badge settings-nav-badge-error">{_(copy.errorBadge)}</span>
+                </Show>
+                <Show when={saveFooterStatus() === "dirty"}>
+                  <span class="settings-nav-badge settings-nav-badge-dirty">{_(copy.unsavedBadge)}</span>
+                </Show>
+                <Show when={saveFooterStatus() === "saving"}>
+                  <span class="settings-nav-badge settings-nav-badge-saving">{_(copy.savingBadge)}</span>
+                </Show>
+                <Show when={saveFooterStatus() === "saved"}>
+                  <span class="settings-nav-badge settings-nav-badge-saved">{_(copy.savedBadge)}</span>
+                </Show>
+                <Show when={developerMode()}>
+                  <span class="settings-nav-badge settings-nav-badge-dev">{_(copy.developerBadge)}</span>
+                </Show>
               </div>
             </div>
+            <div class="ds-settings-search">
+              <Icon name={getSemanticIcon("action.search")} size="small" />
+              <input
+                value={search()}
+                placeholder={_(copy.searchPlaceholder)}
+                aria-label={_(copy.searchPlaceholder)}
+                onInput={(event) => setSearch(event.currentTarget.value)}
+              />
+            </div>
+          </div>
 
-            <div class="flex-1 overflow-y-auto px-2 pb-3">
-              <For each={navGroups()}>
-                {(group) => (
-                  <AppPanel.NavSection label={group.label}>
-                    <For each={group.sections}>
-                      {(section) => (
+          <div class="flex-1 overflow-y-auto px-2 pb-3">
+            <For each={navGroups()}>
+              {(group) => (
+                <AppPanel.NavSection label={group.label}>
+                  <For each={group.sections}>
+                    {(section) => (
+                      <div>
                         <AppPanel.NavItem
                           icon={sectionIcon(section)}
                           label={section.label}
                           active={activeTab() === section.id}
                           onClick={() => selectSection(section.id)}
                         />
-                      )}
-                    </For>
-                  </AppPanel.NavSection>
-                )}
-              </For>
-              <Show when={navGroups().length === 0}>
-                <div class="settings-empty-text px-3 py-6 text-text-weaker">{_(copy.noSettings)}</div>
-              </Show>
-            </div>
-          </AppPanel.Nav>
-
-          <AppPanel.Content
-            class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
-          >
-            <div class="settings-panel-mobile-detail-header">
-              <button
-                ref={mobileBackButton}
-                type="button"
-                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
-                aria-label={_(copy.backLabel)}
-                onClick={showMobileSectionList}
-              >
-                <Icon name={getSemanticIcon("navigation.back")} size="small" />
-              </button>
-              <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
-            </div>
-            <Show when={(configDiagnostics()?.length ?? 0) > 0}>
-              <div class="settings-config-diagnostics-banner" role="alert">
-                <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
-                <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
-                <ul class="settings-config-diagnostics-list">
-                  <For each={configDiagnostics()}>
-                    {(issue) => (
-                      <li>
-                        {_({
-                          ...copy.configDiagnosticsDetail,
-                          values: { path: issue.path, error: issue.error },
-                        })}
-                        <Show when={issue.quarantinedPath}>
-                          {_({
-                            ...copy.configDiagnosticsQuarantined,
-                            values: { path: issue.quarantinedPath! },
-                          })}
-                        </Show>
-                      </li>
+                        <For each={matchingFields(section.id)}>
+                          {(label) => (
+                            <button
+                              class="settings-search-result"
+                              type="button"
+                              onClick={() => selectField(section.id, label)}
+                            >
+                              {label}
+                            </button>
+                          )}
+                        </For>
+                      </div>
                     )}
                   </For>
-                </ul>
+                </AppPanel.NavSection>
+              )}
+            </For>
+            <Show when={navGroups().length === 0}>
+              <div class="settings-empty-text px-3 py-6 text-text-weaker">{_(copy.noSettings)}</div>
+            </Show>
+          </div>
+        </AppPanel.Nav>
+
+        <AppPanel.Content
+          class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+        >
+          <div class="settings-panel-mobile-detail-header">
+            <button
+              ref={mobileBackButton}
+              type="button"
+              class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-border-focus-base"
+              aria-label={_(copy.backLabel)}
+              onClick={showMobileSectionList}
+            >
+              <Icon name={getSemanticIcon("navigation.back")} size="small" />
+            </button>
+            <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
+          </div>
+          <Show when={diagnosticsResource.error()}>
+            <div class="settings-resource-error" role="alert">
+              <div>{_(copy.diagnosticsLoadFailed)}</div>
+              <Button
+                variant="secondary"
+                disabled={diagnosticsResource.loading()}
+                onClick={() => void diagnosticsResource.retry()}
+              >
+                {_(copy.retrySection)}
+              </Button>
+            </div>
+          </Show>
+          <Show when={(configDiagnostics()?.length ?? 0) > 0}>
+            <div class="settings-config-diagnostics-banner" role="alert">
+              <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
+              <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
+              <ul class="settings-config-diagnostics-list">
+                <For each={configDiagnostics()}>
+                  {(issue) => (
+                    <li>
+                      {_({
+                        ...copy.configDiagnosticsDetail,
+                        values: { path: issue.path, error: issue.error },
+                      })}
+                      <Show when={issue.quarantinedPath}>
+                        {_({
+                          ...copy.configDiagnosticsQuarantined,
+                          values: { path: issue.quarantinedPath! },
+                        })}
+                      </Show>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </div>
+          </Show>
+          <AppPanel.Body padding={false}>
+            <Show when={failedResources().length > 0}>
+              <div class="settings-resource-error" role="alert">
+                <div>
+                  {_({ ...copy.sectionLoadFailed, values: { label: activeSection()?.label ?? _(copy.dialogLabel) } })}
+                </div>
+                <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+                  {_(copy.retrySection)}
+                </Button>
               </div>
             </Show>
-            <AppPanel.Body padding={false}>
-              {renderActiveContent()}
-              <SlotOutlet slot="settings.section" />
-            </AppPanel.Body>
-
-            <AppPanel.Footer class="settings-panel-footer">
-              <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
-                <SaveIndicator status={saveFooterStatus()} />
-                <button
-                  type="button"
-                  class="settings-dev-toggle"
-                  onClick={toggleDeveloperMode}
-                  aria-pressed={developerMode()}
-                >
-                  <Icon name={getSemanticIcon("settings.diagnostics")} size="small" />
-                  <span>{_(copy.developerMode)}</span>
-                </button>
-              </div>
-              <div class="settings-panel-footer-actions">
-                <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
-                  {_(copy.cancel)}
-                </Button>
-                <Show when={hasExplicitChanges()}>
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="large"
-                    disabled={explicitSaveBlocked()}
-                    onClick={() => void saveExplicitChanges()}
-                  >
-                    {saving() ? _(copy.saving) : _(copy.saveChanges)}
-                  </Button>
+            <Show
+              when={sectionReady()}
+              fallback={
+                <Show when={failedResources().length === 0}>
+                  <div class="settings-panel-loading" role="status">
+                    {_(copy.loading)}
+                  </div>
                 </Show>
-              </div>
-            </AppPanel.Footer>
-          </AppPanel.Content>
-        </AppPanel.Root>
-      ) : (
-        <div class="settings-panel-loading">{_(copy.loading)}</div>
-      )}
+              }
+            >
+              <div ref={setContentRoot}>{renderActiveContent()}</div>
+            </Show>
+            <SlotOutlet slot="settings.section" />
+          </AppPanel.Body>
+
+          <AppPanel.Footer class="settings-panel-footer">
+            <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
+              <SaveIndicator status={saveFooterStatus()} />
+              <button
+                type="button"
+                class="settings-dev-toggle"
+                onClick={toggleDeveloperMode}
+                aria-pressed={developerMode()}
+              >
+                <Icon name={getSemanticIcon("settings.diagnostics")} size="small" />
+                <span>{_(copy.developerMode)}</span>
+              </button>
+            </div>
+            <div class="settings-panel-footer-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                size="large"
+                disabled={saving() || save.status() === "saving" || personalizeController.status() === "saving"}
+                onClick={save.closeWithGuard}
+              >
+                {_(copy.cancel)}
+              </Button>
+              <Show when={hasExplicitChanges()}>
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="large"
+                  disabled={explicitSaveBlocked()}
+                  onClick={() => void saveExplicitChanges()}
+                >
+                  {saving() ? _(copy.saving) : _(copy.saveChanges)}
+                </Button>
+              </Show>
+            </div>
+          </AppPanel.Footer>
+        </AppPanel.Content>
+      </AppPanel.Root>
       <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />
     </div>
   )
@@ -1438,7 +1566,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
         </SettingsPage>
       )
     }
-    return <SettingsSectionContent section={section} drafts={pluginDrafts} draftVersion={pluginDraftVersion} />
+    return (
+      <ErrorBoundary
+        fallback={(_error, reset) => (
+          <div class="settings-resource-error" role="alert">
+            <div>{_({ ...copy.sectionLoadFailed, values: { label: section.label } })}</div>
+            <Button variant="secondary" onClick={reset}>
+              {_(copy.retrySection)}
+            </Button>
+          </div>
+        )}
+      >
+        <SettingsSectionContent section={section} drafts={pluginDrafts} draftVersion={pluginDraftVersion} />
+      </ErrorBoundary>
+    )
   }
 
   function referencePanel(title: string, description: string, domainIds: string[]) {
@@ -1469,7 +1610,10 @@ function SettingsSectionContent(props: {
   const [values, { mutate }] = createResource(
     () => pluginSettingsResourceKey(section()),
     async (key) => {
-      const result = await globalSDK.client.plugin.getConfig({ pluginId: key.pluginId, scopeID: key.scopeId })
+      const result = await globalSDK.client.plugin.getConfig(
+        { pluginId: key.pluginId, scopeID: key.scopeId },
+        { throwOnError: true },
+      )
       return props.drafts.adopt(key, settingsValues(result.data))
     },
   )
@@ -1535,6 +1679,20 @@ function SettingsSectionContent(props: {
               fallback={
                 <div class="settings-availability-message flex items-center justify-center py-8">
                   {_({ ...copy.sectionUnavailable, values: { label: section().label } })}
+                  <Show when={section().loader}>
+                    <Button
+                      variant="secondary"
+                      onClick={() =>
+                        void componentLoader.load({
+                          loader: section().loader as () => Promise<{
+                            default: Component<PluginSettingsComponentProps>
+                          }>,
+                        })
+                      }
+                    >
+                      {_(copy.retrySection)}
+                    </Button>
+                  </Show>
                 </div>
               }
             >
@@ -1554,9 +1712,12 @@ function SettingsSectionContent(props: {
         >
           {(c) => (
             <ErrorBoundary
-              fallback={(error) => (
-                <div class="settings-availability-message flex items-center justify-center py-8 text-icon-critical-base">
-                  {error.message}
+              fallback={(_error, reset) => (
+                <div class="settings-resource-error" role="alert">
+                  <div>{_({ ...copy.sectionLoadFailed, values: { label: section().label } })}</div>
+                  <Button variant="secondary" onClick={reset}>
+                    {_(copy.retrySection)}
+                  </Button>
                 </div>
               )}
             >
@@ -1576,10 +1737,6 @@ function normalizeInitialTab(id: string | undefined) {
 
 function compareSections(a: RegisteredSettingsSection, b: RegisteredSettingsSection) {
   return (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label)
-}
-
-function normalizeSearch(value: string) {
-  return value.trim().toLowerCase()
 }
 
 function sectionIcon(section: RegisteredSettingsSection): IconName {

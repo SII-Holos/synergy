@@ -2,11 +2,12 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import pkg from "../package.json"
 
-export async function prepareBrowserHost(appDir: string, bundle: string) {
-  const source = await Bun.file(bundle).arrayBuffer()
+export async function prepareBrowserHost(appDir: string, bundle: string, preload: string) {
+  const [source, preloadSource] = await Promise.all([Bun.file(bundle).arrayBuffer(), Bun.file(preload).arrayBuffer()])
   await fs.rm(appDir, { recursive: true, force: true })
   await fs.mkdir(path.join(appDir, "dist"), { recursive: true })
   await Bun.write(path.join(appDir, "dist/browser-host-main.js"), source)
+  await Bun.write(path.join(appDir, "dist/browser-page-preload.cjs"), preloadSource)
   await Bun.write(
     path.join(appDir, "package.json"),
     JSON.stringify(
@@ -31,5 +32,6 @@ if (import.meta.main) {
   await prepareBrowserHost(
     path.resolve(import.meta.dir, "../build/browser-host-app"),
     path.resolve(import.meta.dir, "../dist/browser-host-main.js"),
+    path.resolve(import.meta.dir, "../dist/browser-page-preload.cjs"),
   )
 }

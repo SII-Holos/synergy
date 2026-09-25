@@ -7,7 +7,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { library as L } from "@/locales/messages"
 import type { MemoryCategory } from "./category-colors"
 export { MEMORY_CATEGORIES, categoryColors, type MemoryCategory } from "./category-colors"
-export type View = "stats" | "memory" | "experience" | "skill"
+export type View = "home" | "stats" | "memory" | "experience" | "skill"
 
 export type MemorySortKey = "newest" | "oldest" | "relevance"
 export type ExperienceSortKey = "newest" | "oldest" | "relevance" | "reward" | "qvalue" | "visits"

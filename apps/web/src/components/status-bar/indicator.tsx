@@ -38,6 +38,7 @@ export function StatusBarIndicator(props: StatusBarIndicatorProps) {
       <button
         type="button"
         class="flex items-center h-7 gap-1.5 px-2 rounded-full select-none bg-transparent border-0 p-0 m-0 cursor-pointer hover:bg-surface-raised-base-hover transition-colors"
+        aria-label={props.tooltip}
         onClick={props.onClick}
       >
         {inner()}

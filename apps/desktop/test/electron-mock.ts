@@ -114,6 +114,7 @@ export const electronMock = {
   },
   screen: {
     getAllDisplays: () => electronMockState.displays,
+    getPrimaryDisplay: () => electronMockState.displays[0],
   },
   powerSaveBlocker: {
     start(type: string) {

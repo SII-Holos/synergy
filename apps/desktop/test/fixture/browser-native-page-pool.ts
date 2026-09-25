@@ -1,8 +1,11 @@
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, screen } from "electron"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { loadWindowState } from "../../src/window-state.js"
+import { BrowserNativeViewManager } from "../../src/browser-native-view.js"
 import { BrowserNativePagePool } from "../../src/browser-native-page-pool.js"
+import type { BrowserHostPageEvent } from "@ericsanchezok/synergy-browser"
 
 void run().catch((error) => {
   console.error(error)
@@ -15,6 +18,7 @@ async function run() {
   try {
     const pool = new BrowserNativePagePool()
     let hostReady = false
+    let onDialog: ((event: Extract<BrowserHostPageEvent, { type: "dialog.opened" }>) => void) | undefined
     const input = {
       ownerKey: "scope:native-smoke:session:native-smoke",
       page: {
@@ -26,12 +30,55 @@ async function run() {
       },
       networkProxy: { server: "direct://", username: "unused", password: "unused" },
       downloadDir: directory,
-      emit(event: { type: string; status?: string }) {
+      emit(event: BrowserHostPageEvent) {
         if (event.type === "host.status" && event.status === "ready") hostReady = true
+        if (event.type === "dialog.opened") onDialog?.(event)
       },
     }
     const first = await pool.create(input)
-    const window = new BrowserWindow({ show: false })
+    for (const answer of ["Edited draft", "", null]) {
+      let requested = false
+      onDialog = (event) => {
+        if (event.dialogType !== "prompt" || event.defaultValue !== "Default draft")
+          throw new Error("Prompt did not preserve its type and default.")
+        requested = true
+        void first.execute({
+          type: "dialog.respond",
+          requestId: event.requestId,
+          accept: answer !== null,
+          ...(answer !== null ? { promptText: answer } : {}),
+        })
+      }
+      const result = await first.execute({
+        type: "evaluate",
+        mode: "trusted",
+        expression: "prompt('Name this draft', 'Default draft')",
+      })
+      if (!requested || result.type !== "evaluation" || result.value !== answer)
+        throw new Error(`Native prompt did not return its response: ${JSON.stringify(result)}.`)
+    }
+    onDialog = undefined
+    const area = screen.getPrimaryDisplay().workArea
+    await fs.writeFile(
+      path.join(directory, "window-state.json"),
+      JSON.stringify({
+        width: area.width * 2,
+        height: area.height * 2,
+        x: area.x + area.width * 3,
+        y: area.y - area.height * 3,
+      }),
+    )
+    const restored = await loadWindowState(directory)
+    if (
+      restored.x === undefined ||
+      restored.y === undefined ||
+      restored.x < area.x ||
+      restored.y < area.y ||
+      restored.x + restored.width > area.x + area.width ||
+      restored.y + restored.height > area.y + area.height
+    )
+      throw new Error("Restored window is outside the available work area.")
+    const window = new BrowserWindow({ ...restored, show: false })
     let view = pool.attach(window, input.ownerKey, input.page.id)
     let recovered = false
     const unsubscribe = pool.onGeneration(input.ownerKey, input.page.id, (next, previous) => {
@@ -140,7 +187,35 @@ async function run() {
     if (second.state().id !== secondInput.page.id || secondView.webContents.isDestroyed()) {
       throw new Error("Workspace-first native page creation did not produce a usable stable page.")
     }
-    pool.detach(window, secondInput.ownerKey, secondInput.page.id)
+    const manager = new BrowserNativeViewManager(window, pool, () => {})
+    const request = {
+      protocolVersion: 3 as const,
+      ownerKey: secondInput.ownerKey,
+      pageId: secondInput.page.id,
+      bounds: { x: 0, y: 0, width: 600, height: 400 },
+    }
+    await second.execute({
+      type: "evaluate",
+      mode: "trusted",
+      expression: "document.body.innerHTML = '<input id=kept value=retained>'",
+    })
+    await manager.attach({ ...request, visible: false })
+    if (secondView.getVisible() || secondView.webContents.isDestroyed())
+      throw new Error("Native overlay did not hide a live view.")
+    await manager.attach({ ...request, visible: true })
+    const retained = await second.execute({
+      type: "evaluate",
+      mode: "readonly",
+      expression: "document.querySelector('#kept').value",
+    })
+    if (
+      !secondView.getVisible() ||
+      retained.type !== "evaluation" ||
+      retained.value !== "retained" ||
+      second.state().id !== secondInput.page.id
+    )
+      throw new Error("Native overlay changed the page or its input state.")
+    manager.destroy()
     await second.destroy()
     window.destroy()
     await pool.destroy()

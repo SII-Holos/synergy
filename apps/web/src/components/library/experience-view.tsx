@@ -1,4 +1,7 @@
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js"
+import { A } from "@solidjs/router"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { createExperienceDetails } from "./experience-details"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -88,7 +91,11 @@ export function ExperienceView(props: {
   const [sort, setSort] = createSignal<ExperienceSortKey>("newest")
   const [filter, setFilter] = createSignal<ExperienceFilter>("all")
   const [expandedCards, setExpandedCards] = createSignal<Set<string>>(new Set())
-  const [experienceDetails, setExperienceDetails] = createSignal<Record<string, ExperienceDetailInfo>>({})
+  const details = createExperienceDetails(async (id, signal) => {
+    const result = await props.sdk.client.library.experience.get({ id }, { throwOnError: true, signal })
+    if (!result.data) throw new Error("Missing experience detail")
+    return result.data
+  })
   const [expandedSections, setExpandedSections] = createSignal<Set<string>>(new Set())
   const [selecting, setSelecting] = createSignal(false)
   const [selected, setSelected] = createSignal<Set<string>>(new Set())
@@ -375,15 +382,7 @@ export function ExperienceView(props: {
     })
   }
 
-  async function loadExperienceDetail(id: string) {
-    if (experienceDetails()[id]) return
-    try {
-      const result = await props.sdk.client.library.experience.get({ id })
-      if (result.data) {
-        setExperienceDetails((prev) => ({ ...prev, [id]: result.data as ExperienceDetailInfo }))
-      }
-    } catch {}
-  }
+  const loadExperienceDetail = details.load
 
   function deleteExperience(id: string, e: MouseEvent) {
     e.stopPropagation()
@@ -560,7 +559,9 @@ export function ExperienceView(props: {
                           searching={props.isSearching}
                           selecting={selecting()}
                           selected={selected().has(left.id)}
-                          detail={experienceDetails()[left.id]}
+                          detail={details.read(left.id)?.data}
+                          detailError={!!details.read(left.id)?.error}
+                          onRetry={() => void details.load(left.id)}
                           expandedSections={expandedSections()}
                           onToggle={() => toggleCard(left.id)}
                           onToggleSection={(key) => toggleSection(key)}
@@ -575,7 +576,9 @@ export function ExperienceView(props: {
                               searching={props.isSearching}
                               selecting={selecting()}
                               selected={selected().has(item().id)}
-                              detail={experienceDetails()[item().id]}
+                              detail={details.read(item().id)?.data}
+                              detailError={!!details.read(item().id)?.error}
+                              onRetry={() => void details.load(item().id)}
                               expandedSections={expandedSections()}
                               onToggle={() => toggleCard(item().id)}
                               onToggleSection={(key) => toggleSection(key)}
@@ -633,7 +636,7 @@ function RewardDimensions(props: { rewards: RewardsInfo }) {
   )
 }
 
-function ExperienceCard(props: {
+export function ExperienceCard(props: {
   item: ExperienceItem
   expanded: boolean
   similarity: number | undefined
@@ -641,10 +644,12 @@ function ExperienceCard(props: {
   selecting: boolean
   selected: boolean
   detail: ExperienceDetailInfo | undefined
+  detailError: boolean
+  onRetry: () => void
   expandedSections: Set<string>
   onToggle: () => void
   onToggleSection: (key: string) => void
-  onDelete: (e: MouseEvent) => void
+  onDelete?: (e: MouseEvent) => void
 }) {
   const { _ } = useLingui()
   const { fmt } = useLocale()
@@ -714,13 +719,12 @@ function ExperienceCard(props: {
   return (
     <div
       classList={{
-        [`${libraryCardBaseClass} cursor-pointer`]: true,
+        [libraryCardBaseClass]: true,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
         [libraryCardHoverClass]: !props.expanded && !props.selecting,
         "workbench-selected-surface ring-1 ring-inset ring-border-base/32": props.selecting && props.selected,
         "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
-      onClick={props.onToggle}
     >
       <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
@@ -729,16 +733,32 @@ function ExperienceCard(props: {
               <SelectionCheckbox selected={props.selected} />
             </div>
           </Show>
-          <div class="min-w-0 flex-1">
+          <button
+            type="button"
+            class="library-card-toggle min-w-0 flex-1 text-left"
+            aria-expanded={props.selecting ? undefined : props.expanded}
+            aria-pressed={props.selecting ? props.selected : undefined}
+            onClick={props.onToggle}
+          >
             <span
               classList={{
                 "block text-13-medium text-text-strong leading-snug [overflow-wrap:anywhere]": true,
                 "line-clamp-2": !props.expanded || props.selecting,
               }}
             >
-              {props.item.intent}
+              {props.item.intent ||
+                (props.item.rewardStatus === "encoding_failed"
+                  ? _({ id: "app.library.experience.encodingFailedTitle", message: "Experience encoding failed" })
+                  : _({ id: "app.library.experience.missingIntent", message: "Intent not recorded" }))}
             </span>
-          </div>
+            <span class="mt-2 block text-11-regular text-text-weak">
+              {props.item.rewardStatus === "encoding_failed"
+                ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
+                : props.item.rewardStatus === "pending"
+                  ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
+                  : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" })}
+            </span>
+          </button>
           <div class="flex shrink-0 items-center gap-1.5 self-start">
             <Show when={props.searching && props.similarity !== undefined}>
               <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
@@ -758,113 +778,158 @@ function ExperienceCard(props: {
                   <Icon name={getSemanticIcon("state.success")} size="small" class="text-icon-success-base" />
                 </Show>
               </button>
-              <button
-                type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
-                onClick={props.onDelete}
-              >
-                <Icon name={getSemanticIcon("action.close")} size="small" />
-              </button>
+              <Show when={props.onDelete}>
+                <button
+                  type="button"
+                  class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+                  aria-label={_({ id: "app.library.experience.delete", message: "Delete experience" })}
+                  onClick={props.onDelete}
+                >
+                  <Icon name={getSemanticIcon("action.close")} size="small" />
+                </button>
+              </Show>
             </Show>
           </div>
         </div>
 
         <Show when={!props.selecting}>
-          <div class="flex flex-col gap-2">
-            <div class={`flex items-center gap-1.5 flex-wrap px-3 py-2.5 ${libraryInsetClass}`}>
-              <Show when={reward() !== null}>
-                <span
-                  classList={{
-                    "rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset": true,
-                    "bg-icon-success-base/14 text-icon-success-base ring-icon-success-base/12": reward()! >= 0.5,
-                    "bg-icon-warning-base/14 text-icon-warning-base ring-icon-warning-base/12":
-                      reward()! >= 0 && reward()! < 0.5,
-                    "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-text-diff-delete-base/12":
-                      reward()! < 0,
-                  }}
-                >
-                  {_({ id: "app.library.experience.stat.reward", message: "R" })} {reward()!.toFixed(2)}
-                </span>
-              </Show>
-              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
-                {_({ id: "app.library.experience.stat.qValue", message: "Q" })} {qValue().toFixed(2)}
-              </span>
-              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                {_({
-                  id: "app.library.experience.visits",
-                  message: "{visits} visits",
-                  values: { visits: String(qVisits()) },
-                })}
-              </span>
-              <Show when={turnsRemaining() !== null && turnsRemaining()! > 0}>
-                <span class="rounded-full bg-icon-warning-base/14 px-2.5 py-1 text-[10px] font-medium text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/12">
-                  {_({
-                    id: "app.library.experience.remaining",
-                    message: "{remaining} remaining",
-                    values: { remaining: String(turnsRemaining()!) },
-                  })}
-                </span>
-              </Show>
-              <Show when={rewards()?.confidence !== undefined}>
-                <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                  {_({ id: "app.library.experience.stat.confidence", message: "C" })}{" "}
-                  {rewards()!.confidence!.toFixed(2)}
-                </span>
-              </Show>
-              <Show when={props.searching && searchScore() !== undefined}>
-                <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                  {_({ id: "app.library.experience.stat.score", message: "S" })} {searchScore()!.toFixed(2)}
-                </span>
-              </Show>
-            </div>
-            <Show when={rewards()}>
-              <RewardDimensions rewards={rewards()} />
-            </Show>
-            <Show when={qValues()}>
-              <QValueDimensions qValues={qValues()!} />
-            </Show>
-            <Show when={rewards()?.reason}>
-              <p
-                classList={{
-                  "rounded-[0.9rem] bg-surface-inset-base px-3 py-2 text-[11px] italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
-                  "line-clamp-2": !props.expanded,
-                }}
-              >
-                {rewards()!.reason}
-              </p>
-            </Show>
-          </div>
+          <Show when={props.item.rewardStatus === "encoding_failed"}>
+            <p class="text-12-regular text-text-weak">
+              {_({
+                id: "app.library.experience.encodingFailedHint",
+                message: "This turn could not be encoded. Open the source session to inspect the original content.",
+              })}
+            </p>
+          </Show>
+          <Show when={props.expanded && props.item.rewardStatus !== "encoding_failed"}>
+            <details class="library-experience-metrics">
+              <summary class="text-12-medium text-text-weak cursor-pointer">
+                {_({ id: "app.library.experience.metrics", message: "Evaluation details" })}
+              </summary>
+              <div class="mt-3 flex flex-col gap-2">
+                <div class={`flex items-center gap-1.5 flex-wrap px-3 py-2.5 ${libraryInsetClass}`}>
+                  <Show when={reward() !== null}>
+                    <span
+                      classList={{
+                        "rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset": true,
+                        "bg-icon-success-base/14 text-icon-success-base ring-icon-success-base/12": reward()! >= 0.5,
+                        "bg-icon-warning-base/14 text-icon-warning-base ring-icon-warning-base/12":
+                          reward()! >= 0 && reward()! < 0.5,
+                        "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-text-diff-delete-base/12":
+                          reward()! < 0,
+                      }}
+                    >
+                      {_({ id: "app.library.experience.stat.reward", message: "R" })} {reward()!.toFixed(2)}
+                    </span>
+                  </Show>
+                  <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
+                    {_({ id: "app.library.experience.stat.qValue", message: "Q" })} {qValue().toFixed(2)}
+                  </span>
+                  <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                    {_({
+                      id: "app.library.experience.visits",
+                      message: "{visits} visits",
+                      values: { visits: String(qVisits()) },
+                    })}
+                  </span>
+                  <Show when={turnsRemaining() !== null && turnsRemaining()! > 0}>
+                    <span class="rounded-full bg-icon-warning-base/14 px-2.5 py-1 text-[10px] font-medium text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/12">
+                      {_({
+                        id: "app.library.experience.remaining",
+                        message: "{remaining} remaining",
+                        values: { remaining: String(turnsRemaining()!) },
+                      })}
+                    </span>
+                  </Show>
+                  <Show when={rewards()?.confidence !== undefined}>
+                    <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                      {_({ id: "app.library.experience.stat.confidence", message: "C" })}{" "}
+                      {rewards()!.confidence!.toFixed(2)}
+                    </span>
+                  </Show>
+                  <Show when={props.searching && searchScore() !== undefined}>
+                    <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                      {_({ id: "app.library.experience.stat.score", message: "S" })} {searchScore()!.toFixed(2)}
+                    </span>
+                  </Show>
+                </div>
+                <Show when={rewards()}>
+                  <RewardDimensions rewards={rewards()} />
+                </Show>
+                <Show when={qValues()}>
+                  <QValueDimensions qValues={qValues()!} />
+                </Show>
+                <Show when={rewards()?.reason}>
+                  <p
+                    classList={{
+                      "rounded-[0.9rem] bg-surface-inset-base px-3 py-2 text-[11px] italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
+                      "line-clamp-2": !props.expanded,
+                    }}
+                  >
+                    {rewards()!.reason}
+                  </p>
+                </Show>
+              </div>
+            </details>
+          </Show>
 
           <Show when={props.expanded}>
             <div
               class={`mt-1 flex flex-col gap-2.5 border-t border-border-base/28 pt-3`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div class={`grid gap-2 sm:grid-cols-3 ${libraryInsetClass} px-3.5 py-3`}>
-                <Show when={sourceModel()}>
-                  <div class="min-w-0">
-                    <div class={libraryMetaLabelClass}>
-                      {_({ id: "app.library.experience.model", message: "Model" })}
-                    </div>
-                  </div>
-                </Show>
-                <Show when={scopeID()}>
-                  <div class="min-w-0">
-                    <div class={libraryMetaLabelClass}>
-                      {_({ id: "app.library.experience.scope", message: "Scope" })}
-                    </div>
-                  </div>
-                </Show>
-                <Show when={sessionID()}>
-                  <div class="min-w-0">
-                    <div class={libraryMetaLabelClass}>
-                      {_({ id: "app.library.experience.session", message: "Session" })}
-                    </div>
-                  </div>
-                </Show>
-              </div>
+              <dl class={`grid gap-3 sm:grid-cols-3 ${libraryInsetClass} px-3.5 py-3`}>
+                <div class="min-w-0">
+                  <dt class={libraryMetaLabelClass}>{_({ id: "app.library.experience.model", message: "Model" })}</dt>
+                  <dd class="mt-1 text-12-regular text-text-base [overflow-wrap:anywhere]">
+                    {sourceModel() ?? _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
+                  </dd>
+                </div>
+                <div class="min-w-0">
+                  <dt class={libraryMetaLabelClass}>{_({ id: "app.library.experience.scope", message: "Scope" })}</dt>
+                  <dd class="mt-1 text-12-regular text-text-base [overflow-wrap:anywhere]">
+                    {scopeID() || _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
+                  </dd>
+                </div>
+                <div class="min-w-0">
+                  <dt class={libraryMetaLabelClass}>
+                    {_({ id: "app.library.experience.session", message: "Session" })}
+                  </dt>
+                  <dd class="mt-1 text-12-regular text-text-base [overflow-wrap:anywhere]">
+                    {sessionID() || _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
+                  </dd>
+                </div>
+              </dl>
+              <Show when={scopeID() && sessionID()}>
+                <A
+                  class="library-source-link text-12-medium text-text-interactive-base"
+                  href={`/${base64Encode(scopeID())}/session/${sessionID()}`}
+                >
+                  {_({ id: "app.library.experience.openSession", message: "Open source session" })}
+                </A>
+              </Show>
+              <Show when={props.detailError}>
+                <div role="alert" class="flex items-center justify-between gap-3 text-12-regular text-text-weak">
+                  <span>
+                    {_({
+                      id: "app.library.experience.detailFailed",
+                      message: "Unable to load details. This card is still available.",
+                    })}
+                  </span>
+                  <button type="button" class="library-action" onClick={props.onRetry}>
+                    {_(L.retry)}
+                  </button>
+                </div>
+              </Show>
 
-              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak-base" />}>
+              <Show
+                when={props.detail}
+                fallback={
+                  <Show when={!props.detailError}>
+                    <Spinner class="size-3.5 my-1 text-icon-weak-base" />
+                  </Show>
+                }
+              >
                 {(detail) => (
                   <>
                     <Show when={detail().script}>
@@ -907,19 +972,30 @@ function ExperienceCard(props: {
               <Show when={props.expanded} fallback={relativeTime(fmt, updated() ?? props.item.createdAt)}>
                 {absoluteDate(fmt, props.item.createdAt)}
                 <Show when={updated() && updated() !== props.item.createdAt}>
-                  {" · updated "}
-                  {absoluteDate(fmt, updated()!)}
+                  {_({
+                    id: "app.library.experience.updated",
+                    message: " · Updated {date}",
+                    values: { date: absoluteDate(fmt, updated()!) },
+                  })}
                 </Show>
               </Show>
             </span>
-            <span
+            <button
+              type="button"
+              aria-label={
+                props.expanded
+                  ? _({ id: "app.library.experience.collapse", message: "Collapse experience" })
+                  : _({ id: "app.library.experience.expand", message: "Expand experience" })
+              }
+              aria-expanded={props.expanded}
+              onClick={props.onToggle}
               classList={{
                 "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
               <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
-            </span>
+            </button>
           </div>
         </Show>
 

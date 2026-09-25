@@ -32,6 +32,15 @@ describe("Electron Browser Host broker contract", () => {
         target: "node",
         external: ["electron"],
       })
+      const preloadBuild = await Bun.build({
+        entrypoints: [path.resolve(import.meta.dir, "../src/browser-page-preload.ts")],
+        outdir: directory,
+        naming: "browser-page-preload.cjs",
+        target: "node",
+        format: "cjs",
+        external: ["electron"],
+      })
+      if (!preloadBuild.success) throw new AggregateError(preloadBuild.logs, "Browser prompt preload did not build.")
       if (!build.success) throw new AggregateError(build.logs, "Native Browser smoke fixture did not build.")
       const electron =
         process.env.SYNERGY_DESKTOP_ELECTRON_BIN ?? path.resolve(import.meta.dir, "../node_modules/.bin/electron")
@@ -73,6 +82,8 @@ describe("Electron Browser Host broker contract", () => {
       let brokerSocket: ServerWebSocket<{ role: "broker" | "signal" }> | null = null
       const pending = new Map<string, { resolve(value: BrowserBackendResult): void; reject(error: Error): void }>()
       const signalingURLs: URL[] = []
+      let promptAnswer: string | null = null
+      const promptRequests: string[] = []
 
       const server = Bun.serve<{ role: "broker" | "signal" }>({
         port: 0,
@@ -109,6 +120,17 @@ describe("Electron Browser Host broker contract", () => {
                 } satisfies BrowserHostMessage),
               )
               ready.resolve()
+              return
+            }
+            if (message.type === "page.event" && message.event.type === "dialog.opened") {
+              const dialog = message.event
+              promptRequests.push(dialog.defaultValue ?? "")
+              void command({
+                type: "dialog.respond",
+                requestId: dialog.requestId,
+                accept: promptAnswer !== null,
+                ...(promptAnswer !== null ? { promptText: promptAnswer } : {}),
+              })
               return
             }
             if (message.type !== "page.result") return
@@ -191,6 +213,14 @@ describe("Electron Browser Host broker contract", () => {
             expression: `({ clicked: document.body.dataset.clicked, value: document.querySelector('input').value })`,
           }),
         ).toMatchObject({ type: "evaluation", value: { clicked: "yes", value: "Electron" } })
+
+        for (const answer of ["edited", "", null]) {
+          promptAnswer = answer
+          expect(
+            await command({ type: "evaluate", mode: "trusted", expression: "prompt('Name', 'draft')" }),
+          ).toMatchObject({ type: "evaluation", value: answer })
+        }
+        expect(promptRequests).toEqual(["draft", "draft", "draft"])
 
         const initialSignal = await waitFor(
           () =>

@@ -16,6 +16,7 @@ async function fixture() {
 
 afterEach(async () => {
   if (fixtureDir) await rm(fixtureDir, { recursive: true, force: true })
+  electronMockState.displays = [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }]
 })
 
 describe("desktop window state", () => {
@@ -45,14 +46,44 @@ describe("desktop window state", () => {
     expect(await loadWindowState(fixtureDir)).toEqual({ width: 1440, height: 920, maximized: false })
   })
 
-  test("rejects a restored position that is visible on no display", async () => {
+  test("moves an offscreen window into the remaining display", async () => {
     fixtureDir = await fixture()
     electronMockState.displays = [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }]
     await writeFile(
       path.join(fixtureDir, "window-state.json"),
       JSON.stringify({ width: 800, height: 600, x: 9000, y: 9000 }),
     )
-    expect(await loadWindowState(fixtureDir)).toEqual({ width: 1440, height: 920 })
+    expect(await loadWindowState(fixtureDir)).toEqual({ width: 800, height: 600, x: 1120, y: 480, maximized: false })
+  })
+
+  test("keeps the complete restored window inside a remaining work area", async () => {
+    fixtureDir = await fixture()
+    electronMockState.displays = [{ workArea: { x: 0, y: 24, width: 1280, height: 776 } }]
+    await writeFile(
+      path.join(fixtureDir, "window-state.json"),
+      JSON.stringify({ width: 1600, height: 1000, x: 1279, y: -740, maximized: true }),
+    )
+    expect(await loadWindowState(fixtureDir)).toEqual({ width: 1280, height: 776, x: 0, y: 24, maximized: true })
+  })
+
+  test("preserves valid placement on a negative-coordinate monitor", async () => {
+    fixtureDir = await fixture()
+    electronMockState.displays = [
+      { workArea: { x: 0, y: 0, width: 1920, height: 1080 } },
+      { workArea: { x: -1440, y: 24, width: 1440, height: 876 } },
+    ]
+    await writeFile(
+      path.join(fixtureDir, "window-state.json"),
+      JSON.stringify({ width: 1000, height: 700, x: -1200, y: 40 }),
+    )
+    expect(await loadWindowState(fixtureDir)).toEqual({ width: 1000, height: 700, x: -1200, y: 40, maximized: false })
+  })
+
+  test("recovers tiny saved bounds within a smaller work area", async () => {
+    fixtureDir = await fixture()
+    electronMockState.displays = [{ workArea: { x: 0, y: 24, width: 500, height: 300 } }]
+    await writeFile(path.join(fixtureDir, "window-state.json"), JSON.stringify({ width: 1, height: 1, x: 100, y: 100 }))
+    expect(await loadWindowState(fixtureDir)).toEqual({ width: 500, height: 300, x: 0, y: 24, maximized: false })
   })
 
   test("persists bounds, maximized state, and close snapshots with debounce", async () => {

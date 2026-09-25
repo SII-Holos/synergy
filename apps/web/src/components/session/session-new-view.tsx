@@ -1,60 +1,61 @@
+import { translateDescriptor } from "@/locales/translate"
 import { createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { sharedSecondTick } from "./second-tick"
 
 const GREETINGS_MORNING = [
-  "Rise and ship",
-  "Fresh start, fresh code",
-  "Morning momentum",
-  "Early bird, early merge",
-  "Coffee loaded, ready to build",
+  { id: "session.greeting.riseAndShip", message: "Rise and ship" },
+  { id: "session.greeting.freshStartFreshCode", message: "Fresh start, fresh code" },
+  { id: "session.greeting.morningMomentum", message: "Morning momentum" },
+  { id: "session.greeting.earlyBirdEarlyMerge", message: "Early bird, early merge" },
+  { id: "session.greeting.coffeeLoadedReadyToBuild", message: "Coffee loaded, ready to build" },
 ]
 
 const GREETINGS_AFTERNOON = [
-  "Afternoon flow state",
-  "Keep the momentum going",
-  "Deep work hours",
-  "Building something great",
-  "Let's ship it",
+  { id: "session.greeting.afternoonFlowState", message: "Afternoon flow state" },
+  { id: "session.greeting.keepTheMomentumGoing", message: "Keep the momentum going" },
+  { id: "session.greeting.deepWorkHours", message: "Deep work hours" },
+  { id: "session.greeting.buildingSomethingGreat", message: "Building something great" },
+  { id: "session.greeting.letSShipIt", message: "Let's ship it" },
 ]
 
 const GREETINGS_EVENING = [
-  "Evening coding session",
-  "Night owl mode",
-  "Quiet hours, deep focus",
-  "One more thing before bed",
-  "Late night inspiration",
+  { id: "session.greeting.eveningCodingSession", message: "Evening coding session" },
+  { id: "session.greeting.nightOwlMode", message: "Night owl mode" },
+  { id: "session.greeting.quietHoursDeepFocus", message: "Quiet hours, deep focus" },
+  { id: "session.greeting.oneMoreThingBeforeBed", message: "One more thing before bed" },
+  { id: "session.greeting.lateNightInspiration", message: "Late night inspiration" },
 ]
 
 const SUBTITLES = [
-  "What are we building today?",
-  "Need a breakthrough? Let's brainstorm.",
-  "Write, debug, ship. Repeat.",
-  "Ask anything. I'll figure it out.",
-  "What's on your mind?",
-  "Ready when you are.",
-  "Let's make something happen.",
-  "Bugs to squash? Features to build?",
-  "Drop some context, let's go.",
+  { id: "session.greeting.whatAreWeBuildingToday", message: "What are we building today?" },
+  { id: "session.greeting.needABreakthroughLetSBrainstorm", message: "Need a breakthrough? Let's brainstorm." },
+  { id: "session.greeting.writeDebugShipRepeat", message: "Write, debug, ship. Repeat." },
+  { id: "session.greeting.askAnythingILlFigureItOut", message: "Ask anything. I'll figure it out." },
+  { id: "session.greeting.whatSOnYourMind", message: "What's on your mind?" },
+  { id: "session.greeting.readyWhenYouAre", message: "Ready when you are." },
+  { id: "session.greeting.letSMakeSomethingHappen", message: "Let's make something happen." },
+  { id: "session.greeting.bugsToSquashFeaturesToBuild", message: "Bugs to squash? Features to build?" },
+  { id: "session.greeting.dropSomeContextLetSGo", message: "Drop some context, let's go." },
 ]
 
 function formatTime(date: Date, fmt: IntlFormatter): string {
   return fmt.date(date, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
 }
 
-function getTimeGreeting(): string {
+function getTimeGreeting() {
   const hour = new Date().getHours()
   const pool = hour < 12 ? GREETINGS_MORNING : hour < 18 ? GREETINGS_AFTERNOON : GREETINGS_EVENING
   return pool[Math.floor(Math.random() * pool.length)]
 }
 
-function getSubtitle(): string {
+function getSubtitle() {
   return SUBTITLES[Math.floor(Math.random() * SUBTITLES.length)]
 }
 
 export function NewSessionGreeting() {
-  const { fmt } = useLocale()
+  const { fmt, i18n } = useLocale()
   const secondTick = sharedSecondTick()
   // The live clock subscribes to the shared 1 Hz source, which pauses while
   // the document is hidden, so the greeting stops ticking in the background.
@@ -96,7 +97,7 @@ export function NewSessionGreeting() {
         class="text-36-medium text-text-strong"
         style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both" }}
       >
-        {greeting()}
+        {translateDescriptor(greeting(), i18n)}
       </h1>
       <p
         classList={{
@@ -106,7 +107,7 @@ export function NewSessionGreeting() {
         }}
         style={{ animation: "greetFadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both" }}
       >
-        <span>{subtitle()}</span>
+        <span>{translateDescriptor(subtitle(), i18n)}</span>
         <span class="text-text-weaker">·</span>
         <span class="tabular-nums">{clock()}</span>
       </p>

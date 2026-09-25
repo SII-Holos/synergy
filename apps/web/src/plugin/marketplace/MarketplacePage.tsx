@@ -18,7 +18,6 @@ import type { RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { InstalledPlugin } from "./types"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
-import { formatPluginBuildId } from "@/plugin/permission-presentation"
 import { PluginDetailDialog, type RegistrySource } from "./PluginDetailDialog"
 import { loadRegistryResource } from "./registry-resource"
 import {
@@ -437,7 +436,7 @@ function PluginRow(props: {
         values: { version: props.installedVersion },
       })
     }
-    return _({ id: "app.plugin.marketplace.row.installed", message: "Installed" })
+    return _({ id: "app.plugin.marketplace.row.available", message: "Not installed" })
   }
 
   return (
@@ -455,16 +454,6 @@ function PluginRow(props: {
         <span class="plugin-marketplace-row-title">
           {/* plugin.name is author content — pass through */}
           <span>{props.plugin.name}</span>
-          <Show when={props.plugin.latestVersion}>
-            <span class="plugin-marketplace-version">
-              {_(pluginMarketplace.versionLabel.id, { version: props.plugin.latestVersion })}
-            </span>
-          </Show>
-          <Show when={props.plugin.apiVersion}>
-            <span class="plugin-marketplace-version">
-              {_(pluginMarketplace.pluginApiLabel.id, { version: props.plugin.apiVersion })}
-            </span>
-          </Show>
         </span>
         {/* plugin.description is author content — pass through */}
         <span class="plugin-marketplace-row-description">{props.plugin.description}</span>
@@ -475,25 +464,10 @@ function PluginRow(props: {
               _({ id: "app.plugin.marketplace.row.unknownAuthor", message: "Unknown author" })}
           </span>
           <span>
-            {_({
-              id: "app.plugin.marketplace.row.tools",
-              message: "{count} tools",
-              values: { count: props.plugin.tools.length },
-            })}
+            {props.plugin.source === "official"
+              ? _({ id: "app.plugin.detail.source.official", message: "Official registry" })
+              : _({ id: "app.plugin.detail.source.local", message: "Local registry" })}
           </span>
-          {/* plugin.runtimeMode is catalog data — pass through */}
-          <span>{props.plugin.runtimeMode}</span>
-          <Show when={props.plugin.compatibility?.synergy}>
-            {(range) => (
-              <span>
-                {_({
-                  id: "app.plugin.marketplace.row.compatibility",
-                  message: "Synergy {range}",
-                  values: { range: range() },
-                })}
-              </span>
-            )}
-          </Show>
           <span>
             {_({
               id: "app.plugin.marketplace.row.updated",
@@ -505,6 +479,7 @@ function PluginRow(props: {
       </span>
 
       <span class="plugin-marketplace-row-status">
+        <span class="plugin-marketplace-state">{installStatusLabel()}</span>
         <VerifiedBadge verified={props.plugin.verified} official={props.plugin.official} />
       </span>
       <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />
@@ -571,20 +546,6 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
           {/* plugin.id is catalog identifier — pass through */}
           <span>{props.plugin.id}</span>
           <span>{localizedInstallationLabel()}</span>
-          <Show when={props.plugin.apiVersion}>
-            <span>{_(pluginMarketplace.apiVersionLabel.id, { version: props.plugin.apiVersion })}</span>
-          </Show>
-          <Show when={props.plugin.generation}>
-            {(generation) => (
-              <span>
-                {_({
-                  id: "app.plugin.marketplace.build.label",
-                  message: "Build {id}",
-                  values: { id: formatPluginBuildId(generation()) },
-                })}
-              </span>
-            )}
-          </Show>
         </span>
       </span>
       <span class="plugin-marketplace-row-status">

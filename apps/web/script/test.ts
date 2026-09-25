@@ -11,6 +11,16 @@ const root = path.resolve(import.meta.dir, "..")
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/agenda/series-list.dom.test.tsx",
+  "test/components/app-shell/mobile-tools-drawer.dom.test.tsx",
+  "test/components/library/library-interaction.dom.test.tsx",
+  "test/components/workspace/browser/browser-interaction.dom.test.tsx",
+  "test/components/session/session-recovery.dom.test.ts",
+  "test/components/search/session-search-dialog.dom.test.ts",
+  "test/components/toolbar-selector.dom.test.ts",
+  "test/components/workspace/workbench-surface.dom.test.ts",
+  "test/components/workspace/mobile-workspace-dialog.dom.test.ts",
+  "test/components/performance/snapshot-boundary.dom.test.ts",
   "test/plugin/global-themes-registrar-lifecycle.test.tsx",
   "test/components/session/rollback-files.dom.test.ts",
   "test/components/session/session-review-workspace.dom.test.ts",
@@ -79,6 +89,12 @@ await runBatchedTests({
   isolated: playwrightIsolated,
   isolatedTimeoutMs: 120000,
   browserOnly: [
+    "test/components/session/request-submission.test.ts",
+    "test/components/search/session-search.test.ts",
+    "test/components/performance/use-performance.test.ts",
+    "test/components/library/use-library-stats.test.ts",
+    "test/components/library/experience-details.test.ts",
+    "test/components/library/library-collection.test.ts",
     "test/components/kanban/full-access-ack.test.ts",
     "test/components/prompt-input/full-access-ack.test.ts",
     "test/components/prompt-input/stop-control.render.test.ts",

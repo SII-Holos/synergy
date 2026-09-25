@@ -375,12 +375,14 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     ws = socket
 
     socket.addEventListener("open", () => {
+      if (disposed || ws !== socket) return
       reconnectAttempts = 0
       store.setSession("connectionStatus", "connected")
       browserDebug("ws.open", { sessionID })
     })
 
     socket.addEventListener("message", (event) => {
+      if (disposed || ws !== socket) return
       let input: unknown
       try {
         input = JSON.parse(event.data)
@@ -518,11 +520,13 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
     })
 
     socket.addEventListener("error", (event) => {
+      if (disposed || ws !== socket) return
       // Handled by close event.
       browserDebug("ws.error", { sessionID, eventType: event.type })
     })
 
     socket.addEventListener("close", (event) => {
+      if (disposed || ws !== socket) return
       store.setSession("connectionStatus", "disconnected")
       ws = undefined
       browserDebug("ws.close", {
@@ -570,6 +574,15 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
   return {
     send,
     connect,
+    reconnect: () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      reconnectTimer = null
+      const previous = ws
+      ws = undefined
+      previous?.close()
+      reconnectAttempts = 0
+      void connect()
+    },
     retryNative: () => {
       nativeCoordinator?.retry()
       // The coordinator reset alone cannot recover a session whose socket was

@@ -16,6 +16,7 @@ import { StatsSection, type WorkspaceStatsSyncHandle } from "@/components/stats/
 import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
+import { LibraryHome, type LibraryHomeSync } from "./home-view"
 import "./library-panel.css"
 
 export function LibraryPanel() {
@@ -24,7 +25,8 @@ export function LibraryPanel() {
   const params = useParams()
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   const { _ } = useLingui()
-  const [view, setView] = createSignal<View>("stats")
+  const [view, setView] = createSignal<View>("home")
+  const [homeSync, setHomeSync] = createSignal<LibraryHomeSync>()
   const [search, setSearch] = createSignal("")
   const [searchError, setSearchError] = createSignal(false)
   const [workspaceStatsSync, setWorkspaceStatsSync] = createSignal<WorkspaceStatsSyncHandle>()
@@ -65,7 +67,7 @@ export function LibraryPanel() {
   onCleanup(() => statsController.abort())
   const refetchStats = async () => {
     const result = await sdk.client.library.stats(undefined, { signal: statsController.signal })
-    if (!statsController.signal.aborted && result.data) setStats(result.data)
+    if (!statsController.signal.aborted && result.data && "memory" in result.data) setStats(result.data)
   }
   void refetchStats().catch(() => undefined)
 
@@ -74,7 +76,7 @@ export function LibraryPanel() {
 
   const showSearch = () => view() !== "stats"
   const navItems = createMemo(() => [
-    { id: "stats", label: _({ id: "app.library.nav.overview", message: "Overview" }) },
+    { id: "home", label: _({ id: "app.library.nav.home", message: "Home" }) },
     {
       id: "memory",
       label:
@@ -98,15 +100,25 @@ export function LibraryPanel() {
           : _({ id: "app.library.nav.experiences", message: "Experiences" }),
     },
     { id: "skill", label: _({ id: "app.library.nav.skills", message: "Skills" }) },
+    { id: "stats", label: _({ id: "app.library.nav.stats", message: "Statistics" }) },
   ])
   const storageLabel = createMemo(() => {
     const snapshot = stats()
     return snapshot ? formatBytes(snapshot.dbSizeBytes) : undefined
   })
-  const isSyncing = createMemo(() => Boolean(workspaceStatsSync()?.syncing() || libraryStatsSync()?.syncing()))
+  const isSyncing = createMemo(() =>
+    Boolean(
+      view() === "home" ? homeSync()?.syncing() : workspaceStatsSync()?.syncing() || libraryStatsSync()?.syncing(),
+    ),
+  )
 
   async function syncAll() {
     if (isSyncing()) return
+    if (view() === "home") {
+      await homeSync()?.sync()
+      await refetchStats()
+      return
+    }
     const tasks: Array<Promise<void>> = []
     const workspace = workspaceStatsSync()
     const library = libraryStatsSync()
@@ -124,37 +136,45 @@ export function LibraryPanel() {
         <AppPanel.Header class="library-header">
           <div class="library-header-inner">
             <AppPanel.HeaderRow>
-              <AppPanel.Title>{_({ id: "app.library.title", message: "Library" })}</AppPanel.Title>
-              <AppPanel.Actions>
-                <button
-                  type="button"
-                  class="library-primary-action disabled:cursor-default disabled:opacity-55"
-                  disabled={isSyncing()}
-                  onClick={() => void syncAll()}
-                >
-                  {isSyncing()
-                    ? _({ id: "app.library.syncing", message: "Syncing..." })
-                    : _({ id: "app.library.sync", message: "Sync" })}
-                </button>
-              </AppPanel.Actions>
+              <h1 class="library-title">{_({ id: "app.library.title", message: "Library" })}</h1>
+              <Show when={view() === "home" || view() === "stats"}>
+                <AppPanel.Actions>
+                  <button
+                    type="button"
+                    class="library-primary-action disabled:cursor-default disabled:opacity-55"
+                    disabled={isSyncing()}
+                    onClick={() => void syncAll().catch(() => undefined)}
+                  >
+                    {isSyncing()
+                      ? _({ id: "app.library.syncing", message: "Syncing..." })
+                      : _({ id: "app.library.refresh", message: "Refresh" })}
+                  </button>
+                </AppPanel.Actions>
+              </Show>
             </AppPanel.HeaderRow>
-            <div class="library-header-controls">
+            <div class="library-header-controls" classList={{ "library-header-home": view() === "home" }}>
               <AppPanel.SegmentedNav
                 items={navItems().map((item) => ({ id: item.id, label: item.label as string }))}
                 active={view()}
-                onChange={(id) => setView(id as View)}
+                onChange={(id) => {
+                  setView(id as View)
+                  onSearchInput("")
+                }}
               />
               <Show when={showSearch()}>
                 <div class="library-search-field">
                   <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base shrink-0" />
                   <input
                     type="text"
+                    aria-label={_({ id: "app.library.search.label", message: "Search library" })}
                     placeholder={
-                      view() === "memory"
-                        ? _({ id: "app.library.search.memories", message: "Search memories..." })
-                        : view() === "experience"
-                          ? _({ id: "app.library.search.experiences", message: "Search experiences..." })
-                          : _({ id: "app.library.search.skills", message: "Search skills..." })
+                      view() === "home"
+                        ? _({ id: "app.library.search.all", message: "Search memories, experiences and skills" })
+                        : view() === "memory"
+                          ? _({ id: "app.library.search.memories", message: "Search memories..." })
+                          : view() === "experience"
+                            ? _({ id: "app.library.search.experiences", message: "Search experiences..." })
+                            : _({ id: "app.library.search.skills", message: "Search skills..." })
                     }
                     class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
                     value={search()}
@@ -188,6 +208,18 @@ export function LibraryPanel() {
         <AppPanel.Body padding={false} class="library-body">
           <Suspense>
             <div class="library-stage">
+              <Show when={view() === "home"}>
+                <LibraryHome
+                  sdk={sdk}
+                  search={debouncedSearch()}
+                  scopeID={currentScopeID()}
+                  registerSync={setHomeSync}
+                  onBrowse={(view, query) => {
+                    setView(view)
+                    onSearchInput(query ?? "")
+                  }}
+                />
+              </Show>
               <Show when={view() === "stats"}>
                 <div class="library-section-block">
                   <div class="library-section-heading">

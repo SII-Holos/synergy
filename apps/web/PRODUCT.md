@@ -71,6 +71,8 @@ Managed Desktop startup may import a normalized `PATH` from the user's login she
 Code Checks settings should present post-write diagnostic policy as a standard-visibility Settings page. The Include Diagnostics toggle is the master switch; Diagnostic Severity and Diagnostic Scope selectors disable when diagnostics are off.
 Managed-local Desktop may show Open File because its shell and server share filesystem and desktop authority. Web and Desktop external-server surfaces must show only the canonical path and Copy Path; they must not offer an action that asks a remote or headless server to launch a desktop editor. Managed Desktop opener failures must retain the canonical path and direct the user to Copy Path.
 
+Settings search includes field labels and moves keyboard focus to the highlighted field in its section. Load each section’s dependencies when needed, retain successful snapshots on refresh failure, and keep navigation available when another section fails. Escape, Close and Cancel share the unsaved-change guard; a nested confirmation consumes its own Escape. Saving blocks dismissal and duplicate submissions, leaves successful saves in Settings, and retains failed drafts for retry.
+
 Settings typography should use the global semantic UI type tokens, not local pixel sizes or historical `text-12-*` utility classes. Page titles, section titles, row titles, body copy, control text, and captions should map to fixed rem-based roles with regular, medium, and semibold weights only. Keep the density close to Manus: comfortable enough to read as product settings, still efficient enough for a daily developer tool.
 
 Worktree settings should aggregate only Git projects, preserve readable project results when another repository fails, and keep main or external worktrees informational. Managed deletion is a confirmed lifecycle action: show dirty and bound-session consequences, refuse active use, and refresh the list after the backend has migrated idle bindings or cleaned a stale record.
@@ -112,6 +114,10 @@ Performance should separate whole-service memory from owner-attributed process r
 Performance support cards should surface runtime retention counters plainly: session runtimes, retained Cortex tasks, pending sessions, trace evidence, and recent errors belong together as operational signals rather than as decorative dashboard metrics.
 
 Performance is a user-controlled snapshot. Load it when the panel opens or the user changes the selected range, then keep it stable until the user selects Refresh; do not poll, refresh on visibility changes, subscribe the panel to live Performance events, or refetch charts as they enter the viewport.
+
+An unavailable initial Performance snapshot shows recovery guidance and a retry action without zero-valued metrics or health conclusions. A failed refresh in the same range retains the last successful snapshot and labels its capture time and unconfirmed current health. Changing ranges removes the previous range's result immediately. Trend and trace failures remain local to their sections, and raw errors belong in collapsed diagnostics. Analysis requires a successful current-range snapshot.
+
+Kanban panes settle independently. An accepted message page, including an empty one, completes loading; a failed pane offers its own retry and collapsed diagnostic details while other panes remain usable.
 
 Performance AI analysis should be an explicit action over the selected time window, not a continuous background opinion. Send only a bounded, redacted telemetry read model to a hidden tool-free Cortex child, show its lifecycle and Markdown conclusion in the Performance surface, and keep cancel plus durable session navigation available for control and auditability.
 
@@ -273,6 +279,10 @@ Clarifying question prompts are decision surfaces, not tool-output cards. Answer
 
 Target WCAG AA contrast, visible keyboard focus, reduced-motion-safe transitions, and controls whose text labels or titles explain their action.
 
+Global session search uses the shared modal stack. Opening focuses its input; Escape closes the search and returns to its entry even when a query exists. Query changes invalidate pending results immediately. Search failures keep the query and expose retry; pagination failures keep loaded matches and retry the same page. The result count describes loaded matches against the server total.
+
+Sidebar section disclosures and Composer selectors use native buttons with one keyboard stop per trigger and an announced expanded state. Retained, hidden workspaces are inert and excluded from accessibility navigation. Escape first belongs to the current menu or dialog, then only to the workspace containing focus; editable content retains its own Escape handling. Collapsing a focused workspace returns focus to its opener without discarding retained state. BottomSpace resizes from its top edge. A rendering failure offers a panel-local retry and collapsed diagnostics while sibling panels remain usable.
+
 Mobile drawers and overlay workspaces are modal interaction surfaces: give them an accessible name, move focus inside when opened, contain keyboard traversal, close on Escape, and return focus to the opener. At narrow widths, toolbars reflow inside their surface; controls must not become unreachable through clipping or hidden horizontal overflow.
 
 ## Plugin presentation
@@ -286,3 +296,31 @@ Database optimization is an explicit action in Storage settings and must not blo
 The Files Explorer offers directory and file actions in one form that keeps the selected Workspace visible. Moving, copying and deleting capture the entry selected when the form opens; errors retain the destination text. Permanent deletion is explicitly labeled. Renames never discard or retarget unsaved drafts, and unrelated filesystem create/delete notifications cannot move an open editor to another file.
 
 File tabs keep their original Workspace when the Session selects another one. The file breadcrumb names that tab's directory, with its full path available on hover and to assistive technology, so a retained editor and its Explorer cannot be mistaken for the Session's new working directory.
+
+### Session operation recovery
+
+Questions and permission decisions keep submission state by session and request identity. Pending decisions disable duplicate actions; failures retain the selection and expose local retry and diagnostics. An uncertain reply is checked against pending server requests before another decision is sent. New questions begin with independent answers and disclosure state. Single-choice questions keep immediate submission, and permission choices retain their existing policy meanings.
+
+Failed initialization stops progress motion and exposes its structured cause. Confirmed saved input keeps its original identity during recovery; retry reads authoritative input progress before re-driving a failed item. A paused saved item uses Continue wording, and the Composer explains why sending is blocked. Submission, initialization and completion are distinct progress steps.
+
+Inbox removal is recoverable from the inbox's Removed messages section. Restore uses the backend's retained original input and execution configuration, including mode, instead of reconstructing an input from its visible preview. An uncertain removal or restore remains visible with local retry. Message details are available by click, keyboard and touch; recovery does not depend on a disappearing toast.
+
+### Browser layers and available space
+
+Browser controls use the shared popover boundary and return focus to their trigger after Escape. Page dialogs preserve prompt defaults, empty accepted text, cancellation and acknowledgement semantics. Native content stays attached but hidden until the final overlapping dialog, Browser menu, error or annotation closes.
+
+Workbench dimensions are user preferences. Rendered dimensions follow the available session container continuously; constrained dimensions never overwrite saved preferences. A larger window restores those preferences and a zero-size hidden surface is excluded from keyboard focus. Desktop restores normal bounds wholly inside the best matching current work area, retaining maximized state and fitting a minimum usable size to that area.
+
+### Library inspection
+
+Library opens on search and recent content; statistics live in a separate tab. Search failures belong to their content group and request identity. Experience cards distinguish encoding failure, pending evaluation and evaluated records using server state, expose source values and the original session, and keep technical metrics behind a disclosure. Detail failures preserve the card and provide read-only retry. Card actions and calendar events are native keyboard controls, with secondary actions outside the main button.
+
+Statistics label their snapshot time and calendar range. A failed refresh keeps the last successful snapshot; first-load errors do not manufacture zeros. Zero-filled dates are limited to the displayed snapshot’s calendar interval.
+
+Recent and Projects are separate horizontal sidebar tabs on desktop and mobile. Tools and the account entry remain outside the collection scroller. Keep HOLOS as the main identity, with a smaller Synergy workbench label; account status identifies the HOLOS account separately. Mobile navigation and tools use the shared modal stack, including nested Settings, and close when the viewport returns to desktop. Agent, model and permission choices remain visible at 375 px; the Add menu groups its existing context, agent and workflow actions.
+
+The session header explains working location from the actual Workspace binding, including no local files, unavailable binding, local directory and isolated worktree. New worktree requests stay pending until created. Keep project identity separate from the working path and state that already-open files retain their original Workspace. The existing Workspace chooser remains the only selection and sharing flow.
+
+Agenda opens on a series list with canonical pending and last-run-failed filters. Repeated planned times expand under their owning task; bounded previews are distinct from execution history. Keep day/week/month navigation and History available. Missing run metadata never means the task has never run. Plugin rows prioritize author-provided purpose, source and visible installation state; technical metadata lives in details, while disabled or approval states remain immediately visible.
+
+Remote Browser Retry checks server ownership and the existing page before resuming and reconnecting. Keep the address and error visible, disable repeated recovery attempts, and cancel obsolete recovery on session disposal. Retry does not create another page or replay user actions.

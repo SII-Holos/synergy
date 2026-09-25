@@ -22,9 +22,9 @@ export function selectPendingTimelineItems(
 export function pendingTimelineItemView(
   mode: SessionInboxItem["mode"],
   rollbackActive: boolean,
-  options?: { hasCanonicalRoot?: boolean },
+  options?: { hasCanonicalRoot?: boolean; status?: SessionInboxItem["status"] },
 ): PendingTimelineItemView {
-  const firstTaskLocked = mode === "task" && options?.hasCanonicalRoot === false
+  const firstTaskLocked = mode === "task" && options?.hasCanonicalRoot === false && options.status !== "failed"
   if (rollbackActive || firstTaskLocked || (mode !== "task" && mode !== "steer")) {
     return {
       frozen: rollbackActive || firstTaskLocked,
@@ -35,7 +35,7 @@ export function pendingTimelineItemView(
 
   return {
     frozen: false,
-    primaryAction: mode === "steer" ? "queue" : "guide",
+    primaryAction: options?.status === "failed" ? undefined : mode === "steer" ? "queue" : "guide",
     canWithdraw: true,
   }
 }

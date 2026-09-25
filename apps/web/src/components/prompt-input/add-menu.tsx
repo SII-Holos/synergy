@@ -53,14 +53,16 @@ function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
 
 export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
   const { i18n } = useLocale()
-  const items = () => props.sections.flatMap((section) => section.items)
+  const items = () =>
+    props.sections.flatMap((section) => section.items.map((item) => ({ ...item, category: section.label ?? "" })))
   const currentItem = () => items().find((item) => item.selected)
 
   return (
     <ToolbarSelectorPopover
-      trigger={
+      triggerAs={(triggerProps) => (
         <Tooltip placement="top" value={i18n._(PI.addLabel)}>
           <button
+            {...triggerProps}
             type="button"
             aria-label={i18n._(PI.addLabel)}
             class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
@@ -68,7 +70,7 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
             <Icon name={getSemanticIcon("action.add")} size="small" />
           </button>
         </Tooltip>
-      }
+      )}
       title={i18n._(PI.addLabel)}
       contentClass="w-52 max-h-80"
       placement="top-start"
@@ -78,6 +80,7 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
           class="p-1"
           items={items()}
           key={(item) => item.id}
+          groupBy={(item) => item.category}
           current={currentItem()}
           onSelect={(item) => {
             if (!item) return

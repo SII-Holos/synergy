@@ -840,6 +840,61 @@ export namespace SessionInbox {
     await removeItems(input.sessionID, [input.itemID])
   }
 
+  type RemovedItem = { item: StoredItem; restoredAt?: number }
+
+  export async function listRemoved(sessionID: string): Promise<Item[]> {
+    const session = await readSession(sessionID)
+    const keys = await Storage.list(
+      StoragePath.sessionInboxRemovedRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(sessionID)),
+    )
+    const records = await Storage.readMany<RemovedItem>(keys)
+    return sortItems(records.flatMap((record) => (record && !record.restoredAt ? [publicItem(record.item)] : [])))
+  }
+
+  export async function removeForRestore(input: { sessionID: string; itemID: string }): Promise<void> {
+    await Storage.transaction(async () => {
+      const session = await readSession(input.sessionID)
+      const scopeID = Identifier.asScopeID(session.scope.id)
+      const sessionID = Identifier.asSessionID(input.sessionID)
+      const key = StoragePath.sessionInboxRemovedItem(scopeID, sessionID, input.itemID)
+      const [active, removed] = await Storage.readMany<StoredItem | RemovedItem>([
+        StoragePath.sessionInboxItem(scopeID, sessionID, input.itemID),
+        key,
+      ])
+      if (!active && removed && "item" in removed) return
+      const item = await assertMutable(input)
+      await Storage.write(key, { item } satisfies RemovedItem)
+      await removeItems(input.sessionID, [input.itemID])
+    })
+  }
+
+  export async function restore(input: {
+    sessionID: string
+    itemID: string
+  }): Promise<{ item: Item; restored: boolean }> {
+    return Storage.transaction(async () => {
+      const session = await readSession(input.sessionID)
+      const scopeID = Identifier.asScopeID(session.scope.id)
+      const sessionID = Identifier.asSessionID(input.sessionID)
+      const key = StoragePath.sessionInboxRemovedItem(scopeID, sessionID, input.itemID)
+      const record = await Storage.read<RemovedItem>(key)
+      if (record.restoredAt) return { item: publicItem(record.item), restored: false }
+      const { RolloutLedger } = await import("./rollout/ledger")
+      const { RolloutLifecycle } = await import("./rollout/lifecycle")
+      const run = await RolloutLedger.getRun(RolloutLifecycle.owner(session), record.item.messageID).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (run && (run.status === "cancelled" || run.status === "completed")) {
+        throw new ItemFailedError({ message: "This input has already completed or been cancelled.", ...input })
+      }
+      const restored = await writeItem(record.item, true)
+      // Retain the receipt after consumption so a lost restore response cannot enqueue the same input again.
+      await Storage.write(key, { item: restored, restoredAt: Date.now() } satisfies RemovedItem)
+      return { item: publicItem(restored), restored: true }
+    })
+  }
+
   async function drainWhere(sessionID: string, predicate: (item: StoredItem) => boolean): Promise<StoredItem[]> {
     return Storage.transaction(async () => {
       const items = await listStored(sessionID)

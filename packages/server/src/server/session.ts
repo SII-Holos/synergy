@@ -4,6 +4,7 @@ import {
   createSession,
   submitInput,
   retryInput,
+  restoreInput,
   submitCommand,
 } from "@ericsanchezok/synergy-runtime-local/session-api"
 import { Hono } from "hono"
@@ -777,6 +778,54 @@ export const SessionRoute = () =>
       },
     )
     .get(
+      "/:sessionID/inbox/removed",
+      describeRoute({
+        summary: "List removed inbox items",
+        description: "List recoverable removed items without exposing private execution inputs.",
+        operationId: "session.inbox_removed",
+        responses: {
+          200: {
+            description: "Removed inbox items",
+            content: { "application/json": { schema: resolver(SessionInbox.Item.array()) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string() })),
+      async (c) => c.json(await SessionInbox.listRemoved(c.req.valid("param").sessionID)),
+    )
+    .post(
+      "/:sessionID/inbox/:itemID/restore",
+      describeRoute({
+        summary: "Restore a removed inbox item",
+        description:
+          "Restore the original input, mode and execution configuration once. Repeated requests do not enqueue another input.",
+        operationId: "session.inbox_restore",
+        responses: {
+          204: { description: "Inbox item restored or previously restored" },
+          ...errors(400, 404),
+          409: {
+            description: "Input completed, cancelled or workspace unavailable",
+            content: {
+              "application/json": {
+                schema: resolver(z.union([SessionInbox.ItemFailedError.Schema, Worktree.UnavailableError.Schema])),
+              },
+            },
+          },
+        },
+      }),
+      validator("param", z.object({ sessionID: z.string(), itemID: z.string() })),
+      async (c) => {
+        try {
+          await restoreInput(c.req.valid("param"))
+          return c.body(null, 204)
+        } catch (error) {
+          if (error instanceof SessionInbox.ItemFailedError) return c.json(error.toObject(), 409)
+          throw error
+        }
+      },
+    )
+    .get(
       "/:sessionID/input/:messageID/status",
       describeRoute({
         summary: "Get durable input progress",
@@ -948,8 +997,7 @@ export const SessionRoute = () =>
       async (c) => {
         const params = c.req.valid("param")
         try {
-          await SessionInbox.assertMutable(params)
-          await SessionInbox.remove(params)
+          await SessionInbox.removeForRestore(params)
           return c.body(null, 204)
         } catch (error) {
           if (error instanceof SessionInbox.FirstTaskLockedError) return c.json(error.toObject(), 409)

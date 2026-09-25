@@ -20,7 +20,8 @@ beforeAll(async () => {
   const platformStubPath = path.join(fixtureDirectory, "platform-stub.ts")
   const uiStubPath = path.join(fixtureDirectory, "ui-stub.tsx")
   const nativeSurfaceStubPath = path.join(fixtureDirectory, "native-surface-stub.tsx")
-  const remoteSurfaceStubPath = path.join(fixtureDirectory, "remote-surface-stub.tsx")
+  const remoteTransportStubPath = path.join(fixtureDirectory, "remote-transport-stub.ts")
+  const sdkStubPath = path.join(fixtureDirectory, "sdk-stub.ts")
 
   await Promise.all([
     Bun.write(
@@ -36,8 +37,8 @@ beforeAll(async () => {
     Bun.write(
       uiStubPath,
       `
-        export function Button(props: { children?: unknown; onClick?: () => void }) {
-          return <button type="button" onClick={props.onClick}>{props.children}</button>
+        export function Button(props: { children?: unknown; onClick?: () => void; disabled?: boolean }) {
+          return <button type="button" disabled={props.disabled} onClick={props.onClick}>{props.children}</button>
         }
         export function Icon() { return null }
         export function getSemanticIcon() { return "globe" }
@@ -52,23 +53,46 @@ beforeAll(async () => {
       `,
     ),
     Bun.write(
-      remoteSurfaceStubPath,
+      remoteTransportStubPath,
       `
-        export function RemoteBrowserSurface() {
-          return <div data-testid="remote-surface" />
+        export const createBrowserWebRTCSignalingUrl = () => "ws://example.test/viewer"
+        export class BrowserWebRTCClient {
+          constructor(private options: { signalingUrl: () => Promise<unknown>; onStatus: (status: string) => void }) {}
+          async connect() {
+            await this.options.signalingUrl()
+            this.options.onStatus("stream_ready")
+          }
+          close() {}
+          sendInput() {}
         }
+      `,
+    ),
+    Bun.write(
+      sdkStubPath,
+      `
+        export const viewerTickets: unknown[] = []
+        export const useSDK = () => ({
+          url: "http://example.test",
+          directory: "/workspace",
+          client: { browser: { createViewerTicket: async (request: unknown) => {
+            viewerTickets.push(request)
+            if (new URLSearchParams(location.search).has("failure") && viewerTickets.length === 1) throw new Error("Connection lost")
+            return { data: { ticket: "test-ticket", iceServers: [] } }
+          } } },
+        })
       `,
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent } from "solid-js"
+        import { createComponent, createSignal } from "solid-js"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
         import { BrowserStoreProvider, createBrowserStore } from ${JSON.stringify(`/@fs/${storePath}`)}
         import { BrowserSurface } from ${JSON.stringify(`/@fs/${surfacePath}`)}
         import { browser as B } from "@/locales/messages"
+        import { viewerTickets } from "@/context/sdk"
 
         const pageState = {
           id: "page-1",
@@ -102,9 +126,12 @@ beforeAll(async () => {
           setPresentation: (enabled: boolean) => store.setPresentation(enabled ? nativePresentation : null),
 
           retryCalls,
+          viewerTickets,
         }
 
         function App() {
+          const [recovering, setRecovering] = createSignal(false)
+          const [version, setVersion] = createSignal(0)
           return createComponent(I18nProvider, {
             i18n,
             get children() {
@@ -113,9 +140,19 @@ beforeAll(async () => {
                 get children() {
                   return createComponent(BrowserSurface, {
                     sessionID: "session-1",
-                    clientPresentation: "native",
+                    clientPresentation: new URLSearchParams(location.search).has("remote") ? "webrtc" : "native",
                     ownerKey: "owner-1",
                     onRetryNative: () => retryCalls.push("retry"),
+                    get recovering() { return recovering() },
+                    get recoveryVersion() { return version() },
+                    onRetryRemote: async () => {
+                      if (recovering()) return
+                      setRecovering(true)
+                      retryCalls.push("remote")
+                      await new Promise(resolve => setTimeout(resolve, 200))
+                      setVersion(value => value + 1)
+                      setRecovering(false)
+                    },
                   })
                 },
               })
@@ -139,7 +176,8 @@ beforeAll(async () => {
         { find: "@ericsanchezok/synergy-ui/icon", replacement: uiStubPath },
         { find: "@ericsanchezok/synergy-ui/semantic-icon", replacement: uiStubPath },
         { find: "./native-browser-surface", replacement: nativeSurfaceStubPath },
-        { find: "./remote-browser-surface", replacement: remoteSurfaceStubPath },
+        { find: "./browser-webrtc", replacement: remoteTransportStubPath },
+        { find: "@/context/sdk", replacement: sdkStubPath },
         { find: "@", replacement: appSource },
       ],
     },
@@ -178,7 +216,7 @@ describe("Browser native recovery surface", () => {
     expect(await page.locator(".browser-empty-title").textContent()).toBe("Recovering the native browser…")
     expect(await page.locator(".browser-empty-text").textContent()).toContain("Synergy will keep retrying")
     expect(await page.locator('[data-testid="native-surface"]').count()).toBe(0)
-    expect(await page.locator('[data-testid="remote-surface"]').count()).toBe(0)
+    expect(await page.locator("video").count()).toBe(0)
     expect(await page.evaluate(() => (window as any).__browserRecovery.pageId())).toBe("page-1")
 
     await page.evaluate(() => {
@@ -208,6 +246,32 @@ describe("Browser native recovery surface", () => {
     await page.waitForSelector('[data-testid="native-surface"]', { state: "attached", timeout: 30_000 })
     expect(await page.locator(".browser-empty-state").count()).toBe(0)
     expect(await page.locator('[data-testid="native-surface"]').count()).toBe(1)
-    expect(await page.locator('[data-testid="remote-surface"]').count()).toBe(0)
+    expect(await page.locator("video").count()).toBe(0)
   })
+})
+
+test("first remote page connects before a new presentation snapshot arrives", async () => {
+  await page.goto(`${fixtureUrl}?remote=1`)
+  await page.locator("video").waitFor({ state: "attached" })
+  await page.waitForFunction(() => (window as any).__browserRecovery.viewerTickets.length === 1, undefined, {
+    timeout: 3000,
+  })
+  expect(await page.evaluate(() => (window as any).__browserRecovery.viewerTickets[0])).toMatchObject({
+    sessionID: "session-1",
+    presentation: "webrtc",
+    browserViewerTicketRequest: { pageId: "page-1" },
+  })
+  expect(await page.getByTestId("native-surface").count()).toBe(0)
+})
+
+test("remote retry keeps the page, locks its action and reconnects its viewer", async () => {
+  await page.goto(`${fixtureUrl}?remote=1&failure=1`)
+  const retry = page.getByRole("button", { name: "Retry", exact: true })
+  await retry.waitFor()
+  expect(await page.getByText("Connection lost", { exact: true }).count()).toBe(1)
+  await retry.click()
+  expect(await page.getByRole("button", { name: "Checking the existing page…" }).isDisabled()).toBe(true)
+  await page.waitForFunction(() => (window as any).__browserRecovery.viewerTickets.length === 2)
+  expect(await page.evaluate(() => (window as any).__browserRecovery.pageId())).toBe("page-1")
+  expect(await page.evaluate(() => (window as any).__browserRecovery.retryCalls)).toEqual(["remote"])
 })

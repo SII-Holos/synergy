@@ -6,7 +6,7 @@ import { S } from "./session-i18n"
 export type SessionTransitionKind = "new-session" | "new-worktree-session" | "enter-worktree" | "leave-worktree"
 
 export type SessionTransitionPhase = "loading" | "success" | "error"
-export type SessionTransitionStepState = "pending" | "active" | "complete"
+export type SessionTransitionStepState = "pending" | "active" | "complete" | "error"
 
 export type SessionTransitionCopy = string | MessageDescriptor
 export function translateSessionTransitionCopy(copy: SessionTransitionCopy, i18n: Pick<I18n, "_">): string {
@@ -26,6 +26,8 @@ export type SessionTransitionProgress = {
   title: SessionTransitionCopy
   description: SessionTransitionCopy
   steps: SessionTransitionStep[]
+  error?: { code?: string; message: string }
+  retryLabel?: MessageDescriptor
 }
 
 export type SessionTransitionActions = {
@@ -68,12 +70,7 @@ export function isSessionTransitionBlocking(progress: SessionTransitionProgress 
 }
 
 export function createSessionStartupSteps(input: SessionStartupStepsInput): SessionTransitionStep[] {
-  const messageState =
-    input.stage === "workspace"
-      ? "pending"
-      : input.stage === "message" || input.stage === "accepted"
-        ? "active"
-        : "complete"
+  const messageState = input.stage === "workspace" ? "pending" : input.stage === "message" ? "active" : "complete"
   const steps: SessionTransitionStep[] = [
     {
       id: "session",
@@ -102,6 +99,13 @@ export function createSessionStartupSteps(input: SessionStartupStepsInput): Sess
         : S.transitionDescSubmitting,
     state: messageState,
   })
+  if (input.stage === "accepted" || input.stage === "complete") {
+    steps.push({
+      id: "initialization",
+      label: S.transitionStepInitialize,
+      state: input.stage === "accepted" ? "active" : "complete",
+    })
+  }
   return steps
 }
 
@@ -139,13 +143,18 @@ export function createSessionTransitionHandoffErrorProgress(input: {
   kind: SessionTransitionKind
   steps?: SessionTransitionStep[]
   message?: string
+  error?: { code?: string; message: string }
 }): SessionTransitionProgress {
   return {
     kind: input.kind,
     phase: "error",
     title: S.transitionTitleStalled,
     description: input.message ?? S.transitionDescStalled,
-    steps: input.steps ?? [],
+    steps: (input.steps ?? []).map((step) =>
+      step.state === "active" ? { ...step, state: "error", detail: undefined } : step,
+    ),
+    error: input.error,
+    retryLabel: input.error?.code === "SessionPaused" ? S.transitionContinue : S.transitionRetryInitialization,
   }
 }
 
