@@ -1,0 +1,38 @@
+{
+  "name": "@ericsanchezok/synergy-code-tools",
+  "version": "1.1.26",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "exports": {
+    "./parse-code": "./src/parse-code.ts",
+    "./ast-grep": "./src/ast-grep/index.ts",
+    "./ast-grep/cli": "./src/ast-grep/cli.ts",
+    "./register-tools": "./src/register-tools.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/code-tools",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ast-grep/cli-darwin-arm64": "0.40.5",
+    "@ast-grep/cli-darwin-x64": "0.40.5",
+    "@ast-grep/cli-linux-arm64-gnu": "0.40.5",
+    "@ast-grep/cli-linux-x64-gnu": "0.40.5",
+    "@ast-grep/cli-win32-x64-msvc": "0.40.5",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  }
+}

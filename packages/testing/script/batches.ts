@@ -106,12 +106,12 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/connections/test/holos/mailbox.test.ts",
   // GitHub transport redirects global fetch to its loopback server and owns auth caches.
   "packages/connections/test/channel/provider/github/api-transport.test.ts",
-  "packages/agent-integrations/test/mcp/owner-lifecycle.test.ts",
+  "packages/mcp/test/mcp/owner-lifecycle.test.ts",
   "packages/connections/test/holos/legacy-data-migration.test.ts",
   // Integration fixtures own subprocess singletons; migration fixtures temporarily select their own home.
-  "packages/agent-integrations/test/format/formatter.test.ts",
-  "packages/agent-integrations/test/external-agent/openclaw.test.ts",
-  "packages/agent-integrations/test/lsp/owner-runtime.test.ts",
+  "packages/formatter/test/format/formatter.test.ts",
+  "packages/external-agents/test/external-agent/openclaw.test.ts",
+  "packages/lsp/test/lsp/owner-runtime.test.ts",
   // Product data commands mock terminal prompts and mutate the isolated home override.
   // This fixture registers and rolls back a private migration domain and captures CLI output.
   // CLI diagnostics inspect a temporary cwd and capture the terminal output boundary.

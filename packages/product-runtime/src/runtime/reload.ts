@@ -521,19 +521,19 @@ export namespace RuntimeReload {
         return
       }
       case "mcp": {
-        const { MCP } = await import("@ericsanchezok/synergy-agent-integrations/mcp")
+        const { MCP } = await import("@ericsanchezok/synergy-mcp")
         const { Plugin } = await import("@ericsanchezok/synergy-plugin-host/plugin")
         await MCP.reload()
         await Plugin.reloadMcpContributions()
         return
       }
       case "lsp": {
-        const { LSP } = await import("@ericsanchezok/synergy-agent-integrations/lsp")
+        const { LSP } = await import("@ericsanchezok/synergy-lsp")
         await LSP.reload()
         return
       }
       case "formatter": {
-        const { Format } = await import("@ericsanchezok/synergy-agent-integrations/format")
+        const { Format } = await import("@ericsanchezok/synergy-formatter")
         await Format.reload()
         return
       }

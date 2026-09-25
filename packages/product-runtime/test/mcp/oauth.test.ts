@@ -1,16 +1,12 @@
 import { describe, expect, test, beforeAll, beforeEach, afterAll, afterEach, mock } from "bun:test"
 import fs from "fs/promises"
-import {
-  McpOAuthProvider,
-  OAUTH_CALLBACK_PATH,
-  getOAuthCallbackPort,
-} from "@ericsanchezok/synergy-agent-integrations/mcp/oauth-provider"
-import { McpAuth } from "@ericsanchezok/synergy-agent-integrations/mcp/auth"
-import { McpOAuthCallback } from "@ericsanchezok/synergy-agent-integrations/mcp/oauth-callback"
-import { MCP } from "@ericsanchezok/synergy-agent-integrations/mcp"
-import { PendingOAuth } from "@ericsanchezok/synergy-agent-integrations/mcp/pending-oauth"
+import { McpOAuthProvider, OAUTH_CALLBACK_PATH, getOAuthCallbackPort } from "@ericsanchezok/synergy-mcp/oauth-provider"
+import { McpAuth } from "@ericsanchezok/synergy-mcp/auth"
+import { McpOAuthCallback } from "@ericsanchezok/synergy-mcp/oauth-callback"
+import { MCP } from "@ericsanchezok/synergy-mcp"
+import { PendingOAuth } from "@ericsanchezok/synergy-mcp/pending-oauth"
 import { Global } from "@ericsanchezok/synergy-harness/global"
-import { McpSupervisor } from "@ericsanchezok/synergy-agent-integrations/mcp/supervisor"
+import { McpSupervisor } from "@ericsanchezok/synergy-mcp/supervisor"
 import { startForPlugin } from "@ericsanchezok/synergy-plugin-host/plugin/mcp"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"

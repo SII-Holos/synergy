@@ -39,11 +39,11 @@
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-agent-integrations": "workspace:*",
     "@ericsanchezok/synergy-browser-runtime": "workspace:*",
     "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-mcp": "workspace:*",
     "@ericsanchezok/synergy-plugin-host": "workspace:*",
     "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",

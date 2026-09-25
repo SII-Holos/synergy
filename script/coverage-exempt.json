@@ -1168,36 +1168,6 @@
         }
       ]
     },
-    "packages/agent-integrations": {
-      "command": "bun run test:coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 75,
-        "functions": 75
-      },
-      "exempt": [
-        {
-          "glob": "src/acp/types.ts",
-          "reason": "types-only declarations, no runtime logic"
-        },
-        {
-          "glob": "src/mcp/cli/mcp.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/external-agent/adapter/claude-code.ts",
-          "reason": "external agent adapters require live subprocesses or agents"
-        },
-        {
-          "glob": "src/external-agent/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/lsp/server.ts",
-          "reason": "LSP server requires the full language-service runtime"
-        }
-      ]
-    },
     "packages/browser-core": {
       "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
@@ -2130,6 +2100,93 @@
       "thresholds": {
         "lines": 85,
         "functions": 85
+      },
+      "exempt": []
+    },
+    "packages/mcp": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/cli/mcp.ts",
+          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
+        }
+      ]
+    },
+    "packages/lsp": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/server.ts",
+          "reason": "LSP server requires the full language-service runtime"
+        }
+      ]
+    },
+    "packages/formatter": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/acp": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/types.ts",
+          "reason": "types-only declarations, no runtime logic"
+        }
+      ]
+    },
+    "packages/external-agents": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": [
+        {
+          "glob": "src/adapter/claude-code.ts",
+          "reason": "external agent adapters require live subprocesses or agents"
+        },
+        {
+          "glob": "src/index.ts",
+          "reason": "barrel re-export"
+        }
+      ]
+    },
+    "packages/link-client": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
+    },
+    "packages/code-tools": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
       },
       "exempt": []
     }

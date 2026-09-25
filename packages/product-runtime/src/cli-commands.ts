@@ -23,8 +23,7 @@ export const productCommands: CommandEntry[] = [
     describe: "debugging and troubleshooting tools",
     load: async () =>
       (await import("@ericsanchezok/synergy-cli/cli/cmd/debug")).createDebugCommand([
-        (await import("@ericsanchezok/synergy-agent-integrations/lsp/cli/debug"))
-          .LSPCommand as unknown as CommandModule,
+        (await import("@ericsanchezok/synergy-lsp/cli/debug")).LSPCommand as unknown as CommandModule,
       ]) as unknown as CommandModule,
   },
   {
@@ -38,14 +37,13 @@ export const productCommands: CommandEntry[] = [
     command: "mcp",
     storage: "maintenance",
     describe: "manage MCP (Model Context Protocol) servers",
-    load: async () =>
-      (await import("@ericsanchezok/synergy-agent-integrations/mcp/cli/mcp")).McpCommand as unknown as CommandModule,
+    load: async () => (await import("@ericsanchezok/synergy-mcp/cli/mcp")).McpCommand as unknown as CommandModule,
   },
   {
     command: "acp",
     describe: "start ACP (Agent Client Protocol) server",
     load: async () =>
-      (await import("@ericsanchezok/synergy-agent-integrations/acp/cli/acp")).createAcpCommand(
+      (await import("@ericsanchezok/synergy-acp/cli/acp")).createAcpCommand(
         (await import("./server/runtime-handle")).ProductRuntimeHandle.open,
       ) as unknown as CommandModule,
   },

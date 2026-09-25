@@ -42,10 +42,10 @@ describe("coverage batch splitting", () => {
 
   test("isolated set is pinned to the known load- and state-sensitive files", () => {
     expect([...ISOLATED_BATCH_FILES].toSorted()).toEqual([
-      "packages/agent-integrations/test/external-agent/openclaw.test.ts",
-      "packages/agent-integrations/test/format/formatter.test.ts",
-      "packages/agent-integrations/test/lsp/owner-runtime.test.ts",
-      "packages/agent-integrations/test/mcp/owner-lifecycle.test.ts",
+      "packages/external-agents/test/external-agent/openclaw.test.ts",
+      "packages/formatter/test/format/formatter.test.ts",
+      "packages/lsp/test/lsp/owner-runtime.test.ts",
+      "packages/mcp/test/mcp/owner-lifecycle.test.ts",
       "packages/cli/test/cli/data-home-command.test.ts",
       "packages/cli/test/cli/data-storage-command.test.ts",
       "packages/cli/test/cli/migration-command.test.ts",

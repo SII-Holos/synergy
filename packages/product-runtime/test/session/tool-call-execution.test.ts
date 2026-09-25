@@ -14,7 +14,7 @@ import { SessionBounds } from "@ericsanchezok/synergy-harness/session/bounds"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { TimeoutConfig } from "@ericsanchezok/synergy-harness/util/timeout-config"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
-import { MCP } from "@ericsanchezok/synergy-agent-integrations/mcp"
+import { MCP } from "@ericsanchezok/synergy-mcp"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

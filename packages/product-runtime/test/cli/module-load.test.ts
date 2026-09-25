@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test"
 // Every CLI command module is a side-effect-free yargs definition. Loading
 // them in-process records them in coverage and proves each module evaluates.
 const cliModules = [
-  "../../../agent-integrations/src/acp/cli/acp",
+  "../../../acp/src/cli/acp",
   "../../../cli/src/cli/cmd/agent",
   "../../../cli/src/cli/cmd/auth",
   "../../../browser-runtime/src/cli/browser",
@@ -19,7 +19,7 @@ const cliModules = [
   "../../../cli/src/cli/cmd/import",
   "../../../library/src/cli/library",
   "../../../cli/src/cli/cmd/logs",
-  "../../../agent-integrations/src/mcp/cli/mcp",
+  "../../../mcp/src/cli/mcp",
   "../../../cli/src/cli/cmd/migration",
   "../../../cli/src/cli/cmd/models",
   "../../../plugin-host/src/plugin/cli/plugin-approve",

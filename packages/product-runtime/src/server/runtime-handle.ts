@@ -5,7 +5,7 @@ import { createLocalHost, createLocalStorage, type LocalRuntimeOptions } from "@
 import { RuntimeHandle as HarnessRuntimeHandle, type RuntimeServices } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeReload } from "../runtime/reload"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
-import { MCP } from "@ericsanchezok/synergy-agent-integrations/mcp"
+import { MCP } from "@ericsanchezok/synergy-mcp"
 import { disposeLibrary } from "@ericsanchezok/synergy-library/register"
 import { disposeBrowser } from "@ericsanchezok/synergy-browser-runtime/register"
 import { Server } from "@ericsanchezok/synergy-server/server/server"

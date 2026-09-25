@@ -213,7 +213,37 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
-    "packages/agent-integrations": {
+    "packages/mcp": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/lsp": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/formatter": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/acp": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/external-agents": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/link-client": {
+      "entry": ["test/**/*.ts"],
+      "project": ["src/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
+    },
+    "packages/code-tools": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@ericsanchezok/synergy-testing"],

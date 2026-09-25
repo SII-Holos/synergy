@@ -151,7 +151,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         needs: ["suite-packages-local-runtime"],
       },
     ),
-    task("macos-workspace", "native-workspace", 300, ["packages/local-runtime", "packages/agent-integrations"], {
+    task("macos-workspace", "native-workspace", 300, ["packages/local-runtime", "packages/lsp", "packages/formatter"], {
       pool: "macos",
       package: "packages/local-runtime",
       needs: ["suite-packages-local-runtime"],

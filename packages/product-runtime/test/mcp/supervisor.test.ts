@@ -5,13 +5,13 @@ import path from "path"
 import { pathToFileURL } from "url"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
-import { MCP } from "@ericsanchezok/synergy-agent-integrations/mcp"
+import { MCP } from "@ericsanchezok/synergy-mcp"
 import {
   connectClientOrCloseOnFailure,
   McpSupervisor,
   probeClientConnection,
-} from "@ericsanchezok/synergy-agent-integrations/mcp/supervisor"
-import { PendingOAuth } from "@ericsanchezok/synergy-agent-integrations/mcp/pending-oauth"
+} from "@ericsanchezok/synergy-mcp/supervisor"
+import { PendingOAuth } from "@ericsanchezok/synergy-mcp/pending-oauth"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { createApprovalRecord, saveApproval } from "@ericsanchezok/synergy-plugin-host/plugin/consent/approval-store"
 import { startForPlugin } from "@ericsanchezok/synergy-plugin-host/plugin/mcp"

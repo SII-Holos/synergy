@@ -6,7 +6,7 @@ import type {
   SynergyLinkProcess,
   SynergyLinkSession,
 } from "@ericsanchezok/synergy-link-protocol"
-import { ConnectTool } from "@ericsanchezok/synergy-agent-integrations/synergy-link/tools/connect"
+import { ConnectTool } from "@ericsanchezok/synergy-link-client/tools/connect"
 import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -42,9 +42,7 @@ describe("tool.connect", () => {
 
   test("lists persisted targets available to the current agent", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Build Mac",
         targetAgentID: "agent_build_mac",
@@ -147,9 +145,7 @@ describe("tool.connect", () => {
 
   test("opens a persisted target by stable targetID and records the observed host", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Remote Builder",
         targetAgentID: "agent_remote_builder",
@@ -206,9 +202,7 @@ describe("tool.connect", () => {
 
   test("does not let an agent bypass a target allowlist with a known targetID", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Review Host",
         targetAgentID: "agent_review_host",
@@ -227,9 +221,7 @@ describe("tool.connect", () => {
 
   test("does not let an agent bypass a target allowlist with legacy locators", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Private Host",
         targetAgentID: "agent_private_host",
@@ -248,9 +240,7 @@ describe("tool.connect", () => {
 
   test("does not list active sessions for targets hidden from the current agent", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Private Session Host",
         targetAgentID: "agent_private_session_host",
@@ -322,9 +312,7 @@ describe("tool.connect", () => {
 
   test("does not expose a different target session through targetID status", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Requested target",
         targetAgentID: "agent_requested",
@@ -357,9 +345,7 @@ describe("tool.connect", () => {
 
   test("closes an active session after its target is disabled", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Disabled target",
         targetAgentID: "agent_disabled",
@@ -397,12 +383,8 @@ describe("tool.connect", () => {
     }))
   test("invalidates an active session when its persisted target is removed", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetService } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-service"
-      )
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetService } = await import("@ericsanchezok/synergy-link-client/target-service")
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Removed private target",
         targetAgentID: "agent_removed_private",
@@ -869,9 +851,7 @@ describe("tool.connect verification", () => {
 
   test("a registered target recovers a cached session created by another allowed local agent", () =>
     runtime.run(async () => {
-      const { SynergyLinkTargetStore } = await import(
-        "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-      )
+      const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
       const target = await SynergyLinkTargetStore.create({
         name: "Shared recovery",
         linkID: "link_shared_recovery",

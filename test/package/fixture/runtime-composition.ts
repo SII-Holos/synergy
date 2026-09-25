@@ -82,7 +82,7 @@ try {
       ["media", "voice"],
       ["connections", "channel"],
       ["plugin-host", "plugin"],
-      ["agent-integrations", "mcp"],
+      ["mcp", "mcp"],
     ]) {
       assert.equal(field! in Config.Info.shape, enabled(domain!), `unexpected config owner ${domain}`)
     }
@@ -98,7 +98,13 @@ try {
         ["media", "media"],
         ["connections", "connections"],
         ["plugin-host", "plugin-host"],
-        ["agent-integrations", "agent-integrations"],
+        ["mcp", "mcp"],
+        ["lsp", "lsp"],
+        ["formatter", "formatter"],
+        ["acp", "acp"],
+        ["external-agents", "external-agents"],
+        ["link-client", "link-client"],
+        ["code-tools", "code-tools"],
         ["workflows", "workflows"],
         ["workbench", "workbench"],
         ["full", "product-runtime"],

@@ -1,0 +1,33 @@
+{
+  "name": "@ericsanchezok/synergy-external-agents",
+  "version": "1.1.26",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "exports": {
+    "./session-bridge": "./src/session-bridge.ts",
+    "./agent-source": "./src/agent-source.ts",
+    "./config-schema": "./src/config-schema.ts",
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/external-agents",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  }
+}

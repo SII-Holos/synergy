@@ -7,11 +7,7 @@ import { createDebugCommand } from "@ericsanchezok/synergy-cli/cli/cmd/debug"
 import { ConfigCommand } from "@ericsanchezok/synergy-cli/cli/cmd/debug/config"
 import { AgentCommand } from "@ericsanchezok/synergy-cli/cli/cmd/debug/agent"
 import { FileCommand } from "@ericsanchezok/synergy-cli/cli/cmd/debug/file"
-import {
-  LSPCommand,
-  SymbolsCommand,
-  DocumentSymbolsCommand,
-} from "@ericsanchezok/synergy-agent-integrations/lsp/cli/debug"
+import { LSPCommand, SymbolsCommand, DocumentSymbolsCommand } from "@ericsanchezok/synergy-lsp/cli/debug"
 import { RipgrepCommand } from "@ericsanchezok/synergy-cli/cli/cmd/debug/ripgrep"
 import { ScrapCommand } from "@ericsanchezok/synergy-cli/cli/cmd/debug/scrap"
 import { SkillCommand } from "@ericsanchezok/synergy-cli/cli/cmd/debug/skill"

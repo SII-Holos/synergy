@@ -1,5 +1,5 @@
 import { compositionFixture } from "../support/composition"
-import * as AgentIntegrationsConfigSchema from "@ericsanchezok/synergy-agent-integrations/config-schema"
+import * as McpConfigSchema from "@ericsanchezok/synergy-mcp/config-schema"
 import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/config-schema"
 import { test, expect, mock } from "bun:test"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -2245,7 +2245,7 @@ test("MCP server config accepts new lifecycle fields", () =>
 test("normalizeMcp applies legacy timeout to granular timeouts", () =>
   runtime.run(() => {
     const server = { type: "remote" as const, url: "https://test.example.com", timeout: 3000 }
-    const result = AgentIntegrationsConfigSchema.normalizeMcp(server)
+    const result = McpConfigSchema.normalizeMcp(server)
     expect(result.connectTimeout).toBe(3000)
     expect(result.listTimeout).toBe(3000)
     expect(result.callTimeout).toBe(3000)
@@ -2260,7 +2260,7 @@ test("normalizeMcp does not override explicit granular timeouts with legacy", ()
       timeout: 3000,
       callTimeout: 5000,
     }
-    const result = AgentIntegrationsConfigSchema.normalizeMcp(server)
+    const result = McpConfigSchema.normalizeMcp(server)
     expect(result.connectTimeout).toBe(3000)
     expect(result.listTimeout).toBe(3000)
     expect(result.callTimeout).toBe(5000)
@@ -2269,14 +2269,14 @@ test("normalizeMcp does not override explicit granular timeouts with legacy", ()
 test("normalizeMcp applies defaultCallTimeoutMs when callTimeout is missing", () =>
   runtime.run(() => {
     const server = { type: "remote" as const, url: "https://test.example.com" }
-    const result = AgentIntegrationsConfigSchema.normalizeMcp(server, undefined, 8000)
+    const result = McpConfigSchema.normalizeMcp(server, undefined, 8000)
     expect(result.callTimeout).toBe(8000)
   }))
 
 test("normalizeMcp does not override explicit callTimeout with defaultCallTimeoutMs", () =>
   runtime.run(() => {
     const server = { type: "remote" as const, url: "https://test.example.com", callTimeout: 12000 }
-    const result = AgentIntegrationsConfigSchema.normalizeMcp(server, undefined, 8000)
+    const result = McpConfigSchema.normalizeMcp(server, undefined, 8000)
     expect(result.callTimeout).toBe(12000)
   }))
 
@@ -2289,7 +2289,7 @@ test("normalizeMcp applies mcpDefaults for missing fields", () =>
       connectTimeout: 10000,
       callTimeout: 15000,
     }
-    const result = AgentIntegrationsConfigSchema.normalizeMcp(server, defaults)
+    const result = McpConfigSchema.normalizeMcp(server, defaults)
     expect(result.startup).toBe("lazy")
     expect(result.required).toBe(true)
     expect(result.connectTimeout).toBe(10000)
@@ -2300,7 +2300,7 @@ test("normalizeMcp preserves explicit values over defaults", () =>
   runtime.run(() => {
     const server = { type: "remote" as const, url: "https://test.example.com", startup: "manual" as const }
     const defaults = { startup: "lazy" as const }
-    const result = AgentIntegrationsConfigSchema.normalizeMcp(server, defaults)
+    const result = McpConfigSchema.normalizeMcp(server, defaults)
     expect(result.startup).toBe("manual")
   }))
 

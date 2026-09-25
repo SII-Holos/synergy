@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { MCP } from "@ericsanchezok/synergy-agent-integrations/mcp"
-import { McpSupervisor } from "@ericsanchezok/synergy-agent-integrations/mcp/supervisor"
+import { MCP } from "@ericsanchezok/synergy-mcp"
+import { McpSupervisor } from "@ericsanchezok/synergy-mcp/supervisor"
 import { startForPlugin } from "@ericsanchezok/synergy-plugin-host/plugin/mcp"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"

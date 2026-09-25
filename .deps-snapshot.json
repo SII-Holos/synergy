@@ -1,5 +1,9 @@
 {
-  "@ericsanchezok/synergy-harness": ["@ericsanchezok/synergy-link-protocol", "@ericsanchezok/synergy-util"],
+  "@ericsanchezok/synergy-harness": [
+    "@ericsanchezok/synergy-link-protocol",
+    "@ericsanchezok/synergy-secret-detection",
+    "@ericsanchezok/synergy-util"
+  ],
   "@ericsanchezok/synergy-local-runtime": [
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-link-protocol",
@@ -17,18 +21,25 @@
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-product-runtime": [
-    "@ericsanchezok/synergy-agent-integrations",
+    "@ericsanchezok/synergy-acp",
     "@ericsanchezok/synergy-browser-runtime",
     "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-code-tools",
     "@ericsanchezok/synergy-computer-runtime",
     "@ericsanchezok/synergy-connections",
+    "@ericsanchezok/synergy-external-agents",
+    "@ericsanchezok/synergy-formatter",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-library",
+    "@ericsanchezok/synergy-link-client",
+    "@ericsanchezok/synergy-local-runtime",
+    "@ericsanchezok/synergy-lsp",
+    "@ericsanchezok/synergy-mcp",
     "@ericsanchezok/synergy-media",
     "@ericsanchezok/synergy-note",
     "@ericsanchezok/synergy-plugin-host",
-    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-server",
+    "@ericsanchezok/synergy-util",
     "@ericsanchezok/synergy-workbench",
     "@ericsanchezok/synergy-workflows"
   ],
@@ -55,10 +66,10 @@
   "@ericsanchezok/synergy-workflows": [
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-library",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-note",
     "@ericsanchezok/synergy-plugin",
     "@ericsanchezok/synergy-plugin-host",
-    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util"
   ],
@@ -72,25 +83,43 @@
     "@ericsanchezok/synergy-workflows"
   ],
   "@ericsanchezok/synergy-workbench": [
-    "@ericsanchezok/synergy-agent-integrations",
     "@ericsanchezok/synergy-browser-runtime",
     "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-plugin-host",
     "@ericsanchezok/synergy-local-runtime",
+    "@ericsanchezok/synergy-mcp",
+    "@ericsanchezok/synergy-plugin-host",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util"
   ],
-  "@ericsanchezok/synergy-agent-integrations": [
+  "@ericsanchezok/synergy-mcp": [
     "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-link-protocol",
     "@ericsanchezok/synergy-plugin",
-    "@ericsanchezok/synergy-local-runtime",
-    "@ericsanchezok/synergy-sdk",
     "@ericsanchezok/synergy-server",
     "@ericsanchezok/synergy-util"
   ],
+  "@ericsanchezok/synergy-lsp": [
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-local-runtime",
+    "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-formatter": ["@ericsanchezok/synergy-harness", "@ericsanchezok/synergy-local-runtime"],
+  "@ericsanchezok/synergy-acp": [
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-mcp",
+    "@ericsanchezok/synergy-sdk"
+  ],
+  "@ericsanchezok/synergy-external-agents": ["@ericsanchezok/synergy-harness"],
+  "@ericsanchezok/synergy-link-client": [
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-link-protocol",
+    "@ericsanchezok/synergy-local-runtime",
+    "@ericsanchezok/synergy-server"
+  ],
+  "@ericsanchezok/synergy-code-tools": ["@ericsanchezok/synergy-harness", "@ericsanchezok/synergy-local-runtime"],
   "@ericsanchezok/synergy-media": [
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-local-runtime",
@@ -99,6 +128,7 @@
   "@ericsanchezok/synergy-plugin-host": [
     "@ericsanchezok/synergy-cli",
     "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-plugin",
     "@ericsanchezok/synergy-plugin-kit",
     "@ericsanchezok/synergy-server",
@@ -117,6 +147,7 @@
     "@ericsanchezok/synergy-sdk",
     "@ericsanchezok/synergy-util"
   ],
+  "@ericsanchezok/synergy-secret-detection": [],
   "@ericsanchezok/synergy-util": [],
   "@ericsanchezok/synergy-app": [
     "@ericsanchezok/synergy-browser-core",
@@ -129,5 +160,12 @@
     "@ericsanchezok/synergy-browser-core",
     "@ericsanchezok/synergy-computer-protocol",
     "@ericsanchezok/synergy-util"
+  ],
+  "@ericsanchezok/synergy-benchmark": [
+    "@ericsanchezok/synergy-cli",
+    "@ericsanchezok/synergy-harness",
+    "@ericsanchezok/synergy-library",
+    "@ericsanchezok/synergy-local-runtime",
+    "@ericsanchezok/synergy-product-runtime"
   ]
 }

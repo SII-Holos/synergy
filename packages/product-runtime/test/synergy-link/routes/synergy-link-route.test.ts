@@ -201,9 +201,7 @@ test("exposes the last probe on the target view", () =>
       body: JSON.stringify({ name: "Probe host", targetAgentID: "agent_probe", linkID: "link_probe" }),
     })
     const created = await createdResponse.json()
-    const { SynergyLinkTargetStore } = await import(
-      "@ericsanchezok/synergy-agent-integrations/synergy-link/target-store"
-    )
+    const { SynergyLinkTargetStore } = await import("@ericsanchezok/synergy-link-client/target-store")
     await SynergyLinkTargetStore.recordProbe(created.id, { status: "reachable" })
 
     const listResponse = await Server.App().request("/synergy-link/targets")
