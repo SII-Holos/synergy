@@ -545,6 +545,8 @@ def analyze_attempt(
         "peak_memory_bytes": resources.get("peak_memory_bytes"),
         "peak_cpu_percent": resources.get("peak_cpu_percent"),
         "oom_events": resources.get("oom_events"),
+        "observed_oom_events": resources.get("observed_oom_events", resources.get("oom_events")),
+        "oom_coverage": resources.get("oom_coverage"),
         "compaction_parts": sum(s["compaction_parts"] for s in sessions),
         "max_input": max((r["input"] or 0 for r in requests), default=0),
     }

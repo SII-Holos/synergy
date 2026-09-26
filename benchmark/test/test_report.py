@@ -158,6 +158,37 @@ def test_debug_cost_and_resource_statistics_never_change_scoring(tmp_path):
     assert report["groups"][0]["all_attempts"]["stage_seconds"]["environment_preparation"]["p50"] == 4
 
 
+@pytest.mark.parametrize("coverage", ["live_stream", "partial_live_stream", "observed_event_window", "unknown"])
+def test_oom_report_preserves_observed_lower_bound_without_inventing_a_total(tmp_path, coverage):
+    from synergy_bench.storage import read_json
+
+    fixture(tmp_path, [(1, 30)])
+    path = tmp_path / "trials/0000/attempt-001/evidence.json"
+    result = read_json(path)
+    result["resources"] = {"oom_events": None, "observed_oom_events": 1, "oom_coverage": coverage}
+    atomic_json(path, result)
+    report = report_data(tmp_path)
+    metrics = report["groups"][0]["all_attempts"]
+    assert metrics["oom_events_observed"] == 1
+    assert metrics["oom_unknown_attempts"] == 1
+    assert report["scored"][0]["reward"] == 1
+    assert read_json(path) == result
+
+
+def test_oom_report_preserves_previously_recorded_totals(tmp_path):
+    from synergy_bench.storage import read_json
+
+    fixture(tmp_path, [(1, 30)])
+    path = tmp_path / "trials/0000/attempt-001/evidence.json"
+    result = read_json(path)
+    result["resources"] = {"oom_events": 2, "oom_coverage": "live_stream"}
+    atomic_json(path, result)
+    metrics = report_data(tmp_path)["groups"][0]["all_attempts"]
+    assert metrics["oom_events_observed"] == 2
+    assert metrics["oom_unknown_attempts"] == 0
+    assert read_json(path) == result
+
+
 def test_startup_failure_does_not_replace_the_first_dispatched_attempt(tmp_path):
     from synergy_bench.storage import read_json
 

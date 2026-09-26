@@ -70,11 +70,13 @@ class ResourceMonitor:
         try:
             await self.task
         finally:
-            if self.event_task:
-                self.event_task.cancel()
-                await asyncio.gather(self.event_task, return_exceptions=True)
-            await self.collect_events()
-            self.persist()
+            try:
+                await self.collect_events()
+            finally:
+                if self.event_task:
+                    self.event_task.cancel()
+                    await asyncio.gather(self.event_task, return_exceptions=True)
+                self.persist()
 
     def persist(self) -> None:
         try:
@@ -82,7 +84,7 @@ class ResourceMonitor:
                 self.directory / "resources.json",
                 {
                     "version": 1,
-                    "oom_events": len(self.events) if self.oom_coverage == "live_stream" else None,
+                    "oom_events": None,
                     "observed_oom_events": len(self.events),
                     "peak_semantics": "maximum_observed_sample; short peaks may be missed",
                     "oom_coverage": self.oom_coverage,
@@ -181,8 +183,8 @@ class ResourceMonitor:
         self.persist()
 
     async def observe_events(self) -> None:
-        # Continuous Engine API subscription avoids the finite retrospective event window.
-        # https://docs.docker.com/reference/api/engine/version/v1.45/#tag/System/operation/SystemEvents
+        # Engine events have bounded history and best-effort delivery, without a completeness acknowledgement.
+        # https://github.com/moby/moby/blob/v28.0.4/daemon/events/events.go
         try:
             endpoint = await self.docker_endpoint()
             if not endpoint.startswith("unix://"):
@@ -201,7 +203,7 @@ class ResourceMonitor:
                 async with response:
                     response.raise_for_status()
                     self.event_connected = True
-                    self.oom_coverage = "live_stream"
+                    self.oom_coverage = "partial_live_stream"
                     self.event_ready.set()
                     log = self.directory / "container-events-live.jsonl"
                     with log.open("ab", buffering=0) as output:
@@ -211,12 +213,6 @@ class ResourceMonitor:
                                 self.accept_event(json.loads(line))
                         finally:
                             os.fsync(output.fileno())
-                    if not self.stop.is_set():
-                        self.oom_coverage = "partial_live_stream"
-        except asyncio.CancelledError:
-            if not self.stop.is_set():
-                self.oom_coverage = "partial_live_stream"
-            raise
         except (OSError, ValueError, TypeError, KeyError, RuntimeError, TimeoutError, aiohttp.ClientError) as error:
             self.oom_coverage = "partial_live_stream" if self.event_connected else "unknown"
             self.errors.append("live_events:" + type(error).__name__)

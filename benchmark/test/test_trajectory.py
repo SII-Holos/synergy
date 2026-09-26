@@ -233,6 +233,30 @@ def test_retains_retry_unknown_usage_and_timeout_reward(tmp_path):
     assert result["tools"][0]["output_bytes"] == len("private result")
 
 
+@pytest.mark.parametrize(
+    "resources",
+    [
+        {"oom_events": None, "observed_oom_events": 1, "oom_coverage": "partial_live_stream"},
+        {"oom_events": 1, "oom_coverage": "live_stream"},
+    ],
+)
+def test_analysis_exports_observed_oom_count_and_coverage_without_rewriting_evidence(tmp_path, resources):
+    from synergy_bench.storage import read_json
+
+    root = retained_run(tmp_path / "run")
+    path = root / "trials/0000/attempt-001/evidence.json"
+    evidence = read_json(path)
+    evidence["resources"] = resources
+    atomic_json(path, evidence)
+    result = analyze_run(root)
+    row = result["attempts"][0]
+    assert row["oom_events"] == resources["oom_events"]
+    assert row["observed_oom_events"] == 1
+    assert row["oom_coverage"] == resources["oom_coverage"]
+    assert row["reward"] == 1
+    assert read_json(path) == evidence
+
+
 def test_export_omits_payloads_and_refuses_to_write_into_evidence(tmp_path):
     root = retained_run(tmp_path / "run")
     result = analyze_run(root)
