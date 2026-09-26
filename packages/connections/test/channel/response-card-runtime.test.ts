@@ -7,6 +7,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
@@ -364,30 +365,41 @@ describe("ResponseCardRuntime", () => {
             },
           }
 
-          const [first, duplicate] = await Promise.all([
-            ResponseCardRuntime.acceptAction({ channelType: type, accountId: "acct_test", callback }),
-            ResponseCardRuntime.acceptAction({ channelType: type, accountId: "acct_test", callback }),
-          ])
-          expect([first.status, duplicate.status].sort()).toEqual(["accepted", "duplicate"])
+          const lease = SessionManager.acquire(session.id)
+          if (!lease) throw new Error("Expected an idle response-card session")
+          try {
+            const [first, duplicate] = await Promise.all([
+              ResponseCardRuntime.acceptAction({ channelType: type, accountId: "acct_test", callback }),
+              ResponseCardRuntime.acceptAction({ channelType: type, accountId: "acct_test", callback }),
+            ])
+            expect([first.status, duplicate.status].sort()).toEqual(["accepted", "duplicate"])
 
-          const items = await SessionInbox.list(session.id)
-          expect(items).toHaveLength(1)
-          expect(items[0]).toMatchObject({
-            mode: "task",
-            deliveryKey: `response-card:${type}:acct_test:${callback.eventId}`,
-            message: {
-              role: "user",
-              parts: [{ type: "text", text: 'Selected "Cancel" on "Deploy release".' }],
-              origin: { type: "channel" },
-              metadata: {
-                channelPush: true,
-                channelReply: true,
-                channelReplyToMessageId: "om_response_card",
-                channelRequesterId: "ou_requester",
+            await SessionManager.wake(session.id)
+            const items = await SessionInbox.list(session.id)
+            expect(items).toHaveLength(1)
+            expect(items[0]).toMatchObject({
+              mode: "task",
+              deliveryKey: `response-card:${type}:acct_test:${callback.eventId}`,
+              message: {
+                role: "user",
+                parts: [{ type: "text", text: 'Selected "Cancel" on "Deploy release".' }],
+                origin: { type: "channel" },
+                metadata: {
+                  channelPush: true,
+                  channelReply: true,
+                  channelReplyToMessageId: "om_response_card",
+                  channelRequesterId: "ou_requester",
+                },
               },
-            },
-          })
-          expect(JSON.stringify(items[0].message?.parts)).not.toContain("bash")
+            })
+            expect(JSON.stringify(items[0].message?.parts)).not.toContain("bash")
+          } finally {
+            await SessionInbox.drainReady(session.id)
+            await SessionManager.finish(lease, { requestNextWork: false })
+          }
+          await SessionManager.wake(session.id)
+          expect(await SessionInbox.list(session.id)).toEqual([])
+          expect(SessionManager.isRunning(session.id)).toBe(false)
         },
       })
     }))
