@@ -274,6 +274,12 @@ describe("AgentTurnProtocol", () => {
         user: { id: "msg_user" },
         sessionID: "ses_test",
         model: { id: "model", providerID: "provider" },
+        modelSelection: {
+          model: { modelID: "model", providerID: "provider" },
+          thinking: { mode: "variant" as const, variant: "high" },
+          revision: 2,
+          rootID: "msg_user",
+        },
         agent: { name: "synergy" },
         system: [],
         messages: [],

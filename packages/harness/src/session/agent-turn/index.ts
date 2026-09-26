@@ -124,6 +124,7 @@ export namespace AgentTurn {
                   ? { temperature: prepared.params.temperature, topP: prepared.params.topP, topK: prepared.params.topK }
                   : undefined,
                 maxOutputTokens: input.maxOutputTokens,
+                modelSelection: input.modelSelection,
               }),
             ),
           },

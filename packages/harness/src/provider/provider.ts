@@ -401,6 +401,7 @@ export namespace Provider {
         temperature: z.boolean(),
         reasoning: z.boolean(),
         reasoningEfforts: z.array(z.string()).optional(),
+        reasoningOptions: z.array(ModelsDev.ReasoningOption).optional(),
         attachment: z.boolean(),
         toolcall: z.boolean(),
         input: z.object({
@@ -487,6 +488,7 @@ export namespace Provider {
       temperature: model.temperature ?? fallback.temperature,
       reasoning,
       reasoningEfforts: reasoning ? (ModelsDev.reasoningEfforts(model) ?? fallback.reasoningEfforts) : undefined,
+      reasoningOptions: reasoning ? (model.reasoning_options ?? fallback.reasoningOptions) : undefined,
       attachment: model.attachment ?? fallback.attachment,
       toolcall: model.tool_call ?? fallback.toolcall,
       input: {

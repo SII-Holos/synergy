@@ -119,25 +119,25 @@ Skill slash-command fallback preserves that same root. When a Skill template has
 
 `SessionProgress.needsModelCall(messages, R.id)` asks whether the latest user message belonging to `R` has a later terminal assistant reply belonging to the same root. Terminal assistant finishes exclude `tool-calls` and `unknown`, which keep the model/tool loop active.
 
-### Root variant lifecycle
+### Model and thinking selection
 
-Each task root user message stores an optional `variant` string that selects a reasoning or effort variant for the model call. The variant is resolved once when the root message is created (input acceptance or inbox materialization) and then persisted. Active roots do not re-resolve after config reload.
+Session `modelSelection` stores a revision, an atomic model/thinking choice, per-model thinking preferences, the last request snapshot and an optional pending reason. Thinking is explicitly `provider-default`, `off` or a named `variant`. The HTTP `session.setModelSelection` operation validates against the session's Scope and uses an expected revision to reject stale edits. Updates publish through the established `session.updated` event; `modelOverride` remains a compatibility projection for older callers.
 
-Resolution priority (first non-empty wins):
+A new root without a saved session choice resolves its initial variant in this order:
 
-1. explicit `variant` from the input payload
-2. `agent.defaultVariant` from the resolved agent definition
-3. `config.role_variant[modelRole]` from the Models domain configuration
+1. explicit thinking selection or legacy `variant` from the input payload
+2. supported `agent.defaultVariant` from the resolved agent definition
+3. supported `config.role_variant[modelRole]` from the Models domain configuration
 
-Only task roots (`isRoot = true`) receive a resolved variant. Steer and context messages never expose or materialize a variant. A queued inbox item may retain its internal variant snapshot so promotion back to task mode does not lose intent, while non-task public projections unset the field.
+Only task roots receive initial thinking metadata. Steer and context messages never expose or materialize variant or thinking fields. A queued inbox item can retain its internal choice for promotion back to task mode. Ordinary Web submissions reuse the saved selection instead of submitting a potentially stale model/variant copy.
 
-`LLM.prepare()` consumes the persisted `variant` from the root user message. When the variant is absent, no variant options are applied and the provider uses its default behavior.
+Every model request captures a complete selection before model-dependent preparation. The transient user envelope carries the captured model and thinking; historical roots remain unchanged. The assistant message and rollout request record the captured revision and choice. Changes arriving after capture remain pending for the next request. A restricted Anthropic tool-turn transition remains pending until a new root. Existing streams and completed tools are not restarted.
 
-A persisted variant that is absent from the current enabled model catalog raises `ProviderModelVariantUnavailableError` at `SessionRootVariant.options()` — the runtime does not silently fall back to another variant or unset the field.
+Switching to a previously used model restores its session preference; first use selects provider-default. Default bypasses agent and role defaults and removes reasoning overrides after ordinary parameter hooks. Off is only offered for a concrete supported disable mapping or an explicit configured variant. Invalid explicit choices raise structured errors without silently selecting another level.
 
-`SessionRootVariant.resolve()` validates an explicit candidate variant against the model's declared `variants`. When the model declares variants, an unknown explicit candidate surfaces the same error before persistence so the caller can correct the request. An agent or role default that the selected model does not declare is omitted, letting that provider use its own default rather than persisting an invalid root variant. A model that declares no variants leaves a newly resolved root variant unset.
+New selections reject unavailable models, unsupported external-agent controls and active-task attachments the target model cannot consume. Cross-model history keeps assistant text and tool results while omitting another model's reasoning blocks. Compression and sessionless calls retain their own model options; a parent selection does not modify child-session preferences.
 
-Legacy task roots that were persisted without a variant are filled by migration `20260726-session-root-variant` when the agent/config defaults can be resolved. Session import applies the same canonicalization to missing imported root variants while preserving explicit values.
+Migration `20260923-session-model-selection` initializes existing sessions from the explicit model override and stored root choices, including per-model preferences. Import uses the same legacy conversion when the export lacks a selection. Browser-only null sentinels are not promoted into provider-default commands. See the [decision record](../decisions/implemented/feature/2026-09-23-live-model-thinking-selection.md).
 
 ## Canonical Message Semantics
 
@@ -475,7 +475,7 @@ This separation exists because `SessionEvent.Idle` has side-effect consumers —
 - Agent workers never own Session/Message persistence or canonical event sequencing.
 - Internal execution phases refine an owned loop without replacing the public busy/retry/idle status contract.
 - One root user message owns each task and all assistant messages in that task.
-- Root variant is resolved once at persistence and does not drift after config reload; steer and context messages never carry a variant.
+- Root thinking metadata remains historical; each request captures the saved session model selection before preparation. Steer and context messages never carry a thinking choice.
 - `rootID`, `visible`, `includeInContext`, and `origin` remain orthogonal.
 - `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` are the canonical legacy boundaries.
 - Transcript chronology comes from the canonical ordered message array; raw message ID comparison is not a temporal boundary.

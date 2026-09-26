@@ -1685,7 +1685,8 @@ describe("ProviderTransform.variants", () => {
         capabilities: { reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"] },
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max", "off"])
+      expect(result.off).toEqual({ reasoningEffort: "none" })
     })
   })
 
@@ -1766,7 +1767,8 @@ describe("ProviderTransform.variants", () => {
         release_date: "2026-07-01",
       })
       const result = ProviderTransform.variants(model)
-      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max", "off"])
+      expect(result.off).toEqual({ reasoningEffort: "none" })
     })
 
     test("explicit model efforts can narrow the OpenAI fallback", () => {
