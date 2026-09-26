@@ -1,3 +1,4 @@
+import { FileMutation } from "../file/mutation"
 import z from "zod"
 import * as fs from "fs"
 import * as path from "path"
@@ -127,7 +128,8 @@ export const ReadTool = Tool.define(
 
       const limit = Math.max(params.limit ?? DEFAULT_READ_LIMIT, MIN_READ_LIMIT)
       const offset = params.offset ?? 0
-      const lines = await file.text().then((text) => text.split("\n"))
+      const rawContent = await FileMutation.readText(filepath)
+      const lines = rawContent.split("\n")
 
       const raw: string[] = []
       let bytes = 0
@@ -167,7 +169,7 @@ export const ReadTool = Tool.define(
 
       // just warms the lsp client
       void ToolLspSource.get()?.touchFile(filepath, false)
-      FileTime.read(ctx.sessionID, filepath)
+      FileTime.read(ctx.sessionID, filepath, rawContent)
 
       return {
         title,

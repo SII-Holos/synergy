@@ -80,9 +80,12 @@ describe("Browser export containment", () => {
         const realWorkspace = await fs.realpath(workspace)
         const file = await BrowserExport.fileTarget(workspace, "nested/report.json")
         expect(file).toBe(path.join(realWorkspace, "nested", "report.json"))
-        const directory = await BrowserExport.createDirectory(workspace, "bundle")
-        expect(directory).toBe(path.join(realWorkspace, "bundle"))
-        await expect(BrowserExport.createDirectory(workspace, "bundle")).rejects.toMatchObject({ code: "EEXIST" })
+        expect(
+          await fs
+            .stat(path.dirname(file))
+            .then(() => true)
+            .catch(() => false),
+        ).toBe(false)
       } finally {
         await Promise.all([
           fs.rm(workspace, { recursive: true, force: true }),

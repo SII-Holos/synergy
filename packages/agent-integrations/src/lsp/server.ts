@@ -1,16 +1,14 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { spawn, type ChildProcessWithoutNullStreams } from "child_process"
+import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
+import { LSPProcess } from "./process"
 import path from "path"
-import os from "os"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { BunProc } from "@ericsanchezok/synergy-harness/util/bun"
-import { $, readableStreamToText } from "bun"
 import fs from "fs/promises"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
-import { Archive } from "@ericsanchezok/synergy-harness/util/archive"
 
 export namespace LSPServer {
   const log = Log.create({ service: "lsp.server" })
@@ -21,8 +19,17 @@ export namespace LSPServer {
       .catch(() => false)
 
   export interface Handle {
-    process: ChildProcessWithoutNullStreams
-    initialization?: Record<string, any>
+    process: ProcessHandle & {
+      stdin: import("node:stream").Writable
+      stdout: import("node:stream").Readable
+      stderr: import("node:stream").Readable
+    }
+    initialization?: Record<string, unknown>
+  }
+
+  export interface Launch {
+    command: LSPProcess.Command
+    initialization?: Record<string, unknown>
   }
 
   type RootFunction = (file: string) => Promise<string | undefined>
@@ -56,7 +63,7 @@ export namespace LSPServer {
     extensions: string[]
     global?: boolean
     root: RootFunction
-    spawn(root: string): Promise<Handle | undefined>
+    resolve(root: string): Promise<Launch | undefined>
   }
 
   export const Deno: Info = {
@@ -73,17 +80,14 @@ export namespace LSPServer {
       return path.dirname(first.value)
     },
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs"],
-    async spawn(root) {
+    async resolve(root) {
       const deno = Bun.which("deno")
       if (!deno) {
         log.info("deno not found, please install deno first")
         return
       }
       return {
-        process: spawn(deno, ["lsp"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: deno, args: ["lsp"], cwd: root },
       }
     },
   }
@@ -95,20 +99,21 @@ export namespace LSPServer {
       ["deno.json", "deno.jsonc"],
     ),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
-    async spawn(root) {
+    async resolve(root) {
       const tsserver = await Bun.resolve("typescript/lib/tsserver.js", ScopeContext.current.directory).catch(() => {})
       log.info("typescript server", { tsserver })
       if (!tsserver) return
-      const proc = spawn(BunProc.which(), ["x", "typescript-language-server", "--stdio"], {
+      const proc = {
+        command: BunProc.which(),
+        args: ["x", "typescript-language-server", "--stdio"],
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
         initialization: {
           tsserver: {
             path: tsserver,
@@ -122,7 +127,7 @@ export namespace LSPServer {
     id: "vue",
     extensions: [".vue"],
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("vue-language-server")
       const args: string[] = []
       if (!binary) {
@@ -136,31 +141,30 @@ export namespace LSPServer {
         )
         if (!(await Bun.file(js).exists())) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "@vue/language-server"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "@vue/language-server"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-            stdout: "pipe",
-            stderr: "pipe",
-            stdin: "pipe",
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push("run", js)
       }
       args.push("--stdio")
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
         initialization: {
           // Leave empty; the server will auto-detect workspace TypeScript.
         },
@@ -172,7 +176,7 @@ export namespace LSPServer {
     id: "eslint",
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue"],
-    async spawn(root) {
+    async resolve(root) {
       const eslint = await Bun.resolve("eslint", ScopeContext.current.directory).catch(() => {})
       if (!eslint) return
       log.info("spawning eslint server")
@@ -180,20 +184,22 @@ export namespace LSPServer {
       if (!(await Bun.file(serverPath).exists())) {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("downloading and building VS Code ESLint server")
-        const response = await fetch("https://github.com/microsoft/vscode-eslint/archive/refs/heads/main.zip")
+        const response = await fetch("https://github.com/microsoft/vscode-eslint/archive/refs/heads/main.zip", {
+          signal: LSPProcess.signal(),
+        })
         if (!response.ok) return
 
         const zipPath = path.join(Global.Path.bin, "vscode-eslint.zip")
-        await Bun.file(zipPath).write(response)
+        await LSPProcess.mutate(() => Bun.file(zipPath).write(response))
 
-        const ok = await Archive.extractZip(zipPath, Global.Path.bin)
+        const ok = await LSPProcess.extractZip(zipPath, Global.Path.bin)
           .then(() => true)
           .catch((error) => {
             log.error("Failed to extract vscode-eslint archive", { error })
             return false
           })
         if (!ok) return
-        await fs.rm(zipPath, { force: true })
+        await LSPProcess.mutate(() => fs.rm(zipPath, { force: true }))
 
         const extractedPath = path.join(Global.Path.bin, "vscode-eslint-main")
         const finalPath = path.join(Global.Path.bin, "vscode-eslint")
@@ -201,28 +207,29 @@ export namespace LSPServer {
         const stats = await fs.stat(finalPath).catch(() => undefined)
         if (stats) {
           log.info("removing old eslint installation", { path: finalPath })
-          await fs.rm(finalPath, { force: true, recursive: true })
+          await LSPProcess.mutate(() => fs.rm(finalPath, { force: true, recursive: true }))
         }
-        await fs.rename(extractedPath, finalPath)
+        await LSPProcess.mutate(() => fs.rename(extractedPath, finalPath))
 
         const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"
-        await $`${npmCmd} install`.cwd(finalPath).quiet()
-        await $`${npmCmd} run compile`.cwd(finalPath).quiet()
+        await LSPProcess.run({ command: [npmCmd, "install"], cwd: finalPath })
+        await LSPProcess.run({ command: [npmCmd, "run", "compile"], cwd: finalPath })
 
         log.info("installed VS Code ESLint server", { serverPath })
       }
 
-      const proc = spawn(BunProc.which(), [serverPath, "--stdio"], {
+      const proc = {
+        command: BunProc.which(),
+        args: [serverPath, "--stdio"],
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
 
       return {
-        process: proc,
+        command: proc,
       }
     },
   }
@@ -239,7 +246,7 @@ export namespace LSPServer {
       "package.json",
     ]),
     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".astro", ".svelte"],
-    async spawn(root) {
+    async resolve(root) {
       const ext = process.platform === "win32" ? ".cmd" : ""
 
       const serverTarget = path.join("node_modules", ".bin", "oxc_language_server" + ext)
@@ -268,15 +275,11 @@ export namespace LSPServer {
       }
 
       if (lintBin) {
-        const proc = Bun.spawn([lintBin, "--help"], { stdout: "pipe" })
-        await proc.exited
-        const help = await readableStreamToText(proc.stdout)
+        const proc = await LSPProcess.run({ command: [lintBin, "--help"] })
+        const help = proc.stdout.toString()
         if (help.includes("--lsp")) {
           return {
-            process: spawn(lintBin, ["--lsp"], {
-              detached: process.platform !== "win32",
-              cwd: root,
-            }),
+            command: { command: lintBin, args: ["--lsp"], cwd: root },
           }
         }
       }
@@ -288,10 +291,7 @@ export namespace LSPServer {
       }
       if (serverBin) {
         return {
-          process: spawn(serverBin, [], {
-            detached: process.platform !== "win32",
-            cwd: root,
-          }),
+          command: { command: serverBin, args: [], cwd: root },
         }
       }
 
@@ -330,7 +330,7 @@ export namespace LSPServer {
       ".gql",
       ".html",
     ],
-    async spawn(root) {
+    async resolve(root) {
       const localBin = path.join(root, "node_modules", ".bin", "biome")
       let bin: string | undefined
       if (await Bun.file(localBin).exists()) bin = localBin
@@ -348,17 +348,18 @@ export namespace LSPServer {
         args = ["x", "biome", "lsp-proxy", "--stdio"]
       }
 
-      const proc = spawn(bin, args, {
+      const proc = {
+        command: bin,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
 
       return {
-        process: proc,
+        command: proc,
       }
     },
   }
@@ -371,7 +372,7 @@ export namespace LSPServer {
       return NearestRoot(["go.mod", "go.sum"])(file)
     },
     extensions: [".go"],
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("gopls", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -380,14 +381,11 @@ export namespace LSPServer {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
 
         log.info("installing gopls")
-        const proc = Bun.spawn({
-          cmd: ["go", "install", "golang.org/x/tools/gopls@latest"],
+        const proc = await LSPProcess.run({
+          command: ["go", "install", "golang.org/x/tools/gopls@latest"],
           env: { ...RuntimeContext.current().host.env, GOBIN: Global.Path.bin },
-          stdout: "pipe",
-          stderr: "pipe",
-          stdin: "pipe",
         })
-        const exit = await proc.exited
+        const exit = proc.exitCode
         if (exit !== 0) {
           log.error("Failed to install gopls")
           return
@@ -398,10 +396,7 @@ export namespace LSPServer {
         })
       }
       return {
-        process: spawn(bin!, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin!, args: [], cwd: root },
       }
     },
   }
@@ -410,7 +405,7 @@ export namespace LSPServer {
     id: "ruby-lsp",
     root: NearestRoot(["Gemfile"]),
     extensions: [".rb", ".rake", ".gemspec", ".ru"],
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("rubocop", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -423,13 +418,8 @@ export namespace LSPServer {
         }
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("installing rubocop")
-        const proc = Bun.spawn({
-          cmd: ["gem", "install", "rubocop", "--bindir", Global.Path.bin],
-          stdout: "pipe",
-          stderr: "pipe",
-          stdin: "pipe",
-        })
-        const exit = await proc.exited
+        const proc = await LSPProcess.run({ command: ["gem", "install", "rubocop", "--bindir", Global.Path.bin] })
+        const exit = proc.exitCode
         if (exit !== 0) {
           log.error("Failed to install rubocop")
           return
@@ -440,10 +430,7 @@ export namespace LSPServer {
         })
       }
       return {
-        process: spawn(bin!, ["--lsp"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin!, args: ["--lsp"], cwd: root },
       }
     },
   }
@@ -460,7 +447,7 @@ export namespace LSPServer {
       "Pipfile",
       "pyrightconfig.json",
     ]),
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("ty")
 
       const initialization: Record<string, string> = {}
@@ -499,13 +486,10 @@ export namespace LSPServer {
         return
       }
 
-      const proc = spawn(binary, ["server"], {
-        detached: process.platform !== "win32",
-        cwd: root,
-      })
+      const proc = { command: binary, args: ["server"], cwd: root }
 
       return {
-        process: proc,
+        command: proc,
         initialization,
       }
     },
@@ -515,20 +499,21 @@ export namespace LSPServer {
     id: "pyright",
     extensions: [".py", ".pyi"],
     root: NearestRoot(["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]),
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("pyright-langserver")
       const args = []
       if (!binary) {
         const js = path.join(Global.Path.bin, "node_modules", "pyright", "dist", "pyright-langserver.js")
         if (!(await Bun.file(js).exists())) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "pyright"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "pyright"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push(...["run", js])
@@ -553,16 +538,17 @@ export namespace LSPServer {
         }
       }
 
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
         initialization,
       }
     },
@@ -572,7 +558,7 @@ export namespace LSPServer {
     id: "elixir-ls",
     extensions: [".ex", ".exs"],
     root: NearestRoot(["mix.exs", "mix.lock"]),
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("elixir-ls")
       if (!binary) {
         const elixirLsPath = path.join(Global.Path.bin, "elixir-ls")
@@ -593,12 +579,14 @@ export namespace LSPServer {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
           log.info("downloading elixir-ls from GitHub releases")
 
-          const response = await fetch("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip")
+          const response = await fetch("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip", {
+            signal: LSPProcess.signal(),
+          })
           if (!response.ok) return
           const zipPath = path.join(Global.Path.bin, "elixir-ls.zip")
-          await Bun.file(zipPath).write(response)
+          await LSPProcess.mutate(() => Bun.file(zipPath).write(response))
 
-          const ok = await Archive.extractZip(zipPath, Global.Path.bin)
+          const ok = await LSPProcess.extractZip(zipPath, Global.Path.bin)
             .then(() => true)
             .catch((error) => {
               log.error("Failed to extract elixir-ls archive", { error })
@@ -606,15 +594,19 @@ export namespace LSPServer {
             })
           if (!ok) return
 
-          await fs.rm(zipPath, {
-            force: true,
-            recursive: true,
-          })
+          await LSPProcess.mutate(() =>
+            fs.rm(zipPath, {
+              force: true,
+              recursive: true,
+            }),
+          )
 
-          await $`mix deps.get && mix compile && mix elixir_ls.release2 -o release`
-            .quiet()
-            .cwd(path.join(Global.Path.bin, "elixir-ls-master"))
-            .env({ MIX_ENV: "prod", ...RuntimeContext.current().host.env })
+          for (const args of [["deps.get"], ["compile"], ["elixir_ls.release2", "-o", "release"]])
+            await LSPProcess.run({
+              command: ["mix", ...args],
+              cwd: path.join(Global.Path.bin, "elixir-ls-master"),
+              env: { ...RuntimeContext.current().host.env, MIX_ENV: "prod" },
+            })
 
           log.info(`installed elixir-ls`, {
             path: elixirLsPath,
@@ -623,10 +615,7 @@ export namespace LSPServer {
       }
 
       return {
-        process: spawn(binary, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: binary, args: [], cwd: root },
       }
     },
   }
@@ -635,7 +624,7 @@ export namespace LSPServer {
     id: "zls",
     extensions: [".zig", ".zon"],
     root: NearestRoot(["build.zig"]),
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("zls", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -650,7 +639,9 @@ export namespace LSPServer {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("downloading zls from GitHub releases")
 
-        const releaseResponse = await fetch("https://api.github.com/repos/zigtools/zls/releases/latest")
+        const releaseResponse = await fetch("https://api.github.com/repos/zigtools/zls/releases/latest", {
+          signal: LSPProcess.signal(),
+        })
         if (!releaseResponse.ok) {
           log.error("Failed to fetch zls release info")
           return
@@ -698,17 +689,17 @@ export namespace LSPServer {
         }
 
         const downloadUrl = asset.browser_download_url
-        const downloadResponse = await fetch(downloadUrl)
+        const downloadResponse = await fetch(downloadUrl, { signal: LSPProcess.signal() })
         if (!downloadResponse.ok) {
           log.error("Failed to download zls")
           return
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await Bun.file(tempPath).write(downloadResponse)
+        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
 
         if (ext === "zip") {
-          const ok = await Archive.extractZip(tempPath, Global.Path.bin)
+          const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
             .then(() => true)
             .catch((error) => {
               log.error("Failed to extract zls archive", { error })
@@ -716,10 +707,10 @@ export namespace LSPServer {
             })
           if (!ok) return
         } else {
-          await $`tar -xf ${tempPath}`.cwd(Global.Path.bin).quiet().nothrow()
+          await LSPProcess.run({ command: ["tar", "-xf", tempPath], cwd: Global.Path.bin })
         }
 
-        await fs.rm(tempPath, { force: true })
+        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "zls" + (platform === "win32" ? ".exe" : ""))
 
@@ -729,17 +720,14 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await $`chmod +x ${bin}`.quiet().nothrow()
+          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
         }
 
         log.info(`installed zls`, { bin })
       }
 
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -748,7 +736,7 @@ export namespace LSPServer {
     id: "csharp",
     root: NearestRoot([".sln", ".csproj", "global.json"]),
     extensions: [".cs"],
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("csharp-ls", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -760,13 +748,10 @@ export namespace LSPServer {
 
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("installing csharp-ls via dotnet tool")
-        const proc = Bun.spawn({
-          cmd: ["dotnet", "tool", "install", "csharp-ls", "--tool-path", Global.Path.bin],
-          stdout: "pipe",
-          stderr: "pipe",
-          stdin: "pipe",
+        const proc = await LSPProcess.run({
+          command: ["dotnet", "tool", "install", "csharp-ls", "--tool-path", Global.Path.bin],
         })
-        const exit = await proc.exited
+        const exit = proc.exitCode
         if (exit !== 0) {
           log.error("Failed to install csharp-ls")
           return
@@ -777,10 +762,7 @@ export namespace LSPServer {
       }
 
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -789,7 +771,7 @@ export namespace LSPServer {
     id: "fsharp",
     root: NearestRoot([".sln", ".fsproj", "global.json"]),
     extensions: [".fs", ".fsi", ".fsx", ".fsscript"],
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("fsautocomplete", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -801,13 +783,10 @@ export namespace LSPServer {
 
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("installing fsautocomplete via dotnet tool")
-        const proc = Bun.spawn({
-          cmd: ["dotnet", "tool", "install", "fsautocomplete", "--tool-path", Global.Path.bin],
-          stdout: "pipe",
-          stderr: "pipe",
-          stdin: "pipe",
+        const proc = await LSPProcess.run({
+          command: ["dotnet", "tool", "install", "fsautocomplete", "--tool-path", Global.Path.bin],
         })
-        const exit = await proc.exited
+        const exit = proc.exitCode
         if (exit !== 0) {
           log.error("Failed to install fsautocomplete")
           return
@@ -818,10 +797,7 @@ export namespace LSPServer {
       }
 
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -830,16 +806,13 @@ export namespace LSPServer {
     id: "sourcekit-lsp",
     extensions: [".swift", ".objc", "objcpp"],
     root: NearestRoot(["Package.swift", "*.xcodeproj", "*.xcworkspace"]),
-    async spawn(root) {
+    async resolve(root) {
       // Check if sourcekit-lsp is available in the PATH
       // This is installed with the Swift toolchain
       const sourcekit = Bun.which("sourcekit-lsp")
       if (sourcekit) {
         return {
-          process: spawn(sourcekit, {
-            detached: process.platform !== "win32",
-            cwd: root,
-          }),
+          command: { command: sourcekit, args: [], cwd: root },
         }
       }
 
@@ -847,17 +820,14 @@ export namespace LSPServer {
       // This is specific to macOS where sourcekit-lsp is typically installed with Xcode
       if (!Bun.which("xcrun")) return
 
-      const lspLoc = await $`xcrun --find sourcekit-lsp`.quiet().nothrow()
+      const lspLoc = await LSPProcess.run({ command: ["xcrun", "--find", "sourcekit-lsp"], check: false })
 
       if (lspLoc.exitCode !== 0) return
 
-      const bin = lspLoc.text().trim()
+      const bin = lspLoc.stdout.toString().trim()
 
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -894,17 +864,14 @@ export namespace LSPServer {
       return crateRoot
     },
     extensions: [".rs"],
-    async spawn(root) {
+    async resolve(root) {
       const bin = Bun.which("rust-analyzer")
       if (!bin) {
         log.info("rust-analyzer not found in path, please install it")
         return
       }
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -913,15 +880,12 @@ export namespace LSPServer {
     id: "clangd",
     root: NearestRoot(["compile_commands.json", "compile_flags.txt", ".clangd", "CMakeLists.txt", "Makefile"]),
     extensions: [".c", ".cpp", ".cc", ".cxx", ".c++", ".h", ".hpp", ".hh", ".hxx", ".h++"],
-    async spawn(root) {
+    async resolve(root) {
       const args = ["--background-index", "--clang-tidy"]
       const fromPath = Bun.which("clangd")
       if (fromPath) {
         return {
-          process: spawn(fromPath, args, {
-            detached: process.platform !== "win32",
-            cwd: root,
-          }),
+          command: { command: fromPath, args: args, cwd: root },
         }
       }
 
@@ -929,10 +893,7 @@ export namespace LSPServer {
       const direct = path.join(Global.Path.bin, "clangd" + ext)
       if (await Bun.file(direct).exists()) {
         return {
-          process: spawn(direct, args, {
-            detached: process.platform !== "win32",
-            cwd: root,
-          }),
+          command: { command: direct, args: args, cwd: root },
         }
       }
 
@@ -943,10 +904,7 @@ export namespace LSPServer {
         const candidate = path.join(Global.Path.bin, entry.name, "bin", "clangd" + ext)
         if (await Bun.file(candidate).exists()) {
           return {
-            process: spawn(candidate, args, {
-              detached: process.platform !== "win32",
-              cwd: root,
-            }),
+            command: { command: candidate, args: args, cwd: root },
           }
         }
       }
@@ -954,7 +912,9 @@ export namespace LSPServer {
       if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
       log.info("downloading clangd from GitHub releases")
 
-      const releaseResponse = await fetch("https://api.github.com/repos/clangd/clangd/releases/latest")
+      const releaseResponse = await fetch("https://api.github.com/repos/clangd/clangd/releases/latest", {
+        signal: LSPProcess.signal(),
+      })
       if (!releaseResponse.ok) {
         log.error("Failed to fetch clangd release info")
         return
@@ -1000,7 +960,7 @@ export namespace LSPServer {
       }
 
       const name = asset.name
-      const downloadResponse = await fetch(asset.browser_download_url)
+      const downloadResponse = await fetch(asset.browser_download_url, { signal: LSPProcess.signal() })
       if (!downloadResponse.ok) {
         log.error("Failed to download clangd")
         return
@@ -1012,7 +972,7 @@ export namespace LSPServer {
         log.error("Failed to write clangd archive")
         return
       }
-      await Bun.write(archive, buf)
+      await LSPProcess.mutate(() => Bun.write(archive, buf))
 
       const zip = name.endsWith(".zip")
       const tar = name.endsWith(".tar.xz")
@@ -1022,7 +982,7 @@ export namespace LSPServer {
       }
 
       if (zip) {
-        const ok = await Archive.extractZip(archive, Global.Path.bin)
+        const ok = await LSPProcess.extractZip(archive, Global.Path.bin)
           .then(() => true)
           .catch((error) => {
             log.error("Failed to extract clangd archive", { error })
@@ -1031,9 +991,9 @@ export namespace LSPServer {
         if (!ok) return
       }
       if (tar) {
-        await $`tar -xf ${archive}`.cwd(Global.Path.bin).quiet().nothrow()
+        await LSPProcess.run({ command: ["tar", "-xf", archive], cwd: Global.Path.bin })
       }
-      await fs.rm(archive, { force: true })
+      await LSPProcess.mutate(() => fs.rm(archive, { force: true }))
 
       const bin = path.join(Global.Path.bin, "clangd_" + tag, "bin", "clangd" + ext)
       if (!(await Bun.file(bin).exists())) {
@@ -1042,7 +1002,7 @@ export namespace LSPServer {
       }
 
       if (platform !== "win32") {
-        await $`chmod +x ${bin}`.quiet().nothrow()
+        await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
       }
 
       await fs.unlink(path.join(Global.Path.bin, "clangd")).catch(() => {})
@@ -1051,10 +1011,7 @@ export namespace LSPServer {
       log.info(`installed clangd`, { bin })
 
       return {
-        process: spawn(bin, args, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: args, cwd: root },
       }
     },
   }
@@ -1063,38 +1020,37 @@ export namespace LSPServer {
     id: "svelte",
     extensions: [".svelte"],
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("svelteserver")
       const args: string[] = []
       if (!binary) {
         const js = path.join(Global.Path.bin, "node_modules", "svelte-language-server", "bin", "server.js")
         if (!(await Bun.file(js).exists())) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "svelte-language-server"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "svelte-language-server"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-            stdout: "pipe",
-            stderr: "pipe",
-            stdin: "pipe",
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push("run", js)
       }
       args.push("--stdio")
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
         initialization: {},
       }
     },
@@ -1104,7 +1060,7 @@ export namespace LSPServer {
     id: "astro",
     extensions: [".astro"],
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
-    async spawn(root) {
+    async resolve(root) {
       const tsserver = await Bun.resolve("typescript/lib/tsserver.js", ScopeContext.current.directory).catch(() => {})
       if (!tsserver) {
         log.info("typescript not found, required for Astro language server")
@@ -1118,31 +1074,30 @@ export namespace LSPServer {
         const js = path.join(Global.Path.bin, "node_modules", "@astrojs", "language-server", "bin", "nodeServer.js")
         if (!(await Bun.file(js).exists())) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "@astrojs/language-server"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "@astrojs/language-server"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-            stdout: "pipe",
-            stderr: "pipe",
-            stdin: "pipe",
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push("run", js)
       }
       args.push("--stdio")
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
         initialization: {
           typescript: {
             tsdk,
@@ -1156,19 +1111,18 @@ export namespace LSPServer {
     id: "jdtls",
     root: NearestRoot(["pom.xml", "build.gradle", "build.gradle.kts", ".project", ".classpath"]),
     extensions: [".java"],
-    async spawn(root) {
+    async resolve(root) {
       const java = Bun.which("java")
       if (!java) {
         log.error("Java 21 or newer is required to run the JDTLS. Please install it first.")
         return
       }
-      const javaMajorVersion = await $`java -version`
-        .quiet()
-        .nothrow()
-        .then(({ stderr }) => {
+      const javaMajorVersion = await LSPProcess.run({ command: [java, "-version"], check: false }).then(
+        ({ stderr }) => {
           const m = /"(\d+)\.\d+\.\d+"/.exec(stderr.toString())
           return !m ? undefined : parseInt(m[1])
-        })
+        },
+      )
       if (javaMajorVersion == null || javaMajorVersion < 21) {
         log.error("JDTLS requires at least Java 21.")
         return
@@ -1179,20 +1133,18 @@ export namespace LSPServer {
       if (!installed) {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("Downloading JDTLS LSP server.")
-        await fs.mkdir(distPath, { recursive: true })
+        await LSPProcess.mutate(() => fs.mkdir(distPath, { recursive: true }))
         const releaseURL =
           "https://www.eclipse.org/downloads/download.php?file=/jdtls/snapshots/jdt-language-server-latest.tar.gz"
         const archivePath = path.join(distPath, "release.tar.gz")
-        await $`curl -L -o '${archivePath}' '${releaseURL}'`.quiet().nothrow()
-        await $`tar -xzf ${archivePath}`.cwd(distPath).quiet().nothrow()
-        await fs.rm(archivePath, { force: true })
+        await LSPProcess.run({ command: ["curl", "--fail", "-L", "-o", archivePath, releaseURL] })
+        await LSPProcess.run({ command: ["tar", "-xzf", archivePath], cwd: distPath })
+        await LSPProcess.mutate(() => fs.rm(archivePath, { force: true }))
       }
-      const jarFileName = await $`ls org.eclipse.equinox.launcher_*.jar`
-        .cwd(launcherDir)
-        .quiet()
-        .nothrow()
-        .then(({ stdout }) => stdout.toString().trim())
-      const launcherJar = path.join(launcherDir, jarFileName)
+      const jarFileName = await fs
+        .readdir(launcherDir)
+        .then((files) => files.find((file) => /^org\.eclipse\.equinox\.launcher_.+\.jar$/.test(file)))
+      const launcherJar = path.join(launcherDir, jarFileName ?? "missing-launcher.jar")
       if (!(await pathExists(launcherJar))) {
         log.error(`Failed to locate the JDTLS launcher module in the installed directory: ${distPath}.`)
         return
@@ -1212,11 +1164,11 @@ export namespace LSPServer {
           }
         })(),
       )
-      const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-jdtls-data"))
+      const dataDir = await LSPProcess.temporaryDirectory()
       return {
-        process: spawn(
-          java,
-          [
+        command: {
+          command: java,
+          args: [
             "-jar",
             launcherJar,
             "-configuration",
@@ -1231,11 +1183,8 @@ export namespace LSPServer {
             "--add-opens java.base/java.util=ALL-UNNAMED",
             "--add-opens java.base/java.lang=ALL-UNNAMED",
           ],
-          {
-            cwd: root,
-            detached: process.platform !== "win32",
-          },
-        ),
+          cwd: root,
+        },
       }
     },
   }
@@ -1256,7 +1205,7 @@ export namespace LSPServer {
       // 4) Maven fallback
       return NearestRoot(["pom.xml"])(file)
     },
-    async spawn(root) {
+    async resolve(root) {
       const distPath = path.join(Global.Path.bin, "kotlin-ls")
       const launcherScript =
         process.platform === "win32" ? path.join(distPath, "kotlin-lsp.cmd") : path.join(distPath, "kotlin-lsp.sh")
@@ -1265,7 +1214,9 @@ export namespace LSPServer {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("Downloading Kotlin Language Server from GitHub.")
 
-        const releaseResponse = await fetch("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
+        const releaseResponse = await fetch("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest", {
+          signal: LSPProcess.signal(),
+        })
         if (!releaseResponse.ok) {
           log.error("Failed to fetch kotlin-lsp release info")
           return
@@ -1303,19 +1254,19 @@ export namespace LSPServer {
         const assetName = `kotlin-lsp-${version}-${kotlinPlatform}-${kotlinArch}.zip`
         const releaseURL = `https://download-cdn.jetbrains.com/kotlin-lsp/${version}/${assetName}`
 
-        await fs.mkdir(distPath, { recursive: true })
+        await LSPProcess.mutate(() => fs.mkdir(distPath, { recursive: true }))
         const archivePath = path.join(distPath, "kotlin-ls.zip")
-        await $`curl -L -o '${archivePath}' '${releaseURL}'`.quiet().nothrow()
-        const ok = await Archive.extractZip(archivePath, distPath)
+        await LSPProcess.run({ command: ["curl", "--fail", "-L", "-o", archivePath, releaseURL] })
+        const ok = await LSPProcess.extractZip(archivePath, distPath)
           .then(() => true)
           .catch((error) => {
             log.error("Failed to extract Kotlin LS archive", { error })
             return false
           })
         if (!ok) return
-        await fs.rm(archivePath, { force: true })
+        await LSPProcess.mutate(() => fs.rm(archivePath, { force: true }))
         if (process.platform !== "win32") {
-          await $`chmod +x ${launcherScript}`.quiet().nothrow()
+          await LSPProcess.mutate(() => fs.chmod(launcherScript, 0o755))
         }
         log.info("Installed Kotlin Language Server", { path: launcherScript })
       }
@@ -1324,10 +1275,7 @@ export namespace LSPServer {
         return
       }
       return {
-        process: spawn(launcherScript, ["--stdio"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: launcherScript, args: ["--stdio"], cwd: root },
       }
     },
   }
@@ -1336,7 +1284,7 @@ export namespace LSPServer {
     id: "yaml-ls",
     extensions: [".yaml", ".yml"],
     root: NearestRoot(["package-lock.json", "bun.lockb", "bun.lock", "pnpm-lock.yaml", "yarn.lock"]),
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("yaml-language-server")
       const args: string[] = []
       if (!binary) {
@@ -1352,31 +1300,30 @@ export namespace LSPServer {
         const exists = await Bun.file(js).exists()
         if (!exists) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "yaml-language-server"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "yaml-language-server"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-            stdout: "pipe",
-            stderr: "pipe",
-            stdin: "pipe",
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push("run", js)
       }
       args.push("--stdio")
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
       }
     },
   }
@@ -1393,7 +1340,7 @@ export namespace LSPServer {
       "selene.yml",
     ]),
     extensions: [".lua"],
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("lua-language-server", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -1402,7 +1349,9 @@ export namespace LSPServer {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("downloading lua-language-server from GitHub releases")
 
-        const releaseResponse = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
+        const releaseResponse = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest", {
+          signal: LSPProcess.signal(),
+        })
         if (!releaseResponse.ok) {
           log.error("Failed to fetch lua-language-server release info")
           return
@@ -1450,14 +1399,14 @@ export namespace LSPServer {
         }
 
         const downloadUrl = asset.browser_download_url
-        const downloadResponse = await fetch(downloadUrl)
+        const downloadResponse = await fetch(downloadUrl, { signal: LSPProcess.signal() })
         if (!downloadResponse.ok) {
           log.error("Failed to download lua-language-server")
           return
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await Bun.file(tempPath).write(downloadResponse)
+        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
 
         // Unlike zls which is a single self-contained binary,
         // lua-language-server needs supporting files (meta/, locale/, etc.)
@@ -1467,13 +1416,13 @@ export namespace LSPServer {
         // Remove old installation if exists
         const stats = await fs.stat(installDir).catch(() => undefined)
         if (stats) {
-          await fs.rm(installDir, { force: true, recursive: true })
+          await LSPProcess.mutate(() => fs.rm(installDir, { force: true, recursive: true }))
         }
 
-        await fs.mkdir(installDir, { recursive: true })
+        await LSPProcess.mutate(() => fs.mkdir(installDir, { recursive: true }))
 
         if (ext === "zip") {
-          const ok = await Archive.extractZip(tempPath, installDir)
+          const ok = await LSPProcess.extractZip(tempPath, installDir)
             .then(() => true)
             .catch((error) => {
               log.error("Failed to extract lua-language-server archive", { error })
@@ -1481,8 +1430,7 @@ export namespace LSPServer {
             })
           if (!ok) return
         } else {
-          const ok = await $`tar -xzf ${tempPath} -C ${installDir}`
-            .quiet()
+          const ok = await LSPProcess.run({ command: ["tar", "-xzf", tempPath, "-C", installDir] })
             .then(() => true)
             .catch((error) => {
               log.error("Failed to extract lua-language-server archive", { error })
@@ -1491,7 +1439,7 @@ export namespace LSPServer {
           if (!ok) return
         }
 
-        await fs.rm(tempPath, { force: true })
+        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
 
         // Binary is located in bin/ subdirectory within the extracted archive
         bin = path.join(installDir, "bin", "lua-language-server" + (platform === "win32" ? ".exe" : ""))
@@ -1502,11 +1450,13 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          const ok = await $`chmod +x ${bin}`.quiet().catch((error) => {
-            log.error("Failed to set executable permission for lua-language-server binary", {
-              error,
+          const ok = await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
+            .then(() => true)
+            .catch((error) => {
+              log.error("Failed to set executable permission for lua-language-server binary", {
+                error,
+              })
             })
-          })
           if (!ok) return
         }
 
@@ -1514,10 +1464,7 @@ export namespace LSPServer {
       }
 
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -1526,38 +1473,37 @@ export namespace LSPServer {
     id: "php intelephense",
     extensions: [".php"],
     root: NearestRoot(["composer.json", "composer.lock", ".php-version"]),
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("intelephense")
       const args: string[] = []
       if (!binary) {
         const js = path.join(Global.Path.bin, "node_modules", "intelephense", "lib", "intelephense.js")
         if (!(await Bun.file(js).exists())) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "intelephense"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "intelephense"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-            stdout: "pipe",
-            stderr: "pipe",
-            stdin: "pipe",
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push("run", js)
       }
       args.push("--stdio")
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
         initialization: {},
       }
     },
@@ -1567,17 +1513,14 @@ export namespace LSPServer {
     id: "prisma",
     extensions: [".prisma"],
     root: NearestRoot(["schema.prisma", "prisma/schema.prisma", "prisma"], ["package.json"]),
-    async spawn(root) {
+    async resolve(root) {
       const prisma = Bun.which("prisma")
       if (!prisma) {
         log.info("prisma not found, please install prisma")
         return
       }
       return {
-        process: spawn(prisma, ["language-server"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: prisma, args: ["language-server"], cwd: root },
       }
     },
   }
@@ -1586,17 +1529,14 @@ export namespace LSPServer {
     id: "dart",
     extensions: [".dart"],
     root: NearestRoot(["pubspec.yaml", "analysis_options.yaml"]),
-    async spawn(root) {
+    async resolve(root) {
       const dart = Bun.which("dart")
       if (!dart) {
         log.info("dart not found, please install dart first")
         return
       }
       return {
-        process: spawn(dart, ["language-server", "--lsp"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: dart, args: ["language-server", "--lsp"], cwd: root },
       }
     },
   }
@@ -1605,17 +1545,14 @@ export namespace LSPServer {
     id: "ocaml-lsp",
     extensions: [".ml", ".mli"],
     root: NearestRoot(["dune-project", "dune-workspace", ".merlin", "opam"]),
-    async spawn(root) {
+    async resolve(root) {
       const bin = Bun.which("ocamllsp")
       if (!bin) {
         log.info("ocamllsp not found, please install ocaml-lsp-server")
         return
       }
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -1623,38 +1560,37 @@ export namespace LSPServer {
     id: "bash",
     extensions: [".sh", ".bash", ".zsh", ".ksh"],
     root: async () => ScopeContext.current.directory,
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("bash-language-server")
       const args: string[] = []
       if (!binary) {
         const js = path.join(Global.Path.bin, "node_modules", "bash-language-server", "out", "cli.js")
         if (!(await Bun.file(js).exists())) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "bash-language-server"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "bash-language-server"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-            stdout: "pipe",
-            stderr: "pipe",
-            stdin: "pipe",
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push("run", js)
       }
       args.push("start")
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
       }
     },
   }
@@ -1663,7 +1599,7 @@ export namespace LSPServer {
     id: "terraform",
     extensions: [".tf", ".tfvars"],
     root: NearestRoot([".terraform.lock.hcl", "terraform.tfstate", "*.tf"]),
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("terraform-ls", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -1672,7 +1608,9 @@ export namespace LSPServer {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("downloading terraform-ls from GitHub releases")
 
-        const releaseResponse = await fetch("https://api.github.com/repos/hashicorp/terraform-ls/releases/latest")
+        const releaseResponse = await fetch("https://api.github.com/repos/hashicorp/terraform-ls/releases/latest", {
+          signal: LSPProcess.signal(),
+        })
         if (!releaseResponse.ok) {
           log.error("Failed to fetch terraform-ls release info")
           return
@@ -1703,23 +1641,23 @@ export namespace LSPServer {
           return
         }
 
-        const downloadResponse = await fetch(asset.browser_download_url)
+        const downloadResponse = await fetch(asset.browser_download_url, { signal: LSPProcess.signal() })
         if (!downloadResponse.ok) {
           log.error("Failed to download terraform-ls")
           return
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await Bun.file(tempPath).write(downloadResponse)
+        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
 
-        const ok = await Archive.extractZip(tempPath, Global.Path.bin)
+        const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
           .then(() => true)
           .catch((error) => {
             log.error("Failed to extract terraform-ls archive", { error })
             return false
           })
         if (!ok) return
-        await fs.rm(tempPath, { force: true })
+        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "terraform-ls" + (platform === "win32" ? ".exe" : ""))
 
@@ -1729,17 +1667,14 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await $`chmod +x ${bin}`.quiet().nothrow()
+          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
         }
 
         log.info(`installed terraform-ls`, { bin })
       }
 
       return {
-        process: spawn(bin, ["serve"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: ["serve"], cwd: root },
         initialization: {
           experimentalFeatures: {
             prefillRequiredFields: true,
@@ -1754,7 +1689,7 @@ export namespace LSPServer {
     id: "texlab",
     extensions: [".tex", ".bib"],
     root: NearestRoot([".latexmkrc", "latexmkrc", ".texlabroot", "texlabroot"]),
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("texlab", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -1763,7 +1698,9 @@ export namespace LSPServer {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("downloading texlab from GitHub releases")
 
-        const response = await fetch("https://api.github.com/repos/latex-lsp/texlab/releases/latest")
+        const response = await fetch("https://api.github.com/repos/latex-lsp/texlab/releases/latest", {
+          signal: LSPProcess.signal(),
+        })
         if (!response.ok) {
           log.error("Failed to fetch texlab release info")
           return
@@ -1794,17 +1731,17 @@ export namespace LSPServer {
           return
         }
 
-        const downloadResponse = await fetch(asset.browser_download_url)
+        const downloadResponse = await fetch(asset.browser_download_url, { signal: LSPProcess.signal() })
         if (!downloadResponse.ok) {
           log.error("Failed to download texlab")
           return
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await Bun.file(tempPath).write(downloadResponse)
+        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
 
         if (ext === "zip") {
-          const ok = await Archive.extractZip(tempPath, Global.Path.bin)
+          const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
             .then(() => true)
             .catch((error) => {
               log.error("Failed to extract texlab archive", { error })
@@ -1813,10 +1750,10 @@ export namespace LSPServer {
           if (!ok) return
         }
         if (ext === "tar.gz") {
-          await $`tar -xzf ${tempPath}`.cwd(Global.Path.bin).quiet().nothrow()
+          await LSPProcess.run({ command: ["tar", "-xzf", tempPath], cwd: Global.Path.bin })
         }
 
-        await fs.rm(tempPath, { force: true })
+        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "texlab" + (platform === "win32" ? ".exe" : ""))
 
@@ -1826,17 +1763,14 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await $`chmod +x ${bin}`.quiet().nothrow()
+          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
         }
 
         log.info("installed texlab", { bin })
       }
 
       return {
-        process: spawn(bin, {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -1845,38 +1779,37 @@ export namespace LSPServer {
     id: "dockerfile",
     extensions: [".dockerfile", "Dockerfile"],
     root: async () => ScopeContext.current.directory,
-    async spawn(root) {
+    async resolve(root) {
       let binary = Bun.which("docker-langserver")
       const args: string[] = []
       if (!binary) {
         const js = path.join(Global.Path.bin, "node_modules", "dockerfile-language-server-nodejs", "lib", "server.js")
         if (!(await Bun.file(js).exists())) {
           if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
-          await Bun.spawn([BunProc.which(), "install", "dockerfile-language-server-nodejs"], {
+          await LSPProcess.run({
+            command: [BunProc.which(), "install", "dockerfile-language-server-nodejs"],
             cwd: Global.Path.bin,
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
             },
-            stdout: "pipe",
-            stderr: "pipe",
-            stdin: "pipe",
-          }).exited
+          })
         }
         binary = BunProc.which()
         args.push("run", js)
       }
       args.push("--stdio")
-      const proc = spawn(binary, args, {
+      const proc = {
+        command: binary,
+        args: args,
         cwd: root,
-        detached: process.platform !== "win32",
         env: {
           ...RuntimeContext.current().host.env,
           BUN_BE_BUN: "1",
         },
-      })
+      }
       return {
-        process: proc,
+        command: proc,
       }
     },
   }
@@ -1885,17 +1818,14 @@ export namespace LSPServer {
     id: "gleam",
     extensions: [".gleam"],
     root: NearestRoot(["gleam.toml"]),
-    async spawn(root) {
+    async resolve(root) {
       const gleam = Bun.which("gleam")
       if (!gleam) {
         log.info("gleam not found, please install gleam first")
         return
       }
       return {
-        process: spawn(gleam, ["lsp"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: gleam, args: ["lsp"], cwd: root },
       }
     },
   }
@@ -1904,7 +1834,7 @@ export namespace LSPServer {
     id: "clojure-lsp",
     extensions: [".clj", ".cljs", ".cljc", ".edn"],
     root: NearestRoot(["deps.edn", "project.clj", "shadow-cljs.edn", "bb.edn", "build.boot"]),
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("clojure-lsp")
       if (!bin && process.platform === "win32") {
         bin = Bun.which("clojure-lsp.exe")
@@ -1914,10 +1844,7 @@ export namespace LSPServer {
         return
       }
       return {
-        process: spawn(bin, ["listen"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: ["listen"], cwd: root },
       }
     },
   }
@@ -1937,20 +1864,21 @@ export namespace LSPServer {
       // Finally, use the instance directory as fallback
       return ScopeContext.current.directory
     },
-    async spawn(root) {
+    async resolve(root) {
       const nixd = Bun.which("nixd")
       if (!nixd) {
         log.info("nixd not found, please install nixd first")
         return
       }
       return {
-        process: spawn(nixd, [], {
+        command: {
+          command: nixd,
+          args: [],
           cwd: root,
-          detached: process.platform !== "win32",
           env: {
             ...RuntimeContext.current().host.env,
           },
-        }),
+        },
       }
     },
   }
@@ -1959,7 +1887,7 @@ export namespace LSPServer {
     id: "tinymist",
     extensions: [".typ", ".typc"],
     root: NearestRoot(["typst.toml"]),
-    async spawn(root) {
+    async resolve(root) {
       let bin = Bun.which("tinymist", {
         PATH: RuntimeContext.current().host.env["PATH"] + path.delimiter + Global.Path.bin,
       })
@@ -1968,7 +1896,9 @@ export namespace LSPServer {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("downloading tinymist from GitHub releases")
 
-        const response = await fetch("https://api.github.com/repos/Myriad-Dreamin/tinymist/releases/latest")
+        const response = await fetch("https://api.github.com/repos/Myriad-Dreamin/tinymist/releases/latest", {
+          signal: LSPProcess.signal(),
+        })
         if (!response.ok) {
           log.error("Failed to fetch tinymist release info")
           return
@@ -2006,17 +1936,17 @@ export namespace LSPServer {
           return
         }
 
-        const downloadResponse = await fetch(asset.browser_download_url)
+        const downloadResponse = await fetch(asset.browser_download_url, { signal: LSPProcess.signal() })
         if (!downloadResponse.ok) {
           log.error("Failed to download tinymist")
           return
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await Bun.file(tempPath).write(downloadResponse)
+        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
 
         if (ext === "zip") {
-          const ok = await Archive.extractZip(tempPath, Global.Path.bin)
+          const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
             .then(() => true)
             .catch((error) => {
               log.error("Failed to extract tinymist archive", { error })
@@ -2024,10 +1954,10 @@ export namespace LSPServer {
             })
           if (!ok) return
         } else {
-          await $`tar -xzf ${tempPath} --strip-components=1`.cwd(Global.Path.bin).quiet().nothrow()
+          await LSPProcess.run({ command: ["tar", "-xzf", tempPath, "--strip-components=1"], cwd: Global.Path.bin })
         }
 
-        await fs.rm(tempPath, { force: true })
+        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "tinymist" + (platform === "win32" ? ".exe" : ""))
 
@@ -2037,14 +1967,14 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await $`chmod +x ${bin}`.quiet().nothrow()
+          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
         }
 
         log.info("installed tinymist", { bin })
       }
 
       return {
-        process: spawn(bin, { detached: process.platform !== "win32", cwd: root }),
+        command: { command: bin, args: [], cwd: root },
       }
     },
   }
@@ -2053,17 +1983,14 @@ export namespace LSPServer {
     id: "haskell-language-server",
     extensions: [".hs", ".lhs"],
     root: NearestRoot(["stack.yaml", "cabal.project", "hie.yaml", "*.cabal"]),
-    async spawn(root) {
+    async resolve(root) {
       const bin = Bun.which("haskell-language-server-wrapper")
       if (!bin) {
         log.info("haskell-language-server-wrapper not found, please install haskell-language-server")
         return
       }
       return {
-        process: spawn(bin, ["--lsp"], {
-          detached: process.platform !== "win32",
-          cwd: root,
-        }),
+        command: { command: bin, args: ["--lsp"], cwd: root },
       }
     },
   }

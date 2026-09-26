@@ -4,6 +4,8 @@ import path from "node:path"
 import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser"
 import { BrowserOwner } from "./owner.js"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { BrowserExport } from "./export"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
 export namespace BrowserDownloads {
@@ -103,7 +105,14 @@ export namespace BrowserDownloads {
     return ensureManagedDirectory(directory)
   }
 
-  export async function exportTo(owner: BrowserOwner.Info, id: string, target: string): Promise<string> {
+  export async function exportTo(
+    owner: BrowserOwner.Info,
+    id: string,
+    target: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const workspace = BrowserExport.capture()
+    if (owner.scopeID !== ScopeContext.current.scope.id) throw new Error("Download belongs to another Scope")
     const record = get(owner, id)
     if (!record) throw new Error(`Download ${id} was not found for this browser owner.`)
     if (record.state !== "completed" || !record.path) throw new Error(`Download ${id} is not complete.`)
@@ -118,9 +127,13 @@ export namespace BrowserDownloads {
     if (!source.startsWith(`${ownerRoot}${path.sep}`)) throw new Error(`Managed download ${id} escaped owner storage.`)
     const stat = await fs.stat(source)
     if (!stat.isFile()) throw new Error(`Managed download ${id} is not a regular file.`)
-    await fs.mkdir(path.dirname(target), { recursive: true })
-    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL)
-    return target
+    return BrowserExport.copy(workspace, target, source, signal, async (file) => {
+      const current = await fs.realpath(file)
+      if (!current.startsWith(`${ownerRoot}${path.sep}`))
+        throw new Error(`Managed download ${id} escaped owner storage.`)
+      const info = await fs.lstat(file)
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Managed download ${id} is not a safe regular file.`)
+    })
   }
 
   export function clearForTest(): void {

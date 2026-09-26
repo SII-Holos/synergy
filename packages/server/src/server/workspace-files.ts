@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceFile } from "@ericsanchezok/synergy-runtime-local/workspace-file/types"
 import { WorkspaceFileSearch } from "@ericsanchezok/synergy-runtime-local/workspace-file/search"
@@ -9,6 +9,7 @@ import { WorkspaceFileService } from "@ericsanchezok/synergy-runtime-local/works
 import { WorkspaceFileStatus } from "@ericsanchezok/synergy-runtime-local/workspace-file/status"
 import { errors } from "./error"
 import type { Context } from "hono"
+import { provideWorkspace, RawWorkspacePath, WorkspaceReferenceQuery } from "./workspace-context"
 
 const AccessDeniedResponse = {
   403: {
@@ -29,6 +30,55 @@ async function respondGuarded(c: Context, fn: () => Promise<unknown>): Promise<R
       return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
     }
     throw err
+  }
+}
+
+async function respondEntry(c: Context, fn: () => Promise<unknown>) {
+  try {
+    return c.json(await fn())
+  } catch (error) {
+    if (error instanceof WorkspaceFileService.PartialMutationError)
+      return c.json(
+        {
+          name: error.name,
+          data: { message: error.message, completed: error.completed.map(WorkspaceFileService.relative) },
+        },
+        409,
+      )
+    if (error instanceof WorkspaceFileService.AccessDeniedError)
+      return c.json({ name: error.name, data: { message: error.message } }, 403)
+    if (error instanceof WorkspaceFileService.WriteConflictError)
+      return c.json({ name: error.name, data: { message: error.message } }, 409)
+    if (error instanceof WorkspaceFileService.EntryLimitError)
+      return c.json({ name: error.name, data: { message: error.message } }, 400)
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === "ENOENT")
+      return c.json({ name: "NotFoundError", data: { message: "Filesystem entry not found" } }, 404)
+    if (code && ["EACCES", "EPERM", "EROFS"].includes(code))
+      return c.json(
+        { name: "WorkspaceFileAccessDeniedError", data: { message: "Access denied by the filesystem" } },
+        403,
+      )
+    if (code && ["EEXIST", "ENOTEMPTY", "EBUSY"].includes(code))
+      return c.json(
+        { name: "WorkspaceFileWriteConflictError", data: { message: "Filesystem entry exists or is in use" } },
+        409,
+      )
+    throw error
+  }
+}
+
+function entryResponses(schema: z.ZodType) {
+  const failure = { content: { "application/json": { schema: resolver(WorkspaceFile.EntryError) } } }
+  return {
+    200: {
+      description: "Filesystem operation completed",
+      content: { "application/json": { schema: resolver(schema) } },
+    },
+    400: { description: "Invalid operation", ...failure },
+    403: { description: "Forbidden", ...failure },
+    404: { description: "Filesystem entry not found", ...failure },
+    409: { description: "Conflict or partially completed operation", ...failure },
   }
 }
 
@@ -74,6 +124,7 @@ function parseRange(input: string | undefined) {
 
 export const WorkspaceFilesRoute = () =>
   new Hono()
+    .use("*", provideWorkspace)
     .get(
       "/children",
       describeRoute({
@@ -89,13 +140,14 @@ export const WorkspaceFilesRoute = () =>
               },
             },
           },
-          ...errors(404),
+          ...errors(400, 404, 409),
           ...AccessDeniedResponse,
         },
       }),
       validator(
         "query",
         z.object({
+          ...WorkspaceReferenceQuery.shape,
           path: z.string().optional(),
           limit: z.coerce.number().int().min(1).max(1000).optional(),
           cursor: z.string().optional(),
@@ -131,13 +183,14 @@ export const WorkspaceFilesRoute = () =>
               },
             },
           },
-          ...errors(404),
+          ...errors(400, 404, 409),
           ...AccessDeniedResponse,
         },
       }),
       validator(
         "query",
         z.object({
+          ...WorkspaceReferenceQuery.shape,
           path: z.string(),
           range: z.string().optional(),
           offset: z.coerce.number().int().min(0).optional(),
@@ -175,13 +228,14 @@ export const WorkspaceFilesRoute = () =>
               },
             },
           },
-          ...errors(404),
+          ...errors(400, 404, 409),
           ...AccessDeniedResponse,
         },
       }),
       validator(
         "query",
         z.object({
+          ...WorkspaceReferenceQuery.shape,
           path: z.string(),
         }),
       ),
@@ -209,6 +263,7 @@ export const WorkspaceFilesRoute = () =>
       validator(
         "query",
         z.object({
+          ...WorkspaceReferenceQuery.shape,
           query: z.string(),
           kind: z.enum(["files", "content", "symbol"]).default("files"),
           limit: z.coerce.number().int().min(1).max(200).optional(),
@@ -238,6 +293,7 @@ export const WorkspaceFilesRoute = () =>
           },
         },
       }),
+      validator("query", WorkspaceReferenceQuery),
       async (c) => {
         return c.json(await WorkspaceFileStatus.summary())
       },
@@ -249,7 +305,7 @@ export const WorkspaceFilesRoute = () =>
         description:
           "Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, " +
           "and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative " +
-          "resources, use GET /workspace/files/raw/{scope}/{path} instead.",
+          "resources, use GET /workspace/files/raw/{scope}/{workspaceID}/{workspaceGeneration}/{path} instead.",
         operationId: "workspace.files.content",
         responses: {
           200: {
@@ -264,23 +320,27 @@ export const WorkspaceFilesRoute = () =>
             },
           },
           ...AccessDeniedResponse,
-          ...errors(404),
+          ...errors(400, 404, 409),
         },
       }),
       validator(
         "query",
         z.object({
+          ...WorkspaceReferenceQuery.shape,
           path: z.string(),
         }),
       ),
       async (c) => {
         const query = c.req.valid("query")
         try {
-          const result = await WorkspaceFileService.content({ path: query.path })
+          const result = await WorkspaceFileService.content({ path: query.path, signal: c.req.raw.signal })
           c.header("Content-Type", "application/pdf")
           c.header("Cache-Control", "no-store")
           return c.body(result.stream)
         } catch (err) {
+          if (err instanceof WorkspaceFileService.WriteConflictError) {
+            return c.json({ name: err.name, data: { message: err.message } }, 409)
+          }
           if (err instanceof WorkspaceFileService.AccessDeniedError) {
             return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
           }
@@ -295,13 +355,13 @@ export const WorkspaceFilesRoute = () =>
       },
     )
     .get(
-      "/raw/:token/:path{.+}",
+      "/raw/:token/:workspaceID/:workspaceGeneration/:path{.+}",
       describeRoute({
         summary: "Serve a raw workspace file for a new browser tab",
         description:
           "Serve an .html/.htm/.svg/.xml file or a static relative resource it references (images, CSS, scripts, fonts). " +
-          "The first segment selects the scope: the literal home or a base64url-encoded directory. The remaining " +
-          "path is a workspace-relative file that must stay inside the scope. Script-capable document responses " +
+          "The prefix selects the Scope, Workspace ID, and binding generation. The remaining " +
+          "path is a file relative to that Workspace. Script-capable document responses " +
           "(HTML, SVG, XML) carry a sandbox CSP that places the page in an opaque origin. A download query " +
           "(?download or ?download=1, negated by ?download=false) returns the bytes as a Content-Disposition " +
           "attachment without the document sandbox, so any file the route serves can also be saved to disk.",
@@ -318,11 +378,11 @@ export const WorkspaceFilesRoute = () =>
             },
           },
           ...AccessDeniedResponse,
-          ...errors(404),
+          ...errors(400, 404, 409),
         },
       }),
       async (c) => {
-        const wildcard = c.req.path.match(/^\/workspace\/files\/raw\/[^/]+\/(.+)$/)?.[1]
+        const wildcard = RawWorkspacePath.exec(c.req.path)?.[4]
         if (wildcard === undefined) {
           return c.json(
             {
@@ -348,7 +408,7 @@ export const WorkspaceFilesRoute = () =>
           )
         }
         try {
-          const result = await WorkspaceFileService.serveFile({ path: rel })
+          const result = await WorkspaceFileService.serveFile({ path: rel, signal: c.req.raw.signal })
           const ext = path.extname(rel).toLowerCase()
           const download = c.req.query("download")
           if (download !== undefined && download !== "false") {
@@ -386,6 +446,9 @@ export const WorkspaceFilesRoute = () =>
           c.header("X-Frame-Options", "SAMEORIGIN")
           return c.body(result.stream)
         } catch (err) {
+          if (err instanceof WorkspaceFileService.WriteConflictError) {
+            return c.json({ name: err.name, data: { message: err.message } }, 409)
+          }
           if (err instanceof WorkspaceFileService.AccessDeniedError) {
             return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
           }
@@ -400,7 +463,8 @@ export const WorkspaceFilesRoute = () =>
       "/write",
       describeRoute({
         summary: "Write workspace file",
-        description: "Write content to an existing workspace file with optional optimistic concurrency control.",
+        description:
+          "Create or replace a workspace file using a content-version precondition and atomic local replacement.",
         operationId: "workspace.files.write",
         responses: {
           200: {
@@ -445,14 +509,18 @@ export const WorkspaceFilesRoute = () =>
           },
         },
       }),
+      validator("query", WorkspaceReferenceQuery),
       validator("json", WorkspaceFile.WriteFileInput),
       async (c) => {
         const body = c.req.valid("json")
         try {
-          return c.json(await WorkspaceFileService.write(body))
-        } catch (err: any) {
+          return c.json(await WorkspaceFileService.write(body, c.req.raw.signal))
+        } catch (err) {
           if (err instanceof WorkspaceFileService.AccessDeniedError) {
             return c.json({ name: "WorkspaceFileAccessDeniedError", data: { message: err.message } }, 403)
+          }
+          if (err instanceof WorkspaceFileService.InvalidContentError) {
+            return c.json({ name: "WorkspaceFileInvalidContentError", data: { message: err.message } }, 400)
           }
           if (err instanceof WorkspaceFileService.WriteConflictError) {
             return c.json({ name: "WorkspaceFileWriteConflictError", data: { message: err.message } }, 409)
@@ -466,4 +534,48 @@ export const WorkspaceFilesRoute = () =>
           throw err
         }
       },
+    )
+    .post(
+      "/directory",
+      describeRoute({
+        summary: "Create a Workspace directory",
+        operationId: "workspace.files.createDirectory",
+        responses: entryResponses(WorkspaceFile.EntryResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.CreateDirectoryInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.createDirectory(c.req.valid("json"), c.req.raw.signal)),
+    )
+    .post(
+      "/copy",
+      describeRoute({
+        summary: "Copy a Workspace file or directory without replacing the destination",
+        operationId: "workspace.files.copy",
+        responses: entryResponses(WorkspaceFile.EntryResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.CopyInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.copy(c.req.valid("json"), c.req.raw.signal)),
+    )
+    .post(
+      "/move",
+      describeRoute({
+        summary: "Move a Workspace file or directory without replacing the destination",
+        operationId: "workspace.files.move",
+        responses: entryResponses(WorkspaceFile.EntryResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.MoveInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.move(c.req.valid("json"), c.req.raw.signal)),
+    )
+    .post(
+      "/delete",
+      describeRoute({
+        summary: "Permanently remove a Workspace file or directory",
+        operationId: "workspace.files.remove",
+        responses: entryResponses(WorkspaceFile.DeleteResult),
+      }),
+      validator("query", WorkspaceReferenceQuery),
+      validator("json", WorkspaceFile.DeleteInput),
+      (c) => respondEntry(c, () => WorkspaceFileService.remove(c.req.valid("json"), c.req.raw.signal)),
     )

@@ -2,6 +2,7 @@
 
 import { mkdir, readdir, rm } from "node:fs/promises"
 import path from "node:path"
+import { createIsolatedTestEnv } from "../../packages/testing/src/env"
 
 export type TestRunnerOptions = {
   /** Package root; test files are collected under `<root>/test`. */
@@ -51,29 +52,44 @@ export async function runBatchedTests(options: TestRunnerOptions) {
   async function run(files: string[], shard: number, batch: { browser?: boolean; timeout?: number } = {}) {
     if (files.length === 0) return
     const coverage = process.argv.includes("--coverage")
-    const child = Bun.spawn(
-      [
-        process.execPath,
-        "test",
-        "--timeout",
-        String(batch.timeout ?? timeoutMs),
-        // Bun overwrites coverage/lcov.info on every invocation, so coverage
-        // mode writes each batch into its own shard directory; coverage:check
-        // merges them. Without this, the final serial batch would erase all
-        // coverage from the main batch.
-        ...(coverage ? ["--coverage", "--coverage-reporter=lcov", "--coverage-dir", `coverage/shards/${shard}`] : []),
-        ...(batch.browser ? ["--conditions=browser"] : []),
-        ...files,
-      ],
-      {
-        cwd: root,
-        stdin: "inherit",
-        stdout: "inherit",
-        stderr: "inherit",
-      },
-    )
-    const exitCode = await child.exited
-    if (exitCode !== 0) failedBatches.push({ shard, exitCode })
+    const reportRoot = path.join(root, "coverage/shards", String(shard))
+    await mkdir(reportRoot, { recursive: true })
+    const isolatedEnv = await createIsolatedTestEnv()
+    const started = Date.now()
+    try {
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          "test",
+          "--timeout",
+          String(batch.timeout ?? timeoutMs),
+          "--reporter=junit",
+          `--reporter-outfile=${path.join(reportRoot, "junit.xml")}`,
+          // Bun overwrites coverage/lcov.info on every invocation, so coverage
+          // mode writes each batch into its own shard directory; coverage:check
+          // merges them. Without this, the final serial batch would erase all
+          // coverage from the main batch.
+          ...(coverage ? ["--coverage", "--coverage-reporter=lcov", "--coverage-dir", `coverage/shards/${shard}`] : []),
+          ...(batch.browser ? ["--conditions=browser"] : []),
+          ...files,
+        ],
+        {
+          cwd: root,
+          env: isolatedEnv.env,
+          stdin: "inherit",
+          stdout: "inherit",
+          stderr: "inherit",
+        },
+      )
+      const exitCode = await child.exited
+      await Bun.write(
+        path.join(reportRoot, "timing.json"),
+        JSON.stringify({ files, started, completed: Date.now(), seconds: (Date.now() - started) / 1000, exitCode }),
+      )
+      if (exitCode !== 0) failedBatches.push({ shard, exitCode })
+    } finally {
+      await isolatedEnv.dispose()
+    }
   }
 
   const coverage = process.argv.includes("--coverage")
@@ -85,7 +101,10 @@ export async function runBatchedTests(options: TestRunnerOptions) {
   const isolatedSet = new Set(isolated)
   const browserSet = new Set(browserOnly)
   const extraSerialSet = new Set(extraSerial)
-  const files = (await collectTests("test")).toSorted()
+  const inventory = (await collectTests("test")).toSorted()
+  const files: string[] = process.env.SYNERGY_TEST_FILES ? JSON.parse(process.env.SYNERGY_TEST_FILES) : inventory
+  if (!files.length || files.some((file) => !inventory.includes(file)))
+    throw new Error("Unknown or empty test selection")
   await run(
     files.filter((file) => !isolatedSet.has(file) && !browserSet.has(file) && !extraSerialSet.has(file)),
     0,
@@ -99,7 +118,7 @@ export async function runBatchedTests(options: TestRunnerOptions) {
     shard++,
     { browser: true, timeout: browserTimeoutMs },
   )
-  for (const file of extraSerial) await run([file], shard++)
+  for (const file of extraSerial.filter((file) => files.includes(file))) await run([file], shard++)
 
   if (failedBatches.length > 0) {
     console.error(

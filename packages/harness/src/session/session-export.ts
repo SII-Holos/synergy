@@ -1,4 +1,6 @@
-import z from "zod"
+import { z } from "zod"
+import { WorkspaceTransfer } from "./workspace-transfer"
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { Session } from "."
 import { MessageV2 } from "./message-v2"
 import { Dag } from "./dag"
@@ -31,6 +33,7 @@ export namespace SessionExport {
     mode: Mode,
     rootSessionID: z.string(),
     sessions: z.array(SessionData),
+    workspaces: z.array(WorkspaceCatalog.Info).optional(),
   })
   export type Report = z.infer<typeof Report>
 
@@ -128,6 +131,8 @@ export namespace SessionExport {
     const sessions = await collectSessionTree(input.sessionID)
     const collected = await Promise.all(sessions.map(collectSessionData))
     const shaped = collected.map((data) => applyMode(data, input.mode))
+    const workspaces = await WorkspaceCatalog.list(sessions[0]!.scope.id)
+    const referenced = WorkspaceTransfer.references(collected)
 
     return {
       version: 1,
@@ -136,6 +141,7 @@ export namespace SessionExport {
       mode: input.mode,
       rootSessionID: input.sessionID,
       sessions: shaped,
+      workspaces: workspaces.filter((workspace) => referenced.has(workspace.id)),
     }
   }
 }

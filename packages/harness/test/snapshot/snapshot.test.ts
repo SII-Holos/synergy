@@ -1,3 +1,4 @@
+import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
@@ -9,7 +10,7 @@ import { tmpdir } from "../support/fixture"
 import { SessionBounds } from "../../src/session/bounds"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerSnapshotTestHost })
 
 async function bootstrap(options?: { commit?: boolean }) {
   const sessionID = `test-${Math.random().toString(36).slice(2)}`
@@ -80,12 +81,12 @@ describe.serial("snapshot", () => {
       await using tmp = await bootstrap()
       const scope = await tmp.scope()
       const originalSpawn = Bun.spawn
-      let diffFilesAttempts = 0
+      let indexReadAttempts = 0
       using _spawn = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
         const command = args[0]
-        if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
-          diffFilesAttempts++
-          if (diffFilesAttempts === 1) {
+        if (Array.isArray(command) && command[0] === "git" && command.includes("ls-files")) {
+          indexReadAttempts++
+          if (indexReadAttempts === 1) {
             throw Object.assign(new Error("too many open files"), { code: "EMFILE" })
           }
         }
@@ -98,7 +99,7 @@ describe.serial("snapshot", () => {
           expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
         },
       })
-      expect(diffFilesAttempts).toBe(2)
+      expect(indexReadAttempts).toBe(2)
     }))
 
   test("does not retry a permanent git spawn failure", () =>
@@ -106,11 +107,11 @@ describe.serial("snapshot", () => {
       await using tmp = await bootstrap()
       const scope = await tmp.scope()
       const originalSpawn = Bun.spawn
-      let diffFilesAttempts = 0
+      let indexReadAttempts = 0
       using _spawn = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
         const command = args[0]
-        if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
-          diffFilesAttempts++
+        if (Array.isArray(command) && command[0] === "git" && command.includes("ls-files")) {
+          indexReadAttempts++
           throw Object.assign(new Error("permission denied"), { code: "EACCES" })
         }
         return originalSpawn(...args)
@@ -122,7 +123,7 @@ describe.serial("snapshot", () => {
           expect(await Snapshot.track(tmp.extra.sessionID)).toBeUndefined()
         },
       })
-      expect(diffFilesAttempts).toBe(1)
+      expect(indexReadAttempts).toBe(1)
     }))
 
   test("tracks deleted files correctly", () =>
@@ -337,10 +338,13 @@ describe.serial("snapshot", () => {
         scope: await tmp.scope(),
         fn: async () => {
           // Should not crash with empty patches
-          expect(Snapshot.revert([], tmp.extra.sessionID)).resolves.toBeUndefined()
+          expect(Snapshot.revert([], tmp.extra.sessionID)).resolves.toEqual({ restoredFiles: [], failedFiles: [] })
 
           // Should not crash with patches that have empty file lists
-          expect(Snapshot.revert([{ hash: "dummy", files: [] }], tmp.extra.sessionID)).resolves.toBeUndefined()
+          expect(Snapshot.revert([{ hash: "dummy", files: [] }], tmp.extra.sessionID)).resolves.toEqual({
+            restoredFiles: [],
+            failedFiles: [],
+          })
         },
       })
     }))
@@ -381,12 +385,13 @@ describe.serial("snapshot", () => {
               [
                 {
                   hash: before!,
+                  workspace: Snapshot.workspace(),
                   files: [`${tmp.path}/nonexistent.txt`],
                 },
               ],
               tmp.extra.sessionID,
             ),
-          ).resolves.toBeUndefined()
+          ).resolves.toEqual({ restoredFiles: [`${tmp.path}/nonexistent.txt`], failedFiles: [] })
         },
       })
     }))
@@ -771,9 +776,9 @@ describe.serial("snapshot", () => {
 
             expect(commands.some((command) => command.includes("rm -r --cached") && command.endsWith(" ."))).toBe(false)
             expect(
-              commands.filter((command) => command.includes(" diff ") && command.includes(" --numstat -p ")),
+              commands.filter((command) => command.includes(" diff ") && command.includes(" --numstat -p -z ")),
             ).toHaveLength(1)
-            expect(commands.filter((command) => command.includes(" cat-file --batch-check="))).toHaveLength(1)
+            expect(commands.filter((command) => command.includes(" ls-tree -r -l -z "))).toHaveLength(2)
             expect(commands.some((command) => command.includes(" cat-file -s "))).toBe(false)
           },
         })

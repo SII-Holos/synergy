@@ -43,15 +43,8 @@ export namespace SystemPrompt {
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    // In a git_worktree session the project folder list is derived from
-    // trustRoots, which excludes the original checkout (and anything nested
-    // under it) — the prompt must match the execution boundary exactly.
-    const projectRoots = Scope.Root.trustRoots(scope, workspace)
-    if (projectRoots.length > 1) {
-      envLines.push(`  Project folders: ${projectRoots.join(", ")}`)
-    } else if (scope.type === "project" && projectRoots.length === 1) {
-      envLines.push(`  Project folder: ${projectRoots[0]}`)
-    }
+    const writeRoots = await Scope.Root.executionRoots(scope, workspace)
+    if (writeRoots.length) envLines.push(`  Writable workspace directories: ${writeRoots.join(", ")}`)
 
     if (workspace) {
       envLines.push(`  Workspace type: ${workspace.type}`)

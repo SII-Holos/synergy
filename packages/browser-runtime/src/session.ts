@@ -225,8 +225,12 @@ export class BrowserSessionImpl implements BrowserSession {
       if (this._page.backend !== desired) return this.migratePage(desired)
       return this._page
     }
+    const shouldRestore = options.resume !== false && !url && this._checkpoint
+    const targetURL = url ?? (shouldRestore ? undefined : options.resume === false ? undefined : this.resumableURL())
     let browserPage: BrowserPageBackend
     try {
+      if (shouldRestore) this.assertCheckpointAllowed(this._checkpoint!)
+      if (targetURL) this.assertNavigationAllowed(targetURL)
       browserPage = await this.createPage(desired, this._descriptor?.id)
     } catch (error) {
       await this.fail(error)
@@ -236,8 +240,6 @@ export class BrowserSessionImpl implements BrowserSession {
     this._status = "active"
     this._error = null
 
-    const shouldRestore = options.resume !== false && !url && this._checkpoint
-    const targetURL = url ?? (shouldRestore ? undefined : options.resume === false ? undefined : this.resumableURL())
     if (shouldRestore) {
       try {
         this.assertCheckpointAllowed(this._checkpoint!)
@@ -441,9 +443,7 @@ export class BrowserSessionImpl implements BrowserSession {
     this._annotations = (data.annotations ?? []) as BrowserAnnotation[]
     BrowserDownloads.restore(this.owner, data.downloads ?? [])
     if (data.checkpoint) {
-      const checkpoint = BrowserCheckpointSchema.parse(data.checkpoint)
-      this._checkpoint =
-        BrowserPolicy.hardCheckNavigation(checkpoint.url, this.owner.directory).decision === "allow" ? checkpoint : null
+      this._checkpoint = BrowserCheckpointSchema.parse(data.checkpoint)
     } else {
       this._checkpoint = null
     }
@@ -833,14 +833,18 @@ export class BrowserSessionImpl implements BrowserSession {
   }
 
   private assertCheckpointAllowed(checkpoint: BrowserCheckpoint): void {
-    const policy = BrowserPolicy.hardCheckNavigation(checkpoint.url, this.owner.directory)
+    this.assertNavigationAllowed(checkpoint.url)
+  }
+
+  private assertNavigationAllowed(url: string): void {
+    const policy = BrowserPolicy.hardCheckNavigation(url, this.owner.directory)
     if (policy.decision === "allow") return
     throw new BrowserProtocolError({
       code: "browser_checkpoint_navigation_denied",
       message: policy.reason,
       retryable: false,
       pageId: this._page?.id ?? this._descriptor?.id,
-      url: checkpoint.url,
+      url,
       suggestedAction: "Navigate to an allowed workspace file or HTTP(S) URL before retrying.",
     })
   }

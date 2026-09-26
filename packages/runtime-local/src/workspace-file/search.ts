@@ -206,7 +206,7 @@ async function searchSymbols(input: {
     : AbortSignal.timeout(SEARCH_TIMEOUT_MS)
   const symbolSource = WorkspaceFileSymbolSource.get()
   const activeClients = symbolSource
-    ? await withSearchAbort(symbolSource.activeClientCount(), signal).catch(() => 0)
+    ? await withSearchAbort(symbolSource.availableClientCount(), signal).catch(() => 0)
     : 0
   if (activeClients === 0) {
     return {
@@ -216,13 +216,13 @@ async function searchSymbols(input: {
       truncated: false,
       capability: {
         available: false,
-        reason: "No active LSP clients. Open or touch a source file before running workspace symbol search.",
+        reason: "No available language servers. Open or touch a source file before running workspace symbol search.",
       },
     }
   }
 
   const symbols = symbolSource
-    ? await withSearchAbort(symbolSource.workspaceSymbol(input.query), signal).catch(() => [])
+    ? await withSearchAbort(symbolSource.workspaceSymbol(input.query, signal), signal).catch(() => [])
     : []
   const offset = parseCursor(input.cursor)
   const page = symbols.slice(offset, offset + input.limit + 1)

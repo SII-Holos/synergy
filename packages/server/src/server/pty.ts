@@ -6,6 +6,7 @@ import { errors } from "./error"
 import { Pty } from "@ericsanchezok/synergy-runtime-local/process/pty"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { upgradeWebSocket } from "hono/bun"
+import { AsyncLocalStorage } from "node:async_hooks"
 
 export const PtyRoute = () =>
   new Hono()
@@ -50,7 +51,7 @@ export const PtyRoute = () =>
       }),
       validator("json", Pty.CreateInput),
       async (c) => {
-        const info = await Pty.create(c.req.valid("json"))
+        const info = await Pty.create(c.req.valid("json"), c.req.raw.signal)
         return c.json(info)
       },
     )
@@ -151,17 +152,38 @@ export const PtyRoute = () =>
       validator("param", z.object({ ptyID: z.string() })),
       upgradeWebSocket((c) => {
         const id = c.req.param("ptyID")
+        const run = AsyncLocalStorage.snapshot()
         let handler: ReturnType<typeof Pty.connect>
         if (!id || !Pty.get(id)) throw new Error("Session not found")
         return {
           onOpen(_event, ws) {
-            handler = Pty.connect(id, ws)
+            handler = run(() =>
+              Pty.connect(id, {
+                get readyState() {
+                  return ws.raw?.readyState ?? ws.readyState
+                },
+                get bufferedAmount() {
+                  return ws.raw?.getBufferedAmount() ?? 0
+                },
+                send: (data) => {
+                  if (ws.raw) {
+                    if (ws.raw.send(data) === 0) throw new Error("PTY WebSocket closed")
+                  } else ws.send(data)
+                },
+                close: () => ws.close(),
+              }),
+            )
           },
-          onMessage(event) {
-            handler?.onMessage(String(event.data))
+          onMessage(event, ws) {
+            const data = event.data
+            if (data instanceof Blob) {
+              ws.close()
+              return
+            }
+            run(() => handler?.onMessage(data))
           },
           onClose() {
-            handler?.onClose()
+            run(() => handler?.onClose())
           },
         }
       }),

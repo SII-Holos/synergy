@@ -14,6 +14,8 @@ import { runMigrations } from "../../src/migration"
 
 const bindingMigration = "20260921-session-workspace-binding"
 const repairMigration = "20260922-session-nav-workspace-binding"
+const referenceMigration = "20260923-session-workspace-reference"
+const referenceNavMigration = "20260923-session-nav-workspace-reference"
 
 function ownerReceipt(info: Session.Info) {
   return ["sessions", info.scope.id, info.id, "migrations", "session", bindingMigration]
@@ -25,16 +27,24 @@ function infoKey(info: Session.Info) {
 
 async function historical(info: Session.Info, home: string) {
   const { local, ...scope } = info.scope
+  const { workspaceID: _workspaceID, workspace: currentWorkspace, ...legacyInfo } = info
+  const workspace = currentWorkspace && (({ id: _id, generation: _generation, ...rest }) => rest)(currentWorkspace)
   const before = {
-    ...info,
+    ...legacyInfo,
     scope: { ...scope, ...(local ?? { directory: home, worktree: home, sandboxes: [] }) },
-    workspace: info.workspace ?? { type: "main", path: home, scopeID: "home" },
+    workspace: workspace ?? { type: "main", path: home, scopeID: "home" },
     time: { ...info.time, created: 100, updated: 200 },
     retainedMetadata: { owner: "unloaded-extension" },
   }
   await Storage.write(infoKey(info), before)
   await Storage.remove(ownerReceipt(info))
+  await Storage.remove(["sessions", info.scope.id, info.id, "migrations", "session", referenceMigration])
   return before
+}
+
+function upgraded(before: Record<string, unknown>, info: Session.Info) {
+  const { workspace: _workspace, ...stored } = before
+  return { ...stored, scope: info.scope, workspaceID: info.workspaceID }
 }
 
 test("nav rebuild upgrades historical Session bindings before validating entries", async () => {
@@ -71,11 +81,7 @@ test("nav rebuild upgrades historical Session bindings before validating entries
           archivedAt: 300,
         })
         for (const [i, info] of infos.entries()) {
-          expect(await Storage.read<Record<string, unknown>>(infoKey(info))).toEqual({
-            ...before[i],
-            scope: info.scope,
-            workspace: info.workspace,
-          })
+          expect(await Storage.read<Record<string, unknown>>(infoKey(info))).toEqual(upgraded(before[i]!, info))
           expect(await Storage.read(ownerReceipt(info))).toHaveProperty("completed")
         }
         expect(await Storage.read<typeof evidence>(evidenceKey)).toEqual(evidence)
@@ -115,6 +121,8 @@ test("Runtime startup repairs empty indexes after the original nav migration was
       log["20260921-session-nav-tags"] = 1
       log[bindingMigration] = 1
       delete log[repairMigration]
+      delete log[referenceMigration]
+      delete log[referenceNavMigration]
     })
     return { infos, before, accessedReceipt }
   })
@@ -126,11 +134,7 @@ test("Runtime startup repairs empty indexes after the original nav migration was
       const nav = await SessionNav.readNavIndex(info.scope.id)
       expect(nav.entries.map((entry) => entry.id)).toContain(info.id)
       expect(nav.entries.find((entry) => entry.id === info.id)).toMatchObject({ lastActivityAt: 200 })
-      expect(await Storage.read<Record<string, unknown>>(infoKey(info))).toEqual({
-        ...seeded.before[index],
-        scope: info.scope,
-        workspace: info.workspace,
-      })
+      expect(await Storage.read<Record<string, unknown>>(infoKey(info))).toEqual(upgraded(seeded.before[index]!, info))
     }
     const tracking = await Storage.read<Record<string, number>>(StoragePath.metaMigrationLogDomain("session"))
     expect(tracking[repairMigration]).toBeNumber()
@@ -157,11 +161,7 @@ test("owner-local nav repair upgrades only its deferred Session and preserves un
     const owner = { scopeID: "home", sessionID: infos[0]!.id }
     await Storage.withMigrationRecords(() => Storage.transaction(() => migration!.upSession!(owner, () => {})))
     expect((await SessionNav.readNavIndex("home")).entries.map((entry) => entry.id)).toEqual([owner.sessionID])
-    expect(await Storage.read<Record<string, unknown>>(infoKey(infos[0]!))).toEqual({
-      ...before[0],
-      scope: infos[0]!.scope,
-      workspace: null,
-    })
+    expect(await Storage.read<Record<string, unknown>>(infoKey(infos[0]!))).toEqual(upgraded(before[0]!, infos[0]!))
     expect(await Storage.read<Record<string, unknown>>(infoKey(infos[1]!))).toEqual(before[1])
     expect(await Storage.readMany([ownerReceipt(infos[1]!)])).toEqual([undefined])
   })

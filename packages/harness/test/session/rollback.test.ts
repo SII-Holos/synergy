@@ -1,3 +1,4 @@
+import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { $, sleep } from "bun"
 import { describe, expect, spyOn, test } from "bun:test"
 import path from "path"
@@ -15,7 +16,7 @@ import { Log } from "../../src/util/log"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerSnapshotTestHost })
 
 runtime.run(() => Log.init({ print: false }))
 
@@ -370,6 +371,7 @@ describe("session rollback history", () => {
               messageID: "",
               type: "patch",
               hash: patch.hash,
+              workspace: patch.workspace,
               files: patch.files,
             },
           ])
@@ -602,10 +604,10 @@ describe("rollback acknowledgment", () => {
           const infoPath = StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id))
           const metadataPersisted = Promise.withResolvers<void>()
           const releaseMetadataUpdate = Promise.withResolvers<void>()
-          const originalUpdate = Storage.update
+          const originalWrite = Storage.write
           let pauseNextInfoUpdate = true
-          using _update = spyOn(Storage, "update").mockImplementation(async (key, editor) => {
-            const result = await originalUpdate(key, editor)
+          using _update = spyOn(Storage, "write").mockImplementation(async (key, data) => {
+            const result = await originalWrite(key, data)
             if (pauseNextInfoUpdate && key.join("/") === infoPath.join("/")) {
               pauseNextInfoUpdate = false
               metadataPersisted.resolve()

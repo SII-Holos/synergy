@@ -477,3 +477,9 @@ The Session route gates message loading on the generated storage preparation API
 An active preparation attempt reports preparing and omits the previous attempt's error so polling continues through a background retry. Once the attempt settles, readiness or the persisted failure becomes visible. Quarantine remains blocked even when an attempt is still draining.
 
 Navigation clears a completion notice only after the owner reports ready. Concurrent clears share an in-flight guard through optimistic rollback so a rejected write cannot feed back into the reactive effect as an unbounded retry. Readiness replies from a previous server cannot mutate the current server or its navigation state.
+
+## Workspace file contexts
+
+File state is separate from Scope session and event state. File requests, event filters, cached documents, directory trees, explorer preferences, editor models and preview links are keyed by server, Scope, Workspace ID and binding generation. Session selection uses its canonical Workspace projection; a null or unavailable session binding never falls back to the Scope directory.
+
+File tabs retain their opening Workspace descriptor and encode its identity into the resource ID. An old generation remains explicit and can fail on the server after a rebind. Legacy tabs without an owner require reopening from the intended Workspace. File contexts snapshot the descriptor before asynchronous work, discard results after disposal, and retain at most sixteen inactive/current contexts plus contexts held by mounted file panels. Scope disposal aborts outstanding file work and releases editor models.

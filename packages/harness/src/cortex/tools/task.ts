@@ -249,7 +249,7 @@ Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the
         })
       })
 
-      const completed = await Cortex.waitFor(task.id, SYNC_TIMEOUT_S)
+      const completed = await Cortex.waitFor(task.id, SYNC_TIMEOUT_S, ctx.abort)
       unsub()
 
       if (!completed || completed.status === "running") {

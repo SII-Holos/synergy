@@ -1,3 +1,4 @@
+import path from "node:path"
 import { describe, expect, test, mock, afterEach } from "bun:test"
 import { WorktreeListTool } from "@ericsanchezok/synergy-workbench/project/tools/worktree-list"
 import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
@@ -55,8 +56,9 @@ describe("tool.worktree_list", () => {
     test("returns listed action with empty worktrees array", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             ;(Worktree as any).list = mock(async () => [])
 
@@ -78,24 +80,25 @@ describe("tool.worktree_list", () => {
     test("marks worktree as active when path matches ScopeContext.current.workspace", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/brave-cactus",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/brave-cactus"),
+            scopeID: scope.id,
             worktreeID: "wt_active",
             name: "brave-cactus",
           },
           fn: async () => {
             const worktrees = [
-              { id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, scopeID: "scope_123" },
+              { id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, scopeID: scope.id },
               {
                 id: "wt_active",
                 name: "brave-cactus",
-                path: "/tmp/worktrees/brave-cactus",
+                path: path.join(tmp.path, "worktrees/brave-cactus"),
                 isMain: false,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
@@ -117,17 +120,18 @@ describe("tool.worktree_list", () => {
     test("active is null when no workspace matches any worktree", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/nonexistent",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/nonexistent"),
+            scopeID: scope.id,
             worktreeID: "wt_missing",
             name: "nonexistent",
           },
           fn: async () => {
-            const worktrees = [{ id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, scopeID: "scope_123" }]
+            const worktrees = [{ id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, scopeID: scope.id }]
             ;(Worktree as any).list = mock(async () => worktrees)
 
             const initialized = await WorktreeListTool.init()
@@ -143,10 +147,11 @@ describe("tool.worktree_list", () => {
     test("active is null when no workspace set", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
-            const worktrees = [{ id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, scopeID: "scope_123" }]
+            const worktrees = [{ id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, scopeID: scope.id }]
             ;(Worktree as any).list = mock(async () => worktrees)
 
             const initialized = await WorktreeListTool.init()
@@ -165,12 +170,13 @@ describe("tool.worktree_list", () => {
     test("active worktree gets 'keep' recommendation", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           workspace: {
             type: "git_worktree",
-            path: "/tmp/worktrees/my-wt",
-            scopeID: "scope_123",
+            path: path.join(tmp.path, "worktrees/my-wt"),
+            scopeID: scope.id,
             worktreeID: "wt_abc",
             name: "my-wt",
           },
@@ -182,15 +188,15 @@ describe("tool.worktree_list", () => {
                 path: "/tmp/repo",
                 isMain: true,
                 managed: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
               {
                 id: "wt_abc",
                 name: "my-wt",
-                path: "/tmp/worktrees/my-wt",
+                path: path.join(tmp.path, "worktrees/my-wt"),
                 isMain: false,
                 managed: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
@@ -212,8 +218,9 @@ describe("tool.worktree_list", () => {
     test("stale managed worktree gets 'safe_to_remove'", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const worktrees = [
               {
@@ -222,16 +229,16 @@ describe("tool.worktree_list", () => {
                 path: "/tmp/repo",
                 isMain: true,
                 managed: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
               {
                 id: "wt_stale",
                 name: "old-wt",
-                path: "/tmp/worktrees/old-wt",
+                path: path.join(tmp.path, "worktrees/old-wt"),
                 isMain: false,
                 managed: true,
                 stale: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
@@ -249,8 +256,9 @@ describe("tool.worktree_list", () => {
     test("dirty managed worktree gets 'inspect_dirty'", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const worktrees = [
               {
@@ -259,16 +267,16 @@ describe("tool.worktree_list", () => {
                 path: "/tmp/repo",
                 isMain: true,
                 managed: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
               {
                 id: "wt_dirty",
                 name: "dirty-wt",
-                path: "/tmp/worktrees/dirty-wt",
+                path: path.join(tmp.path, "worktrees/dirty-wt"),
                 isMain: false,
                 managed: true,
                 dirty: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
@@ -286,8 +294,9 @@ describe("tool.worktree_list", () => {
     test("external (non-managed) worktree gets 'external_do_not_manage'", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const worktrees = [
               {
@@ -296,15 +305,15 @@ describe("tool.worktree_list", () => {
                 path: "/tmp/repo",
                 isMain: true,
                 managed: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
               {
                 id: "wt_external",
                 name: "external-wt",
-                path: "/tmp/worktrees/external-wt",
+                path: path.join(tmp.path, "worktrees/external-wt"),
                 isMain: false,
                 managed: false,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
@@ -322,19 +331,20 @@ describe("tool.worktree_list", () => {
     test("not dirty, not stale, not active non-main worktree gets 'keep'", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const worktrees = [
               {
                 id: "wt_idle",
                 name: "idle-wt",
-                path: "/tmp/worktrees/idle-wt",
+                path: path.join(tmp.path, "worktrees/idle-wt"),
                 isMain: false,
                 managed: true,
                 stale: false,
                 dirty: false,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
@@ -353,19 +363,20 @@ describe("tool.worktree_list", () => {
       runtime.run(async () => {
         // If a worktree is both stale and dirty, the stale check comes first
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const worktrees = [
               {
                 id: "wt_conflict",
                 name: "conflict-wt",
-                path: "/tmp/worktrees/conflict-wt",
+                path: path.join(tmp.path, "worktrees/conflict-wt"),
                 isMain: false,
                 managed: true,
                 stale: true,
                 dirty: true,
-                scopeID: "scope_123",
+                scopeID: scope.id,
               },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
@@ -386,11 +397,12 @@ describe("tool.worktree_list", () => {
     test("uses singular 'worktree' for single result", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const worktrees = [
-              { id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, managed: true, scopeID: "scope_123" },
+              { id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, managed: true, scopeID: scope.id },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
 
@@ -407,12 +419,13 @@ describe("tool.worktree_list", () => {
     test("uses plural 'worktrees' for multiple results", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
         await ScopeContext.provide({
-          scope: await tmp.scope(),
+          scope,
           fn: async () => {
             const worktrees = [
-              { id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, managed: true, scopeID: "scope_123" },
-              { id: "wt_a", name: "a", path: "/tmp/worktrees/a", isMain: false, scopeID: "scope_123" },
+              { id: "wt_main", name: "main", path: "/tmp/repo", isMain: true, managed: true, scopeID: scope.id },
+              { id: "wt_a", name: "a", path: path.join(tmp.path, "worktrees/a"), isMain: false, scopeID: scope.id },
             ]
             ;(Worktree as any).list = mock(async () => worktrees)
 

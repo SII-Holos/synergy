@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
+import fs from "node:fs/promises"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { buildPermissionContext } from "@ericsanchezok/synergy-harness/test/internal/session/permission-context"
 import { SystemPrompt } from "@ericsanchezok/synergy-harness/test/internal/session/system"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { registerProjectSessionHealth } from "@ericsanchezok/synergy-workbench/project/session-health"
 import { $ } from "bun"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -60,8 +61,8 @@ describe("buildPermissionContext with multiple roots", () => {
     }))
 })
 
-describe("SystemPrompt.environment with project folders", () => {
-  test("lists project folders when a project scope declares sandboxes", () =>
+describe("SystemPrompt.environment with Workspace write roots", () => {
+  test("declaring project sandboxes does not share write access", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
       const folder = path.join(tmp.path, "folder-a")
@@ -81,11 +82,13 @@ describe("SystemPrompt.environment with project folders", () => {
         scope,
         fn: () => SystemPrompt.environment(),
       })
-      expect(text).toContain(`Project folders: ${tmp.path}, ${folder}`)
+      expect(text.split("\n").find((line) => line.includes("Writable workspace directories:"))).toBe(
+        `  Writable workspace directories: ${tmp.path}`,
+      )
       expect(text).toContain(`Working directory: ${tmp.path}`)
     }))
 
-  test("renders a single project folder line for a plain project", () =>
+  test("renders the current Workspace as the only default write root", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
       const scope: import("@ericsanchezok/synergy-harness/scope").Scope.Project = {
@@ -102,10 +105,10 @@ describe("SystemPrompt.environment with project folders", () => {
         scope,
         fn: () => SystemPrompt.environment(),
       })
-      expect(text).toContain(`Project folder: ${tmp.path}`)
+      expect(text).toContain(`Writable workspace directories: ${tmp.path}`)
     }))
 
-  test("does not add a project folder line for the home scope", () =>
+  test("a session without a Workspace exposes no local write root", () =>
     runtime.run(async () => {
       const scope = {
         type: "home" as const,
@@ -116,11 +119,11 @@ describe("SystemPrompt.environment with project folders", () => {
         scope,
         fn: () => SystemPrompt.environment(),
       })
-      expect(text).not.toContain("Project folders:")
-      expect(text).not.toContain("Project folder:")
+      expect(text).not.toContain("Writable workspace directories:")
+      expect(text).toContain("Workspace: none.")
     }))
 
-  test("git_worktree session lists only trusted project folders, never the original checkout", () =>
+  test("a worktree uses its own root without granting its parent or original checkout", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
       await using sibling = await tmpdir()
@@ -136,6 +139,7 @@ describe("SystemPrompt.environment with project folders", () => {
         time: { created: 0, updated: 0 },
       }
       const worktreePath = path.join(folder, ".synergy", "worktrees", "feature-x")
+      await fs.mkdir(worktreePath, { recursive: true })
       const workspace = {
         type: "git_worktree" as const,
         path: worktreePath,
@@ -149,14 +153,26 @@ describe("SystemPrompt.environment with project folders", () => {
         fn: () => SystemPrompt.environment(),
       })
 
-      // The original checkout must never be listed as a trusted project folder,
-      // and the prompt must not render a contradictory duplicate line.
-      expect(text).not.toContain(`Project folders: ${tmp.path}`)
-      expect(text).not.toContain(`Project folders: ${tmp.path}, ${folder}`)
-      expect(text).toContain(`Project folder: ${folder}`)
+      expect(text.split("\n").find((line) => line.includes("Writable workspace directories:"))).toBe(
+        `  Writable workspace directories: ${worktreePath}`,
+      )
       expect(text).toContain(`Original checkout: ${tmp.path}`)
-      expect(text.split("Project folders:").length - 1).toBe(0)
-      expect(text.split("Project folder:").length - 1).toBe(1)
+    }))
+
+  test("renders an explicitly shared Workspace alongside the current write root", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await using shared = await tmpdir()
+      const scope = await tmp.scope()
+      const own = await WorkspaceBinding.register(scope.id, tmp.path)
+      const target = await WorkspaceBinding.register(scope.id, shared.path)
+      await WorkspaceBinding.setSharing(own.id, {
+        scopeID: scope.id,
+        expectedRevision: own.revision,
+        workspaceIDs: [target.id],
+      })
+      const [text] = await ScopeContext.provide({ scope, fn: () => SystemPrompt.environment() })
+      expect(text).toContain(`Writable workspace directories: ${tmp.path}, ${shared.path}`)
     }))
 })
 

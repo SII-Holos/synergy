@@ -1,26 +1,26 @@
 # Open Source Quality
 
-Synergy runs a multi-layer quality system that covers formatting, linting, type-checking, monorepo hygiene, CI workflow validation, secret scanning, package publishing validation, and tests. This runbook describes each layer, when to use which command, and how CI and local checks interact.
+Synergy runs a multi-layer quality system that covers formatting, linting, type-checking, monorepo hygiene, CI workflow validation, secret scanning, package publishing validation, and tests. This runbook describes local quality commands. CI task ownership, scheduling and admission are defined in [CI verification](ci.md).
 
 ## Quality Layers
 
-| Layer                      | Local command                                                               | CI job                | Tool                          | Pre-push |
-| -------------------------- | --------------------------------------------------------------------------- | --------------------- | ----------------------------- | -------- |
-| Bun version check          | (pre-push only)                                                             | —                     | `check-bun-version`           | ✅       |
-| Formatting                 | `bun run format:check`                                                      | `quality`             | Prettier                      | ✅       |
-| Lint                       | `bun run lint`                                                              | `quality`             | oxlint                        | ✅       |
-| Browser crypto contract    | `bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts`      | `quality`             | Bun source contract           | —        |
-| Localization               | `bun run localization:check`                                                | `quality`             | Lingui + source contract      | —        |
-| Type checking              | `bun run typecheck`                                                         | `typecheck`           | tsc via turbo                 | ✅       |
-| Monorepo deps              | `bun run monorepo:check`                                                    | `quality`             | sherif                        | ✅       |
-| Dead code                  | `bun run deadcode`                                                          | `quality`             | knip                          | —        |
-| CI workflow lint           | `bun run workflow:check`                                                    | `workflow-validation` | actionlint + zizmor           | —        |
-| Secret scanning            | `bun run secrets:check`                                                     | `secret-scan`         | gitleaks                      | —        |
-| Package validation         | `bun run package:check`                                                     | `package-validation`  | publint + attw                | —        |
-| Tests                      | `bun turbo test` / `bun run --cwd packages/harness test:ci`                 | `test`                | Turbo + sequential Bun shards | —        |
-| Private HTTP browser smoke | `bun run --cwd apps/web build && bun apps/web/script/private-http-smoke.ts` | `test`                | Playwright Chromium           | —        |
-| Desktop checks             | `bun run desktop:test`                                                      | `desktop`             | bun test + build              | —        |
-| Server health smoke        | —                                                                           | `smoke`               | Synergy health check          | —        |
+| Layer                      | Local command                                                               | CI task           | Tool                             | Pre-push |
+| -------------------------- | --------------------------------------------------------------------------- | ----------------- | -------------------------------- | -------- |
+| Bun version check          | (pre-push only)                                                             | —                 | `check-bun-version`              | ✅       |
+| Formatting                 | `bun run format:check`                                                      | `policy`          | Prettier                         | ✅       |
+| Lint                       | `bun run lint`                                                              | `static`          | oxlint                           | ✅       |
+| Browser crypto contract    | `bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts`      | `suite-apps-web`  | Bun source contract              | —        |
+| Localization               | `bun run localization:check`                                                | `static`          | Lingui + source contract         | —        |
+| Type checking              | `bun run typecheck`                                                         | `typecheck`       | tsc via turbo                    | ✅       |
+| Monorepo deps              | `bun run monorepo:check`                                                    | `static`          | sherif                           | ✅       |
+| Dead code                  | `bun run deadcode`                                                          | `static`          | knip                             | —        |
+| CI workflow lint           | `bun run workflow:check`                                                    | `policy`          | actionlint + zizmor              | —        |
+| Secret scanning            | `bun run secrets:check`                                                     | `policy`          | gitleaks                         | —        |
+| Package validation         | `bun run package:check`                                                     | `packages`        | publint + attw                   | —        |
+| Tests                      | `bun turbo test` / `bun run --cwd packages/harness test:ci`                 | `suite-*`         | One instrumented suite execution | —        |
+| Private HTTP browser smoke | `bun run --cwd apps/web build && bun apps/web/script/private-http-smoke.ts` | `web-integration` | Playwright Chromium              | —        |
+| Desktop checks             | `bun run desktop:test`                                                      | `desktop`         | bun test + build                 | —        |
+| Server health smoke        | —                                                                           | `smoke`           | Synergy health check             | —        |
 
 ### Pre-push hook (`.husky/pre-push`)
 
@@ -52,29 +52,11 @@ This runs the full suite locally. CI runs the same checks in parallel jobs.
 
 ## CI Pipeline
 
-CI runs on push to `dev` / `main` and on pull requests targeting those branches. Jobs run in parallel:
+CI runs on every push to `dev` / `main`, pull requests targeting those branches, and the daily cold-cache validation of latest `dev`. [CI verification](ci.md) owns the task catalog, dependency selection, runner limits, reports and rollout admission.
 
-| Job                   | Purpose                                                                                            |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| `quality`             | Formatting, lint, browser crypto contract, test layout, localization, monorepo deps, and dead code |
-| `typecheck`           | TypeScript type checking                                                                           |
-| `test-shards`         | Four duration-balanced matrix shards running workspace package tests through Turbo                 |
-| `test-aux`            | Private HTTP browser smoke, plugin UI contracts, and release contract tests                        |
-| `test-harness`        | Fresh-process Harness shards with per-shard JUnit reports                                          |
-| `test`                | Fan-in over the three test jobs; keeps the ruleset-anchored required check name                    |
-| `package-validation`  | publint + attw for publishable packages                                                            |
-| `workflow-validation` | actionlint + zizmor for CI workflow files                                                          |
-| `secret-scan`         | gitleaks for secrets and credentials                                                               |
-| `desktop`             | Desktop typecheck, unit tests, build config validation, runtime smoke                              |
-| `smoke`               | Server health check smoke test                                                                     |
-| `runtime-artifacts`   | Installed core and product artifact builds verified outside the repository                         |
-| `windows`             | Windows-focused typecheck, sandbox helper, and platform test subset                                |
-| `coverage-shards`     | Five coverage shards with a dedicated Harness runner, uploading lcov reports                       |
-| `coverage`            | Aggregates shard lcov reports and enforces unioned per-package thresholds                          |
+Package suites execute once with coverage and JUnit. Harness keeps four stable partitions and its isolated files. `web-integration` owns the production browser smoke and plugin UI contracts; `root-tests` owns script/release contracts; `installed-runtime` owns compiled core/full and installed package verification. PostgreSQL 16/17/18, Windows, sandbox, Desktop, long rollout and benchmark scenarios remain explicit tasks. Type and package checks each execute once in the Linux graph.
 
-All jobs must pass for a PR to merge. The `package-validation` and `workflow-validation` jobs are not in the pre-push hook — they require network access or special tooling that is available in CI but may not be installed locally.
-
-The `test-shards` matrix runs the workspace suites with bounded Turbo concurrency; `test-aux` covers the browser smoke and the plugin UI and release contracts; `test-harness` executes the Harness CI runner separately with isolated fresh-process shards and JUnit reports; the `Test` fan-in fails unless all three pass. The blocking `runtime-artifacts` job verifies compiled and tarball-installed CLI behavior outside the repository. The `coverage-shards` matrix job runs coverage commands in five shards, with Harness on its own runner, and uploads their lcov reports; the blocking `coverage` job downloads the reports, unions source hits across the complete invocation, and enforces per-package thresholds — the same evaluation a local `bun run coverage:check` performs. Superseded pull-request runs are cancelled through the workflow `concurrency` group.
+`All checks passed` verifies every selected task, job outcome, exact commit and workflow attempt, report hash, complete test inventory and coverage floor. PR selection starts in shadow mode; dev/main pushes stay full. Diagnostics cannot satisfy the required check. Oryn's independent review queue retains its own governance.
 
 ## Tool Responsibilities
 
@@ -86,11 +68,11 @@ The `test-shards` matrix runs the workspace suites with bounded Turbo concurrenc
 | knip                    | Dead code, unused dependencies, unused scripts, unresolved entries, and catalog hygiene               | CI and explicit local checks through `bun run deadcode`; configure precise entries/ignores for dynamic or generated code |
 | publint                 | npm package manifest, exports, and publish-shape validation                                           | Publishable package, release, SDK, plugin, util, or Synergy Link protocol changes through `bun run package:check`        |
 | attw                    | TypeScript package resolution validation for published tarballs                                       | Same path as publint through `bun run package:check`                                                                     |
-| actionlint              | GitHub Actions syntax and expression validation                                                       | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
-| zizmor                  | GitHub Actions security analysis                                                                      | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
-| gitleaks                | Secret and credential scanning                                                                        | Auth/provider/channel/config example changes through `bun run secrets:check`; all PRs through CI `secret-scan`           |
+| actionlint              | GitHub Actions syntax and expression validation                                                       | Workflow changes through `bun run workflow:check` and CI `policy`                                                        |
+| zizmor                  | GitHub Actions security analysis                                                                      | Workflow changes through `bun run workflow:check` and CI `policy`                                                        |
+| gitleaks                | Secret and credential scanning                                                                        | Auth/provider/channel/config example changes through `bun run secrets:check`; all PRs through CI `policy`                |
 | Localization gate       | Catalog extraction drift, complete zh-CN coverage, strict ICU compilation, and App/UI source policy   | Product copy, accessibility text, locale formatting, or shared UI changes through `bun run localization:check`           |
-| Browser crypto contract | Direct browser randomness under App/UI source must use the shared ordinary or strict utility boundary | Browser capability or identifier changes; every PR through CI `quality`                                                  |
+| Browser crypto contract | Direct browser randomness under App/UI source must use the shared ordinary or strict utility boundary | Browser capability or identifier changes; affected Web suites and all full runs through `suite-apps-web`                 |
 
 ## Package Publishing Validation
 
@@ -250,7 +232,7 @@ bun test --cwd apps/web test/testing/color-token-contract.test.ts
 
 ## Documentation Sync Rules
 
-When a change adds or modifies quality commands, scripts, CI jobs, or pre-push checks, update:
+When a change adds or modifies quality commands, scripts, CI tasks, or pre-push checks, update:
 
 1. `docs/operations/open-source-quality.md` — quality model and command/CI tables
 2. `README.md` — the `### Quality commands` section

@@ -1,3 +1,4 @@
+import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { describe, expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import fs from "node:fs/promises"
@@ -16,7 +17,7 @@ import { Session } from "../../src/session"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerSnapshotTestHost })
 
 test("empty optional step snapshots carry no root while malformed nonempty references remain errors", () =>
   runtime.run(() => {
@@ -450,7 +451,7 @@ describe("snapshot maintenance", () => {
           expect((await SnapshotMaintenance.check(scope.id)).ok).toBe(true)
           await SnapshotMaintenance.migrate(scope.id, { apply: true })
           await Bun.write(file, "later")
-          await Snapshot.revert([{ hash: tree, files: [file] }], session.id)
+          await Snapshot.revert([{ hash: tree, workspace: Snapshot.workspace(), files: [file] }], session.id)
           expect(await Bun.file(file).text()).toBe("old history")
         },
       })

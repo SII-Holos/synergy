@@ -452,10 +452,13 @@ export namespace SessionCompat {
       .passthrough()
       .parse(value)
     const { normalizeSessionWorkspaceInfo } = await import("./migration")
-    return Info.parse({
-      ...normalizeSessionWorkspaceInfo(record),
-      endpoint: Session.indexEndpoint(record.endpoint, record.time.archived),
-    })
+    const { SessionRecords } = await import("./records")
+    return Info.parse(
+      await SessionRecords.hydrate({
+        ...normalizeSessionWorkspaceInfo(record),
+        endpoint: Session.indexEndpoint(record.endpoint, record.time.archived),
+      } as Info),
+    )
   }
 
   export async function pendingInfo(scopeID: string, sessionID: string): Promise<Info | undefined> {

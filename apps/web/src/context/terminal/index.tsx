@@ -8,6 +8,9 @@ import { Persist, persisted } from "@/utils/persist"
 export type LocalPTY = {
   id: string
   title: string
+  workspaceID?: string
+  workspaceGeneration?: number
+  cwd?: string
   rows?: number
   cols?: number
   buffer?: string
@@ -50,6 +53,9 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, sessionID: string
         const next = {
           id,
           title: pty.data?.title ?? "Terminal",
+          workspaceID: pty.data?.workspaceID,
+          workspaceGeneration: pty.data?.workspaceGeneration,
+          cwd: pty.data?.cwd,
         }
         setStore("all", [...store.all, next])
         setStore("active", id)
@@ -97,9 +103,12 @@ function createTerminalSession(sdk: ReturnType<typeof useSDK>, sessionID: string
       setStore("active", id)
     },
     async close(id: string) {
-      await sdk.client.pty.remove({ ptyID: id }).catch((e) => {
-        console.error("Failed to close terminal", e)
-      })
+      try {
+        await sdk.client.pty.remove({ ptyID: id })
+      } catch (error) {
+        console.error("Failed to close terminal", error)
+        return
+      }
       setTimeout(() => {
         const remaining = store.all.filter((x) => x.id !== id)
         setStore("all", remaining)

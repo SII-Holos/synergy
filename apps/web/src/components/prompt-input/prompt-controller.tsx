@@ -1,3 +1,5 @@
+import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
+import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import type { PluginInputService, PluginInputViewPart } from "@ericsanchezok/synergy-plugin"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { useFilteredList } from "@ericsanchezok/synergy-ui/hooks"
@@ -1185,8 +1187,25 @@ export function createPromptInputController(props: PromptInputProps) {
             label: mainLabel,
             description: localDescription,
             icon: getSemanticIcon("workspace.main"),
-            selected: !worktreeSelected,
+            selected: workspaceSelection.mode === "current",
             onSelect: () => props.onNewSessionWorkspaceSelectionChange?.({ mode: "current" }),
+          },
+          {
+            id: "workspace.directory",
+            label:
+              workspaceSelection.mode === "workspace"
+                ? (sync.data.workspaces.find((record) => record.id === workspaceSelection.workspaceID)?.binding.path ??
+                  i18n._(workspaceCopy.title))
+                : workspaceSelection.mode === "none"
+                  ? i18n._(workspaceCopy.none)
+                  : i18n._(workspaceCopy.title),
+            description: i18n._(workspaceCopy.description),
+            icon: getSemanticIcon("workspace.main"),
+            selected: workspaceSelection.mode === "workspace" || workspaceSelection.mode === "none",
+            onSelect: () =>
+              workflowDialog.show(() => (
+                <DialogWorkspace selection={workspaceSelection} onSelect={props.onNewSessionWorkspaceSelectionChange} />
+              )),
           },
           {
             id: "workspace.worktree",

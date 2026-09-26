@@ -4,6 +4,7 @@ import { migrations } from "./migration"
 import { registerBrowserTools } from "./tools"
 import { registerBrowserCommands } from "./command-service"
 import { BrowserRuntime } from "./runtime"
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
 
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,
@@ -16,6 +17,14 @@ export function registerBrowser() {
   MigrationRegistry.register("browser", migrations)
   registerBrowserTools()
   registerBrowserCommands()
+  SessionWorkspaceRuntime.registerTransition("browser", (session) =>
+    BrowserRuntime.invalidateSession({
+      mode: "session",
+      scopeID: session.scope.id,
+      sessionID: session.id,
+      directory: session.workspace?.path ?? null,
+    }),
+  )
   instanceState.registered = true
 }
 

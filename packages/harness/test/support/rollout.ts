@@ -1,3 +1,5 @@
+import { appendFile, mkdir } from "node:fs/promises"
+import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -6,6 +8,23 @@ import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/le
 import { RolloutTransportRecorder } from "@ericsanchezok/synergy-harness/session/rollout/transport-recorder"
 import { ProviderPricing } from "@ericsanchezok/synergy-harness/provider/pricing"
 
+export async function measurePhase<T>(phase: string, body: () => Promise<T>): Promise<T> {
+  const started = performance.now()
+  try {
+    return await body()
+  } finally {
+    if (process.env.SYNERGY_CI_TIMING === "1") {
+      const row = JSON.stringify({ phase, seconds: (performance.now() - started) / 1000 })
+      console.info(`rollout-timing ${row}`)
+      const file = process.env.SYNERGY_CI_TIMING_OUTPUT
+      if (file) {
+        await mkdir(path.dirname(file), { recursive: true })
+        await appendFile(file, row + "\n")
+      }
+    }
+  }
+}
+
 export async function fixture(
   fn: (input: {
     session: Session.Info
@@ -13,64 +32,68 @@ export async function fixture(
     call: Awaited<ReturnType<typeof RolloutLedger.beginCall>>
   }) => Promise<void>,
 ) {
-  await using tmp = await tmpdir({ git: true })
-  const scope = await tmp.scope()
-  await ScopeContext.provide({
-    scope,
-    fn: async () => {
-      const session = await Session.create({})
-      try {
-        const rootID = Identifier.ascending("message")
-        const root = await Session.updateMessage({
-          id: rootID,
-          sessionID: session.id,
-          role: "user",
-          isRoot: true,
-          rootID,
-          agent: "synergy",
-          model: { providerID: "test", modelID: "test" },
-          time: { created: Date.now() },
-        })
-        await Session.updateMessage({
-          id: Identifier.ascending("message"),
-          sessionID: session.id,
-          role: "assistant",
-          parentID: root.id,
-          rootID: root.id,
-          agent: "synergy",
-          mode: "synergy",
-          modelID: "test",
-          providerID: "test",
-          time: { created: Date.now(), completed: Date.now() },
-          path: { cwd: tmp.path, root: tmp.path },
-          cost: 123,
-          tokens: { input: 1000, output: 500, reasoning: 100, cache: { read: 0, write: 0 } },
-          finish: "stop",
-        })
-        const call = await RolloutLedger.beginCall({
-          owner: { kind: "session", scopeID: scope.id, sessionID: session.id },
-          runID: root.id,
-          purpose: "summary",
-          agent: "summary",
-          request: {},
-          model: {
-            providerID: "test",
+  const tmp = await tmpdir({ git: true })
+  try {
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const rootID = Identifier.ascending("message")
+          const root = await Session.updateMessage({
+            id: rootID,
+            sessionID: session.id,
+            role: "user",
+            isRoot: true,
+            rootID,
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            time: { created: Date.now() },
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: root.id,
+            rootID: root.id,
+            agent: "synergy",
+            mode: "synergy",
             modelID: "test",
-            sdk: "@ai-sdk/openai",
-            pricing: ProviderPricing.resolve({
+            providerID: "test",
+            time: { created: Date.now(), completed: Date.now() },
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 123,
+            tokens: { input: 1000, output: 500, reasoning: 100, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })
+          const call = await RolloutLedger.beginCall({
+            owner: { kind: "session", scopeID: scope.id, sessionID: session.id },
+            runID: root.id,
+            purpose: "summary",
+            agent: "summary",
+            request: {},
+            model: {
               providerID: "test",
               modelID: "test",
-              source: "configuration",
-              cost: { input: 3, output: 15, cache_read: 1 },
-            }),
-          },
-        })
-        await fn({ session: await Session.get(session.id), rootID: root.id, call })
-      } finally {
-        await Session.remove(session.id)
-      }
-    },
-  })
+              sdk: "@ai-sdk/openai",
+              pricing: ProviderPricing.resolve({
+                providerID: "test",
+                modelID: "test",
+                source: "configuration",
+                cost: { input: 3, output: 15, cache_read: 1 },
+              }),
+            },
+          })
+          await fn({ session: await Session.get(session.id), rootID: root.id, call })
+        } finally {
+          await measurePhase("session.remove", () => Session.remove(session.id))
+        }
+      },
+    })
+  } finally {
+    await measurePhase("scope.dispose", () => tmp[Symbol.asyncDispose]())
+  }
 }
 
 export async function complete(

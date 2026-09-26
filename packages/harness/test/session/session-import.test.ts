@@ -15,6 +15,7 @@ import { SessionNav } from "../../src/session/nav"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
 import { SessionBounds } from "../../src/session/bounds"
+import { Snapshot } from "../../src/session/snapshot"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -73,6 +74,52 @@ async function writeExchange(sessionID: string, text: string, metadata?: Record<
 }
 
 describe("SessionImport", () => {
+  test("forks and imports detach pending file operations while preserving their source evidence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const source = await Session.create({})
+          await writeExchange(source.id, "files")
+          const message = (await Session.messages({ sessionID: source.id }))[1]!
+          const hash = (await Snapshot.track(source.id))!
+          for (const status of ["pending", "complete"] as const)
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              sessionID: source.id,
+              messageID: message.info.id,
+              type: "patch",
+              hash,
+              files: [],
+              workspace: Snapshot.workspace(),
+              operation:
+                status === "pending" ? { status, toolCallID: status } : { status, toolCallID: status, afterHash: hash },
+            })
+          const fork = await Session.fork({ sessionID: source.id })
+          const imported = await SessionImport.fromReport(
+            await SessionExport.generate({ sessionID: source.id, mode: "full" }),
+          )
+          for (const sessionID of [fork.id, imported.rootSessionID]) {
+            const parts = (await Session.messages({ sessionID }))
+              .flatMap((item) => item.parts)
+              .filter((part) => part.type === "patch")
+            expect(parts.map((part) => part.operation?.status)).toEqual(["incomplete", "complete"])
+            expect(parts.map((part) => part.hash)).toEqual([hash, hash])
+            expect(parts[1]?.operation).toEqual({ status: "complete", toolCallID: "complete", afterHash: hash })
+          }
+          expect(
+            (await MessageV2.parts({ sessionID: source.id, messageID: message.info.id }))
+              .filter((part) => part.type === "patch")
+              .map((part) => part.operation?.status),
+          ).toEqual(["pending", "complete"])
+          await Session.remove(fork.id)
+          await Session.remove(imported.rootSessionID)
+          await Session.remove(source.id)
+        },
+      })
+    }))
+
   test("marks missing originals when importing a transcript without its artifact files", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

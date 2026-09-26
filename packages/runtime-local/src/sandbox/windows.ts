@@ -348,6 +348,7 @@ export namespace WindowsBackend {
       command: helper.path,
       args: ["--permission-profile", configPath, "--cwd", opts.executionCwd ?? workspace, "--", command, ...args],
       sandboxed: true,
+      writeFootprint: { kind: "host" },
       tempPath: configPath,
     }
   }

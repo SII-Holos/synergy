@@ -16,6 +16,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { useNavigate } from "@solidjs/router"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import { fileRestoreFeedback } from "./file-restore-feedback"
 import { compactSessionWithCurrentModel } from "./compact-action"
 
 export function useSessionCommands(params: {
@@ -266,13 +267,11 @@ export function useSessionCommands(params: {
         const sessionID = routeParams.id
         const rollback = info()?.history?.rollback
         if (!sessionID || !rollback) return
-        const result = await sdk.client.session.files.restore({ sessionID, rollbackID: rollback.id })
-        const restoredFiles = result.data?.restoredFiles.length ?? 0
-        showToast({
-          type: "success",
-          title: i18n._(S.cmdToastFilesRestored),
-          description: i18n._({ ...S.cmdToastFilesRestoredDesc, values: { count: restoredFiles } }),
-        })
+        const result = await sdk.client.session.files.restore(
+          { sessionID, rollbackID: rollback.id },
+          { throwOnError: true },
+        )
+        showToast(fileRestoreFeedback(result.data, i18n))
       },
     },
     {

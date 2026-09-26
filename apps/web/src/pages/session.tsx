@@ -62,6 +62,7 @@ import { navMark, navParams } from "@/utils/perf"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
+import { fileRestoreFeedback } from "@/components/session/file-restore-feedback"
 import { requestErrorMessage } from "@/utils/error"
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -489,8 +490,20 @@ function SessionPageContent() {
               return requestErrorMessage(error)
             }
           }
+          let restoreFailed = false
           if (restoreFiles && result.data?.id) {
-            await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
+            try {
+              const restored = await sdk.client.session.files.restore(
+                { sessionID, rollbackID: result.data.id },
+                { throwOnError: true },
+              )
+              const feedback = fileRestoreFeedback(restored.data, i18n)
+              restoreFailed = feedback.type === "error"
+              showToast(feedback)
+            } catch (error) {
+              restoreFailed = true
+              showToast({ type: "error", description: requestErrorMessage(error) })
+            }
           }
           if (cutParts.length > 0) {
             const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
@@ -498,7 +511,7 @@ function SessionPageContent() {
             prompt.context.set(restored.context)
           }
           setActiveMessage(previousActiveMessage)
-          if (action !== "retry" || !retryInput) return
+          if (restoreFailed || action !== "retry" || !retryInput) return
           try {
             await sdk.client.session.input(retryInput, { throwOnError: true })
             prompt.resetDraft()
@@ -1989,6 +2002,7 @@ function SessionPageContent() {
                   const diffsArr = Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[])
                   return (
                     <SessionReviewTab
+                      workspace={() => file.workspace}
                       diffs={() => diffsArr}
                       view={view}
                       diffStyle="unified"

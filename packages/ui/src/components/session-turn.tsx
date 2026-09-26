@@ -1220,6 +1220,10 @@ export function SessionTurn(
   const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
+  const incompleteFileRecording = createMemo(() => {
+    const state = message()?.summary?.diffState
+    return state?.status === "error" && state.code === "incomplete"
+  })
 
   createEffect(
     on(diffSettlementStatus, (status) => {
@@ -1585,6 +1589,7 @@ export function SessionTurn(
                             <TurnChangeSummaryPanel
                               diffs={msg().summary?.diffs ?? []}
                               state={state()}
+                              incomplete={incompleteFileRecording()}
                               animateReady={animateReadyDiffPanel()}
                               onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
                               onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}

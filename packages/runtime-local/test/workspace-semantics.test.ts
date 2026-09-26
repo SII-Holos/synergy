@@ -19,7 +19,10 @@ test("Home and explicit none retain a null workspace through creation and child 
         const parent = await Session.create()
         expect(parent.workspace).toBeNull()
         expect((await Session.create({ parentID: parent.id })).workspace).toBeNull()
-        await expect(Session.applyWorkspaceSelection(parent.id, { mode: "current" })).rejects.toThrow("workspace")
+        expect(await Session.applyWorkspaceSelection(parent.id, { mode: "current" })).toMatchObject({
+          workspace: null,
+          workspaceID: null,
+        })
       },
     }),
   )
@@ -31,7 +34,16 @@ test("Home and explicit none retain a null workspace through creation and child 
       scope,
       fn: async () => {
         const parent = await Session.create()
-        expect(parent.workspace).toEqual({ type: "main", path: directory, scopeID: scope.id })
+        expect(parent.workspaceID).toStartWith("wsp_")
+        expect(parent.workspace).toEqual({
+          id: parent.workspaceID!,
+          generation: 1,
+          bindingState: "bound",
+          lifecycle: "active",
+          type: "main",
+          path: await fs.realpath(directory),
+          scopeID: scope.id,
+        })
         await ScopeContext.provide({
           scope: Scope.home(),
           fn: async () => {

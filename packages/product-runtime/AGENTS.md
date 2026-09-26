@@ -8,6 +8,7 @@ Own the complete product composition and packaged runtime entry. Read the root [
 - Source and compiled agent workers must install the same full composition as the foreground runtime before starting the Harness runner. Preserve resource discovery, verified sandbox assets, cancellation, evidence failures and shutdown drainage.
 - Keep core-only tests in Harness or Runtime Local. Full API, cross-domain lifecycle and product configuration tests belong here and explicitly register their required services.
 - Preserve unloaded domain data and existing migration IDs and ledgers. Read [persistence guidance](../../.synergy/skill/change-persistence/SKILL.md) before changing upgrades, imports or data movement.
+- Full-data copies hold native directory retirement claims as well as offline Home locks, including selected folders and source removal. Copied Git relationship repair belongs to Runtime Local and must never reconnect to an uncopied source.
 - Preserve first-class native Desktop and WebRTC Browser presentation. Browser backend ownership belongs to `packages/browser-runtime`; protocol contracts belong to `packages/browser`.
 
 Run `bun run typecheck`, affected tests and `bun run test:coverage` from this package. The shared testing orchestrator injects a positive isolated-home marker into every child; never use raw parallel coverage. Model fixtures belong to `packages/testing/fixtures/models-api.json`.

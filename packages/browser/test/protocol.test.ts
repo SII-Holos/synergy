@@ -533,6 +533,9 @@ describe("browser upload and checkpoint schema limits", () => {
       files: [{ name: "file.txt", mimeType: "text/plain", dataBase64 }],
     })
     expect(BrowserBackendCommandSchema.safeParse(upload("dGVzdA==")).success).toBe(true)
+    expect(BrowserBackendCommandSchema.safeParse(upload("")).success).toBe(true)
+    expect(BrowserBackendCommandSchema.safeParse(upload("==")).success).toBe(false)
+    expect(BrowserBackendCommandSchema.safeParse(upload("AA=")).success).toBe(false)
     expect(BrowserBackendCommandSchema.safeParse(upload("***not-base64***")).success).toBe(false)
     expect(BrowserBackendCommandSchema.safeParse(upload("a".repeat(35 * 1024 * 1024))).success).toBe(false)
     const manyFiles = upload("dGVzdA==")

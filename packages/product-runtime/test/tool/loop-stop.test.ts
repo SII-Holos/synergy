@@ -215,7 +215,7 @@ describe("loop_stop", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const session = sessionWithLightLoop(true)
+          const session = await Session.create({ workflow: { kind: "lightloop", instructions: "Test task" } })
           const agenda = await AgendaStore.create({
             title: "Experiment progress",
             prompt: "Check the experiment",
@@ -226,7 +226,6 @@ describe("loop_stop", () => {
             createdBy: "agent",
             sessionID: session.id,
           })
-          ;(Session.get as any) = mock(async () => session)
           const launch = mock(async () => ({ id: "ctx_unexpected", sessionID: "ses_unexpected" }))
           ;(Cortex.launch as any) = launch
 

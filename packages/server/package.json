@@ -13,10 +13,10 @@
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
-    "test": "bun ../testing/script/test-ci.ts",
+    "test": "bun ../runtime-local/script/build-pty.ts && bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/server",
-    "test:ci": "bun ../testing/script/test-ci.ts",
-    "test:coverage": "bun ../testing/script/coverage-run.ts"
+    "test:ci": "bun ../runtime-local/script/build-pty.ts && bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../runtime-local/script/build-pty.ts && bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",

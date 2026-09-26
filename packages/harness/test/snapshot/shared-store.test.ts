@@ -1,3 +1,4 @@
+import { registerSnapshotTestHost } from "../support/snapshot-host"
 import { describe, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -8,7 +9,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerSnapshotTestHost })
 
 async function objects(repo: string) {
   const result = await SnapshotStore.command(repo, ["cat-file", "--batch-all-objects", "--batch-check=%(objectname)"])
@@ -131,9 +132,9 @@ describe("shared snapshot storage", () => {
           const repo = SnapshotStore.repository(scope.id)
           await SnapshotStore.command(repo, ["gc", "--prune=now"])
           await SnapshotStore.command(repo, ["fsck", "--full"])
-          await Snapshot.revert([{ hash: before!, files: [file] }], "session-a")
+          await Snapshot.revert([{ hash: before!, workspace: Snapshot.workspace(), files: [file] }], "session-a")
           expect(await fs.readFile(file, "utf8")).toBe("before")
-          await Snapshot.revert([{ hash: after!, files: [file] }], "session-a")
+          await Snapshot.revert([{ hash: after!, workspace: Snapshot.workspace(), files: [file] }], "session-a")
           expect(await fs.readFile(file, "utf8")).toBe("after")
         },
       })

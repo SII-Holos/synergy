@@ -1161,6 +1161,10 @@
         {
           "glob": "src/plugin/surface-overlays.tsx",
           "reason": "owned overlay lifecycle exercised in test/plugin/overlays.dom.test.ts through the browser; Bun instrumentation cannot observe the portal runtime"
+        },
+        {
+          "glob": "src/components/file-workbench/entry-dialog.tsx",
+          "reason": "Entry operation dialog executes in real Chromium under test/components/dialog/file-entry-dialog.dom.test.ts; Bun coverage does not instrument the Vite browser bundle"
         }
       ]
     },
@@ -1195,7 +1199,7 @@
       ]
     },
     "packages/browser": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1438,6 +1442,10 @@
         {
           "glob": "src/storage/sqlite-worker.ts",
           "reason": "dedicated IPC child process exercised by test/storage/transactional-store.test.ts and test/storage/crash-recovery.test.ts, including committed snapshots, rollback, owner loss and process-group cancellation; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/process/handle.ts",
+          "reason": "types-only ProcessHandle contract; no runtime implementation"
         }
       ]
     },
@@ -1483,7 +1491,7 @@
       ]
     },
     "packages/plugin": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1535,7 +1543,7 @@
       ]
     },
     "packages/plugin-kit": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1583,10 +1591,6 @@
           "reason": "source worker composition entry runs in a child process; real IPC, SDK retry and shutdown behavior is verified by test/session/agent-worker-process.test.ts, and installed/compiled CLI behavior by packages/cli/test/cli/artifact.test.ts; Bun does not merge child-process coverage"
         },
         {
-          "glob": "src/process/pty.ts",
-          "reason": "process/PTY handling requires real child-process runtime"
-        },
-        {
           "glob": "src/sandbox/index.ts",
           "reason": "barrel re-export"
         },
@@ -1601,11 +1605,15 @@
         {
           "glob": "src/policy-worker.ts",
           "reason": "source policy worker entry runs in a child process; test/enforcement/policy-worker-process.test.ts verifies the production local composition, classifier parity and shutdown across IPC; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/process/owned-worker.ts",
+          "reason": "Native process worker executes in a separate launchd process; test/process/owned-process.test.ts and test/process/pty.test.ts verify activation, output, descendant lifetime and crash cleanup; Bun does not merge worker coverage"
         }
       ]
     },
     "packages/sdk/js": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1669,7 +1677,7 @@
       ]
     },
     "packages/synergy-link": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1683,7 +1691,7 @@
       ]
     },
     "packages/synergy-link-protocol": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -2051,7 +2059,7 @@
       ]
     },
     "packages/util": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -2117,7 +2125,7 @@
       ]
     },
     "packages/secret-detection": {
-      "command": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage test/",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 85,

@@ -1,5 +1,5 @@
-import { createEffect, on, onCleanup } from "solid-js"
-import { SessionReview } from "@ericsanchezok/synergy-ui/session-review"
+import { createEffect, createMemo, on, onCleanup } from "solid-js"
+import { SessionReview, reviewFileKey } from "@ericsanchezok/synergy-ui/session-review"
 import type { FileDiff } from "@ericsanchezok/synergy-sdk/client"
 import type { useLayout } from "@/context/layout"
 import { computeReviewOpenForSelectedFile } from "./review-open-model"
@@ -8,6 +8,7 @@ type DiffStyle = "unified" | "split"
 
 export interface SessionReviewTabProps {
   diffs: () => FileDiff[]
+  workspace?: () => { id: string; generation: number; path: string } | null
   view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
   diffStyle: DiffStyle
   onDiffStyleChange?: (style: DiffStyle) => void
@@ -21,17 +22,34 @@ export interface SessionReviewTabProps {
 }
 
 export function SessionReviewTab(props: SessionReviewTabProps) {
+  const canViewFile = (diff: FileDiff) => {
+    const current = props.workspace?.()
+    return Boolean(
+      current &&
+        diff.workspace &&
+        diff.workspace.id === current.id &&
+        diff.workspace.generation === current.generation &&
+        diff.workspace.root === current.path,
+    )
+  }
+  const selectedKey = createMemo(() => {
+    const selected = props.selectedFile?.()
+    if (!selected) return
+    const exact = props.diffs().find((diff) => reviewFileKey(diff) === selected)
+    if (exact) return reviewFileKey(exact)
+    const matches = props.diffs().filter((diff) => diff.file === selected)
+    const match = matches.find(canViewFile) ?? (matches.length === 1 ? matches[0] : undefined)
+    return match ? reviewFileKey(match) : undefined
+  })
   let scroll: HTMLDivElement | undefined
   let frame: number | undefined
   let pending: { x: number; y: number } | undefined
 
   const focusSelectedFileRow = (retries = 0) => {
-    const selected = props.selectedFile?.()
+    const selected = selectedKey()
     if (!selected) return
 
-    const row = scroll?.querySelector<HTMLElement>(
-      `[data-slot="session-review-accordion-item"][data-file="${CSS.escape(selected)}"]`,
-    )
+    const row = scroll?.querySelector<HTMLElement>(`[data-slot="accordion-item"][data-file="${CSS.escape(selected)}"]`)
     if (!row) {
       if (retries < 5) requestAnimationFrame(() => focusSelectedFileRow(retries + 1))
       return
@@ -41,16 +59,12 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
   }
 
   const openSelectedFile = () => {
-    const selected = props.selectedFile?.()
+    const selected = selectedKey()
     if (!selected) return
-    if (!props.diffs().some((diff) => diff.file === selected)) return
+    if (!props.diffs().some((diff) => reviewFileKey(diff) === selected)) return
 
     const current = props.view().review.open() ?? []
-    const next = computeReviewOpenForSelectedFile(
-      selected,
-      props.diffs().map((d) => d.file),
-      current,
-    )
+    const next = computeReviewOpenForSelectedFile(selected, props.diffs().map(reviewFileKey), current)
     if (next) {
       props.view().review.setOpen(next)
     }
@@ -102,19 +116,7 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
     ),
   )
 
-  createEffect(
-    on(
-      () =>
-        [
-          props.selectedFile?.(),
-          props
-            .diffs()
-            .map((diff) => diff.file)
-            .join("\u0000"),
-        ] as const,
-      openSelectedFile,
-    ),
-  )
+  createEffect(on(() => [selectedKey(), props.diffs().map(reviewFileKey).join("\u0000")] as const, openSelectedFile))
 
   onCleanup(() => {
     if (frame === undefined) return
@@ -138,8 +140,11 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
       diffs={props.diffs()}
       diffStyle={props.diffStyle}
       onDiffStyleChange={props.onDiffStyleChange}
-      onViewFile={props.onViewFile}
-      selectedFile={props.selectedFile?.()}
+      canViewFile={canViewFile}
+      onViewFile={(file, diff) => {
+        if (canViewFile(diff)) props.onViewFile?.(file)
+      }}
+      selectedFile={selectedKey()}
     />
   )
 }

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks"
 import type { PluginDefinition, PluginManifestType, PluginInvocationContext } from "@ericsanchezok/synergy-plugin"
 import { PLUGIN_RUNTIME_PROTOCOL_VERSION } from "./protocol.js"
 import type { PluginHostServiceMethod, RuntimeInvocationContextData } from "./protocol.js"
@@ -55,6 +56,12 @@ export interface PluginHostServiceInvocationInput {
 export type PluginHostServiceDispatcher = (input: PluginHostServiceInvocationInput) => Promise<unknown>
 export interface PluginRuntimeManagerDependencies {
   startMemoryMonitor(input: MemoryMonitorInput): MemoryMonitor
+  withInvocation?(
+    context: RuntimeInvocationContextData,
+    signal: AbortSignal,
+    fn: (context: RuntimeInvocationContextData) => Promise<unknown>,
+    capabilities: ReadonlySet<string>,
+  ): Promise<unknown>
 }
 
 interface RuntimeInvocationRecord {
@@ -64,6 +71,8 @@ interface RuntimeInvocationRecord {
   pluginDir: string
   manifest: PluginManifestType
   handlerId: string
+  run: ReturnType<typeof AsyncLocalStorage.snapshot>
+  pending: Set<Promise<unknown>>
 }
 
 export class PluginRuntimeManager {
@@ -261,8 +270,9 @@ export class PluginRuntimeManager {
       },
       onHostRequest: async (request) => {
         const invocation = this.#invocations.get(request.invocationId)
-        if (!invocation) throw new Error(`Unknown plugin invocation: ${request.invocationId}`)
-        return this.hostServices({
+        if (!invocation || invocation.entry !== entry)
+          throw new Error(`Unknown plugin invocation: ${request.invocationId}`)
+        return this.#hostRequest(invocation, {
           pluginId: entry.pluginId,
           pluginDir: invocation.pluginDir,
           manifest: invocation.manifest,
@@ -404,66 +414,94 @@ export class PluginRuntimeManager {
     }
     controller.signal.addEventListener("abort", cancelRuntime, { once: true })
     entry.inFlight++
-    this.#invocations.set(requestId, {
-      context: input.context,
-      controller,
-      entry,
-      pluginDir: input.pluginDir,
-      manifest: input.manifest,
-      handlerId: input.handlerId,
-    })
-    try {
-      const invocation =
-        entry.mode === "process"
-          ? entry.process!.request({
-              type: "invoke",
-              requestId,
-              generation: entry.generation,
-              handlerId: input.handlerId,
-              input: input.value,
-              context: input.context,
-            })
-          : this.#invokeInProcess(
-              entry,
-              requestId,
-              input.handlerId,
-              input.value,
-              input.context,
-              input.pluginDir,
-              input.manifest,
-              controller,
-            ).then((value) => ({ requestId, generation: entry.generation, ok: true as const, value }))
-      // Reject only after process pending is tracked so pre-aborted signals still settle the request.
-      if (controller.signal.aborted) cancelRuntime()
-      // Process mode settles cancel/timeout through rejectRequest on the same pending promise.
-      // In-process still races an abort rejection because there is no IPC pending map.
-      const response =
-        entry.mode === "process"
-          ? await invocation
-          : await Promise.race([
-              invocation,
-              new Promise<never>((_, reject) => {
-                if (controller.signal.aborted) {
-                  reject(abortError())
-                  return
-                }
-                controller.signal.addEventListener(
-                  "abort",
-                  () => {
-                    reject(abortError())
-                  },
-                  { once: true },
-                )
-              }),
-            ])
-      if (
-        response.generation !== entry.generation ||
-        (!input.runtimeKey && this.registry.active(input.pluginId)?.key !== entry.key)
-      ) {
-        throw new PluginRuntimeError("STALE_GENERATION", `Plugin generation changed during invocation`)
+    const execute = async (context: RuntimeInvocationContextData) => {
+      const record: RuntimeInvocationRecord = {
+        context,
+        controller,
+        entry,
+        pluginDir: input.pluginDir,
+        manifest: input.manifest,
+        handlerId: input.handlerId,
+        run: AsyncLocalStorage.snapshot(),
+        pending: new Set(),
       }
-      return response.value
+      this.#invocations.set(requestId, record)
+      let returned = false
+      try {
+        const invocation =
+          entry.mode === "process"
+            ? entry.process!.request({
+                type: "invoke",
+                requestId,
+                generation: entry.generation,
+                handlerId: input.handlerId,
+                input: input.value,
+                context,
+              })
+            : this.#invokeInProcess(
+                entry,
+                requestId,
+                input.handlerId,
+                input.value,
+                context,
+                input.pluginDir,
+                input.manifest,
+                controller,
+              ).then((value) => ({ requestId, generation: entry.generation, ok: true as const, value }))
+        // Reject only after process pending is tracked so pre-aborted signals still settle the request.
+        if (controller.signal.aborted) cancelRuntime()
+        // Process mode settles cancel/timeout through rejectRequest on the same pending promise.
+        // In-process still races an abort rejection because there is no IPC pending map.
+        const response =
+          entry.mode === "process"
+            ? await invocation
+            : await Promise.race([
+                invocation,
+                new Promise<never>((_, reject) => {
+                  if (controller.signal.aborted) {
+                    reject(abortError())
+                    return
+                  }
+                  controller.signal.addEventListener(
+                    "abort",
+                    () => {
+                      reject(abortError())
+                    },
+                    { once: true },
+                  )
+                }),
+              ])
+        if (
+          response.generation !== entry.generation ||
+          (!input.runtimeKey && this.registry.active(input.pluginId)?.key !== entry.key)
+        ) {
+          throw new PluginRuntimeError("STALE_GENERATION", `Plugin generation changed during invocation`)
+        }
+        returned = true
+        return response.value
+      } finally {
+        this.#invocations.delete(requestId)
+        controller.signal.removeEventListener("abort", cancelRuntime)
+        const unfinished = record.pending.size
+        controller.abort(new DOMException("Plugin invocation ended", "AbortError"))
+        await Promise.allSettled([...record.pending])
+        if (returned && unfinished) throw new Error("Plugin returned before its Host Services settled")
+      }
+    }
+    try {
+      return await (this.dependencies.withInvocation
+        ? this.dependencies.withInvocation(
+            input.context,
+            controller.signal,
+            execute,
+            new Set(input.manifest.capabilities.map((item) => item.id)),
+          )
+        : execute(input.context))
     } catch (error) {
+      if (timedOut || input.signal?.aborted) {
+        if (timedOut && entry.mode === "process") await this.#stopEntry(entry, 0)
+        throw abortError()
+      }
       if (error instanceof PluginRuntimeError) {
         if (error.code === "TIMEOUT" && entry.mode === "process") await this.#stopEntry(entry, 0)
         throw error
@@ -550,6 +588,17 @@ export class PluginRuntimeManager {
     }
   }
 
+  async #hostRequest(record: RuntimeInvocationRecord, input: PluginHostServiceInvocationInput) {
+    record.controller.signal.throwIfAborted()
+    const pending = record.run(() => this.hostServices(input))
+    record.pending.add(pending)
+    try {
+      return await pending
+    } finally {
+      record.pending.delete(pending)
+    }
+  }
+
   async #invokeInProcess(
     entry: PluginRuntimeEntry,
     requestId: string,
@@ -579,8 +628,10 @@ export class PluginRuntimeManager {
         contribution,
       ),
       log: this.#logger(entry.pluginId),
-      invokeHost: (method, params) =>
-        this.hostServices({
+      invokeHost: (method, params) => {
+        const record = this.#invocations.get(requestId)
+        if (!record || record.entry !== entry) return Promise.reject(new Error("Plugin invocation is closed"))
+        return this.#hostRequest(record, {
           pluginId: entry.pluginId,
           pluginDir,
           manifest,
@@ -589,7 +640,8 @@ export class PluginRuntimeManager {
           method,
           params,
           signal: controller.signal,
-        }),
+        })
+      },
     })
     if (contribution.kind === "lifecycle.install" || contribution.kind === "lifecycle.uninstall") {
       return contribution.handler(context)

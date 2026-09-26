@@ -19,8 +19,8 @@ export namespace WorkspaceFileSymbolSource {
   }
 
   export interface Source {
-    activeClientCount(): Promise<number>
-    workspaceSymbol(query: string): Promise<Symbol[]>
+    availableClientCount(): Promise<number>
+    workspaceSymbol(query: string, signal?: AbortSignal): Promise<Symbol[]>
   }
 
   const runtimeState = RuntimeContext.state(() => ({

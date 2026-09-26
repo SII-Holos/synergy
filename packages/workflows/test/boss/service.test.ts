@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
@@ -41,6 +42,32 @@ describe("BossService", () => {
         expect(worker.title).toContain("code")
       })
     }))
+
+  test.each(["selected", "none"] as const)(
+    "workers and nested workers inherit the caller's %s Workspace",
+    (selection) =>
+      runtime.run(async () => {
+        await withScope(async () => {
+          await using alternate = await tmpdir()
+          const scope = ScopeContext.current.scope
+          const workspace = await WorkspaceBinding.register(scope.id, alternate.path)
+          const boss = await Session.create({ workspaceID: selection === "selected" ? workspace.id : null })
+          await WorkflowSessionService.enableBoss(boss.id)
+          const worker = await BossService.spawn(boss.id, { role: "code", workspace: "main" })
+          expect(worker.workspaceID).toBe(boss.workspaceID)
+          expect(worker.workspace?.path ?? null).toBe(selection === "selected" ? alternate.path : null)
+          const grandchild = await BossService.spawn(worker.id, { role: "review" })
+          expect(grandchild.workspaceID).toBe(boss.workspaceID)
+          const next = selection === "selected" ? null : await WorkspaceBinding.validate(workspace.id, scope.id)
+          await Session.updateWorkspace(boss.id, next)
+          const sibling = await BossService.spawn(boss.id, { role: "other" })
+          expect(sibling.workspaceID).toBe(next?.id ?? null)
+          expect((await Session.get(worker.id)).workspaceID).toBe(boss.workspaceID)
+          expect((await Session.get(grandchild.id)).workspaceID).toBe(boss.workspaceID)
+          for (const session of [grandchild, worker, sibling, boss]) await Session.remove(session.id)
+        })
+      }),
+  )
 
   test("spawn rejects non-boss callers and unknown agents", () =>
     runtime.run(async () => {

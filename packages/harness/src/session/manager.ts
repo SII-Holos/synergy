@@ -1,4 +1,6 @@
 import { SessionRecords } from "./records"
+import { ExecutionCapacity } from "./execution-capacity"
+import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
 import { SessionInputProgress } from "./input-progress"
 import { Bus } from "../bus"
@@ -414,7 +416,7 @@ export namespace SessionManager {
   export async function run<T>(
     sessionID: string,
     fn: (lease: LoopLease) => Promise<T>,
-    options?: { lease?: LoopLease; releaseLease?: boolean; requestNextWorkOnFailure?: boolean },
+    options?: { lease?: LoopLease; releaseLease?: boolean; requestNextWorkOnFailure?: boolean; workspace?: "history" },
   ): Promise<T> {
     const lease = options?.lease ?? acquire(sessionID)
     const runtime = getRuntime(sessionID)
@@ -426,30 +428,37 @@ export namespace SessionManager {
 
     try {
       const session = await requireSession(sessionID)
+      if (session.workspaceID && options?.workspace !== "history") {
+        const { WorkspaceBinding } = await import("../workspace/binding")
+        await WorkspaceBinding.validate(session.workspaceID, session.scope.id, session.workspace?.generation)
+      }
       const scope = session.scope as Scope
-      const workspace = session.workspace
+      const workspace = options?.workspace === "history" ? null : session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")
       const runWithScope = () =>
-        ScopeRuntime.provide({
-          scope,
-          workspace,
-          ensure: workspace !== null,
-          fn: async () => {
-            assertExecutionContext(session, "session manager run")
-            const workspace = (session as Info).workspace
-            if (workspace?.type !== "git_worktree") {
-              activate(lease)
-              return fn(lease)
-            }
-            await SessionWorkspaceRuntime.get().lockWorktree(workspace.path)
-            try {
-              activate(lease)
-              return await fn(lease)
-            } finally {
-              await SessionWorkspaceRuntime.get().unlockWorktree(workspace.path)
-            }
-          },
-        })
+        ExecutionCapacity.session(sessionID, () =>
+          WorkspaceAccess.task({ sessionID, parentSessionID: session.parentID, workspace, signal: lease.signal }, () =>
+            ScopeRuntime.provide({
+              scope,
+              workspace,
+              ensure: workspace !== null,
+              fn: async () => {
+                if (options?.workspace !== "history") assertExecutionContext(session, "session manager run")
+                if (workspace?.type !== "git_worktree") {
+                  activate(lease)
+                  return fn(lease)
+                }
+                await SessionWorkspaceRuntime.get().lockWorktree(workspace.path)
+                try {
+                  activate(lease)
+                  return await fn(lease)
+                } finally {
+                  await SessionWorkspaceRuntime.get().unlockWorktree(workspace.path)
+                }
+              },
+            }),
+          ),
+        )
       let result: T
       if (workspace?.type !== "git_worktree") {
         result = await runWithScope()
@@ -489,7 +498,11 @@ export namespace SessionManager {
     const sameWorkspace =
       expected === null
         ? actual === null
-        : actual?.path === expected.path && actual.type === expected.type && actual.scopeID === expected.scopeID
+        : actual?.id === expected.id &&
+          actual?.generation === expected.generation &&
+          actual?.path === expected.path &&
+          actual.type === expected.type &&
+          actual.scopeID === expected.scopeID
     if (sameWorkspace && ScopeContext.tryScope()?.id === session.scope.id) return
     log.error("session execution workspace mismatch", { sessionID: session.id, phase, expected, actual })
     throw new Error(

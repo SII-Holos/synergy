@@ -654,3 +654,196 @@ describe("nested plugin scheduling", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("workspace waits yield scheduler capacity and reacquire before execution resumes", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const waiting = Promise.withResolvers<void>()
+    const resume = Promise.withResolvers<void>()
+    const order: string[] = []
+    const dispatch = (id: string, execute: () => Promise<void>) =>
+      scheduler.dispatch({
+        sessionID: id,
+        generation: 1,
+        messageID: id,
+        callID: id,
+        toolName: "probe",
+        input: {},
+        processor: target,
+        signal: new AbortController().signal,
+        executor: "file",
+        tool: {
+          inputSchema: z.object({}),
+          async execute() {
+            await execute()
+            target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+            return {}
+          },
+        },
+      })
+    const blocked = dispatch("blocked", async () => {
+      await ExecutionCapacity.wait(async () => {
+        waiting.resolve()
+        await resume.promise
+      })
+      expect(scheduler.stats().active).toBe(1)
+      order.push("resumed")
+    })
+    await waiting.promise
+    const next = dispatch("independent", async () => {
+      order.push("independent")
+      resume.resolve()
+    })
+    expect((await next).state).toBe("completed")
+    expect((await blocked).state).toBe("completed")
+    expect(order).toEqual(["independent", "resumed"])
+    await scheduler.stop()
+  }))
+
+test("queued tools enter the dispatching context when another session releases capacity", () =>
+  runtime.run(async () => {
+    const { AsyncLocalStorage } = await import("node:async_hooks")
+    const context = new AsyncLocalStorage<string>()
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const release = Promise.withResolvers<void>()
+    const observed: Array<string | undefined> = []
+    const dispatch = (id: string, execute: () => Promise<void>) =>
+      context.run(id, () =>
+        scheduler.dispatch({
+          sessionID: id,
+          generation: 1,
+          messageID: id,
+          callID: id,
+          toolName: "probe",
+          input: {},
+          processor: target,
+          signal: new AbortController().signal,
+          tool: {
+            inputSchema: z.object({}),
+            async execute() {
+              await execute()
+              observed.push(context.getStore())
+              target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+              return {}
+            },
+          },
+        }),
+      )
+    const one = dispatch("one", () => release.promise)
+    const two = dispatch("two", async () => {})
+    release.resolve()
+    await Promise.all([one, two])
+    expect(observed).toEqual(["one", "two"])
+    await scheduler.stop()
+  }))
+
+test("a nested plugin wait lends both its executor and the parent's global slot", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const scheduler = new ToolTaskScheduler({
+      maxConcurrent: 1,
+      maxQueued: 8,
+      executorConcurrency: { file: 1, plugin: 1 },
+    })
+    const target = processor()
+    const waiting = Promise.withResolvers<void>()
+    const resume = Promise.withResolvers<void>()
+    const order: string[] = []
+    const input = (id: string, executor: ToolTaskInput["executor"], execute: () => Promise<void>): ToolTaskInput => ({
+      sessionID: "ses_nested_wait",
+      generation: 1,
+      messageID: "msg_nested_wait",
+      callID: id,
+      toolName: id,
+      executor,
+      input: {},
+      processor: target,
+      signal: new AbortController().signal,
+      tool: {
+        inputSchema: z.object({}),
+        async execute() {
+          await execute()
+          target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+          return {}
+        },
+      },
+    })
+    const parent = scheduler.dispatch(
+      input("parent-wait", "plugin", async () => {
+        await scheduler.dispatch(
+          input("child-wait", "file", async () => {
+            await ExecutionCapacity.wait(async () => {
+              waiting.resolve()
+              await resume.promise
+            })
+            order.push("child")
+          }),
+          "parent-wait",
+        )
+        order.push("parent")
+      }),
+    )
+    await waiting.promise
+    const ordinary = scheduler.dispatch(
+      input("ordinary-wait", "file", async () => {
+        order.push("ordinary")
+        resume.resolve()
+      }),
+    )
+    await Promise.all([parent, ordinary])
+    expect(order).toEqual(["ordinary", "child", "parent"])
+    expect(scheduler.stats().active).toBe(0)
+    await scheduler.stop()
+  }))
+
+test("cancelled Workspace admission does not wait to regain an occupied tool slot", () =>
+  runtime.run(async () => {
+    const { ExecutionCapacity } = await import("../../src/session/execution-capacity")
+    const scheduler = new ToolTaskScheduler({ maxConcurrent: 1, maxQueued: 8 })
+    const target = processor()
+    const waiting = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const controller = new AbortController()
+    const input = (id: string, signal: AbortSignal, execute: () => Promise<void>): ToolTaskInput => ({
+      sessionID: id,
+      generation: 1,
+      messageID: id,
+      callID: id,
+      toolName: id,
+      input: {},
+      processor: target,
+      signal,
+      tool: {
+        inputSchema: z.object({}),
+        async execute() {
+          await execute()
+          target.beginExecution(id).complete({}, { title: id, output: id, metadata: {} })
+          return {}
+        },
+      },
+    })
+    const blocked = scheduler.dispatch(
+      input("blocked-cancel", controller.signal, () =>
+        ExecutionCapacity.wait(async () => {
+          waiting.resolve()
+          await new Promise((_resolve, reject) =>
+            controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true }),
+          )
+        }),
+      ),
+    )
+    await waiting.promise
+    const ordinary = scheduler.dispatch(input("ordinary-held", new AbortController().signal, () => release.promise))
+    controller.abort(new Error("cancelled"))
+    try {
+      expect((await blocked).state).toBe("cancelled")
+      expect(scheduler.stats().active).toBe(1)
+    } finally {
+      release.resolve()
+      await ordinary
+      await scheduler.stop()
+    }
+  }))

@@ -61,6 +61,10 @@ import { LinuxBackend } from "./linux"
 import { WindowsBackend } from "./windows"
 import { startDenialLogger, type DenialLoggerSession } from "./macos-diagnostics"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
+import { OwnedProcess } from "../process/owned-process"
+import type { Readable } from "node:stream"
 const log = Log.create({ service: "sandbox-backend" })
 
 // ------------------------------------------------------------------
@@ -244,7 +248,7 @@ export namespace SandboxBackend {
    *
    * Features:
    *   - Env allowlist: only safe env vars pass through
-   *   - Timeout: SIGTERM → 2s grace → SIGKILL
+   *   - Timeout: cancellable admission and bounded native process-tree shutdown
    *   - Output cap: maxOutputBytes (default 1 MB); truncated set when exceeded
    *   - Signal: AbortSignal support
    *   - Temp profile cleanup in finally block
@@ -255,125 +259,81 @@ export namespace SandboxBackend {
     wrapper: SandboxExecutionWrapper,
     opts: SandboxExecuteOpts,
   ): Promise<ExecuteAsyncResult> {
-    if (wrapper.skipReason) {
-      if (opts.fallbackPolicy === "deny") {
-        throw new Error(`Sandbox required but unavailable: ${wrapper.skipReason}`)
-      }
-      // warn/allow: run unsandboxed with warning logged
+    using wrapperCleanup = { [Symbol.dispose]: () => cleanupWrapper(wrapper) }
+    if (wrapper.skipReason && opts.fallbackPolicy === "deny")
+      throw new Error(`Sandbox required but unavailable: ${wrapper.skipReason}`)
+    const limit = opts.maxOutputBytes ?? 1024 * 1024
+    if (!Number.isSafeInteger(limit) || limit < 0) throw new Error("Invalid sandbox output bound")
+    const controller = new AbortController()
+    let timedOut = false
+    const interrupt = (reason?: unknown) => {
+      timedOut = true
+      controller.abort(reason)
     }
-
-    const env = buildSandboxEnv(opts.env, opts.networkMode)
-    const cwd = opts.cwd ?? process.cwd()
-
-    const cmd: string[] = [wrapper.command, ...wrapper.args]
-
-    // ── macOS denial logger ──────────────────────────────────────
-    // Started before the child so the stream is live when the denial is
-    // emitted: a fast command's record is produced microseconds after spawn,
-    // so binding the pid afterwards loses the race. The pid is adopted once
-    // the child exists.
-    let denialSession: DenialLoggerSession | null = null
-    using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
-    if (wrapper.sandboxed && detectPlatform() === "macos") {
-      denialSession = startDenialLogger()
-    }
-
-    const child = Bun.spawn({
-      cmd,
-      cwd,
-      env,
-      stdout: "pipe",
-      stderr: "pipe",
-      stdin: null,
-      onExit: () => {},
-    })
-    denialSession?.adoptPid(child.pid)
-    // ── after_spawn hook: caller callback after child process created ─────
-    if (opts.after_spawn) {
-      try {
-        await opts.after_spawn(child.pid)
-      } catch (e) {
-        child.kill("SIGKILL")
-        throw e
-      }
-    }
-
+    const abort = () => interrupt(opts.signal?.reason)
+    opts.signal?.addEventListener("abort", abort, { once: true })
+    if (opts.signal?.aborted) abort()
+    const timer =
+      opts.timeoutMs && opts.timeoutMs > 0
+        ? setTimeout(() => interrupt(new DOMException("Sandbox execution timed out", "TimeoutError")), opts.timeoutMs)
+        : undefined
     const outputChunks: Buffer[] = []
     const stderrChunks: Buffer[] = []
-
-    const reader = child.stdout.getReader()
-    const errReader = child.stderr.getReader()
-
-    const MAX_OUTPUT_BYTES = opts.maxOutputBytes ?? 1024 * 1024 // 1 MB default
     let totalBytes = 0
-    let timedOut = false
     let truncated = false
-
-    const readStream = async (
-      r: ReadableStreamDefaultReader<Uint8Array>,
-      collector: Buffer[],
-      onChunk?: (chunk: Buffer) => void,
-    ) => {
-      while (true) {
-        const { done, value } = await r.read()
-        if (done) break
-        if (onChunk) onChunk(Buffer.from(value))
-        if (totalBytes + value.length > MAX_OUTPUT_BYTES) {
-          collector.push(Buffer.from(value.slice(0, MAX_OUTPUT_BYTES - totalBytes)))
-          truncated = true
-          break
-        }
-        collector.push(Buffer.from(value))
-        totalBytes += value.length
+    let lease: WorkspaceAccess.Lease | undefined
+    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+    let exitCode = -1
+    let denialSession: DenialLoggerSession | null = null
+    using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
+    const reads: Promise<void>[] = []
+    const readStream = async (stream: Readable, collector: Buffer[], onChunk?: (chunk: Buffer) => void) => {
+      for await (const value of stream) {
+        const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value)
+        onChunk?.(chunk)
+        const retained = Math.min(chunk.length, limit - totalBytes)
+        if (retained) collector.push(Buffer.from(chunk.subarray(0, retained)))
+        totalBytes += retained
+        if (retained < chunk.length) truncated = true
       }
     }
-
-    const tempPath = wrapper.tempPath
-
+    const stop = () => {
+      void owned?.stop().catch(() => {})
+    }
+    controller.signal.addEventListener("abort", stop, { once: true })
     try {
-      if (opts.signal) {
-        const abort = () => {
-          timedOut = true
-          child.kill("SIGTERM")
-          setTimeout(() => child.kill("SIGKILL"), 2000)
-        }
-        if (opts.signal.aborted) {
-          abort()
-        } else {
-          opts.signal.addEventListener("abort", abort, { once: true })
-        }
-      }
-
-      if (opts.timeoutMs && opts.timeoutMs > 0) {
-        const timeout = setTimeout(() => {
-          timedOut = true
-          child.kill("SIGTERM")
-          setTimeout(() => child.kill("SIGKILL"), 2000)
-        }, opts.timeoutMs)
-
-        await Promise.all([
-          readStream(reader, outputChunks, opts.onStdout),
-          readStream(errReader, stderrChunks, opts.onStderr),
-          child.exited,
-        ])
-        clearTimeout(timeout)
-      } else {
-        await Promise.all([
-          readStream(reader, outputChunks, opts.onStdout),
-          readStream(errReader, stderrChunks, opts.onStderr),
-          child.exited,
-        ])
-      }
-    } catch (e) {
-      child.kill("SIGKILL")
-      throw e
+      lease = await WorkspaceAccess.process(sandboxWriteRoots(wrapper), controller.signal)
+      if (wrapper.sandboxed && detectPlatform() === "macos") denialSession = startDenialLogger()
+      owned = await OwnedProcess.prepare({
+        command: wrapper.command,
+        args: wrapper.args,
+        cwd: opts.cwd ?? process.cwd(),
+        env: buildSandboxEnv(opts.env, opts.networkMode),
+        lease,
+        signal: controller.signal,
+      })
+      reads.push(
+        readStream(owned.child.stdout, outputChunks, opts.onStdout),
+        readStream(owned.child.stderr, stderrChunks, opts.onStderr),
+      )
+      for (const read of reads) void read.catch(() => {})
+      await owned.activate()
+      owned.child.stdin.end()
+      denialSession?.adoptPid(owned.child.pid!)
+      await opts.after_spawn?.(owned.child.pid!)
+      await Promise.all([...reads, owned.completion])
+      exitCode = owned.child.exitCode ?? -1
+    } catch (error) {
+      if (!controller.signal.aborted) throw error
     } finally {
-      if (tempPath) {
-        cleanupTemp(tempPath)
-      }
+      clearTimeout(timer)
+      opts.signal?.removeEventListener("abort", abort)
+      controller.signal.removeEventListener("abort", stop)
+      if (owned) await owned.stop()
+      else await lease?.release()
+      await Promise.allSettled(reads)
     }
 
-    const exitCode = child.exitCode ?? -1
     const stdout = Buffer.concat(outputChunks).toString("utf-8")
     const stderr = Buffer.concat(stderrChunks).toString("utf-8")
 

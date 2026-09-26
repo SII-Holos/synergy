@@ -17,19 +17,19 @@ function sameKey(left: string[], right: string[]) {
   return left.length === right.length && left.every((part, index) => part === right[index])
 }
 
-function pauseFirstSessionInfoUpdate(infoPath: string[]) {
+function pauseFirstSessionInfoWrite(infoPath: string[]) {
   const reached = Promise.withResolvers<void>()
   const release = Promise.withResolvers<void>()
-  const originalUpdate = Storage.update
+  const originalWrite = Storage.write
   let updates = 0
-  const spy = spyOn(Storage, "update").mockImplementation((async <T>(key: string[], editor: (draft: T) => void) => {
-    const result = await originalUpdate(key, editor)
+  const spy = spyOn(Storage, "write").mockImplementation(async (key, content) => {
+    const result = await originalWrite(key, content)
     if (sameKey(key, infoPath) && ++updates === 1) {
       reached.resolve()
       await release.promise
     }
     return result
-  }) as typeof Storage.update)
+  })
   return {
     reached: reached.promise,
     release: () => release.resolve(),
@@ -68,7 +68,7 @@ describe("session mutation serialization", () => {
         scope,
         fn: async () => {
           const session = await Session.create({ title: "Original" })
-          const pause = pauseFirstSessionInfoUpdate(
+          const pause = pauseFirstSessionInfoWrite(
             StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id)),
           )
           using _update = pause.spy
@@ -104,7 +104,7 @@ describe("session mutation serialization", () => {
         scope,
         fn: async () => {
           const session = await Session.create({ title: "Original" })
-          const pause = pauseFirstSessionInfoUpdate(
+          const pause = pauseFirstSessionInfoWrite(
             StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id)),
           )
           using _update = pause.spy
@@ -142,7 +142,7 @@ describe("session mutation serialization", () => {
         scope,
         fn: async () => {
           const session = await Session.create({ title: "Original" })
-          const pause = pauseFirstSessionInfoUpdate(
+          const pause = pauseFirstSessionInfoWrite(
             StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id)),
           )
           using _update = pause.spy
@@ -176,7 +176,7 @@ describe("session mutation serialization", () => {
         scope,
         fn: async () => {
           const session = await Session.create({ title: "Remove after update" })
-          const pause = pauseFirstSessionInfoUpdate(
+          const pause = pauseFirstSessionInfoWrite(
             StoragePath.sessionInfo(Identifier.asScopeID(scope.id), Identifier.asSessionID(session.id)),
           )
           using _update = pause.spy

@@ -51,6 +51,9 @@
     "prepare": "husky",
     "test": "echo 'Root test is intentionally disabled. Use bun run quality, bun turbo test, or cd packages/harness && bun test.' && exit 1",
     "plugin-ui:test": "bun script/plugin-ui-test.ts",
+    "ci:plan": "bun script/ci.ts plan",
+    "ci:run": "bun script/ci.ts run",
+    "ci:verify": "bun script/ci.ts verify",
     "bench": "uv run --locked --project benchmark synergy-bench"
   },
   "workspaces": {
@@ -182,6 +185,7 @@
   },
   "patchedDependencies": {
     "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch",
-    "@pierre/diffs@1.3.3": "patches/@pierre%2Fdiffs@1.3.3.patch"
+    "@pierre/diffs@1.3.3": "patches/@pierre%2Fdiffs@1.3.3.patch",
+    "@kobalte/core@0.13.11": "patches/@kobalte%2Fcore@0.13.11.patch"
   }
 }

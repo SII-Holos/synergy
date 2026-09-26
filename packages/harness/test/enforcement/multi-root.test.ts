@@ -97,7 +97,7 @@ describe("EnforcementGate multi-root trustedRoots", () => {
         local: { directory: main, worktree: main, vcs: "git", sandboxes: [folderA] },
       }
       const worktreePath = path.join(folderA, ".synergy", "worktrees", "feature-x")
-      const roots = Scope.Root.executionRoots(scope, {
+      const roots = await Scope.Root.executionRoots(scope, {
         type: "git_worktree",
         path: worktreePath,
         scopeID: "d_test",
@@ -105,7 +105,8 @@ describe("EnforcementGate multi-root trustedRoots", () => {
       })
       // The original checkout is excluded from the trusted roots.
       expect(roots).not.toContain(main)
-      expect(roots).toContain(folderA)
+      expect(roots).not.toContain(folderA)
+      expect(roots).toEqual([worktreePath])
 
       const gate = await EnforcementGate.create({
         activeWorkspace: worktreePath,
@@ -142,7 +143,7 @@ describe("EnforcementGate multi-root trustedRoots", () => {
         local: { directory: main, worktree: main, vcs: "git", sandboxes: [nested] },
       }
       const worktreePath = path.join(main, ".synergy", "worktrees", "feature-x")
-      const roots = Scope.Root.executionRoots(scope, {
+      const roots = await Scope.Root.executionRoots(scope, {
         type: "git_worktree",
         path: worktreePath,
         scopeID: "d_test",

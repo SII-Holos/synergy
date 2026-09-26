@@ -18,16 +18,24 @@ export default definePlugin({ id: "compiled-kit", version: "1.0.0", description:
     )
     project.writeFile("src/style.css", ".footer { padding: 1rem; }")
     const executable = path.join(project.root, process.platform === "win32" ? "kit.exe" : "kit")
-    const compiler = Bun.spawn(
-      [process.execPath, "build", "--compile", path.resolve(import.meta.dir, "../src/cli.ts"), "--outfile", executable],
+    const build = Bun.spawn(
+      [
+        process.execPath,
+        "build",
+        "--compile",
+        "--target=bun",
+        path.resolve(import.meta.dir, "../src/cli.ts"),
+        "--outfile",
+        executable,
+      ],
       { stdout: "pipe", stderr: "pipe" },
     )
-    const [buildCode, buildStdout, buildStderr] = await Promise.all([
-      compiler.exited,
-      new Response(compiler.stdout).text(),
-      new Response(compiler.stderr).text(),
+    const [buildCode, buildOutput, buildError] = await Promise.all([
+      build.exited,
+      new Response(build.stdout).text(),
+      new Response(build.stderr).text(),
     ])
-    expect(buildCode, `${buildStdout}\n${buildStderr}`).toBe(0)
+    expect(buildCode, `${buildOutput}\n${buildError}`).toBe(0)
     for (const command of ["typegen", "build"]) {
       const child = Bun.spawn([executable, command, project.root], { stdout: "pipe", stderr: "pipe" })
       const [stdout, stderr, code] = await Promise.all([

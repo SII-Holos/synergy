@@ -1,8 +1,6 @@
 import z from "zod"
-import fs from "node:fs/promises"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper } from "./browser-shared"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { BrowserExport } from "../export"
 
 export const BrowserPerformanceTool = Tool.define("browser_performance", {
@@ -24,14 +22,19 @@ export const BrowserPerformanceTool = Tool.define("browser_performance", {
       }
     }),
   async execute(params, ctx) {
+    const workspace = params.exportPath ? BrowserExport.capture() : undefined
     const page = await BrowserToolHelper.resolvePage(ctx)
     const result = await BrowserToolHelper.execute(ctx, { type: "performance", action: params.action })
     if (result.type !== "data") throw new Error("Browser performance returned an unexpected result.")
     let exported: string | undefined
     if (params.exportPath) {
       if (params.action !== "stopTrace") throw new Error("exportPath is only valid with stopTrace.")
-      exported = await BrowserExport.fileTarget(ScopeContext.current.directory, params.exportPath)
-      await fs.writeFile(exported, JSON.stringify(result.data, null, 2), { flag: "wx", mode: 0o600 })
+      exported = await BrowserExport.writeFile(
+        workspace!,
+        params.exportPath,
+        JSON.stringify(result.data, null, 2),
+        ctx.abort,
+      )
     }
     const data = result.data as Record<string, unknown>
     const traceEvents = Array.isArray(data.traceEvents) ? data.traceEvents : undefined

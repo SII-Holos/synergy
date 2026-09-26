@@ -483,6 +483,10 @@ function prepareInlineBwrap(opts: PrepareLinuxWrapperOpts): SandboxExecutionWrap
     command: "bwrap",
     args: [...bwrapArgs, command, ...args],
     sandboxed: true,
+    writeFootprint: {
+      kind: "roots",
+      roots: [...(sandboxMode === "read_only" ? [] : [workspace, ...(extraWritableRoots ?? [])]), tmpDir],
+    },
   }
 }
 
@@ -687,6 +691,7 @@ export namespace LinuxBackend {
       command: helperExecPath,
       args: ["--sandbox-policy-cwd", opts.workspace, "--permission-profile", profilePath, "--", command, ...args],
       sandboxed: true,
+      writeFootprint: { kind: "roots", roots: [...writableRoots, joinPathLike(workspace, ".synergy", "tmp")] },
       tempPath: profilePath,
     }
   }

@@ -22,7 +22,7 @@ export function registerCommandStartup() {
   ScopeStartup.register({
     name: "command-watcher",
     phase: "surface",
-    after: ["file-watcher"],
+    after: ["session-pause-reconcile"],
     init(scope) {
       const unsubscribe = Bus.subscribe(Command.Event.Executed, async (payload) => {
         if (payload.properties.name === Command.Default.INIT) {
