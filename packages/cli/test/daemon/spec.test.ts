@@ -17,6 +17,16 @@ afterEach(async () => {
 })
 
 describe("daemon.spec", () => {
+  test.each([
+    ["::", "http://[::1]:4321"],
+    ["2001:db8::1", "http://[2001:db8::1]:4321"],
+  ])("keeps the configured IPv6 target %s in attachment URLs", (hostname, url) =>
+    runtime.run(async () => {
+      const network = await DaemonSpec.resolveNetwork({ argv: [], config: { server: { hostname, port: 4321 } } })
+      expect(network.url).toBe(url)
+    }),
+  )
+
   test("managed services inherit their immutable Host environment and credentials", async () => {
     await using owner = await migrationFixture({
       register: registerLocalRuntime,

@@ -16,7 +16,7 @@ Required versions, duplicate identities and dependency cycles fail before storag
 
 Each first-party optional component publishes matching package metadata. Release versioning updates its host and component requirements together. Module builds preserve owner package references and worker URLs even for nested output directories. The authoritative catalog separates core, full backend/HTTP, Web assets and the Desktop application. A component’s CLI adapter contributes lazy root commands and nested debug, data or plugin-authoring commands to the single CLI parser. Namespace collisions fail before execution. Plugin Kit is itself optional, and ACP declares its required HTTP transport. Source and installed hosts share that command composition.
 
-Shared terminal and command-definition primitives live in Util; network and Scope host adapters live in Local Runtime. Plugin Host accepts explicitly supplied authoring commands and does not depend on Plugin Kit. Ordinary plugins retain their process runtime and capability-gated Host Services.
+Shared terminal and command-definition primitives live in Util; network and Scope host adapters live in Local Runtime. Shared server address resolution preserves explicit flags and brackets IPv6 hosts before assigning URL hostnames; wildcard listeners resolve to the matching loopback address family. Daemon and Local Runtime regressions cover configured IPv6 targets instead of silently falling back to IPv4. Plugin Host accepts explicitly supplied authoring commands and does not depend on Plugin Kit. Ordinary plugins retain their process runtime and capability-gated Host Services.
 
 ## Alternatives considered
 

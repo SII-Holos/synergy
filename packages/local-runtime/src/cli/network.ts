@@ -1,3 +1,4 @@
+import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
@@ -19,6 +20,25 @@ export async function loadNetworkConfig() {
 interface ResolveNetworkInput {
   argv?: string[]
   config?: Awaited<ReturnType<typeof Config.global>>
+}
+
+export function normalizeConnectHostname(hostname: string) {
+  if (hostname === "0.0.0.0") return "127.0.0.1"
+  if (hostname === "::") return "::1"
+  return hostname
+}
+
+export async function resolveServerNetwork(input?: ResolveNetworkInput) {
+  const network = await resolveNetworkArgv({
+    ...input,
+    defaults: { hostname: "127.0.0.1", port: DEFAULT_SERVER_PORT, mdns: false, cors: [] },
+  })
+  const connectHostname = normalizeConnectHostname(network.hostname)
+  const url = new URL("http://127.0.0.1")
+  url.hostname =
+    connectHostname.includes(":") && !connectHostname.startsWith("[") ? `[${connectHostname}]` : connectHostname
+  url.port = String(network.port)
+  return { ...network, connectHostname, url: url.toString().replace(/\/$/, "") }
 }
 
 const options = {
