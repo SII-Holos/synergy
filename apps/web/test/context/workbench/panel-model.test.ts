@@ -1,15 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import type { WorkbenchPanelTab } from "../../../src/plugin/registries/workbench-panel-registry"
 import {
-  anyWorkbenchEscapeMenuOpen,
-  closeAllWorkbenchEscapeMenus,
   closeOtherWorkbenchPanelTabs,
   closeWorkbenchPanelTab,
   isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
-  registerWorkbenchEscapeMenu,
   resolveWorkbenchEscapeAction,
   updateWorkbenchPanelTab,
   workbenchPanelMountKey,
@@ -354,13 +351,19 @@ describe("workbench Escape routing", () => {
     ).toBe("none")
   })
 
-  test("closes any open menu before the workspace and ignores unrelated keys", () => {
+  test("leaves open menus to their overlay and ignores unrelated keys", () => {
     expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, menuOpen: true, dialogActive: false })).toBe(
-      "close-menu",
+      "none",
     )
-    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, menuOpen: false, dialogActive: false })).toBe(
-      "close-surface",
-    )
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        menuOpen: false,
+        dialogActive: false,
+        focusWithin: true,
+      }),
+    ).toBe("close-surface")
     expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, menuOpen: false, dialogActive: false })).toBe(
       "none",
     )
@@ -386,44 +389,6 @@ describe("workbench Escape routing", () => {
       }),
     ).toBe("none")
   })
-})
-
-test("escape menu registry arbitrates across mounted surfaces", () => {
-  const unregisterIdle = registerWorkbenchEscapeMenu({
-    isAnyMenuOpen: () => false,
-    closeMenus: () => {},
-  })
-  const unregisterOpen = registerWorkbenchEscapeMenu({
-    isAnyMenuOpen: () => true,
-    closeMenus: () => {},
-  })
-  expect(anyWorkbenchEscapeMenuOpen()).toBe(true)
-  unregisterOpen()
-  expect(anyWorkbenchEscapeMenuOpen()).toBe(false)
-  unregisterIdle()
-  expect(anyWorkbenchEscapeMenuOpen()).toBe(false)
-})
-
-test("closeAllWorkbenchEscapeMenus closes every registered menu", () => {
-  let closedFirst = 0
-  let closedSecond = 0
-  const unregisterFirst = registerWorkbenchEscapeMenu({
-    isAnyMenuOpen: () => true,
-    closeMenus: () => {
-      closedFirst += 1
-    },
-  })
-  const unregisterSecond = registerWorkbenchEscapeMenu({
-    isAnyMenuOpen: () => true,
-    closeMenus: () => {
-      closedSecond += 1
-    },
-  })
-  closeAllWorkbenchEscapeMenus()
-  expect(closedFirst).toBe(1)
-  expect(closedSecond).toBe(1)
-  unregisterFirst()
-  unregisterSecond()
 })
 
 describe("isEditableEscapeTarget", () => {
@@ -483,4 +448,25 @@ describe("workbench panel launchability", () => {
       }),
     ).toBe(true)
   })
+})
+
+test("Escape only collapses the workspace containing focus", () => {
+  expect(
+    resolveWorkbenchEscapeAction({
+      key: "Escape",
+      opened: true,
+      menuOpen: false,
+      dialogActive: false,
+      focusWithin: false,
+    }),
+  ).toBe("none")
+  expect(
+    resolveWorkbenchEscapeAction({
+      key: "Escape",
+      opened: true,
+      menuOpen: false,
+      dialogActive: false,
+      focusWithin: true,
+    }),
+  ).toBe("close-surface")
 })

@@ -51,9 +51,10 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
   return (
     <Show when={props.groups.length > 0}>
       <ToolbarSelectorPopover
-        trigger={
+        triggerAs={(triggerProps) => (
           <Tooltip placement="top" value={i18n._(PI.startMode)}>
             <button
+              {...triggerProps}
               type="button"
               aria-label={i18n._(PI.startMode)}
               class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
@@ -65,7 +66,7 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
               <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
             </button>
           </Tooltip>
-        }
+        )}
         title={i18n._(PI.startMode)}
         contentClass="w-52 max-h-80"
         placement="top-start"

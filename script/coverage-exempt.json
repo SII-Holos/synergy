@@ -11,6 +11,10 @@
         {
           "glob": "src/main.ts",
           "reason": "Electron main-process entry; launches the full desktop runtime"
+        },
+        {
+          "glob": "src/browser-page-preload.ts",
+          "reason": "Electron page preload is compiled and exercised by test/browser-runtime-smoke.test.ts for prompt defaults, text, empty acceptance and cancellation; child Electron execution does not contribute coverage to Bun."
         }
       ]
     },
@@ -1165,6 +1169,46 @@
         {
           "glob": "src/components/file-workbench/entry-dialog.tsx",
           "reason": "Entry operation dialog executes in real Chromium under test/components/dialog/file-entry-dialog.dom.test.ts; Bun coverage does not instrument the Vite browser bundle"
+        },
+        {
+          "glob": "src/components/agenda/series-list.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/agenda/series-list.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/app-shell/mobile-drawer-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/app-shell/mobile-tools-drawer.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/performance/snapshot-boundary.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/performance/snapshot-boundary.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/search/session-search-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/search/session-search-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/session/pending-timeline-item.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/session/session-recovery.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/session/request-submission-notice.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/sidebar/sidebar-section-button.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/sidebar/sidebar-collections.dom.test.tsx and test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/top-bar/workspace-location-button.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/workspace/browser/page-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/workspace/browser/browser-interaction.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/workspace/mobile-workspace-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/workspace/mobile-workspace-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
         }
       ]
     },

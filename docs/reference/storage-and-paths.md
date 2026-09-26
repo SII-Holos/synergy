@@ -32,6 +32,8 @@ Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `S
 
 Library, credentials, project files, browser profiles and observability remain separate stores with their own lifecycle. Do not copy an open Library/observability SQLite file without its owning backup protocol. Cache may be cleared on upgrade and is not a backup source. Treat auth, plugin recovery snapshots, logs, signing keys and exported Home archives as private data.
 
+Removed user Inbox inputs and restoration receipts live at the logical keys `sessions/<scope>/<session>/inbox-removed/<item>`. They retain the complete domain input until Session deletion and never participate in ordinary queue discovery. See [Inbox removal and restoration](../architecture/session-and-messages.md#inbox-removal-and-restoration).
+
 ## Agent database
 
 Installation generations retain code-version floors and explicit package selections independently of Agent storage. Running processes keep their verified generation until they exit. The `installation/20260926-installation-selection-v1` migration preserves the full Web backend for a home with existing data or configuration; fresh core homes retain a minimal selection. It neither rewrites API4 grants nor installs a second Desktop shell. Bootstrap and the central migration runner share this idempotent owner.

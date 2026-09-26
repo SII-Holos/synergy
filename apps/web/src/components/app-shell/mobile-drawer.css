@@ -14,3 +14,44 @@
     -webkit-app-region: no-drag;
   }
 }
+
+[data-component="dialog"]:has(.mobile-drawer-overlay) {
+  --dialog-width: min(85vw, 320px);
+  --dialog-max-height: 100dvh;
+  padding: 0;
+  margin-left: 0;
+
+  justify-content: flex-start;
+  &:has(.mobile-drawer-right) {
+    justify-content: flex-end;
+  }
+  [data-slot="dialog-content"].mobile-drawer-overlay {
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    background: var(--background-stronger);
+  }
+  .mobile-drawer-overlay [data-slot="dialog-body"] {
+    padding: 0;
+    overflow: hidden;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+.navigation-collections {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  > [data-slot="tabs-list"] {
+    flex-shrink: 0;
+  }
+  > [data-slot="tabs-content"] {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}

@@ -1,47 +1,52 @@
 import { describe, expect, test } from "bun:test"
+import { createStore, reconcile } from "solid-js/store"
+import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
 import { createBoardLoader, type BoardLoaderDeps } from "../../../../src/components/kanban/model/board-loader"
 import type { SyncResourceRequest } from "../../../../src/context/sync-resource-freshness"
 import type { SessionPartSnapshotRequest } from "../../../../src/context/session-part-snapshot-freshness"
 import { createScopeRetention } from "../../../../src/context/scope-retention"
 import { planMessagePageApply } from "../../../../src/context/session-message-page"
+import { hasMessageWindowSnapshot, type MessageWindowMetadata } from "../../../../src/context/session-message-window"
 
 function message(id: string, created: number) {
   return { id, time: { created }, role: "assistant", rootID: id } as any
 }
 
 type FakeStore = {
-  message: Record<string, unknown>
-  messageWindow: Record<string, unknown>
-  part: Record<string, unknown>
+  message: Record<string, Message[]>
+  messageWindow: Record<string, MessageWindowMetadata>
+  part: Record<string, Part[]>
 }
 
 function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
   touches: string[]
   messagePages: { sessionID: string; limit: number }[]
   scopeVersions: Record<string, number>
-  bucketSnapshots: Set<string>
+  dropSnapshot: (scopeKey: string, sessionID: string) => void
   partActions: Record<string, "apply" | "preserve" | "retry">
 } {
   const touches: string[] = []
   const messagePages: { sessionID: string; limit: number }[] = []
   const scopeVersions: Record<string, number> = {}
-  const bucketSnapshots = new Set<string>()
   const partActions: Record<string, "apply" | "preserve" | "retry"> = {}
-  const stores = new Map<string, FakeStore>()
+  const stores = new Map<string, ReturnType<typeof createStore<FakeStore>>>()
   const ensureScopeState = (scopeKey: string) => {
     let store = stores.get(scopeKey)
     if (!store) {
-      store = { message: {}, messageWindow: {}, part: {} }
+      store = createStore<FakeStore>({ message: {}, messageWindow: {}, part: {} })
       stores.set(scopeKey, store)
     }
-    const setter = (_path: string, _key: string, _value: unknown) => {}
-    return [store, setter]
+    return store
   }
   return {
     touches,
     messagePages,
     scopeVersions,
-    bucketSnapshots,
+    dropSnapshot: (scopeKey, sessionID) => {
+      const [, setStore] = ensureScopeState(scopeKey)
+      setStore("message", sessionID, undefined!)
+      setStore("messageWindow", sessionID, undefined!)
+    },
     partActions,
     ensureScopeState,
     retainScopeState: () => ({ release() {} }),
@@ -56,7 +61,10 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     setLatestContextMessage: () => {},
     touchMessageBucket: (_s, sessionID) => touches.push(sessionID),
     scopeReconnectVersion: (scopeKey) => scopeVersions[scopeKey] ?? 0,
-    hasBucketSnapshot: (_s, sessionID) => bucketSnapshots.has(sessionID),
+    hasBucketSnapshot: (scopeKey, sessionID) => {
+      const [store] = ensureScopeState(scopeKey)
+      return hasMessageWindowSnapshot(store.message[sessionID], store.messageWindow[sessionID])
+    },
     messagePage: async (input) => {
       messagePages.push({ sessionID: input.sessionID, limit: input.limit })
       return {
@@ -71,12 +79,48 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     },
     scopeRequest: (scopeKey) => ({ directory: scopeKey }),
     plan: planMessagePageApply,
-    reconcile: (value) => value,
+    reconcile: (value, options) => reconcile(value as object, options),
     ...overrides,
   }
 }
 
 describe("createBoardLoader", () => {
+  test.each([0, 1])("publishes a complete displayable snapshot for a page with %i messages", async (count) => {
+    const ready = Promise.withResolvers<void>()
+    const deps = makeDeps({
+      messagePage: async () => ({
+        data: {
+          items: count ? [{ info: message("m1", 100), parts: [] }] : [],
+          referencedRoots: [],
+          nextCursor: null,
+          hasMore: false,
+          total: count,
+        },
+      }),
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      const store = deps.ensureScopeState("/a")[0] as FakeStore
+      expect(store.message.s1).toHaveLength(count)
+      expect(store.messageWindow.s1).toMatchObject({
+        mode: "latest",
+        total: count,
+        nextCursor: null,
+        hasMore: false,
+      })
+      expect(deps.hasBucketSnapshot("/a", "s1")).toBe(true)
+      expect(loader.state("/a", "s1")).toMatchObject({ phase: "ready", hasSnapshot: true })
+    } finally {
+      loader.dispose()
+    }
+  })
+
   test("load issues a 200-limit message page", async () => {
     const deps = makeDeps()
     const loader = createBoardLoader(deps)
@@ -106,7 +150,6 @@ describe("createBoardLoader", () => {
     const first = deps.messagePages.length
 
     // Same pane set again: phase is now ready and the bucket exists, so no refetch.
-    deps.bucketSnapshots.add("s1")
     loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages.length).toBe(first)
@@ -160,13 +203,12 @@ describe("createBoardLoader", () => {
     // The loader still reports "ready", but the global-sync LRU evicted the
     // snapshot while the pane was away; syncPanes must refetch instead of
     // leaving the pane on a stale ready state.
-    deps.bucketSnapshots.add("s1") // simulate apply having happened before eviction
     loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages.length).toBe(first)
 
     // Now the bucket is gone: refetch must happen even though phase is ready.
-    deps.bucketSnapshots.delete("s1")
+    deps.dropSnapshot("/a", "s1")
     loader.syncPanes([{ scopeKey: "/a", sessionID: "s1" }])
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages.length).toBe(first + 1)

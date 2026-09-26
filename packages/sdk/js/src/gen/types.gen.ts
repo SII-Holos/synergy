@@ -7211,6 +7211,23 @@ export type SessionInboxItem = {
   messageID: string
 }
 
+export type SessionInboxItemFailedError = {
+  name: "SessionInboxItemFailedError"
+  data: {
+    message: string
+    sessionID: string
+    itemID: string
+  }
+}
+
+export type WorktreeUnavailableError = {
+  name: "WorktreeUnavailableError"
+  data: {
+    message: string
+    reason: "missing"
+  }
+}
+
 export type SessionInputProgress = {
   sessionID: string
   messageID: string
@@ -7247,14 +7264,6 @@ export type SessionInputResult =
        */
       runID?: string
     }
-
-export type WorktreeUnavailableError = {
-  name: "WorktreeUnavailableError"
-  data: {
-    message: string
-    reason: "missing"
-  }
-}
 
 export type ExperimentFile = {
   version: 1
@@ -7296,15 +7305,6 @@ export type AttachmentPartInput = {
 
 export type SessionInboxFirstTaskLockedError = {
   name: "SessionInboxFirstTaskLockedError"
-  data: {
-    message: string
-    sessionID: string
-    itemID: string
-  }
-}
-
-export type SessionInboxItemFailedError = {
-  name: "SessionInboxItemFailedError"
   data: {
     message: string
     sessionID: string
@@ -8571,6 +8571,7 @@ export type ExperienceSearchResult = {
   intent: string
   sourceProviderID: string | null
   sourceModelID: string | null
+  rewardStatus: "evaluated" | "pending" | "encoding_failed"
   reward: number | null
   rewards: RewardsInfo
   qValue: number
@@ -8590,6 +8591,7 @@ export type ExperienceInfo = {
   intent: string
   sourceProviderID: string | null
   sourceModelID: string | null
+  rewardStatus: "evaluated" | "pending" | "encoding_failed"
   reward: number | null
   rewards: RewardsInfo
   qValue: number
@@ -8616,7 +8618,7 @@ export type ExperienceListFilter = "all" | "scope" | "session"
 /**
  * Sort order
  */
-export type ExperienceListSort = "newest" | "oldest" | "reward" | "qvalue" | "visits"
+export type ExperienceListSort = "newest" | "oldest" | "reward" | "qvalue" | "visits" | "updated"
 
 export type ExperienceDetailInfo = {
   id: string
@@ -8625,6 +8627,7 @@ export type ExperienceDetailInfo = {
   intent: string
   sourceProviderID: string | null
   sourceModelID: string | null
+  rewardStatus: "evaluated" | "pending" | "encoding_failed"
   reward: number | null
   rewards: RewardsInfo
   qValue: number
@@ -8714,6 +8717,90 @@ export type MemoryStats = {
     count: number
   }
   dbSizeBytes: number
+}
+
+export type LibraryStatsSnapshot = {
+  overview: {
+    totalMemories: number
+    totalExperiences: number
+    evaluationRate: number
+    experiencesEvaluated: number
+    experiencesFailed: number
+    experiencesPending: number
+    scopeCount: number
+    activeDays: number
+  }
+  memoryDistribution: {
+    byCategory: Array<{
+      category: string
+      count: number
+    }>
+    byRecallMode: Array<{
+      recallMode: string
+      count: number
+    }>
+  }
+  experienceRL: {
+    rewardDimensions: Array<{
+      dimension: string
+      avg: number
+      std: number
+      distribution: Array<{
+        value: number
+        count: number
+      }>
+    }>
+    qDistribution: {
+      histogram: Array<{
+        bin: string
+        count: number
+      }>
+      trend: Array<{
+        period: string
+        medianQ: number
+        count: number
+      }>
+      avgCompositeQ: number
+      medianCompositeQ: number
+      stdCompositeQ: number
+    }
+    avgVisits: number
+    medianVisits: number
+    neverRetrieved: number
+    frequentlyRetrieved: number
+  }
+  retrieval: {
+    topExperiences: Array<{
+      id: string
+      intent: string
+      scopeID: string
+      visits: number
+      compositeQ: number
+    }>
+    visitsDistribution: Array<{
+      range: string
+      count: number
+    }>
+  }
+  scopes: {
+    scopes: Array<{
+      scopeID: string
+      memories: number
+      experiences: number
+      evaluated: number
+    }>
+  }
+  timeSeries: {
+    days: Array<{
+      day: string
+      memoriesCreated: number
+      experiencesCreated: number
+      experiencesEvaluated: number
+      avgCompositeQ: number
+    }>
+    hourlyActivity: Array<number>
+  }
+  computedAt: number
 }
 
 /**
@@ -15928,6 +16015,87 @@ export type SessionInboxResponses = {
 
 export type SessionInboxResponse = SessionInboxResponses[keyof SessionInboxResponses]
 
+export type SessionInboxRemovedData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/removed"
+}
+
+export type SessionInboxRemovedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionInboxRemovedError = SessionInboxRemovedErrors[keyof SessionInboxRemovedErrors]
+
+export type SessionInboxRemovedResponses = {
+  /**
+   * Removed inbox items
+   */
+  200: Array<SessionInboxItem>
+}
+
+export type SessionInboxRemovedResponse = SessionInboxRemovedResponses[keyof SessionInboxRemovedResponses]
+
+export type SessionInboxRestoreData = {
+  body?: never
+  path: {
+    sessionID: string
+    itemID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/inbox/{itemID}/restore"
+}
+
+export type SessionInboxRestoreErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Input completed, cancelled or workspace unavailable
+   */
+  409: SessionInboxItemFailedError | WorktreeUnavailableError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionInboxRestoreError = SessionInboxRestoreErrors[keyof SessionInboxRestoreErrors]
+
+export type SessionInboxRestoreResponses = {
+  /**
+   * Inbox item restored or previously restored
+   */
+  204: void
+}
+
+export type SessionInboxRestoreResponse = SessionInboxRestoreResponses[keyof SessionInboxRestoreResponses]
+
 export type SessionInputStatusData = {
   body?: never
   path: {
@@ -19551,7 +19719,7 @@ export type LibraryStatsResponses = {
   /**
    * Library statistics
    */
-  200: MemoryStats
+  200: MemoryStats | LibraryStatsSnapshot
 }
 
 export type LibraryStatsResponse = LibraryStatsResponses[keyof LibraryStatsResponses]

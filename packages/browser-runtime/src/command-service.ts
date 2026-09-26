@@ -1,4 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { AsyncLocalStorage } from "node:async_hooks"
 import {
   BrowserBackendCommandSchema,
   BrowserProtocolError,
@@ -21,6 +22,9 @@ interface ExecuteRequest {
 
 interface OwnerQueue {
   tail: Promise<void>
+  dialogTail: Promise<void>
+  pendingFingerprints: Map<string, string>
+  resumeBinding?: ReturnType<typeof AsyncLocalStorage.snapshot>
   results: Map<string, { fingerprint: string; result?: BrowserBackendResult; error?: unknown; bytes: number }>
   resultBytes: number
   closing: boolean
@@ -59,14 +63,20 @@ export namespace BrowserCommandService {
     const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
     let entered = false
     try {
-      return await runtimeState().runtime.withinOwner(
-        owner,
-        (resolved) => {
-          entered = true
-          return executeQueued(resolved, request, idleGeneration, suspended)
-        },
-        request.signal,
-      )
+      const enter = () =>
+        runtimeState().runtime.withinOwner(
+          owner,
+          (resolved) => {
+            entered = true
+            return executeQueued(resolved, request, idleGeneration, suspended)
+          },
+          request.signal,
+        )
+      // Replies share the active command's binding lease; withinOwner still
+      // revalidates the caller, and the command retains its lease until replies drain.
+      const resume =
+        request.command.type === "dialog.respond" ? runtimeState().queues.get(key)?.resumeBinding : undefined
+      return await (resume ? resume(enter) : enter())
     } catch (error) {
       if (!entered) clearIdleGeneration(key, idleGeneration)
       throw error
@@ -129,7 +139,18 @@ export namespace BrowserCommandService {
       }
     }
 
-    const run = queue.tail.then(async () => {
+    const pendingFingerprint = queue.pendingFingerprints.get(request.commandId)
+    if (pendingFingerprint !== undefined && pendingFingerprint !== fingerprint) {
+      settleIdleActivity(owner, command.type, idleGeneration, false)
+      return replayResult({ fingerprint: pendingFingerprint }, fingerprint, request.commandId)
+    }
+    queue.pendingFingerprints.set(request.commandId, fingerprint)
+    // Dialog responses must release the page command waiting on them, while
+    // remaining serialized with each other for command replay and disposal.
+    const repliesToDialog = command.type === "dialog.respond"
+    const preceding = repliesToDialog ? queue.dialogTail : queue.tail
+    const run = preceding.then(async () => {
+      if (!repliesToDialog) queue.resumeBinding = AsyncLocalStorage.snapshot()
       throwIfAborted(request.signal, request.commandId)
       const repeated = queue.results.get(request.commandId)
       if (repeated) return replayResult(repeated, fingerprint, request.commandId)
@@ -155,7 +176,12 @@ export namespace BrowserCommandService {
         throw normalized
       }
     })
-    const settled = run.then(
+    const completed = repliesToDialog
+      ? run
+      : run.finally(() => {
+          queue.resumeBinding = undefined
+        })
+    const settled = completed.then(
       (result) => {
         settleIdleActivity(owner, command.type, idleGeneration, true)
         return result
@@ -165,11 +191,17 @@ export namespace BrowserCommandService {
         throw error
       },
     )
-    queue.tail = settled.then(
-      () => undefined,
-      () => undefined,
-    )
-    return settled
+    const drained = settled
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => queue.pendingFingerprints.delete(request.commandId))
+    if (repliesToDialog) {
+      queue.dialogTail = drained
+      queue.tail = Promise.all([queue.tail, drained]).then(() => undefined)
+    } else queue.tail = drained
+    return repliesToDialog ? settled : settled.finally(() => queue.dialogTail)
   }
 
   export function clear(): void {
@@ -327,6 +359,8 @@ function clearIdleState(key: string): void {
 function createQueue(): OwnerQueue {
   return {
     tail: Promise.resolve(),
+    dialogTail: Promise.resolve(),
+    pendingFingerprints: new Map(),
     results: new Map(),
     resultBytes: 0,
     closing: false,

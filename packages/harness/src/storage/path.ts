@@ -134,6 +134,14 @@ export namespace StoragePath {
     ...sessionInboxRoot(scopeID, sessionID),
     itemID,
   ]
+  export const sessionInboxRemovedRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "inbox-removed",
+  ]
+  export const sessionInboxRemovedItem = (scopeID: ScopeID, sessionID: SessionID, itemID: string) => [
+    ...sessionInboxRemovedRoot(scopeID, sessionID),
+    itemID,
+  ]
   export const sessionMessagesRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "messages",

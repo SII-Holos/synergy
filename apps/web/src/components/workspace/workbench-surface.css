@@ -344,7 +344,23 @@
 }
 
 .workbench-surface-error {
-  color: var(--text-error);
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  text-align: center;
+  color: var(--text-base);
+  details {
+    max-width: 100%;
+    text-align: left;
+  }
+  summary {
+    cursor: pointer;
+    color: var(--text-weak);
+  }
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
 }
 
 .workbench-surface-load-error {

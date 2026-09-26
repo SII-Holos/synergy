@@ -1,3 +1,4 @@
+import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
@@ -75,7 +76,7 @@ import { createWorkbenchService } from "@/plugin/workbench-service"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useLocale } from "@/context/locale"
 import { AP } from "@/app-i18n"
-import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { MobileWorkspaceDialog } from "@/components/workspace/mobile-workspace-dialog"
 import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { blueprintNoteCreateFocusRequest } from "@/context/plan-blueprint-offer"
@@ -502,7 +503,7 @@ function SessionPageContent() {
               showToast(feedback)
             } catch (error) {
               restoreFailed = true
-              showToast({ type: "error", description: requestErrorMessage(error) })
+              showToast({ type: "error", description: requestErrorMessage(error, i18n._(S.transitionRecoveryFailed)) })
             }
           }
           if (cutParts.length > 0) {
@@ -659,7 +660,12 @@ function SessionPageContent() {
       ? createNewSessionWorkspaceSuccessProgress({ selection })
       : createNewSessionTransitionSuccessProgress()
   }
-  const showStalledHandoff = (sessionID: string, handoff: SessionTransitionHandoff, message?: string) => {
+  const [retryingHandoffs, setRetryingHandoffs] = createSignal<Record<string, boolean>>({})
+  const showStalledHandoff = (
+    sessionID: string,
+    handoff: SessionTransitionHandoff,
+    error?: { code?: string; message: string },
+  ) => {
     const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
     const retry = () => retrySessionTransitionHandoff(sessionID, handoff)
     setSessionTransition(
@@ -667,7 +673,7 @@ function SessionPageContent() {
       createSessionTransitionHandoffErrorProgress({
         kind: accepted.kind,
         steps: accepted.steps,
-        message,
+        error,
       }),
       {
         retry,
@@ -677,6 +683,9 @@ function SessionPageContent() {
     )
   }
   const retrySessionTransitionHandoff = (sessionID: string, handoff: SessionTransitionHandoff) => {
+    const key = JSON.stringify([sessionID, handoff.messageID])
+    if (retryingHandoffs()[key]) return
+    setRetryingHandoffs((all) => ({ ...all, [key]: true }))
     const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
     const nextHandoff = {
       ...handoff,
@@ -687,34 +696,25 @@ function SessionPageContent() {
     setSessionTransition(sessionID, accepted, undefined, nextHandoff)
     const run = async () => {
       try {
-        if (handoff.itemID) {
-          await sdk.client.session.inboxRetry({ sessionID, itemID: handoff.itemID })
-          return
-        }
-        await sync.session.refresh(sessionID)
-      } catch (error) {
-        await sync.session.refresh(sessionID).catch(() => undefined)
-        if (
-          decideSessionTransitionHandoff({
-            messageID: handoff.messageID,
-            messages: messages(),
-            // Explicit exemption: decideSessionTransitionHandoff branches on
-            // inbox === undefined to trigger refresh; the view layer's shared
-            // empty array would change that loading semantics.
-            inbox: sync.data.inbox[sessionID],
-            elapsedMs: 0,
-            refreshAttempted: true,
-          }) === "ready"
-        ) {
+        const { data: status } = await sdk.client.session.inputStatus(
+          { sessionID, messageID: handoff.messageID },
+          { throwOnError: true },
+        )
+        if (status.canonical || status.state === "cancelled" || status.state === "completed") {
+          await sync.session.refresh(sessionID)
           sessionTransition.completeHandoff(sessionID, handoff.messageID)
           return
         }
-        setSessionTransition(
-          sessionID,
-          { ...accepted, description: S.transitionDescReconnecting },
-          undefined,
-          nextHandoff,
-        )
+        if (status.state === "failed" && status.itemID) {
+          await sdk.client.session.inboxRetry({ sessionID, itemID: status.itemID }, { throwOnError: true })
+        }
+      } catch (error) {
+        if (sessionTransition.get(sessionID)?.handoff?.messageID !== handoff.messageID) return
+        showStalledHandoff(sessionID, nextHandoff, {
+          message: requestErrorMessage(error, i18n._(S.transitionRecoveryFailed)),
+        })
+      } finally {
+        setRetryingHandoffs((all) => ({ ...all, [key]: false }))
       }
     }
     void run()
@@ -741,7 +741,9 @@ function SessionPageContent() {
   })
   const handoffAttempt = createMemo(() => {
     const entry = visibleSessionTransitionEntry()
-    return entry?.handoff && entry.progress.phase === "loading"
+    return entry?.handoff &&
+      entry.progress.phase === "loading" &&
+      !retryingHandoffs()[JSON.stringify([params.id, entry.handoff.messageID])]
       ? `${params.id}:${entry.handoff.messageID}:${entry.handoff.acceptedAt}`
       : undefined
   })
@@ -757,14 +759,17 @@ function SessionPageContent() {
           return
         }
         if (status.state === "failed") {
-          showStalledHandoff(sessionID, { ...handoff, itemID: status.itemID ?? handoff.itemID })
+          showStalledHandoff(sessionID, { ...handoff, itemID: status.itemID ?? handoff.itemID }, status.error)
           return
         }
         const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
         if (status.state === "cancelled") {
           setSessionTransition(
             sessionID,
-            { ...accepted, phase: "error", description: S.transitionDescCancelled },
+            {
+              ...createSessionTransitionHandoffErrorProgress({ kind: accepted.kind, steps: accepted.steps }),
+              description: S.transitionDescCancelled,
+            },
             { dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID) },
             handoff,
           )
@@ -878,14 +883,15 @@ function SessionPageContent() {
     return (messages()?.length ?? 0) === 0 && pendingTimeline().length === 0 && visibleSessionTransition() === null
   })
   const guidePending = async (item: SessionInboxItem) => {
-    const sessionID = params.id
-    if (!sessionID) return
-    await sdk.client.session.inboxGuide({ sessionID, itemID: item.id })
+    await sdk.client.session.inboxGuide({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
   }
   const removePending = async (item: SessionInboxItem) => {
-    const sessionID = params.id
-    if (!sessionID) return
-    await sdk.client.session.inboxRemove({ sessionID, itemID: item.id })
+    const client = sdk.client
+    const { data } = await client.session.inboxRemoved({ sessionID: item.sessionID }, { throwOnError: true })
+    if (!data?.some((removed) => removed.id === item.id)) {
+      await client.session.inboxRemove({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+    }
+    await sync.session.refresh(item.sessionID)
   }
 
   const timeline = createMemo(() => {
@@ -1142,29 +1148,7 @@ function SessionPageContent() {
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) return
-    const activeElement = document.activeElement as HTMLElement | undefined
-    if (activeElement) {
-      const isProtected = activeElement.closest("[data-prevent-autofocus]")
-      // Monaco's native EditContext input is a div with role="textbox" (not a
-      // TEXTAREA and not contenteditable); treat any textbox role as an input
-      // so type-anywhere does not steal focus from the file editor.
-      const isInput =
-        /^(INPUT|TEXTAREA|SELECT)$/.test(activeElement.tagName) ||
-        activeElement.isContentEditable ||
-        activeElement.getAttribute("role") === "textbox"
-      if (isProtected || isInput) return
-    }
-    if (dialog.active) return
-
-    if (activeElement === inputRef) {
-      if (event.key === "Escape") inputRef?.blur()
-      return
-    }
-
-    if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
-      inputRef?.focus()
-    }
+    handleComposerTypingAutofocus(event, inputRef, !!dialog.active)
   }
 
   const isWorking = createMemo(() => isWorkingStatus(status()))
@@ -1608,6 +1592,9 @@ function SessionPageContent() {
             get sessionTransitionPending() {
               return sessionTransitionPending()
             },
+            get sessionTransitionError() {
+              return visibleSessionTransition()?.phase === "error"
+            },
             get hideAgentSelector() {
               return !sessionMeta().showInputBar
             },
@@ -1752,10 +1739,10 @@ function SessionPageContent() {
       }
     },
     get onPendingGuide() {
-      return (item: SessionInboxItem) => void guidePending(item)
+      return (item: SessionInboxItem) => guidePending(item)
     },
     get onPendingRemove() {
-      return (item: SessionInboxItem) => void removePending(item)
+      return (item: SessionInboxItem) => removePending(item)
     },
     get onForkMessage() {
       return (messageID: string) => openForkConfirm(messageID)
@@ -1871,6 +1858,8 @@ function SessionPageContent() {
     conversation: () => (
       <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
         <SessionTopBar
+          newSessionWorkspaceSelection={newSessionWorkspaceSelection()}
+          onWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
           onWorkspaceTransition={startWorkspaceTransition}
           sessionTransitionPending={sessionTransitionPending}
         />
@@ -1956,12 +1945,9 @@ function SessionPageContent() {
 
         {/* Mobile side workspace overlay */}
         <Show when={sideWorkspaceMounts().mobile}>
-          <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
-            <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
-            <div class="mobile-workbench-overlay relative flex-1 min-h-0">
-              <WorkbenchSurface surface="side" />
-            </div>
-          </div>
+          <MobileWorkspaceDialog onClose={() => sideSurface().close()}>
+            <WorkbenchSurface surface="side" />
+          </MobileWorkspaceDialog>
         </Show>
       </>
     ),

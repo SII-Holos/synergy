@@ -92,6 +92,8 @@ Network activity is likewise decided from the resolved operation rather than fro
 
 This separation lets one profile make consistent decisions across built-in tools, plugins, MCP servers, and future execution surfaces.
 
+Permission replies serialize by Session so a rejection cannot race a sibling persistent approval. An Always allow reply writes its complete rule set atomically before removing the pending request or publishing completion. Failed storage leaves the request pending and grants no cached rule; runtime rule caches update only after commit. The HTTP reply paths await this result.
+
 ## Control Profiles
 
 Synergy provides three standard profiles:

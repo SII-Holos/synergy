@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url"
 import { app, WebContentsView, type BrowserWindow, type WebContents } from "electron"
 import {
   BrowserProtocolError,
@@ -193,6 +194,7 @@ export class BrowserNativePagePool {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        preload: fileURLToPath(new URL("./browser-page-preload.cjs", import.meta.url)),
       },
     })
     view.setBounds(bounds)

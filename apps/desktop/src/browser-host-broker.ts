@@ -152,6 +152,11 @@ export class BrowserHostBrokerClient {
       this.socket?.close(1008, "Browser Host received a message for the wrong protocol role")
       return
     }
+    // A page command can be waiting synchronously for this response.
+    if (message.type === "page.command" && message.command.type === "dialog.respond") {
+      await this.dispatch(message, epoch)
+      return
+    }
     const previous = this.commandTails.get(message.ownerKey) ?? Promise.resolve()
     const operation = previous.then(() => this.dispatch(message, epoch))
     this.commandTails.set(message.ownerKey, operation)

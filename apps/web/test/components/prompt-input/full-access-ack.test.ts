@@ -127,6 +127,8 @@ mock.module("../../../src/context/sync", () => ({
   }),
 }))
 
+mock.module("../../../src/components/dialog/dialog-select-model", () => ({ ModelSelectorPopover: () => null }))
+
 mock.module("../../../src/context/local", () => ({
   useLocal: () => ({
     agent: {

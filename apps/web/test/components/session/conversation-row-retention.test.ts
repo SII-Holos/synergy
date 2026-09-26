@@ -159,7 +159,12 @@ beforeAll(async () => {
     configFile: false,
     root: fixtureDirectory,
     plugins: [solidPlugin()],
-    resolve: { alias: aliasConfig(stubPath) },
+    resolve: {
+      alias: [
+        ...aliasConfig(stubPath),
+        { find: "@/utils/error", replacement: path.resolve(import.meta.dir, "../../../src/utils/error.ts") },
+      ],
+    },
     server: {
       host: "127.0.0.1",
       port: 5213,

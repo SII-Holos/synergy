@@ -2,6 +2,8 @@
  *  Translate at use time via `useLocale().i18n._(descriptor)`. */
 
 export const S = {
+  asOf: { id: "app.stats.asOf", message: "Data as of {time}" },
+  stale: { id: "app.stats.stale", message: "Refresh failed. The previous snapshot is still shown." },
   accountingUnknown: {
     id: "app.stats.accounting.unknown",
     message:

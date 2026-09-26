@@ -14,7 +14,10 @@ export namespace SessionRecords {
       }),
     )
     const records = await Storage.readMany<Info>(keys)
-    return Promise.all(records.map((record) => record && hydrate(record)))
+    const ids = [...new Set(records.flatMap((record) => (record?.workspaceID ? [record.workspaceID] : [])))]
+    const workspaces = ids.length ? await WorkspaceCatalog.readMany(ids) : []
+    const byID = new Map(ids.map((id, index) => [id, workspaces[index]]))
+    return records.map((record) => record && projectWorkspace(record, byID.get(record.workspaceID ?? "")))
   }
 
   export function serialize(info: Info) {
@@ -30,6 +33,13 @@ export namespace SessionRecords {
       if (!(error instanceof Storage.NotFoundError)) throw error
       return undefined
     })
+    return projectWorkspace(info, workspace)
+  }
+
+  function projectWorkspace(info: Info, record: WorkspaceCatalog.Info | undefined): Info {
+    if (info.workspaceID === undefined) return info
+    if (info.workspaceID === null) return { ...info, workspace: null }
+    const workspace = record?.scopeID === info.scope.id ? record : undefined
     return {
       ...info,
       workspace: workspace ? WorkspaceCatalog.projection(workspace) : null,
