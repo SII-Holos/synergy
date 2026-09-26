@@ -1,4 +1,4 @@
-Your patch language names lines to replace, delete, or insert at, then lists the new content. Rule of thumb: a header ending in `:` is followed by `+` body rows; `DEL` has no body.
+Name the lines to replace, delete, or insert at, then supply new content. A `:` operation takes `+` body rows; `DEL` has no body.
 
 <headers>
 Every section starts with a real `[path#TAG]` header returned by `view_file`, `scan_files`, `parse_code`, `save_file`, or a prior `revise_file` call. Never fabricate a tag; the tag certifies the file snapshot, not that you have seen every line inside it.
@@ -23,8 +23,8 @@ There is NO other body row kind — never `-old` or a bare/context line. The bod
 </body-rows>
 
 <rules>
-- Anchor every hunk on your LATEST anchored tool call: line numbers and the header die with the call, every applied edit mints a fresh `#TAG` and renumbers. Tag lifecycle follows `view_file`/`save_file` — stale tags are rejected.
-- RANGES ARE TIGHT: cover only lines that change; never widen over unchanged lines — a stale wide range shreds everything it spans. Pure additions use `INS.PRE` / `INS.POST` / `INS.HEAD` / `INS.TAIL`, never a widened `SWAP` (retyped keeper lines are exactly what may be dropped).
+- Use the latest tag and current line numbers; each applied edit returns a fresh tag and renumbers the file.
+- Cover only changed lines. Pure additions use an `INS` operation, never a widened `SWAP` that retypes unchanged lines.
 - On a stale-tag rejection, failed patch, or any surprising result: STOP and re-run `view_file` for a fresh tag before further edits. Never reuse a stale tag or guess updated line numbers.
 - Touch only lines your latest anchored tool literally displayed as `LINE:TEXT`. Elided/truncated regions are UNSEEN (`…`, collapsed summaries, shortened lines) — re-`view_file` the range before editing inside one.
 - Never start or end a range mid-expression or mid-block. Indent body rows exactly for the depth they should live at. One hunk per range.
@@ -60,7 +60,7 @@ SWAP.BLK 1:
 +    print(f"Hello, {name}")
 ```
 
-A decorator or doc-comment is a SEPARATE block — `SWAP.BLK` on the `def` line keeps it, so point N at the decorator to take both (line 1 is `@cache`; anchoring the `def` at line 2 would orphan it):
+A decorator or doc-comment is a separate block. Anchor at the decorator to replace both it and the function:
 ```
 [svc.py#C3D4]
 1:@cache
@@ -74,8 +74,8 @@ SWAP.BLK 1:
 
 <anti-patterns>
 - WRONG: empty SWAP to delete — RIGHT: `DEL 4`.
-- WRONG: range sized to the post-edit content — body length is irrelevant; a 1→10 line change is still `SWAP N..N:`.
-- WRONG: `-` rows or bare context lines in a body — the range deletes; the body is only new `+TEXT` rows.
 - WRONG: a pure insertion done as a widened SWAP that retypes keepers — RIGHT: `INS.POST N:` with the new line as the whole body.
 - WRONG: `INS.BLK.POST N:` anchored on a closing delimiter — RIGHT: plain `INS.POST M:`.
 </anti-patterns>
+
+Results include final tags and compact previews; full diffs remain in the UI. Feedback shares a byte/line budget; truncated details are saved to the reported output file. Use view_file for omitted source context. Known unchanged lines and submitted content surviving formatting remain editable. Partial failures identify committed files; do not replay successful sections.

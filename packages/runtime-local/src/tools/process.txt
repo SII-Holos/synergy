@@ -3,7 +3,7 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 ## Actions
 
 - **list**: List all running and recently finished background processes
-- **poll**: Check if a process is still running and get recent output. Non-blocking by default — returns immediately with current status and tail output. Use `block: true` to wait for the process to exit (with optional `timeoutSeconds` in seconds, default 30s). Synergy Link hosts cap the blocking wait at 25 seconds so a still-running result returns before the 30-second transport deadline; pass a shorter `timeoutSeconds` to wait less. Note: `block: true` holds the agent turn until the process exits — the agent cannot respond or act during this time. Prefer non-blocking `poll` or `log` first, then `block: true` only when you have nothing else to do before the process finishes.
+- **poll**: Check status and recent output. Non-blocking by default. `block: true` waits until exit or the wait window ends (`timeoutSeconds` in seconds, default 30s); an earlier exit returns sooner. Synergy Link hosts cap blocking waits at 25 seconds, below the 30-second transport deadline.
 - **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far.
 - **write**: Write raw data to a process's stdin
 - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"])
@@ -13,7 +13,16 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 
 ## Notes
 
-On Windows Synergy Link hosts, remote Bash rejects known detached launchers, dynamic or opaque script entry points, and commands beyond the 16 KiB per-command, 64 nested-shell, or 128 KiB cumulative inspection budgets. Use the tracked Bash background flow and split oversized work into smaller `bash`/`process` operations because a detached descendant cannot be recovered safely after its launcher exits.
+Choose according to the next useful action:
+
+- Continue independent work while the process runs. Check status or logs when the result can change a decision, not merely to refresh progress.
+- If completion gates the next action and no independent work remains, use a blocking poll with a window appropriate to the expected work. A long local operation can use `block: true, timeoutSeconds: 300`; this is a wait window, not an execution deadline.
+- `running` means the process is alive, not that it is making progress. If output requests input, or an initial wait provides no progress evidence and interaction or a stalled dependency is plausible, inspect the relevant output or process state once before deciding what to do. Redirected output may require reading the command's log file. Confirmed quiet work can continue waiting; silence alone does not prove a stall.
+- Supply input only when its value is known and authorized; do not guess confirmations. If a required decision is unavailable, surface the blocker instead of waiting for nonexistent input. Do not kill or rerun a command merely because a wait ends, and do not replace repeated polls with shell status loops.
+
+For a persistent service, check readiness rather than waiting for exit. If you deliberately end the current turn to check external work later, set one `agenda_watch` with a delay such as `5m`, then yield. Visible running subagents already notify you on completion and prevent watch creation; do not add an Agenda wake-up for them.
+
+On Windows Link hosts, use tracked Bash operations. Detached launchers and opaque script entry points are rejected; split commands exceeding the 16 KiB command, 64 nested-shell or 128 KiB cumulative inspection limits.
 
 ## Usage
 
@@ -21,39 +30,19 @@ On Windows Synergy Link hosts, remote Bash rejects known detached launchers, dyn
 For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely.
 When targeting a remote `synergy-link` host, open a remote collaboration session first using the `connect` tool and use a heartbeat-verified session. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. Remote process management does not implicitly create sessions, never falls back locally, and a timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote action was not applied. Reconnect and inspect state; never auto-retry mutating actions after an ambiguous failure.
 
-After a bash command auto-backgrounds:
-```
-bash(command: "npm run dev", yieldSeconds: 30) → { processId: "proc_xxx" }
-```
+Examples (use the processId returned by Bash):
 
-Get current output (non-blocking, recommended first step):
 ```
-process(action: "log", processId: "proc_xxx")
-```
-
-Check status (non-blocking by default):
-```
+// One status check when it can change a decision:
 process(action: "poll", processId: "proc_xxx")
-```
-
-Wait for completion (BLOCKS — agent cannot act until process exits):
-```
-process(action: "poll", processId: "proc_xxx", block: true)
-process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 60)
-```
-
-Send input:
-```
-process(action: "write", processId: "proc_xxx", data: "y\n")
-```
-
-Send Ctrl+C to interrupt:
-```
+// Completion gates progress and no independent work remains:
+process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 300)
+// Diagnose output; offset/limit can select the relevant part:
+process(action: "log", processId: "proc_xxx")
+// Supply known, authorized task input:
+process(action: "write", processId: "proc_xxx", data: "<known input>\n")
+// Interrupt or terminate when appropriate:
 process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"])
-```
-
-Terminate:
-```
 process(action: "kill", processId: "proc_xxx")
 ```
 

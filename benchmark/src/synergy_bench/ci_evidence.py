@@ -3,11 +3,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
-FAMILIES = ("integration", "parent-death", "compaction-integration", "oom-integration", "matrix-integration")
+FAMILIES = (
+    "integration",
+    "parent-death",
+    "compaction-integration",
+    "oom-integration",
+    "matrix-integration",
+    "preparation",
+)
 PRIVATE_DIRECTORIES = {"home", "wire", "evaluator", "inputs", "data", ".git", "node_modules"}
 FILENAMES = {
     "evidence.json",
@@ -44,7 +52,28 @@ def collect(root: Path, output: Path, families: Sequence[str]) -> dict[str, obje
         path = path or (Path(error.filename) if error.filename else root)
         errors.append({"path": str(path.relative_to(root)), "error": type(error).__name__})
 
+    def retain(source: Path) -> None:
+        nonlocal copied
+        target = output / source.relative_to(root)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
+            copied += 1
+        except OSError as error:
+            failed(error, source)
+
     for family in dict.fromkeys(families):
+        if family == "preparation":
+            preparing = root / "cache/preparing"
+            if preparing.parent.is_symlink() or preparing.is_symlink() or not preparing.is_dir():
+                continue
+            try:
+                for source in preparing.iterdir():
+                    if re.fullmatch(r"[0-9a-f]{64}\.log", source.name) and not source.is_symlink() and source.is_file():
+                        retain(source)
+            except OSError as error:
+                failed(error, preparing)
+            continue
         source_root = root / family
         if source_root.is_symlink() or not source_root.exists():
             continue
@@ -58,13 +87,7 @@ def collect(root: Path, output: Path, families: Sequence[str]) -> dict[str, obje
                 source = Path(directory) / name
                 if name not in FILENAMES or source.is_symlink():
                     continue
-                target = output / source.relative_to(root)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    shutil.copyfile(source, target)
-                    copied += 1
-                except OSError as error:
-                    failed(error, source)
+                retain(source)
     result = {"copied": copied, "errors": errors}
     (output / "collection.json").write_text(json.dumps(result))
     return result

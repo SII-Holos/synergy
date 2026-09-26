@@ -7,6 +7,30 @@ from synergy_bench.environment import CachedDockerEnvironment, environment_ident
 from synergy_bench.storage import atomic_json, digest
 
 
+@pytest.mark.parametrize("allow_internet", [False, True])
+async def test_dependency_proxy_reaches_commands_without_relaxing_task_networks(tmp_path, monkeypatch, allow_internet):
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+    env = CachedDockerEnvironment(
+        environment_dir=tmp_path,
+        environment_name="dependency-fixture",
+        session_id="dependency-fixture",
+        trial_paths=TrialPaths(trial_dir=tmp_path / "trial"),
+        task_env_config=EnvironmentConfig(allow_internet=allow_internet),
+        benchmark_cache=str(tmp_path / "cache"),
+        benchmark_platform="linux/amd64",
+        dependency_proxy_url="http://host.docker.internal:12345",
+    )
+    commands = AsyncMock(return_value=SimpleNamespace(return_code=0, stdout="", stderr=""))
+    monkeypatch.setattr(env, "_compose_command", commands)
+    await env.exec("curl https://dependency.invalid/fixture", timeout_sec=30)
+    args = commands.call_args.args[0]
+    assert any("HTTPS_PROXY=http://host.docker.internal:12345" in str(arg) for arg in args) is allow_internet
+    assert env.task_env_config.allow_internet is allow_internet
+
+
 def test_independent_caches_do_not_claim_each_others_task_or_proxy_images(tmp_path):
     from pier.models.agent.network import NetworkAllowlist
     from pier.models.task.config import EnvironmentConfig
@@ -89,16 +113,60 @@ async def test_native_execution_outlives_preparation_ceiling(tmp_path, monkeypat
 
 
 async def test_diagnostic_failure_cannot_prevent_environment_stop(monkeypatch):
-    from pier.environments.docker.docker import DockerEnvironment
-
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._egress_proxy_compose_path = None
+    env._keep_containers = False
     monkeypatch.setattr(env, "_compose_command", AsyncMock(side_effect=TimeoutError("logs timed out")))
+    monkeypatch.setattr(env, "prepare_logs_for_host", AsyncMock())
+    monkeypatch.setattr(env, "_cleanup_resources_compose_file", lambda: None)
     stop = AsyncMock()
-    monkeypatch.setattr(DockerEnvironment, "stop", stop)
+    monkeypatch.setattr(env, "_run_docker_compose_command", stop)
     with pytest.raises(TimeoutError):
         await env.stop(delete=False)
-    stop.assert_awaited_once_with(delete=False)
+    stop.assert_awaited_once_with(["down"])
+
+
+@pytest.mark.parametrize("keep_containers", [False, True])
+async def test_failed_native_teardown_is_retained_by_trial(tmp_path, monkeypatch, keep_containers):
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    from synergy_bench import environment
+    from synergy_bench.storage import read_json
+    from synergy_bench.trial import BenchmarkTrial
+
+    (tmp_path / "Dockerfile").write_text("FROM scratch\n")
+    paths = TrialPaths(trial_dir=tmp_path / "trial")
+    env = CachedDockerEnvironment(
+        environment_dir=tmp_path,
+        environment_name="cleanup-fixture",
+        session_id="cleanup-fixture",
+        trial_paths=paths,
+        task_env_config=EnvironmentConfig(),
+        benchmark_cache=str(tmp_path / "cache"),
+        benchmark_platform="linux/amd64",
+        keep_containers=keep_containers,
+    )
+    observed = []
+
+    async def compose(args, *, log, **kwargs):
+        observed.append(args)
+        log.parent.mkdir(parents=True, exist_ok=True)
+        log.write_text("native teardown failed\n")
+        return 17 if args[-1] in {"down", "stop"} else 0
+
+    monkeypatch.setattr(environment, "run_process", compose)
+    monkeypatch.setattr(env, "prepare_logs_for_host", AsyncMock())
+    trial = object.__new__(BenchmarkTrial)
+    trial._cleanup_seconds = 1
+    trial._trial_paths = paths
+    await trial._stop(env, delete=True)
+    failure = paths.agent_dir / "environment-cleanup.json"
+    assert failure.exists(), "Docker cleanup errors must reach terminal evidence"
+    assert read_json(failure) == {"status": "failed", "errors": ["RuntimeError"]}
+    assert [args[-1] for args in observed] == ["--no-color", "stop" if keep_containers else "down"]
+    assert all("--rmi" not in args and "--volumes" not in args for args in observed)
 
 
 def test_image_identity_changes_with_context_platform_and_native_limits(tmp_path):
@@ -112,6 +180,7 @@ def test_image_identity_changes_with_context_platform_and_native_limits(tmp_path
 async def test_warm_image_skips_compose_build_and_remote_pull(tmp_path, monkeypatch):
 
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._benchmark_cache = tmp_path
     env._benchmark_identity = {"platform": "linux/amd64", "source": "frozen"}
     key = digest(env._benchmark_identity)
@@ -143,6 +212,7 @@ async def test_warm_image_skips_compose_build_and_remote_pull(tmp_path, monkeypa
 async def test_missing_frozen_image_cannot_be_rebuilt_silently(tmp_path, monkeypatch):
 
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._benchmark_cache = tmp_path
     env._benchmark_identity = {"platform": "linux/amd64", "source": "frozen"}
     key = digest(env._benchmark_identity)
@@ -163,6 +233,7 @@ async def test_missing_frozen_image_cannot_be_rebuilt_silently(tmp_path, monkeyp
 
 async def test_finished_build_is_reconciled_after_publisher_exit(tmp_path, monkeypatch):
     env = object.__new__(CachedDockerEnvironment)
+    env.session_id = "sb-fixture"
     env._benchmark_cache = tmp_path
     env._benchmark_identity = {"platform": "linux/amd64", "source": "frozen"}
     key = digest(env._benchmark_identity)

@@ -124,34 +124,6 @@ async def test_cleanup_never_deletes_cached_or_shared_images(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_prewarm_starts_both_images_without_agent_or_verifier_execution(tmp_path):
-    from types import SimpleNamespace
-    from unittest.mock import AsyncMock
-
-    from synergy_bench.trial import BenchmarkTrial
-
-    trial = object.__new__(BenchmarkTrial)
-    from synergy_bench.lifecycle import Lifecycle
-
-    trial._task = SimpleNamespace(config=TaskConfig.model_validate({"verifier": {"environment_mode": "separate"}}))
-    trial.config = SimpleNamespace(agent=SimpleNamespace(kwargs={"settings": {}}))
-    trial._lifecycle = Lifecycle(tmp_path)
-    trial._environment = SimpleNamespace(start=AsyncMock(), run_healthcheck=AsyncMock())
-    trial._agent = SimpleNamespace(setup=AsyncMock())
-    trial._setup_environment = AsyncMock()
-    trial._setup_agent = AsyncMock()
-    trial._stop_agent_environment = AsyncMock()
-    trial._cleanup_verifiers = AsyncMock()
-    trial._close_logger_handler = lambda: None
-    environment = SimpleNamespace(start=AsyncMock())
-    trial._new_verifier_environment = lambda *args, **kwargs: environment
-    trial._execute_agent = AsyncMock(side_effect=AssertionError("prewarm cannot run a model"))
-    await trial.prewarm()
-    trial._agent.setup.assert_awaited_once()
-    environment.start.assert_awaited_once_with(force_build=False)
-    trial._execute_agent.assert_not_awaited()
-
-
 async def test_agent_phase_uses_resolved_native_deadline(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
 

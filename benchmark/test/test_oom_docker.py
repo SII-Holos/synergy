@@ -12,7 +12,7 @@ from synergy_bench.storage import read_json
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Owned kernel OOM injection")
 
 
-async def test_native_docker_process_rss_is_observed(tmp_path):
+async def test_native_docker_working_set_is_observed(tmp_path):
     project = "sb-" + uuid.uuid4().hex[:8] + "-rss"
     container = "synergy-benchmark-rss-" + uuid.uuid4().hex
     try:
@@ -44,7 +44,7 @@ async def test_native_docker_process_rss_is_observed(tmp_path):
         )
         monitor = ResourceMonitor(tmp_path, project)
         await monitor.sample()
-        assert monitor.samples[0]["process_rss_sum_bytes"] > 0
+        assert monitor.samples[0]["process_rss_sum_bytes"] is None
         assert monitor.samples[0]["memory_bytes"] > 0
     finally:
         await run_process(["docker", "rm", "-f", container], log=tmp_path / "cleanup.log", deadline=15)

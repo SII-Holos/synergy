@@ -42,6 +42,7 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
     count = None
     sources = []
     observations = []
+    missing_results = []
     for file in sorted((trial / "verifier").rglob("*")):
         if not file.is_file() or file.is_symlink():
             continue
@@ -60,7 +61,18 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
                 if not isinstance(tests, list):
                     continue
                 format_name = "ctrf"
-                observed = sum(isinstance(test, dict) and test.get("status") in {"passed", "failed"} for test in tests)
+                reported = [
+                    test for test in tests if isinstance(test, dict) and test.get("status") in {"passed", "failed"}
+                ]
+                # Provenance: docs/research/context-efficiency/2026-09-23-local24-glm-paired-study.md.
+                # Local adaptation: DeepSWE synthesizes failures for absent results; those do not prove execution.
+                missing = sum(
+                    test.get("status") == "failed" and str(test.get("message", "")).startswith("missing from report (")
+                    for test in reported
+                )
+                observed = len(reported) - missing
+                if missing:
+                    missing_results.append({"source": file.relative_to(trial).as_posix(), "count": missing})
             elif file.suffix in {".txt", ".log", ".jsonl"}:
                 content = file.read_text(errors="replace")
                 matches = re.findall(r"running (\d+) tests?\b", content)
@@ -103,12 +115,13 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         "test_count": count,
         "test_count_semantics": "maximum_observed_count_across_overlapping_reports",
         "observations": observations,
+        "missing_results": missing_results,
         "sources": sources,
         "raw_rewards": (pier.get("verifier_result") or {}).get("rewards"),
     }
 
 
-def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required: bool = True) -> dict[str, Any]:
+def collect_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
     agent = trial / "agent"
     missing: list[str] = []
 
@@ -149,7 +162,9 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
                     files[relative] = {"sha256": checksum, "bytes": path.stat().st_size}
             except OSError:
                 missing.append(f"file_unreadable:{relative}")
-    external = execution and execution.get("harness") not in {None, "synergy"}
+    external = execution and (
+        execution.get("harness") not in {None, "synergy"} or execution.get("runtime_protocol") == "synergy-session-v1"
+    )
     payload = files.get("agent/rollout.tar.gz" if external else "agent/rollout.zip")
     structural = bool(
         archive
@@ -170,9 +185,21 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
         missing.append("recording_failed")
     if execution and (execution.get("forced") or execution.get("invalid_event_lines")):
         missing.append("execution_truncated")
+    cleanup_file = trial.parent / "cleanup.json"
+    cleanup = (
+        read_json(cleanup_file)
+        if cleanup_file.exists()
+        else {"status": "unknown", "resources_removed": None, "issues": []}
+    )
     for name in ["cleanup", "credential-cleanup", "environment-cleanup"]:
         if (agent / f"{name}.json").exists():
-            missing.append(f"{name}_failed")
+            issue = f"{name}_failed"
+            if issue not in cleanup["issues"]:
+                cleanup["issues"].append(issue)
+    if cleanup["issues"] and cleanup["resources_removed"] is not False:
+        cleanup["status"] = "warning"
+    if cleanup["resources_removed"] is False:
+        missing.append("cleanup_unresolved")
     exception = pier.get("exception_info")
     expected = exception and exception.get("exception_type") in {
         "AgentTimeoutError",
@@ -180,15 +207,10 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
         "NonZeroAgentExitCodeError",
         "CancelledError",
     }
-    if (
-        verification_required
-        and not pier.get("verifier_result")
-        and (exception or {}).get("exception_type")
-        not in {
-            "CancelledError",
-            "VerifierTimeoutError",
-        }
-    ):
+    if not pier.get("verifier_result") and (exception or {}).get("exception_type") not in {
+        "CancelledError",
+        "VerifierTimeoutError",
+    }:
         missing.append("verifier_missing")
     tokens = accounting.get("tokens", {}) if accounting else {}
     if not isinstance(tokens, dict):
@@ -217,6 +239,7 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
             "recording": recording,
             "usage": usage,
         },
+        "cleanup": cleanup,
         "files": files,
     }
     return AttemptResult.model_validate(result).model_dump(exclude_none=False)
@@ -224,31 +247,13 @@ def collect_evidence(trial: Path, pier: dict[str, Any], *, verification_required
 
 def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
     from .report import report_data
-    from .runner import startup_retryable
 
     report = report_data(root, category=category)
     results = report["scored"]
     failures = [
         row for row in report["all_attempts"] if not row["evidence"].get("valid", False) or row["infrastructure_error"]
     ]
-    recovered = 0
-    for row in failures:
-        owner = {"task": "trials", "preflight": "probes", "debug": "debug"}[row["purpose"]]
-        attempt = root / owner / row["trial"] / row["attempt"]
-        evidence = attempt / "evidence.json"
-        if not evidence.exists() or not startup_retryable(attempt, read_json(evidence)):
-            continue
-        recovered += any(
-            later["purpose"] == row["purpose"]
-            and later["trial"] == row["trial"]
-            and later["attempt"] > row["attempt"]
-            and later["terminal"]
-            and later["model_started"]
-            and later["evidence"].get("valid", False)
-            and not later["infrastructure_error"]
-            for later in report["all_attempts"]
-        )
-    unresolved = len(failures) - recovered
+    unresolved = len(failures)
     outcomes: dict[str, int] = {}
     for row in results:
         outcomes[row["outcome"]] = outcomes.get(row["outcome"], 0) + 1
@@ -262,7 +267,6 @@ def summarize(root: Path, *, category: str = "trials") -> dict[str, Any]:
             row["outcome"] != "completed" or (row["reward"] is not None and row["reward"] <= 0) for row in results
         ),
         "recording_or_infrastructure_failures": len(failures),
-        "recovered_startup_failures": recovered,
         "unresolved_recording_or_infrastructure_failures": unresolved,
         "rewards": [row["raw_rewards"] for row in results],
         "usage": report["usage"],

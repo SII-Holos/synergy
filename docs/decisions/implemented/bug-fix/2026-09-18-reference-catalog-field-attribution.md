@@ -24,6 +24,8 @@ The reference generators read a field's own schema chain and nothing else.
 - `inlineDescribe` resolves the describe that the field itself owns. `owningDescribe` walks the expression tracking nesting depth and string state, and records a `.describe(` only at depth zero, so a describe inside an object literal documents the nested property and never the parent.
 - `zodTypeOf` anchors each probe to the head of the expression. A field's type is its outermost constructor: an object that contains a `z.enum` is an object, and a union of string and array is a union.
 
+Continuation detection also follows a leading dot after a namespace-qualified builder such as `z.coerce`. Coercion retains the constructor's public type. Formatting the read tool's numeric limit across lines therefore preserves its number type, optionality and description in the generated catalog.
+
 `test/script/gen-catalogs.test.ts` covers the three invariants directly, including a 40-property object that exceeds the old bound and a parent whose describe chains after a nested child's.
 
 ## Alternatives considered

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,13 +14,16 @@ from pier.models.task.config import EnvironmentConfig as TaskEnvironmentConfig
 from pier.models.task.task import Task
 from pier.models.task.verifier_mode import resolve_effective_verifier_env_config
 from pier.models.trial.config import TrialConfig
+from pier.models.trial.result import TimingInfo
 from pier.models.verifier.result import VerifierResult
 from pier.trial.execution import AgentTimeoutError
+from pier.trial.hooks import TrialEvent
 from pier.trial.trial import Trial, VerifierTimeoutError
 from pier.verifier.verifier import Verifier
 
 from .agent import SynergyAgent
 from .lifecycle import Lifecycle
+from .scheduling import current_resources
 from .storage import atomic_json, read_json
 
 
@@ -30,7 +34,7 @@ class VerifierPreparationError(RuntimeError):
 class BenchmarkTrial(Trial):
     """Pier 0.3.1 lifecycle correction; see third_party/pier/NOTICE for provenance.
 
-    Keep Pier's verifier setup and execution deadline, but commit its reward before
+    Keep verifier setup separate from its execution budget, and commit its reward before
     container cleanup. A timed-out verifier is a result, never an automatic retry.
     """
 
@@ -43,7 +47,12 @@ class BenchmarkTrial(Trial):
     async def _setup_environment(self) -> None:
         deadline = self.config.agent.kwargs["settings"].get("preparation_timeout_seconds", 1800)
         async with self._lifecycle.stage("environment_preparation", deadline=deadline):
-            await super()._setup_environment()
+            await self._invoke_hooks(TrialEvent.ENVIRONMENT_START)
+            self.result.environment_setup = TimingInfo(started_at=datetime.now(UTC))
+            try:
+                await self._environment.start(force_build=self.config.environment.force_build)
+            finally:
+                self.result.environment_setup.finished_at = datetime.now(UTC)
 
     async def _setup_agent(self) -> None:
         async with self._lifecycle.stage("harness_setup", deadline=self._AGENT_SETUP_TIMEOUT_SEC):
@@ -63,6 +72,8 @@ class BenchmarkTrial(Trial):
             await super()._collect_artifacts()
 
     async def _run_verification(self) -> None:
+        if scheduler := current_resources.get():
+            await scheduler.phase("verifier")
         preparation = self.config.agent.kwargs["settings"].get("preparation_timeout_seconds", 1800)
         async with self._lifecycle.stage("verifier", deadline=preparation + self._verifier_timeout_sec + 1):
             await super()._run_verification()
@@ -149,26 +160,6 @@ class BenchmarkTrial(Trial):
         )
         self._verifier_environments.append(environment)
         return environment
-
-    async def prewarm(self) -> None:
-        try:
-            deadline = self.config.agent.kwargs["settings"].get("preparation_timeout_seconds", 1800)
-            async with self._lifecycle.stage("environment_preparation", deadline=deadline):
-                await self._environment.start(force_build=False)
-                await self._environment.run_healthcheck()
-            async with self._lifecycle.stage("harness_setup", deadline=self._AGENT_SETUP_TIMEOUT_SEC):
-                self._environment.default_user = self._task.config.agent.user
-                await self._agent.setup(self._environment)
-            await self._stop_agent_environment(keep_images=True)
-            config = resolve_effective_verifier_env_config(self._task.config, None)
-            if config is not None:
-                environment = self._new_verifier_environment(config, key="trial", step_cfg=None)
-                async with self._lifecycle.stage("verifier_preparation", deadline=deadline):
-                    await environment.start(force_build=False)
-        finally:
-            await self._cleanup_verifiers()
-            await self._stop_agent_environment(keep_images=True)
-            self._close_logger_handler()
 
     async def _stop(self, environment: BaseEnvironment, *, delete: bool) -> None:
         try:

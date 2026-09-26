@@ -9,11 +9,23 @@ from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, StrictBool, model_validator
+
+TASK_TIMEOUT_SECONDS = 10_800
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class PriorCost(StrictModel):
+    label: str
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    observed_requests: int = Field(ge=0)
+    known_tokens: int = Field(ge=0)
+    unknown_usage_requests: int | None = Field(default=None, ge=0)
+    unknown_attempts: int | None = Field(default=None, ge=0)
+    unconfirmed_dispatches: int | None = Field(default=None, ge=0)
 
 
 class Source(StrictModel):
@@ -38,6 +50,7 @@ MODEL_PARAMETERS = {
     "presence_penalty",
     "reasoning_effort",
     "thinking",
+    "enable_thinking",
     "tool_stream",
     "reasoning",
 }
@@ -67,7 +80,16 @@ class ModelProfile(StrictModel):
             raise ValueError("Model parameters cannot override transport, messages or credentials")
         common = {"temperature", "top_p"}
         allowed = common | (
-            {"seed", "stop", "frequency_penalty", "presence_penalty", "reasoning_effort", "thinking", "tool_stream"}
+            {
+                "seed",
+                "stop",
+                "frequency_penalty",
+                "presence_penalty",
+                "reasoning_effort",
+                "thinking",
+                "enable_thinking",
+                "tool_stream",
+            }
             if self.protocol == "chat-completions"
             else {"reasoning"}
         )
@@ -85,8 +107,9 @@ class ModelProfile(StrictModel):
                     raise ValueError(f"Invalid {key} parameter")
         if "seed" in self.parameters and type(self.parameters["seed"]) is not int:
             raise ValueError("Model seed must be an integer")
-        if "tool_stream" in self.parameters and type(self.parameters["tool_stream"]) is not bool:
-            raise ValueError("tool_stream must be a boolean")
+        for key in ("tool_stream", "enable_thinking"):
+            if key in self.parameters and type(self.parameters[key]) is not bool:
+                raise ValueError(f"{key} must be a boolean")
         if "stop" in self.parameters:
             stop = self.parameters["stop"]
             if not isinstance(stop, str) and not (
@@ -134,8 +157,8 @@ class HarnessProfile(StrictModel):
 
     @model_validator(mode="after")
     def validate_native_options(self) -> HarnessProfile:
-        if self.bun_jit is not None and self.kind != "opencode":
-            raise ValueError("bun_jit is supported only for opencode")
+        if self.bun_jit is not None and self.kind not in {"synergy", "opencode"}:
+            raise ValueError("bun_jit is supported only for synergy and opencode")
         if self.kind != "synergy":
             if self.config or self.experiment or self.runtime != "core" or self.agent != "synergy":
                 raise ValueError("Native harness config, experiment, runtime or agent override is unsupported")
@@ -155,11 +178,9 @@ class Matrix(StrictModel):
 
 
 class Resources(StrictModel):
-    max_concurrency: int = Field(default=8, ge=1, le=64)
     build_concurrency: int = Field(default=2, ge=1, le=16)
     reserve_cpus: float = Field(default=2, ge=0)
     reserve_memory_gib: float = Field(default=2, ge=0)
-    reserve_memory_fraction: float = Field(default=0.15, ge=0, lt=1)
     min_free_disk_gib: float = Field(default=20, ge=0)
     cache_budget_gib: float = Field(default=32, gt=0)
 
@@ -182,24 +203,31 @@ class Variant(StrictModel):
     bun_jit: StrictBool | None = None
 
 
+class SelectedCell(Combination):
+    task: str = Field(min_length=1)
+    repeat: int = Field(default=0, ge=0, strict=True)
+
+
 class Selection(StrictModel):
     tasks: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
     limit: int | None = Field(default=None, gt=0)
+    cells: list[SelectedCell] | None = Field(default=None, min_length=1)
 
 
 class ExperimentConfig(StrictModel):
-    version: Literal[1, 2]
+    version: Literal[2]
     suite: str
-    variants: dict[str, Variant] = Field(default_factory=dict)
+    _variants: dict[str, Variant] = PrivateAttr(default_factory=dict)
     harnesses: dict[str, HarnessProfile] = Field(default_factory=dict)
     models: dict[str, ModelProfile] = Field(default_factory=dict)
     matrix: Matrix = Field(default_factory=Matrix)
     resources: Resources = Field(default_factory=Resources)
+    prior_costs: list[PriorCost] = Field(default_factory=list)
     selection: Selection = Field(default_factory=Selection)
     repeat: int = Field(default=1, gt=0)
     task_repeats: dict[str, Annotated[int, Field(gt=0)]] = Field(default_factory=dict)
-    concurrency: Literal["auto"] | int = "auto"
+    concurrency: Literal["auto"] | Annotated[int, Field(gt=0, strict=True)] = "auto"
     seed: int = 0
     platform: Literal["linux/amd64", "linux/arm64"] = "linux/amd64"
     output: str = ".artifacts/benchmark/runs"
@@ -208,20 +236,20 @@ class ExperimentConfig(StrictModel):
     export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
-    timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | Literal["native"] = 10_800
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None
+    dependency_proxy_env: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+    @property
+    def variants(self) -> dict[str, Variant]:
+        return self._variants
 
     @model_validator(mode="after")
     def validate_names(self) -> ExperimentConfig:
-        if self.concurrency != "auto" and not 1 <= self.concurrency <= 64:
-            raise ValueError("Concurrency must be auto or an integer from 1 to 64")
+        if len({row.sha256 for row in self.prior_costs}) != len(self.prior_costs):
+            raise ValueError("Duplicate sealed prior cost summary")
         for name in self.variants.keys() | self.harnesses.keys() | self.models.keys():
             if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
                 raise ValueError("Names must contain only letters, digits, underscores or hyphens")
-        if self.version == 1:
-            if not self.variants or self.harnesses or self.models or self.matrix != Matrix():
-                raise ValueError("Version 1 requires variants; use version 2 for an independent matrix")
-            return self
         if not self.harnesses or not self.models:
             raise ValueError("Version 2 requires harnesses and models")
         for cell in self.matrix.include + self.matrix.exclude:
@@ -260,9 +288,7 @@ class ExperimentConfig(StrictModel):
             )
         if not resolved:
             raise ValueError("No matrix combinations selected")
-        if self.variants and self.variants != resolved:
-            raise ValueError("Resolved variants disagree with the matrix")
-        self.variants = resolved
+        self._variants = resolved
         return self
 
 
@@ -332,48 +358,14 @@ def resolve_plan(config: ExperimentConfig, tasks: list[dict[str, Any]]) -> list[
                     "model": variant.model_key or variant.model,
                 }
             )
+    if config.selection.cells:
+        requested = [(cell.task, cell.repeat, cell.harness, cell.model) for cell in config.selection.cells]
+        if len(set(requested)) != len(requested):
+            raise ValueError("Duplicate selected cells")
+        available = {(row["task"], row["repeat"], row["harness"], row["model"]): row for row in plan}
+        missing_cells = set(requested) - available.keys()
+        if missing_cells:
+            raise ValueError(f"Requested cells are outside the selected matrix: {sorted(missing_cells)}")
+        selected_cells = set(requested)
+        plan = [row for key, row in available.items() if key in selected_cells]
     return plan
-
-
-def normalize_legacy(
-    value: dict[str, Any], models: dict[str, Any], bindings: dict[str, str], base: Path
-) -> dict[str, Any]:
-    deadline = value.get("timeout_seconds")
-    legacy = ExperimentConfig.model_validate({**value, "timeout_seconds": "native" if deadline is None else deadline})
-    if legacy.version != 1:
-        raise ValueError("Only version 1 configurations require normalization")
-    harnesses = {}
-    combinations = []
-    for name, variant in legacy.variants.items():
-        if variant.model not in bindings or bindings[variant.model] not in models:
-            raise ValueError(f"Explicit model binding required for {variant.model}")
-        if variant.variant is not None:
-            raise ValueError("Move legacy sampling variants into explicit model profiles before normalization")
-        source = variant.source.model_dump()
-        for field in ["path", "artifact"]:
-            if source.get(field):
-                source[field] = str((base / source[field]).resolve())
-        harnesses[name] = {
-            "kind": variant.harness,
-            "source": source,
-            "runtime": variant.runtime,
-            "agent": variant.agent,
-            "package_version": variant.package_version,
-            **{
-                field: str((base / file).resolve())
-                for field in ["config", "experiment"]
-                if (file := getattr(variant, field))
-            },
-        }
-        combinations.append({"harness": name, "model": bindings[variant.model]})
-    result = {
-        key: item
-        for key, item in legacy.model_dump().items()
-        if key not in {"variants", "harnesses", "models", "matrix"}
-    }
-    for field in ["suite", "cache", "output"]:
-        result[field] = str((base / result[field]).resolve())
-    result.update(version=2, harnesses=harnesses, models=models, matrix={"include": combinations})
-    normalized = ExperimentConfig.model_validate(result).model_dump()
-    normalized.pop("variants")
-    return normalized

@@ -6,11 +6,12 @@ import math
 import random
 import statistics
 from collections import defaultdict
+from itertools import combinations
 from pathlib import Path
 from typing import Any
 
 from .gateway import read_ledger
-from .results import native_reward
+from .results import RESULT_VERSION, native_reward, require_current_plan
 from .storage import atomic_json, digest, read_json
 from .usage import FIELDS, aggregate_usage
 
@@ -96,30 +97,65 @@ def attempt_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
-    plan = read_json(root / "plan.json") if (root / "plan.json").exists() else {}
+    plan = read_json(root / "plan.json")
+    require_current_plan(plan)
     schedule = plan.get("schedule", [])
+    state = read_json(root / "state.json") if (root / "state.json").exists() else {}
     attempts = []
     by_trial: dict[str, list[dict[str, Any]]] = defaultdict(list)
     directories = list((root / category).glob("*/attempt-*"))
     if category == "trials":
-        directories.extend((root / "probes").glob("*/attempt-*"))
         directories.extend((root / "debug").glob("*/attempt-*"))
     for directory in sorted(directories):
-        purpose = {"probes": "preflight", "debug": "debug"}.get(directory.parent.parent.name, "task")
+        purpose = "debug" if directory.parent.parent.name == "debug" else "task"
         trial_id = directory.parent.name
         item = schedule[int(trial_id)] if trial_id.isdecimal() and int(trial_id) < len(schedule) else {}
         if (directory / "trial.json").exists():
             item = read_json(directory / "trial.json")
         file = directory / "evidence.json"
-        result = read_json(file) if file.exists() else {}
+        try:
+            result = read_json(file) if file.exists() else None
+        except (ValueError, OSError):
+            result = {"evidence": {"valid": False, "issues": ["terminal_evidence_unreadable"]}}
+        else:
+            if result is not None and (not isinstance(result, dict) or result.get("version") != RESULT_VERSION):
+                raise ValueError("Unsupported benchmark result version")
+        result = result or {}
+        scheduling = (
+            read_json(directory / "scheduling.json") if (directory / "scheduling.json").exists() else {"events": []}
+        )
+        phase_queue: dict[str, float] = {}
+        for event in scheduling["events"]:
+            if "queue_seconds" in event:
+                phase = event["phase"]
+                phase_queue[phase] = phase_queue.get(phase, 0.0) + event["queue_seconds"]
+        recovery = directory / "recovery.json"
+        if recovery.exists():
+            result["evidence"] = {
+                **result.get("evidence", {}),
+                "valid": False,
+                "issues": [*result.get("evidence", {}).get("issues", []), *read_json(recovery)["issues"]],
+            }
         wire = read_ledger(directory / "wire")
+        wire_issues = [
+            f"{row['id']}:{row[field]}"
+            for row in wire
+            for field in ["recording_error", "request_body_error"]
+            if row.get(field)
+        ]
+        if wire_issues:
+            result["evidence"] = {
+                **result.get("evidence", {}),
+                "valid": False,
+                "issues": sorted(set(result.get("evidence", {}).get("issues", []) + wire_issues)),
+            }
         accounting = result.get("wire_usage")
-        if accounting is None and wire:
+        if wire and (accounting is None or wire_issues):
             accounting = aggregate_usage(wire)
         native_only = accounting is None
         if native_only:
             accounting = result.get("accounting")
-        pending = plan.get("result_version", result.get("version")) == 3 and result.get("attempt_status") != "completed"
+        pending = result.get("attempt_status") != "completed"
         usage_fields = {
             field: {**value, "total": None} if pending and isinstance(value, dict) else value
             for field, value in (accounting or {}).get("tokens", {}).items()
@@ -141,18 +177,17 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
         ]
         condition_fields = {
             "task_digest": task.get("digest"),
-            "model": variant.get("model_profile", variant.get("model")),
+            "model": variant.get("model_profile"),
             "platform": plan.get("config", {}).get("platform"),
-            "timeout": plan.get("config", {}).get("timeout_seconds"),
+            "task_timeout_seconds": plan.get("task_timeout_seconds"),
             "result_version": plan.get("result_version"),
-            "agent_seconds": task.get("agent_seconds"),
-            "verifier_seconds": task.get("verifier_seconds"),
             "resources": task.get("resources"),
             "evaluator": plan.get("evaluator"),
             "concurrency": plan.get("concurrency"),
             "seed": config.get("seed"),
             "docker": plan.get("host", {}).get("docker"),
             "capacity": plan.get("host", {}).get("capacity"),
+            "dependency_proxy": plan.get("dependency_proxy"),
             "execution_policy": {key: config[key] for key in policy_fields}
             if all(key in config for key in policy_fields)
             else None,
@@ -162,8 +197,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "model",
             "platform",
             "result_version",
-            "agent_seconds",
-            "verifier_seconds",
+            "task_timeout_seconds",
             "resources",
             "evaluator",
             "concurrency",
@@ -176,7 +210,21 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
         pairing_exclusions = (
             ["cancelled_execution"] if execution.get("interrupted") or execution.get("outcome") == "cancelled" else []
         )
+        if not result.get("evidence", {}).get("valid") or result.get("infrastructure_error"):
+            pairing_exclusions.append("invalid_evidence")
+        if pending:
+            pairing_exclusions.append("nonterminal_execution")
         conditions = None if missing_conditions or pairing_exclusions else digest(condition_fields)
+        cleanup = result.get("cleanup", {"status": "unknown", "resources_removed": None, "issues": []})
+        failure = result.get("infrastructure_error") or {}
+        issues = result.get("evidence", {}).get("issues", [])
+        reason = failure.get("message") or failure.get("exception_message") or failure.get("type")
+        if not reason and execution.get("outcome") not in {None, "completed"}:
+            reason = execution["outcome"]
+        if not reason and issues:
+            reason = ";".join(issues)
+        if not reason and reward_of(result) == 0:
+            reason = "native_reward_0"
         row = {
             **item,
             "purpose": purpose,
@@ -184,14 +232,22 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "attempt": directory.name,
             "result_version": result.get("version"),
             "terminal": result.get("attempt_status") == "completed",
+            "status": state.get("trials", {}).get(trial_id, {}).get("status", "unknown"),
+            "dispatch_sequence": item.get("dispatch_sequence"),
             "outcome": execution.get("outcome", "unknown"),
             "reward": reward_of(result),
             "raw_rewards": (result.get("verifier") or {}).get("rewards"),
+            "cleanup": cleanup,
+            "cleanup_status": cleanup["status"],
+            "resources_removed": cleanup["resources_removed"],
+            "cleanup_issues": ";".join(cleanup["issues"]),
+            "failure_reason": reason,
+            "evidence_issues": ";".join(issues),
             "grading": result.get("grading", {"execution": "unknown", "functional_tests": "unknown"}),
             "evidence": result.get("evidence", {"valid": False, "issues": ["terminal_evidence_missing"]}),
             "infrastructure_error": result.get("infrastructure_error"),
             "model_started": bool((accounting or {}).get("attempts") or wire)
-            if result.get("version") == 3 and not native_only
+            if not native_only
             else bool(execution or (accounting or {}).get("attempts")),
             "tokens": tokens.get("total"),
             "known_tokens": tokens.get("known", tokens.get("total", 0)) or 0,
@@ -203,10 +259,18 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "pairing_exclusions": pairing_exclusions,
             "resources": result.get("resources", {}),
             "stages": result.get("stages", {}),
-            "queue_seconds": item.get("queue_seconds"),
+            "queue_seconds": (item.get("queue_seconds") or 0.0) + sum(phase_queue.values()),
+            "stage_queue_seconds": phase_queue,
+            "scheduling": scheduling,
             "wire_usage": accounting if not native_only else None,
             "request_count": (accounting or {}).get("attempts"),
             "usage_fields": usage_fields,
+            **{field + "_tokens": usage_fields.get(field, {}).get("total") for field in FIELDS if field != "total"},
+            **{
+                "known_" + field + "_tokens": usage_fields.get(field, {}).get("known")
+                for field in FIELDS
+                if field != "total"
+            },
             "comparable_usage": not native_only
             and tokens.get("total") is not None
             and (result.get("reconciliation") or {}).get("status") != "mismatch"
@@ -249,7 +313,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             by_trial[trial_id].append(row)
     scored = []
     for rows in by_trial.values():
-        scored.append(next((row for row in rows if row["model_started"]), rows[0]))
+        scored.append(rows[0])
     groups: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for row in scored:
         groups[(row.get("harness", row.get("variant", "unknown")), row.get("model", "unknown"))].append(row)
@@ -301,11 +365,61 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
         {"trial": trial_id, **schedule[int(trial_id)], "reason": "no_attempt"}
         for trial_id in sorted(planned - by_trial.keys())
     ]
+    by_id = {row["trial"]: row for row in scored}
+    pairs: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(schedule):
+        pair_id = item.get("pair") or digest([item.get("task"), item.get("model"), item.get("repeat")])
+        pair = pairs.setdefault(
+            pair_id,
+            {
+                "pair": pair_id,
+                "task": item.get("task"),
+                "model": item.get("model"),
+                "repeat": item.get("repeat"),
+                "members": [],
+            },
+        )
+        trial_id = f"{index:04d}"
+        member = by_id.get(
+            trial_id,
+            {
+                **item,
+                "trial": trial_id,
+                "status": "not_started",
+                "reward": None,
+                "tokens": None,
+                "known_tokens": None,
+                "conditions": None,
+                "pairing_exclusions": ["not_started"],
+                "failure_reason": "not_started",
+                "cleanup_status": "unknown",
+            },
+        )
+        pair["members"].append(member)
+    comparisons = []
+    for (left_key, left), (right_key, right) in combinations(sorted(groups.items()), 2):
+        if left_key[1] == right_key[1]:
+            comparisons.append(
+                {
+                    "left": left_key[0],
+                    "right": right_key[0],
+                    "model": left_key[1],
+                    **paired_compare(left, right, seed=plan.get("config", {}).get("seed", 0)),
+                }
+            )
+    prior_costs = plan.get("config", {}).get("prior_costs", [])
     return {
-        "version": 3,
-        "historical": plan.get("result_version") not in {None, 3},
+        "version": 4,
+        "prior_costs": prior_costs,
+        "family_known_tokens": known_tokens + sum(row["known_tokens"] for row in prior_costs),
+        "family_observed_requests": sum(row.get("request_count") or 0 for row in attempts)
+        + sum(row["observed_requests"] for row in prior_costs),
         "analysis_seed": plan.get("config", {}).get("seed", 0),
-        "scoring_policy": "first_model_attempt",
+        "status": state.get("status", "unknown"),
+        "stop_reason": state.get("stop_reason"),
+        "pairs": list(pairs.values()),
+        "comparisons": comparisons,
+        "scoring_policy": "first_dispatch",
         "planned": len(schedule),
         "completed": sum(row["terminal"] for row in scored),
         "attempts": len(attempts),
@@ -333,7 +447,6 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
                 }
                 for field in FIELDS
             },
-            "preflight_known_tokens": sum(row["known_tokens"] for row in attempts if row["purpose"] == "preflight"),
         },
         "currency_cost": None,
         "cost_reason": "No versioned price source declared",
@@ -419,12 +532,22 @@ def family_report(root: Path, related: list[Path]) -> dict[str, Any]:
     )
     unknown = sum(report["usage"]["unknown_attempts"] for report in reports)
     known = sum(report["usage"]["known_tokens"] for report in reports)
+    prior_by_digest: dict[str, dict[str, Any]] = {}
+    for report in reports:
+        for cost in report["prior_costs"]:
+            if cost["sha256"] in prior_by_digest and prior_by_digest[cost["sha256"]] != cost:
+                raise ValueError("Conflicting sealed prior cost summary")
+            prior_by_digest[cost["sha256"]] = cost
+    value["prior_costs"] = list(prior_by_digest.values())
+    value["family_known_tokens"] = known + sum(cost["known_tokens"] for cost in value["prior_costs"])
+    value["family_observed_requests"] = sum(row.get("request_count") or 0 for row in attempts) + sum(
+        cost["observed_requests"] for cost in value["prior_costs"]
+    )
     value["usage"] = {
         "known_tokens": known,
         "total_tokens": None if unknown else known,
         "unknown_attempts": unknown,
         "coverage": (len(attempts) - unknown) / len(attempts) if attempts else None,
-        "preflight_known_tokens": sum(report["usage"]["preflight_known_tokens"] for report in reports),
         "fields": value["performance"]["usage_fields"],
     }
     for group in value["groups"]:
@@ -453,6 +576,13 @@ def write_report(root: Path, destination: Path, *, related: list[Path] | None = 
         "repeat",
         "terminal",
         "outcome",
+        "status",
+        "dispatch_sequence",
+        "failure_reason",
+        "evidence_issues",
+        "cleanup_status",
+        "resources_removed",
+        "cleanup_issues",
         "pairing_exclusions",
         "reward",
         "tokens",
@@ -460,6 +590,9 @@ def write_report(root: Path, destination: Path, *, related: list[Path] | None = 
         "unknown_requests",
         "native_only",
         "wall_seconds",
+        "queue_seconds",
+        *[field + "_tokens" for field in FIELDS if field != "total"],
+        *["known_" + field + "_tokens" for field in FIELDS if field != "total"],
     ]
     with (destination / "attempts.csv").open("w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=columns, extrasaction="ignore")
@@ -468,12 +601,35 @@ def write_report(root: Path, destination: Path, *, related: list[Path] | None = 
             {**row, "pairing_exclusions": ";".join(row["pairing_exclusions"])} for row in value["all_attempts"]
         )
 
+    paired_rows = [member for pair in value["pairs"] for member in pair["members"]]
+    with (destination / "pairs.csv").open("w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(
+            {**row, "pairing_exclusions": ";".join(row.get("pairing_exclusions", []))} for row in paired_rows
+        )
+
     def cell(item: Any) -> str:
         return html.escape("未知" if item is None else str(item))
 
     rows = "".join(
         "<tr>" + "".join("<td>" + cell(row.get(key)) + "</td>" for key in columns) + "</tr>"
         for row in value["all_attempts"]
+    )
+    pair_columns = [
+        "task",
+        "harness",
+        "status",
+        "failure_reason",
+        "cleanup_status",
+        "reward",
+        "tokens",
+        "known_tokens",
+        "wall_seconds",
+        "pairing_exclusions",
+    ]
+    pair_rows = "".join(
+        "<tr>" + "".join("<td>" + cell(row.get(key)) + "</td>" for key in pair_columns) + "</tr>" for row in paired_rows
     )
     group_rows = "".join(
         "<tr>"
@@ -495,13 +651,18 @@ th,td{{text-align:left;padding:8px;border-bottom:1px solid #ccc}}.scroll{{overfl
 <p>计划 {value["planned"]}；完成 {value["completed"]}；全部尝试 {value["attempts"]}。</p>
 <p>全部尝试已知 token 下界 {value["usage"]["known_tokens"]}；
 精确总量 {cell(value["usage"]["total_tokens"])}；用量未知尝试 {value["usage"]["unknown_attempts"]}。</p>
-<p>评分规则：每个计划单元的第一次模型执行，准备失败另行保留。
-失败重跑不替换原评分；全部尝试及预检消耗均计入。</p>
+<p>含封存历史的已观察请求 {value["family_observed_requests"]}；
+已知 token 下界 {value["family_known_tokens"]}。历史缺失用量与未确认派发保留在 report.json 的 prior_costs 中，
+不把下界当作精确累计总量。</p>
+<p>评分规则：每个计划单元的首次派发；准备失败和中断保持原记录。
+已启动项不重跑，未知评分不补零；封存历史成本不进入本次评分。</p>
 <p>完整成功率仅在所有计划单元的原生 reward 已知时给出，其他情况给出上下界。
 95% Wilson 区间只描述已观测 reward；重复之间存在任务相关性，横向差值采用按任务聚类的配对 bootstrap。
 原始 reward 不证明功能测试启动；未知状态保持未知。费用未声明价格来源，不换算货币。</p>
 <h2>分组结果</h2><table><tr><th>Harness</th><th>模型</th><th>评分数</th>
 <th>成功数</th><th>未知 reward</th><th>已观测成功率 95% 区间</th></tr>{group_rows}</table>
+<h2>逐题配对</h2><div class="scroll"><table><tr>
+{"".join("<th>" + cell(key) + "</th>" for key in pair_columns)}</tr>{pair_rows}</table></div>
 <h2>全部尝试</h2><div class="scroll"><table><tr>
 {"".join("<th>" + cell(key) + "</th>" for key in columns)}</tr>{rows}</table></div>
 <p>分析 seed：{value["analysis_seed"]}。

@@ -173,6 +173,104 @@ def test_public_synergy_rollout_matches_calls_without_replacing_accounting(tmp_p
     assert result["coverage"] == 1 and result["status"] == "matched"
     assert reconcile_requests(wire * 2, enriched)["status"] == "partial"
 
+    manifest["snapshots"][0]["attempts"][0]["responseHeaders"] = {"x-request-id": "synergy-benchmark:wire"}
+    with zipfile.ZipFile(tmp_path / "rollout.zip", "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("request.bin", body)
+    enriched = attach_synergy_requests(tmp_path, original)
+    assert enriched["request_records"][0]["response_request_id"] == "synergy-benchmark:wire"
+    result = reconcile_requests(wire, enriched)
+    assert result["mode"] == "response_id"
+    assert result["coverage"] == 1 and result["status"] == "matched"
+
+
+def repeated_synergy_requests():
+    wire = [
+        {
+            "id": identity,
+            "request_digest": "identical-body",
+            "protocol": "chat-completions",
+            "status": "completed",
+            "usage": {"prompt_tokens": tokens, "completion_tokens": 1},
+        }
+        for identity, tokens in [("one", 10), ("two", 20), ("three", 30)]
+    ]
+    native = {
+        "source": "synergy-rollout-v1",
+        "request_records": [
+            {**row, "id": "native-" + row["id"], "response_request_id": "synergy-benchmark:" + row["id"]}
+            for row in reversed(wire)
+        ],
+    }
+    return wire, native
+
+
+def test_response_ids_disambiguate_repeated_bodies_and_reconcile_each_usage():
+    from synergy_bench.native_usage import reconcile_requests
+
+    wire, native = repeated_synergy_requests()
+    result = reconcile_requests(wire, native)
+    assert result["status"] == "matched" and result["coverage"] == 1
+    assert len(result["completed_usage_crosschecked"]) == 3
+    native["request_records"][0]["usage"], native["request_records"][1]["usage"] = (
+        native["request_records"][1]["usage"],
+        native["request_records"][0]["usage"],
+    )
+    result = reconcile_requests(wire, native)
+    assert result["status"] == "mismatch"
+    assert len(result["usage_mismatches"]) == 2
+
+
+def test_response_ids_cannot_mask_changed_bodies_missing_or_duplicate_records():
+    from synergy_bench.native_usage import reconcile_requests
+
+    wire, native = repeated_synergy_requests()
+    native["request_records"][0]["request_digest"] = "different-body"
+    result = reconcile_requests(wire, native)
+    assert result["status"] == "mismatch"
+    assert result["request_body_mismatches"] == ["synergy-benchmark:three"]
+    assert len(result["completed_usage_crosschecked"]) == 2
+    assert result["coverage"] == 2 / 3
+
+    native["request_records"][0]["request_digest"] = None
+    result = reconcile_requests(wire, native)
+    assert result["status"] == "partial" and result["coverage"] == 2 / 3
+    assert result["unverified_request_bodies"] == ["synergy-benchmark:three"]
+    assert len(result["completed_usage_crosschecked"]) == 2
+
+    wire, native = repeated_synergy_requests()
+    native["request_records"][0]["response_request_id"] = "synergy-benchmark:absent"
+    assert reconcile_requests(wire, native)["status"] == "mismatch"
+    native["request_records"][0]["response_request_id"] = "synergy-benchmark:one"
+    result = reconcile_requests(wire, native)
+    assert result["status"] == "mismatch"
+    assert result["duplicate_response_ids"] == ["synergy-benchmark:one"]
+
+
+def test_response_identity_keeps_early_cancellation_unknown_and_historical_ambiguity():
+    from synergy_bench.native_usage import reconcile_requests
+
+    wire, native = repeated_synergy_requests()
+    del native["request_records"][0]["response_request_id"]
+    result = reconcile_requests(wire, native)
+    assert result["coverage"] == 1 and result["status"] == "matched"
+    assert result["body_fallback_matches"] == 1
+
+    native["request_records"][0].update(request_digest=None, status="cancelled", usage=None)
+    wire[-1].update(status="interrupted", usage=None)
+    result = reconcile_requests(wire, native)
+    assert result["status"] == "partial" and result["coverage"] == 2 / 3
+    assert len(result["completed_usage_crosschecked"]) == 2
+    assert result["unidentified_native_requests"] == 1
+
+    wire, native = repeated_synergy_requests()
+    for row in native["request_records"]:
+        del row["response_request_id"]
+    result = reconcile_requests(wire, native)
+    assert result["mode"] == "request_body_digest"
+    assert result["status"] == "partial" and result["coverage"] == 0
+    assert result["ambiguous_request_bodies"] == ["identical-body"]
+
 
 def test_codex_response_usage_is_crosschecked_per_call_without_counting_duplicate_events(tmp_path):
     import json

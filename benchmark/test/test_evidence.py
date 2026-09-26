@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from synergy_bench.evidence import collect_evidence
 
 
@@ -57,11 +55,15 @@ def test_unreadable_payload_keeps_scoring_and_marks_evidence_failure(tmp_path: P
 def test_summary_reports_wrong_answers_as_task_failures_without_infrastructure_failure(tmp_path: Path) -> None:
     from synergy_bench.evidence import summarize
 
+    (tmp_path / "plan.json").write_text(
+        json.dumps({"version": 4, "result_version": 5, "schedule": [{"variant": "a", "task": "t"}]})
+    )
     attempt = tmp_path / "trials/0000/attempt-001"
     attempt.mkdir(parents=True)
     (attempt / "evidence.json").write_text(
         json.dumps(
             {
+                "version": 5,
                 "execution": {"outcome": "completed"},
                 "verifier": {"rewards": {"reward": 0.0}},
                 "evidence": {"valid": True},
@@ -71,47 +73,6 @@ def test_summary_reports_wrong_answers_as_task_failures_without_infrastructure_f
     result = summarize(tmp_path)
     assert result["task_failures"] == 1
     assert result["exit_code"] == 0
-
-
-@pytest.mark.parametrize("category", ["trials", "probes"])
-@pytest.mark.parametrize("recovered,possible_request", [(True, False), (False, False), (True, True)])
-def test_summary_retains_startup_failures_but_distinguishes_recovery(tmp_path, category, recovered, possible_request):
-    from synergy_bench.evidence import summarize
-    from synergy_bench.storage import atomic_json
-
-    first = tmp_path / category / "0000/attempt-001"
-    atomic_json(
-        first / "evidence.json",
-        {
-            "version": 3,
-            "attempt_status": "completed",
-            "execution": {
-                "outcome": "timeout",
-                "lifecycle": {"timeout_stage": "startup", "model_started_at": None},
-            },
-            "wire_usage": {"attempts": 0, "tokens": {}},
-            "evidence": {"valid": False, "archive_valid": True, "issues": ["accounting_missing"]},
-        },
-    )
-    if possible_request:
-        atomic_json(first / "wire/torn/downstream.json", {"model": "fixture"})
-    if recovered:
-        atomic_json(
-            tmp_path / category / "0000/attempt-002/evidence.json",
-            {
-                "version": 3,
-                "attempt_status": "completed",
-                "execution": {"outcome": "completed"},
-                "wire_usage": {"attempts": 1, "tokens": {}},
-                "evidence": {"valid": True},
-            },
-        )
-    result = summarize(tmp_path)
-    assert result["recording_or_infrastructure_failures"] == 1
-    resolved = int(recovered and not possible_request)
-    assert result["recovered_startup_failures"] == resolved
-    assert result["unresolved_recording_or_infrastructure_failures"] == 1 - resolved
-    assert result["exit_code"] == 1 - resolved
 
 
 def test_reward_alone_does_not_claim_functional_tests_started(tmp_path):
@@ -130,12 +91,6 @@ def test_junit_start_evidence_is_independent_of_native_score(tmp_path):
     value = collect_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0.0}}})
     assert value["grading"]["functional_tests"] == "started"
     assert value["grading"]["test_count"] == 3
-
-
-def test_probe_omits_grading_without_claiming_tests_ran(tmp_path):
-    value = collect_evidence(tmp_path, {}, verification_required=False)
-    assert "verifier_missing" not in value["evidence"]["issues"]
-    assert value["grading"]["functional_tests"] == "unknown"
 
 
 def test_native_archive_hash_alone_does_not_prove_a_readable_archive(tmp_path):
@@ -191,6 +146,61 @@ def test_ctrf_and_go_test_events_provide_independent_execution_evidence(tmp_path
     assert result["test_count_semantics"] == "maximum_observed_count_across_overlapping_reports"
 
 
+def test_synthesized_missing_results_do_not_establish_test_execution(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {
+                        "name": "[f2p] expected-test",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    }
+                ]
+            }
+        },
+    )
+    result = grading_evidence(tmp_path, {"verifier_result": {"rewards": {"reward": 0}}})
+    assert result["functional_tests"] == "unknown"
+    assert result["test_count"] is None
+    assert result["raw_rewards"] == {"reward": 0}
+    assert result["missing_results"] == [{"source": "verifier/ctrf.json", "count": 1}]
+
+
+def test_partial_suite_keeps_actual_starts_separate_from_missing_results(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {"name": "finished", "status": "passed"},
+                    {
+                        "name": "unfinished",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    },
+                    {"name": "assertion", "status": "failed", "message": "expected true, received false"},
+                ]
+            }
+        },
+    )
+    (tmp_path / "verifier/run.log").write_text(
+        "\n".join('{"Action":"run","Package":"pkg","Test":"' + name + '"}' for name in ["a", "b", "c"])
+    )
+    result = grading_evidence(tmp_path, {})
+    assert result["functional_tests"] == "started"
+    assert result["test_count"] == 3
+    assert next(row for row in result["observations"] if row["format"] == "ctrf")["count"] == 2
+    assert result["missing_results"] == [{"source": "verifier/ctrf.json", "count": 1}]
+
+
 def test_private_runtime_home_is_not_public_evidence(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "agent/home"
     vault = home / ".synergy/data/auth/secret-vault.json"
@@ -220,3 +230,36 @@ def test_evidence_does_not_follow_directory_symlinks(tmp_path: Path) -> None:
     (tmp_path / "linked-home").symlink_to(private, target_is_directory=True)
     result = collect_evidence(tmp_path, {})
     assert not any(name.startswith("linked-home/") for name in result["files"])
+
+
+def test_session_export_release_keeps_native_home_archive_distinct_from_rollout(tmp_path):
+    import hashlib
+    import tarfile
+
+    from synergy_bench.storage import atomic_json
+
+    agent = tmp_path / "agent"
+    (agent / "home").mkdir(parents=True)
+    (agent / "events.jsonl").write_text('{"type":"step_finish","part":{"reason":"stop"}}\n')
+    (agent / "stderr.log").write_text("")
+    atomic_json(
+        agent / "execution.json",
+        {"harness": "synergy", "runtime_protocol": "synergy-session-v1", "outcome": "completed"},
+    )
+    with tarfile.open(agent / "rollout.tar.gz", "w:gz") as archive:
+        for name in ["home", "events.jsonl", "stderr.log", "execution.json"]:
+            archive.add(agent / name, arcname=name)
+    payload = (agent / "rollout.tar.gz").read_bytes()
+    atomic_json(
+        agent / "archive.json",
+        {
+            "format": "native-home-tar-v1",
+            "valid": True,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "bytes": len(payload),
+            "recording": "complete",
+        },
+    )
+    result = collect_evidence(tmp_path, {})
+    assert result["evidence"]["archive_valid"] is True
+    assert result["evidence"]["recording"] == "complete"

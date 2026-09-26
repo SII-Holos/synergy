@@ -17,7 +17,7 @@ from aiohttp import web
 
 from .bridge import BRIDGE_VERSION, ResponseStream, chat_to_responses, responses_to_chat, tool_catalog
 from .config import MODEL_PARAMETERS, ModelProfile
-from .storage import atomic_json, digest, read_json
+from .storage import atomic_json, digest, json_bytes, read_json
 
 
 async def stream_lines(content: aiohttp.StreamReader) -> AsyncIterator[bytes]:
@@ -36,10 +36,27 @@ async def stream_lines(content: aiohttp.StreamReader) -> AsyncIterator[bytes]:
 def read_ledger(root: Path) -> list[dict[str, Any]]:
     records = []
     for path in sorted(root.glob("*/request.json")):
-        row = read_json(path)
+        try:
+            row = read_json(path)
+            if (
+                not isinstance(row, dict)
+                or not isinstance(row.get("id"), str)
+                or not row["id"]
+                or row.get("protocol") not in ("chat-completions", "responses", "pi")
+                or any(
+                    row.get(key) is not None and not isinstance(row[key], dict) for key in ["usage", "observed_usage"]
+                )
+            ):
+                raise ValueError("Invalid request record")
+        except (ValueError, OSError):
+            row = {"id": path.parent.name, "status": "unknown", "recording_error": "request_record_unreadable"}
         request = path.parent / "downstream.json"
         if request.exists():
-            row["request_digest"] = digest(read_json(request))
+            try:
+                row["request_digest"] = digest(read_json(request))
+            except (ValueError, OSError):
+                row["request_digest"] = None
+                row["request_body_error"] = "request_body_unreadable"
         records.append(row)
     return records
 
@@ -246,17 +263,14 @@ class Gateway:
             "first_byte_at": None,
             "ended_at": None,
         }
-        payload = json.dumps(effective, ensure_ascii=False, separators=(",", ":")).encode()
+        payload = json_bytes(effective)
         for name, retained_bytes in [("upstream.bin", payload), ("downstream.bin", await request.read())]:
             with (directory / name).open("wb") as file:
                 file.write(retained_bytes)
                 file.flush()
                 os.fsync(file.fileno())
         record["request_bytes"] = len(payload)
-        record["request_field_bytes"] = {
-            key: len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode())
-            for key, value in effective.items()
-        }
+        record["request_field_bytes"] = {key: len(json_bytes(value)) for key, value in effective.items()}
         record["byte_accounting"] = "UTF-8 JSON field values; non-additive with framing"
         atomic_json(directory / "downstream.json", original)
         atomic_json(directory / "upstream.json", effective)
@@ -293,6 +307,7 @@ class Gateway:
                         body=payload,
                         headers={
                             "Content-Type": upstream.headers.get("Content-Type", "application/octet-stream"),
+                            "X-Request-ID": "synergy-benchmark:" + identity,
                             **({"Retry-After": record["retry_after"]} if record["retry_after"] else {}),
                         },
                     )
@@ -301,6 +316,7 @@ class Gateway:
                     headers={
                         "Content-Type": "text/event-stream" if streaming else "application/json",
                         "X-Benchmark-Request": identity,
+                        "X-Request-ID": "synergy-benchmark:" + identity,
                     }
                 )
                 await response.prepare(request)
@@ -324,7 +340,7 @@ class Gateway:
 
                 async def emit(event: dict[str, Any]) -> None:
                     prefix = "event: " + event["type"] + "\n" if protocol == "responses" else ""
-                    await write((prefix + "data: " + json.dumps(event, ensure_ascii=False) + "\n\n").encode())
+                    await write((prefix + "data: ").encode() + json_bytes(event) + b"\n\n")
 
                 if bridge and streaming and isinstance(converter, ResponseStream):
                     for event in converter.begin():
@@ -386,6 +402,7 @@ class Gateway:
                             raw.write(line)
                             if record["first_byte_at"] is None:
                                 record["first_byte_at"] = time.time()
+                                atomic_json(directory / "request.json", record)
                             if not bridge:
                                 await write(line)
                             decoded = line.decode("utf-8").rstrip("\r\n")

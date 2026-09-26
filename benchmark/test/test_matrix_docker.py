@@ -2,9 +2,11 @@ import asyncio
 import json
 import os
 import re
+import shlex
 import shutil
 import sys
 import uuid
+import zipfile
 
 import pytest
 import yaml
@@ -14,14 +16,14 @@ from synergy_bench.catalog import tree_digest
 from synergy_bench.evaluator import freeze_evaluator, recorded_environment
 from synergy_bench.prepare import BENCHMARK, evaluator_identity
 from synergy_bench.process import run_process
-from synergy_bench.runner import startup_retryable, verify_terminal
+from synergy_bench.runner import verify_terminal
 from synergy_bench.source import git
 from synergy_bench.storage import atomic_json, read_json
 
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit native Docker matrix")
 
 
-async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None):
+async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None, observation_turn=None):
     body = await request.json()
     responses = request.path.endswith("/responses")
     messages = body["input"] if responses else body["messages"]
@@ -65,6 +67,30 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
         command = command_prefix + command
         field = next((key for key in ["command", "cmd", "code"] if key in properties), "command")
         args[field] = ["sh", "-c", command] if properties.get(field, {}).get("type") == "array" else command
+        if observation_turn is not None:
+            phase = observation_turn % 4
+            if phase in (1, 2):
+                name = "view_file" if phase == 1 else "revise_file"
+                selected = next(tool for tool in functions if tool["name"].split("__")[-1] == name)
+                namespace = selected.get("namespace")
+                if phase == 1:
+                    args = {"filePath": "/app/observation.txt", "limit": 32}
+                else:
+                    headers = re.findall(r"\[[^\]\n]*observation\.txt#([A-Za-z0-9]+)\]", json.dumps(messages))
+                    assert headers, "Native view_file did not return an anchored snapshot"
+                    args = {"input": f"[/app/observation.txt#{headers[-1]}]\nSWAP 1..1:\n+changed {observation_turn}"}
+            else:
+                script = (
+                    "from pathlib import Path; memory=bytearray(8*1024**2); "
+                    "Path('/app/observation.txt').write_text(''.join("
+                    "f'row {i} '+('中😀'*128)+'\\n' for i in range(500))); "
+                    "Path('/app/marker').write_text('verified')"
+                    if phase == 0
+                    else "from pathlib import Path; "
+                    "assert Path('/app/observation.txt').read_text().startswith('changed ')"
+                )
+                command = command_prefix + shlex.join(["python3", "-c", script])
+                args[field] = command
         message = {
             "role": "assistant",
             "tool_calls": [
@@ -223,12 +249,146 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
 
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 async def test_native_matrix_uses_restricted_egress_and_two_independent_models(tmp_path, monkeypatch, protocol):
-    create_matrix_suite(tmp_path)
+    await run_native_matrix(tmp_path, monkeypatch, protocol)
+
+
+@pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
+@pytest.mark.parametrize("tool_turns", [1, 120], ids=["short", "long"])
+@pytest.mark.parametrize("bun_jit", [False, True], ids=["jitless", "jit"])
+async def test_synergy_long_sessions_preserve_native_tools_and_usage(
+    tmp_path, monkeypatch, protocol, tool_turns, bun_jit
+):
+    if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
+        pytest.skip("Synergy long-session control belongs to the Synergy native matrix")
+    await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True, tool_turns=tool_turns, bun_jit=bun_jit)
+
+
+@pytest.mark.parametrize("empty_stop", [False, True], ids=["tool-roundtrip", "empty-provider-stop"])
+async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeypatch, empty_stop):
+    if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
+        pytest.skip("Task-home and native-stop controls belong to the Synergy native matrix")
+    await run_native_matrix(
+        tmp_path,
+        monkeypatch,
+        "chat-completions",
+        long_session=True,
+        tool_turns=3,
+        bun_jit=True,
+        task_home=True,
+        empty_stop=empty_stop,
+    )
+
+
+async def test_synergy_unattended_sessions_inherit_and_exclude_question(tmp_path, monkeypatch):
+    await run_native_matrix(tmp_path, monkeypatch, "chat-completions", unattended=True, bun_jit=True)
+
+
+async def run_native_matrix(
+    tmp_path,
+    monkeypatch,
+    protocol,
+    *,
+    long_session=False,
+    tool_turns=120,
+    bun_jit=False,
+    task_home=False,
+    empty_stop=False,
+    unattended=False,
+):
+    create_matrix_suite(tmp_path, task_home=task_home)
+
+    native_probe = shlex.join(
+        [
+            "python3",
+            "-c",
+            "from pathlib import Path; "
+            "pid=Path('/logs/agent/runner.pid').read_text().strip(); "
+            "root=Path('/proc')/pid; "
+            "synergy=any(entry in (root/'cmdline').read_bytes().split(bytes([0])) for entry in "
+            "[b'/opt/synergy/runtime/trial.ts',b'/opt/synergy/runtime/external.mjs']); "
+            "children=(root/'task'/pid/'children').read_text().split(); "
+            "processes=[('WRAPPER',pid),*[('CLI',child) for child in children]] if synergy else []; "
+            "[(print('BENCH_SYNERGY_'+kind+'_'+value.decode())) for kind,child in processes "
+            "for value in (Path('/proc')/child/'environ').read_bytes().split(bytes([0])) "
+            "if value.startswith(b'BUN_JSC_useJIT=')]",
+        ]
+    )
 
     async def provider_with_runtime_evidence(request):
-        return await fixture_provider(request, command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; ')
+        body = await request.json()
+        if unattended:
+            assert body["thinking"] == {"type": "enabled"}
+            assert body["reasoning_effort"] == "low"
+            assert body["max_tokens"] == 131072
+            assert all(
+                tool.get("function", tool).get("name", "").split("__")[-1] != "question"
+                for tool in body.get("tools", [])
+            )
+        elif protocol == "chat-completions":
+            assert body["enable_thinking"] is False
+            assert "reasoning_effort" not in body
+        messages = body.get("messages", body.get("input", []))
+        count = sum(
+            message.get("role") == "tool" or message.get("type") == "function_call_output"
+            for message in messages
+            if isinstance(message, dict)
+        )
+        probe = "BENCHMARK_TOOL_" in json.dumps(messages)
+        if empty_stop and not probe and count >= tool_turns:
+            return web.Response(
+                text='data: {"id":"empty-stop","object":"chat.completion.chunk","created":0,'
+                '"model":"fixture","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+                'data: {"choices":[],"usage":{"prompt_tokens":100,"completion_tokens":0}}\n\n'
+                "data: [DONE]\n\n",
+                content_type="text/event-stream",
+            )
+        environment_check = (
+            shlex.join(
+                [
+                    "python3",
+                    "-c",
+                    "from pathlib import Path; "
+                    "pid=Path('/logs/agent/runner.pid').read_text().strip(); "
+                    "children=(Path('/proc')/pid/'task'/pid/'children').read_text().split(); "
+                    "assert children; "
+                    "expected={b'HOME':b'/root',b'XDG_CONFIG_HOME':b'/root/native-config',"
+                    "b'XDG_DATA_HOME':b'/root/native-data',b'XDG_CACHE_HOME':b'/root/native-cache'}; "
+                    "environments=[dict(entry.split(b'=',1) for entry in "
+                    "(Path('/proc')/child/'environ').read_bytes().split(bytes([0])) if b'=' in entry) "
+                    "for child in [pid,*children]]; "
+                    "assert all({key:env.get(key) for key in expected}==expected for env in environments); "
+                    "print('BENCH_NATIVE_TASK_HOME_PRESERVED')",
+                ]
+            )
+            + ' && test "$HOME" = /root && test "$(cat "$HOME/preinstalled-fixture")" = native-cache && '
+            if task_home
+            else ""
+        )
+        return await fixture_provider(
+            request,
+            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
+            + native_probe
+            + "; "
+            + environment_check
+            + (
+                shlex.join(
+                    [
+                        "env",
+                        "SYNERGY_HOME=/logs/agent/home",
+                        "/opt/synergy/bin/bun",
+                        "--eval",
+                        (BENCHMARK / "test/fixtures/unattended-check.mjs").read_text(),
+                    ]
+                )
+                + " && "
+                if unattended
+                else ""
+            ),
+            force_tool=count < tool_turns if long_session and not probe else None,
+            observation_turn=count if long_session and not probe and not task_home else None,
+        )
 
-    app = web.Application()
+    app = web.Application(client_max_size=128 * 1024**2)
     app.router.add_post("/v1/chat/completions", provider_with_runtime_evidence)
     app.router.add_post("/v1/responses", provider_with_runtime_evidence)
     provider = web.AppRunner(app)
@@ -241,14 +401,32 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
             "kind": kind,
             "source": {"artifact": artifacts[kind]}
             if kind in artifacts
-            else {"path": str(BENCHMARK.parent)}
+            else {
+                "path": str(BENCHMARK.parent),
+                **(
+                    {"revision": os.environ["SYNERGY_BENCH_TEST_SYNERGY_REVISION"]}
+                    if os.environ.get("SYNERGY_BENCH_TEST_SYNERGY_REVISION")
+                    else {}
+                ),
+            }
             if kind == "synergy"
             else {},
         }
         for kind in kinds
     }
-    if "opencode" in harnesses:
-        harnesses["opencode-jitless"] = {**harnesses["opencode"], "bun_jit": False}
+    if long_session or unattended:
+        harnesses = {
+            "synergy-unattended" if unattended else "synergy-jit" if bun_jit else "synergy-jitless": {
+                **harnesses["synergy"],
+                "runtime": "full",
+                "agent": "synergy-max",
+                "bun_jit": bun_jit,
+            }
+        }
+    else:
+        for kind in ["synergy", "opencode"]:
+            if kind in harnesses:
+                harnesses[kind + "-jitless"] = {**harnesses[kind], "bun_jit": False}
     monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture-key-private")
     profiles = {
         name: {
@@ -256,8 +434,13 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
             "protocol": protocol,
             "base_url": f"http://127.0.0.1:{provider.addresses[0][1]}/v1",
             "api_key_env": "BENCH_FIXTURE_KEY",
-            "context_window": 32000,
-            "max_output_tokens": 2048,
+            "context_window": 1048576 if unattended else 1000000 if long_session else 32000,
+            "max_output_tokens": 131072 if unattended else 393216 if long_session else 2048,
+            "parameters": {"thinking": {"type": "enabled"}, "reasoning_effort": "low", "temperature": 1}
+            if unattended
+            else {"enable_thinking": False}
+            if protocol == "chat-completions"
+            else {"reasoning": {"effort": "none"}},
         }
         for name in ["fixture-one", "fixture-two"]
     }
@@ -266,9 +449,11 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
         "suite": "suite.json",
         "harnesses": harnesses,
         "models": profiles,
-        "concurrency": 4,
-        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2} if os.environ.get("CI") == "true" else {},
-        "cache": str(BENCHMARK.parent / ".artifacts/benchmark/cache"),
+        "concurrency": 1 if long_session else 4,
+        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2}
+        if os.environ.get("CI") == "true"
+        else {"cache_budget_gib": 384},
+        "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
     }
     path = tmp_path / "matrix.yaml"
@@ -300,7 +485,7 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
             [sys.executable, "-m", "synergy_bench.cli", "resume", str(root)],
             env=recorded_environment(root, read_json(root / "plan.json")["evaluator"]),
             log=root / "integration-cli.log",
-            deadline=1200,
+            deadline=2400 if long_session else 1200,
         )
         assert code == 0, (root / "integration-cli.log").read_text()[-20000:]
 
@@ -308,33 +493,87 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
             results = []
             for trial in sorted((root / "trials").iterdir()):
                 attempts = sorted(trial.glob("attempt-*"))
-                assert 1 <= len(attempts) <= 3
+                assert len(attempts) == 1
                 for attempt in attempts:
                     result = read_json(attempt / "evidence.json")
                     verify_terminal(attempt, result)
-                    if attempt != attempts[-1]:
-                        assert startup_retryable(attempt, result), result
-                        continue
                     results.append(result)
-                    if read_json(attempt / "trial.json")["harness"] == "opencode-jitless":
-                        assert read_json(attempt / "inputs/options.json")["native"]["env"]["BUN_JSC_useJIT"] == "0"
+                    harness = read_json(attempt / "trial.json")["harness"]
+                    if harness.endswith(("-jitless", "-jit")):
+                        options = read_json(attempt / "inputs/options.json")
+                        enabled = harness.endswith("-jit")
+                        assert options["bun_jit"] is enabled
+                        if harness == "opencode-jitless":
+                            assert options["native"]["env"]["BUN_JSC_useJIT"] == "0"
                         events = next(attempt.glob("*/agent/events.jsonl")).read_text()
-                        assert "BENCH_JIT=0" in events
+                        if harness.startswith("synergy-"):
+                            assert f"BENCH_SYNERGY_WRAPPER_BUN_JSC_useJIT={int(enabled)}" in events
+                            assert f"BENCH_SYNERGY_CLI_BUN_JSC_useJIT={int(enabled)}" in events
+                        else:
+                            assert "BENCH_JIT=0" in events
+                        if long_session:
+                            records = [json.loads(line) for line in events.splitlines()]
+                            completed = {
+                                event["part"]["callID"]
+                                for event in records
+                                if event.get("type") == "tool_use" and event["part"]["state"]["status"] == "completed"
+                            }
+                            assert len(completed) >= tool_turns
+                            assert result["wire_usage"]["attempts"] >= tool_turns + 1
+                            if tool_turns >= 4:
+                                assert {"bash", "view_file", "revise_file"} <= {
+                                    event["part"]["tool"]
+                                    for event in records
+                                    if event.get("type") == "tool_use"
+                                    and event["part"]["state"]["status"] == "completed"
+                                }
             return results
 
         results = await asyncio.to_thread(retained_results)
+        if unattended:
+            for attempt in await asyncio.to_thread(lambda: list(root.glob("trials/*/attempt-*"))):
+                parent = read_json(next(attempt.glob("*/agent/unattended.json")))
+                child = read_json(next(attempt.glob("*/agent/unattended-child.json")))
+                assert parent["interaction"] == {"mode": "unattended", "source": "benchmark"}
+                assert child["parent"] == child["child"] == parent["interaction"]
+                assert child["question_disabled"] is True
         assert len(results) == 2 * len(harnesses)
         assert all((result["execution"] or {}).get("outcome") == "completed" for result in results), results
         assert all((result["verifier"] or {}).get("rewards") == {"reward": 1.0} for result in results), results
         assert all(result["evidence"]["valid"] for result in results), results
         assert all(result["reconciliation"]["status"] != "mismatch" for result in results), results
         assert all(result["wire_usage"]["tokens"]["total"]["unknown"] == 0 for result in results), results
-        assert read_json(root / "doctor.json")["status"] == "completed"
+        for result in results:
+            assert not any(result["execution"].get(key) for key in ["timed_out", "interrupted", "forced"])
+        assert all(result["reconciliation"]["requests"]["coverage"] == 1 for result in results), results
+
+        def check_native_transport():
+            for archive_path in root.glob("trials/*/attempt-*/*/agent/rollout.zip"):
+                with zipfile.ZipFile(archive_path) as archive:
+                    manifest = json.loads(archive.read("manifest.json"))
+                attempts = [attempt for snapshot in manifest["snapshots"] for attempt in snapshot["attempts"]]
+                assert attempts
+                assert all(
+                    attempt.get("responseHeaders", {}).get("x-request-id", "").startswith("synergy-benchmark:")
+                    for attempt in attempts
+                    if attempt["status"] == "completed"
+                )
+            if empty_stop:
+                for file in root.glob("trials/*/attempt-*/evidence.json"):
+                    result = read_json(file)
+                    bodies = [path.read_bytes() for path in (file.parent / "wire").glob("*/response.bin")]
+                    assert any(b'"empty-stop"' in body for body in bodies)
+                    assert result["wire_usage"]["attempts"] >= tool_turns + 1
+
+        await asyncio.to_thread(check_native_transport)
+        assert not (root / "doctor.json").exists()
+        assert not (root / "probes").exists()
+        assert not (root / "prewarming").exists()
     finally:
         await provider.cleanup()
 
 
-def create_matrix_suite(tmp_path, *, workload: bool = False):
+def create_matrix_suite(tmp_path, *, workload: bool = False, task_home: bool = False):
     dataset = tmp_path / "dataset"
     task = dataset / "tasks/marker"
     shutil.copytree(BENCHMARK / "test/fixtures/task", task)
@@ -343,6 +582,12 @@ def create_matrix_suite(tmp_path, *, workload: bool = False):
         dockerfile.read_text() + "\nRUN git init --quiet && git -c user.name=Fixture "
         "-c user.email=fixture@example.test commit --quiet --allow-empty -m fixture\n"
     )
+    if task_home:
+        dockerfile.write_text(
+            dockerfile.read_text()
+            + "\nENV HOME=/root XDG_CONFIG_HOME=/root/native-config XDG_DATA_HOME=/root/native-data "
+            "XDG_CACHE_HOME=/root/native-cache\nRUN printf native-cache > /root/preinstalled-fixture\n"
+        )
     if workload:
         (task / "environment/workload.py").write_text(
             "import hashlib\ndata = bytearray(192 * 1024**2)\n"
@@ -375,8 +620,6 @@ def create_matrix_suite(tmp_path, *, workload: bool = False):
                     "path": "tasks/marker",
                     "digest": tree_digest(task),
                     "tags": [],
-                    "agent_seconds": 90,
-                    "verifier_seconds": 30,
                 }
             ],
         },

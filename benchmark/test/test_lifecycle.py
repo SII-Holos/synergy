@@ -6,6 +6,19 @@ from synergy_bench.lifecycle import Lifecycle
 from synergy_bench.storage import read_json
 
 
+async def test_resource_queue_does_not_consume_nested_stage_deadlines(tmp_path):
+    from synergy_bench.lifecycle import pause_deadlines
+
+    lifecycle = Lifecycle(tmp_path)
+    async with lifecycle.stage("preparation", deadline=0.03):
+        async with lifecycle.stage("build", deadline=0.03):
+            with pause_deadlines():
+                await asyncio.sleep(0.06)
+    stages = read_json(tmp_path / "stages.json")
+    assert stages["preparation"][0]["queue_seconds"] >= 0.06
+    assert stages["build"][0]["active_seconds"] < 0.03
+
+
 async def test_deadline_and_cancel_preserve_separate_phase_results(tmp_path):
     lifecycle = Lifecycle(tmp_path)
     async with lifecycle.stage("preparation", deadline=1):

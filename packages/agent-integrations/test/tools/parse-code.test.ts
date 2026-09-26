@@ -1,12 +1,13 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ParseCodeTool } from "../../src/tools/parse-code"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { computeTag } from "@ericsanchezok/synergy-runtime-local/hashline/tag"
-import { afterAll as afterRuntimeTests } from "bun:test"
-import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 
 const ctx = {
   sessionID: "test-hashline-parse",
@@ -184,6 +185,28 @@ describe("tool.parse_code", () => {
   })
 
   describe("metadata", () => {
+    test("keeps distinct AST ranges while reporting each source line once", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "code.ts"), "console.log('first'); console.log('second')\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const result = await (
+              await ParseCodeTool.init()
+            ).execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
+            expect(result.metadata.matches).toBe(2)
+            expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
+            expect(result.metadata.matchLines["code.ts"]).toEqual([1])
+            expect(result.output.split("\n").filter((line) => line.startsWith("1:"))).toHaveLength(1)
+          },
+        })
+      }))
+
     test("reports match count and snapshotted files", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({
@@ -210,5 +233,40 @@ describe("tool.parse_code", () => {
       }))
   })
 })
+
+test("AST matches include their complete multiline region and bounded surrounding context", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "code.ts"),
+          "// before\nfunction target() {\n  return 42\n}\n// after\n// hidden\n",
+        )
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await ParseCodeTool.init()
+        const result = await tool.execute({ pattern: "function target() { $$$ }", lang: "typescript", context: 1 }, ctx)
+        expect(result.output).toContain("1:// before")
+        expect(result.output).toContain("3:  return 42")
+        expect(result.output).toContain("5:// after")
+        expect(result.output).not.toContain("6:// hidden")
+        const file = path.join(tmp.path, "code.ts")
+        const content = await Bun.file(file).text()
+        expect(() => FileTime.assert(ctx.sessionID, file, content)).not.toThrow()
+        expect(() => FileTime.assert(ctx.sessionID, file, content + "// changed\n")).toThrow(
+          "modified since it was last read",
+        )
+        const hugeContext = await tool.execute(
+          { pattern: "function target() { $$$ }", lang: "typescript", context: 1_000_000_000 },
+          ctx,
+        )
+        expect(hugeContext.output).toContain("6:// hidden")
+      },
+    })
+  }))
 
 afterRuntimeTests(() => runtime.close())

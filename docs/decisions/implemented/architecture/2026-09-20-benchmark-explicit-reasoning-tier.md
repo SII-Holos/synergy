@@ -12,7 +12,7 @@ The defect is visible in the first full-suite run of `synergy-max-full`. Its fro
 
 ## Decision
 
-Model presets name the tier in the model key and set it explicitly. Every shipped preset declares `reasoning_effort: max` beside the `thinking` block, and the GLM model key is `glm53flash-max`, so a variant identifies its tier as `synergy-max-full__glm53flash-max`.
+Model presets that enable thinking name the tier in the model key and set it explicitly. The GLM presets declare `reasoning_effort: max` beside the `thinking` block, and their model key is `glm53flash-max`, so a variant identifies its tier as `synergy-max-full__glm53flash-max`. Disabled controls follow the [explicit switch decision](2026-09-21-benchmark-explicit-thinking-switches.md).
 
 Defining the tier in the profile is what reaches every artifact: [config.py](../../../../benchmark/src/synergy_bench/config.py) validates `reasoning_effort` against its allowed set, [harnesses.py](../../../../benchmark/src/synergy_bench/harnesses.py) treats a declared reasoning parameter as the capability signal, the tier is frozen into `plan.json`, the [gateway](../../../../benchmark/src/synergy_bench/gateway.py) forwards the parameter verbatim, and the [protocol bridge](../../../../benchmark/src/synergy_bench/bridge.py) maps it to the wire control of the target protocol. The parameter is therefore recorded in the request ledger as an effective value with its native counterpart.
 

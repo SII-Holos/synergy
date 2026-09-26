@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ReadTool } from "../../src/tools/read"
@@ -5,9 +8,6 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { afterAll as afterRuntimeTests } from "bun:test"
-import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
 
 const MODELS_FIXTURE = new URL(import.meta.resolve("@ericsanchezok/synergy-testing/models-api.json"))
 
@@ -216,8 +216,8 @@ describe("tool.read truncation", () => {
           expect(result.metadata.truncated).toBe(true)
           expect(result.output).toContain("File has more lines")
           expect(result.output).toContain("line0")
-          expect(result.output).toContain("line119")
-          expect(result.output).not.toContain("line120")
+          expect(result.output).toContain("line9")
+          expect(result.output).not.toContain("line10")
         },
       })
     }))
@@ -254,14 +254,14 @@ describe("tool.read truncation", () => {
           const read = await ReadTool.init()
           const result = await read.execute({ filePath: path.join(tmp.path, "offset.txt"), offset: 10, limit: 5 }, ctx)
           expect(result.output).toContain("line10")
-          expect(result.output).toContain("line129")
+          expect(result.output).toContain("line14")
           expect(result.output).not.toContain("line0")
-          expect(result.output).not.toContain("line130")
+          expect(result.output).not.toContain("line15")
         },
       })
     }))
 
-  test("truncates long lines", () =>
+  test("preserves long lines within the byte budget", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
@@ -274,8 +274,8 @@ describe("tool.read truncation", () => {
         fn: async () => {
           const read = await ReadTool.init()
           const result = await read.execute({ filePath: path.join(tmp.path, "long-line.txt") }, ctx)
-          expect(result.output).toContain("...")
-          expect(result.output.length).toBeLessThan(3000)
+          expect(result.output).toContain("x".repeat(3000))
+          expect(result.metadata.truncated).toBe(false)
         },
       })
     }))

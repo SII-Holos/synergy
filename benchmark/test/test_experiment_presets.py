@@ -2,10 +2,74 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_config import config as matrix_config
 
 from synergy_bench.config import load_config, resolve_plan
+from synergy_bench.gateway import Gateway
+from synergy_bench.harnesses import harness_configuration
 from synergy_bench.runner import trial_configuration
 from synergy_bench.storage import atomic_json, read_json
+
+
+def test_boyue_comparison_uses_release_baseline_and_native_output_limit(tmp_path):
+    config = load_config(Path(__file__).parents[1] / "configs/coding-observations-boyue.yaml")
+    assert config.harnesses["baseline"].source.revision == "024dd683e091d9fce3d1d26b79b2e188ce636b52"
+    model = config.models["boyue-deepseek41flash-no-thinking"]
+    settings = harness_configuration("synergy", model, "http://gateway.invalid/v1", "/home/fixture")["config"]
+    spec = settings["provider"]["benchmark"]["models"][model.model]
+    assert spec["limit"] == {"context": 1000000, "output": 393216}
+    assert spec["reasoning"] is False
+    for role in ["nano", "mini", "mid", "thinking", "long_context", "creative", "vision"]:
+        assert settings[f"{role}_model"] == settings["model"]
+    payload, _ = Gateway(model, tmp_path).effective(
+        {"model": model.model, "messages": [], "max_tokens": 8192, "reasoning_effort": "high"},
+        "chat-completions",
+    )
+    assert payload["max_tokens"] == 393216
+    assert payload["enable_thinking"] is False
+    assert "reasoning_effort" not in payload
+
+
+@pytest.mark.parametrize("protocol", ["synergy-session-v1", "synergy-rollout-v1"])
+def test_formal_deadline_reaches_both_launchers(tmp_path, protocol):
+    from synergy_bench.config import ExperimentConfig, Variant
+    from synergy_bench.dependency_proxy import current_dependency_proxy
+
+    variant = Variant(model="benchmark/fixture", runtime="full", agent="synergy-max", bun_jit=True)
+    root = tmp_path / "run-12345678"
+    atomic_json(
+        root / "inputs/native/config.json",
+        {"provider": {"benchmark": {"options": {"baseURL": "http://fixture.invalid/v1"}}}},
+    )
+    config = ExperimentConfig.model_validate(matrix_config())
+    task = {"local_path": str(tmp_path / "task"), "agent_seconds": 90}
+    plan = {
+        "config": config.model_dump(),
+        "cache": str(tmp_path / "cache"),
+        "variants": {
+            "native": {
+                **variant.model_dump(),
+                "artifact": str(tmp_path),
+                "artifact_id": "fixture",
+                "runtime_protocol": protocol,
+            }
+        },
+        "tasks": {"task": task},
+    }
+    attempt = root / "trials" / "0000/attempt-001"
+    token = current_dependency_proxy.set("http://host.docker.internal:12345")
+    try:
+        trial, _, _ = trial_configuration(root, plan, {"variant": "native", "task": "task"}, attempt)
+    finally:
+        current_dependency_proxy.reset(token)
+    assert trial.environment.kwargs["dependency_proxy_url"] == "http://host.docker.internal:12345"
+    assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == 10800
+    assert trial.agent.override_timeout_sec == (
+        10800 + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
+    )
+    assert not trial.verifier.disable
+    assert trial.verifier.override_timeout_sec == 10800
+    assert task["agent_seconds"] == 90
 
 
 @pytest.mark.parametrize("filename", ["glm53-acceptance.yaml", "glm53-long-session.yaml"])
@@ -27,12 +91,14 @@ def test_comparison_presets_keep_the_five_harness_sampling_population(filename):
     "path", sorted((Path(__file__).parents[1] / "configs").glob("*.yaml")), ids=lambda path: path.name
 )
 @pytest.mark.parametrize("native_seconds", [900, 10800])
-def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tmp_path, path, native_seconds):
+def test_all_presets_use_three_hours_for_both_execution_stages(tmp_path, path, native_seconds):
     config = load_config(path)
     tasks = read_json(path.parent / config.suite)["tasks"]
     schedule = resolve_plan(config, tasks)
     assert schedule
-    expected = native_seconds if config.timeout_seconds == "native" else config.timeout_seconds
+    expected = 10800
+    assert "timeout_seconds" not in config.model_dump()
+    assert "verifier_timeout_seconds" not in config.model_dump()
     root = tmp_path / "run-12345678"
     for name, variant in config.variants.items():
         atomic_json(root / "inputs" / name / "config.json", {})
@@ -58,11 +124,13 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
         )
         options = read_json(attempt / "inputs/options.json")
         assert options["timeout_seconds"] == expected
+        assert options["bun_jit"] == variant.bun_jit
+        assert trial.agent.kwargs["settings"]["bun_jit"] == variant.bun_jit
         assert (
             trial.agent.override_timeout_sec
             == expected + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
         )
-        assert trial.verifier.override_timeout_sec is None
+        assert trial.verifier.override_timeout_sec == 10800
         assert not trial.verifier.disable
         assert task["agent_seconds"] == native_seconds
         if variant.harness == "opencode":
@@ -79,9 +147,86 @@ def test_preset_deadlines_reach_every_native_launch_without_changing_verifier(tm
 def test_thinking_presets_declare_their_reasoning_tier(path):
     config = load_config(path)
     for key, model in config.models.items():
-        if "thinking" not in model.parameters:
+        if not (
+            model.parameters.get("thinking", {}).get("type") == "enabled"
+            or model.parameters.get("enable_thinking") is True
+        ):
             continue
         assert model.parameters.get("reasoning_effort"), (
             f"{path.name}:{key} enables thinking without declaring reasoning_effort; "
             "the reasoning tier would come from the provider default instead of the experiment"
         )
+
+
+def test_frozen_plan_records_the_single_execution_budget():
+    from synergy_bench.runner import inspect_config
+
+    _, _, plan = inspect_config(Path(__file__).parents[1] / "configs/coding-observations-boyue.yaml")
+    assert plan["task_timeout_seconds"] == 10800
+    assert "timeout_seconds" not in plan["config"]
+    assert "verifier_timeout_seconds" not in plan["config"]
+    assert all("agent_seconds" not in task and "verifier_seconds" not in task for task in plan["suite"]["tasks"])
+
+
+@pytest.mark.parametrize("enabled", [None, False, True])
+def test_synergy_jit_condition_reaches_launcher_without_becoming_a_credential_reference(tmp_path, enabled):
+    from synergy_bench.config import ExperimentConfig, Variant
+
+    variant = Variant(model="fixture/model", bun_jit=enabled)
+    root = tmp_path / "run-12345678"
+    atomic_json(root / "inputs/synergy/config.json", {})
+    plan = {
+        "config": ExperimentConfig.model_validate(matrix_config()).model_dump(),
+        "cache": str(tmp_path / "cache"),
+        "variants": {"synergy": {**variant.model_dump(), "artifact": str(tmp_path), "artifact_id": "fixture"}},
+        "tasks": {"task": {"local_path": str(tmp_path / "task"), "agent_seconds": 90}},
+    }
+    attempt = root / "trials/0000/attempt-001"
+    trial, _, _ = trial_configuration(root, plan, {"variant": "synergy", "task": "task"}, attempt)
+    assert trial.agent.kwargs["settings"]["bun_jit"] is enabled
+    assert trial.agent.kwargs["settings"]["env"] == {}
+    assert read_json(attempt / "inputs/options.json")["bun_jit"] is enabled
+
+
+def test_session_release_uses_its_native_cli_and_inherited_capture(tmp_path):
+    from synergy_bench.config import ExperimentConfig, Variant
+
+    variant = Variant(model="benchmark/fixture", runtime="full", agent="synergy-max", bun_jit=True)
+    root = tmp_path / "run-12345678"
+    atomic_json(
+        root / "inputs/release/config.json",
+        {"provider": {"benchmark": {"options": {"baseURL": "http://fixture.invalid/v1"}}}},
+    )
+    plan = {
+        "config": ExperimentConfig.model_validate(matrix_config()).model_dump(),
+        "cache": str(tmp_path / "cache"),
+        "variants": {
+            "release": {
+                **variant.model_dump(),
+                "artifact": str(tmp_path),
+                "artifact_id": "fixture",
+                "runtime_protocol": "synergy-session-v1",
+            }
+        },
+        "tasks": {"task": {"local_path": str(tmp_path / "task"), "agent_seconds": 90}},
+    }
+    attempt = root / "trials/0000/attempt-001"
+    trial, _, _ = trial_configuration(root, plan, {"variant": "release", "task": "task"}, attempt)
+    options = read_json(attempt / "inputs/options.json")
+    native = options["native"]
+    assert native["argv"] == [
+        "/opt/synergy/bin/bun",
+        "/opt/synergy/runtime/session-entry.mjs",
+        "send",
+        "--format",
+        "json",
+        "--model",
+        "benchmark/fixture",
+        "--agent",
+        "synergy-max",
+    ]
+    assert native["env"]["SYNERGY_HOME"] == "/logs/agent/home"
+    assert native["env"]["BUN_OPTIONS"] == "--preload=/opt/synergy/runtime/session-capture.mjs"
+    assert native["env"]["BENCH_GATEWAY_BASE"] == "http://fixture.invalid/v1"
+    assert native["env"]["BUN_JSC_useJIT"] == "1"
+    assert trial.agent.kwargs["settings"]["runtime_protocol"] == "synergy-session-v1"

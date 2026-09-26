@@ -4,10 +4,33 @@ from synergy_bench.report import paired_compare, report_data, write_report
 from synergy_bench.storage import atomic_json
 
 
+def test_sealed_prior_costs_are_referenced_without_opening_old_runs(tmp_path):
+    from synergy_bench.storage import read_json
+
+    fixture(tmp_path, [(1, 30)])
+    plan = read_json(tmp_path / "plan.json")
+    plan["config"]["prior_costs"] = [
+        {
+            "label": "sealed study",
+            "sha256": "a" * 64,
+            "observed_requests": 4,
+            "known_tokens": 120,
+            "unknown_usage_requests": 1,
+        }
+    ]
+    atomic_json(tmp_path / "plan.json", plan)
+    report = report_data(tmp_path)
+    assert report["family_known_tokens"] == 150
+    assert report["family_observed_requests"] == 5
+    assert report["scored"][0]["known_tokens"] == 30
+    assert report["prior_costs"][0]["unknown_usage_requests"] == 1
+
+
 def fixture(root, rows):
     plan = {
-        "version": 3,
-        "result_version": 3,
+        "version": 4,
+        "result_version": 5,
+        "task_timeout_seconds": 10800,
         "config": {"seed": 13, "platform": "linux/amd64"},
         "schedule": [{"harness": "a", "model": "m", "variant": "a__m", "task": "task", "repeat": 0}],
         "tasks": {"task": {"digest": "unchanged"}},
@@ -18,7 +41,7 @@ def fixture(root, rows):
         atomic_json(
             root / f"trials/0000/attempt-{number:03d}/evidence.json",
             {
-                "version": 3,
+                "version": 5,
                 "attempt_status": "completed",
                 "execution": {"outcome": "completed"},
                 "verifier": {"rewards": {"reward": reward}},
@@ -103,20 +126,15 @@ def test_clustered_pairs_expose_missing_and_refuse_inexact_token_delta():
     assert paired_compare(left, right, seed=19, samples=100)["pairs"] == 2
 
 
-def test_report_includes_preflight_cost_and_planned_missing_denominator(tmp_path):
+def test_report_keeps_planned_missing_denominator(tmp_path):
     from synergy_bench.storage import read_json
 
     fixture(tmp_path, [(1, 30)])
     plan = read_json(tmp_path / "plan.json")
     plan["schedule"].append({**plan["schedule"][0], "task": "missing"})
     atomic_json(tmp_path / "plan.json", plan)
-    atomic_json(tmp_path / "probes/0000/attempt-001/trial.json", {**plan["schedule"][0], "scoring_eligible": False})
-    atomic_json(
-        tmp_path / "probes/0000/attempt-001/evidence.json",
-        read_json(tmp_path / "trials/0000/attempt-001/evidence.json"),
-    )
     result = report_data(tmp_path)
-    assert result["usage"]["known_tokens"] == 60
+    assert result["usage"]["known_tokens"] == 30
     assert len(result["scored"]) == 1
     assert result["groups"][0]["planned"] == 2
     assert result["groups"][0]["success_rate"] is None
@@ -150,7 +168,7 @@ def test_startup_failure_does_not_replace_the_first_dispatched_attempt(tmp_path)
     value["execution"] = {"outcome": "timed_out", "lifecycle": {"model_started_at": None, "timeout_stage": "startup"}}
     atomic_json(file, value)
     report = report_data(tmp_path)
-    assert report["scored"][0]["attempt"] == "attempt-002"
+    assert report["scored"][0]["attempt"] == "attempt-001"
     assert report["all_attempts"][0]["model_started"] is False
 
 
@@ -204,9 +222,7 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
             host={"docker": {"cpus": 8, "memory_bytes": 16000}, "capacity": {"cpus": 6, "memory_bytes": 12000}},
             evaluator={"python": "same"},
         )
-        plan["tasks"]["task"].update(
-            agent_seconds=900, verifier_seconds=300, resources={"cpus": 1, "memory_bytes": 1000}
-        )
+        plan["tasks"]["task"].update(resources={"cpus": 1, "memory_bytes": 1000})
         plan["config"].update(
             startup_timeout_seconds=120,
             request_idle_timeout_seconds=None,
@@ -233,7 +249,22 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
 
 
 @pytest.mark.parametrize(
-    "change", [None, "concurrency", "docker", "capacity", "deadline", "idle", "policy", "seed", "missing", "legacy"]
+    "change",
+    [
+        None,
+        "concurrency",
+        "docker",
+        "capacity",
+        "deadline",
+        "task_deadline",
+        "missing_deadline",
+        "idle",
+        "policy",
+        "dependency_proxy",
+        "seed",
+        "missing",
+        "legacy",
+    ],
 )
 def test_pairing_requires_matching_declared_execution_conditions(tmp_path, change):
     from synergy_bench.storage import read_json
@@ -247,9 +278,7 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
             host={"docker": {"cpus": 8, "memory_bytes": 16000}, "capacity": {"cpus": 6, "memory_bytes": 12000}},
             evaluator={"python": "same"},
         )
-        plan["tasks"]["task"].update(
-            agent_seconds=900, verifier_seconds=300, resources={"cpus": 1, "memory_bytes": 1000}
-        )
+        plan["tasks"]["task"].update(resources={"cpus": 1, "memory_bytes": 1000})
         plan["config"].update(
             startup_timeout_seconds=120,
             request_idle_timeout_seconds=None,
@@ -265,12 +294,20 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
                 plan["host"][change]["memory_bytes"] += 1000
             elif change == "deadline":
                 plan["config"]["startup_timeout_seconds"] = 60
+            elif change == "task_deadline":
+                plan["task_timeout_seconds"] = 900
+            elif change == "missing_deadline":
+                plan.pop("task_timeout_seconds")
             elif change == "idle":
                 plan["config"]["request_idle_timeout_seconds"] = 180
             elif change == "legacy":
                 plan["config"].pop("request_idle_timeout_seconds")
             elif change == "policy":
                 plan["config"]["resources"]["reserve_cpus"] = 1
+            elif change == "dependency_proxy":
+                plan["dependency_proxy"] = {
+                    "endpoint_sha256": "different", "policy": "internet-enabled-environments-only"
+                }
             elif change == "seed":
                 plan["config"]["seed"] += 1
             elif change == "missing":
@@ -279,7 +316,7 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
     left, right = [report_data(tmp_path / name)["scored"] for name in ["left", "right"]]
     compared = paired_compare(left, right, samples=10)
     assert compared["pairs"] == (1 if change is None else 0)
-    if change in {"missing", "legacy"}:
+    if change in {"missing", "legacy", "missing_deadline"}:
         assert len(compared["unpairable_right"]) == 1
     elif change:
         assert len(compared["missing_left"]) == len(compared["missing_right"]) == 1

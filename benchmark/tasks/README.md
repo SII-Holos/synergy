@@ -1,0 +1,11 @@
+# Versioned local task repairs
+
+These task payloads derive from the pinned [Terminal-Bench 2.1 source](https://github.com/harbor-framework/terminal-bench-2-1/tree/7131e4375048a0e408a8fb404b5f499d726b695b) under its retained Apache 2.0 license. The local-24 task selection and upstream content digests remain unchanged. Each version has an explicit provenance manifest; derivative scores must be named separately from upstream scores.
+
+`local24-repro-v6` preserves both tasks' instructions, verifier assertions and resource limits. Removing `docker_image` from their task configuration makes the derived Dockerfile effective; each Dockerfile starts from the original public image pinned by digest.
+
+The Cython variant caches a locked set of distribution URLs and SHA-256 checksums, builds the pinned planarity 0.6 wheel without an index, records wheel checksums and versions, and exposes the cache through `/etc/pip.conf`. Pip defaults to this local dependency set with the remote index disabled; `find-links` alone still permits remote downloads of the same version. It does not preinstall or repair pyknotid. Its isolated reference solution stops on dependency errors and pins planarity 0.6, whose API is compatible with the requested source release.
+
+The Stan variant adds CMake for the pinned RcppParallel reference dependency and prevents `remotes` from upgrading already selected versions. Its image also caches the original verifier's uv 0.9.5, Python 3.13.9 and pytest environment; uv runs offline using that cache. The unchanged verifier script still performs its original apt/curl commands. The evaluator supplies its fixed three-hour execution budget. It does not preinstall RStan, compile the requested model or generate posterior results.
+
+Versioned task payloads are excluded from automatic formatting and upstream lint rewrites so their declared content digests remain stable. Git attributes allow inherited trailing whitespace in the three affected upstream files without changing checks for other files. Repository tests exercise the added dependency preparation code and verify the retained task inputs. The evaluator still verifies materialized task digests, and native oracle results remain authoritative. The [study protocol](../../docs/research/context-efficiency/2026-09-22-local24-v6-protocol.md) defines validation and reporting conditions.

@@ -317,7 +317,7 @@ jobs:
           retention-days: 7
       - name: Collect bounded benchmark evidence
         if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -380,7 +380,7 @@ jobs:
           retention-days: 7
       - name: Collect bounded benchmark evidence
         if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -443,7 +443,7 @@ jobs:
           retention-days: 7
       - name: Collect bounded benchmark evidence
         if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration --output "$RUNNER_TEMP/benchmark-evidence"
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

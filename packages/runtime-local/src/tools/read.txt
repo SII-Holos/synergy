@@ -4,10 +4,10 @@ Assume this tool is able to read files on the machine. If the User provides a pa
 Usage:
 - The filePath parameter must be an absolute path, not a relative path
 - By default, it reads up to 2000 lines starting from the beginning of the file
-- You can optionally specify a line offset and limit (especially handy for long files), but it's recommended to read the whole file by not providing these parameters
-- The minimum limit is 120 lines — reading fewer than 120 lines often misses enough context to understand the code correctly
-- Any lines longer than 2000 characters will be truncated
+- Use offset/limit for a known target. Read enough surrounding code to understand dependencies; omit them when an overview or the whole small file is needed.
+- Explicit limits are honored; there is no minimum reading window. Output shares a 50 KiB UTF-8 budget.
+- Complete lines are retained within the byte budget. A line larger than the budget requires a bounded shell inspection.
 - Results are returned using cat -n format, with line numbers starting at 1
-- You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
+- Batch independent reads when the files are known to be relevant. Avoid speculative whole-file reads.
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
 - Use this tool for text files and supported document text extraction (PDF, DOCX, XLSX, PPTX, HTML, EPUB, IPYNB, CSV, XML, RSS, audio metadata, ZIP). For image visual inspection, use `view_image` when it is available; use `look_at` when `view_image` is unavailable.

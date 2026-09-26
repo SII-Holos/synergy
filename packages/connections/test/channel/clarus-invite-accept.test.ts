@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import * as ConnectionsConfigSchema from "@ericsanchezok/synergy-connections/config-schema"
 import { describe, expect, mock, test } from "bun:test"
 import { ChannelHost } from "../../src/channel/host"
@@ -22,12 +25,28 @@ import { FakeNativeTunnelPort, taskAssignedEvent } from "./clarus-fixture"
 import { ClarusDeadlineAgenda } from "../../src/channel/provider/clarus/deadline-agenda"
 import { AgendaStore } from "@ericsanchezok/synergy-workflows/agenda"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { afterAll as afterRuntimeTests } from "bun:test"
-import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
 
 const AGENT_ID = "invite-accept-agent"
 const AGENT_SECRET = "invite-accept-secret"
+
+function acceptedTaskEvent(
+  event: RuntimeTaskAssignedEvent,
+): Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }> {
+  return {
+    kind: "known",
+    type: "runtimeTaskAccepted",
+    agentID: AGENT_ID,
+    requestID: String(event.requestID),
+    runID: event.runID,
+    projectID: event.projectID,
+    taskID: event.taskID,
+    subtaskID: event.subtaskID,
+    attempt: event.attempt,
+    acceptedAt: new Date().toISOString(),
+    epoch: 1,
+    generation: 1,
+  }
+}
 
 function accountConfig(apiUrl = "https://clarus-api.test"): ConnectionsConfigSchema.ChannelClarusAccount {
   return {
@@ -91,17 +110,6 @@ function acceptedMembershipPayload(projectID: string) {
       invited_by_user_id: 3,
       created_at: now,
     },
-  }
-}
-
-function acceptedTaskPayload(event: RuntimeTaskAssignedEvent) {
-  return {
-    run_id: event.runID,
-    project_id: event.projectID,
-    task_id: event.taskID,
-    subtask_id: event.subtaskID,
-    attempt: event.attempt,
-    accepted_at: new Date().toISOString(),
   }
 }
 
@@ -861,20 +869,7 @@ describe("Clarus task acceptance", () => {
             expect(acceptRequestIDs).toEqual([String(event.requestID)])
             expect(await SessionInbox.list(pending!.assignment.sessionID)).toEqual(firstInbox)
 
-            resolveAccept({
-              kind: "known",
-              type: "runtimeTaskAccepted",
-              agentID: AGENT_ID,
-              requestID: String(event.requestID),
-              projectID: event.projectID,
-              runID: event.runID,
-              taskID: event.taskID,
-              subtaskID: event.subtaskID,
-              attempt: event.attempt,
-              acceptedAt: new Date().toISOString(),
-              epoch: 1,
-              generation: 1,
-            })
+            resolveAccept(acceptedTaskEvent(event))
             await waitFor(
               () =>
                 ClarusAssignmentStore.findByIdentity({
@@ -902,8 +897,12 @@ describe("Clarus task acceptance", () => {
           const host = ChannelHost.create({ channelType: "clarus", accountId: AGENT_ID, activateTasks: true })
           await host.projects.ensure({ externalProjectId: "project-order", name: "Order project", isActive: true })
           const order: string[] = []
-          let resolveAccept!: (value: unknown) => void
-          const acceptResponse = new Promise((resolve) => {
+          let resolveAccept!: (
+            event: Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }>,
+          ) => void
+          const acceptResponse = new Promise<
+            Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskAccepted" }>
+          >((resolve) => {
             resolveAccept = resolve
           })
           const event = taskAssignedEvent({
@@ -950,25 +949,34 @@ describe("Clarus task acceptance", () => {
           })
 
           const dispatch = handleEvent(instance, connection, event)
-          let completed = false
-          const outcome = dispatch
-            .then(
-              () => ({ error: undefined }),
-              (error: unknown) => ({ error }),
-            )
-            .finally(() => {
-              completed = true
-            })
           try {
-            await waitFor(() => completed, Boolean)
-            const result = await outcome
-            if (result.error) throw result.error
+            await dispatch
             expect(order).toEqual(["accept", "wake"])
+            expect(connection.outboundRequests.has(String(event.requestID))).toBe(true)
+            const located = await ClarusAssignmentStore.findByIdentity({
+              accountId: AGENT_ID,
+              projectID: event.projectID,
+              taskID: event.taskID,
+            })
+            expect(located?.assignment.acceptState).toBe("pending")
           } finally {
-            resolveAccept({ ...acceptedTaskPayload(event), type: "runtimeTaskAccepted" })
-            await outcome
-            ;(SessionDrive.request as typeof SessionDrive.request) = originalRequest
+            resolveAccept(acceptedTaskEvent(event))
+            try {
+              await dispatch
+              await waitFor(
+                () => connection.outboundRequests.size,
+                (size) => size === 0,
+              )
+            } finally {
+              ;(SessionDrive.request as typeof SessionDrive.request) = originalRequest
+            }
           }
+          const located = await ClarusAssignmentStore.findByIdentity({
+            accountId: AGENT_ID,
+            projectID: event.projectID,
+            taskID: event.taskID,
+          })
+          expect(located?.assignment.acceptState).toBe("acknowledged")
         },
       })
     }))

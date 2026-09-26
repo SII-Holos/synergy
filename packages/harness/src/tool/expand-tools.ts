@@ -41,13 +41,11 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => {
     foldedServers.length > 0 ? ["Connected MCP groups:", ToolExposure.mcpGroupTable(foldedServers)].join("\n") : ""
   return {
     description: [
-      "Change tool visibility for the current session by expanding deferred groups or activating search-only tools. The expanded state is stored on the session and remains stable across future turns, session restore, and context compaction until the session ends or the state is explicitly cleared.",
-      "This tool does not execute external actions, does not call the expanded tools, and does not bypass permissions, agent policy, sandboxing, disabled user tools, or runtime availability. Tools that are permission-hidden may still remain hidden after expansion.",
+      "Expand deferred groups or activate search-only tools for this session. Visibility persists across turns, restore and compaction until the session ends or expansion state is cleared. This does not call the tools or bypass permissions, agent policy, sandboxing, user settings or runtime availability.",
       "Known built-in groups:",
       ToolExposure.groupTable(),
       ...(mcpSection ? [mcpSection] : []),
-      "Usage guidance: if the capability domain is known, call expand_tools({ groups: [...] }) directly. If the tool or group name is uncertain, call search_tools first, then expand the returned group or activate the returned search-only tool.",
-      "After expand_tools returns, use the listed tools directly. Tools omitted from the list may still be hidden by permissions, user settings, policy, or runtime availability.",
+      "For a known domain, expand its group directly. If the name is uncertain, use search_tools first, then expand its group or activate the returned search-only tool. Use the tools listed in the result; other tools may remain hidden by policy, settings or availability.",
     ].join("\n\n"),
     parameters,
     formatValidationError(error) {

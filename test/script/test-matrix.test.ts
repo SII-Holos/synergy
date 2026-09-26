@@ -20,7 +20,7 @@ const plan = createPlan({
 test("full plan retains the native harness, database and long-stream outcome matrices", () => {
   expect(
     tasks
-      .filter((task) => task.kind === "benchmark-native")
+      .filter((task) => task.kind === "benchmark-native" && task.selection === "test_native_matrix")
       .map((task) => task.variant)
       .sort(),
   ).toEqual(["codex", "deepseek", "opencode", "pi", "synergy"])
@@ -71,4 +71,28 @@ test("normal and fault Docker groups retain the complete lifecycle file inventor
   ])
   expect(invocations[0]!.args).toContain("not faults_preserve_terminal_evidence_and_cleanup")
   expect(invocations[1]!.args).toContain("not real_synergy_paired_rollout")
+})
+
+test("native observations keep separate JIT and protocol cases with frozen Synergy preparation", async () => {
+  const native = tasks.filter((task) => task.kind === "benchmark-native")
+  const long = native.filter((task) => task.id.startsWith("native-synergy-"))
+  expect(long).toHaveLength(4)
+  const selections = []
+  for (const task of native) {
+    const [recipe] = await commands(task, plan)
+    expect(recipe!.env?.SYNERGY_BENCH_TEST_HARNESSES).toBe(task.variant)
+    const index = recipe!.args.indexOf("-k")
+    expect(index).toBeGreaterThan(-1)
+    if (long.includes(task)) {
+      expect(task.variant).toBe("synergy")
+      expect(task.needs).toContain("benchmark-prepare")
+      selections.push(recipe!.args[index + 1])
+    } else expect(recipe!.args[index + 1]).toBe("test_native_matrix")
+  }
+  expect(selections.sort()).toEqual([
+    "test_synergy_long_sessions and jitless and chat-completions",
+    "test_synergy_long_sessions and jitless and responses",
+    "test_synergy_long_sessions and not jitless and chat-completions",
+    "test_synergy_long_sessions and not jitless and responses",
+  ])
 })

@@ -6,6 +6,8 @@ from pathlib import Path
 
 
 class Handler(BaseHTTPRequestHandler):
+    artifacts = Path("/logs/artifacts")
+
     def log_message(self, *args):
         pass
 
@@ -62,10 +64,10 @@ class Handler(BaseHTTPRequestHandler):
             }
             self.wfile.write(("data: " + json.dumps(frame) + "\n\n").encode())
             self.wfile.flush()
-            Path("/logs/artifacts/provider-started").write_text(mode)
+            (self.artifacts / "provider-started").write_text(mode)
             try:
                 while True:
-                    if mode == "disconnect" and Path("/logs/artifacts/disconnect-release").exists():
+                    if mode == "disconnect" and (self.artifacts / "disconnect-release").exists():
                         self.close_connection = True
                         return
                     self.wfile.write(b":" + b"x" * 1024 + b"\n\n")
@@ -136,4 +138,5 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-ThreadingHTTPServer(("127.0.0.1", 8087), Handler).serve_forever()
+if __name__ == "__main__":
+    ThreadingHTTPServer(("127.0.0.1", 8087), Handler).serve_forever()

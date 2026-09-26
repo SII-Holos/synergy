@@ -1,0 +1,41 @@
+version: 2
+suite: ../suites/local-24-repro-v6.json
+output: ../../.artifacts/benchmark/local24-boyue
+cache: ../../.artifacts/benchmark/cache
+platform: linux/amd64
+seed: 20260921
+repeat: 1
+concurrency: auto
+resources:
+  cache_budget_gib: 384
+harnesses:
+  baseline:
+    kind: synergy
+    source:
+      path: ../..
+      revision: 024dd683e091d9fce3d1d26b79b2e188ce636b52
+    runtime: full
+    agent: synergy-max
+    bun_jit: true
+  candidate:
+    kind: synergy
+    source:
+      path: ../..
+      revision: ecf1426a47bf8bbd13b13bd9c47d28b39bdeff05
+    runtime: full
+    agent: synergy-max
+    bun_jit: true
+models:
+  boyue-glm53flash-low:
+    model: glm-5.3-flash
+    protocol: chat-completions
+    base_url: http://provider.example/v1
+    api_key_env: BOYUE_API_KEY
+    context_window: 1048576
+    max_output_tokens: 131072
+    supports_developer_role: false
+    parameters:
+      temperature: 1
+      thinking:
+        type: enabled
+      reasoning_effort: low

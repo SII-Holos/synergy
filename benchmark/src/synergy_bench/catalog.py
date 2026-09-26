@@ -26,8 +26,6 @@ class Task(StrictModel):
     path: str
     digest: str = Field(pattern=r"^[0-9a-f]{64}$")
     tags: list[str]
-    agent_seconds: float = Field(gt=0)
-    verifier_seconds: float = Field(gt=0)
 
 
 class Suite(StrictModel):

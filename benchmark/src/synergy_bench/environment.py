@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 import time
 import uuid
@@ -13,12 +14,16 @@ from pier.environments.docker.docker import DockerEnvironment
 
 from .cache import async_cache_lock, reference_run
 from .catalog import tree_digest
+from .dependency_proxy import dependency_environment
+from .lifecycle import pause_deadlines
 from .prepare import command
 from .process import run_preparation_process, run_process
+from .resources import Request, ResourcePressureError
+from .scheduling import current_resources, queued
 from .storage import atomic_json, digest, read_json
 
 # Pier 0.3.1 Docker lifecycle extension. See third_party/pier/NOTICE.
-# Preserve its native resource, network and build recipes; own only cache identity and inference routing.
+# Preserve its native resource, network and build recipes; own cache identity, inference routing and teardown evidence.
 IMAGE_OWNER = "synergy-benchmark-image-v1"
 
 
@@ -36,9 +41,14 @@ class CachedDockerEnvironment(DockerEnvironment):
         benchmark_platform: str,
         inference_port: int | None = None,
         benchmark_run: str | None = None,
+        dependency_proxy_url: str | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
+        if dependency_proxy_url and self.task_env_config.allow_internet:
+            self._persistent_env = {**dependency_environment(dependency_proxy_url), **self._persistent_env}
+        # The cache-key lock below owns shared builds; Pier's task-name lock conflates independent variants.
+        self._image_build_locks = {}
         self._benchmark_cache = Path(benchmark_cache)
         self._benchmark_run = Path(benchmark_run) if benchmark_run else None
         self._inference_port = inference_port
@@ -141,7 +151,14 @@ class CachedDockerEnvironment(DockerEnvironment):
                 )
             await self._compose_command(["logs", "--no-color"], check=False, timeout_sec=20)
         finally:
-            await super().stop(delete=delete)
+            try:
+                await self.prepare_logs_for_host()
+            finally:
+                try:
+                    # Pier swallows teardown errors; benchmark evidence must retain them without deleting shared images.
+                    await self._run_docker_compose_command(["stop" if self._keep_containers else "down"])
+                finally:
+                    self._cleanup_resources_compose_file()
 
     async def _image_id(self, tag: str) -> str | None:
         try:
@@ -152,6 +169,66 @@ class CachedDockerEnvironment(DockerEnvironment):
             if b"No such image" in (error.stderr or b""):
                 return None
             raise
+
+    async def _project_resources_remain(self) -> bool:
+        selector = f"label=com.docker.compose.project={self.session_id}"
+        inventories = await asyncio.gather(
+            *(
+                asyncio.to_thread(command, ["docker", *args, "--filter", selector], timeout=15)
+                for args in (["ps", "-aq"], ["network", "ls", "-q"], ["volume", "ls", "-q"])
+            )
+        )
+        return any(inventories)
+
+    async def _discard_created_resources(self) -> None:
+        result = await self._compose_command(["down", "--volumes", "--remove-orphans"], check=False, timeout_sec=60)
+        if result.return_code or await self._project_resources_remain():
+            raise RuntimeError("Created resources remain; retaining scheduler reservation")
+        if scheduler := current_resources.get():
+            await scheduler.release(self.session_id)
+
+    async def _admit_environment(self) -> None:
+        scheduler = current_resources.get()
+        idle_since = time.monotonic()
+        timeout = scheduler.pool.pressure_timeout_seconds if scheduler else 600
+        while True:
+            if scheduler:
+                native = self.task_env_config
+                await scheduler.acquire(
+                    self.session_id, Request(float(native.cpus or 1), int(native.memory_mb or 1024) * 1024**2)
+                )
+            try:
+                # Compose owns native driver/IPAM/internal settings and reserves networks without starting services.
+                # https://docs.docker.com/reference/cli/docker/compose/create/
+                result = await self._compose_command(["create", "--no-build", "--pull", "never"], check=False)
+            except BaseException as error:
+                if not self._keep_containers:
+                    try:
+                        await self._discard_created_resources()
+                    except Exception as cleanup_error:
+                        raise error from cleanup_error
+                raise
+            if result.return_code == 0:
+                return
+            if self._keep_containers:
+                raise RuntimeError("Docker compose create failed; debug resources retained")
+            await self._discard_created_resources()
+            exhausted = re.search(
+                r"all predefined address pools have been fully subnetted|"
+                r"could not find an available, non-overlapping IPv4 address pool",
+                result.stdout or "",
+                re.IGNORECASE,
+            )
+            if not exhausted:
+                raise RuntimeError("Docker compose create failed; inspect retained compose log")
+            if scheduler:
+                scheduler.record("pressure", self.session_id, reason="network_address_pressure")
+                if scheduler.pool.active or (scheduler.pool.shared and scheduler.pool.shared.active):
+                    idle_since = time.monotonic()
+            if time.monotonic() - idle_since >= timeout:
+                raise ResourcePressureError("Sustained Docker network pressure prevents admission")
+            with pause_deadlines():
+                await asyncio.sleep(min(1, timeout))
 
     async def _image_cache_key(self, tag: str) -> str:
         return await asyncio.to_thread(
@@ -181,7 +258,17 @@ class CachedDockerEnvironment(DockerEnvironment):
                 }
             atomic_json(self._mounts_compose_path, value)
         if command_args[0] != "build":
-            return await self._compose_command(command_args, check=check, timeout_sec=timeout_sec)
+            scheduler = current_resources.get()
+            if command_args[0] == "up":
+                await self._compose_command(["pull", "--ignore-buildable", "--policy", "missing"])
+                await self._admit_environment()
+            result = await self._compose_command(command_args, check=check, timeout_sec=timeout_sec)
+            if scheduler and command_args[0] == "up" and result.return_code == 0:
+                scheduler.record("started", self.session_id)
+            if scheduler and command_args[0] in {"down", "stop"} and result.return_code == 0:
+                if not await self._project_resources_remain():
+                    await scheduler.release(self.session_id)
+            return result
         if "--no-cache" in command_args:
             raise ValueError("Frozen benchmark images cannot force-build in an existing experiment")
         entries = [("main", self._env_vars.main_image_name, self._benchmark_identity)]
@@ -191,7 +278,11 @@ class CachedDockerEnvironment(DockerEnvironment):
             )
         for service, tag, identity in entries:
             key = digest(identity)
-            async with async_cache_lock(self._benchmark_cache / "locks" / key, wait_seconds=timeout_sec or 1800):
+            async with queued(
+                async_cache_lock(self._benchmark_cache / "locks" / key, wait_seconds=None),
+                self.session_id,
+                "image_cache_lock",
+            ):
                 file = self._benchmark_cache / "images" / (key + ".json")
                 pending = self._benchmark_cache / "images" / (key + ".pending.json")
                 observed = await self._image_id(tag)
@@ -223,8 +314,21 @@ class CachedDockerEnvironment(DockerEnvironment):
                     run = getattr(self, "_benchmark_run", None)
                     plan = read_json(run / "plan.json") if run and (run / "plan.json").exists() else {}
                     limit = plan.get("config", {}).get("resources", {}).get("build_concurrency", 2)
-                    async with build_slot(self._benchmark_cache, wait_seconds=timeout_sec or 1800, limit=limit):
-                        await self._compose_command(["build", service], check=check, timeout_sec=timeout_sec)
+                    async with queued(
+                        build_slot(self._benchmark_cache, wait_seconds=None, limit=limit), self.session_id, "build_slot"
+                    ):
+                        scheduler = current_resources.get()
+                        if scheduler:
+                            async with queued(
+                                scheduler.pool.reserve(
+                                    Request(2, 4 * 1024**3), priority=int("__verifier__" in self.session_id)
+                                ),
+                                self.session_id,
+                                "build_resources",
+                            ):
+                                await self._compose_command(["build", service], check=check, timeout_sec=timeout_sec)
+                        else:
+                            await self._compose_command(["build", service], check=check, timeout_sec=timeout_sec)
                 image_id = await self._image_id(tag)
                 if not image_id:
                     raise ValueError("Prepared image was not published")
