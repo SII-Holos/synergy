@@ -24,6 +24,8 @@ import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "../observability/spans"
 import type { LLMTurnMemory } from "./llm-memory"
 import { SessionRootVariant } from "./root-variant"
+import { ProviderThinking } from "../provider/thinking"
+import type { ModelSelection } from "./model-selection-schema"
 import { SessionPluginHooks } from "./plugin-hooks"
 import { reasoningStreamGuardMiddleware } from "./reasoning-stream-guard"
 import { CODEX_PROVIDER_ID, setReplayPlan, type CodexReplayPlan } from "../provider/codex-compaction"
@@ -166,6 +168,7 @@ export namespace LLM {
   }
 
   export type StreamInput = {
+    modelSelection?: ModelSelection.Request
     user: MessageV2.User
     sessionID: string
     model: Provider.Model
@@ -337,20 +340,26 @@ export namespace LLM {
           input.systemCacheBreakpoint === undefined ? undefined : baseSystemLength + input.systemCacheBreakpoint,
       }),
     })
-    const variant = SessionRootVariant.options({
-      variant: input.user.variant,
-      model: input.model,
-      small: input.small,
-    })
+    const explicitThinking = !input.small && input.user.thinking ? structuredClone(input.user.thinking) : undefined
+    const variant = explicitThinking
+      ? ProviderThinking.options(input.model, explicitThinking)
+      : SessionRootVariant.options({
+          variant: input.user.variant,
+          model: input.model,
+          small: input.small,
+        })
     const base = input.small
       ? ProviderTransform.smallOptions(input.model, provider?.profileID)
       : ProviderTransform.options(input.model, input.sessionID, provider?.options, provider?.profileID)
-    const options: Record<string, unknown> = pipe(
+    const mergedOptions: Record<string, unknown> = pipe(
       base,
       mergeDeep(input.model.options),
       mergeDeep(input.agent.options),
       mergeDeep(variant),
     )
+    const options = explicitThinking
+      ? ProviderThinking.normalize(input.model, explicitThinking, mergedOptions)
+      : mergedOptions
     const thinking = options["thinking"]
     const isAnthropicThinking =
       input.model.api.npm === "@ai-sdk/anthropic" &&
@@ -377,6 +386,22 @@ export namespace LLM {
         options,
       },
     )
+
+    if (explicitThinking) {
+      params.options = ProviderThinking.normalize(input.model, explicitThinking, params.options)
+      const thinking = params.options.thinking
+      if (
+        input.model.api.npm === "@ai-sdk/anthropic" &&
+        thinking &&
+        typeof thinking === "object" &&
+        "type" in thinking &&
+        (thinking.type === "enabled" || thinking.type === "adaptive")
+      ) {
+        params.temperature = undefined
+        params.topP = undefined
+        params.topK = undefined
+      }
+    }
 
     l.info("params", {
       params,

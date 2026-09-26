@@ -36,17 +36,13 @@ export namespace SessionRootVariant {
     const { Config } = await import("../config/config")
     const config = await Config.current()
     const explicit = input.explicit && input.explicit.length > 0 ? input.explicit : undefined
-    const fallback = resolveName({
-      agentDefault: input.agent.defaultVariant,
-      roleDefault: config.role_variant?.[input.agent.modelRole || "default"],
-    })
-    const candidate = explicit ?? fallback
-    if (!candidate || !input.model) return undefined
+    const candidates = [input.agent.defaultVariant, config.role_variant?.[input.agent.modelRole || "default"]]
+    if (!input.model || (!explicit && !candidates.some(Boolean))) return undefined
 
     const { Provider } = await import("../provider/provider")
     const model = await Provider.getModel(input.model.providerID, input.model.modelID)
     if (explicit) return resolve({ explicit, model })
-    return Object.hasOwn(model.variants ?? {}, candidate) ? candidate : undefined
+    return candidates.find((value): value is string => !!value && Object.hasOwn(model.variants ?? {}, value))
   }
 
   export async function resolveLegacyRoot(user: MessageV2.User): Promise<string | undefined> {

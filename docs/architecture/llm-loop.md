@@ -37,7 +37,7 @@ Each outer iteration loads effective, canonicalized session history and finds th
 
 The loop never chooses a Cortex notification, workflow continuation, or other non-root message as the task owner.
 
-A root message's model and variant belong to that durable root execution and remain stable for its continuation and tool loop. Steer and `noReply` messages do not own an execution variant. Each new root independently resolves its model and then its variant; QuickSwitch or `modelOverride` changes apply to the next root. Non-small root execution remains strict for unavailable persisted variants.
+Root messages retain their initial model and thinking choices as history. Before each model-dependent preparation, the loop captures the session's durable model selection into an immutable request snapshot. Prompt budgeting, tools, provider parameters, assistant metadata and rollout evidence use that same snapshot. A selection change applies to the next eligible request without restarting the current stream or replaying tools. Anthropic model or thinking-mode transitions during a tool-use turn wait for the next root; effort changes within the same mode remain eligible. See [session model selection](session-and-messages.md#model-and-thinking-selection).
 
 ## Inbox Drain Order
 
@@ -72,15 +72,15 @@ Release-triggered memory work never blocks the Linux turn settlement path. Turn 
 
 ## Agent and Model Resolution
 
-Root messages persist the resolved agent and model used to start their task. Session-level explicit overrides can become defaults for later roots, while lower-priority fallback resolution does not write back into a user's draft selection.
+Root messages persist the resolved agent and initial model. The session's model selection owns subsequent model requests; agent selection continues to resolve at root creation.
 
 The Web composer uses the same intent layering:
 
 1. current user draft selection
-2. session default: server `modelOverride`, otherwise the last root message
+2. durable session model selection, otherwise the last root message
 3. application fallback
 
-An explicit selector choice persists as `modelOverride`. Provider authentication remains provider-specific; the `openai-codex` native Codex path does not receive the normal OpenAI API-key/base-URL override.
+An explicit selector choice saves model and thinking together through `session.setModelSelection`. Provider authentication remains provider-specific; the `openai-codex` native Codex path does not receive the normal OpenAI API-key/base-URL override.
 
 ### Model variants and reasoning options
 
@@ -90,7 +90,9 @@ Model capability metadata from catalogs such as models.dev describes what a mode
 
 When a third-party transport case returns no automatic variants, a configured `role_variant` such as `max` is applied only if the resolved model exposes a same-named variant; otherwise the provider receives no generated option and uses its server-side reasoning default. User-defined model `variants` are merged after automatic defaults and can add or override named variants for individual models.
 
-A sessionless or internal lightweight call may reuse a source root user envelope for context and attribution, but `small: true` never consumes that envelope's durable variant. `SessionRootVariant.options()` returns `{}` before variant validation, so target-model options come from `ProviderTransform.smallOptions()` even when the source and target models match. Non-small root execution continues to validate and apply its persisted variant.
+A sessionless or internal lightweight call may reuse a source root user envelope for context and attribution, but `small: true` never consumes that envelope's variant or thinking selection. Compaction clears both fields on its transient envelope. Those calls keep their own target-model options.
+
+Catalog reasoning controls retain effort values, toggle support and budget bounds. Explicit provider-default strips Synergy reasoning overrides after model, agent and ordinary parameter-hook merging; Off emits a concrete transport-supported disable option. A shared SDK alone does not establish Off support. DeepSeek compatible requests use `thinking.type` independently of `reasoning_effort`; Gemini budgets respect catalog bounds. Explicit invalid choices fail without substituting another level. Custom configured variants retain their option objects.
 
 ## Internal LLM Invocation Paths
 

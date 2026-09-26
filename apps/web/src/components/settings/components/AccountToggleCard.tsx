@@ -6,7 +6,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { channelAccountVariantKeys } from "../channel-account-model"
 import type { AccountToggle, ProviderGroup } from "../types"
-import { ModelVariantPicker } from "./ModelVariantPicker"
+import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
 import { SettingRow } from "@ericsanchezok/synergy-ui/setting-row"
 
 const useDefaultLabel = { id: "settings.accountToggle.useDefault", message: "Use default" }

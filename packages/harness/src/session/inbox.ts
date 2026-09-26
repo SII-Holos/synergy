@@ -1,4 +1,5 @@
 import z from "zod"
+import { ModelSelection } from "./model-selection-schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
@@ -106,6 +107,7 @@ export namespace SessionInbox {
           system: z.string().optional(),
           tools: z.record(z.string(), z.boolean()).optional(),
           variant: z.string().optional(),
+          thinking: ModelSelection.Thinking.optional(),
         })
         .optional(),
       summaryPreview: z.string().optional(),
@@ -174,6 +176,7 @@ export namespace SessionInbox {
         system: z.string().optional(),
         tools: z.record(z.string(), z.boolean()).optional(),
         variant: z.string().optional(),
+        thinking: ModelSelection.Thinking.optional(),
       }),
     })
     export const Output = z.object({
@@ -205,7 +208,10 @@ export namespace SessionInbox {
   }
 
   function publicItem(item: StoredItem): Item {
-    const message = item.mode === "task" || !item.message ? item.message : { ...item.message, variant: undefined }
+    const message =
+      item.mode === "task" || !item.message
+        ? item.message
+        : { ...item.message, variant: undefined, thinking: undefined }
     return Item.parse({
       id: item.id,
       sessionID: item.sessionID,
@@ -368,7 +374,12 @@ export namespace SessionInbox {
 
     const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
     const inheritedModel = await lastModel(sessionID).catch(() => undefined)
-    const model = payload.model ?? session?.modelOverride ?? (await Agent.getAvailableModel(agent)) ?? inheritedModel
+    const model =
+      payload.model ??
+      session?.modelSelection?.selected.model ??
+      session?.modelOverride ??
+      (await Agent.getAvailableModel(agent)) ??
+      inheritedModel
     return {
       agent,
       model: model ?? { providerID: "system", modelID: "fallback" },
@@ -507,6 +518,7 @@ export namespace SessionInbox {
         system: input.message.system,
         tools: input.message.tools,
         variant: input.message.variant,
+        thinking: input.message.thinking,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -654,6 +666,7 @@ export namespace SessionInbox {
         system: input.system,
         tools: input.tools,
         variant: input.variant,
+        thinking: input.thinking,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -1023,9 +1036,34 @@ export namespace SessionInbox {
 
       const origin = payload.origin ?? { type: "user" as const }
       const runtime = await resolveUserRuntime(item.sessionID, payload)
-      const variant = isRoot
-        ? await SessionRootVariant.resolveForRoot({ explicit: payload.variant, ...runtime })
+      const selected = (await Session.get(item.sessionID)).modelSelection?.selected
+      const thinking = isRoot
+        ? (payload.thinking ??
+          (selected &&
+          ModelSelection.key(selected.model) === ModelSelection.key(runtime.model) &&
+          payload.variant === undefined
+            ? selected.thinking
+            : undefined))
         : undefined
+      const variant = thinking
+        ? thinking.mode === "variant"
+          ? thinking.variant
+          : thinking.mode === "off"
+            ? "off"
+            : undefined
+        : isRoot
+          ? await SessionRootVariant.resolveForRoot({ explicit: payload.variant, ...runtime })
+          : undefined
+      if (
+        isRoot &&
+        (payload.thinking ||
+          payload.variant ||
+          (payload.model && selected && ModelSelection.key(payload.model) !== ModelSelection.key(selected.model)))
+      )
+        await Session.setModelSelection(item.sessionID, {
+          model: runtime.model,
+          thinking: thinking ?? ModelSelection.fromVariant(variant),
+        })
       const summary =
         payload.summary?.title || payload.summary?.body
           ? {
@@ -1059,6 +1097,7 @@ export namespace SessionInbox {
         ...(payload.system ? { system: payload.system } : {}),
         ...(payload.tools ? { tools: payload.tools } : {}),
         ...(variant ? { variant } : {}),
+        ...(thinking ? { thinking } : {}),
       }
       return SessionUserMessageMaterialization.write({ info, parts }, commitOptions)
     }

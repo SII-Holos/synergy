@@ -42,7 +42,9 @@ A sessionless call does not create session history, Cortex progress, completion 
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
 
-When an in-place internal operation reuses a root user message only for task identity or attribution while selecting a different model, strip root-owned execution settings that do not belong to the target call. Compaction specifically keeps the persisted root unchanged but clears its `variant` from the ephemeral processor envelope, so the compaction model retains normal provider options without validating or applying another model's variant.
+When an in-place internal operation reuses a root user message only for task identity or attribution while selecting a different model, strip root-owned execution settings that do not belong to the target call. Compaction keeps the persisted root unchanged but clears both `variant` and `thinking` from the ephemeral processor envelope. Keep small-call bypass tests for valid and invalid source selections.
+
+For live session model controls, capture model and thinking together before prompt budgeting and tool preparation. Carry that snapshot through serialization and request accounting; do not read mutable UI or session choices midway through preparation. Verify actual next-request wire parameters with a delayed local provider fixture, per-model restoration, restricted tool-turn changes and no tool replay. Apply explicit thinking normalization after ordinary parameter hooks and preserve unrelated options.
 
 Use `Cortex.launch()` for new child-agent work. Cortex owns:
 

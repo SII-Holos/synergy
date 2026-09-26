@@ -2,6 +2,7 @@ import { Workspace } from "./workspace-schema"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { SessionRecords } from "./records"
+import { ModelSelection } from "./model-selection-schema"
 import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
 import type { StoreTransaction } from "../storage/transactional-store"
@@ -75,6 +76,16 @@ import { SessionWorkspaceRuntime } from "./workspace-runtime"
 import { SessionSearchIndex } from "./search-index"
 
 export namespace Session {
+  export const ModelSelectionInput = ModelSelection.Input
+  export async function setModelSelection(sessionID: string, input: ModelSelection.Input) {
+    const { SessionModelSelection } = await import("./model-selection")
+    return SessionModelSelection.set(sessionID, input)
+  }
+
+  export async function resetModelSelection(sessionID: string) {
+    const { SessionModelSelection } = await import("./model-selection")
+    return SessionModelSelection.reset(sessionID)
+  }
   export const Info = InfoSchema
   export const PersistedInfo = PersistedInfoSchema
   export const StatusInfo = StatusInfoSchema
@@ -803,6 +814,19 @@ export namespace Session {
         for (const [index, part] of parts.entries()) prepared[jobs[index].messageIndex].parts.push(part)
         session = await Storage.transaction(async () => {
           const created = await create(createInput)
+          const modelSelection = forkPoint
+            ? ModelSelection.legacy(
+                undefined,
+                selected.flatMap((message) =>
+                  message.info.role === "user" && message.info.isRoot ? [message.info] : [],
+                ),
+              )
+            : source.modelSelection
+          if (modelSelection)
+            await update(created.id, (draft) => {
+              draft.modelSelection = { ...modelSelection, lastUsed: undefined, pendingReason: "next-request" }
+              draft.modelOverride = modelSelection.selected.model
+            })
           for (const message of prepared) {
             await updateMessage(message.info)
             for (const part of message.parts) await updatePart(part)

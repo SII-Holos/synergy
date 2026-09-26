@@ -20,6 +20,17 @@ const ctx = {
   ask: async () => {},
 }
 
+const modelConfig = {
+  provider: {
+    "test-provider": {
+      npm: "@ai-sdk/openai-compatible",
+      env: [],
+      options: { apiKey: "fixture" },
+      models: { "test-model": { name: "Test model" } },
+    },
+  },
+}
+
 const originalDeliver = SessionManager.deliver
 
 function input(overrides: Record<string, unknown>) {
@@ -47,7 +58,7 @@ describe("tool.session_control", () => {
         delivered.push(input)
       })
 
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir({ git: true, config: modelConfig })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
@@ -71,6 +82,10 @@ describe("tool.session_control", () => {
           expect(session.title).toBe("Managed session")
           expect(session.agentOverride).toBe("synergy")
           expect(session.modelOverride).toEqual({ providerID: "test-provider", modelID: "test-model" })
+          expect(session.modelSelection?.selected).toEqual({
+            model: { providerID: "test-provider", modelID: "test-model" },
+            thinking: { mode: "provider-default" },
+          })
           expect(session.interaction).toEqual(SessionInteraction.unattended("session_control"))
           expect(session.controlProfile).toBe("autonomous")
           expect(delivered).toHaveLength(1)
@@ -175,7 +190,7 @@ describe("tool.session_control", () => {
 
   test("sets agent, model, and mode overrides used by later user messages", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir({ git: true, config: modelConfig })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
@@ -255,7 +270,7 @@ describe("tool.session_control", () => {
 
   test("set_model updates and returns session summary with scopeID", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir({ git: true, config: modelConfig })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {

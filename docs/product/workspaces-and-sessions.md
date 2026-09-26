@@ -134,6 +134,8 @@ See [Browser workspace](browser.md).
 
 ## Invariants
 
+Model and thinking choices can be changed while a session runs. The current request completes with its original choice; the next eligible request uses the saved choice. The toolbar indicates pending changes and offers retry after a failed save. Default uses the provider default; Off appears only when supported. Switching back to a model restores its saved level within that session. Anthropic transitions that would change thinking mode or model inside a tool-use turn wait until a new turn.
+
 - The server owns runtime state; clients select context for each operation.
 - Scope is explicit and uses the selected directory without upward project discovery.
 - Managed worktree deletion never removes a checkout while a session is executing in it.
