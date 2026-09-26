@@ -48,13 +48,20 @@ export async function checkInstalledComposition(archiveDirectory: string) {
       run([process.execPath, path.join(directory, "node_modules/.bin/synergy"), ...args])
     const list = async () =>
       JSON.parse(await cli("list", "--json")) as Array<{ id: string; explicit: boolean; requiredBy: string[] }>
+    const nativeInput = () =>
+      run([process.execPath, "owned-input.ts"], {
+        SYNERGY_CONFIG_CONTENT: JSON.stringify({
+          execution: { agentWorkerMinIdle: 0 },
+          pluginMarketplace: { enabled: false },
+        }),
+      })
     assert.match(await cli("--help"), /send/)
     assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
     await Bun.write(
       path.join(directory, "owned-input.ts"),
       await Bun.file(new URL("../test/package/fixture/owned-input.ts", import.meta.url)).text(),
     )
-    console.log((await run([process.execPath, "owned-input.ts"])).trim())
+    console.log((await nativeInput()).trim())
     await cli("install", "mcp", "lsp", "server", "--trust-host-code")
     for (const id of ["mcp", "lsp", "server"]) assert.ok((await list()).some((pkg) => pkg.id === id && pkg.explicit))
     console.log("PASS installed CLI: core → independent MCP/LSP/HTTP")
@@ -142,7 +149,7 @@ export function companySettings() { return { id: "company-settings", version: "1
         `Web preset missing ${id}`,
       )
     console.log((await run(["node", "managed-runtime.mjs"], { SYNERGY_FIXTURE_WEB: "1" })).trim())
-    console.log((await run([process.execPath, "owned-input.ts"])).trim())
+    console.log((await nativeInput()).trim())
     await cli("remove", "web")
     assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
     console.log("PASS installed CLI: Web/full installation and return to core preserve the Home")
