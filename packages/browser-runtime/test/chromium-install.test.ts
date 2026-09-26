@@ -9,7 +9,7 @@ import {
   chromiumReleaseTarget,
   type ChromiumReleaseArch,
   type ChromiumReleasePlatform,
-} from "@ericsanchezok/synergy-browser/chromium-release"
+} from "@ericsanchezok/synergy-browser-core/chromium-release"
 import { BrowserInstall } from "../src/install"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"

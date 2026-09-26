@@ -1,7 +1,7 @@
 import { DataStorageCommand } from "./storage"
 import type { CommandModule } from "yargs"
 import { DataSnapshotsCommand } from "./snapshots"
-import { cmd } from "../cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { DataPathCommand } from "./path"
 import { DataSetHomeCommand } from "./set-home"
 

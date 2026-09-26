@@ -3,7 +3,7 @@ import * as prompts from "@clack/prompts"
 import yargs from "yargs"
 import { SecretVault } from "@ericsanchezok/synergy-harness/secrets/vault"
 import { SecretsCommand } from "../../src/cli/cmd/secrets"
-import { UI } from "../../src/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

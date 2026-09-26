@@ -218,7 +218,7 @@ test("selected command failures preserve error messages, exit status, and listen
   runtime.run(async () => {
     const { runCli } = await import("../../src/main")
     const { Provider } = await import("@ericsanchezok/synergy-harness/provider/provider")
-    const { UI } = await import("../../src/util/ui")
+    const { UI } = await import("@ericsanchezok/synergy-util/terminal")
     const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")
     const errors: string[] = []
     const originalError = UI.error

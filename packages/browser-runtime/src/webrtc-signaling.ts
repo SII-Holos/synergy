@@ -3,7 +3,7 @@ import {
   BROWSER_PROTOCOL_VERSION,
   BrowserWebRTCMessageSchema,
   type BrowserWebRTCSignal,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { ObservabilityBrowserTelemetry } from "@ericsanchezok/synergy-harness/observability/browser-metrics"
 import { BrowserOwner } from "./owner.js"
 

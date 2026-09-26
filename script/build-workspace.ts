@@ -22,7 +22,7 @@ async function filesIn(directory: string): Promise<string[]> {
 export async function buildWorkspace(directory: string, options: { output?: string } = {}) {
   const root = path.resolve(repository, directory)
   const source = path.join(root, "src")
-  const output = path.join(root, options.output ?? "dist")
+  const output = path.resolve(root, options.output ?? "dist")
   const files = await filesIn(source)
   const known = new Set(files)
   const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"))
@@ -93,6 +93,12 @@ export async function buildWorkspace(directory: string, options: { output?: stri
           ts.isNewExpression(parent) && parent.expression.getText(syntax) === "URL" && parent.arguments?.[0] === node
         if (module || resource) {
           const base = path.resolve(path.dirname(file), node.text)
+          if (base === path.join(root, "package.json")) {
+            let value = path.relative(path.dirname(destination), base).split(path.sep).join("/")
+            if (!value.startsWith(".")) value = `./${value}`
+            replacements.push({ start: node.getStart(syntax) + 1, end: node.getEnd() - 1, value })
+            return
+          }
           const target = [
             base,
             base.replace(/\.js$/, ".ts"),
@@ -101,7 +107,11 @@ export async function buildWorkspace(directory: string, options: { output?: stri
             path.join(base, "index.ts"),
           ].find((candidate) => known.has(candidate))
           if (target && /\.(ts|tsx|mts)$/.test(target)) {
-            let value = path.relative(path.dirname(file), target).replace(/\.(ts|tsx|mts)$/, ".js")
+            let value = path
+              .relative(path.dirname(file), target)
+              .split(path.sep)
+              .join("/")
+              .replace(/\.(ts|tsx|mts)$/, ".js")
             if (!value.startsWith(".")) value = `./${value}`
             replacements.push({ start: node.getStart(syntax) + 1, end: node.getEnd() - 1, value })
           }
@@ -131,10 +141,13 @@ export async function buildWorkspace(directory: string, options: { output?: stri
       )
     await Bun.write(destination, compiled.outputText)
   }
-  if (manifest.name === "@ericsanchezok/synergy-runtime-local") {
-    const { buildPty } = await import("../packages/runtime-local/script/build-pty")
-    const library = await buildPty()
-    await copyFile(library, path.join(output, path.basename(library)))
+  if (manifest.name === "@ericsanchezok/synergy-library") {
+    const { buildEmbeddingModule } = await import("../packages/library/script/embedding-runtime-assets")
+    await buildEmbeddingModule(output)
+  }
+  if (manifest.name === "@ericsanchezok/synergy-connections") {
+    const { stageSvgRasterRuntimeAssets } = await import("../packages/connections/script/svg-raster-runtime-assets")
+    await stageSvgRasterRuntimeAssets({ runtimeDir: output })
   }
   return { name: manifest.name as string, files: files.length, output }
 }

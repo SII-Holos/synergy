@@ -6,7 +6,7 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutSchema } from "@ericsanchezok/synergy-harness/session/rollout/schema"
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk"
-import { RuntimeEvent, type RuntimeClient } from "@ericsanchezok/synergy-runtime-local/client"
+import { RuntimeEvent, type RuntimeClient } from "@ericsanchezok/synergy-local-runtime/client"
 
 function result<T>(value: { data: T; response: Response }) {
   return { data: value.data, error: undefined, response: { status: value.response.status } }

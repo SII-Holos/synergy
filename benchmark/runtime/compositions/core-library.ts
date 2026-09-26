@@ -3,7 +3,7 @@ import {
   createLocalHost,
   createLocalStorage,
   registerLocalRuntime,
-} from "@ericsanchezok/synergy-runtime-local"
+} from "@ericsanchezok/synergy-local-runtime"
 import { registerLibrary, disposeLibrary } from "@ericsanchezok/synergy-library/register"
 import { registerAgentWorkerEntrypoint } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
 import type { Composition } from "../composition"

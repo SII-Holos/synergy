@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import type { WSContext } from "hono/ws"
 import { upgradeWebSocket } from "hono/bun"
 import { describeRoute } from "hono-openapi"
-import { COMPUTER_MAX_MESSAGE_BYTES } from "@ericsanchezok/synergy-computer"
+import { COMPUTER_MAX_MESSAGE_BYTES } from "@ericsanchezok/synergy-computer-protocol"
 import { computerBroker, type ComputerBroker } from "../broker"
 
 export function createComputerRoute(broker: ComputerBroker = computerBroker()) {

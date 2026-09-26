@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-`MacOSPolicy.compileProfile` (`packages/runtime-local/src/sandbox/macos-policy.ts`) emitted the parameterized writable-root allow through `canonicalize()`, but its own `canonicalize()` fell back to the raw input whenever `realpathSync` threw — the normal case for a protected subpath that does not exist yet, since denying `<workspace>/.git/hooks` matters precisely when nothing has created it. On a firmlinked host the two rules then used different spellings: the allow was bound to the kernel-canonical `/private/var/folders/...` while the deny was emitted as the `/var/folders/...` alias the caller supplied. A deny scoped to a path the kernel never resolves does not intersect the allow, so the deeper write allow won.
+`MacOSPolicy.compileProfile` (`packages/local-runtime/src/sandbox/macos-policy.ts`) emitted the parameterized writable-root allow through `canonicalize()`, but its own `canonicalize()` fell back to the raw input whenever `realpathSync` threw — the normal case for a protected subpath that does not exist yet, since denying `<workspace>/.git/hooks` matters precisely when nothing has created it. On a firmlinked host the two rules then used different spellings: the allow was bound to the kernel-canonical `/private/var/folders/...` while the deny was emitted as the `/var/folders/...` alias the caller supplied. A deny scoped to a path the kernel never resolves does not intersect the allow, so the deeper write allow won.
 
 Observed before the fix, on a workspace addressed through the `/var/folders/...` alias with `.git/hooks` absent at prepare time:
 

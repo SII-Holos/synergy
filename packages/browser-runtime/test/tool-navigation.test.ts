@@ -3,7 +3,7 @@ import {
   BrowserProtocolError,
   type BrowserBackendCommand,
   type BrowserBackendResult,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserCommandService } from "../src/command-service"
 import type { BrowserOwner } from "../src/owner"
 import type { BrowserPageBackend } from "../src/page"

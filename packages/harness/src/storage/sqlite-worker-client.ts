@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import { existsSync } from "node:fs"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash } from "node:crypto"
@@ -57,7 +58,9 @@ export class SqliteWorkerClient {
   constructor(readonly role: "reader" | "writer") {
     const entry = fileURLToPath(new URL("./sqlite-worker.ts", import.meta.url))
     this.worker = Bun.spawn({
-      cmd: existsSync(entry) ? [process.execPath, "run", entry] : [process.execPath, "__storage-worker-runner"],
+      cmd:
+        installedWorkerCommand(process.env, "__storage-worker-runner") ??
+        (existsSync(entry) ? [process.execPath, "run", entry] : [process.execPath, "__storage-worker-runner"]),
       env: { ...process.env, SYNERGY_STORAGE_PARENT_PID: String(process.pid) },
       // Group cancellation must leave storage alive until its owner drains terminal writes.
       detached: process.platform !== "win32",

@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test"
-import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser-core"
 import { defaultDesktopSkinState, desktopThemeSnapshot, type DesktopThemeSnapshot } from "../src/theme"
 
 const started = deferred<void>()

@@ -11,7 +11,7 @@ Clients, agents, automation, and integrations all use this model.
 
 ## Runtime and Clients
 
-The server is the product runtime. It owns sessions, providers, agents, tools, configuration, permissions, knowledge, automation, integrations, and state events. It persists across client connections and is not permanently attached to one project directory.
+The server is the preset runtime. It owns sessions, providers, agents, tools, configuration, permissions, knowledge, automation, integrations, and state events. It persists across client connections and is not permanently attached to one project directory.
 
 Web and Desktop are interactive clients. The CLI starts, stops, discovers, and attaches to runtimes, opens Web, and submits one-off `send` work. Channels and Agenda create unattended work through the same session APIs. Closing a client does not redefine the server's current project or erase work.
 

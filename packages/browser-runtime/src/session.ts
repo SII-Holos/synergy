@@ -1,6 +1,6 @@
 import { BrowserOwner } from "./owner.js"
 import { BrowserStorage } from "./storage.js"
-import type { BrowserHostDownloadEntry } from "@ericsanchezok/synergy-browser"
+import type { BrowserHostDownloadEntry } from "@ericsanchezok/synergy-browser-core"
 import {
   PlaywrightBrowserPage,
   type BrowserDialogRequest,
@@ -21,7 +21,7 @@ import {
   type BrowserBackendCommand,
   type BrowserCheckpoint,
   type BrowserProtocolErrorData,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserControl } from "./control.js"
 import { BrowserEvent } from "./event.js"
 import { BrowserPolicy } from "./policy.js"

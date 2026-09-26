@@ -8,7 +8,7 @@ import {
   BrowserCheckpointSchema,
   BrowserPageIdSchema,
   BrowserProtocolErrorSchema,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 
 const StoredAnnotationSchema = z
   .object({

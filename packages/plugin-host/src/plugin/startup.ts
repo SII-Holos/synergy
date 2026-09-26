@@ -7,11 +7,13 @@ import { Plugin } from "."
  * out of scope/runtime.ts into the plugin domain. activate runs before any
  * starting listener (channels rely on hearing every scope start); init runs
  * right after the listeners, before session recovery. Registered through
- * src/product-registration.ts.
+ * src/registration.ts.
  */
 async function recoverInstallations() {
   const { PluginInstallationRecovery } = await import("./installation-recovery")
   await PluginInstallationRecovery.recover()
+  const { recoverInstalledPlugins } = await import("../installation/plugin-activation")
+  await recoverInstalledPlugins()
 }
 
 export function registerPluginStartup() {

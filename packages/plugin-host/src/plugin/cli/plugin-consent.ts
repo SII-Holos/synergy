@@ -1,7 +1,7 @@
 import type { ApprovalApproveBody, ApprovalReview } from "../consent/approval-service"
 import type { PluginPermissionDiff } from "../consent/schema"
 import type { PluginStatus } from "../status"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 
 function formatAccessItem(item: PluginPermissionDiff["access"][number]): string {
   return `${item.title}${item.description ? ` — ${UI.Style.TEXT_DIM}${item.description}${UI.Style.TEXT_NORMAL}` : ""}`

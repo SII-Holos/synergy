@@ -229,7 +229,7 @@ export namespace WorkflowSessionService {
   ): Promise<Session.Info> {
     const contribution = WorkflowPromptRegistry.get("lattice")
     if (!contribution?.enable) {
-      throw new Error("Lattice workflow is not registered (load src/product-registration)")
+      throw new Error("Lattice workflow is not registered (load src/registration)")
     }
     return contribution.enable(sessionID, {
       mode: input.mode,

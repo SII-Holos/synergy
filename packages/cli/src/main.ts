@@ -1,5 +1,6 @@
+import { logo } from "./branding"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { createLocalHost, registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import { createLocalHost, registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import {
   ObservabilityMetrics,
   ObservabilityStore,
@@ -9,13 +10,14 @@ import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { ModelsCatalog } from "@ericsanchezok/synergy-harness/provider/models"
 import { ProviderCatalog } from "@ericsanchezok/synergy-harness/provider/catalog"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { coreCommands, type CommandEntry } from "./cli/commands"
-import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import type { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import type { CommandModule } from "yargs"
 import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { UI } from "./util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { EOL } from "os"
@@ -46,6 +48,7 @@ function printUnhandledFailure(kind: string, error: unknown) {
 }
 
 export interface CliOptions {
+  register?(): void
   runtimeFactory: typeof openLocalRuntime
   commands?: CommandEntry[]
   dataCommands?(): Promise<CommandModule[]>
@@ -60,7 +63,8 @@ export async function runCli(options: CliOptions): Promise<void> {
   const context = RuntimeContext.create(host)
   try {
     await context.run(async () => {
-      registerLocalRuntime()
+      if (options.register) options.register()
+      else registerLocalRuntime({ workers: false })
       try {
         const run = () =>
           runCliImplementation({
@@ -110,6 +114,15 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
     | Awaited<ReturnType<typeof import("@ericsanchezok/synergy-harness/storage/maintenance").StorageMaintenance.open>>
     | undefined
   const builtinCommands = [...coreCommands(options.runtimeFactory, options.dataCommands), ...(options.commands ?? [])]
+  const commandNames = new Set<string>()
+  for (const entry of builtinCommands) {
+    for (const name of (Array.isArray(entry.command) ? entry.command : [entry.command]).map(
+      (command) => command.split(" ")[0],
+    )) {
+      if (commandNames.has(name)) throw new Error(`CLI namespace ${name} conflicts with an existing command`)
+      commandNames.add(name)
+    }
+  }
   const onRejection = (error: unknown) => {
     process.exitCode = 1
     Log.Default.error("rejection", { error: error instanceof Error ? error.message : error })
@@ -151,7 +164,8 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
         const inspect = selectedCommand === "migration" && (argv.includes("status") || argv.includes("--dry-run"))
         storage = await StorageMaintenance.open({ readonly: inspect, migrate: selectedCommand !== "migration" })
       }
-      if (!["send", "server"].includes(selectedCommand ?? "server")) await Global.initialize({ cache: false })
+      if (!["send", "server"].includes(selectedCommand ?? "server"))
+        await Global.initialize({ cache: false, configSchema: JSON.stringify(Config.jsonSchema(), null, 2) + "\n" })
       let configLogLevel: string | undefined
       try {
         const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")
@@ -183,7 +197,7 @@ async function runCliImplementation(options: CliOptions): Promise<void> {
         args: process.argv.slice(2),
       })
     })
-    .usage("\n" + UI.logo())
+    .usage("\n" + logo())
     .completion("completion", "generate shell completion script")
 
   const informational =

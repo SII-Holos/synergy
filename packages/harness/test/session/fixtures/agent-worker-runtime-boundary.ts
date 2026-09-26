@@ -68,8 +68,8 @@ const forbidden = inputs.filter(
     input === "packages/harness/src/provider/models.ts" ||
     input === "packages/harness/src/provider/models-macro.ts" ||
     input.startsWith("packages/plugin-host/") ||
-    input.startsWith("packages/runtime-local/") ||
-    input.startsWith("packages/browser/"),
+    input.startsWith("packages/local-runtime/") ||
+    input.startsWith("packages/browser-core/"),
 )
 forbidden.push(...[...runnerGraph.forbiddenExternalImports].map((specifier) => `external:${specifier}`))
 

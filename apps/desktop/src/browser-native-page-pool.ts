@@ -8,7 +8,7 @@ import {
   type BrowserBackendResult,
   type BrowserHostPageEvent,
   type BrowserPage,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserHostDiagnostics } from "./browser-host-diagnostics.js"
 import { BrowserWebContentsControl } from "./browser-webcontents-control.js"
 import { browserProfilePartition } from "./browser-profile.js"

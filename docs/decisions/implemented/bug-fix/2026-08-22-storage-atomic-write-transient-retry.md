@@ -8,14 +8,14 @@ On Windows, session-state persistence intermittently failed with `EPERM: operati
 
 Every persisted session object (info, messages, parts, dag, todo, inbox, agenda) funnels through `Storage.write`/`Storage.update` → `writeJsonAtomic` in `packages/harness/src/storage/storage.ts`, which performed a single unguarded `Bun.write` + `fs.rename`. Node's `rename` maps to `MoveFileEx` on Windows: when another process holds a handle on the source or target without `FILE_SHARE_DELETE` — antivirus scans, OneDrive sync, or Synergy's own cross-process readers — the call fails with `EPERM`/`EACCES`. Such sharing violations typically clear within milliseconds, but one occurrence escalated fatally: the write error propagated up the invoke loop, was persisted as a terminal assistant-message error, and `selectResultMessage` rethrew it as `SessionTerminalError`.
 
-The repository already classified these codes as transient in `packages/harness/src/util/io-retry.ts` (`EPERM`/`EACCES`/`EBUSY`, "Windows sharing violations, antivirus scans, OneDrive sync"), but only the read side used it; the write path had no retry.
+The repository already classified these codes as transient in `packages/util/src/io-retry.ts` (`EPERM`/`EACCES`/`EBUSY`, "Windows sharing violations, antivirus scans, OneDrive sync"), but only the read side used it; the write path had no retry.
 
 ## Decision
 
 `writeJsonAtomic` retries the whole write+rename sequence on transient I/O errors:
 
 - Up to 4 attempts with exponential backoff (50 ms base, 200 ms cap), reusing the same temp-file name so a retry overwrites the previous partial temp write.
-- Retry classification reuses `isRetryableIOError` from `@/util/io-retry` — only `EPERM`/`EACCES`/`EBUSY` retry; permanent errors (`ENOENT`, `ENOSPC`, genuine permission failures) propagate on the first occurrence.
+- Retry classification reuses `isRetryableIOError` from `@ericsanchezok/synergy-util/io-retry` — only `EPERM`/`EACCES`/`EBUSY` retry; permanent errors (`ENOENT`, `ENOSPC`, genuine permission failures) propagate on the first occurrence.
 - On exhaustion or non-retryable failure the original error propagates unchanged after the temp file is removed; the cleanup itself retries transient unlink errors with the same backoff (the same handle that failed the rename can block the unlink), so no `.tmp-*` residue is left behind on the failure path.
 
 The diagnostics pending-session scan (`packages/harness/src/observability/diagnostics.ts`), a cross-process reader of the same `info.json` files, now reads through `readFileWithRetry` so its own reads survive a concurrent atomic rename on Windows instead of silently dropping sessions from the dashboard.

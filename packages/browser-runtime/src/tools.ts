@@ -23,7 +23,7 @@ import { BrowserDialogTool } from "./tools/browser-dialog"
 import { BrowserUploadTool } from "./tools/browser-upload"
 
 /**
- * Browser domain tool registration. Loaded through src/product-registration.ts.
+ * Browser domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

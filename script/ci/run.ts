@@ -138,7 +138,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         test(
           "linux-sandbox",
           ["test/sandbox/containment-baseline.test.ts", "test/sandbox/linux-readable-roots.test.ts"],
-          "packages/runtime-local",
+          "packages/local-runtime",
           { SYNERGY_TEST_LINUX_SANDBOX_E2E: "1" },
         ),
       ]
@@ -151,7 +151,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
       ]
     case "windows":
       return [
-        ...["packages/harness", "packages/runtime-local", "apps/desktop"].map((cwd) =>
+        ...["packages/harness", "packages/local-runtime", "apps/desktop"].map((cwd) =>
           bun(`windows-types:${cwd}`, ["run", "typecheck"], cwd),
         ),
         {
@@ -161,7 +161,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             "test",
             "--locked",
             "--manifest-path",
-            "packages/runtime-local/src/sandbox/helper/Cargo.toml",
+            "packages/local-runtime/src/sandbox/helper/Cargo.toml",
             "--",
             "--skip",
             "install_wfp_filters_returns_zero_on_non_windows",
@@ -176,10 +176,10 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             command,
             "--locked",
             "--manifest-path",
-            "packages/runtime-local/src/sandbox/helper/Cargo.toml",
+            "packages/local-runtime/src/sandbox/helper/Cargo.toml",
           ],
         })),
-        bun("native-pty", ["packages/runtime-local/script/build-pty.ts"]),
+        bun("native-pty", ["packages/local-runtime/script/build-pty.ts"]),
         bun("native-workspace", ["script/native-workspace-coverage.ts"]),
         test(
           "windows-harness",
@@ -192,7 +192,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
       ]
     case "native-workspace":
       return [
-        bun("native-pty", ["packages/runtime-local/script/build-pty.ts"]),
+        bun("native-pty", ["packages/local-runtime/script/build-pty.ts"]),
         bun("native-workspace", ["script/native-workspace-coverage.ts"]),
       ]
     case "benchmark-pure":
@@ -280,25 +280,26 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
         }),
         test("core-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
+          SYNERGY_TEST_ARTIFACT_PROFILE: "core",
           SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/cli/dist/synergy-linux-x64/bin/synergy"),
         }),
-        bun("product-build", ["packages/product-runtime/script/build.ts", "--single", "--skip-install"], undefined, {
+        bun("product-build", ["packages/presets/script/build.ts", "--single", "--skip-install"], undefined, {
           SYNERGY_BUILD_TARGETS: "linux-x64",
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
         }),
         test("product-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-          SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/product-runtime/dist/synergy-linux-x64/bin/synergy"),
+          SYNERGY_TEST_ARTIFACT_PROFILE: "full",
+          SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/presets/dist/synergy-linux-x64/bin/synergy"),
         }),
         bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),
         bun("core-install", ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")]),
-        bun("product-pack", [
-          "script/pack-workspace.ts",
-          "packages/product-runtime",
-          path.join(root, OUTPUT, "runtime-packages"),
-        ]),
         bun("product-composition", [
           "script/runtime-composition-check.ts",
-          path.join(root, OUTPUT, "runtime-packages"),
+          path.join(root, "packages/presets/dist/modules-packages"),
+        ]),
+        bun("installation-composition", [
+          "script/installation-composition-check.ts",
+          path.join(root, "packages/presets/dist/modules-packages"),
         ]),
       ]
   }

@@ -99,14 +99,14 @@ export function DevicePushBlock() {
   }
 
   createEffect(() => {
-    if (capability.kind === "supported") {
+    if (globalSDK.capabilities.has("workbench") && capability.kind === "supported") {
       void refreshDevices()
       void refreshLocal()
     }
   })
 
   async function handleEnable() {
-    if (capability.kind !== "supported" || busy()) return
+    if (!globalSDK.capabilities.has("workbench") || capability.kind !== "supported" || busy()) return
     setBusy(true)
     try {
       await enableDevicePush(
@@ -196,76 +196,78 @@ export function DevicePushBlock() {
   }
 
   return (
-    <div class="settings-device-push">
-      <SettingRow
-        title={_(copy.title)}
-        description={_(copy.description)}
-        stateLabel={status()}
-        trailing={
-          <Show when={capability.kind === "supported"} fallback={<span />}>
-            <Show
-              when={localEnabled()}
-              fallback={
+    <Show when={globalSDK.capabilities.has("workbench")}>
+      <div class="settings-device-push">
+        <SettingRow
+          title={_(copy.title)}
+          description={_(copy.description)}
+          stateLabel={status()}
+          trailing={
+            <Show when={capability.kind === "supported"} fallback={<span />}>
+              <Show
+                when={localEnabled()}
+                fallback={
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="small"
+                    disabled={busy() || permissionDenied()}
+                    onClick={() => void handleEnable()}
+                  >
+                    {_(copy.enable)}
+                  </Button>
+                }
+              >
                 <Button
                   type="button"
                   variant="secondary"
                   size="small"
-                  disabled={busy() || permissionDenied()}
-                  onClick={() => void handleEnable()}
-                >
-                  {_(copy.enable)}
-                </Button>
-              }
-            >
-              <Button
-                type="button"
-                variant="secondary"
-                size="small"
-                disabled={busy()}
-                onClick={() => void handleTest()}
-              >
-                {_(copy.test)}
-              </Button>
-            </Show>
-          </Show>
-        }
-      />
-      <Show when={devices().length > 0}>
-        <For each={devices()}>
-          {(device) => (
-            <div class="settings-device-push-device">
-              <span class="settings-row-title">{device.deviceLabel ?? device.endpoint}</span>
-              <div class="settings-device-push-controls">
-                <For each={CATEGORY_KEYS}>
-                  {(key) => (
-                    <div class="settings-device-push-toggle">
-                      <span>{categoryLabels()[key]}</span>
-                      <Switch
-                        checked={device.categories[key]}
-                        hideLabel
-                        disabled={busy()}
-                        onChange={(value) => toggleCategory(device, key, value)}
-                      >
-                        {categoryLabels()[key]}
-                      </Switch>
-                    </div>
-                  )}
-                </For>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="small"
                   disabled={busy()}
-                  onClick={() => void handleRemove(device)}
+                  onClick={() => void handleTest()}
                 >
-                  {_(copy.remove)}
+                  {_(copy.test)}
                 </Button>
+              </Show>
+            </Show>
+          }
+        />
+        <Show when={devices().length > 0}>
+          <For each={devices()}>
+            {(device) => (
+              <div class="settings-device-push-device">
+                <span class="settings-row-title">{device.deviceLabel ?? device.endpoint}</span>
+                <div class="settings-device-push-controls">
+                  <For each={CATEGORY_KEYS}>
+                    {(key) => (
+                      <div class="settings-device-push-toggle">
+                        <span>{categoryLabels()[key]}</span>
+                        <Switch
+                          checked={device.categories[key]}
+                          hideLabel
+                          disabled={busy()}
+                          onChange={(value) => toggleCategory(device, key, value)}
+                        >
+                          {categoryLabels()[key]}
+                        </Switch>
+                      </div>
+                    )}
+                  </For>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="small"
+                    disabled={busy()}
+                    onClick={() => void handleRemove(device)}
+                  >
+                    {_(copy.remove)}
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-        </For>
-      </Show>
-    </div>
+            )}
+          </For>
+        </Show>
+      </div>
+    </Show>
   )
 }
 

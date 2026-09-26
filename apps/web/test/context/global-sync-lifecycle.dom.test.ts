@@ -15,6 +15,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
   await Bun.write(
     stub,
     `
+    export const optionalRequests = []
     export const requests = []
     export const replays = []
     export const lists = []
@@ -33,8 +34,8 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.scopeID);inboxReady();return ok([])}},
       }
     }
-    export const useGlobalSDK = () => ({prepareScopeState(){},connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
-      config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
+    export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>false},prepareScopeState(){},connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+      config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>{optionalRequests.push("agenda");return ok([])}}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},
     }})
     export const LocaleConfigReconciler=()=>null
@@ -57,13 +58,13 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, replays, lists, emit, inboxRequests, inboxArrived } from ${JSON.stringify(stub)}
+    import { requests, replays, lists, emit, inboxRequests, inboxArrived, optionalRequests } from ${JSON.stringify(stub)}
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,requests,emit,replays,lists,inboxRequests,inboxArrived,api:()=>api,
+      return {started,dispose,requests,emit,replays,lists,inboxRequests,inboxArrived,optionalRequests,api:()=>api,
         seedInbox(key) {api.ensureScopeState(key)[1]("inbox","fixture-session",[{id:"pending"}])},
         complete(index,version) {const request=requests[index];request.resolve({data:{scopeID:request.key,provider:{all:[]},agent:[],config:{version}}})},
         waitComplete(state) {return new Promise(resolve=>createRoot(dispose=>createComputed(()=>{if(state[0].status==='complete'){dispose();resolve()}})))},
@@ -128,7 +129,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       setLatestContextMessage(key: string, sessionID: string, message: null, revision: number): void
       failure: unknown
       sessionStatus: Record<string, { type?: string; reason?: string; since?: number }>
-      scope: { loadSessions(key: string): Promise<void> }
+      scope: { loadSessions(key: string): Promise<void>; loadAgenda(key: string): Promise<void> }
     }
     const fixture = (await import(pathToFileURL(path.join(directory, "dist/fixture.js")).href)) as {
       mount(root: Element): {
@@ -136,6 +137,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         dispose(): void
         api(): API
         complete(index: number, version: string): void
+        optionalRequests: string[]
         requests: unknown[]
         emit(key: string, seq: number): void
         seedInbox(key: string): void
@@ -173,6 +175,8 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       const old = api.retainScopeState("shared")
       const next = api.retainScopeState("shared")
       expect(next.state).toBe(old.state)
+      await api.scope.loadAgenda("shared")
+      expect(h.optionalRequests).toEqual([])
       old.release()
       expect(api.peekScopeState("shared")).toBe(next.state)
       next.release()

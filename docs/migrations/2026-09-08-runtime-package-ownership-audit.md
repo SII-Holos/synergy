@@ -6,14 +6,14 @@
 
 ## 发现并修复的问题
 
-| 范围                | 实际问题与处理                                                                                                                                                                                                                                                    |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Browser 与 sandbox  | Browser Host 仍按旧 Desktop 路径查找源码；独立安装缺少源码时需使用 managed Host。Linux Cargo helper 路径及 Linux/Windows helper 的 home 解析已归回 Runtime Local，OS 权限边界仍按真实 OS home 处理。                                                              |
-| 文档、命令与命名    | 更新 CONTRIBUTING、开发文档、架构总览、CLI 指南、包指南、Skills 与本地 commands。CLI 的 `run.ts` 改为 `send.ts`，同步命令目录、测试、覆盖率豁免路径及迁移映射。SDK 示例移除不存在的目录与重复执行。                                                               |
-| 验证与发行接线      | 包验证、独立核心打包采用 SDK 只编译入口，避免并行类型检查期间清空生成源码。门禁依赖等待前置任务真正完成。包验证和发行共用完整 wrapper 装配；CI smoke 使用明确的隔离 home 与退出清理。                                                                             |
-| 编译后的 namespace  | 同名 namespace 的别名导入在 Bun bundle 内发生错误绑定：完整产品生命周期递归，模型 schema 与业务工作流委托也受影响。按职责区分 `ProductRuntimeHandle`、`ModelsCatalog`、`WorkflowSessionService`，更新全部消费者，并增加真实 bundle 回归与完整二进制 CI 执行验收。 |
-| Library 完成时序    | 经验编码仍有模型调用时，执行账本已经结算。完成贡献返回并等待完整异步工作，包括嵌套奖励计算；核心保持通用贡献接口，完整产品继续启用 Library。                                                                                                                      |
-| 普通 workspace 构建 | Turbo 依赖构建误触发跨平台二进制发行，导致本机缺少其它平台 sandbox 资产时测试失败。CLI/Product Runtime 的普通 `build` 编译 `dist/modules`，显式 `script/build.ts` 保留二进制发行职责。Web 重命名后的文件标题测试期望同步为新目录名。                              |
+| 范围                | 实际问题与处理                                                                                                                                                                                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser 与 sandbox  | Browser Host 仍按旧 Desktop 路径查找源码；独立安装缺少源码时需使用 managed Host。Linux Cargo helper 路径及 Linux/Windows helper 的 home 解析已归回 Local Runtime，OS 权限边界仍按真实 OS home 处理。                                                             |
+| 文档、命令与命名    | 更新 CONTRIBUTING、开发文档、架构总览、CLI 指南、包指南、Skills 与本地 commands。CLI 的 `run.ts` 改为 `send.ts`，同步命令目录、测试、覆盖率豁免路径及迁移映射。SDK 示例移除不存在的目录与重复执行。                                                              |
+| 验证与发行接线      | 包验证、独立核心打包采用 SDK 只编译入口，避免并行类型检查期间清空生成源码。门禁依赖等待前置任务真正完成。包验证和发行共用完整 wrapper 装配；CI smoke 使用明确的隔离 home 与退出清理。                                                                            |
+| 编译后的 namespace  | 同名 namespace 的别名导入在 Bun bundle 内发生错误绑定：完整产品生命周期递归，模型 schema 与业务工作流委托也受影响。按职责区分 `PresetRuntimeHandle`、`ModelsCatalog`、`WorkflowSessionService`，更新全部消费者，并增加真实 bundle 回归与完整二进制 CI 执行验收。 |
+| Library 完成时序    | 经验编码仍有模型调用时，执行账本已经结算。完成贡献返回并等待完整异步工作，包括嵌套奖励计算；核心保持通用贡献接口，完整产品继续启用 Library。                                                                                                                     |
+| 普通 workspace 构建 | Turbo 依赖构建误触发跨平台二进制发行，导致本机缺少其它平台 sandbox 资产时测试失败。CLI/Presets 的普通 `build` 编译 `dist/modules`，显式 `script/build.ts` 保留二进制发行职责。Web 重命名后的文件标题测试期望同步为新目录名。                                     |
 
 设计依据见[验证稳定性](../decisions/implemented/bug-fix/2026-09-08-validation-source-stability-and-gate-order.md)、[编译 namespace 所有权](../decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md)和[完成贡献结算](../decisions/archived/bug-fix/2026-09-08-await-completion-context-contributions.md)。核心生命周期、业务算法、宿主实现与界面职责见[架构总览](../architecture/README.md)。用户安装名称、`synergy` 命令、配置和数据路径不因源码目录迁移改名。
 
@@ -61,10 +61,10 @@
 | apps/desktop                   | 90.35%   | 79.97%     | 60/50         | 0              |
 | apps/web                       | 65.37%   | 78.30%     | 60/50         | 0              |
 | packages/agent-integrations    | 75.08%   | 78.00%     | 75/75         | 0              |
-| packages/browser               | 91.22%   | 94.33%     | 80/75         | 0              |
+| packages/browser-core          | 91.22%   | 94.33%     | 80/75         | 0              |
 | packages/browser-runtime       | 76.15%   | 81.67%     | 75/75         | 0              |
 | packages/cli                   | 75.95%   | 75.73%     | 75/75         | 0              |
-| packages/computer              | 100.00%  | 100.00%    | 80/75         | 0              |
+| packages/computer-protocol     | 100.00%  | 100.00%    | 80/75         | 0              |
 | packages/computer-runtime      | 92.37%   | 83.33%     | 75/75         | 0              |
 | packages/connections           | 75.96%   | 81.99%     | 75/75         | 0              |
 | packages/harness               | 80.16%   | 83.66%     | 75/75         | 0              |
@@ -74,8 +74,8 @@
 | packages/plugin                | 94.24%   | 89.95%     | 80/75         | 0              |
 | packages/plugin-host           | 79.54%   | 76.00%     | 75/75         | 0              |
 | packages/plugin-kit            | 81.11%   | 88.89%     | 80/75         | 0              |
-| packages/product-runtime       | 80.46%   | 80.67%     | 75/75         | 0              |
-| packages/runtime-local         | 77.18%   | 81.40%     | 75/75         | 0              |
+| packages/presets               | 80.46%   | 80.67%     | 75/75         | 0              |
+| packages/local-runtime         | 77.18%   | 81.40%     | 75/75         | 0              |
 | packages/sdk/js                | 87.28%   | 100.00%    | 80/75         | 0              |
 | packages/server                | 89.00%   | 75.00%     | 75/75         | 0              |
 | packages/synergy-link          | 80.27%   | 89.08%     | 80/75         | 0              |

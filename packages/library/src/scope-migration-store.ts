@@ -4,7 +4,7 @@ import { LibraryDB } from "./database"
 /**
  * S9d source inversion: scope migrations touch library experience data
  * through this registered store instead of importing the library product
- * domain. Loaded through src/product-registration.ts.
+ * domain. Loaded through src/registration.ts.
  */
 export function registerScopeLibraryStore() {
   ScopeLibraryStore.register({

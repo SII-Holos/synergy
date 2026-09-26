@@ -1,4 +1,4 @@
-import type { BrowserHostStatus } from "@ericsanchezok/synergy-browser"
+import type { BrowserHostStatus } from "@ericsanchezok/synergy-browser-core"
 import type { BrowserWebRTCStatus } from "./browser-webrtc"
 
 export function shouldShowBrowserPresentationSurface(input: {

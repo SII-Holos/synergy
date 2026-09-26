@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "../..")
-const owner = path.join(root, "packages/runtime-local")
+const owner = path.join(root, "packages/local-runtime")
 const fixtures = path.join(owner, "test/file/fixtures")
 const binding = path.join(owner, `.artifacts/watcher/linux-${process.arch}-glibc/watcher.node`)
 const report = process.platform === "linux" ? process.report?.getReport() : undefined

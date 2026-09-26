@@ -1,9 +1,31 @@
 import { expect, test } from "bun:test"
 import { Experiment } from "../../src/config/experiment"
 import { Config } from "../../src/config/config"
+import { RuntimeContext } from "../../src/lifecycle/context"
+import { ConfigExtensions } from "../../src/config/extensions"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+test("sealed core experiments apply without enabling absent optional mechanisms", () => {
+  const context = RuntimeContext.create(runtime.host)
+  try {
+    context.run(() => {
+      ConfigExtensions.completeRegistration()
+      ConfigExtensions.lock()
+      const live = { model: "test/core" }
+      const snapshot = Experiment.capture(live)
+      Experiment.provide(snapshot, () => {
+        expect(Experiment.apply(live).model).toBe("test/core")
+        expect(Object.keys(Experiment.apply(live))).not.toContain("lspWriteDiagnostics")
+      })
+      expect(Experiment.applyRuntime(live, { lsp: undefined, formatter: undefined }).model).toBe("test/core")
+      expect(Experiment.Overrides.safeParse({ lspWriteDiagnostics: true }).success).toBe(false)
+    })
+  } finally {
+    context.dispose()
+  }
+})
 
 test("concurrent task policies remain immutable while security and process resources stay live", () =>
   runtime.run(async () => {

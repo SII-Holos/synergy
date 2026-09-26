@@ -1,0 +1,55 @@
+{
+  "name": "@ericsanchezok/synergy-acp",
+  "version": "1.1.26",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "exports": {
+    "./cli/acp": "./src/cli/acp.ts",
+    "./component": "./src/component.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/acp",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "0.5.1",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-mcp": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "ai": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "acp",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "acp",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "server": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-server": "1.1.26"
+    }
+  }
+}

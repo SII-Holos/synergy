@@ -1,12 +1,12 @@
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
-import { Server } from "@ericsanchezok/synergy-server/server/server"
-import { isServerReachable } from "@ericsanchezok/synergy-cli/cli/network"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
+import { DEFAULT_SERVER_URL } from "@ericsanchezok/synergy-harness/util/server-defaults"
+import { isServerReachable } from "@ericsanchezok/synergy-local-runtime/cli/network"
 
 export const attachOption = {
   attach: {
     type: "string" as const,
     describe: "URL of a running synergy server",
-    default: Server.DEFAULT_URL,
+    default: DEFAULT_SERVER_URL,
   },
 }
 

@@ -10,3 +10,13 @@ This published package owns dependency-light primitives shared across runtime, S
 - Infer types from Zod schemas, preserve structured errors, and test edge cases at the utility boundary. Avoid environment or filesystem assumptions in portable helpers.
 
 Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer tests, and root `bun run package:check` plus `bun run quality:quick`.
+
+`terminal` owns explicit Bun terminal output primitives; product branding stays in CLI. `cli-command` supplies yargs definition typing without loading the CLI parser.
+
+`atomic-file` and `io-retry` own durable file promotion and bounded transient filesystem retries. Installation bootstrap uses these without loading Harness. Keep shared directory synchronization and cross-process installation locks consistent with persisted-state recovery.
+
+`process-group` owns process-group anchoring, cancellation and bounded Windows taskkill. Shell execution and pre-bootstrap package installation use the same primitive; never replace whole-tree cleanup with killing only the direct child.
+
+`installed-launcher` validates generation pins and builds subprocess argument arrays from explicitly supplied environment metadata. It performs no discovery, import or shell evaluation.
+
+`native-assets` resolves platform resources from an explicit owning module. Linux ABI selection distinguishes musl and glibc; native resource packages remain separate from portable JavaScript.

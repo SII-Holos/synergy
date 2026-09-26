@@ -1,11 +1,11 @@
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import * as prompts from "@clack/prompts"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { performHolosLogin } from "../login"
 import { HolosAuth } from "../auth"
 import { HolosProfile } from "../profile"
 import { attachOption, ensureServer, fetchHolosApi } from "./holos-server"
-import { Server } from "@ericsanchezok/synergy-server/server/server"
+import { DEFAULT_SERVER_URL } from "@ericsanchezok/synergy-harness/util/server-defaults"
 
 const statusOrder = ["connected", "connecting", "disconnected", "disabled", "failed", "unknown"] as const
 
@@ -66,7 +66,7 @@ async function reconnectHolosIfServerRunning(
 async function finishHolosLogin(agentId: string) {
   prompts.log.success(`Logged in as ${agentId}`)
 
-  const connection = await reconnectHolosIfServerRunning(Server.DEFAULT_URL)
+  const connection = await reconnectHolosIfServerRunning(DEFAULT_SERVER_URL)
   if (connection.kind === "connected") {
     prompts.log.success("Holos connected to the running server")
   } else if (connection.kind === "failed") {

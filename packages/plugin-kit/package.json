@@ -41,6 +41,11 @@
       "bun": "./src/testing.ts",
       "types": "./src/testing.ts",
       "import": "./dist/testing.js"
+    },
+    "./component": {
+      "bun": "./src/component.ts",
+      "types": "./src/component.ts",
+      "import": "./dist/component.js"
     }
   },
   "files": [
@@ -73,5 +78,20 @@
     "solid-js": "catalog:",
     "typescript": "catalog:",
     "zod": "catalog:"
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "plugin-kit",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "pluginKit",
+    "requires": {
+      "plugin-host": "1.1.26"
+    }
   }
 }

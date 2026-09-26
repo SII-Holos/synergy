@@ -8,6 +8,7 @@ import { usePlatform } from "./platform"
 import { recordTokenReceive, stopBrowserPerformanceMetrics } from "@/components/performance/browser-metrics"
 import { useServer } from "./server"
 import { streamingTokenReceipt } from "./streaming-token-event"
+import { createRuntimeCapabilities } from "./runtime-capabilities"
 
 const PING_INTERVAL = 20_000
 const PONG_TIMEOUT = 10_000
@@ -17,6 +18,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
   name: "GlobalSDK",
   init: () => {
     const server = useServer()
+    const platform = usePlatform()
+    const sdk = createSynergyClient({ baseUrl: server.url, fetch: platform.fetch, throwOnError: true })
+    const capabilities = createRuntimeCapabilities(async () => (await sdk.global.capabilities()).data!)
     const drafts = createDraftSessionIndex(server.url)
     onCleanup(() => drafts.dispose())
     const emitter = createGlobalEmitter<{
@@ -47,6 +51,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
     }
 
     const markDisconnected = () => {
+      capabilities.reset()
       setConnected(false)
       setDisconnectedAt(Date.now())
     }
@@ -165,16 +170,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       stopBrowserPerformanceMetrics()
     })
 
-    const platform = usePlatform()
-    const sdk = createSynergyClient({
-      baseUrl: server.url,
-      fetch: platform.fetch,
-      throwOnError: true,
-    })
-
     return {
       url: server.url,
       client: sdk,
+      capabilities,
       event: emitter,
       connected,
       disconnectedAt,

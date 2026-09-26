@@ -6,20 +6,20 @@
 
 测试通过真实临时 Home、SQLite、HTTP 和子进程观察业务结果。模型服务由本地确定性 HTTP fixture 提供，生产 Agent worker、会话循环、工具调用、存储和关闭流程正常运行；没有调用付费模型服务，也不以模型回答质量作为架构验收依据。
 
-| 业务不变量                                                                                                | 可复查的测试入口                                                                                                                                                                             |
-| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 同进程两个 Runtime 使用各自配置、凭据、同名会话、事件和数据库；关闭一个后另一个继续工作                   | [Harness 实例隔离](../../packages/harness/test/lifecycle/runtime-isolation.test.ts)、[HTTP/WebSocket 与完整产品隔离](../../packages/product-runtime/test/runtime/instance-isolation.test.ts) |
-| 重复 Home 或借用 Storage 拒绝第二个拥有者；启动失败、取消、关闭异常释放已获得资源                         | [生命周期](../../packages/harness/test/lifecycle/runtime.test.ts)                                                                                                                            |
-| 无 Workspace 的 Home 任务通过真实 worker 抓取网络内容；完整产品写入 Note，重启后历史、Note 和附件保持可读 | [Home 执行](../../packages/product-runtime/test/runtime/home-execution.test.ts)                                                                                                              |
-| 本地项目仍可通过真实 worker 执行文件工具；Home 不发现依赖工作目录的工具                                   | [本地执行](../../packages/runtime-local/test/runtime-execution.test.ts)                                                                                                                      |
-| 子会话继承明确绑定；失效或归档项目保留历史；执行拒绝发生在写入用户输入之前                                | [Workspace 语义](../../packages/runtime-local/test/workspace-semantics.test.ts)                                                                                                              |
-| 启动只升级 Scope 元数据；会话访问时升级绑定，不重写无关历史                                               | [数据升级](../../packages/runtime-local/test/workspace-migration.test.ts)                                                                                                                    |
-| Library 关闭停止自己的 checkpoint，另一实例继续使用；HTTP 关闭后应用配置可被回收                          | [Library 维护生命周期](../../packages/library/test/database-lifecycle.test.ts)、[HTTP 生命周期](../../packages/product-runtime/test/runtime/instance-isolation.test.ts)                      |
-| 发布包离开 monorepo 后可组合、执行、持久化并自然退出，核心安装不隐式引入完整产品                          | [安装包组合验收](../../script/runtime-composition-check.ts)                                                                                                                                  |
+| 业务不变量                                                                                                | 可复查的测试入口                                                                                                                                                                     |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 同进程两个 Runtime 使用各自配置、凭据、同名会话、事件和数据库；关闭一个后另一个继续工作                   | [Harness 实例隔离](../../packages/harness/test/lifecycle/runtime-isolation.test.ts)、[HTTP/WebSocket 与完整产品隔离](../../packages/presets/test/runtime/instance-isolation.test.ts) |
+| 重复 Home 或借用 Storage 拒绝第二个拥有者；启动失败、取消、关闭异常释放已获得资源                         | [生命周期](../../packages/harness/test/lifecycle/runtime.test.ts)                                                                                                                    |
+| 无 Workspace 的 Home 任务通过真实 worker 抓取网络内容；完整产品写入 Note，重启后历史、Note 和附件保持可读 | [Home 执行](../../packages/presets/test/runtime/home-execution.test.ts)                                                                                                              |
+| 本地项目仍可通过真实 worker 执行文件工具；Home 不发现依赖工作目录的工具                                   | [本地执行](../../packages/local-runtime/test/runtime-execution.test.ts)                                                                                                              |
+| 子会话继承明确绑定；失效或归档项目保留历史；执行拒绝发生在写入用户输入之前                                | [Workspace 语义](../../packages/local-runtime/test/workspace-semantics.test.ts)                                                                                                      |
+| 启动只升级 Scope 元数据；会话访问时升级绑定，不重写无关历史                                               | [数据升级](../../packages/local-runtime/test/workspace-migration.test.ts)                                                                                                            |
+| Library 关闭停止自己的 checkpoint，另一实例继续使用；HTTP 关闭后应用配置可被回收                          | [Library 维护生命周期](../../packages/library/test/database-lifecycle.test.ts)、[HTTP 生命周期](../../packages/presets/test/runtime/instance-isolation.test.ts)                      |
+| 发布包离开 monorepo 后可组合、执行、持久化并自然退出，核心安装不隐式引入完整产品                          | [安装包组合验收](../../script/runtime-composition-check.ts)                                                                                                                          |
 
 本地还执行了 core/full 编译二进制的完成、工具、文件、预算、超时、权限与导入导出验收，以及独立 Electron profile 和托管后端的启动测试。实际 Desktop 在 Home 创建无 Workspace 会话，使用本地 HTTP 模型 fixture 完成任务；页面显示结果，刷新后恢复历史，renderer 未产生页面错误，退出状态为零。原生 Browser 的启动、协议与 renderer 崩溃恢复测试另行通过。
 
-Product Runtime 最终全量分片运行通过 1,490 项测试。其余包运行全量测试；发现问题后重跑受影响的拥有者。测试数量只用于说明执行范围，完成判定以上表中的可观察行为为准。跨平台结果以对应 PR 当前提交的 CI 为准。
+Presets 最终全量分片运行通过 1,490 项测试。其余包运行全量测试；发现问题后重跑受影响的拥有者。测试数量只用于说明执行范围，完成判定以上表中的可观察行为为准。跨平台结果以对应 PR 当前提交的 CI 为准。
 
 首轮跨平台 CI 另外暴露了编译摘要启用时的导入期 Home 访问、Linux sandbox 状态测试与长流 opt-in 测试缺少 Runtime fixture，以及 benchmark 准备入口依赖进程全局工具缓存的问题。修复将摘要保持为静态产物身份，将工具查找与缓存归属到 Host，并让这些入口显式创建上下文。新增回归验证无 Runtime 导入、helper 内容篡改拒绝、两个实例各自的工具路径与 Home/PATH 准备分支；已有三十 MiB 长流取消场景验证完整数据、摘要、计量和归档。Plugin Kit 的纯网络与问候模板也显式声明无需 Workspace，并通过实际打包、宿主加载与浏览器调用验收。
 

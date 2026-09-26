@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import fs from "fs"
 import { fileURLToPath } from "url"
 import type { PluginLogEntry } from "./logs.js"
@@ -81,6 +82,8 @@ export function createPendingRequestMap() {
 }
 
 export function resolvePluginProcessRunnerCommand(entryPath: string): string[] {
+  const installed = installedWorkerCommand(process.env, "__plugin-runtime-runner", [entryPath])
+  if (installed) return installed
   if (fs.existsSync(runnerPath)) return [process.execPath, "run", runnerPath, entryPath]
   return [process.execPath, "__plugin-runtime-runner", entryPath]
 }

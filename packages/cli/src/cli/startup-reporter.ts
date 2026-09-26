@@ -2,8 +2,9 @@ import boxen from "boxen"
 import gradient from "gradient-string"
 import figlet from "figlet"
 import { EOL } from "os"
+import type { RuntimeStatusRow } from "@ericsanchezok/synergy-util/runtime-startup"
 
-type StatusKind = "success" | "warning" | "error" | "pending" | "muted"
+type StatusKind = NonNullable<RuntimeStatusRow["kind"]>
 
 export namespace StartupReporter {
   export interface Capabilities {
@@ -17,11 +18,7 @@ export namespace StartupReporter {
     value: string
   }
 
-  export interface StatusRow {
-    label: string
-    value: string
-    kind?: StatusKind
-  }
+  export type StatusRow = RuntimeStatusRow
 
   export interface Panel {
     title: string

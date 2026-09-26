@@ -7,7 +7,7 @@ import {
   type BrowserHostStatus,
   type BrowserControlRequest,
   type BrowserPresentationPreference,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
 import type { BrowserStoreAPI } from "./browser-store"

@@ -6,7 +6,7 @@ import { BrowserBroker } from "./broker.js"
 import type { BrowserOwner } from "./owner.js"
 import { BrowserInstall } from "./install.js"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
-import { redactBrowserText, type BrowserHostStatus } from "@ericsanchezok/synergy-browser"
+import { redactBrowserText, type BrowserHostStatus } from "@ericsanchezok/synergy-browser-core"
 import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspection"
 
 export namespace BrowserHostBrokerProcess {

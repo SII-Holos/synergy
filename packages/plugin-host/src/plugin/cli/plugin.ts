@@ -1,28 +1,18 @@
-import { PluginPreviewCommand } from "./plugin-preview"
-import { PluginTypegenCommand } from "./plugin-typegen"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { permissionsHashPayload } from "@ericsanchezok/synergy-plugin/integrity"
 import { PluginRuntimeCommand } from "./plugin-runtime"
-import { PluginTestCommand } from "./plugin-test"
-import { PluginPublishMarketCommand } from "./plugin-publish-market"
-import { PluginEntryCommand } from "./plugin-entry"
 import { PluginInfoCommand } from "./plugin-info"
 import { PluginPermissionsCommand } from "./plugin-permissions"
 import { PluginApproveCommand } from "./plugin-approve"
-import { PluginBuildCommand } from "./plugin-build"
-import { PluginPackCommand } from "./plugin-pack"
-import { PluginValidateCommand } from "./plugin-validate"
-import { PluginSignCommand } from "./plugin-sign"
-import { PluginDevCommand } from "./plugin-dev"
-import { PluginCreateCommand } from "./plugin-create"
 import { pluginCliRequestTimeoutMs } from "./plugin-server"
 import { pluginStatusText, printPluginPermissionDiff } from "./plugin-consent"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Plugin } from ".."
 import { PluginSpec } from "@ericsanchezok/synergy-harness/util/plugin-spec"
+import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 
-import type { Argv } from "yargs"
+import type { Argv, CommandModule } from "yargs"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -34,8 +24,8 @@ import { comparePluginAccess, diffPermissions } from "../consent/diff"
 import { buildApprovalRecord } from "../consent/approval-service"
 import type { PluginApprovalRecord } from "../consent/approval-store"
 import { baseCapabilities } from "../capability"
-import { Server } from "@ericsanchezok/synergy-server/server/server"
-import { isServerReachable } from "@ericsanchezok/synergy-cli/cli/network"
+import { DEFAULT_SERVER_URL } from "@ericsanchezok/synergy-harness/util/server-defaults"
+import { isServerReachable } from "@ericsanchezok/synergy-local-runtime/cli/network"
 import { resolvePluginSpec } from "../spec-resolver"
 import { doctor as runPluginDoctor } from "../doctor"
 import * as Lockfile from "../lockfile"
@@ -49,34 +39,6 @@ function readPkgVersion(pluginDir: string): string | undefined {
     return pkg.version as string | undefined
   } catch {
     return undefined
-  }
-}
-
-interface ContributedSummary {
-  skills: number
-  agents: number
-  operations: number
-  mcpServers: number
-}
-
-function getContributed(manifest: PluginManifest): ContributedSummary {
-  return {
-    skills: manifest.contributions.filter((item) => item.kind === "skill").length,
-    agents: manifest.contributions.filter((item) => item.kind === "agent").length,
-    operations: manifest.contributions.filter((item) => item.kind === "operation").length,
-    mcpServers: manifest.contributions.filter((item) => item.kind === "mcp").length,
-  }
-}
-
-function printContributed(manifest: PluginManifest) {
-  const c = getContributed(manifest)
-  const parts: string[] = []
-  if (c.skills > 0) parts.push(`${c.skills} skill${c.skills !== 1 ? "s" : ""}`)
-  if (c.agents > 0) parts.push(`${c.agents} agent${c.agents !== 1 ? "s" : ""}`)
-  if (c.operations > 0) parts.push(`${c.operations} operation${c.operations !== 1 ? "s" : ""}`)
-  if (c.mcpServers > 0) parts.push(`${c.mcpServers} MCP server${c.mcpServers !== 1 ? "s" : ""}`)
-  if (parts.length > 0) {
-    UI.println(`  ${UI.Style.TEXT_DIM}Contributes:${UI.Style.TEXT_NORMAL} ${parts.join(", ")}`)
   }
 }
 
@@ -94,55 +56,12 @@ export const PluginAddCommand = cmd({
       demandOption: true,
     }),
   async handler(args) {
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      async fn() {
-        const spec = args.spec as string
-        const spinner = prompts.spinner()
-        spinner.start(`Adding plugin ${spec}`)
-
-        try {
-          const plugin = await Plugin.add(spec)
-          const manifest = await Plugin.manifest(plugin.id)
-          if (!manifest) throw new Error(`Plugin manifest not found: ${plugin.id}`)
-
-          spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${plugin.name ?? plugin.id}`)
-          UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
-
-          const version = readPkgVersion(plugin.pluginDir)
-          if (version) {
-            UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
-          }
-
-          printContributed(manifest)
-
-          if (manifest.description) {
-            UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
-          }
-
-          const lifecycle = plugin.installLifecycle
-          if (lifecycle?.status === "pending") {
-            UI.println(
-              `  ${UI.Style.TEXT_WARNING}Install setup queued:${UI.Style.TEXT_NORMAL} ` +
-                `lifecycle.install will run when the Synergy server picks up the plugin (next start or plugin reload).`,
-            )
-          } else if (lifecycle?.status === "failed") {
-            UI.println(
-              `${UI.Style.TEXT_DANGER}  Install setup failed:${UI.Style.TEXT_NORMAL} ${lifecycle.error ?? "unknown error"}`,
-            )
-            UI.println(
-              `  ${UI.Style.TEXT_DIM}Retry with:${UI.Style.TEXT_NORMAL} synergy plugin retry-install ${plugin.id}`,
-            )
-          } else if (lifecycle?.status === "completed") {
-            UI.println(`  ${UI.Style.TEXT_DIM}Install setup completed.${UI.Style.TEXT_NORMAL}`)
-          }
-        } catch (e: unknown) {
-          const message = e instanceof Error ? e.message : String(e)
-          spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${spec}`)
-          UI.error(message)
-        }
-      },
-    })
+    if (Installation.isLocal()) {
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => Plugin.add(args.spec as string) })
+      return
+    }
+    const { changeInstalledPackages } = await import("../../installation/cli")
+    await changeInstalledPackages({ sources: [args.spec as string], pluginOnly: true })
   },
 })
 
@@ -170,6 +89,11 @@ export const PluginRemoveCommand = cmd({
       scope: Scope.home(),
       async fn() {
         const pluginId = args.id as string
+        const { managedPackage, changeInstalledPackages } = await import("../../installation/cli")
+        if (await managedPackage(pluginId)) {
+          await changeInstalledPackages({ remove: [pluginId], trustHostCode: true })
+          return
+        }
 
         const plugin = await Plugin.get(pluginId)
         if (!plugin) {
@@ -270,6 +194,26 @@ export const PluginUpdateCommand = cmd({
     await ScopeContext.provide({
       scope: Scope.home(),
       async fn() {
+        const { managedPackage, changeInstalledPackages } = await import("../../installation/cli")
+        const { listInstalledPackages } = await import("../../installation/manager")
+        const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
+        const managed = (await listInstalledPackages(RuntimeContext.current().host.root)).filter(
+          (pkg) => pkg.kind === "plugin",
+        )
+        const target = args.id as string | undefined
+        if (target && (await managedPackage(target))) {
+          await changeInstalledPackages({
+            update: [target],
+            approvePlugin: args["auto-approve"] ? [target] : undefined,
+          })
+          return
+        }
+        const roots = managed.filter((pkg) => pkg.explicit)
+        if (!target && roots.length)
+          await changeInstalledPackages({
+            update: roots.map((pkg) => pkg.name),
+            approvePlugin: args["auto-approve"] ? roots.map((pkg) => pkg.id) : undefined,
+          })
         const config = await Config.globalResolved()
         const configSpecs = config.plugin ?? []
 
@@ -282,13 +226,15 @@ export const PluginUpdateCommand = cmd({
         const isInteractive = interactive()
 
         const targetId = args.id as string | undefined
-        const specsToUpdate = await resolvePluginUpdateTargets({
-          specs: configSpecs,
-          target: targetId,
-          lockfile: await Lockfile.read(),
-          read: readConfiguredPluginPackage,
-          matches: pluginMatches,
-        })
+        const specsToUpdate = (
+          await resolvePluginUpdateTargets({
+            specs: configSpecs,
+            target: targetId,
+            lockfile: await Lockfile.read(),
+            read: readConfiguredPluginPackage,
+            matches: pluginMatches,
+          })
+        ).filter((pkg) => !managed.some((item) => item.id === pkg.id))
 
         if (targetId && specsToUpdate.length === 0) {
           UI.error(`Plugin not found: ${targetId}`)
@@ -709,14 +655,14 @@ async function resolveNewManifest(
 }
 
 async function notifyServerPluginReload() {
-  if (!(await isServerReachable(Server.DEFAULT_URL))) {
+  if (!(await isServerReachable(DEFAULT_SERVER_URL))) {
     UI.println(
       UI.Style.TEXT_DIM + "Plugins updated. Start or reload the server to activate them." + UI.Style.TEXT_NORMAL,
     )
     return
   }
 
-  const response = await fetch(`${Server.DEFAULT_URL}/runtime/reload`, {
+  const response = await fetch(`${DEFAULT_SERVER_URL}/runtime/reload`, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json" },
     body: JSON.stringify({
@@ -752,33 +698,27 @@ function SpecToDisplay(spec: string): string {
 // Top-level plugin command
 // ---------------------------------------------------------------------------
 
-export const PluginCommand = cmd({
-  command: "plugin",
-  describe: "install, remove, update, and inspect plugins",
-  builder: (yargs: Argv) =>
-    yargs
-      .command(PluginCreateCommand)
-      .command(PluginAddCommand)
-      .command(PluginRetryInstallCommand)
-      .command(PluginRemoveCommand)
-      .command(PluginUpdateCommand)
-      .command(PluginBuildCommand)
-      .command(PluginTypegenCommand)
-      .command(PluginPreviewCommand)
-      .command(PluginSignCommand)
-      .command(PluginPackCommand)
-      .command(PluginListCommand)
-      .command(PluginSearchCommand)
-      .command(PluginDoctorCommand)
-      .command(PluginValidateCommand)
-      .command(PluginDevCommand)
-      .command(PluginRuntimeCommand)
-      .command(PluginTestCommand)
-      .command(PluginPublishMarketCommand)
-      .command(PluginEntryCommand)
-      .command(PluginInfoCommand)
-      .command(PluginPermissionsCommand)
-      .command(PluginApproveCommand)
-      .demandCommand(),
-  async handler() {},
-})
+export function createPluginCommand(authoringCommands: CommandModule[] = []) {
+  return cmd({
+    command: "plugin",
+    describe: "install, remove, update, and inspect plugins",
+    builder: (yargs: Argv) =>
+      yargs
+        .command(authoringCommands)
+        .command(PluginAddCommand)
+        .command(PluginRetryInstallCommand)
+        .command(PluginRemoveCommand)
+        .command(PluginUpdateCommand)
+        .command(PluginListCommand)
+        .command(PluginSearchCommand)
+        .command(PluginDoctorCommand)
+        .command(PluginRuntimeCommand)
+        .command(PluginInfoCommand)
+        .command(PluginPermissionsCommand)
+        .command(PluginApproveCommand)
+        .demandCommand(),
+    async handler() {},
+  })
+}
+
+export const PluginCommand = createPluginCommand()

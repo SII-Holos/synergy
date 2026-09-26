@@ -29,7 +29,7 @@ test("all eight packed templates register and their contributed presentations mo
     }
     preview = await startPluginPreview({
       artifacts,
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/presets/src/index.ts")],
     })
     await approvePreviewPlugins(preview)
     const tools = await preview.client.tool.ids({ scopeID: "home" }, { throwOnError: true })

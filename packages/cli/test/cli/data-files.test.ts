@@ -1,7 +1,7 @@
 import { expect, test, spyOn } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { FileLink } from "@ericsanchezok/synergy-runtime-local/file/link"
+import { FileLink } from "@ericsanchezok/synergy-local-runtime/file/link"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import {
   scanDir,

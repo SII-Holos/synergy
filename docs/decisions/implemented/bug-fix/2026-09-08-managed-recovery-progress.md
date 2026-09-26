@@ -8,7 +8,7 @@ Execution-history recovery replays committed journals before the runtime opens H
 
 ## Decision
 
-Harness reports aggregate recovery work before scanning and after checking owners, journal records, projections and committed evidence chunks. Product Runtime emits throttled startup records for managed Desktop. Desktop permits recovery after migration completion, extends its inactivity deadline only for advancing counts, and restores its bounded health wait after successful recovery. Failed recovery never reports completion. Recovery records contain counts only, without session identities, paths or payloads.
+Harness reports aggregate recovery work before scanning and after checking owners, journal records, projections and committed evidence chunks. Presets emits throttled startup records for managed Desktop. Desktop permits recovery after migration completion, extends its inactivity deadline only for advancing counts, and restores its bounded health wait after successful recovery. Failed recovery never reports completion. Recovery records contain counts only, without session identities, paths or payloads.
 
 ## Alternatives considered
 

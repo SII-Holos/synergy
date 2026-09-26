@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { browserOwnerKey } from "@ericsanchezok/synergy-browser"
+import { browserOwnerKey } from "@ericsanchezok/synergy-browser-core"
 import { browserProfilePartition } from "../src/browser-profile.js"
 
 describe("browserProfilePartition", () => {

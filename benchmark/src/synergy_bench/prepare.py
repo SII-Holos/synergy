@@ -250,10 +250,10 @@ def prepare_source(
                     "FROM node:22.14.0-bullseye AS native\n"
                     "COPY --from=source /opt/synergy /opt/synergy\n"
                     "WORKDIR /opt/synergy/source\n"
-                    "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
+                    "RUN /opt/synergy/bin/bun packages/local-runtime/script/build-watcher.ts --local\n"
                     "FROM source\n"
-                    "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
-                    "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
+                    "COPY --from=native /opt/synergy/source/packages/local-runtime/.artifacts/watcher "
+                    "/opt/synergy/source/packages/local-runtime/.artifacts/watcher\n"
                 )
                 image = f"synergy-bench:{artifact_id}"
                 container = f"synergy-bench-prepare-{uuid.uuid4().hex[:16]}"

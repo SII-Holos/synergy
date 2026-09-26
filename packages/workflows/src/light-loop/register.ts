@@ -15,7 +15,7 @@ import { LightLoopRejectTool } from "./tools/light-loop-reject"
 /**
  * Light Loop domain registration (H1 continuation provider + H2 prompt
  * contribution with lifecycle hooks + domain tools). Loaded through
- * src/product-registration.ts.
+ * src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

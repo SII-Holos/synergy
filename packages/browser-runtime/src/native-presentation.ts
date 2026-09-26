@@ -1,6 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
-import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
+import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
 import { BrowserBroker } from "./broker.js"
 import { BrowserOwner } from "./owner.js"
 

@@ -14,12 +14,12 @@ import { BrowserAuditTool } from "../../src/tools/browser-audit"
 import { BrowserInspectTool } from "../../src/tools/browser-inspect"
 import { BrowserPerformanceTool } from "../../src/tools/browser-performance"
 import { BrowserSnapshotTool } from "../../src/tools/browser-snapshot"
-import type { BrowserBackendCommand, BrowserBackendResult } from "@ericsanchezok/synergy-browser"
+import type { BrowserBackendCommand, BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 const runtime = await testRuntime(registerLocalRuntime)
 
 const original = {

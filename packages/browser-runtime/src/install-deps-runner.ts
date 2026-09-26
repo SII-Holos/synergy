@@ -6,4 +6,6 @@ export async function installBrowserDependencies() {
   await PlaywrightRuntime.installChromiumDependencies()
 }
 
-if (import.meta.main) await installBrowserDependencies()
+export const main = installBrowserDependencies
+
+if (import.meta.main) await main()

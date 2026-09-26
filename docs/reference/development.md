@@ -4,7 +4,7 @@ Source development is orchestrated from the repository root with `bun dev`. The 
 
 One-shot and persistent-server execution share the runtime lifecycle. [Rollout execution](rollout.md) documents task configuration, durable evidence, import/export and accounting boundaries.
 
-Workspace `build` commands compile dependency modules. CLI and Product Runtime modules use `dist/modules`; their explicit `script/build.ts` entries produce executable distributions. Running workspace tests does not request cross-platform release artifacts.
+Workspace `build` commands compile dependency modules. CLI and Presets modules use `dist/modules`; their explicit `script/build.ts` entries produce executable distributions. Running workspace tests does not request cross-platform release artifacts.
 
 ## Requirements and Preparation
 
@@ -166,7 +166,7 @@ Build the standalone core CLI or the complete product binary with the correspond
 
 ```bash
 bun packages/cli/script/build.ts --single
-bun packages/product-runtime/script/build.ts --single
+bun packages/presets/script/build.ts --single
 ```
 
 The build validates and embeds the pinned `packages/testing/fixtures/models-api.json` catalog before compiling. Use `MODELS_DEV_API_JSON=/path/to/models.json` only for a deliberate local build override; release workflows ignore that override and embed the repository snapshot.

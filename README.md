@@ -127,7 +127,7 @@ synergy doctor
 synergy stop
 ```
 
-The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`; setting `SYNERGY_HOME=/path` changes that root to `/path/.synergy/`. It does not install the Electron Desktop app.
+The CLI installer places the launcher and its sealed module graph under `~/.synergy/`; setting `SYNERGY_HOME=/path` changes that root to `/path/.synergy/`. It does not install the Electron Desktop app.
 
 You can keep one Synergy installation per channel — the standalone CLI, a supported package-manager install (`npm`, `yarn`, `pnpm`, or `bun`), and the Desktop app — but only one should be the `synergy` command your shell runs. `synergy doctor` lists every detected installation channel and exits nonzero when channels conflict or an installed version cannot be verified. The curl installer and the npm package postinstall warn about other channels they detect and never auto-uninstall them. Homebrew's `synergy` formula is unrelated to this project and is not detected or managed.
 
@@ -179,7 +179,18 @@ Default local preflight:
 bun run quality:quick
 ```
 
-For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. See [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md) for lifecycle and installation contracts.
+For Bun embedding, use `openAgentRuntime({ home, components })` from `packages/agent-runtime` and select optional component factories explicitly. For lower-level hosts, `packages/harness` exposes the execution and lifecycle APIs, and `packages/local-runtime` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command, with commands supplied by the selected components; the complete product composes optional capabilities in `packages/presets`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. Node.js uses the managed HTTP SDK or attaches to an existing runtime. See [Embedding](docs/reference/embedding.md), [Installable packages](docs/reference/installable-packages.md), [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md).
+
+Install the minimal CLI with Bun, then select capabilities:
+
+```bash
+bun add --global @ericsanchezok/synergy-cli
+synergy install mcp lsp
+synergy install web
+synergy install desktop
+```
+
+The existing `@ericsanchezok/synergy` distribution and Desktop installer retain the complete product by default. Use `synergy install`, `list`, `update` and `remove` to manage optional packages. Components, process plugins, company presets and native applications share package discovery while retaining distinct trust and capability approval. See [installation commands](docs/reference/packages.md#installation-commands) for sources, unattended approval and recovery.
 
 Local performance experiments use the [benchmark workspace](benchmark/README.md): independent harness/model matrices, frozen inputs, native rollout evidence and paired reports. Start with `bun bench plan benchmark/configs/ab.yaml`.
 

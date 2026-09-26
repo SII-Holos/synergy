@@ -23,7 +23,7 @@ This investigation includes alternatives considered before selecting native, win
 
 公开 `PluginInvocationContext` 没有 `computer` 服务，也没有权威的有效控制模式字段。普通 Session 读取不能代替集中解析继承模式和与执行竞争的撤销。插件 runtime 是一个 Synergy runtime 内跨 Scope 共享的代次；模块级 mutex 无法协调另一个 runtime/home 对同一桌面的输入。
 
-当前 `MCP.convertMcpTool()` 在 [mcp/index.ts](../../packages/agent-integrations/src/mcp/index.ts) 中调用 `client.callTool()` 时只传工具名、参数和超时选项，没有转发调用取消信号或注入 Synergy 的任务所有者。[工具解析器](../../packages/harness/src/session/tool-resolver.ts) 可以在上层取消时终结结果，但物理执行仍由下游负责。这是接入时必须验证和补齐的路径，不应将超时错误当作原生停止确认。
+当前 `MCP.convertMcpTool()` 在 [mcp/index.ts](../../packages/mcp/src/index.ts) 中调用 `client.callTool()` 时只传工具名、参数和超时选项，没有转发调用取消信号或注入 Synergy 的任务所有者。[工具解析器](../../packages/harness/src/session/tool-resolver.ts) 可以在上层取消时终结结果，但物理执行仍由下游负责。这是接入时必须验证和补齐的路径，不应将超时错误当作原生停止确认。
 
 ## 三种交付路线
 

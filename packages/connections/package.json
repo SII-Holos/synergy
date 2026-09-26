@@ -45,7 +45,10 @@
     "./channel/command": "./src/channel/command.ts",
     "./script/holos-cli-assets": "./script/holos-cli-assets.ts",
     "./script/svg-raster-runtime-assets": "./script/svg-raster-runtime-assets.ts",
-    "./workflow-settings": "./src/workflow-settings.ts"
+    "./workflow-settings": "./src/workflow-settings.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts",
+    "./startup-status": "./src/startup-status.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -56,13 +59,12 @@
   },
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.1",
-    "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
-    "@ericsanchezok/synergy-server": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@ericsanchezok/synergy-workflows": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
     "@larksuiteoapi/node-sdk": "1.71.1",
     "@resvg/resvg-wasm": "2.6.2",
     "@sii-holos/holos-cli": "0.1.1",
@@ -84,5 +86,32 @@
     "@types/nodemailer": "7.0.11",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "connections",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "connections",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "workflows": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-workflows": "1.1.26"
+    }
   }
 }

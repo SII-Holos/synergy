@@ -622,6 +622,11 @@ function createGlobalSync() {
 
   async function loadAgenda(scopeKey: string) {
     const [_, setStore] = ensureScopeState(scopeKey)
+    await globalSDK.capabilities.load()
+    if (!globalSDK.capabilities.has("workflows")) {
+      setStore("agenda", reconcile([]))
+      return
+    }
     const sdk = createScopedClient(scopeKey)
     return sdk.agenda
       .list()
@@ -640,6 +645,10 @@ function createGlobalSync() {
   }
 
   async function loadGlobalAgenda() {
+    if (!globalSDK.capabilities.has("workflows")) {
+      setGlobalStore("agenda", reconcile([]))
+      return
+    }
     return globalSDK.client.global.agenda
       .list()
       .then((x) => {
@@ -806,10 +815,10 @@ function createGlobalSync() {
       if (targets.has("command") || targets.has("mcp") || targets.has("config")) {
         scopePromises.push(sdk.command.list().then((x) => setStore("command", x.data ?? [])))
       }
-      if (targets.has("mcp")) {
+      if (targets.has("mcp") && globalSDK.capabilities.has("mcp")) {
         scopePromises.push(sdk.mcp.status().then((x) => setStore("mcp", x.data!)))
       }
-      if (targets.has("lsp")) {
+      if (targets.has("lsp") && globalSDK.capabilities.has("lsp")) {
         scopePromises.push(
           sdk.lsp
             .status()
@@ -1002,6 +1011,7 @@ function createGlobalSync() {
       }
       refreshWorkspaceProjections(store, setStore)
       if (data.mcp) setStore("mcp", reconcile(data.mcp))
+      else if (!globalSDK.capabilities.has("mcp")) setStore("mcp", reconcile({}))
       // `Cortex.listVisible()` is process-global, so the bootstrap response
       // carries the whole visible task set and is authoritative for the global
       // index rather than for this Scope's tasks.
@@ -1018,7 +1028,9 @@ function createGlobalSync() {
           ),
         )
       }
+      if (!globalSDK.capabilities.has("workflows")) setStore("agenda", reconcile([]))
       if (data.lsp) setStore("lsp", reconcile(data.lsp, { key: "id" }))
+      else if (!globalSDK.capabilities.has("lsp")) setStore("lsp", reconcile([]))
       if (data.vcs) setStore("vcs", reconcile(data.vcs))
     })
 
@@ -1658,6 +1670,7 @@ function createGlobalSync() {
       case "mcp.tools.changed":
       case "mcp.prompts.changed":
       case "mcp.resources.changed": {
+        if (!globalSDK.capabilities.has("mcp")) break
         void createScopedClient(scopeKey)
           .mcp.status()
           .then((x) => setStore("mcp", x.data!))
@@ -1977,6 +1990,7 @@ function createGlobalSync() {
         break
       }
       case "lsp.updated": {
+        if (!globalSDK.capabilities.has("lsp")) break
         const sdk = createScopedClient(scopeKey)
         sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
         break
@@ -2152,8 +2166,13 @@ function createGlobalSync() {
     const isConnected = globalSDK.connected()
 
     if (isConnected && globalStore.ready) {
-      void resyncInstances(Object.keys(children))
-      void loadGlobalAgenda()
+      void globalSDK.capabilities.load().then(
+        () => {
+          void resyncInstances(Object.keys(children))
+          void loadGlobalAgenda()
+        },
+        (error) => setFailure({ source: "initialization", error }),
+      )
     }
   })
 
@@ -2163,7 +2182,7 @@ function createGlobalSync() {
   // config change so a live toggle applies immediately.
   createEffect(() => {
     if (!globalStore.ready) return
-    if (browserPerformanceEnabled(globalStore.config)) {
+    if (globalSDK.capabilities.has("workbench") && browserPerformanceEnabled(globalStore.config)) {
       startBrowserPerformanceMetrics({
         url: globalSDK.url,
         client: globalSDK.client,
@@ -2180,6 +2199,7 @@ function createGlobalSync() {
       .then((result) => result.data)
       .catch(() => undefined)
     const configRequest = Promise.all([
+      retry(globalSDK.capabilities.load),
       retry(loadGlobalConfig),
       retry(() =>
         globalSDK.client.global.paths.get().then((result) => {

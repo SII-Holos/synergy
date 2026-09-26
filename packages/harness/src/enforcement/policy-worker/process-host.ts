@@ -1,16 +1,21 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import { RuntimeContext } from "../../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
 import { PolicyWorkerProtocol } from "./protocol"
 
-const state = RuntimeContext.state(() => ({ entrypoint: undefined as string | undefined }))
+const state = RuntimeContext.state(() => ({
+  entrypoint: undefined as string | undefined,
+  environment: {} as Readonly<Record<string, string>>,
+}))
 
-export function registerPolicyWorkerEntrypoint(entrypoint: URL) {
+export function registerPolicyWorkerEntrypoint(entrypoint: URL, environment: Readonly<Record<string, string>> = {}) {
   const filename = fileURLToPath(entrypoint)
-  if (state().entrypoint === filename) return
+  if (state().entrypoint === filename && JSON.stringify(state().environment) === JSON.stringify(environment)) return
   RuntimeContext.assertCompositionOpen("policy worker entrypoint")
   if (state().entrypoint) throw new Error("Policy worker entrypoint is already registered")
   state().entrypoint = filename
+  state().environment = Object.freeze({ ...environment })
 }
 
 export interface PolicyWorkerProcess {
@@ -25,6 +30,8 @@ export interface SpawnPolicyWorkerProcessOptions {
 }
 
 export function resolvePolicyWorkerCommand(): string[] {
+  const installed = installedWorkerCommand(RuntimeContext.current().host.env, "__policy-worker-runner")
+  if (installed) return installed
   const entrypoint = state().entrypoint
   if (!entrypoint) throw new Error("No policy worker host is registered")
   if (fs.existsSync(entrypoint)) return [process.execPath, "run", entrypoint]
@@ -37,6 +44,7 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
     cmd: resolvePolicyWorkerCommand(),
     env: {
       ...owner.host.env,
+      ...state().environment,
       SYNERGY_HOME: owner.host.home,
       SYNERGY_RUNTIME_ROOT: owner.host.root,
       SYNERGY_POLICY_WORKER: "1",

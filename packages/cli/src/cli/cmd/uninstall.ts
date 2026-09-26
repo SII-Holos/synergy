@@ -1,5 +1,6 @@
+import { logo } from "../../branding"
 import type { Argv } from "yargs"
-import { UI } from "../../util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import * as prompts from "@clack/prompts"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { DesktopInstallation } from "@ericsanchezok/synergy-harness/global/desktop-installation"
@@ -69,7 +70,7 @@ export const UninstallCommand = {
 
   handler: async (args: UninstallArgs) => {
     UI.empty()
-    UI.println(UI.logo("  "))
+    UI.println(logo("  "))
     UI.empty()
     prompts.intro("Uninstall Synergy")
 

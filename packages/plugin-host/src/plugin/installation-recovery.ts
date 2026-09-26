@@ -10,6 +10,10 @@ import * as Lockfile from "./lockfile"
 import { readApprovals, removeApproval, saveApproval } from "./consent/approval-store"
 import { IncompatiblePluginStore } from "./incompatible-store"
 import type { ResolvedPluginSpec } from "./spec-resolver"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { withInstallationLock } from "../installation/lock"
+import { InstallationGenerations } from "../installation/generations"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 
 const Intent = z
   .object({
@@ -57,18 +61,6 @@ async function exists(filename: string) {
   }
 }
 
-async function syncDirectories(...directories: string[]) {
-  if (process.platform === "win32") return
-  for (const directory of new Set(directories)) {
-    const handle = await fs.open(directory, "r")
-    try {
-      await handle.sync()
-    } finally {
-      await handle.close()
-    }
-  }
-}
-
 async function promote(snapshot: Snapshot) {
   const p = snapshot.promotion
   if (!p) return
@@ -76,7 +68,7 @@ async function promote(snapshot: Snapshot) {
   await fs.mkdir(path.dirname(p.finalDir), { recursive: true, mode: 0o700 })
   if (p.hadOriginal) await fs.rename(p.finalDir, p.backupDir)
   await fs.rename(p.stagingDir, p.finalDir)
-  await syncDirectories(path.dirname(p.finalDir), path.dirname(p.stagingDir), path.dirname(p.backupDir))
+  await AtomicFile.syncDirectories(path.dirname(p.finalDir), path.dirname(p.stagingDir), path.dirname(p.backupDir))
 }
 
 async function finish(snapshot: Snapshot, sha256: string) {
@@ -116,7 +108,7 @@ async function rollback(snapshot: Snapshot, sha256: string) {
     if (await exists(promotion.backupDir)) {
       await fs.rm(promotion.finalDir, { recursive: true, force: true })
       await fs.rename(promotion.backupDir, promotion.finalDir)
-      await syncDirectories(path.dirname(promotion.backupDir), path.dirname(promotion.finalDir))
+      await AtomicFile.syncDirectories(path.dirname(promotion.backupDir), path.dirname(promotion.finalDir))
     } else if (!promotion.hadOriginal && !(await exists(promotion.stagingDir)))
       await fs.rm(promotion.finalDir, { recursive: true, force: true })
   }
@@ -191,6 +183,10 @@ export namespace PluginInstallationRecovery {
 
   export async function recover() {
     using lock = await Lock.write("plugin-installation")
-    await recoverUnlocked()
+    const root = RuntimeContext.current().host.root
+    await withInstallationLock(root, async () => {
+      await InstallationGenerations.recoverUnlocked(root)
+      await recoverUnlocked()
+    })
   }
 }

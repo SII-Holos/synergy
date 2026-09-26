@@ -38,7 +38,7 @@ test("single observer selects its harness while shared protocols select all five
 
 test("independent browser suite selection retains its executable prerequisites", async () => {
   const entries = await catalog()
-  for (const directory of ["apps/web", "packages/ui", "packages/browser-runtime", "packages/product-runtime"]) {
+  for (const directory of ["apps/web", "packages/ui", "packages/browser-runtime", "packages/presets"]) {
     const suite = entries.find((entry) => entry.kind === "suite" && entry.package === directory)!
     expect(suite).toBeDefined()
     expect(buildUnits([suite], "diagnostic")[0]!.browser).toBe(true)

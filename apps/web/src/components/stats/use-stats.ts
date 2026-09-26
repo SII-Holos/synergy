@@ -35,6 +35,8 @@ export function useStats() {
   const [data, { mutate }] = createResource(async (): Promise<StatsSnapshot | null> => {
     try {
       setError(null)
+      await sdk.capabilities.load()
+      if (!sdk.capabilities.has("workbench")) return null
       const res = await sdk.client.global.stats.get(undefined, { signal: controller.signal })
       if (!res.data && !controller.signal.aborted) void sync()
       return res.data ?? null
@@ -49,7 +51,7 @@ export function useStats() {
   const refresh = () => sync()
 
   async function sync() {
-    if (syncing()) return
+    if (!sdk.capabilities.has("workbench") || syncing()) return
     setSyncing(true)
     setSyncError(null)
     setProgress({ phase: "scan", current: 0, total: 1, message: i18n._(S.syncStarting.id) })

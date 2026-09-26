@@ -1,0 +1,70 @@
+{
+  "name": "@ericsanchezok/synergy-lsp",
+  "version": "1.1.26",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tools": "./src/tools.ts",
+    "./startup": "./src/startup.ts",
+    "./session-input": "./src/session-input.ts",
+    "./tool-source": "./src/tool-source.ts",
+    "./workspace-symbol-source": "./src/workspace-symbol-source.ts",
+    "./config-catalog": "./src/config-catalog.ts",
+    "./client": "./src/client.ts",
+    "./cli/debug": "./src/cli/debug.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/lsp",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "vscode-jsonrpc": "8.2.1",
+    "vscode-languageserver-types": "3.17.5",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "lsp",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "lsp",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
+  }
+}

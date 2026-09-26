@@ -6,7 +6,7 @@ import {
   ComputerError,
   type ComputerCommand,
   type ComputerResult,
-} from "@ericsanchezok/synergy-computer"
+} from "@ericsanchezok/synergy-computer-protocol"
 
 interface Socket {
   send(data: string): void

@@ -2,7 +2,7 @@
 
 # Configuration Reference
 
-Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/product-runtime/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).
+Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/presets/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).
 
 ## Domains
 

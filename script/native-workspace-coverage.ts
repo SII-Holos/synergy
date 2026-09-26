@@ -2,7 +2,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { createIsolatedTestEnv } from "../packages/testing/src/env"
 
-const directory = path.resolve(import.meta.dir, "../packages/runtime-local")
+const directory = path.resolve(import.meta.dir, "../packages/local-runtime")
 const windows = process.platform === "win32"
 // Keep native reports separate from the numeric batches produced on Linux.
 const output = path.join(directory, "coverage/shards", windows ? "1000001" : "1000000")
@@ -42,9 +42,9 @@ suites.push(
   "test/workspace/coordinator-environment.test.ts",
   "test/workspace/process.test.ts",
   "../harness/test/session/snapshot-long-path.test.ts",
-  "../agent-integrations/test/format/formatter.test.ts",
-  "../agent-integrations/test/lsp/owner-runtime.test.ts",
-  "../agent-integrations/test/lsp/process.test.ts",
+  "../formatter/test/format/formatter.test.ts",
+  "../lsp/test/lsp/owner-runtime.test.ts",
+  "../lsp/test/lsp/process.test.ts",
 )
 const isolation = await createIsolatedTestEnv()
 try {

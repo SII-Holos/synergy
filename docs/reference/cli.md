@@ -16,6 +16,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `config` | manage synergy configuration |
 | `data` | manage synergy data location and storage |
 | `debug` | debugging and troubleshooting tools |
+| `desktop` | open the installed Synergy Desktop application |
 | `diagnostics` | create a local diagnostics package |
 | `doctor` | diagnose synergy sandbox and environment |
 | `embed` | manage the local embedding model |
@@ -23,13 +24,16 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `generate` | generate the OpenAPI contract |
 | `holos` | manage Holos identity and runtime |
 | `import` | import a session transcript or rollout ZIP |
+| `install` | install components, presets, plugins or applications |
 | `library` | manage library memory and learning |
+| `list` | list installed packages and legacy plugins |
 | `logs` | show synergy background service logs |
 | `mcp` | manage MCP (Model Context Protocol) servers |
 | `migrate` | move synergy data to a new location (alias for 'data move') |
 | `migration` | manage schema and data migrations |
 | `models` | list all available models |
 | `plugin` | install, remove, update, and inspect plugins |
+| `remove` | remove packages and unused dependencies |
 | `secrets` | manage the secret vault |
 | `send` | send a message to synergy |
 | `server` | start synergy server |
@@ -39,6 +43,7 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `status` | show synergy background service status |
 | `stop` | stop synergy background service |
 | `uninstall` | uninstall synergy and remove all related files |
+| `update` | update explicitly installed packages |
 | `upgrade` | upgrade synergy to the latest or a specific version |
 | `web` | URL of a running synergy server |
 
@@ -98,6 +103,11 @@ authenticate with an OAuth-enabled MCP server
 diagnose and install Chromium for Browser tools
 
 
+## build [path]
+
+build a plugin definition into an installable package
+
+
 ## channel
 
 manage messaging channels
@@ -135,6 +145,14 @@ create a new agent
 | `--tools` (string) |  |
 | `--model` (string) | model to use in the format of provider/model |
 
+## create <name>
+
+scaffold a definePlugin() project
+
+| Option | Description |
+| --- | --- |
+| `--template` (string) |  |
+
 ## credentials
 
 show local Holos credential status
@@ -167,6 +185,19 @@ delete a session using recovery-safe filesystem/index cleanup
 | `--scope` (string) | scope id when the session index is missing |
 | `--yes` (boolean) | confirm deletion |
 | `--json` (boolean) |  |
+
+## desktop
+
+open the installed Synergy Desktop application
+
+
+## dev [path]
+
+watch, rebuild, and atomically reload a plugin generation
+
+| Option | Description |
+| --- | --- |
+| `--server-url` (string) | isolated Synergy server URL for live reload |
 
 ## diagnostics
 
@@ -223,6 +254,21 @@ configure embedding provider (writes to global config)
 | Option | Description |
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
+
+## entry <tarball>
+
+generate a marketplace registry entry JSON
+
+| Option | Description |
+| --- | --- |
+| `--repo` (string) | plugin GitHub repository URL |
+| `--download-url` (string) | release asset URL for the .synergy-plugin.tgz |
+| `--signature-url` (string) | release asset URL for the .sig file |
+| `--release-backend` (string) | release asset URL backend |
+| `--release-url-template` (string) |  |
+| `--release-tag-template` (string) |  |
+| `--write-entry` (string) | write or update a marketplace plugins/<id>.json entry |
+| `--changelog` (string) | version changelog |
 
 ## export
 
@@ -312,6 +358,16 @@ install verified managed Chromium for Browser tools
 | `--json` (boolean) | print the installation result as JSON |
 | `--deps` (boolean) | install required Linux system packages (use --no-deps to skip) |
 
+## install [spec..]
+
+install components, presets, plugins or applications
+
+| Option | Description |
+| --- | --- |
+| `--trust-host-code` (boolean) | trust the resolved component and application code to run with host privileges |
+| `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
+| `--resume` (boolean) | finish an interrupted plugin activation |
+
 ## install-deps
 
 install Linux system packages required by Chromium
@@ -332,13 +388,11 @@ manage library memory and learning
 
 ## list
 
-list sessions
+list installed packages and legacy plugins
 
 | Option | Description |
 | --- | --- |
-| `--max-count` (number) | limit to N most recent sessions |
-| `--format` (string) | output format |
-| `--with-health` (boolean) | include recovery-safe health data |
+| `--json` (boolean) |  |
 
 ## list <path>
 
@@ -458,6 +512,11 @@ move synergy data to a new location
 pack synergy data into a zip archive
 
 
+## pack [path]
+
+package a built plugin
+
+
 ## pack-legacy
 
 pack all local legacy snapshot objects without deleting history or requiring a storage upgrade
@@ -491,6 +550,40 @@ show declared plugin capabilities in user-language format
 install, remove, update, and inspect plugins
 
 
+## preview [path]
+
+build and watch a plugin in an isolated real Synergy host
+
+| Option | Description |
+| --- | --- |
+| `--host-command` (array) | host executable and arguments (defaults to installed synergy) |
+
+## publish-market [tarball]
+
+prepare and open an official Synergy Plugin Marketplace PR
+
+| Option | Description |
+| --- | --- |
+| `--path` (string) | plugin directory (defaults to cwd) |
+| `--repo` (string) | plugin GitHub repository URL |
+| `--registry-dir` (string) | local checkout path for the marketplace registry repository |
+| `--registry-repo` (string) | registry repository to clone when --registry-dir does not exist |
+| `--registry-github-repo` (string) | GitHub owner/repo used for opening the registry PR |
+| `--registry-base-branch` (string) | base branch for the registry PR |
+| `--registry-branch-prefix` (string) | branch prefix for registry PR branches |
+| `--download-url` (string) | release asset URL for the .synergy-plugin.tgz |
+| `--signature-url` (string) | release asset URL for the .sig file |
+| `--skip-release-upload` (boolean) | do not create/upload GitHub Release assets |
+| `--release-backend` | release asset backend; github can create/upload releases, manual only writes registry metadata |
+| `--release-url-template` (string) |  |
+| `--release-tag-template` (string) |  |
+| `--registry-branch` (string) | exact registry branch name to use instead of the default generated branch |
+| `--registry-branch-template` (string) |  |
+| `--registry-pr-title` (string) |  |
+| `--registry-pr-body` (string) |  |
+| `--pr` (boolean) | open a PR after preparing registry changes; pass --no-pr to skip |
+| `--changelog` (string) | version changelog for the registry entry |
+
 ## read <path>
 
 read file contents as JSON
@@ -523,6 +616,11 @@ register a secret value (read from a hidden prompt)
 ## remove <id>
 
 remove a secret; historical mask tokens stop resolving
+
+
+## remove <name..>
+
+remove explicitly installed packages and unused dependencies
 
 
 ## repair
@@ -638,6 +736,14 @@ set SYNERGY_HOME to change data location (does not move data)
 show current library configuration
 
 
+## sign <tarball>
+
+sign a plugin package tarball
+
+| Option | Description |
+| --- | --- |
+| `--stdout` (boolean) | also print the signature JSON to stdout |
+
 ## skill
 
 list all available skills
@@ -723,6 +829,11 @@ inspect, verify, recover, restore backups, and move authoritative Agent storage
 search workspace symbols
 
 
+## test [path]
+
+run plugin tests
+
+
 ## track
 
 track current snapshot state
@@ -744,6 +855,11 @@ show file tree using ripgrep
 show directory tree
 
 
+## typegen [path]
+
+generate UI operation and event types from plugin schemas
+
+
 ## update [id]
 
 update plugins to their latest version
@@ -752,10 +868,27 @@ update plugins to their latest version
 | --- | --- |
 | `--auto-approve` (boolean) | auto-approve permission changes without prompting (low-security convenience) |
 
+## update [name..]
+
+update explicitly installed packages (all when no name is given)
+
+| Option | Description |
+| --- | --- |
+| `--trust-host-code` (boolean) | trust the resolved component and application code to run with host privileges |
+| `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
+
 ## usage [provider]
 
 show provider account usage and quota windows
 
+
+## validate [path]
+
+validate definePlugin() source and generated artifacts
+
+| Option | Description |
+| --- | --- |
+| `--runtime-discovery` (boolean) | verify packaged runtime handlers |
 
 ## verify
 

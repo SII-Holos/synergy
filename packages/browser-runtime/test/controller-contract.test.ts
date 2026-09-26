@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
-import { CdpPageController, type BrowserAction, type BrowserBackendResult } from "@ericsanchezok/synergy-browser"
+import { CdpPageController, type BrowserAction, type BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
 import { chromium, type Browser, type Page } from "playwright-core"
 import { PlaywrightCdpTransport } from "../src/playwright-cdp-transport"
 

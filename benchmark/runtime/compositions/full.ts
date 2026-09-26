@@ -1,9 +1,9 @@
-import { registerProductRuntime } from "@ericsanchezok/synergy-product-runtime/product-registration"
-import { ProductRuntimeHandle } from "@ericsanchezok/synergy-product-runtime/server/runtime-handle"
+import { registerFullPreset } from "@ericsanchezok/synergy-presets/registration"
+import { PresetRuntimeHandle } from "@ericsanchezok/synergy-presets/server/runtime-handle"
 import type { Composition } from "../composition"
 
 export default {
   id: "full",
-  register: registerProductRuntime,
-  open: ProductRuntimeHandle.openTask,
+  register: registerFullPreset,
+  open: PresetRuntimeHandle.openTask,
 } satisfies Composition

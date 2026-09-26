@@ -29,7 +29,9 @@
     "./config-schema": "./src/config-schema.ts",
     "./agents": "./src/agents.ts",
     "./performance/prompt/builder": "./src/performance/prompt/builder.ts",
-    "./project/routes/git": "./src/project/routes/git.ts"
+    "./project/routes/git": "./src/project/routes/git.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -39,14 +41,13 @@
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-agent-integrations": "workspace:*",
     "@ericsanchezok/synergy-browser-runtime": "workspace:*",
-    "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-mcp": "workspace:*",
     "@ericsanchezok/synergy-plugin-host": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
-    "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "web-push": "3.6.7",
@@ -62,5 +63,28 @@
     "@types/yargs": "17.0.33",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "workbench",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "workbench",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
   }
 }

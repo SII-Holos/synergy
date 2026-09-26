@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
-import { AtomicFile } from "../storage/atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { StorageIntegrityError } from "../storage/errors"
 
 const Protection = z.object({ version: z.literal(1), backupID: z.string(), dev: z.number(), ino: z.number() }).strict()

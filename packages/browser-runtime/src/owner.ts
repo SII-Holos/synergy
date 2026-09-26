@@ -1,6 +1,6 @@
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { browserOwnerKey } from "@ericsanchezok/synergy-browser"
+import { browserOwnerKey } from "@ericsanchezok/synergy-browser-core"
 import { createHash } from "node:crypto"
 
 export namespace BrowserOwner {

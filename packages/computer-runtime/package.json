@@ -6,7 +6,9 @@
   "license": "MIT",
   "exports": {
     "./tools": "./src/tools.ts",
-    "./routes/computer-route": "./src/routes/computer-route.ts"
+    "./routes/computer-route": "./src/routes/computer-route.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -16,7 +18,7 @@
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-computer": "workspace:*",
+    "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@hono/standard-validator": "^0.2.0",
     "hono": "catalog:",
@@ -30,5 +32,28 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "computer-runtime",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "computer",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
   }
 }

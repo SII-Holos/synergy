@@ -17,7 +17,7 @@ import {
   BrowserWebRTCSignalSchema,
   parseBrowserPresentationPreference,
   type BrowserPresentationSelection,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { Hono, type Context, type Next } from "hono"
 import { upgradeWebSocket } from "hono/bun"
 import { describeRoute, resolver, validator } from "hono-openapi"

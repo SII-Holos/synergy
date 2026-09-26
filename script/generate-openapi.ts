@@ -7,7 +7,7 @@ export async function generateOpenApi(): Promise<string> {
   const root = path.resolve(import.meta.dirname, "..")
   const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-openapi-"))
   try {
-    return await $`bun ${path.join(root, "packages/product-runtime/src/index.ts")} generate`
+    return await $`bun ${path.join(root, "packages/presets/src/index.ts")} generate`
       .cwd(root)
       .env({
         ...process.env,

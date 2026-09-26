@@ -9,7 +9,7 @@ import { pluginTaskSnapshotFromSession } from "./plugin-task"
  * blockers, parent notification reconciliation, abort cancellation, plugin
  * task snapshots) through the SessionCortexRuntime registry instead of
  * importing the cortex product domain. Loaded through
- * src/product-registration.ts.
+ * src/registration.ts.
  */
 export function registerCortexSessionRuntime() {
   SessionCortexRuntime.register({

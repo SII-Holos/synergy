@@ -2,7 +2,7 @@
 import { createHash, createPrivateKey, sign } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { assertBrowserHostArchive } from "./browser-host-archive.js"
 import {
   browserHostArtifactName,

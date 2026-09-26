@@ -1,5 +1,5 @@
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
+import { Command } from "@ericsanchezok/synergy-local-runtime/command/command"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"

@@ -14,9 +14,9 @@ def test_compiled_watcher_survives_a_real_interrupted_poll(tmp_path: Path) -> No
     if prepared:
         artifact = Path(prepared)
         verify_prepared(artifact)
-        owner = artifact / "bundle/source/packages/runtime-local"
+        owner = artifact / "bundle/source/packages/local-runtime"
     else:
-        owner = BENCHMARK.parent / "packages/runtime-local"
+        owner = BENCHMARK.parent / "packages/local-runtime"
         command(["bun", str(owner / "script/build-watcher.ts"), "--arch", "x64"], tmp_path / "build.log", timeout=900)
     binding = owner / ".artifacts/watcher/linux-x64-glibc"
     fixture = owner / "test/file/fixtures"

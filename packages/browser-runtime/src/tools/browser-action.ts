@@ -1,5 +1,9 @@
 import z from "zod"
-import { BrowserActionSchema, BrowserBackendResultSchema, type BrowserAction } from "@ericsanchezok/synergy-browser"
+import {
+  BrowserActionSchema,
+  BrowserBackendResultSchema,
+  type BrowserAction,
+} from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import {
   BrowserToolHelper,

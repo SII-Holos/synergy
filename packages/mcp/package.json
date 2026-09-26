@@ -1,0 +1,78 @@
+{
+  "name": "@ericsanchezok/synergy-mcp",
+  "version": "1.1.26",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "exports": {
+    "./cli/mcp": "./src/cli/mcp.ts",
+    ".": "./src/index.ts",
+    "./supervisor": "./src/supervisor.ts",
+    "./instruction-source": "./src/instruction-source.ts",
+    "./tool-source": "./src/tool-source.ts",
+    "./session-input": "./src/session-input.ts",
+    "./routes/mcp-route": "./src/routes/mcp-route.ts",
+    "./auth": "./src/auth.ts",
+    "./pending-oauth": "./src/pending-oauth.ts",
+    "./oauth-provider": "./src/oauth-provider.ts",
+    "./oauth-callback": "./src/oauth-callback.ts",
+    "./config-schema": "./src/config-schema.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/mcp",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "1.0.0-alpha.1",
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-plugin": "workspace:*",
+    "@ericsanchezok/synergy-plugin-host": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "ai": "catalog:",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "open": "10.1.2",
+    "remeda": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "mcp",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "mcp",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "plugin-host": "1.1.26"
+    }
+  }
+}

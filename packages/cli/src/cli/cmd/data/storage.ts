@@ -1,5 +1,5 @@
 import { SessionCompat } from "@ericsanchezok/synergy-harness/persistence"
-import { cmd } from "../cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { StorageMaintenance } from "@ericsanchezok/synergy-harness/storage/maintenance"

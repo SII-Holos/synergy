@@ -4,31 +4,37 @@ Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `S
 
 ## Physical layout
 
-| Path                                               | Responsibility                                                                             |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `bin/`                                             | Installed launchers and binaries                                                           |
-| `config/`                                          | Global domain configuration, agents, commands, skills and instructions                     |
-| `data/storage/`                                    | Agent database bootstrap identity, SQLite database, migration backups and transfer records |
-| `data/auth/`                                       | Provider, Holos, MCP and other account credentials                                         |
-| `data/library.db`                                  | Library's independently owned SQLite knowledge database                                    |
-| `data/plugin/<plugin-id>/auth.json`                | Plugin credentials                                                                         |
-| `data/plugin-install-artifacts/`                   | Private installation recovery snapshots and directory backups                              |
-| `data/browser/profiles/`                           | Persistent browser profiles and browser storage state                                      |
-| `data/browser/uploads/`, `data/browser/downloads/` | Browser file staging and downloads                                                         |
-| `data/snapshot-v2/<scope>/store.git/`              | Shared Git snapshot objects and retained references                                        |
-| `data/snapshot/`                                   | Historical Git snapshot repositories until explicit migration/cleanup                      |
-| `data/agent-artifacts/`                            | Packed binary evidence; ownership and byte locators are in the Agent database              |
-| `data/channel/workspaces/`                         | Channel-managed Project checkouts                                                          |
-| `data/embedding/models/`                           | Local embedding models; overridable with `embedding.local.cacheDir`                        |
-| `data/tool-output/`                                | Externalized tool output without age-based expiry                                          |
-| `state/`                                           | Process ownership, daemon and transient runtime state                                      |
-| `cache/`                                           | Rebuildable caches, including snapshot working indexes                                     |
-| `log/`                                             | Process and diagnostic logs                                                                |
-| `schema/`                                          | Installed JSON schemas                                                                     |
+| Path                                                      | Responsibility                                                                             |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `bin/`                                                    | Installed launchers and binaries                                                           |
+| `installations/active.json`, `installations/pending.json` | Active module generation digest and recoverable promotion intent                           |
+| `installations/generations/`, `installations/staging/`    | Verified module/application trees and unpublished installation stages                      |
+| `installations/selection-v1.json`                         | Initial installation selection retained by the versioned bootstrap migration               |
+| `installations/activated/`, `installations/sources/`      | Plugin activation receipts and immutable local package source archives                     |
+| `config/`                                                 | Global domain configuration, agents, commands, skills and instructions                     |
+| `data/storage/`                                           | Agent database bootstrap identity, SQLite database, migration backups and transfer records |
+| `data/auth/`                                              | Provider, Holos, MCP and other account credentials                                         |
+| `data/library.db`                                         | Library's independently owned SQLite knowledge database                                    |
+| `data/plugin/<plugin-id>/auth.json`                       | Plugin credentials                                                                         |
+| `data/plugin-install-artifacts/`                          | Private installation recovery snapshots and directory backups                              |
+| `data/browser/profiles/`                                  | Persistent browser profiles and browser storage state                                      |
+| `data/browser/uploads/`, `data/browser/downloads/`        | Browser file staging and downloads                                                         |
+| `data/snapshot-v2/<scope>/store.git/`                     | Shared Git snapshot objects and retained references                                        |
+| `data/snapshot/`                                          | Historical Git snapshot repositories until explicit migration/cleanup                      |
+| `data/agent-artifacts/`                                   | Packed binary evidence; ownership and byte locators are in the Agent database              |
+| `data/channel/workspaces/`                                | Channel-managed Project checkouts                                                          |
+| `data/embedding/models/`                                  | Local embedding models; overridable with `embedding.local.cacheDir`                        |
+| `data/tool-output/`                                       | Externalized tool output without age-based expiry                                          |
+| `state/`                                                  | Process ownership, daemon and transient runtime state                                      |
+| `cache/`                                                  | Rebuildable caches, including snapshot working indexes                                     |
+| `log/`                                                    | Process and diagnostic logs                                                                |
+| `schema/`                                                 | Installed JSON schemas                                                                     |
 
 Library, credentials, project files, browser profiles and observability remain separate stores with their own lifecycle. Do not copy an open Library/observability SQLite file without its owning backup protocol. Cache may be cleared on upgrade and is not a backup source. Treat auth, plugin recovery snapshots, logs, signing keys and exported Home archives as private data.
 
 ## Agent database
+
+Installation generations retain code-version floors and explicit package selections independently of Agent storage. Running processes keep their verified generation until they exit. The `installation/20260926-installation-selection-v1` migration preserves the full Web backend for a home with existing data or configuration; fresh core homes retain a minimal selection. It neither rewrites API4 grants nor installs a second Desktop shell. Bootstrap and the central migration runner share this idempotent owner.
 
 `Storage` reads and writes logical keys inside an explicit `Storage.Handle`. Keys no longer map to `.json` files. SQLite defaults to `data/storage/agent.sqlite`; PostgreSQL uses a configured namespace. `data/storage/manifest.json` binds the backend target, database identity and local artifact identity, preventing a missing or unrelated database from being silently accepted as an empty installation.
 

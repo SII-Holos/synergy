@@ -1,6 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { randomBytes } from "node:crypto"
-import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
+import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { BrowserOwner } from "./owner.js"
 
 type Role = "viewer" | "host"

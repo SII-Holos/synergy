@@ -26,7 +26,7 @@
 | 失败记录 | 消费者收到流错误后停止读取，可使调用错误地记为 cancelled | 已消费的错误事件优先保留 failed；原始片段与各次调用继续保存在权威记录中 |
 | 认证等待提示 | 凭据冷却单独解析 Retry-After，与请求重试的毫秒扩展优先级不同 | 复用共享严格解析器，保留既有刷新/备份凭据恢复次数 |
 
-当前实现见 [共享网络分类](../../packages/util/src/network-error.ts)、[共享退避](../../packages/util/src/retry.ts)、[供应商判定](../../packages/harness/src/provider/retry.ts)、[worker 协议](../../packages/harness/src/session/agent-turn/protocol.ts)、[会话处理器](../../packages/harness/src/session/processor.ts) 和 [网页抓取](../../packages/runtime-local/src/tools/webfetch.ts)。决策和取舍见 [重试分类与重放范围](../decisions/implemented/bug-fix/2026-09-15-network-retry-boundaries.md)。
+当前实现见 [共享网络分类](../../packages/util/src/network-error.ts)、[共享退避](../../packages/util/src/retry.ts)、[供应商判定](../../packages/harness/src/provider/retry.ts)、[worker 协议](../../packages/harness/src/session/agent-turn/protocol.ts)、[会话处理器](../../packages/harness/src/session/processor.ts) 和 [网页抓取](../../packages/local-runtime/src/tools/webfetch.ts)。决策和取舍见 [重试分类与重放范围](../decisions/implemented/bug-fix/2026-09-15-network-retry-boundaries.md)。
 
 `ENOTFOUND` 在这套策略中停止自动重试，是为了避免把无效域名当成短暂故障；这不等价于断言它永远不能恢复。Node 官方也说明，同一错误码可能涵盖其他系统解析失败。无法观察具体原因的浏览器通用 fetch 错误仍只做有限重试，不能保证区分 CORS、离线和网络抖动。
 

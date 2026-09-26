@@ -10,7 +10,7 @@ import {
   npmTagMatches,
   npmVersionExists,
 } from "./shared/runtime"
-import type { DependencyVersionMap } from "./shared/package-manifest"
+import { versionPackage, type DependencyVersionMap, type PackageJson } from "./shared/package-manifest"
 import { bunInstall } from "./nodes/bun-install"
 import { generateSdk } from "./nodes/generate-sdk"
 import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
@@ -66,13 +66,10 @@ function parsePackages(input: string | undefined): PackageAlias[] {
 }
 
 function expandPackageDependencies(aliases: PackageAlias[]): PackageAlias[] {
-  const result: PackageAlias[] = []
-  const add = (alias: PackageAlias) => {
-    if (!result.includes(alias)) result.push(alias)
-  }
-  if (aliases.some((alias) => alias === "plugin" || alias === "plugin-kit")) add("util")
-  for (const alias of aliases) add(alias)
-  return result
+  const selected = new Set(aliases)
+  if (selected.has("plugin") || selected.has("plugin-kit")) selected.add("util")
+  const order: PackageAlias[] = ["util", "sdk", "synergy-link-protocol", "plugin", "plugin-kit"]
+  return order.filter((alias) => selected.has(alias))
 }
 
 async function latestVersion(packageName: string): Promise<string | null> {
@@ -92,14 +89,13 @@ async function computeTargetVersion(packageName: string, bump: string): Promise<
   return "0.1.0"
 }
 
-async function rewriteSelectedVersions(versionByPackage: Record<string, string>) {
+async function rewriteSelectedVersions(versionByPackage: Record<string, string>, hostVersion: string) {
   for (const filePath of VERSION_MANAGED_PACKAGE_PATHS) {
     const original = await Bun.file(filePath).text()
-    const pkg = JSON.parse(original) as { name?: string; version?: string }
+    const pkg = JSON.parse(original) as PackageJson & { name?: string }
     const version = pkg.name ? versionByPackage[pkg.name] : undefined
     if (!version) continue
-    pkg.version = version
-    await Bun.write(filePath, JSON.stringify(pkg, null, 2) + "\n")
+    await Bun.write(filePath, JSON.stringify(versionPackage(pkg, version, hostVersion), null, 2) + "\n")
     console.log(`updated version: ${filePath}`)
   }
 }
@@ -118,10 +114,10 @@ async function publishPackage(
   channel: string,
   dependencyVersions: DependencyVersionMap,
 ) {
-  if (alias === "sdk") await publishSdkCandidate(version, channel)
-  if (alias === "util") await publishUtilCandidate(version, channel)
-  if (alias === "synergy-link-protocol") await publishSynergyLinkProtocolCandidate(version, channel)
-  if (alias === "plugin") await publishPluginCandidate(version, channel)
+  if (alias === "sdk") await publishSdkCandidate(version, channel, dependencyVersions)
+  if (alias === "util") await publishUtilCandidate(version, channel, dependencyVersions)
+  if (alias === "synergy-link-protocol") await publishSynergyLinkProtocolCandidate(version, channel, dependencyVersions)
+  if (alias === "plugin") await publishPluginCandidate(version, channel, dependencyVersions)
   if (alias === "plugin-kit") await publishPluginKitCandidate(version, channel, dependencyVersions)
 }
 
@@ -154,7 +150,10 @@ for (const packageName of ALL_RELEASE_PACKAGES) {
 const snapshot = await snapshotFiles(VERSION_MANAGED_PACKAGE_PATHS)
 
 try {
-  await rewriteSelectedVersions(selectedVersionByPackage)
+  const hostVersion =
+    (await latestVersion("@ericsanchezok/synergy-cli")) ?? (await latestVersion("@ericsanchezok/synergy"))
+  if (!hostVersion) throw new Error("Package-only releases require an existing published host version")
+  await rewriteSelectedVersions(selectedVersionByPackage, hostVersion)
   await configureNpmAuth()
   await bunInstall()
 

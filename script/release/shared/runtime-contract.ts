@@ -1,50 +1,14 @@
-import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { EMBEDDING_RUNTIME_REQUIRED_PATHS } from "../../../packages/library/script/embedding-runtime-assets"
-import { PLAYWRIGHT_CORE_REQUIRED_PATHS } from "../../../packages/product-runtime/script/playwright-runtime-assets"
-import { SVG_RASTER_RUNTIME_REQUIRED_PATHS } from "../../../packages/connections/script/svg-raster-runtime-assets"
 import type { RuntimeArtifactProfile } from "./packages"
+import { sha256File } from "../../../packages/plugin-host/src/installation/files"
+import { FULL_COMPONENTS } from "../../../packages/plugin-host/src/installation/catalog"
 
 export type { RuntimeArtifactProfile } from "./packages"
 
 export const RUNTIME_MANIFEST_NAME = "runtime-manifest.sha256"
-export const HOLOS_CLI_REQUIRED_PATHS = [
-  "lib/holos-cli/index.js",
-  "lib/holos-cli/vendor/clarus-shared/index.js",
-  "lib/holos-cli/node_modules/ws/package.json",
-  "lib/holos-cli/node_modules/zod/package.json",
-] as const
-
-export function requiredRuntimeArtifactPaths(name: string, profile: RuntimeArtifactProfile = "full"): string[] {
-  const target = runtimeTarget(name)
-  const binary = target.os === "windows" ? "bin/synergy.exe" : "bin/synergy"
-  const astGrep = target.os === "windows" ? "bin/ast-grep.exe" : "bin/ast-grep"
-  const sqliteVec = target.os === "windows" ? "vec0.dll" : target.os === "darwin" ? "vec0.dylib" : "vec0.so"
-  return [
-    binary,
-    ...(target.os === "darwin" ? ["libsqlite3.dylib"] : []),
-    ...(!target.musl && profile === "full" ? [astGrep] : []),
-    ...(!target.musl && profile === "full" ? [sqliteVec] : []),
-    // The watcher binding ships for every target: @parcel/watcher publishes
-    // musl packages, so unlike ast-grep/sqlite-vec it is not glibc-only.
-    "watcher.node",
-    target.os === "windows" ? "synergy_pty.dll" : target.os === "darwin" ? "libsynergy_pty.dylib" : "libsynergy_pty.so",
-    "PTY-LICENSE",
-    "schema/config.schema.json",
-    ...(profile === "full"
-      ? [
-          "app/index.html",
-          ...PLAYWRIGHT_CORE_REQUIRED_PATHS,
-          ...EMBEDDING_RUNTIME_REQUIRED_PATHS,
-          ...SVG_RASTER_RUNTIME_REQUIRED_PATHS,
-          ...HOLOS_CLI_REQUIRED_PATHS,
-        ]
-      : []),
-    ...(target.os === "linux" ? ["sandbox/synergy-sandbox-linux"] : []),
-    ...(target.os === "windows" ? ["sandbox/synergy-sandbox-windows.exe"] : []),
-  ]
-}
+import { requiredRuntimeArtifactPaths } from "./runtime-layout.cjs"
+export { requiredRuntimeArtifactPaths } from "./runtime-layout.cjs"
 
 export async function writeRuntimeManifest(
   runtimeDir: string,
@@ -52,13 +16,16 @@ export async function writeRuntimeManifest(
   profile: RuntimeArtifactProfile = "full",
 ): Promise<string> {
   if (profile === "core") await assertNoProductAssets(runtimeDir)
-  const lines = await Promise.all(
-    requiredRuntimeArtifactPaths(name, profile).map(async (relative) => {
-      const data = await fs.readFile(path.join(runtimeDir, relative)).catch(() => undefined)
-      if (!data) throw new Error(`missing runtime artifact ${relative}: ${runtimeDir}`)
-      return `${createHash("sha256").update(data).digest("hex")}  ${relative}`
-    }),
+  await fs.writeFile(
+    path.join(runtimeDir, "runtime-assets.txt"),
+    requiredRuntimeArtifactPaths(name, profile).join("\n") + "\n",
   )
+  for (const relative of requiredRuntimeArtifactPaths(name, profile))
+    if (!(await runtimeFileIsSafe(runtimeDir, relative)))
+      throw new Error(`missing runtime artifact ${relative}: ${runtimeDir}`)
+  const lines: string[] = []
+  for (const relative of await runtimeFiles(runtimeDir))
+    lines.push(`${await sha256File(path.join(runtimeDir, relative))}  ${relative}`)
   const output = path.join(runtimeDir, RUNTIME_MANIFEST_NAME)
   await fs.writeFile(output, `${lines.join("\n")}\n`)
   return output
@@ -73,19 +40,18 @@ export async function assertRuntimeManifest(
   const contents = await fs.readFile(manifestPath, "utf8").catch(() => undefined)
   if (!contents) throw new Error(`runtime manifest is missing: ${manifestPath}`)
 
-  await assertNoRuntimeSymlinks(runtimeDir)
   if (profile === "core") await assertNoProductAssets(runtimeDir)
 
   const entries = new Map<string, string>()
   for (const line of contents.trim().split("\n")) {
-    const match = /^([a-f0-9]{64})  ([^/\\\s]+(?:\/[^/\\\s]+)*)$/.exec(line)
+    const match = /^([a-f0-9]{64})  (.+)$/.exec(line)
     const checksum = match?.[1]
     const relative = match?.[2]
     const components = relative?.split("/")
     if (
       !checksum ||
       !relative ||
-      /^[A-Za-z]:/.test(relative) ||
+      !safePath(relative) ||
       components?.some((component) => component === "." || component === "..")
     ) {
       throw new Error(`runtime manifest contains an invalid entry: ${manifestPath}`)
@@ -93,6 +59,8 @@ export async function assertRuntimeManifest(
     if (entries.has(relative)) throw new Error(`runtime manifest contains a duplicate entry ${relative}`)
     entries.set(relative, checksum)
   }
+  for (const file of await runtimeFiles(runtimeDir))
+    if (!entries.has(file)) throw new Error(`runtime manifest contains an unlisted file: ${file}`)
 
   if (expectedTarget) {
     for (const relative of requiredRuntimeArtifactPaths(expectedTarget, profile)) {
@@ -110,8 +78,7 @@ export async function assertRuntimeManifest(
       if (!exists) throw new Error(`runtime manifest file is missing: ${relative}`)
       throw new Error(`runtime manifest file is unsafe: ${relative}`)
     }
-    const data = await fs.readFile(absolute)
-    const actual = createHash("sha256").update(data).digest("hex")
+    const actual = await sha256File(absolute)
     if (actual !== expected) throw new Error(`runtime manifest checksum mismatch: ${relative}`)
   }
 }
@@ -129,7 +96,17 @@ async function runtimeFileIsSafe(runtimeDir: string, relative: string): Promise<
   return true
 }
 
-async function assertNoRuntimeSymlinks(runtimeDir: string): Promise<void> {
+function safePath(relative: string) {
+  return (
+    !relative.startsWith("/") &&
+    !/^[A-Za-z]:/.test(relative) &&
+    !/[\\\x00-\x1f\x7f]/.test(relative) &&
+    relative.split("/").every((part) => part && part !== "." && part !== "..")
+  )
+}
+
+async function runtimeFiles(runtimeDir: string): Promise<string[]> {
+  const files: string[] = []
   const pending = [runtimeDir]
   while (pending.length > 0) {
     const directory = pending.pop()!
@@ -139,14 +116,14 @@ async function assertNoRuntimeSymlinks(runtimeDir: string): Promise<void> {
         throw new Error(`runtime contains a symbolic link: ${path.relative(runtimeDir, absolute)}`)
       }
       if (entry.isDirectory()) pending.push(absolute)
+      else if (entry.isFile()) {
+        const relative = path.relative(runtimeDir, absolute).split(path.sep).join("/")
+        if (!safePath(relative)) throw new Error(`runtime contains an unsafe file path: ${relative}`)
+        if (![RUNTIME_MANIFEST_NAME, "package.json"].includes(relative)) files.push(relative)
+      } else throw new Error(`runtime contains an unsupported file: ${absolute}`)
     }
   }
-}
-
-function runtimeTarget(name: string): { os: "linux" | "darwin" | "windows"; musl: boolean } {
-  const match = /^synergy-(linux|darwin|windows)-(?:x64|arm64)(?:-|$)/.exec(name)
-  if (!match) throw new Error(`Invalid Synergy runtime package name: ${name}`)
-  return { os: match[1] as "linux" | "darwin" | "windows", musl: name.split("-").includes("musl") }
+  return files.sort()
 }
 
 async function assertNoProductAssets(runtimeDir: string): Promise<void> {
@@ -162,6 +139,7 @@ async function assertNoProductAssets(runtimeDir: string): Promise<void> {
     "vec0.dll",
     "bin/ast-grep",
     "bin/ast-grep.exe",
+    ...FULL_COMPONENTS.map((name) => `runtime/node_modules/@ericsanchezok/synergy-${name}`),
   ]
   for (const relative of productPaths) {
     const entry = await fs.lstat(path.join(runtimeDir, relative)).catch((error: NodeJS.ErrnoException) => {

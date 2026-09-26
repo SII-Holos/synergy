@@ -1,5 +1,5 @@
 import z from "zod"
-import { BrowserClipSchema, BrowserLocatorSchema } from "@ericsanchezok/synergy-browser"
+import { BrowserClipSchema, BrowserLocatorSchema } from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"

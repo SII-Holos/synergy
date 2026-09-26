@@ -260,6 +260,15 @@ export async function buildPluginProject(
     if (fs.existsSync(packagePath)) {
       const pkg = JSON.parse(fs.readFileSync(packagePath, "utf-8")) as Record<string, unknown>
       delete pkg.source
+      pkg.version = manifest.version
+      pkg.synergy = {
+        formatVersion: 1,
+        kind: "plugin",
+        id: manifest.id,
+        version: manifest.version,
+        compatibility: manifest.compatibility,
+        manifest: "./plugin.json",
+      }
       if (runtime) {
         pkg.main = `./${PluginArtifact.runtimeEntry}`
         pkg.exports = { ".": `./${PluginArtifact.runtimeEntry}` }

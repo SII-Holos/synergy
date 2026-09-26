@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-按职责命名实际实现：Harness 保留 `RuntimeHandle`，产品装配使用 `ProductRuntimeHandle`；模型 schema 保留 `ModelsDev`，运行时目录使用 `ModelsCatalog`；核心会话工作流机制保留 `SessionWorkflowService`，业务工作流使用 `WorkflowSessionService`。所有消费者同步更新，纯类型消费者直接依赖 schema。产品命令、HTTP API、持久化字段与安装名称保持不变。
+按职责命名实际实现：Harness 保留 `RuntimeHandle`，产品装配使用 `PresetRuntimeHandle`；模型 schema 保留 `ModelsDev`，运行时目录使用 `ModelsCatalog`；核心会话工作流机制保留 `SessionWorkflowService`，业务工作流使用 `WorkflowSessionService`。所有消费者同步更新，纯类型消费者直接依赖 schema。产品命令、HTTP API、持久化字段与安装名称保持不变。
 
 CI 分别构建核心和完整产品，并对两个实际二进制复用同一套仓库外执行验收：模型协议、文件与 shell 工具、权限、预算、取消、恢复及导入导出。模型和工作流另用真实 Bun bundle 验证 schema 调用与会话清理，不以源码名称断言代替运行结果。
 

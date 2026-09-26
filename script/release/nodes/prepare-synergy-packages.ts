@@ -1,6 +1,6 @@
 import fs from "node:fs/promises"
 import { join } from "path"
-import { CLI_DIR, PRODUCT_RUNTIME_DIST_DIR, RUNTIME_RELEASE_TARGETS } from "../shared/packages"
+import { CLI_DIR, PRESETS_DIST_DIR, RUNTIME_RELEASE_TARGETS } from "../shared/packages"
 import { currentGitRemoteUrl } from "../shared/git"
 import { createSynergyWrapperPackageJson } from "../shared/package-manifest"
 import { prepareRuntimeAssets } from "../shared/runtime-assets"
@@ -14,7 +14,7 @@ export async function prepareSynergyPackages(version: string, platformNames: str
   for (const name of platformNames) {
     const scopedName = `@ericsanchezok/${name}`
     scopedBinaries[scopedName] = version
-    const distDir = join(PRODUCT_RUNTIME_DIST_DIR, name)
+    const distDir = join(PRESETS_DIST_DIR, name)
     await prepareRuntimeAssets(name)
 
     await Bun.write(
@@ -38,7 +38,7 @@ export async function prepareSynergyPackages(version: string, platformNames: str
 
   await stageSynergyWrapper({
     cliDir: CLI_DIR,
-    runtimeDistDir: PRODUCT_RUNTIME_DIST_DIR,
+    runtimeDistDir: PRESETS_DIST_DIR,
     version,
     optionalDependencies: scopedBinaries,
     repositoryUrl,

@@ -229,7 +229,7 @@ const workerPoolSettings = sessionMemoryWorkerPoolSettings({
 })
 
 const repositoryRoot = path.join(import.meta.dir, "..")
-const productRuntimeDirectory = path.join(repositoryRoot, RELEASE_CATALOG.productRuntime.directory)
+const presetsDirectory = path.join(repositoryRoot, RELEASE_CATALOG.presets.directory)
 const fixturePath = path.join(import.meta.dir, "fixtures", "session-memory-trajectory.json")
 const fixture = (await Bun.file(fixturePath).json()) as TrajectoryFixture
 validateFixture(fixture)
@@ -269,7 +269,7 @@ try {
       "--non-interactive",
       "--no-banner",
     ],
-    cwd: productRuntimeDirectory,
+    cwd: presetsDirectory,
     env,
     stdin: "ignore",
     stdout: "pipe",
@@ -960,10 +960,10 @@ function eventStream(
 }
 
 async function writeTrajectoryMcp(filepath: string) {
-  const sdkRoot = path.join(productRuntimeDirectory, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm")
+  const sdkRoot = path.join(presetsDirectory, "node_modules", "@modelcontextprotocol", "sdk", "dist", "esm")
   const mcpModule = pathToFileURL(path.join(sdkRoot, "server", "mcp.js")).href
   const stdioModule = pathToFileURL(path.join(sdkRoot, "server", "stdio.js")).href
-  const zodModule = pathToFileURL(path.join(productRuntimeDirectory, "node_modules", "zod", "index.js")).href
+  const zodModule = pathToFileURL(path.join(presetsDirectory, "node_modules", "zod", "index.js")).href
   await writeFile(
     filepath,
     `import { McpServer } from ${JSON.stringify(mcpModule)}

@@ -5,7 +5,7 @@ import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access
 import { WorkspaceCatalog, WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceRuntime } from "@ericsanchezok/synergy-harness/workspace/runtime"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { WorktreeProcess } from "@ericsanchezok/synergy-runtime-local/workspace/process"
+import { WorktreeProcess } from "@ericsanchezok/synergy-local-runtime/workspace/process"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"

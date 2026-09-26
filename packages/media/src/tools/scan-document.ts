@@ -4,7 +4,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Document } from "../util/document"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
-import { truncateLineForDisplay } from "@ericsanchezok/synergy-runtime-local/tools/anchored-file"
+import { truncateLineForDisplay } from "@ericsanchezok/synergy-local-runtime/tools/anchored-file"
 import DESCRIPTION from "./scan-document.txt"
 
 const DEFAULT_LIMIT = 2000

@@ -1,5 +1,5 @@
 import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { expect, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { DaemonState } from "@ericsanchezok/synergy-harness/util/daemon-state"
@@ -13,7 +13,7 @@ import { DaemonHealth } from "../../src/daemon/health"
 import { StartCommand } from "../../src/cli/cmd/start"
 import { StopCommand } from "../../src/cli/cmd/stop"
 import { StatusCommand } from "../../src/cli/cmd/status"
-import { UI } from "../../src/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 
 class RequestedExit extends Error {
   constructor(readonly code: number) {

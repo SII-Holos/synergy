@@ -1,4 +1,4 @@
-import { AtomicFile } from "../../src/storage/atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { afterAll, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"

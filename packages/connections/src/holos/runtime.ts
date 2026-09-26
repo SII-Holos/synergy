@@ -89,7 +89,7 @@ async function syncSynergyLink(
   input: { provider: HolosProvider } | null,
   reason: "disconnected" | "transport_liveness_lost" = "disconnected",
 ) {
-  const { SynergyLinkExecution } = await import("@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution")
+  const { SynergyLinkExecution } = await import("@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution")
   if (!input) {
     SynergyLinkExecution.setClient(null, reason)
     return

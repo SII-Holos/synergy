@@ -28,6 +28,6 @@ Verification: S3a byte-exact golden for the three agent wrapper variants; lightl
 ## Consequences
 
 - `session/` and `tool/` no longer contain lightloop runtime or tool code; the lightloop attachment points (kernel policy, Layer 2.5 block, user wrappers, loop-error conversion, cancel, timer reattach) are all registry-mediated.
-- Registry-asserting tests import `src/product-registration` (light-loop golden, workflow-route, boss tools, kernel) — the same contract as production entries.
+- Registry-asserting tests import `src/registration` (light-loop golden, workflow-route, boss tools, kernel) — the same contract as production entries.
 - Without light-loop registration, lightloop user messages pass through unwrapped and cancelLightloop becomes a no-op returning the session — the correct degradation when the domain is absent.
 - The injected hook deliverer records a durable delivery error when registration is missing, so plugin-owned terminal hooks never silently vanish in direct-invoke paths that bypass the manifest.

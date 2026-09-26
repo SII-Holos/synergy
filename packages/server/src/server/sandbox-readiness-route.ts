@@ -2,7 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, resolver } from "hono-openapi"
 import z from "zod"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
-import { getSandboxReadiness } from "@ericsanchezok/synergy-runtime-local/sandbox/readiness"
+import { getSandboxReadiness } from "@ericsanchezok/synergy-local-runtime/sandbox/readiness"
 
 const SandboxReadinessCheckSchema = z
   .object({

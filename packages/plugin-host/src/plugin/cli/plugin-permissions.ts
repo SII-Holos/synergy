@@ -1,8 +1,8 @@
 import { SYNERGY_CAPABILITY_DETAILS } from "@ericsanchezok/synergy-util/capability"
 import type { Argv } from "yargs"
 import type { PluginStatus } from "../status"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
 
 function describeCapability(capability: string) {
