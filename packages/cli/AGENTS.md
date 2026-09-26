@@ -10,6 +10,8 @@ Run bun run typecheck and the affected tests, then the root package and dependen
 
 Storage maintenance commands own their Runtime lifecycle. Run their isolated suite with `bun test --cwd ../testing ../cli/test/cli/data-storage-command.test.ts` from this package; the package test and coverage orchestrators select the same shared preload without installing a harness Handle.
 
+Command contributions may select maintenance storage from parsed positionals; HTTP-only subcommands must not acquire the local Home lock.
+
 Keep `runCli()` as the sole parser. Product runtime injects command metadata, a runtime factory and nested `dataCommands`; core CLI must not import product implementation packages. Test command-load failures and preserve send cancellation and recording-error exit codes.
 
 The public `cli/maintenance-progress` leaf owns aggregate maintenance reporting and cancellation for explicit CLI maintenance. Product runtime reuses its reporters; startup diagnostics stays independent of database bootstrap.

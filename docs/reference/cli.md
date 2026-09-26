@@ -123,6 +123,11 @@ pack shared snapshots (dry-run unless --apply)
 manage synergy configuration
 
 
+## connect [name]
+
+connect an MCP server on the running synergy server
+
+
 ## create
 
 create a new agent
@@ -542,6 +547,11 @@ configure rerank provider (writes to global config)
 | Option | Description |
 | --- | --- |
 | `--print` (boolean) | print config instead of writing to file |
+
+## restart [name]
+
+restart an MCP server on the running synergy server
+
 
 ## restart <plugin>
 

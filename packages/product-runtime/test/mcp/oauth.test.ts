@@ -22,6 +22,9 @@ import {
 } from "@ericsanchezok/synergy-testing/oauth-mcp-server"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 const runtime = await testRuntime()
 
 runtime.run(() => Log.init({ print: false }))
@@ -499,6 +502,47 @@ describe.serial("McpOAuthProvider", () => {
         oauthState: "current-state",
       })
     }))
+  test("dead refresh token is invalidated and surfaces as an authorization requirement", () =>
+    runtime.run(async () => {
+      await using fixture = createOAuthMcpServerFixture()
+      const name = "dead-refresh-server"
+      await McpAuth.set(
+        name,
+        {
+          tokens: {
+            accessToken: "revoked-access-token",
+            refreshToken: "revoked-refresh-token",
+            expiresAt: Date.now() / 1000 - 60,
+          },
+        },
+        fixture.url,
+      )
+
+      let authorizationUrl: URL | undefined
+      const provider = new McpOAuthProvider(
+        name,
+        fixture.url,
+        { scope: "mcp:connect" },
+        {
+          onRedirect: async (url) => {
+            authorizationUrl = url
+          },
+        },
+      )
+      const client = new Client({ name: "synergy", version: "0" })
+      const transport = new StreamableHTTPClientTransport(new URL(fixture.url), { authProvider: provider })
+
+      try {
+        await expect(client.connect(transport)).rejects.toBeInstanceOf(UnauthorizedError)
+      } finally {
+        await client.close().catch(() => {})
+      }
+
+      expect(authorizationUrl).toBeDefined()
+      const entry = await McpAuth.get(name)
+      expect(entry?.tokens).toBeUndefined()
+      expect(entry?.clientInfo?.clientId).toBeDefined()
+    }))
 })
 
 describe.serial("McpOAuthCallback", () => {
@@ -826,7 +870,7 @@ describe.serial("MCP OAuth race and recovery", () => {
       })
     }))
 
-  test("background provider never persists OAuth state and reads tokens live", () =>
+  test("background OAuth rounds keep ephemeral state and capture their own credentials", () =>
     runtime.run(async () => {
       const provider = new McpOAuthProvider(
         "bg-server",
@@ -854,9 +898,16 @@ describe.serial("MCP OAuth race and recovery", () => {
       expect(await provider.state()).toBe("bg-state")
       expect(await provider.codeVerifier()).toBe("bg-verifier")
 
-      // A token written by another process (e.g. the CLI) is visible immediately.
       await McpAuth.set("bg-server", { tokens: { accessToken: "ext-token" } }, "https://mcp.example.com")
-      const tokens = await provider.tokens()
+      expect(await provider.tokens()).toBeUndefined()
+      const next = new McpOAuthProvider(
+        "bg-server",
+        "https://mcp.example.com",
+        {},
+        { onRedirect: async () => {} },
+        "background",
+      )
+      const tokens = await next.tokens()
       expect(tokens?.access_token).toBe("ext-token")
     }))
 
@@ -967,6 +1018,40 @@ describe.serial("MCP OAuth race and recovery", () => {
       } finally {
         blocker.stop(true)
       }
+    }))
+  test("dead refresh token still opens a fresh authorization flow", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ config: {} })
+      await using fixture = createOAuthMcpServerFixture()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const name = "reauth-server"
+          McpSupervisor().add(name, {
+            type: "remote",
+            url: fixture.url,
+            oauth: { scope: "mcp:connect" },
+            startup: "manual",
+          })
+          await McpAuth.set(
+            name,
+            {
+              tokens: {
+                accessToken: "revoked-access-token",
+                refreshToken: "revoked-refresh-token",
+                expiresAt: Date.now() / 1000 - 60,
+              },
+            },
+            fixture.url,
+          )
+
+          const { authorizationUrl } = await MCP.startAuth(name)
+
+          expect(authorizationUrl).not.toBe("")
+          expect(new URL(authorizationUrl).hostname).toBe(new URL(fixture.url).hostname)
+          expect((await McpAuth.get(name))?.tokens).toBeUndefined()
+        },
+      })
     }))
 })
 

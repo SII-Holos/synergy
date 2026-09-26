@@ -46,9 +46,23 @@ export interface McpOAuthCallbacks {
 export class McpOAuthProvider implements OAuthClientProvider {
   private memoryCodeVerifier: string | undefined
   private memoryState: string | undefined
+  private readonly owner: McpAuth.Owner
+  private captured?: Promise<McpAuth.Snapshot>
 
-  private get mutationOptions(): McpAuth.MutationOptions {
-    return { isCurrent: this.callbacks.isCurrent }
+  private snapshot(): Promise<McpAuth.Snapshot> {
+    return (this.captured ??= McpAuth.get(this.mcpName).then((entry) => ({ entry, stale: false })))
+  }
+
+  private async mutationOptions(): Promise<McpAuth.MutationOptions> {
+    return {
+      snapshot: await this.snapshot(),
+      isCurrent: () => this.owner.isCurrent() && this.callbacks.isCurrent?.() !== false,
+    }
+  }
+
+  private async entryForUrl(): Promise<McpAuth.Entry | undefined> {
+    const { entry } = await this.snapshot()
+    return entry?.serverUrl === this.serverUrl ? entry : undefined
   }
   constructor(
     private mcpName: string,
@@ -56,7 +70,9 @@ export class McpOAuthProvider implements OAuthClientProvider {
     private config: McpOAuthConfig,
     private callbacks: McpOAuthCallbacks,
     private mode: McpOAuthMode = "interactive",
-  ) {}
+  ) {
+    this.owner = McpAuth.owner(mcpName)
+  }
 
   get redirectUrl(): string {
     return `http://127.0.0.1:${getOAuthCallbackPort()}${OAUTH_CALLBACK_PATH}`
@@ -75,6 +91,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async clientInformation(): Promise<OAuthClientInformation | undefined> {
+    const entry = await this.entryForUrl()
     // Check config first (pre-registered client)
     if (this.config.clientId) {
       return {
@@ -83,9 +100,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
       }
     }
 
-    // Check stored client info (from dynamic registration)
-    // Use getForUrl to validate credentials are for the current server URL
-    const entry = await McpAuth.getForUrl(this.mcpName, this.serverUrl)
+    // Stored registrations belong to the current server URL.
     if (entry?.clientInfo) {
       // Check if client secret has expired
       if (entry.clientInfo.clientSecretExpiresAt && entry.clientInfo.clientSecretExpiresAt < Date.now() / 1000) {
@@ -113,7 +128,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
         clientSecretExpiresAt: info.client_secret_expires_at,
       },
       this.serverUrl,
-      this.mutationOptions,
+      await this.mutationOptions(),
     )
     log.info("saved dynamically registered client", {
       mcpName: this.mcpName,
@@ -122,8 +137,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async tokens(): Promise<OAuthTokens | undefined> {
-    // Use getForUrl to validate tokens are for the current server URL
-    const entry = await McpAuth.getForUrl(this.mcpName, this.serverUrl)
+    const entry = await this.entryForUrl()
     if (!entry?.tokens) return undefined
 
     return {
@@ -141,7 +155,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
     if (this.mode === "background") {
       // Persist refreshed tokens so later requests send the new access token.
       // Probe-only connects (no stored entry) still never write shared state.
-      const existing = await McpAuth.getForUrl(this.mcpName, this.serverUrl)
+      const existing = await this.entryForUrl()
       if (!existing) return
     }
     await McpAuth.updateTokens(
@@ -153,12 +167,45 @@ export class McpOAuthProvider implements OAuthClientProvider {
         scope: tokens.scope,
       },
       this.serverUrl,
-      this.mutationOptions,
+      await this.mutationOptions(),
     )
     log.info("saved oauth tokens", { mcpName: this.mcpName })
   }
 
+  // Provenance: MCP SDK `auth()` calls this after `invalid_grant`/`invalid_client` to clear
+  // credentials the authorization server has rejected, then retries without user intervention.
+  // Background probes may clear stored tokens, but own only an in-memory verifier;
+  // clearing shared registration or verifiers would break a concurrent interactive login.
+  async invalidateCredentials(scope: "all" | "client" | "tokens" | "verifier" | "discovery"): Promise<void> {
+    if (scope === "discovery") return
+    if (this.mode === "background" && (scope === "verifier" || scope === "all")) {
+      this.memoryCodeVerifier = undefined
+      if (scope === "verifier") return
+      this.memoryState = undefined
+    }
+    if (this.mode === "background" && !(await this.entryForUrl())) return
+
+    switch (scope) {
+      case "verifier":
+        await McpAuth.clearCodeVerifier(this.mcpName, undefined, await this.mutationOptions())
+        return
+      case "client":
+      case "all":
+        if (this.mode === "background") break
+        await McpAuth.remove(this.mcpName, await this.mutationOptions())
+        log.info("invalidated oauth credentials", { mcpName: this.mcpName, scope })
+        return
+      default:
+        break
+    }
+
+    await McpAuth.clearTokens(this.mcpName, await this.mutationOptions())
+    log.info("invalidated oauth tokens", { mcpName: this.mcpName })
+  }
+
   async redirectToAuthorization(authorizationUrl: URL): Promise<void> {
+    if ((await this.snapshot()).stale || !this.owner.isCurrent() || this.callbacks.isCurrent?.() === false)
+      throw new Error("MCP OAuth credentials were superseded")
     log.info("redirecting to authorization", {
       mcpName: this.mcpName,
       host: authorizationUrl.hostname,
@@ -172,7 +219,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
       this.memoryCodeVerifier = codeVerifier
       return
     }
-    await McpAuth.updateCodeVerifier(this.mcpName, codeVerifier, this.mutationOptions)
+    await McpAuth.updateCodeVerifier(this.mcpName, codeVerifier, await this.mutationOptions())
   }
 
   async codeVerifier(): Promise<string> {
@@ -182,7 +229,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
       }
       return this.memoryCodeVerifier
     }
-    const entry = await McpAuth.get(this.mcpName)
+    const { entry } = await this.snapshot()
     if (!entry?.codeVerifier) {
       throw new Error(`No code verifier saved for MCP server: ${this.mcpName}`)
     }
@@ -194,7 +241,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
       this.memoryState = state
       return
     }
-    await McpAuth.updateOAuthState(this.mcpName, state, this.mutationOptions)
+    await McpAuth.updateOAuthState(this.mcpName, state, await this.mutationOptions())
   }
 
   async state(): Promise<string> {
@@ -202,10 +249,10 @@ export class McpOAuthProvider implements OAuthClientProvider {
       if (!this.memoryState) this.memoryState = crypto.randomUUID()
       return this.memoryState
     }
-    const entry = await McpAuth.get(this.mcpName)
+    const { entry } = await this.snapshot()
     if (entry?.oauthState) return entry.oauthState
     const state = crypto.randomUUID()
-    await McpAuth.updateOAuthState(this.mcpName, state, this.mutationOptions)
+    await McpAuth.updateOAuthState(this.mcpName, state, await this.mutationOptions())
     return state
   }
 }
