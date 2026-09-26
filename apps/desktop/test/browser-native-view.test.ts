@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { BrowserNativeAttachRequest } from "@ericsanchezok/synergy-browser"
+import type { BrowserNativeAttachRequest } from "@ericsanchezok/synergy-browser-core"
 
 const { BrowserNativeViewManager } = await import("../src/browser-native-view.js")
 

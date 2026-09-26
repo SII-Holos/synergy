@@ -1,0 +1,17 @@
+import { WorkspaceFileSymbolSource } from "@ericsanchezok/synergy-local-runtime/workspace-file/symbol-source"
+import { LSP } from "."
+
+/**
+ * S9d source inversion: the L1 workspace-file search reads LSP client
+ * availability and workspace symbols through this registered source instead
+ * of importing the lsp product domain. Loaded through
+ * src/registration.ts.
+ */
+export function registerWorkspaceFileSymbolSource() {
+  WorkspaceFileSymbolSource.register({
+    async availableClientCount() {
+      return await LSP.connectionCount()
+    },
+    workspaceSymbol: (query, signal) => LSP.workspaceSymbol(query, signal),
+  })
+}

@@ -9,7 +9,28 @@
       "types": "./src/*.ts",
       "import": "./src/*.ts"
     },
-    "./pty-keys": "./src/pty-keys.ts"
+    "./pty-keys": "./src/pty-keys.ts",
+    "./terminal": {
+      "types": "./src/terminal.ts",
+      "bun": "./src/terminal.ts",
+      "import": "./dist/terminal.js"
+    },
+    "./cli-command": {
+      "types": "./src/cli-command.ts",
+      "bun": "./src/cli-command.ts",
+      "import": "./dist/cli-command.js"
+    },
+    "./atomic-file": {
+      "types": "./src/atomic-file.ts",
+      "bun": "./src/atomic-file.ts",
+      "import": "./dist/atomic-file.js"
+    },
+    "./io-retry": {
+      "types": "./src/io-retry.ts",
+      "bun": "./src/io-retry.ts",
+      "import": "./dist/io-retry.js"
+    },
+    "./installed-launcher": "./src/installed-launcher.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -24,6 +45,7 @@
   },
   "devDependencies": {
     "@types/bun": "catalog:",
+    "@types/yargs": "17.0.33",
     "typescript": "catalog:"
   }
 }

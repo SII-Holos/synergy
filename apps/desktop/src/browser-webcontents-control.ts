@@ -9,7 +9,7 @@ import {
   type BrowserBackendCommand,
   type BrowserBackendResult,
   type CdpTransport,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "./browser-host-diagnostics.js"
 import { inputModifiers, type ElectronInputModifier } from "./browser-input.js"
 

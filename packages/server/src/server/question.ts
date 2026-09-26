@@ -1,7 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
-import { Question } from "@ericsanchezok/synergy-runtime-local/question"
+import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import z from "zod"
 import { errors } from "./error"
 

@@ -1,3 +1,5 @@
+import { useGlobalSDK } from "@/context/global-sdk"
+import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 import {
   ErrorBoundary,
@@ -162,11 +164,13 @@ function NavigationPageContent(props: {
 }
 
 export function BuiltinNavigationPage(props: { navigationId: string }) {
+  const { capabilities } = useGlobalSDK()
   const { _ } = useLingui()
   const [registryVersion, setRegistryVersion] = createSignal(0)
   onCleanup(subscribeNavigation(() => setRegistryVersion((version) => version + 1)))
   const entry = createMemo(() => {
     registryVersion()
+    if (!runtimeFeatureAvailable("navigation", props.navigationId, capabilities.has)) return
     return getBuiltinNavigation(props.navigationId)
   })
 

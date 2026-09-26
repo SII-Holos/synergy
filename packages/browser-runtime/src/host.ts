@@ -3,7 +3,7 @@ import {
   type BrowserPresentationCapabilities,
   type BrowserPresentationEnvironment,
   type BrowserPresentationSelection,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker } from "./broker.js"
 
 export namespace BrowserHost {

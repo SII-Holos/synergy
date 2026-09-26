@@ -12,6 +12,11 @@ import { clearWorkbenchPanels, listWorkbenchPanels } from "../../../src/plugin/r
   Fragment: Symbol("Fragment"),
 }
 
+const [selected, setSelected] = createSignal<string[] | undefined>()
+mock.module("@/context/global-sdk", () => ({
+  useGlobalSDK: () => ({ capabilities: { has: (id: string) => selected()?.includes(id) ?? true } }),
+}))
+
 const [activeLocale, setActiveLocale] = createSignal("en")
 
 mock.module("@/context/terminal", () => ({
@@ -49,9 +54,30 @@ function panelIds(): string[] {
 
 afterEach(() => {
   clearWorkbenchPanels()
+  setSelected(undefined)
 })
 
 describe("built-in workbench panels", () => {
+  test("registers only selected optional panels and removes them after reconnection", async () => {
+    setSelected(["note"])
+    const dispose = createRoot((done) => {
+      BuiltinWorkbenchPanelsProvider({ children: null })
+      return done
+    })
+    try {
+      await Bun.sleep(1)
+      expect(panelIds().includes("notes")).toBe(true)
+      expect(panelIds().includes("browser")).toBe(false)
+      expect(panelIds().includes("boss")).toBe(false)
+      expect(panelIds().includes("file")).toBe(true)
+      setSelected(["browser-runtime"])
+      await Bun.sleep(1)
+      expect(panelIds().includes("notes")).toBe(false)
+      expect(panelIds().includes("browser")).toBe(true)
+    } finally {
+      dispose()
+    }
+  })
   test("re-registers on locale change without duplicate-id throws", async () => {
     const dispose = createRoot((done) => {
       BuiltinWorkbenchPanelsProvider({ children: null })

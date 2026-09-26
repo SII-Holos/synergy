@@ -67,6 +67,8 @@ describe("generated catalog completeness", () => {
     // surface them as option tables rather than an empty options column.
     expect(body).toContain("| Option | Description |")
     expect(body).toContain("| `--cwd`")
+    expect(body).toContain("## build [path]")
+    expect(body).toContain("build a plugin definition into an installable package")
   })
 
   test("config catalog lists every config domain", async () => {

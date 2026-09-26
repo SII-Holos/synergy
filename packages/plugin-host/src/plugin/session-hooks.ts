@@ -5,7 +5,7 @@ import { Plugin } from "."
 /**
  * S9c source inversion: the L1 session loop delivers plugin lifecycle hooks
  * through the SessionPluginHooks registry instead of importing the plugin
- * product domain. Loaded through src/product-registration.ts.
+ * product domain. Loaded through src/registration.ts.
  */
 export function registerPluginSessionHooks() {
   SessionPluginHooks.registerInstalled(async () => {

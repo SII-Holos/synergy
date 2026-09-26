@@ -68,7 +68,12 @@ export interface RuntimeServices {
   reload?: { start(): void; stop(): Promise<unknown> | void }
   initializeExtensions?(): Promise<void>
   disposeExtensions?(): Promise<void>
-  resident?: { start(config: Config.Info): Promise<void>; stop(): Promise<void> }
+  started?(): Promise<void>
+  resident?: {
+    start(config: Config.Info): Promise<void>
+    ready?(config: Config.Info): Promise<void>
+    stop(): Promise<void>
+  }
   transport?: {
     listen(network: RuntimeNetwork, mode: "server" | "oneshot"): RuntimeServer
     closeAdmission(): void
@@ -259,7 +264,11 @@ export namespace RuntimeHandle {
       RuntimeContext.sealComposition()
       MigrationRegistry.lock()
       ConfigExtensions.lock()
-      await Global.initialize({ configSchemaPath: services.configSchemaPath })
+      await Global.initialize(
+        services.configSchemaPath
+          ? { configSchemaPath: services.configSchemaPath }
+          : { configSchema: JSON.stringify(Config.jsonSchema(), null, 2) + "\n" },
+      )
       await Log.init(options.logging ?? { print: false })
       await options.host.workspaceLocation?.hostID()
       options.signal?.throwIfAborted()
@@ -368,6 +377,7 @@ export namespace RuntimeHandle {
       if (options.mode === "server" && services.resident) {
         residentStarted = true
         await services.resident.start(config)
+        await services.resident.ready?.(config)
       }
       if (await SessionCompat.isActive())
         stopCompat = SessionCompat.startBackgroundMigrator({
@@ -381,6 +391,9 @@ export namespace RuntimeHandle {
       stopBackground.push(SessionManager.startIdleSweep())
       stopBackground.push(await ProviderCatalog.subscribeModelCatalog())
       if (options.mode === "server") stopBackground.push(startModelCatalogRefresh())
+      if (options.mode === "server")
+        await ScopeContext.provide({ scope: Scope.home(), fn: async () => services.started?.() })
+      options.signal?.throwIfAborted()
       phase = "ready"
       const boundClose = () => closing ?? instance.run(close)
       return {

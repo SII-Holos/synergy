@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises"
 import type { CuaDriver } from "@trycua/cua-driver"
-import { ComputerError, type ComputerCommand } from "@ericsanchezok/synergy-computer"
+import { ComputerError, type ComputerCommand } from "@ericsanchezok/synergy-computer-protocol"
 import { ComputerRuntime } from "./runtime.js"
 
 export class ComputerDriver {

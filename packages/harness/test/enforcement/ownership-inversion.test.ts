@@ -236,7 +236,7 @@ describe("ownership inversion — filesystem-only shapes move to the sandbox", (
 
   // The external-target half of the accepted handover: the gate stops emitting
   // an external-write capability, and the OS sandbox is what refuses the write
-  // outside the workspace (packages/runtime-local/test/sandbox/
+  // outside the workspace (packages/local-runtime/test/sandbox/
   // containment-baseline.test.ts asserts the runtime EPERM side).
   test("an external target in the same shape carries no predicted capability", () =>
     runtime.run(async () => {

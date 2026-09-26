@@ -5,7 +5,7 @@ import path from "node:path"
 import { loadWindowState } from "../../src/window-state.js"
 import { BrowserNativeViewManager } from "../../src/browser-native-view.js"
 import { BrowserNativePagePool } from "../../src/browser-native-page-pool.js"
-import type { BrowserHostPageEvent } from "@ericsanchezok/synergy-browser"
+import type { BrowserHostPageEvent } from "@ericsanchezok/synergy-browser-core"
 
 void run().catch((error) => {
   console.error(error)

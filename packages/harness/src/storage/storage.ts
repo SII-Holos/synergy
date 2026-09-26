@@ -5,7 +5,7 @@ import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { StorageQueue } from "./queue"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { ArtifactPack } from "./artifact-pack"
-import { AtomicFile } from "./atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { NotFoundError as MissingRecord, StorageClosedError, StorageConflictError } from "./errors"
 import {
   TransactionalStore,

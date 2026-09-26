@@ -6,7 +6,7 @@ import {
   renderFeishuQuestionCardSummary,
   renderFeishuQuestionCardSummarySafe,
 } from "../../src/channel/provider/feishu"
-import type { Question } from "@ericsanchezok/synergy-runtime-local/question"
+import type { Question } from "@ericsanchezok/synergy-local-runtime/question"
 
 const singleQuestions: Question.Info[] = [
   {

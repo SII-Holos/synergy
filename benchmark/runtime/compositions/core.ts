@@ -1,4 +1,4 @@
-import { openLocalRuntime, registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import { openLocalRuntime, registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 import type { Composition } from "../composition"
 
 export default {

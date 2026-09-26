@@ -9,7 +9,7 @@ import {
   type BrowserBackendCommand,
   type BrowserBackendResult,
   type BrowserHostMessage,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 
 const runtimeTest = process.env.SYNERGY_DESKTOP_RUNTIME_TEST === "1" ? test : test.skip
 const temporaryDirectories: string[] = []

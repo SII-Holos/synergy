@@ -66,7 +66,7 @@ export const LoopStopTool = Tool.define("loop_stop", {
       }
     }
     if (!instanceState.agendaAssertClear) {
-      throw new Error("LightLoop stop guard is not wired (load src/product-registration)")
+      throw new Error("LightLoop stop guard is not wired (load src/registration)")
     }
     await instanceState.agendaAssertClear({
       sessionID: ctx.sessionID,

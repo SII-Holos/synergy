@@ -4,7 +4,7 @@ import {
   BrowserProtocolError,
   type BrowserPresentationSelection,
   type BrowserSessionState,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker } from "./broker.js"
 import { BrowserCommandService } from "./command-service.js"
 import { BrowserControl } from "./control.js"

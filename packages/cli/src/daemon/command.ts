@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import fs from "fs"
 import { homedir } from "os"
 import path from "path"
@@ -38,6 +39,18 @@ export namespace DaemonCommand {
         env: baseEnv,
       }
     }
+
+    const installed = installedWorkerCommand(environment, "server", [
+      "--managed-service",
+      "--non-interactive",
+      "--no-banner",
+      "--print-logs",
+      "--hostname",
+      input.hostname,
+      "--port",
+      String(input.port),
+    ])
+    if (installed) return { cmd: installed, cwd: serviceWorkingDirectory(environment), env: baseEnv }
 
     const execPath = process.execPath
     const basename =
@@ -152,6 +165,9 @@ export namespace DaemonCommand {
   }
 
   const ENV_VOLATILE = new Set([
+    "SYNERGY_INSTALLATION_PIN",
+    "SYNERGY_INSTALLATION_ROOT",
+    "SYNERGY_LAUNCHER_COMMAND",
     "PWD",
     "OLDPWD",
     "SHLVL",

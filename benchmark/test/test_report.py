@@ -306,7 +306,8 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
                 plan["config"]["resources"]["reserve_cpus"] = 1
             elif change == "dependency_proxy":
                 plan["dependency_proxy"] = {
-                    "endpoint_sha256": "different", "policy": "internet-enabled-environments-only"
+                    "endpoint_sha256": "different",
+                    "policy": "internet-enabled-environments-only",
                 }
             elif change == "seed":
                 plan["config"]["seed"] += 1

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
+import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { withUnknownOutcomeGuidance } from "@ericsanchezok/synergy-browser-runtime/tools/browser-shared"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"

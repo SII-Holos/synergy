@@ -13,7 +13,7 @@ import {
   type BrowserBackendCommand,
   type BrowserBackendResult,
   type BrowserHostDownloadEntry,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserDownloads } from "./downloads.js"
 import type { BrowserOwner } from "./owner.js"
 import { PlaywrightCdpTransport } from "./playwright-cdp-transport.js"

@@ -4,7 +4,7 @@ Status: implemented
 
 ## Executive summary
 
-On 2026-08-20, every Linux CI run containing commit `f7b8e68956` (feat(agenda): session turn-event triggers) failed the same three `SessionProcessor auto-expand interception` tests in `packages/product-runtime/test/tool/auto-expand.test.ts`, expecting `completed` and receiving `error`. The root cause: `test/session/tool-scheduler.test.ts` stops the module-level `ToolScheduler` singleton and never restores it, and Bun runs each test shard in a single shared process, so the stopped singleton leaked into sibling files. The agenda commit added two test files that shifted the shard boundary, moving `auto-expand.test.ts` into the same shard as the leak source for the first time. It escaped because the failure did not reproduce on macOS (different shard composition) and the failing tests were initially misattributed to `test/workspace/policy.test.ts`.
+On 2026-08-20, every Linux CI run containing commit `f7b8e68956` (feat(agenda): session turn-event triggers) failed the same three `SessionProcessor auto-expand interception` tests in `packages/presets/test/tool/auto-expand.test.ts`, expecting `completed` and receiving `error`. The root cause: `test/session/tool-scheduler.test.ts` stops the module-level `ToolScheduler` singleton and never restores it, and Bun runs each test shard in a single shared process, so the stopped singleton leaked into sibling files. The agenda commit added two test files that shifted the shard boundary, moving `auto-expand.test.ts` into the same shard as the leak source for the first time. It escaped because the failure did not reproduce on macOS (different shard composition) and the failing tests were initially misattributed to `test/workspace/policy.test.ts`.
 
 ## Summary
 

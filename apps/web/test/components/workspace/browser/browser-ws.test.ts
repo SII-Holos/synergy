@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { BrowserUserCommandSchema } from "@ericsanchezok/synergy-browser"
+import { BrowserUserCommandSchema } from "@ericsanchezok/synergy-browser-core"
 import { createBrowserWebRTCSignalingUrl } from "../../../../src/components/workspace/browser/browser-webrtc"
 import {
   browserControlCommandFromMessage,

@@ -4,6 +4,7 @@ import { mkdtempSync } from "node:fs"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { requiredRuntimeArtifactPaths } from "../../script/release/shared/runtime-contract"
 
 const installScript = path.resolve(import.meta.dir, "..", "..", "install")
 
@@ -75,6 +76,29 @@ afterEach(async () => {
 })
 
 describe("CLI bundle installer", () => {
+  test("installs and restores the sealed module seed including filenames with spaces", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-modules-"))
+    temporaryDirectories.push(root)
+    const bundle = path.join(root, "bundle")
+    const target = path.join(root, "target")
+    const required = requiredRuntimeArtifactPaths("synergy-linux-x64")
+    const files = [...required, "runtime/node_modules/example/Third Party.txt"]
+    for (const file of files) {
+      await fs.mkdir(path.dirname(path.join(bundle, file)), { recursive: true })
+      await fs.writeFile(path.join(bundle, file), file)
+    }
+    await fs.writeFile(path.join(bundle, "runtime-assets.txt"), required.join("\n") + "\n")
+    await writeRuntimeManifest(bundle, files)
+    const result = runInstallFunction(
+      'ROOT_DIR="$2"; INSTALL_DIR="$2/bin"; install_bundle_contents "$1" && backup_managed_runtime "$3" && rm -rf "$ROOT_DIR/runtime" && restore_managed_runtime "$3" && verify_runtime_manifest "$ROOT_DIR"',
+      [bundle, target, path.join(root, "backup")],
+      { SYNERGY_INSTALL_PLATFORM: "Linux" },
+    )
+    expect(result.exitCode, outputText(result)).toBe(0)
+    expect(await Bun.file(path.join(target, "runtime/node_modules/example/Third Party.txt")).text()).toBe(
+      "runtime/node_modules/example/Third Party.txt",
+    )
+  })
   test("preserves the packaged sandbox helper beside the installed runtime", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-test-"))
     temporaryDirectories.push(root)
@@ -578,7 +602,7 @@ describe("CLI bundle installer", () => {
     },
   )
 
-  test("rejects manifest entries with trailing fields", async () => {
+  test("does not truncate manifest filenames at whitespace", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-install-manifest-trailing-"))
     temporaryDirectories.push(root)
     const bundle = path.join(root, "bundle")
@@ -604,7 +628,7 @@ describe("CLI bundle installer", () => {
     })
 
     expect(result.exitCode).not.toBe(0)
-    expect(outputText(result)).toContain("runtime manifest contains an invalid entry")
+    expect(outputText(result)).toContain("runtime manifest file is missing or unsafe: extra.txt trailing")
   })
 
   test("rejects duplicate runtime manifest entries", async () => {

@@ -6,7 +6,7 @@ import {
   type BrowserHostPageEvent,
   type BrowserHostStatus,
   type BrowserPresentationKind,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker } from "./broker.js"
 import type { BrowserOwner } from "./owner.js"
 import type { BrowserPageBackend, BrowserPageEventHandlers } from "./page.js"

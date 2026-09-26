@@ -1,13 +1,14 @@
 import { $ } from "bun"
 import path from "path"
+import fs from "node:fs/promises"
+import os from "node:os"
 import {
   createPublishablePackageJson,
   readCatalog,
   type DependencyVersionMap,
   type PackageJson,
 } from "./package-manifest"
-import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry, waitForNpmVersion } from "./runtime"
-import { NPM_REGISTRY } from "./packages"
+import { publishPackedArchive } from "./publish-modules"
 
 export async function publishGenericWorkspacePackage(options: {
   dir: string
@@ -30,25 +31,22 @@ export async function publishGenericWorkspacePackage(options: {
   await Bun.write(packageJsonPath, JSON.stringify(packageJson, null, 2))
 
   try {
-    if (await npmVersionExists(options.name, options.version)) {
-      console.log(`${options.name}@${options.version} already exists, reconciling ${options.channel}`)
-    } else {
-      await $`rm -f *.tgz`.cwd(options.dir).nothrow()
-      await $`bun pm pack`.cwd(options.dir)
-      const tgz = (await $`ls *.tgz`.cwd(options.dir).text()).trim()
-      const authArgs = npmAuthArgs()
-      await retry(() =>
-        $`npm publish ${tgz} --tag ${options.channel} --registry ${NPM_REGISTRY} --access public ${authArgs}`.cwd(
-          options.dir,
-        ),
-      )
-    }
+    await publishDirectory(options)
   } finally {
     await Bun.write(packageJsonPath, originalText)
   }
+}
 
-  if (!(await waitForNpmVersion(options.name, options.version))) {
-    throw new Error(`expected ${options.name}@${options.version} to appear in npm registry after publish`)
+export async function publishDirectory(options: { dir: string; name: string; version: string; channel: string }) {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-publish-"))
+  try {
+    const manifest = await Bun.file(path.join(options.dir, "package.json")).json()
+    if (manifest.name !== options.name || manifest.version !== options.version)
+      throw new Error(`Publication identity differs from the prepared package: ${options.name}`)
+    const archive = path.join(directory, "package.tgz")
+    await $`bun pm pack --ignore-scripts --filename ${archive}`.cwd(options.dir).quiet()
+    await publishPackedArchive({ name: options.name, version: options.version, archive }, options.channel)
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true })
   }
-  await npmEnsureDistTag(options.name, options.version, options.channel)
 }

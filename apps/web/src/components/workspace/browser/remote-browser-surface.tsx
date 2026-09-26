@@ -1,7 +1,7 @@
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useLingui } from "@lingui/solid"
 import { browser as B } from "@/locales/messages"
-import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createSignal, onCleanup, Show } from "solid-js"

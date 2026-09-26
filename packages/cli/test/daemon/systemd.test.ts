@@ -1,5 +1,5 @@
 import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { describe, expect, spyOn, test } from "bun:test"
 import { SYSTEMD_SERVER_SHUTDOWN_TIMEOUT_SECONDS } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import path from "path"

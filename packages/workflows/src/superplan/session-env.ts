@@ -4,7 +4,7 @@ import { SessionEnvContributor } from "@ericsanchezok/synergy-harness/session/en
  * S9c (Blueprint): the superplan product domain contributes its advisory
  * environment hint lines through the SessionEnvContributor registry so the
  * L1 environment prompt stays free of product imports. Loaded through
- * src/product-registration.ts.
+ * src/registration.ts.
  */
 export function registerSuperPlanSessionEnv() {
   SessionEnvContributor.register({

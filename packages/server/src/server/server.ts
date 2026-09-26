@@ -1,4 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { timingSafeEqual } from "node:crypto"
 import { SessionPreparingError } from "@ericsanchezok/synergy-harness/persistence"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
@@ -21,7 +23,7 @@ import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
-import { Command } from "@ericsanchezok/synergy-runtime-local/command/command"
+import { Command } from "@ericsanchezok/synergy-local-runtime/command/command"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { createScopeRoute } from "./scope"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
@@ -35,7 +37,7 @@ import { SessionExportRoute } from "./session-export"
 import { CortexRoute } from "./cortex"
 import { Installation } from "@ericsanchezok/synergy-harness/global/installation"
 import { MDNS } from "./mdns"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
@@ -50,7 +52,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { ScopePath } from "./scope-path"
 import { WorkspaceFilesRoute } from "./workspace-files"
 import { WorkspacesRoute } from "./workspaces"
-import { File as SynergyFile } from "@ericsanchezok/synergy-runtime-local/file"
+import { File as SynergyFile } from "@ericsanchezok/synergy-local-runtime/file"
 import { ConfigRoute } from "./config-route"
 import { SecretsRoute } from "./secrets-route"
 import { AssetRoute } from "./asset"
@@ -174,6 +176,7 @@ export namespace Server {
     maintenance: undefined as { token: string; expiresAt: number; timer: ReturnType<typeof setTimeout> } | undefined,
     requests: new Set<Promise<unknown>>(),
     contributions: undefined as Contributions | undefined,
+    contributionOwners: new Map<string, Contributions>(),
     appInitialized: false,
     app: new Hono(),
     _openapiSpecs: undefined as Promise<OpenAPISpecs> | undefined,
@@ -460,15 +463,53 @@ export namespace Server {
     listening?: (url: URL) => void
   }
 
-  export function registerContributions(value: Contributions) {
+  export function registerContributions(value: Contributions, owner = "application") {
     const instanceState = runtimeState()
 
-    if (instanceState.contributions === value) return
+    if (instanceState.contributionOwners.get(owner) === value) return
     RuntimeContext.assertCompositionOpen("Server contributions")
-    if (instanceState.contributions) throw new Error("Server contributions are already registered")
+    if (instanceState.contributionOwners.has(owner))
+      throw new Error(`Server contributions are already registered for ${owner}`)
     if (instanceState.appInitialized)
       throw new Error("Server contributions must be registered before constructing the application")
-    instanceState.contributions = value
+    const contributions = [...instanceState.contributionOwners.values(), value]
+    const routes: Partial<Record<RouteStage, Hono>> = {}
+    const bootstrap: BootstrapContributions = {}
+    const providerRoutes = new Hono()
+    const conflicts: z.ZodType[] = []
+    for (const contribution of contributions) {
+      for (const [stage, route] of Object.entries(contribution.routes ?? {})) {
+        const key = stage as RouteStage
+        ;(routes[key] ??= new Hono()).route("", route)
+      }
+      for (const key of Object.keys(contribution.bootstrap ?? {})) {
+        if (key in bootstrap) throw new Error(`Duplicate bootstrap contribution: ${key}`)
+      }
+      Object.assign(bootstrap, contribution.bootstrap)
+      if (contribution.providerRoutes) providerRoutes.route("", contribution.providerRoutes)
+      if (contribution.scopeConflictSchema) conflicts.push(contribution.scopeConflictSchema)
+    }
+    const applications = contributions.filter((contribution) => contribution.mountApp)
+    if (applications.length > 1) throw new Error("Multiple application asset owners")
+    instanceState.contributions = {
+      routes,
+      bootstrap,
+      providerRoutes,
+      scopeConflictSchema: conflicts.length > 1 ? z.union(conflicts) : conflicts[0],
+      isGlobalRoute: (pathname) => contributions.some((contribution) => contribution.isGlobalRoute?.(pathname)),
+      isScopeRequiredRoute: (pathname) =>
+        contributions.some((contribution) => contribution.isScopeRequiredRoute?.(pathname)),
+      errorStatus: (error) => {
+        for (const contribution of contributions) {
+          const status = contribution.errorStatus?.(error)
+          if (status !== undefined) return status
+        }
+      },
+      mountApp: applications[0]?.mountApp,
+      configureOrigins: (origins) => contributions.forEach((contribution) => contribution.configureOrigins?.(origins)),
+      listening: (url) => contributions.forEach((contribution) => contribution.listening?.(url)),
+    }
+    instanceState.contributionOwners.set(owner, value)
   }
 
   function contributionRoutes(stage: RouteStage): Hono {
@@ -588,6 +629,13 @@ export namespace Server {
         }),
       )
       .use(async (c, next) => {
+        const token = RuntimeContext.current().host.env.SYNERGY_SERVER_TOKEN
+        if (token) {
+          const expected = Buffer.from(`Bearer ${token}`)
+          const actual = Buffer.from(c.req.header("authorization") ?? "")
+          if (actual.length !== expected.length || !timingSafeEqual(actual, expected))
+            return c.json({ name: "Unauthorized", data: { message: "Runtime credentials are required" } }, 401)
+        }
         if (instanceState._shuttingDown)
           return c.json({ name: "RuntimeShuttingDown", data: { message: "Synergy runtime is shutting down" } }, 503)
         if (
@@ -722,6 +770,38 @@ export namespace Server {
       .use(compress({ encoding: "gzip" }))
       .use(provideRequestScope)
       .use(cspMiddleware())
+      .get(
+        "/global/capabilities",
+        describeRoute({
+          summary: "Get runtime capabilities",
+          description: "List the components selected for this running instance. Installed changes apply after restart.",
+          operationId: "global.capabilities",
+          responses: {
+            200: {
+              description: "Active runtime composition",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z
+                      .object({
+                        apiVersion: z.literal(1),
+                        hostVersion: z.string(),
+                        components: z.array(RuntimeComponents.Info),
+                      })
+                      .meta({ ref: "RuntimeCapabilities" }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        (c) =>
+          c.json({
+            apiVersion: 1 as const,
+            hostVersion: Installation.VERSION,
+            components: RuntimeComponents.selected(),
+          }),
+      )
       .get(
         "/global/health",
         describeRoute({

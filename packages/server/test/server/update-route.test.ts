@@ -301,15 +301,7 @@ describe("server update route", () => {
 
   test("does not start a worker for dev-only daemon commands", () =>
     runtime.run(async () => {
-      await writeManifest([
-        "bun",
-        "run",
-        "--cwd",
-        "/repo/packages/product-runtime",
-        "src/daemon-entry.ts",
-        "--port",
-        "4096",
-      ])
+      await writeManifest(["bun", "run", "--cwd", "/repo/packages/presets", "src/daemon-entry.ts", "--port", "4096"])
 
       const app = testApp()
       const response = await app.request("/global/update/start", {

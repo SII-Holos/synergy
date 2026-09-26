@@ -1,5 +1,11 @@
 import { z } from "zod"
 
+export interface RuntimeStatusRow {
+  label: string
+  value: string
+  kind?: "success" | "warning" | "error" | "pending" | "muted"
+}
+
 export const RUNTIME_STARTUP_PREFIX = "SYNERGY_STARTUP_V1 "
 export const RUNTIME_STARTUP_MAX_LINE_LENGTH = 1024
 

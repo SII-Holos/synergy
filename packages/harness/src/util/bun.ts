@@ -91,7 +91,11 @@ export namespace BunProc {
     cached: boolean
   }
 
-  export async function install(pkg: string, version = "latest"): Promise<InstallResult> {
+  export async function install(
+    pkg: string,
+    version = "latest",
+    options: { ignoreScripts?: boolean } = {},
+  ): Promise<InstallResult> {
     // Use lock to ensure only one install at a time
     using _ = await Lock.write("bun-install")
 
@@ -132,6 +136,7 @@ export namespace BunProc {
       "add",
       "--force",
       "--exact",
+      ...(options.ignoreScripts ? ["--ignore-scripts"] : []),
       // Provenance: https://github.com/oven-sh/bun/issues/19936 .
       // Local adaptation: proxied installs pass --no-cache because Bun's HTTP cache serves
       // stale responses through proxies; drop once upstream fixes it.

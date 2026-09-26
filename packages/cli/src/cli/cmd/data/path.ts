@@ -1,6 +1,6 @@
 import * as prompts from "@clack/prompts"
-import { cmd } from "../cmd"
-import { UI } from "../../../util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { CATEGORIES, scanCategories, formatSize, shortenPath, dataRoot } from "./shared"
 
 export const DataPathCommand = cmd({

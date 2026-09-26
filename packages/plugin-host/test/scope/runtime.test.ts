@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test"
-import { Ripgrep } from "@ericsanchezok/synergy-runtime-local/file/ripgrep"
+import { Ripgrep } from "@ericsanchezok/synergy-local-runtime/file/ripgrep"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"

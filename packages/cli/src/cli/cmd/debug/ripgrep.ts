@@ -1,8 +1,8 @@
 import { EOL } from "os"
-import { Ripgrep } from "@ericsanchezok/synergy-runtime-local/file/ripgrep"
+import { Ripgrep } from "@ericsanchezok/synergy-local-runtime/file/ripgrep"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { withScopeContext } from "../../scope"
-import { cmd } from "../cmd"
+import { withScopeContext } from "@ericsanchezok/synergy-local-runtime/cli/scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 
 export const RipgrepCommand = cmd({
   command: "rg",

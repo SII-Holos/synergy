@@ -7,10 +7,10 @@ import { prepareDesktopRuntimes } from "../../../script/release/prepare-desktop-
 const repoRoot = path.resolve(import.meta.dir, "../../..")
 const platformName = process.platform === "win32" ? "windows" : process.platform
 const runtimeName = `synergy-${platformName}-${process.arch}`
-const runtimeDir = path.join(repoRoot, "packages/product-runtime/dist", runtimeName)
+const runtimeDir = path.join(repoRoot, "packages/presets/dist", runtimeName)
 
 if (!fs.existsSync(path.join(runtimeDir, "bin"))) {
-  await $`bun run ./packages/product-runtime/script/build.ts --single --skip-install`.cwd(repoRoot)
+  await $`bun run ./packages/presets/script/build.ts --single --skip-install`.cwd(repoRoot)
 }
 
 if (!fs.existsSync(path.join(runtimeDir, "bin"))) {

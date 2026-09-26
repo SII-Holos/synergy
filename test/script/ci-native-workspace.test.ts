@@ -23,10 +23,10 @@ test("native Workspace verification stays in the plan with fresh platform covera
   const windows = tasks.find((task) => task.id === "windows")!
   expect(windows.owners).toContain("packages/cli")
   for (const task of [macos!, windows]) {
-    expect(task.package).toBe("packages/runtime-local")
+    expect(task.package).toBe("packages/local-runtime")
     expect(task.outputs).toContain("lcov")
     expect(task.outputs).toContain("junit")
-    expect(task.needs).toContain("suite-packages-runtime-local")
+    expect(task.needs).toContain("suite-packages-local-runtime")
     const recipe = await commands(task, plan)
     const missing: string[] = []
     for (const command of recipe) {
@@ -36,7 +36,7 @@ test("native Workspace verification stays in the plan with fresh platform covera
       }
     }
     expect(missing).toEqual([])
-    expect(recipe.some((command) => command.args.includes("packages/runtime-local/script/build-pty.ts"))).toBe(true)
+    expect(recipe.some((command) => command.args.includes("packages/local-runtime/script/build-pty.ts"))).toBe(true)
     expect(recipe.some((command) => command.args.includes("script/native-workspace-coverage.ts"))).toBe(true)
     const result = {
       version: 1 as const,

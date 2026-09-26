@@ -70,7 +70,7 @@ test("custom composer submits once and a running response survives switching to 
     expect(await buildPluginProject(project.root)).toBe(true)
     preview = await startPluginPreview({
       artifacts: [path.join(project.root, "dist")],
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/presets/src/index.ts")],
     })
     await preview.client.config.domain.update(
       {

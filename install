@@ -72,6 +72,10 @@ mkdir -p "$INSTALL_DIR"
 
 has_bundled_assets_at() {
     local root="$1"
+    if [ -f "$root/runtime-assets.txt" ]; then
+        [ -f "$root/runtime/generation.json" ] && [ -f "$root/runtime-manifest.sha256" ]
+        return
+    fi
     [ -f "$root/app/index.html" ] && \
     [ -f "$root/schema/config.schema.json" ] && \
     [ -f "$root/browser-runtime/playwright-core/package.json" ] && \
@@ -103,6 +107,10 @@ has_bundled_assets() {
 
 has_required_sandbox_asset_at() {
     local root="$1"
+    if [ -f "$root/runtime-assets.txt" ]; then
+        verify_runtime_manifest "$root"
+        return
+    fi
     local platform="${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}"
     case "$platform" in
         Linux*) [ -f "$root/sandbox/synergy-sandbox-linux" ] ;;
@@ -201,7 +209,7 @@ runtime_manifest_has_entry() {
     local wanted="$2"
     local line relative
     while IFS= read -r line || [ -n "$line" ]; do
-        if [[ ! "$line" =~ ^[a-f0-9]{64}\ \ ([^[:space:]]+)$ ]]; then
+        if [[ ! "$line" =~ ^[a-f0-9]{64}\ \ (.+)$ ]]; then
             return 1
         fi
         relative="${BASH_REMATCH[1]}"
@@ -214,6 +222,27 @@ runtime_manifest_has_entry() {
 
 verify_runtime_manifest_contract() {
     local manifest="$1"
+    if runtime_manifest_has_entry "$manifest" "runtime-assets.txt"; then
+        local inventory="${manifest%/*}/runtime-assets.txt"
+        local required binary="bin/synergy"
+        case "${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}" in
+            MINGW*|MSYS*|CYGWIN*|Windows*) binary="bin/synergy.exe" ;;
+        esac
+        [ -f "$inventory" ] && [ ! -L "$inventory" ] || return 1
+        for required in "$binary" runtime/generation.json runtime/node_modules/@ericsanchezok/synergy-harness/package.json runtime/node_modules/@ericsanchezok/synergy-cli/dist/modules/index.js; do
+            if ! runtime_manifest_has_entry "$manifest" "$required"; then
+                print_message error "runtime manifest is missing required entry: $required"
+                return 1
+            fi
+        done
+        while IFS= read -r required || [ -n "$required" ]; do
+            if ! runtime_manifest_has_entry "$manifest" "$required"; then
+                print_message error "runtime manifest is missing required entry: $required"
+                return 1
+            fi
+        done < "$inventory"
+        return 0
+    fi
     local required
     local platform="${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}"
     local musl="${is_musl:-false}"
@@ -306,33 +335,44 @@ verify_runtime_manifest() {
     [ -f "$manifest" ] || return 0
     verify_runtime_manifest_contract "$manifest" || return 1
 
-    local line expected relative actual
-    local seen=$'\n'
+    local line relative verification duplicate failed
+    duplicate=$(awk 'length($0) && seen[substr($0, 67)]++ { print substr($0, 67) }' "$manifest") || return 1
+    if [ -n "$duplicate" ]; then
+        print_message error "runtime manifest contains a duplicate entry: $duplicate"
+        return 1
+    fi
     while IFS= read -r line || [ -n "$line" ]; do
-        if [[ ! "$line" =~ ^([a-f0-9]{64})\ \ ([^[:space:]]+)$ ]]; then
+        if [[ ! "$line" =~ ^([a-f0-9]{64})\ \ (.+)$ ]]; then
             print_message error "runtime manifest contains an invalid entry: $manifest"
             return 1
         fi
-        expected="${BASH_REMATCH[1]}"
         relative="${BASH_REMATCH[2]}"
         case "$relative" in
             ""|.|..|./*|/*|*\\*|[A-Za-z]:*|../*|*/../*|*/..|*/./*|*/.) print_message error "runtime manifest contains an unsafe path: $relative"; return 1 ;;
         esac
-        if [[ "$seen" == *$'\n'"$relative"$'\n'* ]]; then
-            print_message error "runtime manifest contains a duplicate entry: $relative"
+        if [[ "$relative" =~ [[:cntrl:]] ]]; then
+            print_message error "runtime manifest contains an unsafe path: $relative"
             return 1
         fi
-        seen+="$relative"$'\n'
         if ! runtime_file_is_safe "$bundle_root" "$relative"; then
             print_message error "runtime manifest file is missing or unsafe: $relative"
             return 1
         fi
-        actual=$(sha256_file "$bundle_root/$relative") || return 1
-        if [ "$actual" != "$expected" ]; then
-            print_message error "runtime manifest checksum mismatch: $relative"
-            return 1
-        fi
     done < "$manifest"
+    local checksum_command=()
+    if command -v sha256sum >/dev/null 2>&1; then
+        checksum_command=(sha256sum -c runtime-manifest.sha256)
+    elif command -v shasum >/dev/null 2>&1; then
+        checksum_command=(shasum -a 256 -c runtime-manifest.sha256)
+    else
+        print_message error "No SHA-256 tool is available; install sha256sum or shasum."
+        return 1
+    fi
+    if ! verification=$(cd "$bundle_root" && "${checksum_command[@]}" 2>&1); then
+        failed=$(printf '%s\n' "$verification" | sed -n 's/: FAILED.*$//p')
+        print_message error "runtime manifest checksum mismatch${failed:+: $failed}"
+        return 1
+    fi
 }
 
 bundle_contains_symlink() {
@@ -359,16 +399,18 @@ archive_member_name_is_safe() {
 validated_archive_members() {
     local archive="$1"
     local archive_type="$2"
-    local members
+    local members verbose
     local member
     if [ "$archive_type" = "tar" ]; then
-        if tar -tvzf "$archive" | grep -Eq '^[lh]'; then
+        verbose=$(tar -tvzf "$archive") || return 1
+        if grep -E '^[lh]' <<< "$verbose" >/dev/null; then
             print_message error "Release archive contains a symbolic or hard link." >&2
             return 1
         fi
         members=$(tar -tzf "$archive") || return 1
     else
-        if unzip -Z -l "$archive" | grep -Eq '^l'; then
+        verbose=$(unzip -Z -l "$archive") || return 1
+        if grep -E '^l' <<< "$verbose" >/dev/null; then
             print_message error "Release archive contains a symbolic link." >&2
             return 1
         fi
@@ -392,7 +434,7 @@ require_published_checksum_before_extraction() {
     local archive_type="$2"
     local checksum_verified="$3"
     local checksum_name="$4"
-    local members
+    local members verbose
     local member
     members=$(validated_archive_members "$archive" "$archive_type") || return 1
     if [ "$checksum_verified" = "true" ]; then
@@ -460,7 +502,7 @@ backup_managed_runtime() {
     local name
     rm -rf "$backup"
     mkdir -p "$backup" || return 1
-    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll watcher.node; do
+    for name in app schema browser-runtime lib sandbox bin runtime runtime-assets.txt runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll watcher.node; do
         if [ -e "$ROOT_DIR/$name" ] || [ -L "$ROOT_DIR/$name" ]; then
             cp -RP "$ROOT_DIR/$name" "$backup/$name" || return 1
         fi
@@ -470,10 +512,10 @@ backup_managed_runtime() {
 restore_managed_runtime() {
     local backup="$1"
     local name
-    rm -rf "$ROOT_DIR/app" "$ROOT_DIR/schema" "$ROOT_DIR/browser-runtime" "$ROOT_DIR/lib" "$ROOT_DIR/sandbox" "$ROOT_DIR/bin"
-    rm -f "$ROOT_DIR/runtime-manifest.sha256" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" "$ROOT_DIR/watcher.node"
+    rm -rf "$ROOT_DIR/app" "$ROOT_DIR/schema" "$ROOT_DIR/browser-runtime" "$ROOT_DIR/lib" "$ROOT_DIR/sandbox" "$ROOT_DIR/bin" "$ROOT_DIR/runtime"
+    rm -f "$ROOT_DIR/runtime-assets.txt" "$ROOT_DIR/runtime-manifest.sha256" "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll" "$ROOT_DIR/watcher.node"
     mkdir -p "$ROOT_DIR" || return 1
-    for name in app schema browser-runtime lib sandbox bin runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll watcher.node; do
+    for name in app schema browser-runtime lib sandbox bin runtime runtime-assets.txt runtime-manifest.sha256 vec0.so vec0.dylib vec0.dll watcher.node; do
         if [ -e "$backup/$name" ] || [ -L "$backup/$name" ]; then
             cp -RP "$backup/$name" "$ROOT_DIR/$name" || return 1
         fi
@@ -485,6 +527,16 @@ apply_bundle_contents() {
     local vec
     mkdir -p "$ROOT_DIR" "$INSTALL_DIR" || return 1
 
+    if [ -f "$bundle_root/runtime-assets.txt" ]; then
+        cp "$bundle_root/runtime-assets.txt" "$ROOT_DIR/runtime-assets.txt" || return 1
+        rm -rf "$ROOT_DIR/app" "$ROOT_DIR/browser-runtime" "$ROOT_DIR/lib" "$ROOT_DIR/sandbox" || return 1
+    else
+        rm -f "$ROOT_DIR/runtime-assets.txt" || return 1
+        rm -rf "$ROOT_DIR/runtime" || return 1
+    fi
+    if [ -d "$bundle_root/runtime" ]; then
+        replace_bundle_directory "$bundle_root/runtime" "$ROOT_DIR/runtime" || return 1
+    fi
     if [ -d "$bundle_root/app" ]; then
         replace_bundle_directory "$bundle_root/app" "$ROOT_DIR/app" || return 1
     fi

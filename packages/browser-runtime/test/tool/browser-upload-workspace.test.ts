@@ -1,13 +1,13 @@
 import { afterAll, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { BrowserBackendCommandSchema } from "@ericsanchezok/synergy-browser"
+import { BrowserBackendCommandSchema } from "@ericsanchezok/synergy-browser-core"
 import { BrowserUploadTool } from "../../src/tools/browser-upload"
 import { BrowserToolHelper } from "../../src/tools/browser-shared"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime(registerLocalRuntime)
 afterAll(() => runtime.close())

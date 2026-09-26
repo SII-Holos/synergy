@@ -7,6 +7,13 @@ from synergy_bench.prepare import recipe_links
 from synergy_bench.storage import atomic_json
 
 
+def test_current_source_preparation_resolves_the_renamed_runtime_package(tmp_path):
+    from synergy_bench.prepare import source_protocol
+
+    atomic_json(tmp_path / "packages/local-runtime/package.json", {"name": "@ericsanchezok/synergy-local-runtime"})
+    assert source_protocol(tmp_path, None) == "synergy-rollout-v1"
+
+
 def test_session_export_release_uses_its_own_public_package_and_rejects_unknown_history(tmp_path):
     from synergy_bench.prepare import source_protocol
 

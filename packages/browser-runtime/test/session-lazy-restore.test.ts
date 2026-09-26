@@ -3,7 +3,11 @@ import { BrowserOwner } from "../src/owner"
 import { BrowserSessionImpl } from "../src/session"
 import { BrowserStorage } from "../src/storage"
 import { BrowserEvent } from "../src/event"
-import type { BrowserBackendCommand, BrowserBackendResult, BrowserCheckpoint } from "@ericsanchezok/synergy-browser"
+import type {
+  BrowserBackendCommand,
+  BrowserBackendResult,
+  BrowserCheckpoint,
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserDownloads } from "../src/downloads"
 import type { BrowserPageEventHandlers } from "../src/page"
 import type { BrowserPageBackend } from "../src/page"

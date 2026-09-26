@@ -24,9 +24,9 @@ Test timeouts then interrupted cleanup; the resulting failures obscured the firs
 ## Guardrails added
 
 - [Admission order and rejected alternatives](../decisions/implemented/bug-fix/2026-09-23-workspace-retirement-admission-order.md).
-- [Coordinator tests](../../packages/runtime-local/test/workspace/coordinator.test.ts) reject global and broader bounded footprints beneath disjoint retirement claims.
-- [Task ownership tests](../../packages/runtime-local/test/workspace/task-access.test.ts) perform a real file write through retirement and reject reservation expansion and handoff.
-- [Worktree behavior tests](../../packages/runtime-local/test/workspace/worktree-access.test.ts) retain cancellation, foreign-lock, new-commit, native-descendant and active-user checks.
+- [Coordinator tests](../../packages/local-runtime/test/workspace/coordinator.test.ts) reject global and broader bounded footprints beneath disjoint retirement claims.
+- [Task ownership tests](../../packages/local-runtime/test/workspace/task-access.test.ts) perform a real file write through retirement and reject reservation expansion and handoff.
+- [Worktree behavior tests](../../packages/local-runtime/test/workspace/worktree-access.test.ts) retain cancellation, foreign-lock, new-commit, native-descendant and active-user checks.
 - [Testing guidance](../../.synergy/skill/testing-guide/SKILL.md) requires cross-repository retirement overlap and captured ownership evidence for unexplained stalls.
 
 ## Lessons

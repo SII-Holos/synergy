@@ -1,6 +1,6 @@
-import { cmd } from "./cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { runMigrations, rollbackMigrations, getMigrationStatus } from "@ericsanchezok/synergy-harness/migration"
-import { UI } from "../../util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { currentMaintenance } from "../maintenance-progress"
 

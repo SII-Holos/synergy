@@ -71,6 +71,15 @@ export namespace Config {
     return ConfigExtensions.resolveSchema(Info)
   }
 
+  export function jsonSchema() {
+    const output = z.toJSONSchema(schema(), { unrepresentable: "any" })
+    if (output.properties) {
+      delete output.properties.keybinds
+      delete output.properties.experimental
+    }
+    return output
+  }
+
   /**
    * Normalize an MCP server config by applying defaults and legacy timeout
    * compatibility. Callers should pass `config.mcpDefaults?.callTimeout` and

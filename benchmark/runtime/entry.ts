@@ -5,7 +5,7 @@ import { runCli } from "@ericsanchezok/synergy-cli/main"
 if (!(await runCoreWorker())) {
   const composition = await loadComposition(process.env.SYNERGY_BENCH_COMPOSITION ?? "core")
   const { Identifier } = await import("@ericsanchezok/synergy-harness/id/id")
-  const { createLocalClient } = await import("@ericsanchezok/synergy-runtime-local/client")
+  const { createLocalClient } = await import("@ericsanchezok/synergy-local-runtime/client")
   const { atomicJSON } = await import("./files")
   const argv = process.argv.slice(2)
   const sessionID = argv[0] === "send" ? Identifier.descending("session") : undefined

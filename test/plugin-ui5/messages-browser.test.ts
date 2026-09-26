@@ -19,7 +19,7 @@ test("native public conversation retains bounded history and reconciles updates 
     expect(await buildPluginProject(project.root)).toBe(true)
     preview = await startPluginPreview({
       artifacts: [path.join(project.root, "dist")],
-      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/product-runtime/src/index.ts")],
+      command: [process.execPath, path.resolve(import.meta.dir, "../../packages/presets/src/index.ts")],
     })
     await approvePreviewPlugins(preview)
     const conversation = await importPreviewConversation(preview, { title: "History fixture", turns: 360 })

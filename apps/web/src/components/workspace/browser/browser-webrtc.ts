@@ -4,7 +4,7 @@ import {
   BrowserWebRTCMessageSchema,
   BrowserWebRTCSignalSchema,
   type BrowserWebRTCSignal,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 type BrowserWebRTCSignalingUrlOptions = {

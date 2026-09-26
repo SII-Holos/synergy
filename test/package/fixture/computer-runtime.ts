@@ -13,7 +13,7 @@ assert.ok(route.routes.some((entry) => entry.method === "GET" && entry.path === 
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: context.bind(route.fetch) })
 try {
   assert.equal((await fetch(new URL("/missing", server.url))).status, 404)
-  for (const owner of ["server", "product-runtime", "library", "browser-runtime", "plugin-host"]) {
+  for (const owner of ["server", "presets", "library", "browser-runtime", "plugin-host"]) {
     assert.equal(
       await Bun.file(path.join("node_modules/@ericsanchezok", `synergy-${owner}/package.json`)).exists(),
       false,

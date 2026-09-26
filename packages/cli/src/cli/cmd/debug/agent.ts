@@ -1,8 +1,8 @@
 import { EOL } from "os"
 import { basename } from "path"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { withScopeContext } from "../../scope"
-import { cmd } from "../cmd"
+import { withScopeContext } from "@ericsanchezok/synergy-local-runtime/cli/scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 
 export const AgentCommand = cmd({
   command: "agent <name>",

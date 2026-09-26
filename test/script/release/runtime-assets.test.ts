@@ -36,29 +36,38 @@ afterEach(async () => {
 })
 
 describe("release runtime asset contract", () => {
-  test.each([
-    ["synergy-linux-x64", "bin/ast-grep", "vec0.so", "sandbox/synergy-sandbox-linux"],
-    ["synergy-darwin-arm64", "bin/ast-grep", "vec0.dylib", undefined],
-    ["synergy-windows-x64", "bin/ast-grep.exe", "vec0.dll", "sandbox/synergy-sandbox-windows.exe"],
-  ] as const)("requires complete native and library assets for %s", (name, astGrep, sqliteVec, sandbox) => {
-    const required = requiredRuntimeArtifactPaths(name)
-    expect(required).toContain(astGrep)
-    expect(required).toContain(sqliteVec)
-    if (sandbox) expect(required).toContain(sandbox)
-    expect(required).toContain("watcher.node")
-    expect(required).toContain("lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs")
-    expect(required).toContain("lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm")
-    expect(required).toContain("lib/holos-cli/index.js")
-    expect(required).toContain("lib/holos-cli/vendor/clarus-shared/index.js")
-    expect(required).toContain("lib/holos-cli/node_modules/ws/package.json")
-    expect(required).toContain("lib/holos-cli/node_modules/zod/package.json")
+  test("seals every module file including filenames with spaces and rejects unlisted payloads", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-runtime-module-seal-"))
+    temporaryDirectories.push(root)
+    const runtimeDir = await createRuntimeFixture(root, "synergy-darwin-arm64")
+    const module = path.join(runtimeDir, "runtime/node_modules/example/Third Party.txt")
+    await fs.mkdir(path.dirname(module), { recursive: true })
+    await fs.writeFile(module, "approved module resource")
+    await writeRuntimeManifest(runtimeDir, "synergy-darwin-arm64")
+    await assertRuntimeManifest(runtimeDir, "synergy-darwin-arm64")
+    await fs.writeFile(module, "tampered resource")
+    await expect(assertRuntimeManifest(runtimeDir, "synergy-darwin-arm64")).rejects.toThrow("checksum mismatch")
+    await fs.writeFile(module, "approved module resource")
+    await fs.writeFile(path.join(path.dirname(module), "unlisted.js"), "unapproved code")
+    await expect(assertRuntimeManifest(runtimeDir, "synergy-darwin-arm64")).rejects.toThrow("unlisted file")
   })
-  test("keeps the watcher binding in musl archives but excludes glibc-only helpers", () => {
+  test.each(["synergy-linux-x64", "synergy-darwin-arm64", "synergy-windows-x64"])(
+    "requires module-owned assets for %s without executable-adjacent copies",
+    (name) => {
+      const required = requiredRuntimeArtifactPaths(name)
+      expect(required).toContain("runtime/generation.json")
+      expect(required).toContain("runtime/node_modules/@ericsanchezok/synergy-web-app/app/index.html")
+      expect(required).toContain("runtime/node_modules/playwright-core/lib/coreBundle.js")
+      expect(required.some((file) => file.includes("synergy-native-") && file.endsWith("/watcher.node"))).toBe(true)
+      expect(required.some((file) => file.endsWith("/ort-wasm-simd-threaded.asyncify.wasm"))).toBe(true)
+      expect(required).not.toContain("app/index.html")
+      expect(required).not.toContain("watcher.node")
+    },
+  )
+  test("keeps the musl watcher module without glibc-only optional helpers", () => {
     const required = requiredRuntimeArtifactPaths("synergy-linux-x64-baseline-musl")
-    expect(required).not.toContain("bin/ast-grep")
-    expect(required).not.toContain("vec0.so")
-    expect(required).toContain("watcher.node")
-    expect(required).toContain("sandbox/synergy-sandbox-linux")
+    expect(required).toContain("runtime/node_modules/@ericsanchezok/synergy-native-linux-x64-musl/watcher.node")
+    expect(required.some((file) => /ast-grep|vec0/.test(file))).toBe(false)
   })
 
   test("detects a required runtime file changed after manifest generation", async () => {
@@ -67,7 +76,10 @@ describe("release runtime asset contract", () => {
     const runtimeDir = await createRuntimeFixture(root, "synergy-darwin-arm64")
     await assertRuntimeManifest(runtimeDir, "synergy-darwin-arm64")
 
-    await fs.writeFile(path.join(runtimeDir, "app", "index.html"), "tampered")
+    await fs.writeFile(
+      path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app", "index.html"),
+      "tampered",
+    )
     await expect(assertRuntimeManifest(runtimeDir, "synergy-darwin-arm64")).rejects.toThrow(
       /runtime manifest checksum mismatch.*app\/index\.html/i,
     )
@@ -77,7 +89,7 @@ describe("release runtime asset contract", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-runtime-symlink-"))
     temporaryDirectories.push(root)
     const runtimeDir = await createRuntimeFixture(root, "synergy-darwin-arm64")
-    const appPath = path.join(runtimeDir, "app", "index.html")
+    const appPath = path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app", "index.html")
     const linkedApp = path.join(root, "linked-app.html")
     await fs.rename(appPath, linkedApp)
     await fs.symlink(linkedApp, appPath)
@@ -93,7 +105,7 @@ describe("release runtime asset contract", () => {
     const runtimeDir = await createRuntimeFixture(root, "synergy-darwin-arm64")
     const manifestPath = path.join(runtimeDir, "runtime-manifest.sha256")
     const contents = await fs.readFile(manifestPath, "utf8")
-    const duplicate = contents.split("\n").find((line) => line.endsWith("  app/index.html"))
+    const duplicate = contents.split("\n").find((line) => line.endsWith("/app/index.html"))
     await fs.appendFile(manifestPath, `${duplicate}\n`)
 
     await expect(assertRuntimeManifest(runtimeDir, "synergy-darwin-arm64")).rejects.toThrow(
@@ -124,7 +136,7 @@ describe("release runtime asset contract", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-runtime-parent-link-"))
     temporaryDirectories.push(root)
     const runtimeDir = await createRuntimeFixture(root, "synergy-darwin-arm64")
-    const appDirectory = path.join(runtimeDir, "app")
+    const appDirectory = path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app")
     const linkedDirectory = path.join(root, "linked-app")
     await fs.rename(appDirectory, linkedDirectory)
     await fs.symlink(linkedDirectory, appDirectory)
@@ -138,7 +150,10 @@ describe("release runtime asset contract", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-runtime-extra-link-"))
     temporaryDirectories.push(root)
     const runtimeDir = await createRuntimeFixture(root, "synergy-darwin-arm64")
-    await fs.symlink(path.join(runtimeDir, "app", "index.html"), path.join(runtimeDir, "extra-link"))
+    await fs.symlink(
+      path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app", "index.html"),
+      path.join(runtimeDir, "extra-link"),
+    )
 
     await expect(assertRuntimeManifest(runtimeDir, "synergy-darwin-arm64")).rejects.toThrow(
       /runtime contains a symbolic link.*extra-link/i,

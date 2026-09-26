@@ -1,3 +1,4 @@
+import { useGlobalSDK } from "@/context/global-sdk"
 import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
 import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import type { PluginInputService, PluginInputViewPart } from "@ericsanchezok/synergy-plugin"
@@ -196,6 +197,7 @@ function WorkflowChip(props: {
 
 export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
+  const { capabilities } = useGlobalSDK()
   const workflowDialog = useDialog()
   const confirm = useConfirm()
   const globalSync = useGlobalSync()
@@ -1173,7 +1175,7 @@ export function createPromptInputController(props: PromptInputProps) {
           },
         ],
       },
-    ]
+    ].filter((section) => section.id !== "workflow" || capabilities.has("workflows"))
   })
 
   const newSessionStartOptions = createMemo<PromptStartOptionGroup[]>(() => {
@@ -2286,14 +2288,16 @@ export function createPromptInputController(props: PromptInputProps) {
               }}
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
-            <VoiceDictationButton
-              getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
-              insertText={insertDictationText}
-              focusEditor={() => {
-                // Restores the caret the applyEdits insert left behind.
-                editorRef.focus()
-              }}
-            />
+            <Show when={capabilities.has("media")}>
+              <VoiceDictationButton
+                getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
+                insertText={insertDictationText}
+                focusEditor={() => {
+                  // Restores the caret the applyEdits insert left behind.
+                  editorRef.focus()
+                }}
+              />
+            </Show>
             <Show when={lightLoopInstructions()}>
               {(instructions) => (
                 <LightLoopSubmitControl

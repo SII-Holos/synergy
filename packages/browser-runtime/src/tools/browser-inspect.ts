@@ -1,5 +1,5 @@
 import z from "zod"
-import { BrowserLocatorSchema } from "@ericsanchezok/synergy-browser"
+import { BrowserLocatorSchema } from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 

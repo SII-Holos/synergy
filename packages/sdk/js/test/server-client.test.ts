@@ -5,73 +5,63 @@ import path from "node:path"
 import process from "node:process"
 import { createSynergy } from "../src/index"
 import { createSynergyClient } from "../src/client"
-import { createSynergyServer, createSynergyTui } from "../src/server"
+import { createSynergyServer, type ManagedServerOptions } from "../src/server"
 
-const FAKE_SCRIPT = `#!/usr/bin/env bun
+const FAKE_SCRIPT = String.raw`#!/usr/bin/env bun
 const args = process.argv.slice(2)
-const mode = process.env.FAKE_MODE ?? "serve"
+const mode = process.env.FAKE_MODE ?? "server"
 const logPath = process.env.FAKE_ARGS_LOG
-if (logPath) {
-  await Bun.write(logPath, JSON.stringify({ args, config: JSON.parse(process.env.SYNERGY_CONFIG_CONTENT ?? "{}") }))
-}
-if (mode === "exit") {
-  console.error("fake synergy crashed on purpose")
-  process.exit(3)
-}
-if (mode === "badoutput") {
-  console.log("synergy server listening on nowhere")
-  setTimeout(() => process.exit(0), 2_000)
-  await new Promise(() => {})
-}
-if (mode === "silent") {
-  setTimeout(() => process.exit(0), 2_000)
-  await new Promise(() => {})
-}
-if (mode === "tui-log") {
-  setTimeout(() => process.exit(0), 5_000)
-  await new Promise(() => {})
-}
+if (logPath) await Bun.write(logPath, JSON.stringify({ args, pid: process.pid, root: process.env.SYNERGY_RUNTIME_ROOT, authenticated: !!process.env.SYNERGY_SERVER_TOKEN, config: JSON.parse(process.env.SYNERGY_CONFIG_CONTENT ?? "{}") }))
+if (mode === "exit") process.exit(3)
+if (mode === "silent") await new Promise(() => {})
 const portArg = args.find((argument) => argument.startsWith("--port="))
-const requested = portArg ? Number(portArg.split("=")[1]) : 4096
 const server = Bun.serve({
-  port: requested || 0,
+  port: Number(portArg?.split("=")[1] ?? 0),
   fetch(request) {
-    const url = new URL(request.url)
-    if (url.pathname.endsWith("/invoke")) {
-      return Response.json({ ok: true, data: { result: "roundtrip" } })
-    }
-    return Response.json({ ok: true })
+    if (request.headers.get("authorization") !== "Bearer " + process.env.SYNERGY_SERVER_TOKEN) return new Response("Unauthorized", { status: 401 })
+    if (new URL(request.url).pathname.endsWith("/invoke")) return Response.json({ ok: true, data: { result: "roundtrip" } })
+    return Response.json({ healthy: true })
   },
 })
-console.log("synergy server listening on http://127.0.0.1:" + server.port)
+const ready = { protocol: 1, pid: process.pid, version: mode === "version" ? "2.0.0" : "1.0.0", home: process.env.SYNERGY_RUNTIME_ROOT, url: "http://127.0.0.1:" + server.port, components: [{ id: "server", version: "1.0.0", apiVersion: 1 }] }
+if (mode === "component") ready.components = []
+console.log("unrelated output")
+const line = "SYNERGY_READY_V1 " + JSON.stringify(ready) + "\n"
+process.stdout.write(line.slice(0, 29))
+setTimeout(() => process.stdout.write(line.slice(29)), 5)
 await new Promise(() => {})
 `
 
 async function withFakeSynergy<T>(mode: string, fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(path.join(os.tmpdir(), "synergy-sdk-fake-"))
-  const binPath = path.join(dir, "synergy")
-  await writeFile(binPath, FAKE_SCRIPT, { mode: 0o755 })
-  const originalPath = process.env.PATH
-  const originalMode = process.env.FAKE_MODE
-  process.env.PATH = `${dir}:${originalPath}`
+  await writeFile(path.join(dir, "server.ts"), FAKE_SCRIPT)
+  const previous = process.env.FAKE_MODE
   process.env.FAKE_MODE = mode
   try {
     return await fn(dir)
   } finally {
-    process.env.PATH = originalPath
-    if (originalMode === undefined) delete process.env.FAKE_MODE
-    else process.env.FAKE_MODE = originalMode
+    if (previous === undefined) delete process.env.FAKE_MODE
+    else process.env.FAKE_MODE = previous
     await rm(dir, { recursive: true, force: true })
   }
 }
 
+function managed(dir: string): ManagedServerOptions {
+  return {
+    mode: "managed",
+    executable: process.execPath,
+    args: [path.join(dir, "server.ts")],
+    version: "1.0.0",
+    home: path.join(dir, "data"),
+    components: { server: "1.0.0" },
+    timeout: 5_000,
+  }
+}
 const originalArgsLog = process.env.FAKE_ARGS_LOG
-
 afterEach(() => {
   if (originalArgsLog === undefined) delete process.env.FAKE_ARGS_LOG
   else process.env.FAKE_ARGS_LOG = originalArgsLog
 })
-
 const capturingFetch = (captured: { request?: Request }) =>
   (async (request: Request) => {
     captured.request = request
@@ -81,105 +71,108 @@ const capturingFetch = (captured: { request?: Request }) =>
     })
   }) as unknown as typeof fetch
 
-describe("synergy sdk server", () => {
-  test("starts a fake synergy server and closes it", async () => {
-    await withFakeSynergy("serve", async () => {
-      const server = await createSynergyServer({ port: 0, timeout: 5_000 })
-      expect(server.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
-      server.close()
-    })
-  })
-
-  test("passes hostname, port, and log level through the argv", async () => {
-    await withFakeSynergy("serve", async (dir) => {
-      const logPath = path.join(dir, "args.json")
-      process.env.FAKE_ARGS_LOG = logPath
-      const server = await createSynergyServer({
-        hostname: "0.0.0.0",
-        port: 4567,
-        config: { logLevel: "DEBUG" },
-        timeout: 5_000,
-      })
-      server.close()
-      const recorded = JSON.parse(await Bun.file(logPath).text()) as {
-        args: string[]
-        config: Record<string, unknown>
+describe("managed Synergy runtime", () => {
+  test("uses the server command, explicit home, dynamic port and structured readiness with private auth", async () => {
+    await withFakeSynergy("server", async (dir) => {
+      process.env.FAKE_ARGS_LOG = path.join(dir, "args.json")
+      const { client, server } = await createSynergy({ ...managed(dir), config: { logLevel: "DEBUG" } })
+      try {
+        expect(server.owned).toBe(true)
+        expect(server.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+        const recorded = await Bun.file(process.env.FAKE_ARGS_LOG!).json()
+        expect(recorded.args).toEqual([
+          "server",
+          "--hostname=127.0.0.1",
+          "--port=0",
+          "--managed-ready",
+          "--no-banner",
+          "--non-interactive",
+          "--log-level=DEBUG",
+        ])
+        expect(recorded.root).toBe(managed(dir).home)
+        expect(recorded.authenticated).toBe(true)
+        expect((await fetch(server.url)).status).toBe(401)
+        expect(JSON.stringify(await client.plugin.invoke("focus", "op", {}))).toContain("roundtrip")
+      } finally {
+        await server.close()
       }
-      expect(recorded.args).toEqual(["serve", "--hostname=0.0.0.0", "--port=4567", "--log-level=DEBUG"])
-      expect(recorded.config).toEqual({ logLevel: "DEBUG" })
+      expect(() => process.kill(server.pid!, 0)).toThrow()
+      await server.close()
     })
   })
 
-  test("defaults to localhost, port 4096, and an empty config payload", async () => {
-    await withFakeSynergy("serve", async (dir) => {
-      const logPath = path.join(dir, "args.json")
-      process.env.FAKE_ARGS_LOG = logPath
-      const server = await createSynergyServer({ timeout: 5_000 })
-      server.close()
-      const recorded = JSON.parse(await Bun.file(logPath).text()) as { args: string[]; config: unknown }
-      expect(recorded.args).toEqual(["serve", "--hostname=127.0.0.1", "--port=4096"])
-      expect(recorded.config).toEqual({})
-    })
-  })
-
-  test("rejects when the server never announces a listening url", async () => {
-    await withFakeSynergy("silent", async () => {
-      await expect(createSynergyServer({ port: 0, timeout: 250 })).rejects.toThrow(
-        "Timeout waiting for server to start after 250ms",
-      )
-    })
-  })
-
-  test("rejects when the server exits early", async () => {
-    await withFakeSynergy("exit", async () => {
-      await expect(createSynergyServer({ port: 0, timeout: 5_000 })).rejects.toThrow(/Server exited with code 3/)
-    })
-  })
-
-  test("rejects when the listening line has no parseable url", async () => {
-    await withFakeSynergy("badoutput", async () => {
-      const child = Bun.spawn([process.execPath, "test/fixtures/badoutput-runner.ts"], {
-        env: { ...process.env },
-        stdout: "pipe",
-        stderr: "pipe",
+  for (const mode of ["silent", "exit", "version", "component"]) {
+    test(`cleans its own process after ${mode} readiness failure`, async () => {
+      await withFakeSynergy(mode, async (dir) => {
+        process.env.FAKE_ARGS_LOG = path.join(dir, "args.json")
+        await expect(
+          createSynergyServer({ ...managed(dir), timeout: mode === "silent" ? 250 : 5_000 }),
+        ).rejects.toThrow()
+        const record = await Bun.file(process.env.FAKE_ARGS_LOG!).json()
+        expect(() => process.kill(record.pid, 0)).toThrow()
       })
-      const [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-      expect(exitCode).not.toBe(0)
-      expect(stderr).toContain("Failed to parse server url from output")
     })
-  })
+  }
 
-  test("rejects on an aborted signal", async () => {
-    await withFakeSynergy("silent", async () => {
+  test("abort drains the owned process during startup and after readiness", async () => {
+    await withFakeSynergy("silent", async (dir) => {
       const controller = new AbortController()
-      const starting = createSynergyServer({ port: 0, timeout: 5_000, signal: controller.signal })
+      const starting = createSynergyServer({ ...managed(dir), signal: controller.signal })
       setTimeout(() => controller.abort(), 50)
-      await expect(starting).rejects.toThrow(/aborted/i)
+      await expect(starting).rejects.toThrow(/abort/i)
+    })
+    await withFakeSynergy("server", async (dir) => {
+      const controller = new AbortController()
+      const server = await createSynergyServer({ ...managed(dir), signal: controller.signal })
+      controller.abort()
+      await server.close()
+      expect(() => process.kill(server.pid!, 0)).toThrow()
     })
   })
 
-  test("launches the tui with project, model, session, and agent flags", async () => {
-    await withFakeSynergy("tui-log", async (dir) => {
-      const logPath = path.join(dir, "args.json")
-      process.env.FAKE_ARGS_LOG = logPath
-      const tui = createSynergyTui({ project: "proj", model: "model_x", session: "sess", agent: "agent_y" })
-      const deadline = Date.now() + 3_000
-      while (!(await Bun.file(logPath).exists()) && Date.now() < deadline) {
-        await Bun.sleep(20)
-      }
-      tui.close()
-      const recorded = JSON.parse(await Bun.file(logPath).text()) as { args: string[] }
-      expect(recorded.args).toEqual(["--project=proj", "--model=model_x", "--session=sess", "--agent=agent_y"])
+  test("attaching preserves supplied credentials and close leaves the existing server running", async () => {
+    const existing = Bun.serve({
+      port: 0,
+      fetch: (request) =>
+        request.headers.get("authorization") === "Bearer existing"
+          ? Response.json({ healthy: true, version: "1.0.0" })
+          : new Response("unauthorized", { status: 401 }),
     })
+    try {
+      const attached = await createSynergyServer({
+        mode: "attach",
+        url: existing.url.href,
+        headers: { authorization: "Bearer existing" },
+      })
+      expect(attached.owned).toBe(false)
+      await attached.close()
+      expect((await fetch(existing.url, { headers: attached.headers })).status).toBe(200)
+    } finally {
+      existing.stop(true)
+    }
   })
 })
 
 describe("synergy sdk client", () => {
+  test("Scope selection retains caller Headers and managed credentials with an injected fetch", async () => {
+    const captured: { request?: Request } = {}
+    const client = createSynergyClient({
+      baseUrl: "http://synergy.test",
+      directory: "/project",
+      scopeID: "home",
+      headers: new Headers({ authorization: "Bearer test", "x-company": "fixture" }),
+      fetch: capturingFetch(captured),
+    })
+    await client.plugin.invoke("focus", "op", {})
+    expect(captured.request?.headers.get("authorization")).toBe("Bearer test")
+    expect(captured.request?.headers.get("x-company")).toBe("fixture")
+    expect(captured.request?.headers.get("x-synergy-directory")).toBe("/project")
+  })
   test("round-trips a plugin invoke against the fake server", async () => {
-    await withFakeSynergy("serve", async () => {
-      const server = await createSynergyServer({ port: 0, timeout: 5_000 })
+    await withFakeSynergy("serve", async (dir) => {
+      const server = await createSynergyServer(managed(dir))
       try {
-        const client = createSynergyClient({ baseUrl: server.url })
+        const client = createSynergyClient({ baseUrl: server.url, headers: server.headers })
         const response = await client.plugin.invoke(
           "focus",
           "research.graph.get",
@@ -190,7 +183,7 @@ describe("synergy sdk client", () => {
         )
         expect(JSON.stringify(response)).toContain("roundtrip")
       } finally {
-        server.close()
+        await server.close()
       }
     })
   })
@@ -230,20 +223,5 @@ describe("synergy sdk client", () => {
 
     expect(captured.request?.headers.get("x-synergy-directory")).toBe("/ascii/path")
     expect(captured.request?.headers.get("x-synergy-scope-id")).toBe("scope-9")
-  })
-})
-
-describe("synergy sdk entry", () => {
-  test("createSynergy wires a server and client for a round trip", async () => {
-    await withFakeSynergy("serve", async () => {
-      const { client, server } = await createSynergy({ port: 0, timeout: 5_000 })
-      try {
-        expect(server.url).toMatch(/^http:\/\//)
-        const response = await client.plugin.invoke("focus", "research.graph.get", { revision: 2 })
-        expect(JSON.stringify(response)).toContain("roundtrip")
-      } finally {
-        server.close()
-      }
-    })
   })
 })

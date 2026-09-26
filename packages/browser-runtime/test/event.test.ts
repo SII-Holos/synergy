@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
-import { browserOwnerKey } from "@ericsanchezok/synergy-browser"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
+import { browserOwnerKey } from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker } from "../src/broker"
 import { BrowserEvent } from "../src/event"
 import { BrowserNativePresentation } from "../src/native-presentation"

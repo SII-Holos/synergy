@@ -50,11 +50,11 @@ A durable development convention is part of the implementation deliverable, not 
 
 Package ownership is machine-enforced. Before adding an import, identify both package owners in the [Ownership Map](../../../docs/architecture/README.md#ownership-map).
 
-1. Harness cannot import CLI, HTTP Server, the generated SDK, or business packages. Default model SDK factories, local tools, native PTY, filesystem watchers and OS sandbox implementations belong to `runtime-local`; Harness retains permission policy and typed host ports.
+1. Harness cannot import CLI, HTTP Server, the generated SDK, or business packages. Default model SDK factories, local tools, native PTY, filesystem watchers and OS sandbox implementations belong to `local-runtime`; Harness retains permission policy and typed host ports.
 2. Use an existing typed source or registry when core execution needs optional behavior. Register it from the owning capability or full product composition before runtime startup; do not add package scanning or a generic service container.
 3. Import only declared package exports. Keep one source module per export target; do not add private cross-package relative imports or forwarding copies to bypass a cycle.
 4. Put a business domain's tools, routes, configuration, migrations, storage and CLI commands with its service. Only generic tool execution and scheduling belong to Harness.
-5. Run `bun run deps:check` after package/import changes. Workspace manifests own actual dependencies, `script/dependency-rules.json` owns allowed dependency directions, and the release catalog owns artifact selection.
+5. Run `bun run deps:check` after package/import changes. Workspace manifests own actual dependencies, `script/dependency-rules.json` owns allowed dependency directions, and the release catalog owns artifact selection. Keep platform-dependent assets in target-specific optional packages, and validate the packed closure outside the repository; generic package names must never carry different platform contents at the same version.
 
 ## Preserve External Provenance
 
@@ -74,3 +74,5 @@ Report the owning workflows loaded, invariant changed, focused checks run, and a
 When splitting a namespace into a core mechanism and a business implementation, give the implementations distinct names and update value and type consumers. With the pinned Bun version, aliasing an imported namespace to avoid a same-name local namespace is insufficient after bundling. Verify real compiled behavior; see the [compiled runtime ownership decision](../../../docs/decisions/implemented/bug-fix/2026-09-08-compiled-runtime-namespace-ownership.md).
 
 Completion callbacks that perform model work must not hold the turn on that work: schedule it through the detached background pool (`LoopJob.scheduleDetached`) so it settles through `settleDetached` before rollout settlement, keeping nested model-call evidence in the ledger without stalling turn completion. See the [detached encoding decision](../../../docs/decisions/implemented/bug-fix/2026-09-13-experience-encode-detached-from-turn.md); the earlier await-inline rule it supersedes is archived.
+
+Release changes must carry the whole publishable dependency graph through archive validation, candidate publication and final tag promotion. Use the same packer for validation and publication. Never chmod or repack into a sealed runtime directory after generating its inventory. Native application metadata must bind the actual signed portable artifact from the owning platform job.

@@ -1,7 +1,10 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import { resolveNetworkArgv, loadNetworkConfig } from "../cli/network"
+import {
+  resolveServerNetwork,
+  normalizeConnectHostname as normalizeNetworkHostname,
+  loadNetworkConfig,
+} from "@ericsanchezok/synergy-local-runtime/cli/network"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
-import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
 import type { DaemonService } from "./service"
 import { DaemonCommand } from "./command"
 
@@ -24,28 +27,7 @@ export namespace DaemonSpec {
     cors: string[]
   }
 
-  export async function resolveNetwork(input?: { argv?: string[]; config?: GlobalConfig }): Promise<Network> {
-    if (!input?.config) Config.global.reset()
-    const config = input?.config ?? (await loadNetworkConfig())
-    const network = await resolveNetworkArgv({
-      argv: input?.argv,
-      config,
-      defaults: {
-        hostname: "127.0.0.1",
-        port: DEFAULT_SERVER_PORT,
-        mdns: false,
-        cors: [],
-      },
-    })
-
-    const connectHostname = normalizeConnectHostname(network.hostname)
-
-    return {
-      ...network,
-      connectHostname,
-      url: buildUrl(connectHostname, network.port),
-    }
-  }
+  export const resolveNetwork = resolveServerNetwork
 
   export async function resolve(input?: { argv?: string[]; config?: GlobalConfig }): Promise<ManagedService> {
     if (!input?.config) Config.global.reset()
@@ -72,16 +54,5 @@ export namespace DaemonSpec {
     }
   }
 
-  export function normalizeConnectHostname(hostname: string) {
-    if (hostname === "0.0.0.0") return "127.0.0.1"
-    if (hostname === "::") return "::1"
-    return hostname
-  }
-
-  function buildUrl(hostname: string, port: number) {
-    const url = new URL("http://127.0.0.1")
-    url.hostname = hostname
-    url.port = String(port)
-    return url.toString().replace(/\/$/, "")
-  }
+  export const normalizeConnectHostname = normalizeNetworkHostname
 }

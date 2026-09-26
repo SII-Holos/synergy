@@ -8,7 +8,7 @@ import { ModelsCommand } from "../../src/cli/cmd/models"
 import { DoctorCommand } from "../../src/cli/cmd/doctor"
 import { DebugCommand } from "../../src/cli/cmd/debug"
 import path from "node:path"
-import { UI } from "../../src/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()

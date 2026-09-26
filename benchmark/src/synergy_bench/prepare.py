@@ -46,7 +46,7 @@ SESSION_RUNTIME = {
 
 
 def source_protocol(source: Path, commit: str | None) -> str:
-    if (source / "packages/runtime-local/package.json").is_file():
+    if (source / "packages/local-runtime/package.json").is_file():
         return "synergy-rollout-v1"
     # Provenance: https://github.com/SII-Holos/synergy/tree/v3.0.22/packages/synergy
     # This audited release predates compositions and native rollout exports.
@@ -282,10 +282,10 @@ def prepare_source(
                     "FROM node:22.14.0-bullseye AS native\n"
                     "COPY --from=source /opt/synergy /opt/synergy\n"
                     "WORKDIR /opt/synergy/source\n"
-                    "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
+                    "RUN /opt/synergy/bin/bun packages/local-runtime/script/build-watcher.ts --local\n"
                     "FROM source\n"
-                    "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
-                    "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
+                    "COPY --from=native /opt/synergy/source/packages/local-runtime/.artifacts/watcher "
+                    "/opt/synergy/source/packages/local-runtime/.artifacts/watcher\n"
                     if protocol == "synergy-rollout-v1"
                     else ""
                 )

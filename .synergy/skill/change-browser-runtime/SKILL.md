@@ -7,7 +7,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 
 ## Trace the Shared Contract
 
-1. Read [Browser runtime](../../../docs/architecture/browser-runtime.md), `packages/product-runtime/AGENTS.md`, `apps/web/AGENTS.md`, and `apps/desktop/AGENTS.md`.
+1. Read [Browser runtime](../../../docs/architecture/browser-runtime.md), `packages/presets/AGENTS.md`, `apps/web/AGENTS.md`, and `apps/desktop/AGENTS.md`.
 2. Identify the owner key and whether the behavior is canonical runtime state, a `BrowserControl` command/result, a read-only event, presentation selection, host signaling, or Web UI state.
 3. Trace the change across Browser schemas/runtime, control and route handlers, persistence and reaping, Browser tools, Desktop host/view handlers, remote host/WebRTC data channel, generated SDK where applicable, and the Web Browser store/surface.
 4. Load `change-server-api` for route/schema changes, `develop-frontend` for product UI, `change-persistence` for saved Browser state, and `change-execution-boundaries` for navigation or evaluation policy.
@@ -27,7 +27,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 11. Keep Browser implementations out of the Agent worker runner's static dependency graph. Only serializable Browser tool definitions cross into the worker; callbacks, canonical sessions, Playwright/Chromium state, host signaling, native views, and WebRTC state remain Control Plane/tool-runtime owned.
 12. Attribute resource state by owner and page backend without exposing owner IDs. Retire the remote Host only after the broker reports no active canonical page; Performance aggregation must never close a page or stop the Host.
 13. Keep Browser viewer Origin authorization on explicit server CORS origins. Do not promote auto-detected LAN CORS origins or reverse-proxy forwarding headers into the viewer trust boundary. Origin checks supplement one-shot owner/page/role-bound tickets and never replace them.
-14. Capture the Workspace binding before collecting export data. Keep path resolution free of writes; stage bundles privately and publish through the Harness file-import Host and Runtime Local's conditional file service. Pass cancellation through admission, preserve occupied targets, and remove only private staging during failure cleanup. Test queued cancellation, changed source bytes, binding replacement, protected paths and complete-bundle publication.
+14. Capture the Workspace binding before collecting export data. Keep path resolution free of writes; stage bundles privately and publish through the Harness file-import Host and Local Runtime's conditional file service. Pass cancellation through admission, preserve occupied targets, and remove only private staging during failure cleanup. Test queued cancellation, changed source bytes, binding replacement, protected paths and complete-bundle publication.
 15. Keep Session binding acquisition before Browser command queuing, including idle suspension. Resolve the canonical Workspace and pin its generation through each command. Close the old Host/headless page before a Session switch or catalog rebind commits; retain profile, presentation and event ownership while clearing replay results. Test held commands, close acknowledgements, failed-close retries, cancelled waiters and forbidden local-file checkpoint recovery.
 
 ## Verify

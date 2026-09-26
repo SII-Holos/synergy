@@ -31,9 +31,9 @@ test("core artifacts retain the synergy executable and execution assets without 
   const required = requiredRuntimeArtifactPaths("synergy-linux-x64", "core")
   expect(required).toContain("bin/synergy")
   expect(required).not.toContain("bin/ast-grep")
-  expect(required).toContain("watcher.node")
-  expect(required).toContain("sandbox/synergy-sandbox-linux")
-  expect(required).toContain("schema/config.schema.json")
+  expect(required).toContain("runtime/node_modules/@ericsanchezok/synergy-native-linux-x64-glibc/watcher.node")
+  expect(required).toContain("runtime/node_modules/@ericsanchezok/synergy-native-linux-x64-glibc/synergy-sandbox-linux")
+  expect(required).toContain("runtime/generation.json")
   expect(required).not.toContain("vec0.so")
   expect(required.some((file) => /^(app|browser-runtime|lib)\//.test(file))).toBe(false)
 })
@@ -68,7 +68,7 @@ test.each([
 test("requires core assets to exist when writing and verifying a manifest", async () => {
   const directory = await coreFixture()
   await writeRuntimeManifest(directory, "synergy-darwin-arm64", "core")
-  await fs.rm(path.join(directory, "watcher.node"))
+  await fs.rm(path.join(directory, "runtime/node_modules/@ericsanchezok/synergy-native-darwin-arm64/watcher.node"))
   await expect(assertRuntimeManifest(directory, "synergy-darwin-arm64", "core")).rejects.toThrow(/file is missing/)
   await expect(writeRuntimeManifest(directory, "synergy-darwin-arm64", "core")).rejects.toThrow(
     /missing runtime artifact/,

@@ -16,7 +16,7 @@ import {
   type BrowserHostPageEvent,
   type BrowserPresentationCapabilities,
   type BrowserPresentationKind,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserOwner } from "./owner.js"
 import { BrowserNetworkGateway } from "./network-gateway.js"
 import { BrowserStorage } from "./storage.js"

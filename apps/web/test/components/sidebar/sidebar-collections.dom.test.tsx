@@ -52,7 +52,7 @@ beforeAll(async () => {
       channelProjection:()=>({channelAccounts:[]}),
     })
     export const useGlobalSync = () => ({data:{scope:[],provider:{all:[],authHealth:{}}},sessionStatus:{},permissions:{},questions:{},cortex:[]})
-    export const useGlobalSDK = () => ({url:"fixture",connected:()=>true,event:{listen:()=>()=>{}},drafts:{hasDraftSession:()=>false},client:{global:{nav:{recent:async({tag})=>({data:{items:[entry("tag-result","home","History matching "+tag)],total:1,nextCursor:null}})}}}})
+    export const useGlobalSDK = () => ({url:"fixture",connected:()=>true,capabilities:{has:id=>query.get("core")!=="1"||["local-runtime","plugin-host"].includes(id),load:async()=>{}},event:{listen:()=>()=>{}},drafts:{hasDraftSession:()=>false},client:{global:{nav:{recent:async({tag})=>({data:{items:[entry("tag-result","home","History matching "+tag)],total:1,nextCursor:null}})}}}})
     export const useHolos = () => ({loaded:false,state:{social:{},identity:{loggedIn:false},connection:{status:"disabled"}}})
     export const useProductUpdate = () => ({notice:()=>({visible:false})})
     export const usePlatform = () => ({platform:"web"})
@@ -195,6 +195,17 @@ test("five vertical categories retain independent disclosure state and unique he
   expect(await page.getByText("Home session", { exact: true }).isVisible()).toBe(true)
   await page.getByRole("button", { name: "最近", exact: true }).press("Enter")
   expect(await page.locator('[data-session-id="recent-0"]').isVisible()).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("a core composition retains local navigation without optional channel surfaces", async () => {
+  await open("?core=1")
+  for (const label of ["最近", "首页", "后台", "项目"])
+    expect(await page.getByRole("button", { name: label, exact: true }).isVisible()).toBe(true)
+  expect(await page.getByRole("button", { name: "频道", exact: true }).count()).toBe(0)
+  expect(await page.locator(".sb-global-btn").allTextContents()).toEqual(["插件"])
+  await page.getByRole("button", { name: "首页", exact: true }).press("Enter")
+  await page.getByText("Home session", { exact: true }).waitFor({ state: "visible" })
   expect(errors).toEqual([])
 })
 

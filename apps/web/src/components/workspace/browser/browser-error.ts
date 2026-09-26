@@ -1,4 +1,4 @@
-import { BrowserAPIErrorSchema } from "@ericsanchezok/synergy-browser"
+import { BrowserAPIErrorSchema } from "@ericsanchezok/synergy-browser-core"
 
 export interface BrowserErrorInfo {
   message: string

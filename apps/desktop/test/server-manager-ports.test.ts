@@ -58,7 +58,7 @@ async function createFakeRuntime(options: {
   await fsp.writeFile(modesFile, JSON.stringify(options.modes ?? {}), "utf8")
   await fsp.mkdir(binaryDirectory, { recursive: true })
   // The manager spawns the packaged runtime when that path exists, so a generated wrapper drives the
-  // real spawn/probe/health/retry path without requiring a built product runtime.
+  // real spawn/probe/health/retry path without requiring a built preset runtime.
   await fsp.writeFile(
     binary,
     [

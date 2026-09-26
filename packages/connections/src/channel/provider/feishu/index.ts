@@ -1042,7 +1042,7 @@ export class FeishuProvider
     scopeKey?: string
     replyToMessageId?: string
     requestId: string
-    questions: import("@ericsanchezok/synergy-runtime-local/question").Question.Info[]
+    questions: import("@ericsanchezok/synergy-local-runtime/question").Question.Info[]
   }): Promise<ChannelTypes.SendResult> {
     const account = this.accounts.get(input.accountId)
     if (!account) throw new Error(`Feishu account not found: ${input.accountId}`)
@@ -1059,8 +1059,8 @@ export class FeishuProvider
   }
 
   renderQuestionCardSummary(input: {
-    questions: import("@ericsanchezok/synergy-runtime-local/question").Question.Info[]
-    answers: import("@ericsanchezok/synergy-runtime-local/question").Question.Answer[]
+    questions: import("@ericsanchezok/synergy-local-runtime/question").Question.Info[]
+    answers: import("@ericsanchezok/synergy-local-runtime/question").Question.Answer[]
   }): unknown {
     return renderFeishuQuestionCardSummarySafe(input.questions, input.answers)
   }

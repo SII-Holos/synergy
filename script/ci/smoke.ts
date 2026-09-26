@@ -7,7 +7,7 @@ const child = Bun.spawn(
   [
     process.execPath,
     "run",
-    "packages/product-runtime/src/index.ts",
+    "packages/presets/src/index.ts",
     "server",
     "--hostname",
     "127.0.0.1",

@@ -1,3 +1,4 @@
+import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
 import { RuntimeContext } from "../../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
@@ -5,15 +6,24 @@ import { AgentTurnProtocol } from "./protocol"
 
 const runtimeState = RuntimeContext.state(() => ({
   runtimeEntrypoint: undefined as string | undefined,
+  environment: {} as Readonly<Record<string, string>>,
 }))
 
-export function registerAgentWorkerEntrypoint(entrypoint: URL): void {
+export function registerAgentWorkerEntrypoint(
+  entrypoint: URL,
+  environment: Readonly<Record<string, string>> = {},
+): void {
   const instanceState = runtimeState()
 
   const filename = fileURLToPath(entrypoint)
-  if (instanceState.runtimeEntrypoint === filename) return
+  if (
+    instanceState.runtimeEntrypoint === filename &&
+    JSON.stringify(instanceState.environment) === JSON.stringify(environment)
+  )
+    return
   RuntimeContext.assertCompositionOpen("Agent worker entrypoint")
   instanceState.runtimeEntrypoint = filename
+  instanceState.environment = Object.freeze({ ...environment })
 }
 
 export interface AgentWorkerProcess {
@@ -29,6 +39,8 @@ export interface SpawnAgentWorkerProcessOptions {
 
 export function resolveAgentWorkerCommand(): string[] {
   const instanceState = runtimeState()
+  const installed = installedWorkerCommand(RuntimeContext.current().host.env, "__agent-turn-runner")
+  if (installed) return installed
 
   if (instanceState.runtimeEntrypoint && fs.existsSync(instanceState.runtimeEntrypoint))
     return [process.execPath, "run", instanceState.runtimeEntrypoint]
@@ -42,6 +54,7 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
     cmd: resolveAgentWorkerCommand(),
     env: {
       ...owner.host.env,
+      ...runtimeState().environment,
       SYNERGY_HOME: owner.host.home,
       SYNERGY_RUNTIME_ROOT: owner.host.root,
       SYNERGY_AGENT_WORKER: "1",

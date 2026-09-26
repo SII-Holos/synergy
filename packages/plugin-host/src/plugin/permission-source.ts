@@ -4,7 +4,7 @@ import { Plugin } from "."
 /**
  * S9d source inversion: the L1 permission ask pipeline delivers the
  * permission.ask hook to plugins through this registered source. Loaded
- * through src/product-registration.ts.
+ * through src/registration.ts.
  */
 export function registerPermissionPluginSource() {
   PermissionPluginSource.register({

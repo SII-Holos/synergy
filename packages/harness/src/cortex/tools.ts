@@ -6,7 +6,7 @@ import { TaskOutputTool } from "./tools/task-output"
 import { TaskCancelTool } from "./tools/task-cancel"
 
 /**
- * Cortex domain tool registration. Loaded through src/product-registration.ts.
+ * Cortex domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

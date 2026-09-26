@@ -1,5 +1,5 @@
 import * as prompts from "@clack/prompts"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { performHolosLogin } from "./login"
 import { HolosAuth } from "./auth"
 import { HolosProfile } from "./profile"

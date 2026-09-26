@@ -8,7 +8,7 @@ import {
   type BrowserNativeBrokerStatus,
   type BrowserHostMessage,
   type BrowserHostPageEvent,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
 import { type DesktopThemeSnapshot } from "./theme.js"
 import { BrowserNativePagePool, type BrowserNativePageHandle } from "./browser-native-page-pool.js"

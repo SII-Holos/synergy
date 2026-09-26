@@ -1,7 +1,7 @@
 import { ConfigMarkdown } from "@ericsanchezok/synergy-harness/config/markdown"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
-import { UI } from "../util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 
 function summarizeConfigJsonError(message?: string) {
   if (!message) return

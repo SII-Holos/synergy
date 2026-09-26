@@ -1,5 +1,5 @@
 import type { BrowserOwner } from "./owner.js"
-import type { BrowserCheckpoint, BrowserProtocolErrorData } from "@ericsanchezok/synergy-browser"
+import type { BrowserCheckpoint, BrowserProtocolErrorData } from "@ericsanchezok/synergy-browser-core"
 import type { BrowserPageBackend } from "./page.js"
 
 export type { BrowserPageBackend }

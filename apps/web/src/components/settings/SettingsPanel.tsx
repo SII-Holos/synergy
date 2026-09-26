@@ -1,3 +1,4 @@
+import { runtimeFeatureAvailable } from "../runtime-features"
 import {
   ErrorBoundary,
   createEffect,
@@ -303,7 +304,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const initialDeveloperMode = readDeveloperMode()
   const initialNavigation = createSettingsMobileNavigationState(
     initialTab,
-    filterSettingsSections(getSettingsSections(), initialDeveloperMode).map((section) => section.id),
+    filterSettingsSections(getSettingsSections(), initialDeveloperMode)
+      .filter((section) => runtimeFeatureAvailable("settings", section.id, globalSDK.capabilities.has))
+      .map((section) => section.id),
     isDesktop(),
   )
   let settingsNavigation: HTMLDivElement | undefined
@@ -387,6 +390,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const refetchConfig = configResource.refetch
 
   const [channelStatuses, channelStatusesResource] = sectionResource(async () => {
+    await globalSDK.capabilities.load()
+    if (!globalSDK.capabilities.has("connections")) return {} as Record<string, ChannelStatus>
     const res = await globalSDK.client.channel.status({}, { throwOnError: true })
     return (res.data ?? {}) as Record<string, ChannelStatus>
   }, ["channels"])
@@ -398,6 +403,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   onCleanup(unsubscribeChannelStatuses)
 
   const [mcpStatuses, mcpStatusesResource] = sectionResource(async () => {
+    await globalSDK.capabilities.load()
+    if (!globalSDK.capabilities.has("mcp")) return {} as Record<string, McpStatus>
     const res = await globalSDK.client.mcp.status({}, { throwOnError: true })
     return (res.data ?? {}) as Record<string, McpStatus>
   }, ["mcp"])
@@ -564,6 +571,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }, ["sandbox"])
 
   const [builtinMcps, builtinMcpsResource] = sectionResource(async () => {
+    await globalSDK.capabilities.load()
+    if (!globalSDK.capabilities.has("mcp")) return [] as BuiltinMcpInfo[]
     const res = await globalSDK.client.mcp.builtins({}, { throwOnError: true })
     return (res.data ?? []) as BuiltinMcpInfo[]
   }, ["mcp"])
@@ -1281,6 +1290,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const components = builtinSettingsComponents()
     const desktopZoom = Boolean(platform.desktopZoom)
     return filterSettingsSections(getSettingsSections(), developerMode())
+      .filter((section) => runtimeFeatureAvailable("settings", section.id, globalSDK.capabilities.has))
       .map((section) => {
         const localized = localizeSettingsSection(section, _)
         const base = isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized

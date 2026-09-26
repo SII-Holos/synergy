@@ -10,7 +10,7 @@ import {
   chromiumReleaseTarget,
   type ChromiumReleaseArch,
   type ChromiumReleasePlatform,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 
 interface PlaywrightBrowsers {
   browsers: Array<{

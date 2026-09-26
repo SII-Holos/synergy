@@ -9,7 +9,7 @@ import {
   type BrowserNativePresentationTicketResult,
   type BrowserNativeResizeRequest,
   type BrowserNativeViewEvent,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
 import type { DesktopWindowState } from "./window-chrome.js"
 import {

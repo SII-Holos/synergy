@@ -9,7 +9,7 @@ for (const profile of ["core", "full"] as const) {
   test(`${profile} build schema preserves its contract and repository formatting`, async () => {
     const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-build-schema-"))
     try {
-      const owner = profile === "core" ? "cli" : "product-runtime"
+      const owner = profile === "core" ? "cli" : "presets"
       const canonical = path.join(REPO_ROOT, "packages", owner, "schema/config.schema.json")
       const child = Bun.spawn(
         [

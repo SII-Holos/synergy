@@ -31,9 +31,10 @@ async function inputs(root: string) {
     path.join(root, "packages/shared/package.json"),
     JSON.stringify({ name: "@fixture/shared", scripts: { build: "compile" } }),
   )
+  await Bun.write(path.join(root, "packages/local-runtime/.artifacts/pty/library"), "verified PTY")
   await Bun.write(path.join(root, "packages/shared/src/index.ts"), "export const value = 1")
   await Bun.write(path.join(root, "packages/shared/dist/index.js"), "verified dependency")
-  await Bun.write(path.join(root, "packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
+  await Bun.write(path.join(root, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
 }
 
 test("build identity follows newly added transitive workspace inputs", async () => {
@@ -64,7 +65,7 @@ test("build outputs transfer between compatible runners during an image rollout"
   try {
     await inputs(root)
     await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
-    await Bun.write(path.join(root, "packages/runtime-local/.artifacts/watcher/watcher"), "verified watcher")
+    await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
     process.env.ImageVersion = "20260907.300.1"
     const key = await buildCacheIdentity(root)
     await publishBuild(root)
@@ -82,17 +83,21 @@ test("build outputs transfer between compatible runners during an image rollout"
 test("build reuse validates inputs, bytes, modes and complete inventory before replacing outputs", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-"))
   const plugin = "packages/plugin/dist/index.js"
-  const watcher = "packages/runtime-local/.artifacts/watcher/watcher"
+  const watcher = "packages/local-runtime/.artifacts/watcher/watcher"
   try {
     await inputs(root)
     await Bun.write(path.join(root, plugin), "verified plugin")
     await Bun.write(path.join(root, watcher), "verified watcher")
     await chmod(path.join(root, watcher), 0o755)
+    const pty = "packages/local-runtime/.artifacts/pty/native-library"
+    await Bun.write(path.join(root, pty), "verified PTY")
     await publishBuild(root)
+    await rm(path.join(root, pty))
     await Bun.write(path.join(root, plugin), "replaced output")
     await rm(path.join(root, "packages/shared/dist"), { recursive: true, force: true })
     await restoreBuild(root)
     expect(await Bun.file(path.join(root, plugin)).text()).toBe("verified plugin")
+    expect(await Bun.file(path.join(root, pty)).text()).toBe("verified PTY")
     expect(await Bun.file(path.join(root, "packages/shared/dist/index.js")).text()).toBe("verified dependency")
     const bundle = path.join(root, ".artifacts/ci/build")
     await Bun.write(path.join(root, plugin), "leave intact on rejection")

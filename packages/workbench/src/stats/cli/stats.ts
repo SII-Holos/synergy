@@ -1,6 +1,6 @@
 import type { Argv } from "yargs"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Engine } from ".."
 import type { StatsSnapshot, ProgressCallback } from ".."
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"

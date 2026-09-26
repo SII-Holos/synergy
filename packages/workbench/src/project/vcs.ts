@@ -6,7 +6,7 @@ import { z } from "zod"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
-import { FileWatcher } from "@ericsanchezok/synergy-runtime-local/file/watcher"
+import { FileWatcher } from "@ericsanchezok/synergy-local-runtime/file/watcher"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
 import { VcsBranchWatcher } from "./vcs-branch-watcher"
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
-import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
+import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { BrowserActionTool } from "@ericsanchezok/synergy-browser-runtime/tools/browser-action"
 import { BrowserToolHelper } from "@ericsanchezok/synergy-browser-runtime/tools/browser-shared"
 

@@ -8,7 +8,7 @@ import type {
   BrowserNativePresentationTicketResult,
   BrowserNativeResizeRequest,
   BrowserNativeViewEvent,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 
 export type BrowserNativeViewBridge = {
   attachView(input: BrowserNativeAttachRequest): Promise<void>

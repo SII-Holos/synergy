@@ -9,7 +9,7 @@ Eight tracked files have no consumer in code, workflows, docs, skills, or packag
 - `packages/synergy/script/memory-inspect.ts`, `session-memory-forensics.ts`, `library-repair-memory-vectors.ts` — diagnostic utilities with no references anywhere; `library-repair-memory-vectors.ts` additionally writes `library.db` directly, which is destructive if invoked by accident.
 - `script/duplicate-pr.ts` — no package script entry, no workflow, no docs reference. It is a personal utility that invokes the SDK.
 - `script/hooks` — a pre-husky install script that writes `.git/hooks/pre-push`; the repo now uses husky (`package.json:46` `prepare: "husky"`, live hooks in `.husky/pre-commit` and `.husky/pre-push`).
-- `packages/runtime-local/scripts/build-helper.sh` — a five-line wrapper whose body only runs `bun run scripts/build-helper.ts`; every real consumer (`script/dev.ts:816`, `.github/workflows/build-helpers.yml`, `src/sandbox/readiness.ts`, tests) invokes `build-helper.ts` directly.
+- `packages/local-runtime/scripts/build-helper.sh` — a five-line wrapper whose body only runs `bun run scripts/build-helper.ts`; every real consumer (`script/dev.ts:816`, `.github/workflows/build-helpers.yml`, `src/sandbox/readiness.ts`, tests) invokes `build-helper.ts` directly.
 - `packages/synergy/test/tool/__snapshots__/tool.test.ts.snap` — pins `tool.ls basic` output of a fixtures directory that no longer exists; no `tool.test.ts` and no `toMatchSnapshot` call exists in the package, and `test/fixtures/` is empty.
 - `test-browser/index.html` — a tracked hand-rolled demo page (300+ lines) with zero references anywhere.
 

@@ -3,7 +3,7 @@ import {
   type BrowserBackendCommand,
   type BrowserBackendResult,
   type BrowserSnapshotElement,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserCommandService } from "../command-service.js"
 import { BrowserOwner } from "../owner.js"

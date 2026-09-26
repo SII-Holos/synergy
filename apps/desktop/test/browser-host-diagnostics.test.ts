@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { EventEmitter } from "node:events"
-import { BROWSER_MAX_DOWNLOAD_BYTES } from "@ericsanchezok/synergy-browser"
+import { BROWSER_MAX_DOWNLOAD_BYTES } from "@ericsanchezok/synergy-browser-core"
 import { BrowserHostDiagnostics, type BrowserHostUploadFile } from "../src/browser-host-diagnostics.js?real"
 
 interface SendCommandRecord {

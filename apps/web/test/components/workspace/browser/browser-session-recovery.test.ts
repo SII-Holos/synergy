@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import type { BrowserAPISessionState } from "@ericsanchezok/synergy-browser"
+import type { BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { createBrowserSessionRecovery } from "../../../../src/components/workspace/browser/browser-session-recovery"
 const state = (hostStatus: BrowserAPISessionState["hostStatus"]) =>
   ({ ownerKey: "owner", status: "active", page: { id: "page" }, hostStatus }) as BrowserAPISessionState

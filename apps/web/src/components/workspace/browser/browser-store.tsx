@@ -5,7 +5,7 @@ import type {
   BrowserHostStatus,
   BrowserPage as BrowserProtocolPage,
   BrowserPresentationSelection,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"

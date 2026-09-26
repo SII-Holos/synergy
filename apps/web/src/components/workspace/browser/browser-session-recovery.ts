@@ -1,4 +1,4 @@
-import type { BrowserAPISessionState } from "@ericsanchezok/synergy-browser"
+import type { BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { shouldResumeBrowserSession } from "./browser-command"
 
 export function createBrowserSessionRecovery(options: {

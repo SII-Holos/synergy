@@ -1,5 +1,5 @@
 import { BrowserInstall, type ChromiumDiagnosis, type ChromiumInstallReport } from "../install"
-import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 
 export const BrowserCommand = cmd({
   command: "browser",

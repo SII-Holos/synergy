@@ -6,7 +6,7 @@ import { changedFiles, selectValidation, validationEnv } from "../../.github/ory
 
 const graph = [
   { path: "packages/harness", name: "harness", dependencies: [] },
-  { path: "packages/runtime-local", name: "runtime", dependencies: ["harness"] },
+  { path: "packages/local-runtime", name: "runtime", dependencies: ["harness"] },
   { path: "apps/web", name: "web", dependencies: ["runtime"] },
   { path: "packages/unrelated", name: "unrelated", dependencies: [] },
 ]

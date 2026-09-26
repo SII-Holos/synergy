@@ -2,7 +2,7 @@
 
 /**
  * Generates docs/reference/configuration.md from the static config domain
- * definitions and owner schemas selected by product-runtime configuration.
+ * definitions and owner schemas selected by presets configuration.
  * Deterministic; supports --check.
  */
 
@@ -22,7 +22,7 @@ import {
 } from "./shared"
 
 const SCHEMA = path.join(REPO_ROOT, "packages/harness/src/config/schema.ts")
-const COMPOSITION = path.join(REPO_ROOT, "packages/product-runtime/src/configuration.ts")
+const COMPOSITION = path.join(REPO_ROOT, "packages/presets/src/configuration.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/configuration.md")
 const GENERATOR = "gen-config-reference.ts"
 
@@ -111,8 +111,12 @@ async function parseDomains(): Promise<Domain[]> {
     const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
     function collect(expression: ts.Expression) {
       const array = ts.isSatisfiesExpression(expression) ? expression.expression : expression
-      if (!ts.isArrayLiteralExpression(array)) return
-      for (const entry of array.elements) {
+      const entries = ts.isArrayLiteralExpression(array)
+        ? array.elements
+        : ts.isObjectLiteralExpression(array)
+          ? [array]
+          : []
+      for (const entry of entries) {
         const domain = ts.isObjectLiteralExpression(entry)
           ? parseDomainObject(entry.getText(source))
           : ts.isCallExpression(entry)
@@ -135,6 +139,8 @@ async function parseDomains(): Promise<Domain[]> {
       )
         collect(node.initializer)
       if (ts.isForOfStatement(node) && node.initializer.getText(source) === "const domain") collect(node.expression)
+      if (ts.isCallExpression(node) && node.expression.getText(source) === "ConfigDomain.register" && node.arguments[0])
+        collect(node.arguments[0])
       ts.forEachChild(node, visit)
     }
     visit(source)
@@ -163,7 +169,7 @@ export async function generate(): Promise<string> {
   const lines: string[] = [
     "# Configuration Reference",
     "",
-    "Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/product-runtime/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).",
+    "Generated from `packages/harness/src/config/domain.ts` and the domain-owned configuration schemas composed by `packages/presets/src/configuration.ts`. Concept and layout guidance lives in [Configuration layout](configuration-layout.md).",
     "",
     "## Domains",
     "",

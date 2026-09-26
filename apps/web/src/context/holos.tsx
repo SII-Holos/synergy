@@ -1,4 +1,4 @@
-import { createSignal, onCleanup } from "solid-js"
+import { createEffect, createSignal, onCleanup } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import type { HolosState } from "@ericsanchezok/synergy-sdk"
 import { useGlobalSDK } from "./global-sdk"
@@ -62,6 +62,7 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
     const [loaded, setLoaded] = createSignal(false)
     const [error, setError] = createSignal<string | null>(null)
 
+    let disposed = false
     let refreshInFlight: Promise<void> | null = null
     let refreshQueued = false
     let refreshVersion = 0
@@ -70,18 +71,24 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
     async function runRefresh(version: number) {
       try {
         setError(null)
+        await sdk.capabilities.load()
+        if (disposed || version !== refreshVersion) return
+        if (!sdk.capabilities.has("connections")) {
+          setState(DEFAULT_STATE)
+          return
+        }
         const res = await sdk.client.holos.state({ scopeID: "home" })
-        if (res.data && version === refreshVersion) {
+        if (res.data && !disposed && version === refreshVersion) {
           setState(res.data as HolosState)
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
-        if (version === refreshVersion) {
+        if (!disposed && version === refreshVersion) {
           setError(msg)
           console.warn("[Holos] refresh failed:", msg)
         }
       } finally {
-        if (version === refreshVersion) {
+        if (!disposed && version === refreshVersion) {
           setLoaded(true)
         }
       }
@@ -92,7 +99,7 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
       if (refreshInFlight) return refreshInFlight
 
       refreshInFlight = (async () => {
-        while (refreshQueued) {
+        while (refreshQueued && !disposed) {
           refreshQueued = false
           const version = ++refreshVersion
           await runRefresh(version)
@@ -113,6 +120,7 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
     }
 
     const unsub = sdk.event.listen((e) => {
+      if (!sdk.capabilities.has("connections")) return
       const eventType = e.details?.type
       if (!eventType || !HOLOS_EVENTS.has(eventType)) return
 
@@ -133,11 +141,22 @@ export const { use: useHolos, provider: HolosProvider } = createSimpleContext<Ho
       scheduleEventRefresh()
     })
     onCleanup(() => {
+      disposed = true
+      refreshVersion++
       unsub()
       if (eventRefreshTimer) clearTimeout(eventRefreshTimer)
     })
 
-    void refresh()
+    createEffect(() => {
+      if (!sdk.capabilities.current()) {
+        refreshVersion++
+        setState(DEFAULT_STATE)
+        setLoaded(false)
+        return
+      }
+      void refresh()
+    })
+    void sdk.capabilities.load().catch(() => {})
 
     return {
       get state() {

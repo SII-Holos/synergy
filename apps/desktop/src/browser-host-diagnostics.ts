@@ -10,7 +10,7 @@ import {
   sanitizeBrowserFilename,
   type BrowserHostDownloadEntry,
   type BrowserHostPageEvent,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { clearBrowserContentPermissions, installBrowserContentPermissions } from "./browser-permissions.js"
 
 const BLOCKED_DOWNLOAD_MIMES = new Set(["application/x-msdownload", "application/x-sh", "application/x-mach-binary"])

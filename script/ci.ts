@@ -306,7 +306,8 @@ async function main() {
     return
   }
   if (operation === "prepare") {
-    await command([process.execPath, "packages/runtime-local/script/build-watcher.ts"])
+    await command([process.execPath, "packages/local-runtime/script/build-watcher.ts"])
+    await command([process.execPath, "packages/local-runtime/script/build-pty.ts"])
     for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
     if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1") {
       await command([
@@ -315,16 +316,16 @@ async function main() {
         "--locked",
         "--release",
         "--manifest-path",
-        "packages/runtime-local/src/sandbox/helper-linux/Cargo.toml",
+        "packages/local-runtime/src/sandbox/helper-linux/Cargo.toml",
       ])
-      await mkdir(path.join(ROOT, "packages/runtime-local/sandbox-assets/linux-x64"), { recursive: true })
+      await mkdir(path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64"), { recursive: true })
       await Bun.write(
-        path.join(ROOT, "packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux"),
+        path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"),
         Bun.file(
-          path.join(ROOT, "packages/runtime-local/src/sandbox/helper-linux/target/release/synergy-sandbox-linux"),
+          path.join(ROOT, "packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux"),
         ),
       )
-      await command(["chmod", "+x", "packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux"])
+      await command(["chmod", "+x", "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"])
     }
     await publishBuild()
     return

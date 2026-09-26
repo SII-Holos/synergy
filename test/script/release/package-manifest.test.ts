@@ -9,6 +9,33 @@ import {
 const repoRoot = path.resolve(import.meta.dir, "../../..")
 
 describe("publishable package manifest", () => {
+  test("versions component metadata and its first-party requirements with the published module", () => {
+    const pkg: PackageJson = {
+      name: "@ericsanchezok/synergy-mcp",
+      version: "1.0.0",
+      synergy: {
+        formatVersion: 1,
+        kind: "component",
+        id: "mcp",
+        version: "1.0.0",
+        compatibility: { synergy: "1.0.0" },
+        apiVersion: 1,
+        entry: "./dist/component.js",
+        export: "mcp",
+        requires: { "local-runtime": "1.0.0" },
+        packages: { "@ericsanchezok/synergy-note": "1.0.0" },
+      },
+    }
+    const published = createPublishablePackageJson({ packageJson: pkg, version: "2.0.0", catalog: {} })
+    expect(published.version).toBe("2.0.0")
+    expect(published.synergy).toMatchObject({
+      version: "2.0.0",
+      compatibility: { synergy: "2.0.0" },
+      requires: { "local-runtime": "2.0.0" },
+      packages: { "@ericsanchezok/synergy-note": "2.0.0" },
+    })
+    expect(pkg.version).toBe("1.0.0")
+  })
   test.each([
     ["plugin", { ".": "./src/index.ts", "./theme": "./src/theme/index.ts" }],
     [

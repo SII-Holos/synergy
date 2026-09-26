@@ -11,7 +11,7 @@ import { BlueprintLoopRejectTool } from "./tools/blueprint-loop-reject"
 /**
  * Blueprint domain registration (H1 continuation provider + control-source
  * contribution with the plugin-timer reattach hook + domain tools + the
- * protocol-5 host adapter slot). Loaded through src/product-registration.ts.
+ * protocol-5 host adapter slot). Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

@@ -4,8 +4,8 @@ import {
   BROWSER_PROTOCOL_VERSION,
   BrowserHostMessageSchema,
   type BrowserHostMessage,
-} from "@ericsanchezok/synergy-browser"
-import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
+} from "@ericsanchezok/synergy-browser-core"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
 import { BrowserBroker, type BrowserBrokerSocket } from "../../src/broker"
 import { BrowserCommandService } from "../../src/command-service"
 import { BrowserNetworkGateway } from "../../src/network-gateway"

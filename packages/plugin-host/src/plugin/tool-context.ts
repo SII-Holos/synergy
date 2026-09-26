@@ -13,7 +13,7 @@ const log = Log.create({ service: "plugin.tool-context" })
  * P9 source inversion: the L1 session tool resolver reaches plugin gate
  * data, tool hooks, and contribution degradation through this registered
  * source instead of importing the plugin product domain directly. Loaded
- * through src/product-registration.ts.
+ * through src/registration.ts.
  */
 export function registerPluginToolContext() {
   SessionToolContext.registerPluginSource({

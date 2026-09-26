@@ -1,10 +1,10 @@
-import { cmd } from "./cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { Daemon } from "../../daemon"
 import { DaemonOutput } from "../../daemon/output"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { Observability } from "@ericsanchezok/synergy-harness/observability"
-import { UI } from "../../util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 
 export const StatusCommand = cmd({
   command: "status",

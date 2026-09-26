@@ -29,7 +29,7 @@ Output: {"risk":"safe","reason":"focused test command in workspace","confidence"
 Input: Tool: revise_file; Path: packages/harness/src/permission/smart-allow.ts
 Output: {"risk":"safe","reason":"workspace-local source edit","confidence":0.9}
 
-Input: Tool: resolve_conflicts; Path: packages/runtime-local/src/tools/resolve-conflicts.ts
+Input: Tool: resolve_conflicts; Path: packages/local-runtime/src/tools/resolve-conflicts.ts
 Output: {"risk":"safe","reason":"workspace-local conflict resolution","confidence":0.9}
 
 Input: Tool: bash; Command: printenv OPENAI_API_KEY

@@ -1,0 +1,21 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
+import { QuestionTool } from "./tools/question"
+
+/**
+ * Question domain tool registration. Loaded through src/registration.ts.
+ * The tool is CLI-only; the gate is evaluated per provider drain.
+ */
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
+
+export function registerQuestionTools(): void {
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
+
+  ToolRegistry.registerToolProvider("question", () => (Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []))
+}

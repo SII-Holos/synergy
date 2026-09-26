@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "node:path"
-import { ScopeListTool } from "@ericsanchezok/synergy-runtime-local/tools/scope-list"
+import { ScopeListTool } from "@ericsanchezok/synergy-local-runtime/tools/scope-list"
 import { SessionControlTool } from "@ericsanchezok/synergy-workbench/project/tools/session-control"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

@@ -24,16 +24,16 @@ const PROMPT_FILES = [
 ]
 
 const SECONDS_FACING_TOOL_FILES = [
-  "packages/runtime-local/src/tools/scan-files.ts",
-  "packages/runtime-local/src/tools/scan-files.txt",
-  "packages/runtime-local/src/tools/glob.ts",
-  "packages/runtime-local/src/tools/ls.ts",
+  "packages/local-runtime/src/tools/scan-files.ts",
+  "packages/local-runtime/src/tools/scan-files.txt",
+  "packages/local-runtime/src/tools/glob.ts",
+  "packages/local-runtime/src/tools/ls.ts",
   "packages/browser-runtime/src/tools/browser-wait.ts",
   "packages/browser-runtime/src/tools/browser-eval.ts",
   "packages/browser-runtime/src/tools/browser-downloads.ts",
-  "packages/runtime-local/src/tools/webfetch.ts",
-  "packages/runtime-local/src/tools/process.ts",
-  "packages/runtime-local/src/tools/process.txt",
+  "packages/local-runtime/src/tools/webfetch.ts",
+  "packages/local-runtime/src/tools/process.ts",
+  "packages/local-runtime/src/tools/process.txt",
   "packages/harness/src/cortex/tools/task-output.ts",
   "packages/media/src/tools/lookat.ts",
   "packages/media/src/tools/lookat.txt",
@@ -59,7 +59,7 @@ describe("tool time-budget units", () => {
   test("no source or prompt file reads the bash timing argument the schema never exposed", async () => {
     const files = [
       ...(await collect("packages/harness/src/agent/prompt")),
-      ...(await collect("packages/runtime-local/src/tools")),
+      ...(await collect("packages/local-runtime/src/tools")),
       ...(await collect("packages/harness/src/tool")),
     ]
     expect(files.length).toBeGreaterThan(0)

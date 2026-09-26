@@ -1,13 +1,23 @@
-import { createSynergyClient, createSynergyServer } from "@ericsanchezok/synergy-sdk"
+import { createSynergy } from "@ericsanchezok/synergy-sdk"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 
 const files = process.argv.slice(2)
 if (!files.length) throw new Error("Pass the source files to process as command-line arguments")
 
-const server = await createSynergyServer()
+const executable = process.env.SYNERGY_EXECUTABLE
+const version = process.env.SYNERGY_VERSION
+if (!executable || !version)
+  throw new Error("Set SYNERGY_EXECUTABLE to the installed binary and SYNERGY_VERSION to its exact version")
+const { server, client } = await createSynergy({
+  mode: "managed",
+  executable,
+  version,
+  home: path.resolve(".agent-data"),
+  components: { server: version },
+  client: { directory: process.cwd() },
+})
 try {
-  const client = createSynergyClient({ baseUrl: server.url })
   for (const file of files) {
     const session = await client.session.create()
     if (!session.data) throw new Error(`Could not create a session for ${file}`)
@@ -23,5 +33,5 @@ try {
     console.log("done", file)
   }
 } finally {
-  server.close()
+  await server.close()
 }

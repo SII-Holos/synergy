@@ -107,6 +107,11 @@
       "bun": "./src/format.ts",
       "types": "./src/format.ts",
       "import": "./dist/format.js"
+    },
+    "./package": {
+      "bun": "./src/package.ts",
+      "types": "./src/package.ts",
+      "import": "./dist/package.js"
     }
   },
   "files": [
