@@ -1,3 +1,4 @@
+import { SidebarSectionButton } from "./sidebar-section-button"
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { createSessionTagFilter, type TagFilterState } from "./session-tag-filter"
@@ -473,7 +474,10 @@ export function Sidebar(props: SidebarProps) {
               class="sb-logo-img"
               draggable={false}
             />
-            <span class="sb-logo-text">{_(sidebar.logoAlt)}</span>
+            <div class="sb-logo-caption">
+              <span class="sb-logo-text">{_(sidebar.logoAlt)}</span>
+              <span class="sb-product-label">{_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}</span>
+            </div>
           </A>
           <div class="sb-header-actions">
             <Tooltip value={_(sidebar.search)} placement="right">
@@ -746,11 +750,10 @@ export function Sidebar(props: SidebarProps) {
 
               {/* Channel */}
               <div class="sb-root-section">
-                <div
+                <SidebarSectionButton
                   class="sb-projects-header"
                   onClick={() => setChannelSectionOpen((v) => !v)}
-                  role="button"
-                  tabindex="0"
+                  open={channelSectionOpen()}
                 >
                   <span class="sb-section-title">{_(sidebar.channel)}</span>
                   <Icon
@@ -758,7 +761,7 @@ export function Sidebar(props: SidebarProps) {
                     size="small"
                     class="sb-section-chevron"
                   />
-                </div>
+                </SidebarSectionButton>
                 <SidebarDisclosure open={channelSectionOpen()}>
                   <Show
                     when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
@@ -766,11 +769,10 @@ export function Sidebar(props: SidebarProps) {
                   >
                     <Show when={channelGroupedEntries().length > 0}>
                       <div class="sb-session-group">
-                        <div
+                        <SidebarSectionButton
                           class="sb-session-group-header"
                           onClick={() => setFeishuGroupOpen((v) => !v)}
-                          role="button"
-                          tabindex="0"
+                          open={feishuGroupOpen()}
                         >
                           <Icon
                             name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
@@ -778,7 +780,7 @@ export function Sidebar(props: SidebarProps) {
                             class="sb-section-chevron"
                           />
                           <span>{_(sidebar.channelFeishu)}</span>
-                        </div>
+                        </SidebarSectionButton>
                         <SidebarDisclosure open={feishuGroupOpen()}>
                           <For each={feishuChannelGroups()}>
                             {(group) => (
@@ -794,11 +796,10 @@ export function Sidebar(props: SidebarProps) {
                       </div>
                       <Show when={githubChannelGroups().length > 0}>
                         <div class="sb-session-group">
-                          <div
+                          <SidebarSectionButton
                             class="sb-session-group-header"
                             onClick={() => setGithubGroupOpen((v) => !v)}
-                            role="button"
-                            tabindex="0"
+                            open={githubGroupOpen()}
                           >
                             <Icon
                               name={githubGroupOpen() ? "chevron-down" : "chevron-right"}
@@ -806,7 +807,7 @@ export function Sidebar(props: SidebarProps) {
                               class="sb-section-chevron"
                             />
                             <span>{_(sidebar.channelGithub)}</span>
-                          </div>
+                          </SidebarSectionButton>
                           <SidebarDisclosure open={githubGroupOpen()}>
                             <For each={githubChannelGroups()}>
                               {(group) => (
@@ -880,18 +881,19 @@ export function Sidebar(props: SidebarProps) {
 
               {/* Projects */}
               <div class="sb-projects">
-                <div
-                  class="sb-projects-header"
-                  onClick={() => setProjectsSectionOpen((v) => !v)}
-                  role="button"
-                  tabindex="0"
-                >
-                  <span class="sb-section-title">{_(sidebar.projects)}</span>
-                  <Icon
-                    name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
-                    size="small"
-                    class="sb-section-chevron"
-                  />
+                <div class="sb-projects-header sb-projects-header-actions">
+                  <SidebarSectionButton
+                    class="sb-projects-section-toggle"
+                    onClick={() => setProjectsSectionOpen((v) => !v)}
+                    open={projectsSectionOpen()}
+                  >
+                    <span class="sb-section-title">{_(sidebar.projects)}</span>
+                    <Icon
+                      name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
+                      size="small"
+                      class="sb-section-chevron"
+                    />
+                  </SidebarSectionButton>
                   <span class="sb-projects-header-spacer" />
                   <Show when={hasExpandedProject()}>
                     <Tooltip value={_(sidebar.collapseAllProjects)} placement="top">
@@ -909,6 +911,7 @@ export function Sidebar(props: SidebarProps) {
                     <button
                       type="button"
                       class="sb-projects-header-plus"
+                      aria-label={_(sidebar.addProject)}
                       onClick={(e) => {
                         e.stopPropagation()
                         handleAddProject()
@@ -1304,10 +1307,10 @@ function RootNavSection(props: {
   const { _ } = useLingui()
   return (
     <div class="sb-root-section">
-      <div class="sb-projects-header" onClick={props.onToggle} role="button" tabindex="0">
+      <SidebarSectionButton class="sb-projects-header" onClick={props.onToggle} open={props.open()}>
         <span class="sb-section-title">{props.title}</span>
         <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
-      </div>
+      </SidebarSectionButton>
       <SidebarDisclosure open={props.open()}>
         <Show when={props.entries.length > 0} fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}>
           <SidebarSessionList entries={props.entries} activeID={props.activeID} onSessionClick={props.onSessionClick} />
@@ -1352,10 +1355,10 @@ function ChannelChatPartnerGroup(props: {
 
   return (
     <div class="sb-channel-partner-group">
-      <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
+      <SidebarSectionButton class="sb-session-group-header" onClick={() => setOpen((v) => !v)} open={open()}>
         <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
         <span>{props.name}</span>
-      </div>
+      </SidebarSectionButton>
       <SidebarDisclosure open={open()}>
         <SidebarSessionList entries={props.sessions} activeID={props.activeID} onSessionClick={props.onSessionClick} />
       </SidebarDisclosure>
@@ -1372,10 +1375,10 @@ function ChannelProviderGroup(props: {
 
   return (
     <div class="sb-channel-account-group">
-      <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
+      <SidebarSectionButton class="sb-session-group-header" onClick={() => setOpen((v) => !v)} open={open()}>
         <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
         <span>{props.group.label}</span>
-      </div>
+      </SidebarSectionButton>
       <SidebarDisclosure open={open()}>
         <Show
           when={props.group.projects.length > 0}
@@ -1481,16 +1484,17 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const activeAgentShortID = () => activeAgentId()?.slice(0, 8)
 
   const displayName = () => {
-    if (!holos.loaded) return "Synergy"
+    if (!holos.loaded) return "HOLOS"
     const profileName = holos.state.social.profile?.name
     if (holos.state.identity.loggedIn && profileName) return profileName
     if (holos.state.identity.loggedIn && activeAgentShortID()) return `Agent ${activeAgentShortID()}`
-    return "Synergy"
+    return _({ id: "sidebar.account.holos", message: "HOLOS account" })
   }
 
   const displayDescription = () => {
     if (!holos.loaded) return _(sidebar.loadingIdentity)
-    if (!holos.state.identity.loggedIn) return _(sidebar.localWorkspace)
+    if (!holos.state.identity.loggedIn)
+      return _({ id: "sidebar.account.signedOut", message: "Not signed in · local workspace" })
     if (holos.state.social.profileError) return _(sidebar.profileUnavailable)
     const description = holos.state.social.profile?.description?.trim()
     if (description) return description
@@ -1662,7 +1666,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               <span class="sidebar-account-card-copy">
                 <span class="sidebar-account-card-name">{displayName()}</span>
                 <span class="sidebar-account-card-description">{displayDescription()}</span>
-                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? sidebar.noAgent.message}</span>
+                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? _(sidebar.noAgent)}</span>
               </span>
               <Icon name={agentSwitcherOpen() || holosStatusOpen() ? "chevron-up" : "chevron-down"} size="small" />
             </button>

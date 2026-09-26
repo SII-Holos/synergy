@@ -49,3 +49,12 @@ describe("nativeBrowserViewVisible", () => {
     ).toBe(false)
   })
 })
+
+test("native presentation stays hidden until every Browser overlay closes", () => {
+  const base = { appDialogOpen: false, fileChooserOpen: false, pageDialogOpen: false }
+  expect(nativeBrowserViewVisible({ ...base, controlsOpen: true })).toBe(false)
+  expect(nativeBrowserViewVisible({ ...base, errorOpen: true })).toBe(false)
+  expect(nativeBrowserViewVisible({ ...base, annotationOpen: true })).toBe(false)
+  expect(nativeBrowserViewVisible({ ...base, controlsOpen: false, errorOpen: true })).toBe(false)
+  expect(nativeBrowserViewVisible({ ...base, controlsOpen: false, errorOpen: false, annotationOpen: false })).toBe(true)
+})

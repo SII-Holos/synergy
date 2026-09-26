@@ -122,11 +122,13 @@ const BUILTIN_SETTINGS_COPY = {
     searchTerms: {
       id: "settings.catalog.general.searchTerms",
       message:
-        "appearance | color | light | dark | auto | language | activity | activity display | workspace | worktree | checkout | product update | toast | notification",
+        "appearance | color | light | dark | auto | language | font | monospace | activity | activity display | workspace | worktree | checkout | product update | toast | notification",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
       { id: "settings.catalog.general.row.colorScheme", message: "Color Scheme" },
+      { id: "settings.general.font.title", message: "Interface font" },
+      { id: "settings.general.monoFont.title", message: "Monospace font" },
       { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
       { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
       { id: "settings.catalog.general.row.newSessionWorkspace", message: "New Session Workspace" },

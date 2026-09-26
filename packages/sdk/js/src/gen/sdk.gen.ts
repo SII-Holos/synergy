@@ -629,9 +629,13 @@ import type {
   SessionInboxErrors,
   SessionInboxGuideErrors,
   SessionInboxGuideResponses,
+  SessionInboxRemovedErrors,
+  SessionInboxRemovedResponses,
   SessionInboxRemoveErrors,
   SessionInboxRemoveResponses,
   SessionInboxResponses,
+  SessionInboxRestoreErrors,
+  SessionInboxRestoreResponses,
   SessionInboxRetryErrors,
   SessionInboxRetryResponses,
   SessionIndexErrors,
@@ -3084,6 +3088,74 @@ export class Session extends HeyApiClient {
       ...options,
       ...params,
     })
+  }
+
+  /**
+   * List removed inbox items
+   *
+   * List recoverable removed items without exposing private execution inputs.
+   */
+  public inboxRemoved<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionInboxRemovedResponses, SessionInboxRemovedErrors, ThrowOnError>({
+      url: "/session/{sessionID}/inbox/removed",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Restore a removed inbox item
+   *
+   * Restore the original input, mode and execution configuration once. Repeated requests do not enqueue another input.
+   */
+  public inboxRestore<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      itemID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInboxRestoreResponses, SessionInboxRestoreErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/inbox/{itemID}/restore",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   /**

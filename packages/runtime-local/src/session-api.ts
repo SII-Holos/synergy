@@ -84,6 +84,13 @@ export async function retryInput(input: { sessionID: string; itemID: string }): 
   return item
 }
 
+export async function restoreInput(input: { sessionID: string; itemID: string }): Promise<void> {
+  await Session.assertWorkspaceAvailable(input.sessionID)
+  using control = await Lock.write(`session-control:${input.sessionID}`)
+  const result = await SessionInbox.restore(input)
+  if (result.restored && result.item.status !== "failed") scheduleInput(result.item, "user-input-restored")
+}
+
 async function takeSessionBack(sessionID: string): Promise<void> {
   const session = await Session.get(sessionID)
   if (session.paused) await SessionManager.waitForIdle(sessionID)

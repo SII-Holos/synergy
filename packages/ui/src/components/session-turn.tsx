@@ -494,12 +494,14 @@ export function resolveTurnWorking(input: {
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 
-export function providerPreludeText(status: SessionStatus | undefined): string {
+const awaitingResponse = { id: "ui.session.awaitingResponse", message: "Awaiting response…" }
+
+export function providerPreludeText(status: SessionStatus | undefined, fallback = awaitingResponse.message): string {
   if (status?.type === "busy") {
     const description = status.description?.trim()
     if (description) return description
   }
-  return "Awaiting response\u2026"
+  return fallback
 }
 
 export function shouldShowProviderPrelude(input: {
@@ -1533,7 +1535,7 @@ export function SessionTurn(
                         <Show when={showProviderPrelude()}>
                           <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
                             <ProviderPrelude
-                              text={providerPreludeText(sessionStatus())}
+                              text={providerPreludeText(sessionStatus(), _(awaitingResponse))}
                               elapsed={providerPreludeElapsed()}
                             />
                           </div>

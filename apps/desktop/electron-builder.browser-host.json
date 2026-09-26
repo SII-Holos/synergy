@@ -8,7 +8,7 @@
     "output": "release/browser-host",
     "app": "build/browser-host-app"
   },
-  "files": ["dist/browser-host-main.js", "package.json", "!node_modules{,/**/*}"],
+  "files": ["dist/browser-host-main.js", "dist/browser-page-preload.cjs", "package.json", "!node_modules{,/**/*}"],
   "extraMetadata": {
     "main": "dist/browser-host-main.js"
   },

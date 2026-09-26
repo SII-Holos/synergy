@@ -56,3 +56,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 Report owner/page effects, command and event changes, persistence and cleanup, navigation/enforcement behavior, native and remote presentation coverage, generated contracts, tests, and manual runtime evidence.
 
 For uploads, pin the Workspace generation through dispatch and check cancellation before accessing a page. Bound bytes during the read, revalidate both the open handle and pathname, and reject concurrent growth or replacement. Use real temporary files for size, same-size edit, symlink, cancellation and rebind tests; transport stubs do not establish actual native or headless upload acceptance.
+
+For Browser overlay changes, test overlapping blockers rather than only one open/close pair. Assert the last blocker controls native visibility and the same page, native view and entered content survive. Exercise prompt defaults, accepted empty text, cancellation, acknowledgement-only alerts, keyboard focus and request replacement through real components; native visibility additionally needs a real Electron view check.
+
+For JavaScript prompt changes, test the actual Electron page calling `prompt()` and receiving edited text, an empty string and null. DOM rendering alone cannot prove Electron support. Verify the preload in the staged Host ASAR, sender/frame validation, disposal, and a reply during a pending page command. Preserve the command’s Workspace lease and reject stale owners while allowing its reply to unblock it.

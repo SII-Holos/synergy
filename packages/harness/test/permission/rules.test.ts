@@ -2,6 +2,8 @@ import { describe, test, expect, beforeEach } from "bun:test"
 import { PermissionRules } from "../../src/permission/rules"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 const runtime = await testRuntime()
 
 describe("PermissionRules.extractPattern", () => {
@@ -137,6 +139,24 @@ describe("PermissionRules session rules", () => {
       expect(PermissionRules.sessionRuleset("session_one")).toHaveLength(1)
       expect(PermissionRules.sessionRuleset("session_two")).toHaveLength(0)
     }))
+})
+
+test("removing a user rule commits storage and invalidates cached permission decisions", async () => {
+  await using isolated = await testRuntime()
+  await isolated.run(async () => {
+    await PermissionRules.addUserRules([
+      { permission: "bash", pattern: "git *", action: "allow" },
+      { permission: "edit", pattern: "src/*", action: "allow" },
+    ])
+    expect(PermissionRules.evaluate("bash", "git status", await PermissionRules.userRuleset()).action).toBe("allow")
+    await PermissionRules.removeUserRule("bash", "git *")
+    const rules = await PermissionRules.userRuleset()
+    expect(PermissionRules.evaluate("bash", "git status", rules).action).toBe("ask")
+    expect(rules).toEqual([{ permission: "edit", pattern: "src/*", action: "allow", scope: "user" }])
+    expect(await Storage.read<PermissionRules.Ruleset>(StoragePath.permissionRules())).toEqual(rules)
+    await PermissionRules.removeUserRule("bash", "git *")
+    expect(await PermissionRules.userRuleset()).toEqual(rules)
+  })
 })
 
 afterRuntimeTests(() => runtime.close())

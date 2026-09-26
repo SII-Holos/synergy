@@ -28,6 +28,7 @@ export namespace ExperienceRecall {
     intent: string
     sourceProviderID: string | null
     sourceModelID: string | null
+    rewardStatus: LibraryDB.Experience.RewardStatus
     reward: number | null
     similarity: number
     qValue: number
@@ -229,6 +230,7 @@ export namespace ExperienceRecall {
         intent: item.row.intent,
         sourceProviderID: item.row.source_provider_id,
         sourceModelID: item.row.source_model_id,
+        rewardStatus: item.row.reward_status,
         reward: item.row.reward,
         similarity: item.similarity,
         qValue: item.qScalar,

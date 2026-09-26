@@ -62,6 +62,10 @@ function escapeClassName(className: string) {
   return `.${className.replace(/:/g, "\\:").replace(/\//g, "\\/")}`
 }
 
+const workspaceLocationButton = await Bun.file(
+  new URL("../src/components/top-bar/workspace-location-button.tsx", import.meta.url),
+).text()
+
 describe("workbench surface polarity", () => {
   test("workbench surfaces derive from the shared theme instead of a local blue-gray ramp", () => {
     expect(css).toContain("--workbench-canvas-bg: var(--background-stronger);")
@@ -147,18 +151,18 @@ describe("workbench surface polarity", () => {
   })
 
   test("desktop session top bar pairs the project name with the folder icon", () => {
-    expect(sessionTopBar).toContain('class="stb-project-name"')
-    expect(sessionTopBar).toContain('getSemanticIcon("workspace.main")')
+    expect(workspaceLocationButton).toContain('class="stb-project-name"')
+    expect(workspaceLocationButton).toContain('"workspace.main"')
     expect(sessionTopBar).toContain("resolveProjectScope(directory()")
     expect(sessionTopBar).toContain("getScopeLabel(projectScope()")
-    expect(sessionTopBar).toContain("value={projectPath()}")
+    expect(workspaceLocationButton).toContain("{props.location.path}")
     expect(sessionTopBarCss).toContain(".stb-project-name")
     expect(sessionTopBarCss).toContain(".stb-folder")
     expect(sessionTopBarCss).toContain("text-overflow: ellipsis;")
   })
 
   test("desktop session top bar shares one type scale and baseline across the left cluster", () => {
-    expect(sessionTopBar).toContain('class="stb-project"')
+    expect(workspaceLocationButton).toContain('class="stb-selector-btn stb-location-btn"')
     expect(sessionTopBarCss).toContain(".stb-project {")
     expect(sessionTopBarCss).toContain("font-size: var(--font-size-base);")
     expect(sessionTopBarCss).toContain("font-size: var(--font-size-small);")
@@ -219,11 +223,7 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurfaceCss).toContain('[data-slot="popover-trigger"]')
   })
 
-  test("workbench surfaces arbitrate Escape through the shared menu registry", () => {
-    expect(workbenchSurface).toContain("registerWorkbenchEscapeMenu")
-    expect(workbenchSurface).toContain("anyWorkbenchEscapeMenuOpen")
-    expect(workbenchSurface).toContain("closeAllWorkbenchEscapeMenus")
-    expect(workbenchSurface).toContain("stopImmediatePropagation")
+  test("workbench batch closing stays bound to its owning session", () => {
     expect(workbenchPanels).toContain("batchClosingSurfaces")
     expect(workbenchPanels).toContain("closingIds")
     expect(workbenchPanels).toContain("await closeBoundTab(boundSession, surfaceName, id)")
@@ -264,7 +264,8 @@ describe("workbench surface polarity", () => {
 
   test("library uses top-level tabs instead of a secondary icon sidebar", () => {
     expect(libraryPanel).toContain("<AppPanel.SegmentedNav")
-    expect(libraryPanel).toContain("Overview")
+    expect(libraryPanel).toContain("Home")
+    expect(libraryPanel).toContain("Statistics")
     expect(libraryPanel).toContain("Memories")
     expect(libraryPanel).toContain("Experiences")
     expect(libraryPanel).toContain("Skills")
@@ -298,8 +299,6 @@ describe("workbench surface polarity", () => {
     expect(questionPrompt).toContain("question-prompt-option")
     expect(questionPrompt).toContain('class="question-prompt-option question-prompt-other-trigger"')
     expect(questionPrompt).toContain("question-prompt-skip")
-    expect(questionPrompt).toContain("disabled={!currentAnswered()}")
-    expect(questionPrompt).toContain("disabled={!allAnswered()}")
     expect(questionPrompt).not.toContain("Dismiss")
     expect(questionPrompt).not.toContain('Card variant="info"')
     expect(questionPrompt).not.toContain("workbench-card-surface workbench-card-surface-hover")

@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, onMount } from "solid-js"
+import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { usePlatform } from "@/context/platform"
@@ -9,8 +9,18 @@ export function nativeBrowserViewVisible(input: {
   appDialogOpen: boolean
   fileChooserOpen: boolean
   pageDialogOpen: boolean
+  controlsOpen?: boolean
+  errorOpen?: boolean
+  annotationOpen?: boolean
 }) {
-  return !input.appDialogOpen && !input.fileChooserOpen && !input.pageDialogOpen
+  return (
+    !input.appDialogOpen &&
+    !input.fileChooserOpen &&
+    !input.pageDialogOpen &&
+    !input.controlsOpen &&
+    !input.errorOpen &&
+    !input.annotationOpen
+  )
 }
 
 export function nativeBounds(rect: Pick<DOMRect, "x" | "y" | "width" | "height">) {
@@ -32,6 +42,17 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
     if (browser.presentation()?.kind !== "native") return null
     return platform.browserNative ?? null
   }
+
+  const visible = createMemo(() =>
+    nativeBrowserViewVisible({
+      appDialogOpen: Boolean(dialog.active),
+      fileChooserOpen: Boolean(browser.fileChooserRequest()),
+      pageDialogOpen: Boolean(browser.dialogRequest()),
+      controlsOpen: browser.controlsOpen(),
+      errorOpen: Boolean(browser.browserError()),
+      annotationOpen: Boolean(browser.annotationTarget()),
+    }),
+  )
 
   function syncBounds() {
     const native = bridge()
@@ -107,18 +128,13 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
 
     const bounds = nativeBounds(container.getBoundingClientRect())
     if (!bounds) return
-    const visible = nativeBrowserViewVisible({
-      appDialogOpen: Boolean(dialog.active),
-      fileChooserOpen: Boolean(browser.fileChooserRequest()),
-      pageDialogOpen: Boolean(browser.dialogRequest()),
-    })
     void native
       .attachView({
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         ownerKey: props.ownerKey,
         pageId: page.id,
         bounds,
-        visible,
+        visible: visible(),
       })
       .then(
         () => {
@@ -150,7 +166,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
 
   function focusNativeView() {
     const pageId = browser.pageId()
-    if (!pageId) return
+    if (!pageId || !visible()) return
     void platform.browserNative?.focusView({
       protocolVersion: BROWSER_PROTOCOL_VERSION,
       ownerKey: props.ownerKey,

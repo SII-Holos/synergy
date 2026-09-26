@@ -174,6 +174,7 @@ export const PI = {
   startBpLoop: { id: "prompt.startBlueprintLoop", message: "Start BlueprintLoop" },
   stopAction: { id: "prompt.stop", message: "Stop" },
   sendAction: { id: "prompt.send", message: "Send" },
+  recoveryRequired: { id: "prompt.recoveryRequired", message: "Complete the recovery above before sending." },
   startingSession: { id: "prompt.startingSession", message: "Starting session" },
   stopping: { id: "prompt.stopping", message: "Stopping..." },
   stopSession: { id: "prompt.stopSession", message: "Stop session" },
@@ -222,6 +223,8 @@ export const PI = {
   // prompt-input.tsx — editor placeholders
   placeholderShell: { id: "prompt.placeholder.shell", message: "Enter shell command..." },
   placeholderPlan: { id: "prompt.placeholder.plan", message: "Plan your approach..." },
+  placeholderExampleGlobal: { id: "prompt.placeholder.exampleGlobal", message: 'Ask me anything… "{example}"' },
+  placeholderExampleProject: { id: "prompt.placeholder.exampleProject", message: 'Ask anything… "{example}"' },
   placeholderAskGlobal: { id: "prompt.placeholder.askGlobal", message: "Ask me anything..." },
   placeholderAskProject: { id: "prompt.placeholder.askProject", message: "Ask anything..." },
 

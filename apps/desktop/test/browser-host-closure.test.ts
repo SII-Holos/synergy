@@ -20,17 +20,20 @@ async function fixture() {
   const app = path.join(directory, "app")
   const bundle = path.join(directory, "bundle.js")
   await Bun.write(bundle, "import { app } from 'electron'; app.whenReady()")
-  await prepareBrowserHost(app, bundle)
-  return { directory, app, bundle, archive: path.join(directory, "app.asar") }
+  const preload = path.join(directory, "preload.cjs")
+  await Bun.write(preload, "require('electron').contextBridge")
+  await prepareBrowserHost(app, bundle, preload)
+  return { directory, app, bundle, preload, archive: path.join(directory, "app.asar") }
 }
 
 test("stages only the bundled Browser Host and an independent manifest, removing stale Desktop dependencies", async () => {
   const value = await fixture()
   await Bun.write(path.join(value.app, "node_modules/stale/index.js"), "stale")
-  await prepareBrowserHost(value.app, value.bundle)
+  await prepareBrowserHost(value.app, value.bundle, value.preload)
   await createPackage(value.app, value.archive)
   expect(() => assertBrowserHostClosure(value.archive)).not.toThrow()
   expect(await Bun.file(path.join(value.app, "dist/browser-host-main.js")).text()).toContain("from 'electron'")
+  expect(await Bun.file(path.join(value.app, "dist/browser-page-preload.cjs")).text()).toContain("contextBridge")
   expect((await Bun.file(path.join(value.app, "package.json")).json()).dependencies).toEqual({})
 })
 
@@ -57,7 +60,7 @@ test("rejects dependency declarations and unpacked native payloads", async () =>
   )
   await createPackage(value.app, value.archive)
   expect(() => assertBrowserHostClosure(value.archive)).toThrow("without production package dependencies")
-  await prepareBrowserHost(value.app, value.bundle)
+  await prepareBrowserHost(value.app, value.bundle, value.preload)
   const cleanArchive = path.join(value.directory, "clean.asar")
   await createPackage(value.app, cleanArchive)
   await fs.mkdir(`${cleanArchive}.unpacked`)

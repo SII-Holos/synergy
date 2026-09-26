@@ -1,5 +1,5 @@
 import { useExtensionOutlet } from "@ericsanchezok/synergy-ui/context/extension-outlet"
-import { ErrorBoundary, For, Show, Suspense, createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { ErrorBoundary, For, Show, Suspense, createEffect, createMemo, on, onCleanup, onMount } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import type { Component } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -16,16 +16,8 @@ import {
   isEditableEscapeTarget,
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
-  registerWorkbenchEscapeMenu,
-  anyWorkbenchEscapeMenuOpen,
-  closeAllWorkbenchEscapeMenus,
 } from "@/context/workbench/panel-model"
-import {
-  computeMaxWorkspaceWidth,
-  sidebarOccupancy,
-  WORKSPACE_MIN_WIDTH,
-  WORKSPACE_SESSION_MIN_WIDTH,
-} from "@/context/layout/workspace"
+import { sidebarOccupancy, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { useLayout } from "@/context/layout"
 import type {
   WorkbenchPanelContentProps,
@@ -91,7 +83,25 @@ function WorkbenchPanelContent(props: {
         }
       >
         {(component) => (
-          <ErrorBoundary fallback={(error) => <div class="workbench-surface-error">{error.message}</div>}>
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <div class="workbench-surface-error" role="alert">
+                <Icon name={getSemanticIcon("state.warning")} size="large" />
+                <span>
+                  <Trans id="app.workspace.panel.failed" message="This panel encountered a problem." />
+                </span>
+                <Button variant="secondary" onClick={reset}>
+                  <Trans id="app.workspace.panel.retryRendering" message="Retry panel" />
+                </Button>
+                <details>
+                  <summary>
+                    <Trans id="app.workspace.panel.details" message="Error details" />
+                  </summary>
+                  <pre>{error instanceof Error ? error.message : String(error)}</pre>
+                </details>
+              </div>
+            )}
+          >
             <Suspense
               fallback={
                 <div class="workbench-surface-loading">
@@ -336,6 +346,21 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     resizing: false,
   })
   let tabRun: HTMLDivElement | undefined
+  let root: HTMLDivElement | undefined
+  let returnFocus: HTMLElement | undefined
+  createEffect(
+    on(
+      () => state().opened(),
+      (opened) => {
+        const active = document.activeElement
+        if (opened) {
+          if (active instanceof HTMLElement && !root?.contains(active)) returnFocus = active
+          return
+        }
+        if (root?.contains(active) && returnFocus?.isConnected) returnFocus.focus()
+      },
+    ),
+  )
 
   const openPanel = (panel: WorkbenchPanelEntry, mode: "launcher" | "add") => {
     setLocal("addOpen", false)
@@ -358,58 +383,61 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   })
 
   onMount(() => {
-    const menuHandle = {
-      isAnyMenuOpen: () => local.addOpen || local.actionsOpen || local.menuTabId !== undefined,
-      closeMenus: () => {
-        setLocal("addOpen", false)
-        setLocal("actionsOpen", false)
-        setLocal("menuTabId", undefined)
-      },
-    }
-    const unregister = registerWorkbenchEscapeMenu(menuHandle)
     const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
       const action = resolveWorkbenchEscapeAction({
         key: event.key,
         opened: state().opened(),
-        menuOpen: anyWorkbenchEscapeMenuOpen(),
+        menuOpen: local.addOpen || local.actionsOpen || local.menuTabId !== undefined,
+        focusWithin: event.target instanceof Node && Boolean(root?.contains(event.target)),
         dialogActive: Boolean(dialog.active),
         editableFocus: isEditableEscapeTarget(event.target),
       })
       if (action === "none") return
       event.preventDefault()
       event.stopPropagation()
-      if (action === "close-menu") {
-        // With both side and bottom surfaces mounted, the other surface's
-        // capture listener would see the just-closed menus and fall through
-        // to closing its panel. Close every menu here and stop the same-node
-        // capture listeners from re-deciding; without any menu open each
-        // surface keeps its own close-surface path (Escape collapses every
-        // open surface, as before).
-        closeAllWorkbenchEscapeMenus()
-        event.stopImmediatePropagation()
-        return
-      }
       state().close()
     }
-    document.addEventListener("keydown", onKey, { capture: true })
+    document.addEventListener("keydown", onKey)
     onCleanup(() => {
-      unregister()
-      document.removeEventListener("keydown", onKey, { capture: true })
+      document.removeEventListener("keydown", onKey)
     })
   })
 
   const size = () => state().size()
   const isSide = () => props.surface === "side"
-  const maxSideWidth = () =>
-    Math.max(
-      WORKSPACE_MIN_WIDTH,
-      computeMaxWorkspaceWidth(
-        window.innerWidth - sidebarOccupancy(layout.isDesktop(), layout.sidebar.opened(), layout.sidebar.width()),
-        { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH },
-      ),
-    )
-  const maxBottomHeight = () => window.innerHeight * 0.6
-  const displaySize = () => (isSide() ? Math.min(size(), maxSideWidth()) : size())
+  const [available, setAvailable] = createStore({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    container: false,
+  })
+  onMount(() => {
+    const container = root?.closest<HTMLElement>('[data-ui-part="session"]')
+    const measure = () => {
+      const rect = container?.getBoundingClientRect()
+      setAvailable({
+        width: rect?.width ?? window.innerWidth,
+        height: rect?.height ?? window.innerHeight,
+        container: Boolean(rect),
+      })
+    }
+    const observer = container ? new ResizeObserver(measure) : undefined
+    if (container) observer?.observe(container)
+    window.addEventListener("resize", measure)
+    measure()
+    onCleanup(() => {
+      observer?.disconnect()
+      window.removeEventListener("resize", measure)
+    })
+  })
+  const maxSideWidth = () => {
+    const width =
+      available.width -
+      (available.container ? 0 : sidebarOccupancy(layout.isDesktop(), layout.sidebar.opened(), layout.sidebar.width()))
+    return Math.max(0, width - WORKSPACE_SESSION_MIN_WIDTH)
+  }
+  const maxBottomHeight = () => Math.max(0, available.height * 0.6)
+  const displaySize = () => Math.min(size(), isSide() ? maxSideWidth() : maxBottomHeight())
 
   const rootStyle = () =>
     isSide()
@@ -435,6 +463,9 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
 
   return (
     <div
+      ref={root}
+      inert={!state().opened() || displaySize() === 0}
+      aria-hidden={!state().opened() || displaySize() === 0}
       data-ui-part="resource-panel"
       class="workbench-surface"
       classList={{
@@ -447,14 +478,14 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     >
       <ResizeHandle
         direction={isSide() ? "horizontal" : "vertical"}
-        edge={isSide() ? "start" : undefined}
+        edge="start"
         aria-label={
           isSide()
             ? lingui._({ id: W.resizeSide.id, message: W.resizeSide.message })
             : lingui._({ id: W.resizeBottom.id, message: W.resizeBottom.message })
         }
         size={displaySize()}
-        min={isSide() ? WORKSPACE_MIN_WIDTH : 120}
+        min={Math.min(isSide() ? WORKSPACE_MIN_WIDTH : 120, isSide() ? maxSideWidth() : maxBottomHeight())}
         max={isSide() ? maxSideWidth() : maxBottomHeight()}
         collapseThreshold={isSide() ? 200 : 50}
         onResize={state().setSize}
@@ -525,15 +556,16 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                       placement="bottom-start"
                       gutter={6}
                       class="workbench-surface-add-menu"
-                      trigger={
+                      triggerAs={(triggerProps) => (
                         <IconButton
+                          {...triggerProps}
                           icon={getSemanticIcon("action.more")}
                           variant="ghost"
                           aria-label={lingui._({ id: W.tabActionsMenu.id, message: W.tabActionsMenu.message })}
                           aria-haspopup="menu"
                           aria-expanded={local.actionsOpen}
                         />
-                      }
+                      )}
                     >
                       <div class="workbench-surface-add-list" role="menu">
                         <button
@@ -559,8 +591,9 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                       placement="bottom-start"
                       gutter={6}
                       class="workbench-surface-add-menu"
-                      trigger={
+                      triggerAs={(triggerProps) => (
                         <IconButton
+                          {...triggerProps}
                           icon={getSemanticIcon("action.add")}
                           variant="ghost"
                           aria-label={
@@ -571,7 +604,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
                           aria-haspopup="menu"
                           aria-expanded={local.addOpen}
                         />
-                      }
+                      )}
                     >
                       <div class="workbench-surface-add-list" role="menu">
                         <For each={addablePanels()}>

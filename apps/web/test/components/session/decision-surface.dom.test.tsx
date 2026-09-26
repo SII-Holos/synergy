@@ -42,8 +42,13 @@ beforeAll(async () => {
         export const useSDK = () => ({
           client: {
             question: {
-              reply: () => Promise.resolve(),
-              reject: () => Promise.resolve(),
+              reply: (input) => window.decisionSubmit(input),
+              reject: (input) => window.decisionSubmit(input),
+              list: async () => ({ data: window.serverPending ? [window.currentQuestion] : [] }),
+            },
+            permission: {
+              reply: (input) => window.decisionSubmit(input),
+              list: async () => ({ data: window.serverPending ? [window.currentPermission] : [] }),
             },
           },
         })
@@ -60,7 +65,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent } from "solid-js"
+        import { createComponent, createSignal } from "solid-js"
         import { render } from "solid-js/web"
         import { I18nProvider } from "@lingui/solid"
         import { setupI18n } from "@lingui/core"
@@ -86,6 +91,22 @@ beforeAll(async () => {
           ],
         }
 
+        if (new URLSearchParams(location.search).has("multi")) questionRequest.questions.push({ ...questionRequest.questions[0], header: "Second question" })
+        const [currentQuestion, setQuestion] = createSignal(questionRequest)
+        window.currentQuestion = questionRequest
+        window.setQuestion = (id) => {
+          window.currentQuestion = { ...questionRequest, id }
+          setQuestion(window.currentQuestion)
+        }
+        window.serverPending = true
+        window.decisionCalls = []
+        window.decisionSubmit = (input) => {
+          window.decisionCalls.push(input)
+          return new Promise((resolve, reject) => {
+            window.resolveDecision = resolve
+            window.rejectDecision = () => reject({ name: "NetworkError", data: { message: "Connection interrupted" } })
+          })
+        }
         const permissionRequest = {
           id: "p1",
           sessionID: "s1",
@@ -93,6 +114,8 @@ beforeAll(async () => {
           patterns: [],
           metadata: {},
         }
+
+        window.currentPermission = permissionRequest
 
         globalThis.__DECISION_SURFACE_DATA = {
           session: [{ id: "s1" }],
@@ -109,7 +132,7 @@ beforeAll(async () => {
         globalThis.__DECISION_SURFACE_RUNTIME = {
           statusFor: (id) => (id === "s1" ? { type: "idle" } : undefined),
           permissionsFor: (id) => permissions[id] ?? NO_REQUESTS,
-          questionsFor: (id) => questions[id] ?? NO_REQUESTS,
+          questionsFor: (id) => questions[id] ? [currentQuestion()] : NO_REQUESTS,
         }
 
         const i18n = setupI18n({ locale: "en", messages: {} })
@@ -272,4 +295,70 @@ test("combined decisions remain bounded and scrollable at a narrow viewport", as
   expect(result.overflow).toBe("auto")
   expect(await page.locator("[data-session-decision-outlet] [data-session-decision-host]").count()).toBe(1)
   await page.setViewportSize({ width: 800, height: 600 })
+})
+
+interface DecisionWindow extends Window {
+  decisionCalls: Array<{ requestID: string; answers?: string[][]; reply?: string }>
+  resolveDecision(): void
+  rejectDecision(): void
+  setQuestion(id: string): void
+  serverPending: boolean
+}
+
+test("single-choice answers lock while sending, survive failure and reset for a new request", async () => {
+  await page.goto(`${baseUrl}?mode=question&outlet`)
+  const choice = page.getByRole("radio", { name: /Five PRs/ })
+  await choice.click()
+  expect(await choice.isDisabled()).toBe(true)
+  expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toEqual([
+    { requestID: "q1", answers: [["Five PRs"]] },
+  ])
+  await page.evaluate(() => (window as unknown as DecisionWindow).rejectDecision())
+  await page.getByRole("button", { name: "Retry submission" }).waitFor()
+  expect(await choice.getAttribute("aria-checked")).toBe("true")
+  await page.getByRole("button", { name: "Retry submission" }).click()
+  await page.evaluate(() => (window as unknown as DecisionWindow).setQuestion("q2"))
+  expect(await choice.getAttribute("aria-checked")).toBe("false")
+  expect(await choice.isDisabled()).toBe(false)
+  await page.evaluate(() => (window as unknown as DecisionWindow).resolveDecision())
+  expect(await choice.isDisabled()).toBe(false)
+  expect(await page.getByText("This request is no longer pending.").count()).toBe(0)
+  expect(pageErrors).toEqual([])
+})
+
+test("lost permission replies reconcile without repeating the decision", async () => {
+  await page.goto(`${baseUrl}?mode=permission&outlet`)
+  await page.getByRole("button", { name: "Allow once", exact: true }).click()
+  for (const name of ["Deny", "Allow for session", "Always allow", "Allow once"]) {
+    expect(await page.getByRole("button", { name, exact: true }).isDisabled()).toBe(true)
+  }
+  await page.evaluate(() => {
+    const fixture = window as unknown as DecisionWindow
+    fixture.serverPending = false
+    fixture.rejectDecision()
+  })
+  await page.getByText("This request is no longer pending.").waitFor()
+  expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toEqual([
+    { requestID: "p1", reply: "once" },
+  ])
+  expect(await page.getByRole("button", { name: "Retry submission" }).count()).toBe(0)
+  expect(pageErrors).toEqual([])
+})
+
+test("multi-question review requires answers and stays locked during submission", async () => {
+  await page.goto(`${baseUrl}?mode=question&outlet&multi`)
+  expect(await page.getByRole("button", { name: "Next", exact: true }).isDisabled()).toBe(true)
+  await page.getByRole("radio", { name: /Five PRs/ }).click()
+  expect(await page.getByRole("button", { name: "Next", exact: true }).isDisabled()).toBe(true)
+  await page.getByRole("radio", { name: /One PR/ }).click()
+  const submit = page.getByRole("button", { name: "Submit", exact: true })
+  await submit.click()
+  expect(await submit.isDisabled()).toBe(true)
+  expect(await page.evaluate(() => (window as unknown as DecisionWindow).decisionCalls)).toEqual([
+    { requestID: "q1", answers: [["Five PRs"], ["One PR"]] },
+  ])
+  await page.evaluate(() => (window as unknown as DecisionWindow).rejectDecision())
+  await page.getByRole("button", { name: "Retry submission" }).waitFor()
+  expect(await submit.isDisabled()).toBe(false)
+  expect(pageErrors).toEqual([])
 })

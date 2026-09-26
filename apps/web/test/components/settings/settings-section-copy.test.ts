@@ -47,6 +47,8 @@ describe("settings section localization", () => {
       keywords: ["外观 | 语言"],
       rowLabels: [
         "Color Scheme",
+        "Interface font",
+        "Monospace font",
         "界面语言",
         "Activity display",
         "New Session Workspace",

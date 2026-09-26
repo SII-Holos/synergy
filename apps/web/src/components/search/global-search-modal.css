@@ -1,27 +1,9 @@
-.gsm-overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--surface-overlay);
-  z-index: 100;
-  backdrop-filter: blur(2px);
-}
-
-.gsm-container {
-  position: fixed;
-  top: 7vh;
-  left: 50%;
-  transform: translate(-50%, 0);
-  width: 920px;
-  max-width: calc(100vw - 32px);
-  max-height: 84vh;
-  z-index: 101;
+[data-component="dialog"] [data-slot="dialog-container"] .gsm-container {
   background: var(--surface-raised-base);
-  border: 1px solid var(--border-weak-base);
-  border-radius: 18px;
-  box-shadow: 0 18px 60px var(--surface-overlay);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  [data-slot="dialog-body"] {
+    padding: 0;
+    overflow: hidden;
+  }
 }
 
 .gsm-search-bar {
@@ -38,6 +20,7 @@
 
 .gsm-input {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
@@ -171,11 +154,51 @@
 }
 
 .gsm-footer {
-  padding: 8px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 28px;
   border-top: 1px solid var(--border-weaker-base);
 }
 
 .gsm-archived-tag {
   font-weight: 500;
   color: var(--text-weak);
+}
+
+.gsm-status {
+  padding: 16px 28px;
+  color: var(--text-weak);
+  font-size: 13px;
+}
+.gsm-close-btn:focus-visible,
+.gsm-item:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+@media (max-width: 600px) {
+  .gsm-search-bar {
+    padding: 16px;
+    gap: 8px;
+  }
+  .gsm-input {
+    font-size: 16px;
+  }
+  .gsm-results {
+    padding: 8px;
+  }
+  .gsm-item {
+    padding: 12px 8px;
+    gap: 8px;
+  }
+  .gsm-footer {
+    padding: 12px 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gsm-spinner {
+    animation: none;
+  }
 }

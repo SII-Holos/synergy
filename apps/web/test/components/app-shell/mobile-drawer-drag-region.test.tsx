@@ -195,6 +195,8 @@ beforeAll(async () => {
         import { I18nProvider } from "@lingui/solid"
         import { MobileDrawer } from ${JSON.stringify(`/@fs/${navDrawerPath}`)}
         import { MobileToolsDrawer } from ${JSON.stringify(`/@fs/${toolsDrawerPath}`)}
+        import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+        import "@ericsanchezok/synergy-ui/styles"
         import { DesktopWindowChrome } from ${JSON.stringify(`/@fs/${chromePath}`)}
 
         i18n.load("en", {})
@@ -205,11 +207,11 @@ beforeAll(async () => {
             <I18nProvider i18n={i18n}>
               <Router>
                 <Route path="*" component={() => (
-                  <>
+                  <DialogProvider>
                     <MobileDrawer />
                     <MobileToolsDrawer />
                     <DesktopWindowChrome />
-                  </>
+                  </DialogProvider>
                 )} />
               </Router>
             </I18nProvider>
@@ -251,10 +253,7 @@ beforeAll(async () => {
           replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
         },
         { find: "@ericsanchezok/synergy-ui/theme", replacement: path.join(fixtureDirectory, "stub-theme.ts") },
-        {
-          find: "@ericsanchezok/synergy-ui/context/dialog",
-          replacement: path.join(fixtureDirectory, "stub-dialog.ts"),
-        },
+
         { find: "@ericsanchezok/synergy-sdk/client", replacement: path.join(fixtureDirectory, "stub-sdk.ts") },
         { find: "@/", replacement: `${appSrc}/` },
       ],
@@ -355,6 +354,7 @@ describe("mobile drawer titlebar drag suspension", () => {
 describe("mobile drawer session status", () => {
   test("reads retry as working, a paused session as not working, and a missing status as idle", async () => {
     await withFixture(async (page) => {
+      await page.getByRole("tab", { name: "Projects", exact: true }).click()
       await page.getByRole("button", { name: "Fixture Project", exact: true }).click()
       await page.waitForFunction(() => document.querySelectorAll("[data-session-row]").length === 5)
 

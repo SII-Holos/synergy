@@ -37,7 +37,15 @@ class MockWebSocket {
   constructor(readonly url: string) {
     MockWebSocket.instances.push(this)
   }
-  addEventListener() {}
+  listeners = new Map<string, Array<(event: unknown) => void>>()
+  addEventListener(type: string, listener: (event: unknown) => void) {
+    const callbacks = this.listeners.get(type) ?? []
+    callbacks.push(listener)
+    this.listeners.set(type, callbacks)
+  }
+  emit(type: string, event: unknown = {}) {
+    for (const listener of this.listeners.get(type) ?? []) listener(event)
+  }
   close() {}
 }
 
@@ -155,4 +163,26 @@ describe("createBrowserWebSocket native reconnect", () => {
 
     dispose()
   })
+})
+
+test("a replaced socket cannot overwrite the reconnected session", async () => {
+  mountNativeWebSocket()
+  bridge = bridgeStub()
+  const { store, handle, dispose } = mountHandle()
+  try {
+    await handle.connect()
+    const previous = MockWebSocket.instances[0]!
+    previous.emit("open")
+    handle.reconnect()
+    await sleep(30)
+    const current = MockWebSocket.instances.at(-1)!
+    expect(current).not.toBe(previous)
+    current.emit("open")
+    previous.emit("close", { code: 1006, reason: "old connection" })
+    expect(store.session.connectionStatus).toBe("connected")
+    previous.emit("message", { data: JSON.stringify({ type: "error", code: "stale", message: "obsolete failure" }) })
+    expect(store.browserError()?.message).not.toBe("obsolete failure")
+  } finally {
+    dispose()
+  }
 })

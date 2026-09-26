@@ -28,6 +28,8 @@ Synergy keeps installation state under `<SYNERGY_HOME or OS home>/.synergy/`. `S
 
 Library, credentials, project files, browser profiles and observability remain separate stores with their own lifecycle. Do not copy an open Library/observability SQLite file without its owning backup protocol. Cache may be cleared on upgrade and is not a backup source. Treat auth, plugin recovery snapshots, logs, signing keys and exported Home archives as private data.
 
+Removed user Inbox inputs and restoration receipts live at the logical keys `sessions/<scope>/<session>/inbox-removed/<item>`. They retain the complete domain input until Session deletion and never participate in ordinary queue discovery. See [Inbox removal and restoration](../architecture/session-and-messages.md#inbox-removal-and-restoration).
+
 ## Agent database
 
 `Storage` reads and writes logical keys inside an explicit `Storage.Handle`. Keys no longer map to `.json` files. SQLite defaults to `data/storage/agent.sqlite`; PostgreSQL uses a configured namespace. `data/storage/manifest.json` binds the backend target, database identity and local artifact identity, preventing a missing or unrelated database from being silently accepted as an empty installation.

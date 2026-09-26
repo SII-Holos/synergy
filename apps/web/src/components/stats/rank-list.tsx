@@ -121,13 +121,16 @@ function formatMetricValue(
     return i18n._(S.rankAvgMs.id, { value: String(Math.round(value)) })
   }
   if (!metric.unit) return formatCount(value, fmt)
-  return `${formatCount(value, fmt)} ${metric.unit}`
+  return `${formatCount(value, fmt)} ${metricUnitLabel(metric, i18n)}`
 }
 
 function metricUnitLabel(metric: RankingMetric, i18n: ReturnType<typeof useLocale>["i18n"]) {
   if (metric.unit === "usd") return i18n._(S.rankMetricUSD.id)
   if (metric.unit === "%") return i18n._(S.rankMetricRate.id)
   if (metric.unit === "ms") return i18n._(S.rankMetricTime.id)
+  if (metric.unit === "messages") return i18n._({ id: "stats.rank.unit.messages", message: "messages" })
+  if (metric.unit === "calls") return i18n._({ id: "stats.rank.unit.calls", message: "calls" })
+  if (metric.unit === "sessions") return i18n._({ id: "stats.rank.unit.sessions", message: "sessions" })
   return metric.unit
 }
 

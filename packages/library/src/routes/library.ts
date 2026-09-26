@@ -2,7 +2,7 @@ import * as LibraryConfigSchema from "@ericsanchezok/synergy-library/config-sche
 import { Hono } from "hono"
 import { streamSSE } from "hono/streaming"
 import { describeRoute, validator, resolver } from "hono-openapi"
-import z from "zod"
+import { z } from "zod"
 import { errors } from "@ericsanchezok/synergy-server/server/error"
 import { LibraryDB } from "../database"
 import { MemoryRecall } from "../memory-recall"
@@ -14,6 +14,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { LibraryStatsEngine } from ".."
+import { LibraryStatsSnapshot } from "../stats/types"
 import { Embedding } from "../vector/embedding"
 
 const log = Log.create({ service: "server.library" })
@@ -58,6 +59,7 @@ const ExperienceCardInfo = z.object({
   intent: z.string(),
   sourceProviderID: z.string().nullable(),
   sourceModelID: z.string().nullable(),
+  rewardStatus: z.enum(LibraryDB.Experience.REWARD_STATUSES),
   reward: z.number().nullable(),
   rewards: RewardsInfo,
   qValue: z.number(),
@@ -83,7 +85,7 @@ const ExperienceSearchResult = ExperienceCardInfo.extend({
 
 const ExperienceListFilter = z.enum(["all", "scope", "session"]).meta({ ref: "ExperienceListFilter" })
 const ExperienceListSort = z
-  .enum(["newest", "oldest", "reward", "qvalue", "visits"])
+  .enum(["newest", "oldest", "reward", "qvalue", "visits", "updated"])
   .meta({ ref: "ExperienceListSort" })
 
 const ExperienceListPage = z
@@ -272,6 +274,7 @@ function toExperienceCardInfo(row: LibraryDB.Experience.Row): z.infer<typeof Exp
     intent: row.intent,
     sourceProviderID: row.source_provider_id,
     sourceModelID: row.source_model_id,
+    rewardStatus: row.reward_status,
     reward: row.reward,
     rewards: parseRewards(row.rewards),
     qValue: calculateQValue(qValues),
@@ -307,6 +310,7 @@ function toExperienceSearchResult(result: ExperienceRecall.Result): z.infer<type
     intent: result.intent,
     sourceProviderID: result.sourceProviderID,
     sourceModelID: result.sourceModelID,
+    rewardStatus: result.rewardStatus,
     reward: result.reward,
     rewards: result.rewards,
     qValue: result.qValue,
@@ -902,7 +906,11 @@ export const LibraryRoute = () =>
         responses: {
           200: {
             description: "Library statistics",
-            content: { "application/json": { schema: resolver(MemoryStats) } },
+            content: {
+              "application/json": {
+                schema: resolver(z.union([MemoryStats, LibraryStatsSnapshot.meta({ ref: "LibraryStatsSnapshot" })])),
+              },
+            },
           },
           ...errors(400),
         },

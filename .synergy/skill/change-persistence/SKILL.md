@@ -13,6 +13,8 @@ description: Add or modify Synergy durable state, JSON storage keys, SQLite tabl
 
 ## Implement the Current Model
 
+When hydrating references from a batch of records, deduplicate referenced identities and use the owning domain's batch reader instead of one concurrent read per record. Keep ownership checks and missing-record positions, and verify more distinct references than storage admission capacity, shared references, malformed records and subsequent rebinding with real storage.
+
 ### Authoritative Agent records
 
 1. Build logical keys through `StoragePath`; use an explicit `Storage.Handle`. Normal Agent record code must never read or write legacy JSON files.

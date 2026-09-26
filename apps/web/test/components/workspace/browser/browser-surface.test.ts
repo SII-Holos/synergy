@@ -46,3 +46,18 @@ describe("Browser presentation recovery", () => {
     expect(webRTCHostStatus("signaling")).toBeUndefined()
   })
 })
+
+test("an explicitly remote client can attach its first page before the initial capability snapshot refreshes", () => {
+  const pending = {
+    presentation: undefined,
+    hostStatus: "ready" as const,
+    nativeAvailable: false,
+    pageId: "page-first",
+  }
+  expect(shouldShowBrowserPresentationSurface({ ...pending, clientPresentation: "webrtc" })).toBe(true)
+  expect(shouldShowBrowserPresentationSurface({ ...pending, clientPresentation: "native" })).toBe(false)
+  expect(shouldShowBrowserPresentationSurface({ ...pending, clientPresentation: "webrtc", pageId: null })).toBe(false)
+  expect(
+    shouldShowBrowserPresentationSurface({ ...pending, presentation: "webrtc", clientPresentation: "native" }),
+  ).toBe(false)
+})

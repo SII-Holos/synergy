@@ -80,6 +80,7 @@ describe.serial("ExperienceRecall UCB1 exploration", () => {
       // Identical embeddings and zero Q values normalize to base 0, so score is
       // exactly the UCB bonus. A fully cold set must carry no exploration bonus.
       for (const r of results) {
+        expect(r.rewardStatus).toBe("evaluated")
         expect(r.retrievalCount).toBe(0)
         expect(r.score).toBe(0)
       }

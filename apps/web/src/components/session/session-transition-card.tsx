@@ -96,13 +96,21 @@ export function SessionTransitionCard(props: {
         </Show>
       </div>
       <Show when={props.progress.steps.length > 0}>
-        <SessionTransitionStepList steps={props.progress.steps} />
+        <SessionTransitionStepList steps={props.progress.steps} phase={props.progress.phase} />
+      </Show>
+      <Show when={props.progress.error}>
+        {(error) => (
+          <details class="session-transition-card-diagnostics">
+            <summary>{_(S.transitionErrorDetails)}</summary>
+            <pre>{[error().code, error().message].filter(Boolean).join(": ")}</pre>
+          </details>
+        )}
       </Show>
       <Show when={props.onRetry}>
         {(retry) => (
           <div class="session-transition-card-actions">
             <Button variant="primary" size="small" onClick={retry()}>
-              {_(S.transitionCardRetry)}
+              {translateDescriptor(props.progress.retryLabel ?? S.transitionCardRetry, i18n)}
             </Button>
           </div>
         )}

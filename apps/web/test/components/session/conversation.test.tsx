@@ -37,6 +37,19 @@ describe("pending timeline item presentation", () => {
     })
   })
 
+  test("failed initialization can be withdrawn without enabling guide actions", () => {
+    expect(pendingTimelineItemView("task", false, { hasCanonicalRoot: false, status: "failed" })).toEqual({
+      frozen: false,
+      primaryAction: undefined,
+      canWithdraw: true,
+    })
+    expect(pendingTimelineItemView("task", true, { hasCanonicalRoot: false, status: "failed" })).toEqual({
+      frozen: true,
+      primaryAction: undefined,
+      canWithdraw: false,
+    })
+  })
+
   test("hides a pending item after its canonical message is present", () => {
     const pending = {
       id: "inb_first",

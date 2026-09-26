@@ -439,3 +439,48 @@
     transition: none;
   }
 }
+
+.session-inbox-row-main {
+  text-align: start;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  font: inherit;
+}
+.session-inbox-row-main:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+.session-inbox-operation,
+.session-inbox-removed-list,
+.session-inbox-removed-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.session-inbox-operation {
+  font-size: 12px;
+  color: var(--text-weak);
+  padding: 8px;
+}
+.session-inbox-operation pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 160px;
+  overflow: auto;
+}
+.session-inbox-removed-list {
+  border-top: 1px solid var(--border-base);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.session-inbox-removed-item {
+  padding: 8px;
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+}
+.session-inbox-removed-item summary {
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}

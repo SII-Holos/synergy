@@ -21,6 +21,9 @@ import {
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
+import { useSessionMeta } from "@/composables/use-session-meta"
+import { ModelSelectorPopover } from "@/components/dialog/dialog-select-model"
+import { topBar } from "@/locales/messages"
 import { useInput, type ControlProfileId } from "@/context/input"
 import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
 import { useFile } from "@/context/file"
@@ -576,6 +579,7 @@ export function createPromptInputController(props: PromptInputProps) {
     return !canSubmit()
   })
   const controlLabel = createMemo(() => {
+    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
     if (abandonPending()) return i18n._(PI.abandoning)
     if (continuePending() && !working()) return i18n._(PI.startingSession)
     switch (controlState()) {
@@ -601,6 +605,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }
   })
   const controlHint = createMemo(() => {
+    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
     switch (controlState()) {
       case "pause":
         return i18n._(PI.pauseControlHint)
@@ -1000,6 +1005,9 @@ export function createPromptInputController(props: PromptInputProps) {
     if (!params.id) return false
     return view().messagesFor(params.id).length > 0
   })
+
+  const sessionMeta = useSessionMeta(info, sessionHasMessages)
+  const modelLocked = createMemo(() => sessionHasMessages() && local.agent.current()?.external?.adapter === "codex")
 
   const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
     controller.activeLocale()
@@ -2102,10 +2110,14 @@ export function createPromptInputController(props: PromptInputProps) {
               </Match>
               <Match when={store.mode === "normal"}>
                 <Show when={!props.hideAgentSelector}>
-                  <div class="hidden md:block">
+                  <div class="min-w-0 shrink-0">
                     <ToolbarSelectorPopover
-                      trigger={
-                        <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
+                      triggerAs={(triggerProps) => (
+                        <button
+                          {...triggerProps}
+                          type="button"
+                          class="prompt-input-toolbar-button flex items-center gap-1.5"
+                        >
                           <span class="text-12-medium text-text-base whitespace-nowrap">
                             {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
                           </span>
@@ -2115,7 +2127,7 @@ export function createPromptInputController(props: PromptInputProps) {
                             class="text-icon-weak-base shrink-0"
                           />
                         </button>
-                      }
+                      )}
                       title={i18n._(PI.selectAgent)}
                       contentClass="w-52 max-h-80"
                       placement="top-start"
@@ -2160,6 +2172,51 @@ export function createPromptInputController(props: PromptInputProps) {
                         </List>
                       )}
                     </ToolbarSelectorPopover>
+                  </div>
+                </Show>
+                <Show when={sessionMeta().canSelectModel}>
+                  <div class="min-w-0 max-w-full md:hidden">
+                    <Show
+                      when={!modelLocked()}
+                      fallback={
+                        <Tooltip value={i18n._(topBar.modelLocked)}>
+                          <button type="button" class="prompt-input-toolbar-button max-w-full" aria-disabled="true">
+                            <span class="truncate text-12-medium text-text-base">
+                              {local.model.current()?.name ?? i18n._(topBar.modelLockedLabel)}
+                            </span>
+                          </button>
+                        </Tooltip>
+                      }
+                    >
+                      <ModelSelectorPopover
+                        triggerAs={(triggerProps) => (
+                          <button
+                            {...triggerProps}
+                            type="button"
+                            class="prompt-input-toolbar-button max-w-full flex items-center gap-1.5"
+                            aria-label={i18n._(topBar.chooseModel)}
+                          >
+                            <span class="truncate text-12-medium text-text-base">
+                              {local.model.current()?.name ?? i18n._(topBar.selectModel)}
+                            </span>
+                            <Show when={local.model.current()?.catalogState === "retained"}>
+                              <Tooltip value={i18n._(topBar.retainedModel)}>
+                                <Icon
+                                  name={getSemanticIcon("state.warning")}
+                                  size="small"
+                                  class="text-icon-warning-base"
+                                />
+                              </Tooltip>
+                            </Show>
+                            <Icon
+                              name={getSemanticIcon("navigation.collapse")}
+                              size="small"
+                              class="text-icon-weak-base shrink-0"
+                            />
+                          </button>
+                        )}
+                      />
+                    </Show>
                   </div>
                 </Show>
                 <PermissionModeSelector
@@ -2257,7 +2314,12 @@ export function createPromptInputController(props: PromptInputProps) {
                 </div>
               </Tooltip>
             </Show>
-            <div class="relative flex items-center">
+            <div class="relative flex items-center gap-2">
+              <Show when={props.sessionTransitionError}>
+                <span class="max-w-40 text-12-regular text-text-weak" role="status">
+                  {i18n._(PI.recoveryRequired)}
+                </span>
+              </Show>
               <Tooltip
                 placement="top"
                 open={abandonProgress() > 0 || abandonPending() ? false : undefined}
@@ -2266,9 +2328,11 @@ export function createPromptInputController(props: PromptInputProps) {
                     <span>
                       {abortStopping()
                         ? i18n._(PI.stopping)
-                        : submitPending()
-                          ? i18n._(PI.startingSession)
-                          : controlLabel()}
+                        : props.sessionTransitionError
+                          ? i18n._(PI.recoveryRequired)
+                          : submitPending()
+                            ? i18n._(PI.startingSession)
+                            : controlLabel()}
                     </span>
                     <span class="text-10-regular text-text-weak">{controlHint()}</span>
                     <Show when={canAbandon()}>
@@ -2375,8 +2439,11 @@ export function createPromptInputController(props: PromptInputProps) {
         if (store.mode === "shell") return i18n._(PI.placeholderShell)
         if (planActive()) return i18n._(PI.placeholderPlan)
         return isHomeScope(sdk.scopeKey)
-          ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
-          : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`
+          ? i18n._({
+              ...PI.placeholderExampleGlobal,
+              values: { example: i18n._(PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]) },
+            })
+          : i18n._({ ...PI.placeholderExampleProject, values: { example: i18n._(PLACEHOLDERS[store.placeholder]) } })
       },
     },
     readOnly: () => !!props.readOnly,
@@ -2388,7 +2455,7 @@ export function createPromptInputController(props: PromptInputProps) {
     },
     ready: prompt.ready,
     canSubmit: () => canSubmit() && !composing() && !submitStopsSession(),
-    submitting: () => submitPending() || composerSubmitting(),
+    submitting: () => (submitPending() && !props.sessionTransitionError) || composerSubmitting(),
     stopping: abortStopping,
     dragging: () => store.dragging,
     className: () => props.class,

@@ -9682,6 +9682,185 @@
         ]
       }
     },
+    "/session/{sessionID}/inbox/removed": {
+      "get": {
+        "operationId": "session.inbox_removed",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "List removed inbox items",
+        "description": "List recoverable removed items without exposing private execution inputs.",
+        "responses": {
+          "200": {
+            "description": "Removed inbox items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionInboxItem"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox_removed({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/inbox/{itemID}/restore": {
+      "post": {
+        "operationId": "session.inbox_restore",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "itemID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Restore a removed inbox item",
+        "description": "Restore the original input, mode and execution configuration once. Repeated requests do not enqueue another input.",
+        "responses": {
+          "204": {
+            "description": "Inbox item restored or previously restored"
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Input completed, cancelled or workspace unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SessionInboxItemFailedError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WorktreeUnavailableError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.inbox_restore({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/input/{messageID}/status": {
       "get": {
         "operationId": "session.inputStatus",
@@ -17699,7 +17878,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryStats"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MemoryStats"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LibraryStatsSnapshot"
+                    }
+                  ]
                 }
               }
             }
@@ -47887,6 +48073,56 @@
         },
         "required": ["id", "sessionID", "mode", "summary", "source", "time", "orderKey", "messageID"]
       },
+      "SessionInboxItemFailedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionInboxItemFailedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "sessionID": {
+                "type": "string",
+                "pattern": "^ses.*"
+              },
+              "itemID": {
+                "type": "string",
+                "pattern": "^inb.*"
+              }
+            },
+            "required": ["message", "sessionID", "itemID"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorktreeUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorktreeUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "const": "missing"
+              }
+            },
+            "required": ["message", "reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "SessionInputProgress": {
         "type": "object",
         "properties": {
@@ -47972,29 +48208,6 @@
             "required": ["status", "item"]
           }
         ]
-      },
-      "WorktreeUnavailableError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "WorktreeUnavailableError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "reason": {
-                "type": "string",
-                "const": "missing"
-              }
-            },
-            "required": ["message", "reason"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "ExperimentFile": {
         "type": "object",
@@ -48110,33 +48323,6 @@
           "name": {
             "type": "string",
             "const": "SessionInboxFirstTaskLockedError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "sessionID": {
-                "type": "string",
-                "pattern": "^ses.*"
-              },
-              "itemID": {
-                "type": "string",
-                "pattern": "^inb.*"
-              }
-            },
-            "required": ["message", "sessionID", "itemID"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "SessionInboxItemFailedError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "SessionInboxItemFailedError"
           },
           "data": {
             "type": "object",
@@ -52064,6 +52250,10 @@
               }
             ]
           },
+          "rewardStatus": {
+            "type": "string",
+            "enum": ["evaluated", "pending", "encoding_failed"]
+          },
           "reward": {
             "anyOf": [
               {
@@ -52116,6 +52306,7 @@
           "intent",
           "sourceProviderID",
           "sourceModelID",
+          "rewardStatus",
           "reward",
           "rewards",
           "qValue",
@@ -52163,6 +52354,10 @@
               }
             ]
           },
+          "rewardStatus": {
+            "type": "string",
+            "enum": ["evaluated", "pending", "encoding_failed"]
+          },
           "reward": {
             "anyOf": [
               {
@@ -52209,6 +52404,7 @@
           "intent",
           "sourceProviderID",
           "sourceModelID",
+          "rewardStatus",
           "reward",
           "rewards",
           "qValue",
@@ -52253,7 +52449,7 @@
         "description": "Sort order",
         "default": "newest",
         "type": "string",
-        "enum": ["newest", "oldest", "reward", "qvalue", "visits"]
+        "enum": ["newest", "oldest", "reward", "qvalue", "visits", "updated"]
       },
       "ExperienceDetailInfo": {
         "type": "object",
@@ -52289,6 +52485,10 @@
                 "type": "null"
               }
             ]
+          },
+          "rewardStatus": {
+            "type": "string",
+            "enum": ["evaluated", "pending", "encoding_failed"]
           },
           "reward": {
             "anyOf": [
@@ -52359,6 +52559,7 @@
           "intent",
           "sourceProviderID",
           "sourceModelID",
+          "rewardStatus",
           "reward",
           "rewards",
           "qValue",
@@ -52604,6 +52805,312 @@
           }
         },
         "required": ["memory", "experience", "dbSizeBytes"]
+      },
+      "LibraryStatsSnapshot": {
+        "type": "object",
+        "properties": {
+          "overview": {
+            "type": "object",
+            "properties": {
+              "totalMemories": {
+                "type": "number"
+              },
+              "totalExperiences": {
+                "type": "number"
+              },
+              "evaluationRate": {
+                "type": "number"
+              },
+              "experiencesEvaluated": {
+                "type": "number"
+              },
+              "experiencesFailed": {
+                "type": "number"
+              },
+              "experiencesPending": {
+                "type": "number"
+              },
+              "scopeCount": {
+                "type": "number"
+              },
+              "activeDays": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "totalMemories",
+              "totalExperiences",
+              "evaluationRate",
+              "experiencesEvaluated",
+              "experiencesFailed",
+              "experiencesPending",
+              "scopeCount",
+              "activeDays"
+            ]
+          },
+          "memoryDistribution": {
+            "type": "object",
+            "properties": {
+              "byCategory": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["category", "count"]
+                }
+              },
+              "byRecallMode": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "recallMode": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["recallMode", "count"]
+                }
+              }
+            },
+            "required": ["byCategory", "byRecallMode"]
+          },
+          "experienceRL": {
+            "type": "object",
+            "properties": {
+              "rewardDimensions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "dimension": {
+                      "type": "string"
+                    },
+                    "avg": {
+                      "type": "number"
+                    },
+                    "std": {
+                      "type": "number"
+                    },
+                    "distribution": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "value": {
+                            "type": "number"
+                          },
+                          "count": {
+                            "type": "number"
+                          }
+                        },
+                        "required": ["value", "count"]
+                      }
+                    }
+                  },
+                  "required": ["dimension", "avg", "std", "distribution"]
+                }
+              },
+              "qDistribution": {
+                "type": "object",
+                "properties": {
+                  "histogram": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "bin": {
+                          "type": "string"
+                        },
+                        "count": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["bin", "count"]
+                    }
+                  },
+                  "trend": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "period": {
+                          "type": "string"
+                        },
+                        "medianQ": {
+                          "type": "number"
+                        },
+                        "count": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["period", "medianQ", "count"]
+                    }
+                  },
+                  "avgCompositeQ": {
+                    "type": "number"
+                  },
+                  "medianCompositeQ": {
+                    "type": "number"
+                  },
+                  "stdCompositeQ": {
+                    "type": "number"
+                  }
+                },
+                "required": ["histogram", "trend", "avgCompositeQ", "medianCompositeQ", "stdCompositeQ"]
+              },
+              "avgVisits": {
+                "type": "number"
+              },
+              "medianVisits": {
+                "type": "number"
+              },
+              "neverRetrieved": {
+                "type": "number"
+              },
+              "frequentlyRetrieved": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "rewardDimensions",
+              "qDistribution",
+              "avgVisits",
+              "medianVisits",
+              "neverRetrieved",
+              "frequentlyRetrieved"
+            ]
+          },
+          "retrieval": {
+            "type": "object",
+            "properties": {
+              "topExperiences": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "intent": {
+                      "type": "string"
+                    },
+                    "scopeID": {
+                      "type": "string"
+                    },
+                    "visits": {
+                      "type": "number"
+                    },
+                    "compositeQ": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "intent", "scopeID", "visits", "compositeQ"]
+                }
+              },
+              "visitsDistribution": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "range": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["range", "count"]
+                }
+              }
+            },
+            "required": ["topExperiences", "visitsDistribution"]
+          },
+          "scopes": {
+            "type": "object",
+            "properties": {
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "scopeID": {
+                      "type": "string"
+                    },
+                    "memories": {
+                      "type": "number"
+                    },
+                    "experiences": {
+                      "type": "number"
+                    },
+                    "evaluated": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["scopeID", "memories", "experiences", "evaluated"]
+                }
+              }
+            },
+            "required": ["scopes"]
+          },
+          "timeSeries": {
+            "type": "object",
+            "properties": {
+              "days": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "day": {
+                      "type": "string"
+                    },
+                    "memoriesCreated": {
+                      "type": "number"
+                    },
+                    "experiencesCreated": {
+                      "type": "number"
+                    },
+                    "experiencesEvaluated": {
+                      "type": "number"
+                    },
+                    "avgCompositeQ": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["day", "memoriesCreated", "experiencesCreated", "experiencesEvaluated", "avgCompositeQ"]
+                }
+              },
+              "hourlyActivity": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "required": ["days", "hourlyActivity"]
+          },
+          "computedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "overview",
+          "memoryDistribution",
+          "experienceRL",
+          "retrieval",
+          "scopes",
+          "timeSeries",
+          "computedAt"
+        ]
       },
       "MemoryCategory": {
         "description": "Filter by a single memory category",
