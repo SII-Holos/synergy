@@ -132,6 +132,7 @@ export namespace Session {
   const { asScopeID, asSessionID, asMessageID, asPartID } = Identifier
 
   const FORK_PREPARE_CONCURRENCY = 8
+  const LIST_ENRICH_CONCURRENCY = 32
 
   export function toIndex(session: Info) {
     const scope = session.scope as Scope
@@ -1347,7 +1348,7 @@ export namespace Session {
       const total = matched.length
       const offset = options?.offset ?? 0
       const limit = options?.limit ?? total
-      const data = await Promise.all(matched.slice(offset, offset + limit).map((s) => withClientInfo(s)))
+      const data = await workMap(LIST_ENRICH_CONCURRENCY, matched.slice(offset, offset + limit), withClientInfo)
       return { data, total }
     }
 
@@ -1362,8 +1363,10 @@ export namespace Session {
       scopeID,
       slice.map((e) => e.id),
     )
-    const data = await Promise.all(
-      sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withClientInfo(s)),
+    const data = await workMap(
+      LIST_ENRICH_CONCURRENCY,
+      sessions.filter((s): s is Info => s != null && !!s.scope),
+      withClientInfo,
     )
 
     return { data, total }
@@ -1417,10 +1420,10 @@ export namespace Session {
 
     const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
     const sessions = await SessionRecords.readMany(keys)
-    const items = await Promise.all(
-      sessions
-        .filter((session): session is Info => session != null && !!session.scope)
-        .map((session) => withClientInfo(session)),
+    const items = await workMap(
+      LIST_ENRICH_CONCURRENCY,
+      sessions.filter((session): session is Info => session != null && !!session.scope),
+      withClientInfo,
     )
 
     return { items, nextCursor, total }
