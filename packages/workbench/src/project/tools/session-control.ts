@@ -319,9 +319,7 @@ async function handleCreate(params: Parameters, ctx: Tool.Context) {
     }
 
     if (params.model) {
-      session = await Session.update(session.id, (draft) => {
-        draft.modelOverride = params.model
-      })
+      session = await Session.setModelSelection(session.id, { model: params.model })
     }
 
     if (params.initialMessage?.trim()) {
@@ -459,9 +457,7 @@ async function handleSetAgent(sessionID: string, params: Parameters) {
 
 async function handleSetModel(sessionID: string, params: Parameters) {
   if (!params.model) throw new Error("model is required for set_model")
-  const updated = await Session.update(sessionID, (draft) => {
-    draft.modelOverride = params.model
-  })
+  const updated = await Session.setModelSelection(sessionID, { model: params.model })
   return {
     title: `Updated model for ${sessionID}`,
     output: `Session ${sessionID} model override set to ${modelLabel(params.model)}.`,

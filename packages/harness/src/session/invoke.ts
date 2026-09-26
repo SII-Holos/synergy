@@ -1,4 +1,5 @@
 import { RuntimeContext } from "../lifecycle/context"
+import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
 import { RolloutContext } from "./rollout/context"
 import { Experiment } from "../config/experiment"
@@ -660,6 +661,22 @@ export namespace SessionInvoke {
                 }
               }
               previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
+              const modelSelection = await SessionModelSelection.capture(
+                sessionID,
+                R,
+                lastAssistant?.finish === "tool-calls",
+              )
+              R = {
+                ...R,
+                model: modelSelection.model,
+                thinking: modelSelection.thinking,
+                variant:
+                  modelSelection.thinking.mode === "variant"
+                    ? modelSelection.thinking.variant
+                    : modelSelection.thinking.mode === "off"
+                      ? "off"
+                      : undefined,
+              }
 
               const jobCtx: LoopJob.Context = {
                 session,
@@ -788,6 +805,7 @@ export namespace SessionInvoke {
 
                 const approvalDelegate: SessionExternalAgents.ApprovalDelegate = async () => false
 
+                await SessionModelSelection.applied(sessionID, modelSelection, R.id)
                 await SessionExternalAgents.process({
                   sessionID,
                   agent: agent.name,
@@ -829,6 +847,7 @@ export namespace SessionInvoke {
                   },
                   modelID: model.id,
                   providerID: model.providerID,
+                  modelSelection,
                   ...(producingProvider?.profileID ? { profileID: producingProvider.profileID } : {}),
                   ...(model.api.id ? { apiModelID: model.api.id } : {}),
                   time: {
@@ -990,7 +1009,8 @@ export namespace SessionInvoke {
                     messageID: R.id,
                     metadata: { injectedContext: injection },
                   })
-                  if (updated?.role === "user") R = updated
+                  if (updated?.role === "user")
+                    R = { ...updated, model: R.model, variant: R.variant, thinking: R.thinking }
                 }
               }
 
@@ -1324,6 +1344,7 @@ export namespace SessionInvoke {
               })
               streamInput = {
                 user: R,
+                modelSelection,
                 agent,
                 abort: combinedAbort,
                 sessionID,

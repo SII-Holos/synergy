@@ -8882,6 +8882,111 @@
         ]
       }
     },
+    "/session/{sessionID}/model-selection": {
+      "put": {
+        "operationId": "session.setModelSelection",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Set session model and thinking",
+        "description": "Save an atomic model selection for the next eligible model request. Does not interrupt in-flight work.",
+        "responses": {
+          "200": {
+            "description": "Saved session selection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionModelSelectionInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.setModelSelection({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/workspace": {
       "post": {
         "operationId": "session.selectWorkspace",
@@ -9987,6 +10092,9 @@
                   "variant": {
                     "type": "string"
                   },
+                  "thinking": {
+                    "$ref": "#/components/schemas/SessionThinkingSelection"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -10666,6 +10774,9 @@
                   "variant": {
                     "type": "string"
                   },
+                  "thinking": {
+                    "$ref": "#/components/schemas/SessionThinkingSelection"
+                  },
                   "parts": {
                     "type": "array",
                     "items": {
@@ -11310,6 +11421,9 @@
                   },
                   "variant": {
                     "type": "string"
+                  },
+                  "thinking": {
+                    "$ref": "#/components/schemas/SessionThinkingSelection"
                   },
                   "parts": {
                     "type": "array",
@@ -35561,6 +35675,28 @@
                   "type": "string"
                 }
               },
+              "reasoningOptions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "values": {
+                      "type": "array",
+                      "items": {}
+                    },
+                    "min": {
+                      "type": "number"
+                    },
+                    "max": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["type"]
+                }
+              },
               "attachment": {
                 "type": "boolean"
               },
@@ -36918,6 +37054,12 @@
                       "values": {
                         "type": "array",
                         "items": {}
+                      },
+                      "min": {
+                        "type": "number"
+                      },
+                      "max": {
+                        "type": "number"
                       }
                     },
                     "required": ["type"]
@@ -41774,6 +41916,124 @@
         },
         "required": ["unread", "unreadCount", "silent"]
       },
+      "SessionThinkingSelection": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "provider-default"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "off"
+              }
+            },
+            "required": ["mode"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "variant"
+              },
+              "variant": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": ["mode", "variant"]
+          }
+        ]
+      },
+      "SessionModelChoice": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "thinking": {
+            "$ref": "#/components/schemas/SessionThinkingSelection"
+          }
+        },
+        "required": ["model", "thinking"]
+      },
+      "SessionModelSelection": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "selected": {
+            "$ref": "#/components/schemas/SessionModelChoice"
+          },
+          "preferences": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SessionThinkingSelection"
+            }
+          },
+          "lastUsed": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["providerID", "modelID"]
+              },
+              "thinking": {
+                "$ref": "#/components/schemas/SessionThinkingSelection"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              }
+            },
+            "required": ["model", "thinking", "revision", "rootID", "messageID"]
+          },
+          "pendingReason": {
+            "type": "string",
+            "enum": ["next-request", "tool-turn"]
+          }
+        },
+        "required": ["revision", "selected", "preferences"]
+      },
       "SessionPaused": {
         "type": "object",
         "properties": {
@@ -42547,7 +42807,7 @@
             "$ref": "#/components/schemas/SessionCompletionNotice"
           },
           "modelOverride": {
-            "description": "Per-session model override set by /model command",
+            "description": "Legacy model preference projection; modelSelection owns live model and thinking choices",
             "type": "object",
             "properties": {
               "providerID": {
@@ -42558,6 +42818,9 @@
               }
             },
             "required": ["providerID", "modelID"]
+          },
+          "modelSelection": {
+            "$ref": "#/components/schemas/SessionModelSelection"
           },
           "agentOverride": {
             "description": "Per-session agent override set by session control",
@@ -47216,6 +47479,32 @@
           }
         ]
       },
+      "SessionModelSelectionInput": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "thinking": {
+            "$ref": "#/components/schemas/SessionThinkingSelection"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["model"]
+      },
       "SessionForkPointMissingError": {
         "type": "object",
         "properties": {
@@ -47723,6 +48012,9 @@
               },
               "variant": {
                 "type": "string"
+              },
+              "thinking": {
+                "$ref": "#/components/schemas/SessionThinkingSelection"
               }
             },
             "required": ["parts"]
@@ -48175,6 +48467,9 @@
           "variant": {
             "type": "string"
           },
+          "thinking": {
+            "$ref": "#/components/schemas/SessionThinkingSelection"
+          },
           "origin": {
             "$ref": "#/components/schemas/OriginUser"
           },
@@ -48187,6 +48482,35 @@
           }
         },
         "required": ["id", "sessionID", "role", "time", "agent", "model"]
+      },
+      "SessionRequestModelSelection": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "thinking": {
+            "$ref": "#/components/schemas/SessionThinkingSelection"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rootID": {
+            "type": "string"
+          }
+        },
+        "required": ["model", "thinking", "revision", "rootID"]
       },
       "RolloutRecordingError": {
         "type": "object",
@@ -48407,6 +48731,9 @@
           },
           "rootID": {
             "type": "string"
+          },
+          "modelSelection": {
+            "$ref": "#/components/schemas/SessionRequestModelSelection"
           },
           "role": {
             "type": "string",

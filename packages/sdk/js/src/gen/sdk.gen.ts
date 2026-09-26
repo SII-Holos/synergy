@@ -654,6 +654,7 @@ import type {
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
+  SessionModelSelectionInput,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
@@ -669,6 +670,8 @@ import type {
   SessionRunResultResponses,
   SessionSelectWorkspaceErrors,
   SessionSelectWorkspaceResponses,
+  SessionSetModelSelectionErrors,
+  SessionSetModelSelectionResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
@@ -677,6 +680,7 @@ import type {
   SessionSummarizeResponses,
   SessionTagQuery,
   SessionTags,
+  SessionThinkingSelection,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionUnrollbackErrors,
@@ -2774,6 +2778,49 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Set session model and thinking
+   *
+   * Save an atomic model selection for the next eligible model request. Does not interrupt in-flight work.
+   */
+  public setModelSelection<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionModelSelectionInput?: SessionModelSelectionInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionModelSelectionInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      SessionSetModelSelectionResponses,
+      SessionSetModelSelectionErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/model-selection",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Select the Workspace for an idle session
    */
   public selectWorkspace<ThrowOnError extends boolean = false>(
@@ -3174,6 +3221,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: SessionThinkingSelection
       parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -3196,6 +3244,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -3425,6 +3474,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: SessionThinkingSelection
       parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -3447,6 +3497,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -3595,6 +3646,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: SessionThinkingSelection
       parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -3617,6 +3669,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },

@@ -40,6 +40,12 @@ import { copySessionID } from "@/utils/session-copy"
 import "./session-top-bar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionTagMenu } from "@/components/session/session-tag-menu"
+import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
+
+const selectionSaving = { id: "session.modelSelection.saving", message: "Saving…" }
+const selectionPending = { id: "session.modelSelection.pending", message: "Applies to the next request" }
+const selectionToolTurn = { id: "session.modelSelection.toolTurn", message: "Applies after this tool turn" }
+const selectionRetry = { id: "session.modelSelection.retry", message: "Could not save. Retry" }
 
 function SessionActionMenu(props: {
   visibility: ReturnType<typeof sessionActionVisibility>
@@ -252,7 +258,7 @@ export function SessionTopBar(props: {
   const modelControlVisibility = createMemo(() =>
     sessionModelControlVisibility({
       canSelectModel: sessionMeta().canSelectModel,
-      variantCount: local.model.variant.list().length,
+      variantCount: local.agent.current()?.external ? 0 : Math.max(1, local.model.variant.list().length),
     }),
   )
 
@@ -345,19 +351,53 @@ export function SessionTopBar(props: {
 
   const VariantSelectorButton = () => (
     <Show when={modelControlVisibility().variant}>
-      <TooltipKeybind
-        placement="bottom"
-        title={_(topBar.thinkingEffort)}
-        keybind={command.keybind("model.variant.cycle")}
+      <ModelVariantPicker
+        value={local.model.variant.displayed()}
+        availableVariants={local.model.variant.list()}
+        onChange={(value) => local.model.variant.set(value || undefined)}
+        triggerClass="stb-selector-btn"
+      />
+      <Show
+        when={
+          local.model.selection.saving() ||
+          local.model.selection.state()?.pendingReason ||
+          local.model.selection.error()
+        }
       >
-        <button
-          type="button"
-          class="stb-selector-btn border-transparent! hover:border-border-weak-base!"
-          onClick={() => local.model.variant.cycle()}
+        <Tooltip
+          placement="bottom"
+          value={
+            local.model.selection.error()
+              ? _(selectionRetry)
+              : local.model.selection.saving()
+                ? _(selectionSaving)
+                : local.model.selection.state()?.pendingReason === "tool-turn"
+                  ? _(selectionToolTurn)
+                  : _(selectionPending)
+          }
         >
-          <span class="stb-variant-label">{local.model.variant.displayed() ?? _(topBar.defaultVariant)}</span>
-        </button>
-      </TooltipKeybind>
+          <button
+            type="button"
+            class="stb-icon-btn"
+            aria-label={
+              local.model.selection.error()
+                ? _(selectionRetry)
+                : local.model.selection.saving()
+                  ? _(selectionSaving)
+                  : local.model.selection.state()?.pendingReason === "tool-turn"
+                    ? _(selectionToolTurn)
+                    : _(selectionPending)
+            }
+            onClick={() => {
+              if (local.model.selection.error()) local.model.selection.retry()
+            }}
+          >
+            <Show when={local.model.selection.error()} fallback={<span aria-hidden="true">…</span>}>
+              <Icon name={getSemanticIcon("state.warning")} size="small" />
+            </Show>
+          </button>
+        </Tooltip>
+      </Show>
     </Show>
   )
 

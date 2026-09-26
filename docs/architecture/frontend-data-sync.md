@@ -407,14 +407,14 @@ Session lists, inbox, todo, and other non-message state are not evicted by this 
 Composer model selection has strict one-way layering:
 
 1. user draft selection
-2. session default: explicit server `modelOverride`, otherwise last root message model
+2. durable server model/thinking selection, otherwise last root message
 3. global/application fallback
 
-Lower layers never write into higher layers. Selecting a model explicitly persists `modelOverride`; merely resolving a fallback does not mutate the session default or current draft.
+Lower layers never write into higher layers. Existing-session model and thinking changes use `session.setModelSelection`, with a per-session serialized mutation queue and expected revision. Accepted responses provide the baseline for the next edit without waiting for an event; pending generations prevent an older response or failure from replacing newer intent. Save failures retain an explicit retry action. Reload and other clients read the canonical session state.
 
 Agent and workflow selections follow the same principle: server session fields are durable defaults, while unsent composer intent remains local until the user performs an action that explicitly persists it.
 
-Variant display resolves the explicit or historical session variant first, then the agent default and configured model-role default. Existing sessions keep this resolution unready while their model or message history is unavailable, so the composer neither exposes a configured fallback nor submits a normal model request until history can distinguish an inherited variant from no explicit variant. An explicit session draft, including an explicit clear, remains authoritative without waiting for history. Only the session variant is submitted; displaying a configured fallback never writes it into message history.
+Settings and the session toolbar use the same thinking choice component. Default means provider default, Off requires a supported disable option, and concrete variants come from the model catalog for that Scope. Settings edits initialize future sessions; session choices do not write global settings. The new-session draft remains local until creation, when its effective choice is saved before submission. Existing-session submissions omit model/thinking copies so they cannot overwrite a newer saved selection. The toolbar distinguishes saving, next-request pending, restricted tool-turn pending and failed saves.
 
 ## Composer Interaction State
 

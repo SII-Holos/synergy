@@ -13880,6 +13880,22 @@ msgstr "No LSP servers"
 msgid "session.mcp.status"
 msgstr "MCP: {enabled} of {total} connected{failed, select, true {; connection errors} other {}}"
 
+#. js-lingui-explicit-id
+msgid "session.modelSelection.pending"
+msgstr "Applies to the next request"
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.retry"
+msgstr "Could not save. Retry"
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.saving"
+msgstr "Saving…"
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.toolTurn"
+msgstr "Applies after this tool turn"
+
 #. session-new-view
 msgid "session.new.subtitle"
 msgstr "What are we building today?"
@@ -18377,7 +18393,7 @@ msgstr "Select model"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.selectVariant"
-msgstr "Select model variant"
+msgstr "Select thinking effort"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.system"
@@ -18401,11 +18417,19 @@ msgstr "Default"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.variant.desc"
-msgstr "Use the role default"
+msgstr "Use the provider default"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.variant.off"
+msgstr "Off"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.variant.offDesc"
+msgstr "Disable thinking"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.variant.role"
-msgstr "Role variant"
+msgstr "Thinking effort"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.visionModel.description"
@@ -18441,7 +18465,7 @@ msgstr "Connect a provider to choose concrete models. Roles can still use fallba
 
 #. js-lingui-explicit-id
 msgid "settings.models.page.description"
-msgstr "Choose specialist role models and decide which connected models appear in quick switcher."
+msgstr "Choose defaults for new sessions and specialist roles. Project settings can provide a different model catalog."
 
 #. js-lingui-explicit-id
 msgid "settings.models.page.title"
