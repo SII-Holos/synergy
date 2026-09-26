@@ -1,5 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import type { McpAuth } from "./auth"
 
 export namespace PendingOAuth {
   const log = Log.create({ service: "mcp.pending-oauth" })
@@ -17,6 +18,8 @@ export namespace PendingOAuth {
     client: ClientOwner
     transport: AuthTransport
     identity: string
+    owner?: McpAuth.Owner
+    revoke?: () => void
     onDispose?: () => void | Promise<void>
   }
 
@@ -66,10 +69,11 @@ export namespace PendingOAuth {
       }
 
       const timeout = setTimeout(() => {
-        void dispose(name, "expired")
+        void disposeIfCurrent(name, entry, "expired")
       }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
       if (typeof timeout === "object" && "unref" in timeout) timeout.unref()
-      instanceState.entries.set(name, { ...connection, timeout })
+      const entry = { ...connection, timeout }
+      instanceState.entries.set(name, entry)
       return true
     })
   }
@@ -118,6 +122,8 @@ export namespace PendingOAuth {
   }
 
   async function releaseConnection(name: string, connection: Connection, reason: string): Promise<void> {
+    connection.owner?.revoke()
+    connection.revoke?.()
     await Promise.all([
       connection.client.close().catch((error) => {
         log.warn("failed to close pending OAuth client", { name, reason, error })
@@ -125,7 +131,7 @@ export namespace PendingOAuth {
       Promise.resolve(connection.onDispose?.()).catch((error) => {
         log.warn("failed to clean pending OAuth state", { name, reason, error })
       }),
-    ])
+    ]).finally(() => connection.owner?.dispose())
   }
 
   async function release(name: string, entry: Entry, reason: string): Promise<void> {

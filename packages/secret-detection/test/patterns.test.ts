@@ -10,6 +10,6 @@ test("observability and SmartAllow retain their separate redaction rules", () =>
   let auth = "Bearer opaque-value Basic YWJjZA== Digest YWJjZA=="
   for (const [pattern, replacement] of SecretPatterns.authSchemes) auth = auth.replace(pattern, replacement)
   expect(auth).toBe("Bearer [redacted] Basic [redacted] Digest [redacted]")
-  expect("password=example-value".replace(SecretPatterns.keyValue, "hidden")).toBe("password=hidden")
+  expect("password=example-value".replace(SecretPatterns.keyValue, "$1hidden")).toBe("password=hidden")
   expect("?token=example-value&mode=1".replace(SecretPatterns.queryParam, "$1hidden")).toBe("?token=hidden&mode=1")
 })

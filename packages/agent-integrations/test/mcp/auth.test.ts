@@ -290,6 +290,51 @@ describe.serial("McpAuth", () => {
       }))
   })
 
+  describe("clearTokens()", () => {
+    test("removes tokens but preserves clientInfo and the entry", () =>
+      runtime.run(async () => {
+        await McpAuth.set(
+          "server",
+          {
+            tokens: { accessToken: "tok", refreshToken: "rt" },
+            clientInfo: { clientId: "client" },
+          },
+          "https://mcp.example.com",
+        )
+
+        await McpAuth.clearTokens("server")
+
+        const entry = await McpAuth.get("server")
+        expect(entry).toBeDefined()
+        expect(entry!.tokens).toBeUndefined()
+        expect(entry!.clientInfo!.clientId).toBe("client")
+        expect(entry!.serverUrl).toBe("https://mcp.example.com")
+      }))
+
+    test("keeps an entry that has no tokens", () =>
+      runtime.run(async () => {
+        await McpAuth.set("server", { clientInfo: { clientId: "client" } }, "https://mcp.example.com")
+
+        await McpAuth.clearTokens("server")
+
+        expect((await McpAuth.get("server"))?.clientInfo!.clientId).toBe("client")
+      }))
+
+    test("does nothing for nonexistent entry", () =>
+      runtime.run(async () => {
+        await McpAuth.clearTokens("nonexistent")
+      }))
+
+    test("skips the write when a stale owner is reported", () =>
+      runtime.run(async () => {
+        await McpAuth.set("server", { tokens: { accessToken: "tok" } }, "https://mcp.example.com")
+
+        await McpAuth.clearTokens("server", { isCurrent: () => false })
+
+        expect((await McpAuth.get("server"))?.tokens?.accessToken).toBe("tok")
+      }))
+  })
+
   describe("oauthState", () => {
     test("updateOAuthState creates entry if none exists", () =>
       runtime.run(async () => {

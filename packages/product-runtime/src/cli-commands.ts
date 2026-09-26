@@ -36,7 +36,8 @@ export const productCommands: CommandEntry[] = [
   },
   {
     command: "mcp",
-    storage: "maintenance",
+    storage: (positionals) =>
+      positionals[1] === "connect" || positionals[1] === "restart" ? undefined : "maintenance",
     describe: "manage MCP (Model Context Protocol) servers",
     load: async () =>
       (await import("@ericsanchezok/synergy-agent-integrations/mcp/cli/mcp")).McpCommand as unknown as CommandModule,

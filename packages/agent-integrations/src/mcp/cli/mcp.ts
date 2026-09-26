@@ -2,11 +2,14 @@ import * as AgentIntegrationsConfigSchema from "@ericsanchezok/synergy-agent-int
 import { formatLocalDateTime } from "@ericsanchezok/synergy-harness/util/time-format"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { cmd } from "@ericsanchezok/synergy-cli/cli/cmd/cmd"
+import { DaemonSpec } from "@ericsanchezok/synergy-cli/daemon/spec"
+import { isServerReachable } from "@ericsanchezok/synergy-cli/cli/network"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 import * as prompts from "@clack/prompts"
 import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { createSynergyClient, type McpStatus, type SynergyClientInstance } from "@ericsanchezok/synergy-sdk"
 import { MCP } from ".."
 import { McpAuth } from "../auth"
 import { McpOAuthProvider } from "../oauth-provider"
@@ -46,6 +49,104 @@ type McpRemoteServer = MCP.Server & {
 function isOAuthServer(server: MCP.Server): server is McpRemoteServer {
   return server.config.type === "remote" && server.config.oauth !== false
 }
+const attachOptions = {
+  attach: {
+    type: "string" as const,
+    describe: "attach to a running synergy server (start one with: synergy start)",
+  },
+}
+
+function describeError(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (!error || typeof error !== "object") return String(error)
+  const record = error as Record<string, unknown>
+  const data = record.data && typeof record.data === "object" ? (record.data as Record<string, unknown>) : undefined
+  const message = record.message ?? record.error ?? data?.message
+  return typeof message === "string" ? message : JSON.stringify(error)
+}
+
+function describeStatus(status: McpStatus): { icon: string; text: string; error?: string } {
+  switch (status.status) {
+    case "connected":
+      return { icon: "✓", text: "connected" }
+    case "disabled":
+      return { icon: "○", text: "disabled" }
+    case "needs_auth":
+      return { icon: "⚠", text: "needs authentication", error: status.error }
+    case "needs_client_registration":
+      return { icon: "✗", text: "needs client registration", error: status.error }
+    case "failed":
+      return { icon: "✗", text: "failed", error: status.error }
+    case "reconnecting":
+      return { icon: "⟳", text: `reconnecting (${status.attempt}/${status.maxAttempts})` }
+    case "starting":
+      return { icon: "◌", text: "starting" }
+    case "connecting":
+      return { icon: "◌", text: "connecting" }
+    case "listing_tools":
+      return { icon: "◌", text: "listing tools" }
+    case "stopping":
+      return { icon: "◌", text: "stopping" }
+    case "uninitialized":
+      return { icon: "○", text: "uninitialized" }
+  }
+}
+
+function reportStatus(name: string, status: McpStatus): void {
+  const { icon, text, error } = describeStatus(status)
+  prompts.log.info(`${icon} ${name} ${UI.Style.TEXT_DIM}${text}`)
+  if (error) prompts.log.error(error)
+}
+
+async function resolveAttachedServerUrl(attach: string | undefined): Promise<string | undefined> {
+  const serverUrl = attach ?? (await DaemonSpec.resolveNetwork()).url
+  if (await isServerReachable(serverUrl)) return serverUrl
+
+  UI.error(`No running server found at ${serverUrl}`)
+  UI.println(UI.Style.TEXT_DIM + "  Start a background server:", UI.Style.TEXT_NORMAL, "  synergy start")
+  UI.println(UI.Style.TEXT_DIM + "  Or target a different server:", UI.Style.TEXT_NORMAL, "  --attach http://host:port")
+  UI.empty()
+  process.exitCode = 1
+  return undefined
+}
+
+async function resolveServerName(input: {
+  sdk: SynergyClientInstance
+  requested: string | undefined
+  message: string
+}): Promise<string | undefined> {
+  const result = await input.sdk.mcp.status()
+  if (!result.data) {
+    prompts.log.error(`Failed to read MCP server status: ${describeError(result.error)}`)
+    process.exitCode = 1
+    return undefined
+  }
+
+  const statuses = result.data
+  if (input.requested) {
+    const status = statuses[input.requested]
+    if (status && status.status !== "disabled") return input.requested
+    prompts.log.error(status ? `MCP server ${input.requested} is disabled` : `MCP server not found: ${input.requested}`)
+    process.exitCode = 1
+    return undefined
+  }
+
+  const names = Object.keys(statuses).filter((name) => statuses[name].status !== "disabled")
+  if (names.length === 0) {
+    prompts.log.warn("No enabled MCP servers configured")
+    return undefined
+  }
+
+  const selected = await prompts.select({
+    message: input.message,
+    options: names.map((name) => {
+      const { icon, text } = describeStatus(statuses[name])
+      return { label: `${icon} ${name}`, value: name, hint: text }
+    }),
+  })
+  if (prompts.isCancel(selected)) throw new UI.CancelledError()
+  return selected
+}
 
 export const McpCommand = cmd({
   command: "mcp",
@@ -54,6 +155,8 @@ export const McpCommand = cmd({
     yargs
       .command(McpAddCommand)
       .command(McpListCommand)
+      .command(McpConnectCommand)
+      .command(McpRestartCommand)
       .command(McpAuthCommand)
       .command(McpLogoutCommand)
       .command(McpDebugCommand)
@@ -672,5 +775,106 @@ export const McpDebugCommand = cmd({
         prompts.outro("Debug complete")
       },
     })
+  },
+})
+
+export const McpConnectCommand = cmd({
+  command: "connect [name]",
+  describe: "connect an MCP server on the running synergy server",
+  builder: (yargs) =>
+    yargs
+      .positional("name", {
+        describe: "name of the MCP server",
+        type: "string",
+      })
+      .options(attachOptions),
+  async handler(args) {
+    // MCP connections belong to the running server; connecting in this process
+    // would only touch a supervisor that exits with the CLI.
+    const serverUrl = await resolveAttachedServerUrl(args.attach)
+    if (!serverUrl) return
+
+    UI.empty()
+    prompts.intro("MCP Connect")
+
+    const sdk = createSynergyClient({ baseUrl: serverUrl })
+    const serverName = await resolveServerName({
+      sdk,
+      requested: args.name,
+      message: "Select MCP server to connect",
+    })
+    if (!serverName) {
+      prompts.outro("Done")
+      return
+    }
+
+    const spinner = prompts.spinner()
+    spinner.start(`Connecting ${serverName}...`)
+
+    const connection = await sdk.mcp.connect({ name: serverName })
+    if (connection.error) {
+      spinner.stop("Connect failed", 1)
+      prompts.log.error(describeError(connection.error))
+      prompts.outro("Done")
+      process.exitCode = 1
+      return
+    }
+
+    const result = await sdk.mcp.test({ name: serverName })
+    if (!result.data) {
+      spinner.stop("Connect failed", 1)
+      prompts.log.error(describeError(result.error))
+      prompts.outro("Done")
+      process.exitCode = 1
+      return
+    }
+
+    const connected = result.data.status === "connected"
+    spinner.stop(connected ? "Connect complete" : "Connect did not complete", connected ? 0 : 1)
+    reportStatus(serverName, result.data)
+    if (!connected) process.exitCode = 1
+    prompts.outro("Done")
+  },
+})
+
+export const McpRestartCommand = cmd({
+  command: "restart [name]",
+  describe: "restart an MCP server on the running synergy server",
+  builder: (yargs) =>
+    yargs
+      .positional("name", {
+        describe: "name of the MCP server",
+        type: "string",
+      })
+      .options(attachOptions),
+  async handler(args) {
+    const serverUrl = await resolveAttachedServerUrl(args.attach)
+    if (!serverUrl) return
+
+    UI.empty()
+    prompts.intro("MCP Restart")
+
+    const sdk = createSynergyClient({ baseUrl: serverUrl })
+    const serverName = await resolveServerName({
+      sdk,
+      requested: args.name,
+      message: "Select MCP server to restart",
+    })
+    if (!serverName) {
+      prompts.outro("Done")
+      return
+    }
+
+    const result = await sdk.mcp.restart({ name: serverName })
+    if (!result.data) {
+      prompts.log.error(describeError(result.error))
+      prompts.outro("Done")
+      process.exitCode = 1
+      return
+    }
+
+    prompts.log.success(`Restart initiated for ${serverName}`)
+    reportStatus(serverName, result.data)
+    prompts.outro("Done")
   },
 })

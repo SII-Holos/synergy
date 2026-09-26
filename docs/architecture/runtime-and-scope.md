@@ -52,6 +52,8 @@ Shutdown admission closes as soon as the process receives its first termination 
 
 Global services may still perform scoped work. They must enter the relevant `ScopeContext` before reading scoped configuration, storage, files, or session state.
 
+MCP authentication belongs to a Runtime-local server epoch. Interactive authorization revokes the previous connection before awaiting cleanup and blocks background recovery through code exchange and cleanup; credential mutations check their captured owner and per-authentication credential snapshot inside the serialized store operation. HTTP and SSE transports share the OAuth connection coordinator, which merges concurrent authentication challenges while ordinary requests remain parallel, delegates OAuth grants to the SDK, and permits one authorized replay. See the [OAuth ownership decision](../decisions/implemented/bug-fix/2026-09-27-own-mcp-oauth-rounds.md).
+
 ## Execution Topology
 
 The runtime host process is the Control Plane. It owns session generation leases, canonical Session/Message writes, event ordering, permission state, tool scheduling, recovery, and aggregate observability. Server compositions additionally own HTTP and WebSocket availability. It assembles and releases the immutable turn snapshot, while provider request serialization, network streaming, response parsing, and their retained working sets run outside its event loop.

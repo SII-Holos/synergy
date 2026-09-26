@@ -50,7 +50,7 @@ export namespace ObservabilityRedaction {
   export function text(input: string, maxLength = ObservabilityConfig.current().maxAttributeStringLength) {
     let clean = input
     for (const [pattern, replacement] of SecretPatterns.authSchemes) clean = clean.replace(pattern, replacement)
-    clean = clean.replace(SecretPatterns.keyValue, "[redacted]")
+    clean = clean.replace(SecretPatterns.keyValue, "$1[redacted]")
     clean = clean.replace(SecretPatterns.queryParam, "$1[redacted]")
     clean = SecretPatterns.replaceStandalone(clean, "[redacted]").text
     return clean.length > maxLength
