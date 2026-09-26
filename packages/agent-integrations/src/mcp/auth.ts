@@ -1,5 +1,6 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "fs/promises"
+import { isDeepStrictEqual } from "node:util"
 import z from "zod"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 
@@ -31,11 +32,60 @@ export namespace McpAuth {
 
   export interface MutationOptions {
     isCurrent?: () => boolean
+    snapshot?: Snapshot
+  }
+
+  export interface Snapshot {
+    entry: Entry | undefined
+    stale: boolean
   }
 
   const runtimeState = RuntimeContext.state(() => ({
     mutation: Promise.resolve() as Promise<void>,
+    owners: new Map<string, Owner>(),
   }))
+
+  export interface Owner {
+    readonly signal: AbortSignal
+    readonly interactive: boolean
+    isCurrent(): boolean
+    isLatest(): boolean
+    revoke(): void
+    dispose(): void
+  }
+
+  export function begin(name: string, interactive = false): Owner {
+    const state = runtimeState()
+    state.owners.get(name)?.dispose()
+    const controller = new AbortController()
+    let active = interactive
+    const owner: Owner = {
+      signal: controller.signal,
+      get interactive() {
+        return active
+      },
+      isCurrent: () => state.owners.get(name) === owner && !controller.signal.aborted,
+      isLatest: () => state.owners.get(name) === owner,
+      revoke() {
+        controller.abort(new Error("MCP OAuth owner was superseded"))
+      },
+      dispose() {
+        owner.revoke()
+        active = false
+      },
+    }
+    state.owners.set(name, owner)
+    return owner
+  }
+
+  export function owner(name: string): Owner {
+    const current = runtimeState().owners.get(name)
+    return current?.isCurrent() ? current : begin(name)
+  }
+
+  export function isAuthenticating(name: string): boolean {
+    return runtimeState().owners.get(name)?.interactive === true
+  }
 
   function serialize<T>(fn: () => Promise<T>): Promise<T> {
     const instanceState = runtimeState()
@@ -53,14 +103,25 @@ export namespace McpAuth {
     await fs.chmod(Global.Path.authMcp, 0o600)
   }
 
-  function mutate(mcpName: string, fn: (entry: Entry | undefined) => Entry | undefined | false): Promise<boolean> {
+  function mutate(
+    mcpName: string,
+    fn: (entry: Entry | undefined) => Entry | undefined | false,
+    options: MutationOptions = {},
+  ): Promise<boolean> {
     return serialize(async () => {
       const data = await all()
+      if (options.isCurrent?.() === false) return false
+      const snapshot = options.snapshot
+      if (snapshot && (snapshot.stale || !isDeepStrictEqual(snapshot.entry, data[mcpName]))) {
+        snapshot.stale = true
+        return false
+      }
       const next = fn(data[mcpName])
       if (next === false) return false
       if (next) data[mcpName] = next
       else delete data[mcpName]
       await persist(data)
+      if (snapshot) snapshot.entry = next ? JSON.parse(JSON.stringify(next)) : undefined
       return true
     })
   }
@@ -103,7 +164,7 @@ export namespace McpAuth {
   }
 
   export async function remove(mcpName: string, options: MutationOptions = {}): Promise<void> {
-    await mutate(mcpName, (entry) => (entry && options.isCurrent?.() !== false ? undefined : false))
+    await mutate(mcpName, (entry) => (entry ? undefined : false), options)
   }
 
   export async function updateTokens(
@@ -112,9 +173,7 @@ export namespace McpAuth {
     serverUrl?: string,
     options: MutationOptions = {},
   ): Promise<void> {
-    await mutate(mcpName, (entry) =>
-      options.isCurrent?.() === false ? false : { ...entry, tokens, serverUrl: serverUrl ?? entry?.serverUrl },
-    )
+    await mutate(mcpName, (entry) => ({ ...entry, tokens, serverUrl: serverUrl ?? entry?.serverUrl }), options)
   }
 
   export async function updateClientInfo(
@@ -123,9 +182,7 @@ export namespace McpAuth {
     serverUrl?: string,
     options: MutationOptions = {},
   ): Promise<void> {
-    await mutate(mcpName, (entry) =>
-      options.isCurrent?.() === false ? false : { ...entry, clientInfo, serverUrl: serverUrl ?? entry?.serverUrl },
-    )
+    await mutate(mcpName, (entry) => ({ ...entry, clientInfo, serverUrl: serverUrl ?? entry?.serverUrl }), options)
   }
 
   export async function updateCodeVerifier(
@@ -133,7 +190,7 @@ export namespace McpAuth {
     codeVerifier: string,
     options: MutationOptions = {},
   ): Promise<void> {
-    await mutate(mcpName, (entry) => (options.isCurrent?.() === false ? false : { ...entry, codeVerifier }))
+    await mutate(mcpName, (entry) => ({ ...entry, codeVerifier }), options)
   }
 
   export function clearCodeVerifier(
@@ -141,22 +198,30 @@ export namespace McpAuth {
     expected?: string,
     options: MutationOptions = {},
   ): Promise<boolean> {
-    return mutate(mcpName, (entry) => {
-      if (!entry?.codeVerifier || options.isCurrent?.() === false) return false
-      if (expected !== undefined && entry.codeVerifier !== expected) return false
-      const next = { ...entry }
-      delete next.codeVerifier
-      return next
-    })
+    return mutate(
+      mcpName,
+      (entry) => {
+        if (!entry?.codeVerifier) return false
+        if (expected !== undefined && entry.codeVerifier !== expected) return false
+        const next = { ...entry }
+        delete next.codeVerifier
+        return next
+      },
+      options,
+    )
   }
   export function clearTokens(mcpName: string, options: MutationOptions = {}): Promise<boolean> {
-    return mutate(mcpName, (entry) => {
-      if (!entry || options.isCurrent?.() === false) return false
-      if (!entry.tokens) return false
-      const next = { ...entry }
-      delete next.tokens
-      return next
-    })
+    return mutate(
+      mcpName,
+      (entry) => {
+        if (!entry) return false
+        if (!entry.tokens) return false
+        const next = { ...entry }
+        delete next.tokens
+        return next
+      },
+      options,
+    )
   }
 
   export async function updateOAuthState(
@@ -164,7 +229,7 @@ export namespace McpAuth {
     oauthState: string,
     options: MutationOptions = {},
   ): Promise<void> {
-    await mutate(mcpName, (entry) => (options.isCurrent?.() === false ? false : { ...entry, oauthState }))
+    await mutate(mcpName, (entry) => ({ ...entry, oauthState }), options)
   }
 
   export async function getOAuthState(mcpName: string): Promise<string | undefined> {
@@ -172,14 +237,18 @@ export namespace McpAuth {
     return entry?.oauthState
   }
 
-  export function clearOAuthState(mcpName: string, expected?: string): Promise<boolean> {
-    return mutate(mcpName, (entry) => {
-      if (!entry?.oauthState) return false
-      if (expected !== undefined && entry.oauthState !== expected) return false
-      const next = { ...entry }
-      delete next.oauthState
-      return next
-    })
+  export function clearOAuthState(mcpName: string, expected?: string, options: MutationOptions = {}): Promise<boolean> {
+    return mutate(
+      mcpName,
+      (entry) => {
+        if (!entry?.oauthState) return false
+        if (expected !== undefined && entry.oauthState !== expected) return false
+        const next = { ...entry }
+        delete next.oauthState
+        return next
+      },
+      options,
+    )
   }
 
   /**

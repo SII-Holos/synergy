@@ -870,7 +870,7 @@ describe.serial("MCP OAuth race and recovery", () => {
       })
     }))
 
-  test("background provider never persists OAuth state and reads tokens live", () =>
+  test("background OAuth rounds keep ephemeral state and capture their own credentials", () =>
     runtime.run(async () => {
       const provider = new McpOAuthProvider(
         "bg-server",
@@ -898,9 +898,16 @@ describe.serial("MCP OAuth race and recovery", () => {
       expect(await provider.state()).toBe("bg-state")
       expect(await provider.codeVerifier()).toBe("bg-verifier")
 
-      // A token written by another process (e.g. the CLI) is visible immediately.
       await McpAuth.set("bg-server", { tokens: { accessToken: "ext-token" } }, "https://mcp.example.com")
-      const tokens = await provider.tokens()
+      expect(await provider.tokens()).toBeUndefined()
+      const next = new McpOAuthProvider(
+        "bg-server",
+        "https://mcp.example.com",
+        {},
+        { onRedirect: async () => {} },
+        "background",
+      )
+      const tokens = await next.tokens()
       expect(tokens?.access_token).toBe("ext-token")
     }))
 
