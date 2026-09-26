@@ -26,15 +26,16 @@ test("lists more Workspace-backed sessions than storage admission capacity", asy
         const records = Array.from({ length: 1300 }, (_, index) => ({
           ...SessionRecords.serialize(seed),
           id: Identifier.ascending("session"),
-          title: `Session ${index}`,
+          title: `Fixture Session ${index}`,
           workspaceID: index < 150 ? workspace.id : `wsp_fixture_${index}`,
         }))
-        await Storage.transaction(async () => {
+        await Storage.transaction(async (tx) => {
           for (const [index, record] of records.entries()) {
             if (index >= 150)
               await Storage.write(["workspace", record.workspaceID], { ...workspace, id: record.workspaceID })
             await Storage.write(["sessions", scope.id, record.id, "info"], record)
           }
+          await Session.rebuildStorageIndexes(tx)
         })
         const listed = []
         for await (const session of Session.listAll()) listed.push(session)
@@ -46,6 +47,17 @@ test("lists more Workspace-backed sessions than storage admission capacity", asy
             workspace: { id: record.workspaceID, path: files.path },
           })
         }
+        const page = await Session.list()
+        expect(page.data).toHaveLength(records.length + 1)
+        const search = await Session.list({ search: "Fixture Session" })
+        expect(search.data).toHaveLength(records.length)
+        await Storage.transaction(async (tx) => {
+          for (const record of records)
+            await Storage.write(["sessions", scope.id, record.id, "info"], { ...record, parentID: seed.id })
+          await Session.rebuildStorageIndexes(tx)
+        })
+        expect(await Session.children(seed.id)).toHaveLength(records.length)
+        expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
         const keys = records.slice(0, 2).map((record) => ["sessions", scope.id, record.id, "info"])
         await WorkspaceCatalog.rebind(workspace.id, {
           scopeID: scope.id,

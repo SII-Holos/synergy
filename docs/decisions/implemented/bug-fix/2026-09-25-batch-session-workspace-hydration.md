@@ -10,13 +10,15 @@ Scope startup recovers workflow timers by enumerating Sessions. Hydrating each S
 
 `SessionRecords.readMany` deduplicates Workspace IDs and resolves them through `WorkspaceCatalog.readMany`. Storage executes the batch in bounded SQL statements under one reader admission. Session projection checks the Workspace's Scope, preserves missing Session positions and unresolved references, and retains schema failures as errors. The batch has no cache beyond the current call, preserving subsequent rebinding visibility. Single-record hydration keeps transaction-local reads.
 
+List, search and child-list enrichment uses 32 concurrent workers. Runtime and working-state reads cannot be batched through the Workspace catalog; bounding their existing per-Session work prevents these later reads from exhausting the same queue while preserving ordering and complete unpaginated results.
+
 The regression fixture lists more Sessions and distinct Workspaces than the reader queue can admit individually, including shared Workspace references. Additional assertions cover ordering, absent records, foreign Scope references, null and legacy selections, malformed catalog records and rebinding.
 
 ## Alternatives considered
 
 **Increase the reader queue limit.** This postpones the same failure until a larger history is loaded and consumes more admission capacity without reducing redundant work.
 
-**Limit concurrent per-Session reads.** This bounds admission but retains one database round trip for every Session, including repeated references. The existing storage batch reader already supplies bounded statements and snapshot consistency.
+**Only limit concurrent Workspace reads.** This bounds admission but retains one database round trip for every Session, including repeated references. The existing storage batch reader already supplies bounded statements and snapshot consistency.
 
 **Cache Workspace projections across calls.** This requires invalidation on rebinding and retirement and risks stale authority. Deduplicating within the current call avoids that lifecycle.
 
