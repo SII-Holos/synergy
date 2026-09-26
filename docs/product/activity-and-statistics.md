@@ -38,3 +38,5 @@ The Web Usage surface summarizes the installation across the home Scope and know
 `synergy stats` supports formatted and JSON output, optional model/tool display limits, time-series trimming through `--days`, and full recomputation. The current `--project` option triggers recomputation but does not filter the resulting installation-wide snapshot; integrations that need project-only statistics must aggregate by `scopeID` from authoritative session data rather than assume that flag has narrowed the result.
 
 Derived storage and backup behavior are documented in [Storage and Paths](../reference/storage-and-paths.md). Library-specific inspection is documented in [Knowledge](knowledge.md).
+
+Web statistics show each snapshot’s computation time. Refresh failure retains the previous snapshot with a local retry. Day ranges are calendar intervals ending on the displayed snapshot’s computation date, with empty dates filled as zero activity and explicit start/end labels. Date labels retain their calendar date rather than parsing date-only keys as UTC instants.

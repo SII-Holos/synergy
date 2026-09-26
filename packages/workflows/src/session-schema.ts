@@ -148,4 +148,3 @@ const contribution: SessionSchemaRegistry.Contribution = {
 export function registerSessionSchema() {
   SessionSchemaRegistry.register("workflows", contribution)
 }
-registerSessionSchema()

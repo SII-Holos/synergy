@@ -38,7 +38,10 @@ export const AnimaSchedule = LibraryAnimaSchedule.create({
   async arm(value) {
     const stored = await AgendaStore.get(value.scopeID, value.id)
     if (stored.state.nextRunAt !== undefined) AgendaClock.rearm(value.scopeID, value.id, stored.state.nextRunAt)
-    AgendaWatcher.register(value.id, value.scopeID, stored.triggers)
+    AgendaWatcher.register(value.id, value.scopeID, stored.triggers, {
+      workspaceID: stored.origin.workspaceID,
+      sourceScopeID: stored.origin.scope.id,
+    })
     AgendaWebhook.register(value.id, value.scopeID, stored.triggers)
   },
   unarm(value) {

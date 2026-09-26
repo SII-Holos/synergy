@@ -2,6 +2,8 @@
 
 Status: implemented
 
+The command-line gate implementation was subsequently replaced by the passive native worker in [Workspace process ownership](../architecture/2026-09-23-workspace-identity-and-local-bindings.md). Its cmd quoting regression remains covered through the production Bash entrypoint.
+
 ## Problem
 
 Every Bash-tool command on Windows that runs outside the OS sandbox is gated by a `WindowsProcessJob` command-line prefix: the shell waits for a gate file that is written only after the kill-on-close Job Object owns the process. On machines whose selected shell is `cmd.exe` (no `$SHELL`, no Git Bash), every command exited with code 1 within milliseconds, produced no output, and never ran the user command — the tool reported an empty, successful result. The failure was silent and mode-independent in mechanism, but it defined the full-access and guarded-without-sandbox-helper experience on such machines, where every shell invocation is gated.

@@ -313,4 +313,3 @@ export const migrations: Migration[] = [
 export function registerNoteMigrations() {
   MigrationRegistry.register("note", migrations)
 }
-registerNoteMigrations()

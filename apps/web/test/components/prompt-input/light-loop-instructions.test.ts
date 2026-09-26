@@ -25,7 +25,7 @@ describe("Light Loop instructions", () => {
           type: "session",
           id: "part_session",
           sessionId: "ses_1",
-          directory: "C:/repo",
+          scopeID: "C:/repo",
           title: "Prior work",
         },
       ],

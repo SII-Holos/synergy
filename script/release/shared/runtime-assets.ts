@@ -1,3 +1,4 @@
+import { buildPty } from "../../../packages/runtime-local/script/build-pty"
 import { buildSqlite } from "../../../packages/harness/script/build-sqlite"
 import { buildWatcher } from "../../../packages/runtime-local/script/build-watcher"
 import { existsSync } from "node:fs"
@@ -79,6 +80,12 @@ export async function prepareRuntimeAssets(name: string, profile: RuntimeArtifac
 
   const dependencies = await runtimeDependencies(profile)
   const { targetOs, targetArch, musl } = runtimeTarget(name)
+  const pty = await buildPty({ os: targetOs, arch: targetArch, libc: musl ? "musl" : "glibc" })
+  await fs.copyFile(pty, path.join(runtimeDir, path.basename(pty)))
+  await fs.copyFile(
+    path.join(REPO_ROOT, "packages/runtime-local/src/process/native-pty/LICENSE.bun-pty"),
+    path.join(runtimeDir, "PTY-LICENSE"),
+  )
   if (targetOs === "darwin") await fs.copyFile(await buildSqlite(), path.join(runtimeDir, "libsqlite3.dylib"))
   if (musl) {
     await removeUnsupportedMuslAssets(runtimeDir)

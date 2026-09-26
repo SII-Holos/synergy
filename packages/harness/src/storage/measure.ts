@@ -61,7 +61,7 @@ export async function measureStorageOperation<T>(
         unit: "ms",
         module: "storage",
         labels: { operation, keyPrefix, status },
-        sampleRate: status === "error" ? 1 : STORAGE_DURATION_SAMPLE_RATE,
+        sampleRate: status === "error" || durationMs >= 1_000 ? 1 : STORAGE_DURATION_SAMPLE_RATE,
       })
       ObservabilityMetrics.record({
         name: "storage.operation.count",

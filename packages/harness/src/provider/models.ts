@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { z } from "zod"
 import { Global } from "../global"
 import { Log } from "../util/log"
@@ -8,7 +9,6 @@ import { Flag } from "../flag/flag"
 
 export namespace ModelsCatalog {
   const log = Log.create({ service: "models.dev" })
-  const filepath = Global.Path.modelsCache
 
   export const ReasoningOption = ModelsDevSchemas.ReasoningOption
   export type ReasoningOption = ModelsDevSchemas.ReasoningOption
@@ -28,17 +28,24 @@ export namespace ModelsCatalog {
     | { status: "failed" }
     | { status: "disabled" }
 
-  let inFlight: Promise<RefreshResult> | undefined
-  let cache: Catalog | null = null
-  const refreshListeners = new Set<() => void | Promise<void>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    shutdown: new AbortController(),
+    inFlight: undefined as Promise<RefreshResult> | undefined,
+    cache: null as Catalog | null,
+    refreshListeners: new Set<() => void | Promise<void>>(),
+  }))
 
   export function onRefresh(listener: () => void | Promise<void>) {
-    refreshListeners.add(listener)
-    return () => refreshListeners.delete(listener)
+    const instanceState = runtimeState()
+
+    instanceState.refreshListeners.add(listener)
+    return () => instanceState.refreshListeners.delete(listener)
   }
 
   async function notifyRefresh() {
-    await Promise.all([...refreshListeners].map((listener) => listener()))
+    const instanceState = runtimeState()
+
+    await Promise.all([...instanceState.refreshListeners].map((listener) => listener()))
   }
 
   const CatalogEnvelope = z.record(z.string(), z.unknown())
@@ -87,31 +94,43 @@ export namespace ModelsCatalog {
   }
 
   export async function get() {
-    if (cache) return cache
+    const instanceState = runtimeState()
 
-    const file = Bun.file(filepath)
+    if (instanceState.cache) return instanceState.cache
+
+    const file = Bun.file(Global.Path.modelsCache)
     const stored = parseCatalog(await file.json().catch(() => undefined))
     if (stored) {
-      cache = stored.catalog
+      instanceState.cache = stored.catalog
       refreshInBackground()
-      return cache
+      return instanceState.cache
     }
 
     const bundledText = typeof data === "function" ? "{}" : await (data as unknown as () => Promise<string>)()
     const bundled = parseCatalogText(bundledText)
     if (!bundled) log.warn("ignored invalid bundled models catalog")
-    cache = bundled?.catalog ?? {}
+    instanceState.cache = bundled?.catalog ?? {}
     refreshInBackground()
-    return cache
+    return instanceState.cache
   }
 
   export function refresh(): Promise<RefreshResult> {
+    const instanceState = runtimeState()
+
+    if (instanceState.shutdown.signal.aborted) return Promise.resolve({ status: "failed" })
     if (Flag.SYNERGY_DISABLE_MODELS_FETCH) return Promise.resolve({ status: "disabled" })
-    if (inFlight) return inFlight
-    inFlight = doRefresh().finally(() => {
-      inFlight = undefined
+    if (instanceState.inFlight) return instanceState.inFlight
+    instanceState.inFlight = doRefresh().finally(() => {
+      instanceState.inFlight = undefined
     })
-    return inFlight
+    return instanceState.inFlight
+  }
+
+  export async function stop() {
+    const state = runtimeState()
+    state.shutdown.abort(new Error("Model catalog is stopping"))
+    await state.inFlight
+    state.refreshListeners.clear()
   }
 
   const MIRRORS = [
@@ -120,12 +139,15 @@ export namespace ModelsCatalog {
   ] as const
 
   async function doRefresh(): Promise<RefreshResult> {
-    const file = Bun.file(filepath)
+    const instanceState = runtimeState()
+
+    const file = Bun.file(Global.Path.modelsCache)
     log.info("refreshing", { file })
     for (const url of MIRRORS) {
+      if (instanceState.shutdown.signal.aborted) return { status: "failed" }
       const result = await fetch(url, {
-        headers: { "User-Agent": Installation.USER_AGENT },
-        signal: AbortSignal.timeout(10 * 1000),
+        headers: { "User-Agent": Installation.userAgent() },
+        signal: AbortSignal.any([instanceState.shutdown.signal, AbortSignal.timeout(10 * 1000)]),
       }).catch((error) => {
         log.warn("failed to fetch models catalog", { url, error })
       })
@@ -142,8 +164,9 @@ export namespace ModelsCatalog {
         log.warn("ignored invalid refreshed models catalog", { url })
         continue
       }
+      if (instanceState.shutdown.signal.aborted) return { status: "failed" }
       await Bun.write(file, JSON.stringify(parsed.catalog))
-      cache = parsed.catalog
+      instanceState.cache = parsed.catalog
       await notifyRefresh()
       return { status: "refreshed", rejectedProviders: parsed.rejectedProviders, rejectedModels: parsed.rejectedModels }
     }
@@ -151,4 +174,10 @@ export namespace ModelsCatalog {
   }
 }
 
-setInterval(() => ModelsCatalog.refresh(), 60 * 1000 * 60).unref()
+export function startModelCatalogRefresh() {
+  const timer = setInterval(
+    () => void ModelsCatalog.refresh().catch((error) => Log.Default.warn("model catalog refresh failed", { error })),
+    60 * 1000 * 60,
+  ).unref()
+  return () => clearInterval(timer)
+}

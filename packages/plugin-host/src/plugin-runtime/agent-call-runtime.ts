@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 export type PluginAgentCallTerminal = {
   callId: string
@@ -241,4 +242,4 @@ export class PluginAgentCallRuntime {
   }
 }
 
-export const pluginAgentCallRuntime = new PluginAgentCallRuntime()
+export const pluginAgentCallRuntime = RuntimeContext.state(() => new PluginAgentCallRuntime())

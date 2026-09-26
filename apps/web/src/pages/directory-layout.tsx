@@ -30,13 +30,19 @@ export default function Layout(props: ParentProps) {
               sessionID: string
               permissionID: string
               response: "once" | "session" | "always" | "reject"
-            }) => sdk.client.permission.respond(input)
+            }) =>
+              sdk.client.permission.reply(
+                { requestID: input.permissionID, reply: input.response },
+                { throwOnError: true },
+              )
 
             return (
               <DataProvider
                 data={sync.data}
                 runtime={createSessionDataRuntime(globalSync)}
-                directory={scopeKey()}
+                directory={
+                  params.id ? (sync.session.get(params.id)?.workspace?.path ?? null) : sync.data.path.directory
+                }
                 serverUrl={sdk.url}
                 onPermissionRespond={respond}
                 onNavigateToSession={navigateToSession}

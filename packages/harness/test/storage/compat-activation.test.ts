@@ -24,6 +24,12 @@ test.each([
     import { ScopeContext } from ${JSON.stringify(path.join(harness, "scope/context.ts"))};
     import { Identifier } from ${JSON.stringify(path.join(harness, "id/id.ts"))};
     import { SessionPreparingError } from ${JSON.stringify(path.join(harness, "storage/errors.ts"))};
+    import { RuntimeContext } from ${JSON.stringify(path.join(harness, "lifecycle/context.ts"))};
+    import { registerHarness } from ${JSON.stringify(path.join(harness, "lifecycle/register.ts"))};
+    const home = process.env.SYNERGY_HOME;
+    const runtime = RuntimeContext.create({ home, root: path.join(home, ".synergy"), env: { ...process.env } });
+    await runtime.run(async () => {
+    registerHarness();
     let release;
     const gate = new Promise(resolve => { release = resolve; });
     if (${held}) MigrationRegistry.register("activation-probe", [{
@@ -46,12 +52,12 @@ test.each([
       await write(StoragePath.metaMigrationLogDomain(domain), Object.fromEntries(migrations.filter(m => !["20260919-settle-orphaned-tool-parts", "activation-probe"].includes(m.id)).map(m => [m.id, 1])));
     await using handle = await StorageMaintenance.open();
     if (handle.manifest.phase !== "active") throw new Error("Not active");
-    if ((await SessionCompat.stats()).pending !== 1) throw new Error("Cold cohort did not remain deferred");
+    if ((await SessionCompat.stats()).pending !== 1) throw new Error("Cold cohort did not remain deferred: " + JSON.stringify(await SessionCompat.stats()));
     const created = await ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create({ title: "new work before history" }) });
     if (!created.id || (await SessionCompat.stats()).pending !== 1) throw new Error("New work waited for old history");
     let preparing = false;
     try {
-      await SessionCompat.requireImported(id);
+    await SessionCompat.requireImported(id);
     } catch (error) {
       if (!(error instanceof SessionPreparingError)) throw error;
       preparing = true;
@@ -64,6 +70,8 @@ test.each([
     await SessionCompat.ensureImported(id);
     if ((await SessionCompat.stats()).imported !== 1) throw new Error("Touch did not converge");
     if ((await handle.store.verify()).issues.length) throw new Error("Imported store is inconsistent");
+    });
+    runtime.dispose();
   `
     const env: Record<string, string | undefined> = { ...process.env, SYNERGY_HOME: tmp.path }
     delete env.SYNERGY_STORAGE_COMPAT_DEFER

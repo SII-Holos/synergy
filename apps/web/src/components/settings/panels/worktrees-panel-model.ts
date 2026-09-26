@@ -2,8 +2,8 @@ import type { Worktree } from "@ericsanchezok/synergy-sdk/client"
 
 type WorktreeScope = {
   type?: string
-  vcs?: string
-  worktree: string
+  id: string
+  local: { vcs?: "git"; worktree: string } | null
   name?: string
 }
 
@@ -18,25 +18,25 @@ export function worktreeLifecycleLabel(lifecycle?: string | null) {
   return lifecycle
 }
 
-export function gitProjectScopes(scopes: WorktreeScope[], home?: string) {
-  return scopes.filter((scope) => scope.type === "project" && scope.vcs === "git" && scope.worktree !== home)
+export function gitProjectScopes(scopes: WorktreeScope[]) {
+  return scopes.filter((scope) => scope.type === "project" && scope.local?.vcs === "git")
 }
 
-export async function loadWorktreesByDirectory(
-  scopes: Array<Pick<WorktreeScope, "worktree">>,
-  load: (directory: string) => Promise<Worktree[]>,
+export async function loadWorktreesByScope(
+  scopes: Array<Pick<WorktreeScope, "id">>,
+  load: (scopeID: string) => Promise<Worktree[]>,
   concurrency = 3,
 ) {
   const worktrees = new Map<string, Worktree[]>()
-  const failures: Array<{ directory: string; error: unknown }> = []
+  const failures: Array<{ scopeID: string; error: unknown }> = []
   let cursor = 0
   const workers = Array.from({ length: Math.min(Math.max(1, concurrency), scopes.length) }, async () => {
     while (cursor < scopes.length) {
       const scope = scopes[cursor++]!
       try {
-        worktrees.set(scope.worktree, await load(scope.worktree))
+        worktrees.set(scope.id, await load(scope.id))
       } catch (error) {
-        failures.push({ directory: scope.worktree, error })
+        failures.push({ scopeID: scope.id, error })
       }
     }
   })
@@ -44,14 +44,14 @@ export async function loadWorktreesByDirectory(
   return { worktrees, failures }
 }
 
-export function groupWorktreesByDirectory(
-  scopes: Array<{ worktree: string; name?: string }>,
-  worktreesByDirectory: Map<string, Worktree[]>,
+export function groupWorktreesByScope(
+  scopes: Array<{ id: string; name?: string; local: { worktree: string } | null }>,
+  worktreesByScope: Map<string, Worktree[]>,
   labelFor: (directory: string, name?: string) => string,
 ) {
   return scopes.map((scope) => ({
-    scopeLabel: labelFor(scope.worktree, scope.name),
-    directory: scope.worktree,
-    worktrees: worktreesByDirectory.get(scope.worktree) ?? [],
+    scopeLabel: labelFor(scope.local?.worktree ?? "", scope.name),
+    scopeID: scope.id,
+    worktrees: worktreesByScope.get(scope.id) ?? [],
   }))
 }

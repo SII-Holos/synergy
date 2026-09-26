@@ -319,9 +319,7 @@ async function handleCreate(params: Parameters, ctx: Tool.Context) {
     }
 
     if (params.model) {
-      session = await Session.update(session.id, (draft) => {
-        draft.modelOverride = params.model
-      })
+      session = await Session.setModelSelection(session.id, { model: params.model })
     }
 
     if (params.initialMessage?.trim()) {
@@ -361,7 +359,9 @@ async function handleCreate(params: Parameters, ctx: Tool.Context) {
   if (params.model) lines.push(`Model override: ${modelLabel(params.model)}`)
   if (interaction) lines.push(`Mode: ${interaction.mode}`)
   if (params.workspace)
-    lines.push(`Workspace: ${session.workspace?.type ?? "main"} at ${session.workspace?.path ?? scope.directory}`)
+    lines.push(
+      `Workspace: ${session.workspace?.type ?? "main"} at ${session.workspace?.path ?? scope.local?.directory}`,
+    )
   if (params.initialMessage?.trim()) lines.push("Initial message queued for asynchronous processing.")
 
   return {
@@ -457,9 +457,7 @@ async function handleSetAgent(sessionID: string, params: Parameters) {
 
 async function handleSetModel(sessionID: string, params: Parameters) {
   if (!params.model) throw new Error("model is required for set_model")
-  const updated = await Session.update(sessionID, (draft) => {
-    draft.modelOverride = params.model
-  })
+  const updated = await Session.setModelSelection(sessionID, { model: params.model })
   return {
     title: `Updated model for ${sessionID}`,
     output: `Session ${sessionID} model override set to ${modelLabel(params.model)}.`,
@@ -647,7 +645,7 @@ async function handleWorktreeLeave(sessionID: string, params: Parameters) {
   }
 
   await Worktree.leave(sessionID)
-  const restored = { type: "main", path: ScopeContext.current.scope.directory }
+  const restored = { type: "main", path: ScopeContext.current.scope.local?.directory }
   let cleanup: { performed: boolean; skippedReason?: string; error?: string; cleanupDeferred?: boolean } = {
     performed: false,
   }

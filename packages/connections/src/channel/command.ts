@@ -235,9 +235,7 @@ export namespace ChannelCommand {
         }
 
         const parsed = Provider.parseModel(remainder)
-        await Session.update(session.id, (draft) => {
-          draft.modelOverride = parsed
-        })
+        await Session.setModelSelection(session.id, { model: parsed })
 
         return { action: "handled", reply: `✅ Model set to ${parsed.providerID}/${parsed.modelID}` }
       },

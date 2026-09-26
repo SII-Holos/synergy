@@ -1,7 +1,32 @@
 import { expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { chmod, mkdir, mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+
+for (const location of ["path", "home"] as const)
+  test(`preparation packages its tool from the isolated ${location}`, async () => {
+    const home = await mkdtemp(path.join(os.tmpdir(), "synergy-bench-prepare-"))
+    try {
+      const source = path.join(home, location === "path" ? "source" : ".synergy/bin")
+      const output = path.join(home, "output")
+      await mkdir(source, { recursive: true })
+      const executable = process.platform === "win32" ? "rg.exe" : "rg"
+      const bytes = "isolated packaged tool fixture"
+      await Bun.write(path.join(source, executable), bytes)
+      await chmod(path.join(source, executable), 0o755)
+      const child = Bun.spawn([process.execPath, "runtime/prepare.ts", output], {
+        cwd: path.resolve(import.meta.dir, ".."),
+        env: { PATH: location === "path" ? source : "", SYNERGY_HOME: home },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      expect({ code, stderr }).toEqual({ code: 0, stderr: "" })
+      expect(await Bun.file(path.join(output, "rg")).text()).toBe(bytes)
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
 
 async function inspect(runtime: string, config: Record<string, unknown> = {}, model?: string) {
   const home = await mkdtemp(path.join(os.tmpdir(), "synergy-bench-contract-"))

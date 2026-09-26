@@ -8,6 +8,7 @@ const timeout = z.number().int().positive().max(2_147_483_647)
 export const StorageMaintenanceOperation = z.enum([
   "vacuum",
   "reclaim",
+  "prune",
   "integrity-check",
   "create-index",
   "drop-index",
@@ -69,7 +70,7 @@ export const RuntimeStartupProgress = z.union([
         total: count,
       })
       .strict()
-      .refine((value) => value.current <= value.total),
+      .refine((value) => value.total === 0 || value.current <= value.total),
   ]),
 ])
 export type RuntimeStartupProgress = z.infer<typeof RuntimeStartupProgress>

@@ -5,6 +5,9 @@ import { SessionHistory } from "../../src/session/history"
 import { SessionProgress } from "../../src/session/progress"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutLifecycle } from "../../src/session/rollout/lifecycle"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 /**
  * The only continuation behavior that survived the removal of automatic
@@ -24,15 +27,18 @@ async function notify(sessionID: string, rootID: string) {
     await SessionInbox.materializeItem(item, rootID, { guiding: true })
 }
 
-test("a materialized continuation keeps its rollout open", async () => {
-  await fixture(async ({ session, rootID, call }) => {
-    await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed" })
-    await notify(session.id, rootID)
-    expect(await SessionInbox.list(session.id)).toHaveLength(0)
-    expect(SessionProgress.needsModelCall(await SessionHistory.modelMessages({ sessionID: session.id }), rootID)).toBe(
-      true,
-    )
-    await RolloutLifecycle.reconcile(session.id, rootID)
-    expect((await RolloutLedger.getRun(call.owner, rootID)).status).toBe("running")
-  })
-})
+test("a materialized continuation keeps its rollout open", () =>
+  runtime.run(async () => {
+    await fixture(async ({ session, rootID, call }) => {
+      await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed" })
+      await notify(session.id, rootID)
+      expect(await SessionInbox.list(session.id)).toHaveLength(0)
+      expect(
+        SessionProgress.needsModelCall(await SessionHistory.modelMessages({ sessionID: session.id }), rootID),
+      ).toBe(true)
+      await RolloutLifecycle.reconcile(session.id, rootID)
+      expect((await RolloutLedger.getRun(call.owner, rootID)).status).toBe("running")
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

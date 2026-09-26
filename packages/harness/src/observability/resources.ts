@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityClock } from "./clock"
 import { ObservabilityConfig } from "./config"
 import { ObservabilityContext } from "./context"
@@ -24,32 +25,42 @@ function serviceMemoryCompleteness(complete: boolean): PublicServiceMemory["comp
 }
 
 export namespace ObservabilityResources {
-  let timer: Timer | undefined
-  let lastCpu = process.cpuUsage()
-  let lastTime = performance.now()
-  let eventLoopExpected = Date.now()
-  let sampleIntervalMs: number | undefined
-  const io = { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 }
-  const rssWindow: Array<{ time: number; rss: number }> = []
-  let lastRuntimeMetricSampleAt = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    timer: undefined as Timer | undefined,
+    lastCpu: process.cpuUsage(),
+    lastTime: performance.now(),
+    eventLoopExpected: Date.now(),
+    sampleIntervalMs: undefined as number | undefined,
+    rssWindow: [] as Array<{ time: number; rss: number }>,
+    lastRuntimeMetricSampleAt: 0,
+    io: { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 },
+  }))
 
   export function addRead(bytes: number) {
-    io.appReadBytes += Math.max(0, bytes)
-    io.appReadOps += 1
+    const instanceState = runtimeState()
+
+    instanceState.io.appReadBytes += Math.max(0, bytes)
+    instanceState.io.appReadOps += 1
   }
 
   export function stats() {
-    return { running: !!timer, sampleIntervalMs }
+    const instanceState = runtimeState()
+
+    return { running: !!instanceState.timer, sampleIntervalMs: instanceState.sampleIntervalMs }
   }
 
   export function addWrite(bytes: number) {
-    io.appWrittenBytes += Math.max(0, bytes)
-    io.appWriteOps += 1
+    const instanceState = runtimeState()
+
+    instanceState.io.appWrittenBytes += Math.max(0, bytes)
+    instanceState.io.appWriteOps += 1
   }
 
   export function snapshot(
     input: { role?: ObservabilitySchema.ResourceSample["process"]["role"]; processId?: string; pid?: number } = {},
   ) {
+    const instanceState = runtimeState()
+
     const config = ObservabilityConfig.current()
     if (!config.enabled) return
     const ctx = ObservabilityContext.current()
@@ -59,14 +70,14 @@ export namespace ObservabilityResources {
     const cgroup = ServiceMemory.currentCgroupV2()
     const serviceMemory = ServiceMemory.measure({ processRssBytes: memory.rss, children: childProcesses, cgroup })
     const cpu = process.cpuUsage()
-    const elapsedMs = Math.max(1, performance.now() - lastTime)
-    const userDelta = cpu.user - lastCpu.user
-    const systemDelta = cpu.system - lastCpu.system
+    const elapsedMs = Math.max(1, performance.now() - instanceState.lastTime)
+    const userDelta = cpu.user - instanceState.lastCpu.user
+    const systemDelta = cpu.system - instanceState.lastCpu.system
     const utilizationRatio = Math.min(1, Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000)))
-    const lagMs = Math.max(0, Date.now() - eventLoopExpected)
-    eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
-    lastCpu = cpu
-    lastTime = performance.now()
+    const lagMs = Math.max(0, Date.now() - instanceState.eventLoopExpected)
+    instanceState.eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
+    instanceState.lastCpu = cpu
+    instanceState.lastTime = performance.now()
     const sample = ObservabilitySchema.ResourceSample.parse({
       sampleId: ObservabilityClock.id("res"),
       time: now,
@@ -105,7 +116,7 @@ export namespace ObservabilityResources {
         completeness: serviceMemoryCompleteness(serviceMemory.complete),
       },
       eventLoop: { lagMs, sampleWindowMs: config.resourceSampleIntervalMs },
-      io: { ...io, osAvailable: false },
+      io: { ...instanceState.io, osAvailable: false },
       labels: {},
     })
     ObservabilityStore.insertResource(sample)
@@ -117,19 +128,23 @@ export namespace ObservabilityResources {
   }
 
   export function start() {
-    if (timer) return
+    const instanceState = runtimeState()
+
+    if (instanceState.timer) return
     const config = ObservabilityConfig.current()
     if (!config.enabled) return
-    sampleIntervalMs = config.resourceSampleIntervalMs
-    eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
-    timer = setInterval(snapshot, config.resourceSampleIntervalMs)
-    timer.unref()
+    instanceState.sampleIntervalMs = config.resourceSampleIntervalMs
+    instanceState.eventLoopExpected = Date.now() + config.resourceSampleIntervalMs
+    instanceState.timer = setInterval(snapshot, config.resourceSampleIntervalMs)
+    instanceState.timer.unref()
   }
 
   export function stop() {
-    if (timer) clearInterval(timer)
-    timer = undefined
-    sampleIntervalMs = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.timer) clearInterval(instanceState.timer)
+    instanceState.timer = undefined
+    instanceState.sampleIntervalMs = undefined
     ServiceMemoryMetrics.reset()
   }
 
@@ -242,7 +257,7 @@ export namespace ObservabilityResources {
   function recordServiceMemoryMetrics(cgroup: ServiceMemory.CgroupV2 | undefined, now: number) {
     if (!cgroup) return
     const labels = { source: "cgroup_v2", platform: "linux" }
-    for (const metric of ServiceMemoryMetrics.plan({ now, cgroup, env: process.env })) {
+    for (const metric of ServiceMemoryMetrics.plan({ now, cgroup, env: RuntimeContext.current().host.env })) {
       ObservabilityMetrics.record({
         ...metric,
         module: "process",
@@ -254,8 +269,8 @@ export namespace ObservabilityResources {
 
   function recordLinuxRuntimeMetrics() {
     const runtime = LinuxRuntimeMemory.sample()
-    if (!runtime || runtime.sampledAt === lastRuntimeMetricSampleAt) return
-    lastRuntimeMetricSampleAt = runtime.sampledAt
+    if (!runtime || runtime.sampledAt === runtimeState().lastRuntimeMetricSampleAt) return
+    runtimeState().lastRuntimeMetricSampleAt = runtime.sampledAt
     const labels = { platform: "linux" }
     recordOptionalMetrics(
       {
@@ -322,6 +337,8 @@ export namespace ObservabilityResources {
     sample: ObservabilitySchema.ResourceSample,
     config: ReturnType<typeof ObservabilityConfig.current>,
   ) {
+    const instanceState = runtimeState()
+
     const rss = sample.memory.rssBytes ?? 0
     const heapRatio = ProcessMemory.heapUsageRatio({
       heapUsedBytes: sample.memory.heapUsedBytes,
@@ -329,9 +346,10 @@ export namespace ObservabilityResources {
     })
     const cpu = sample.cpu.utilizationRatio ?? 0
     const lag = sample.eventLoop.lagMs ?? 0
-    rssWindow.push({ time: sample.time, rss })
-    while (rssWindow.length > 0 && sample.time - rssWindow[0].time > 2 * 60 * 60 * 1000) rssWindow.shift()
-    const first = rssWindow[0]
+    instanceState.rssWindow.push({ time: sample.time, rss })
+    while (instanceState.rssWindow.length > 0 && sample.time - instanceState.rssWindow[0].time > 2 * 60 * 60 * 1000)
+      instanceState.rssWindow.shift()
+    const first = instanceState.rssWindow[0]
     const rssGrowthBytesPerMin =
       first && sample.time > first.time ? ((rss - first.rss) / Math.max(1, sample.time - first.time)) * 60_000 : 0
     if (rss >= (config.thresholds.highRssBytes ?? ObservabilityConfig.defaults.thresholds.highRssBytes)) {

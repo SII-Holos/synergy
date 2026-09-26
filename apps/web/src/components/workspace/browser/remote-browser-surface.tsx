@@ -1,3 +1,4 @@
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useLingui } from "@lingui/solid"
 import { browser as B } from "@/locales/messages"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
@@ -29,6 +30,9 @@ export function RemoteBrowserSurface(props: {
   sessionID: string
   routeDirectory?: string
   container: () => HTMLDivElement | undefined
+  onRetry?: () => void
+  recovering?: boolean
+  recoveryVersion?: number
 }) {
   let videoRef: HTMLVideoElement | undefined
   let textInputRef: HTMLTextAreaElement | undefined
@@ -64,7 +68,7 @@ export function RemoteBrowserSurface(props: {
 
   createEffect(() => {
     const pageId = browser.pageId()
-    if (browser.presentation()?.kind !== "webrtc" || !pageId) {
+    if (!pageId) {
       if (webrtcClient) closeWebRTCClient()
       return
     }
@@ -78,7 +82,7 @@ export function RemoteBrowserSurface(props: {
       return
     }
 
-    const clientKey = `${pageId}:${routeDirectory}`
+    const clientKey = `${pageId}:${routeDirectory}:${props.recoveryVersion ?? 0}`
     if (webrtcClient && activeWebRTCKey === clientKey) return
     closeWebRTCClient()
 
@@ -436,7 +440,13 @@ export function RemoteBrowserSurface(props: {
         <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background-strong/80 text-center text-text-weak">
           <Icon name={getSemanticIcon("browser.main")} class="size-10 text-icon-weak-base" />
           <span class="text-13-medium text-text-base">{statusMessage()}</span>
-          <span class="text-11 text-text-weaker">{webrtcStatus()}</span>
+          <Show when={props.onRetry && (webrtcStatus() === "error" || browser.hostStatus() === "failed")}>
+            <Button size="small" disabled={props.recovering} onClick={props.onRetry}>
+              {props.recovering
+                ? lingui._({ id: "browser.recovery.checking", message: "Checking the existing page…" })
+                : lingui._(B.retry)}
+            </Button>
+          </Show>
         </div>
       </Show>
     </>

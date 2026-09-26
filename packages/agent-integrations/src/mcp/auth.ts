@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "fs/promises"
 import z from "zod"
 import { Global } from "@ericsanchezok/synergy-harness/global"
@@ -32,11 +33,15 @@ export namespace McpAuth {
     isCurrent?: () => boolean
   }
 
-  let mutation: Promise<void> = Promise.resolve()
+  const runtimeState = RuntimeContext.state(() => ({
+    mutation: Promise.resolve() as Promise<void>,
+  }))
 
   function serialize<T>(fn: () => Promise<T>): Promise<T> {
-    const current = mutation.then(fn, fn)
-    mutation = current.then(
+    const instanceState = runtimeState()
+
+    const current = instanceState.mutation.then(fn, fn)
+    instanceState.mutation = current.then(
       () => undefined,
       () => undefined,
     )

@@ -3,10 +3,12 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { compilePluginManifest, definePlugin, capability } from "@ericsanchezok/synergy-plugin"
 import { executePluginHostService } from "@ericsanchezok/synergy-plugin-host/plugin/host-services-runtime"
 // Product domains (including the blueprint host adapter) register via the L4 manifest
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const LIGHTLOOP_CAP = "lightloop.delegate"
 const BLUEPRINT_CAP = "blueprint.delegate"
@@ -23,10 +25,12 @@ describe("loop-start parent contract (host runtime)", () => {
    */
 
   const cleaned: string[] = []
-  afterEach(async () => {
-    const ids = cleaned.splice(0)
-    await Promise.all(ids.map((id) => Session.remove(id).catch(() => {})))
-  })
+  afterEach(() =>
+    runtime.run(async () => {
+      const ids = cleaned.splice(0)
+      await Promise.all(ids.map((id) => Session.remove(id).catch(() => {})))
+    }),
+  )
 
   function trackCleanup(sessionID: string) {
     cleaned.push(sessionID)
@@ -103,230 +107,244 @@ describe("loop-start parent contract (host runtime)", () => {
 
   // --- lifecycle + explicit parent → success ---
 
-  test("lifecycle actor + explicit parent starts lightloop.start", async () => {
-    const s = await setup(LIGHTLOOP_CAP)
-    let error: Error | undefined
-    try {
-      await s.invoke(
-        "lightloop.start",
-        {
-          parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
-          instructions: "test",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          reviewAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "lifecycle" },
-      )
-    } catch (e: any) {
-      error = e
-    }
-    expect(error?.message).not.toContain("requires a parent Session")
-  })
+  test("lifecycle actor + explicit parent starts lightloop.start", () =>
+    runtime.run(async () => {
+      const s = await setup(LIGHTLOOP_CAP)
+      let error: Error | undefined
+      try {
+        await s.invoke(
+          "lightloop.start",
+          {
+            parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
+            instructions: "test",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            reviewAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "lifecycle" },
+        )
+      } catch (e: any) {
+        error = e
+      }
+      expect(error?.message).not.toContain("requires a parent Session")
+    }))
 
-  test("lifecycle actor + explicit parent starts blueprint.start", async () => {
-    const s = await setup(BLUEPRINT_CAP)
-    let error: Error | undefined
-    try {
-      await s.invoke(
-        "blueprint.start",
-        {
-          parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
-          title: "test",
-          markdown: "# test",
-          sourceDigest: "abc",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          auditAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "lifecycle" },
-      )
-    } catch (e: any) {
-      error = e
-    }
-    expect(error?.message).not.toContain("requires a parent Session")
-  })
+  test("lifecycle actor + explicit parent starts blueprint.start", () =>
+    runtime.run(async () => {
+      const s = await setup(BLUEPRINT_CAP)
+      let error: Error | undefined
+      try {
+        await s.invoke(
+          "blueprint.start",
+          {
+            parent: { sessionId: s.parentSessionID, messageId: s.parentMessageID },
+            title: "test",
+            markdown: "# test",
+            sourceDigest: "abc",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            auditAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "lifecycle" },
+        )
+      } catch (e: any) {
+        error = e
+      }
+      expect(error?.message).not.toContain("requires a parent Session")
+    }))
 
   // --- lifecycle without parent → TASK_PARENT_REQUIRED ---
 
-  test("lifecycle actor without parent throws TASK_PARENT_REQUIRED for lightloop.start", async () => {
-    const s = await setup(LIGHTLOOP_CAP)
-    await expect(
-      s.invoke(
-        "lightloop.start",
-        {
-          instructions: "test",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          reviewAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "lifecycle" },
-      ),
-    ).rejects.toThrow("lightloop.start requires a parent Session and message")
-  })
+  test("lifecycle actor without parent throws TASK_PARENT_REQUIRED for lightloop.start", () =>
+    runtime.run(async () => {
+      const s = await setup(LIGHTLOOP_CAP)
+      await expect(
+        s.invoke(
+          "lightloop.start",
+          {
+            instructions: "test",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            reviewAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "lifecycle" },
+        ),
+      ).rejects.toThrow("lightloop.start requires a parent Session and message")
+    }))
 
-  test("lifecycle actor without parent throws TASK_PARENT_REQUIRED for blueprint.start", async () => {
-    const s = await setup(BLUEPRINT_CAP)
-    await expect(
-      s.invoke(
-        "blueprint.start",
-        {
-          title: "test",
-          markdown: "# test",
-          sourceDigest: "abc",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          auditAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "lifecycle" },
-      ),
-    ).rejects.toThrow("blueprint.start requires a parent Session and message")
-  })
+  test("lifecycle actor without parent throws TASK_PARENT_REQUIRED for blueprint.start", () =>
+    runtime.run(async () => {
+      const s = await setup(BLUEPRINT_CAP)
+      await expect(
+        s.invoke(
+          "blueprint.start",
+          {
+            title: "test",
+            markdown: "# test",
+            sourceDigest: "abc",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            auditAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "lifecycle" },
+        ),
+      ).rejects.toThrow("blueprint.start requires a parent Session and message")
+    }))
 
   // --- wrong-scope parent → SCOPE_MISMATCH ---
 
-  test("explicit parent from wrong scope throws SCOPE_MISMATCH for lightloop.start", async () => {
-    const s = await setup(LIGHTLOOP_CAP)
-    const wrong = await createWrongScopeSession()
-    await expect(
-      s.invoke(
-        "lightloop.start",
-        {
-          parent: { sessionId: wrong.sessionID, messageId: wrong.messageID },
-          instructions: "test",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          reviewAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "lifecycle" },
-      ),
-    ).rejects.toThrow("parent Session does not belong to the active Scope")
-  })
+  test("explicit parent from wrong scope throws SCOPE_MISMATCH for lightloop.start", () =>
+    runtime.run(async () => {
+      const s = await setup(LIGHTLOOP_CAP)
+      const wrong = await createWrongScopeSession()
+      await expect(
+        s.invoke(
+          "lightloop.start",
+          {
+            parent: { sessionId: wrong.sessionID, messageId: wrong.messageID },
+            instructions: "test",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            reviewAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "lifecycle" },
+        ),
+      ).rejects.toThrow("parent Session does not belong to the active Scope")
+    }))
 
-  test("explicit parent from wrong scope throws SCOPE_MISMATCH for blueprint.start", async () => {
-    const s = await setup(BLUEPRINT_CAP)
-    const wrong = await createWrongScopeSession()
-    await expect(
-      s.invoke(
-        "blueprint.start",
-        {
-          parent: { sessionId: wrong.sessionID, messageId: wrong.messageID },
-          title: "test",
-          markdown: "# test",
-          sourceDigest: "abc",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          auditAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "lifecycle" },
-      ),
-    ).rejects.toThrow("parent Session does not belong to the active Scope")
-  })
+  test("explicit parent from wrong scope throws SCOPE_MISMATCH for blueprint.start", () =>
+    runtime.run(async () => {
+      const s = await setup(BLUEPRINT_CAP)
+      const wrong = await createWrongScopeSession()
+      await expect(
+        s.invoke(
+          "blueprint.start",
+          {
+            parent: { sessionId: wrong.sessionID, messageId: wrong.messageID },
+            title: "test",
+            markdown: "# test",
+            sourceDigest: "abc",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            auditAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "lifecycle" },
+        ),
+      ).rejects.toThrow("parent Session does not belong to the active Scope")
+    }))
 
   // --- agent actor without parent → agent fallback ---
 
-  test("agent actor without explicit parent uses invocation session+message for lightloop.start", async () => {
-    const s = await setup(LIGHTLOOP_CAP)
-    let error: Error | undefined
-    try {
-      await s.invoke(
-        "lightloop.start",
-        {
-          instructions: "test",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          reviewAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "agent", agent: "test-agent", messageId: "fallback-msg", callId: "call-1" },
-      )
-    } catch (e: any) {
-      error = e
-    }
-    expect(error?.message).not.toContain("requires a parent Session")
-  })
+  test("agent actor without explicit parent uses invocation session+message for lightloop.start", () =>
+    runtime.run(async () => {
+      const s = await setup(LIGHTLOOP_CAP)
+      let error: Error | undefined
+      try {
+        await s.invoke(
+          "lightloop.start",
+          {
+            instructions: "test",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            reviewAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "agent", agent: "test-agent", messageId: "fallback-msg", callId: "call-1" },
+        )
+      } catch (e: any) {
+        error = e
+      }
+      expect(error?.message).not.toContain("requires a parent Session")
+    }))
 
-  test("agent actor without explicit parent uses invocation session+message for blueprint.start", async () => {
-    const s = await setup(BLUEPRINT_CAP)
-    let error: Error | undefined
-    try {
-      await s.invoke(
-        "blueprint.start",
-        {
-          title: "test",
-          markdown: "# test",
-          sourceDigest: "abc",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          auditAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "agent", agent: "test-agent", messageId: "fallback-msg", callId: "call-1" },
-      )
-    } catch (e: any) {
-      error = e
-    }
-    expect(error?.message).not.toContain("requires a parent Session")
-  })
+  test("agent actor without explicit parent uses invocation session+message for blueprint.start", () =>
+    runtime.run(async () => {
+      const s = await setup(BLUEPRINT_CAP)
+      let error: Error | undefined
+      try {
+        await s.invoke(
+          "blueprint.start",
+          {
+            title: "test",
+            markdown: "# test",
+            sourceDigest: "abc",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            auditAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "agent", agent: "test-agent", messageId: "fallback-msg", callId: "call-1" },
+        )
+      } catch (e: any) {
+        error = e
+      }
+      expect(error?.message).not.toContain("requires a parent Session")
+    }))
 
   // --- explicit parent takes precedence over agent fallback ---
 
-  test("explicit parent wins over agent actor fallback for lightloop.start", async () => {
-    const s = await setup(LIGHTLOOP_CAP)
-    const wrong = await createWrongScopeSession()
-    await expect(
-      s.invoke(
-        "lightloop.start",
-        {
-          parent: { sessionId: wrong.sessionID, messageId: wrong.messageID },
-          instructions: "test",
-          correlationId: "c1",
-          executionAgent: "nonexistent",
-          reviewAgent: "nonexistent",
-          budget: { maxRuntimeMs: 10000, maxIterations: 1 },
-        },
-        { type: "agent", agent: "test-agent", messageId: "fallback-msg", callId: "call-1" },
-      ),
-    ).rejects.toThrow("parent Session does not belong to the active Scope")
-  })
+  test("explicit parent wins over agent actor fallback for lightloop.start", () =>
+    runtime.run(async () => {
+      const s = await setup(LIGHTLOOP_CAP)
+      const wrong = await createWrongScopeSession()
+      await expect(
+        s.invoke(
+          "lightloop.start",
+          {
+            parent: { sessionId: wrong.sessionID, messageId: wrong.messageID },
+            instructions: "test",
+            correlationId: "c1",
+            executionAgent: "nonexistent",
+            reviewAgent: "nonexistent",
+            budget: { maxRuntimeMs: 10000, maxIterations: 1 },
+          },
+          { type: "agent", agent: "test-agent", messageId: "fallback-msg", callId: "call-1" },
+        ),
+      ).rejects.toThrow("parent Session does not belong to the active Scope")
+    }))
 
-  test("session.get rejects a Session from another Scope", async () => {
-    const s = await setup(SESSION_READ_CAP)
-    const wrong = await createWrongScopeSession()
+  test("session.get rejects a Session from another Scope", () =>
+    runtime.run(async () => {
+      const s = await setup(SESSION_READ_CAP)
+      const wrong = await createWrongScopeSession()
 
-    await expect(s.invoke("session.get", { sessionId: wrong.sessionID })).rejects.toMatchObject({
-      name: "PluginHostServiceError",
-      code: "PLUGIN_SESSION_SCOPE_MISMATCH",
-    })
-  })
+      await expect(s.invoke("session.get", { sessionId: wrong.sessionID })).rejects.toMatchObject({
+        name: "PluginHostServiceError",
+        code: "PLUGIN_SESSION_SCOPE_MISMATCH",
+      })
+    }))
 
-  test("session.abort rejects a Session from another Scope", async () => {
-    const s = await setup(SESSION_CONTROL_CAP)
-    const wrong = await createWrongScopeSession()
+  test("session.abort rejects a Session from another Scope", () =>
+    runtime.run(async () => {
+      const s = await setup(SESSION_CONTROL_CAP)
+      const wrong = await createWrongScopeSession()
 
-    await expect(s.invoke("session.abort", { sessionId: wrong.sessionID })).rejects.toMatchObject({
-      name: "PluginHostServiceError",
-      code: "PLUGIN_SESSION_SCOPE_MISMATCH",
-    })
-  })
+      await expect(s.invoke("session.abort", { sessionId: wrong.sessionID })).rejects.toMatchObject({
+        name: "PluginHostServiceError",
+        code: "PLUGIN_SESSION_SCOPE_MISMATCH",
+      })
+    }))
 
   // --- lightloop.get works from lifecycle ---
 
-  test("lightloop.get works from lifecycle context", async () => {
-    const s = await setup(LIGHTLOOP_CAP)
-    let error: Error | undefined
-    try {
-      await s.invoke("lightloop.get", { sessionID: "ses_nonexistent_loop" }, { type: "lifecycle" })
-    } catch (e: any) {
-      error = e
-    }
-    expect(error?.message).not.toContain("agent invocation context")
-    expect(error).toBeDefined()
-  })
+  test("lightloop.get works from lifecycle context", () =>
+    runtime.run(async () => {
+      const s = await setup(LIGHTLOOP_CAP)
+      let error: Error | undefined
+      try {
+        await s.invoke("lightloop.get", { sessionID: "ses_nonexistent_loop" }, { type: "lifecycle" })
+      } catch (e: any) {
+        error = e
+      }
+      expect(error?.message).not.toContain("agent invocation context")
+      expect(error).toBeDefined()
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -27,6 +27,9 @@ import { describe, expect, test, beforeAll, afterAll, beforeEach, afterEach } fr
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, openSync, writeSync, closeSync } from "node:fs"
 import { join } from "node:path"
 import os from "node:os"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
 // Dynamic import — the module does not exist yet (RED phase).
@@ -36,12 +39,15 @@ import os from "node:os"
 type GitHealthModule = typeof import("../../src/project/git-health")
 let GitHealth: GitHealthModule["GitHealth"]
 const GIT_HEALTH_TEST_TIMEOUT = 30_000
-const gitHealthTest = test.serial
+const gitHealthTest = (name: string, fn: () => void | Promise<unknown>, timeout?: number) =>
+  test.serial(name, () => runtime.run(fn), timeout)
 
-beforeAll(async () => {
-  const mod = await import("../../src/project/git-health")
-  GitHealth = mod.GitHealth
-})
+beforeAll(() =>
+  runtime.run(async () => {
+    const mod = await import("../../src/project/git-health")
+    GitHealth = mod.GitHealth
+  }),
+)
 
 // ---------------------------------------------------------------------------
 // Local Issue interface matching the contract for type-safe test assertions.
@@ -892,3 +898,5 @@ describe("GitHealth.check — unpushed commits", () => {
     }
   })
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -42,6 +42,10 @@ async function evaluateWithTelemetry(level: "INFO" | "DEBUG", logMirror = false)
     import { ObservabilityStore } from "./src/observability/store.ts"
     import { PermissionNext } from "./src/permission/next.ts"
 
+    import { RuntimeContext } from "./src/lifecycle/context.ts"
+    const home = process.env.SYNERGY_TEST_HOME!
+    const runtime = RuntimeContext.create({ home, root: home + "/.synergy", env: { ...process.env } })
+    await runtime.run(async () => {
     await Log.init({ print: false, dev: true, level: "${level}" })
     ObservabilityConfig.refresh({ observability: { logMirror: ${logMirror} } })
 
@@ -63,7 +67,10 @@ async function evaluateWithTelemetry(level: "INFO" | "DEBUG", logMirror = false)
     })
     const data = event ? JSON.parse(event.data_json) : undefined
     ObservabilityStore.close()
+    await Log.close()
     process.stdout.write(JSON.stringify({ action, data, permission, sensitivePattern }))
+    })
+    runtime.dispose()
   `
   const env = { ...process.env }
   delete env.SYNERGY_HOME

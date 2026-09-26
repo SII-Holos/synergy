@@ -184,7 +184,7 @@ export function zodTypeOf(expr: string): string | null {
   const object = trimmed.match(/^z\s*\.\s*(strictObject|object)\s*\(/)
   if (object) return "object"
   const simple = trimmed.match(
-    /^z\s*\.\s*(string|number|boolean|bigint|date|literal|lazy|never|any|unknown|void|null|undefined)\s*\(/,
+    /^z\s*\.\s*(?:coerce\s*\.\s*)?(string|number|boolean|bigint|date|literal|lazy|never|any|unknown|void|null|undefined)\s*\(/,
   )
   if (simple) return simple[1]!
   const array = trimmed.match(/^z\s*\.\s*array\s*\(/)
@@ -280,7 +280,7 @@ export function parseObjectFields(block: string): ObjectField[] {
     if (!match) continue
     const name = match[1]!
     let expr = match[2]!.trim()
-    if (expr === "z" || expr.endsWith(".")) {
+    if (expr === "z" || expr.endsWith(".") || lines[i + 1]?.trimStart().startsWith(".")) {
       const indent = line.length - line.trimStart().length
       let j = i + 1
       while (j < lines.length) {

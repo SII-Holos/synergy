@@ -8,6 +8,9 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { LocalBashBackend } from "@ericsanchezok/synergy-runtime-local/tools/bash/local"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // Regression for issue #1006: the bash detached-daemon guard must honor the
 // session-effective control profile (session > agent config), not the static
@@ -46,21 +49,23 @@ function bashRegistryTool() {
 
 async function resolveBashTool(sessionID: string) {
   const session = await Session.get(sessionID)
+  const assistantMessage = {
+    id: "msg_tool_resolver_profile",
+    sessionID,
+    role: "assistant" as const,
+    parentID: "msg_user",
+    modelID: "test-model",
+    providerID: "test-provider",
+    mode: "build",
+    agent: "synergy",
+    path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    time: { created: 0 },
+  }
+  await Session.updateMessage(assistantMessage)
   const processor = SessionProcessor.create({
-    assistantMessage: {
-      id: "msg_tool_resolver_profile",
-      sessionID,
-      role: "assistant",
-      parentID: "msg_user",
-      modelID: "test-model",
-      providerID: "test-provider",
-      mode: "build",
-      agent: "synergy",
-      path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
-      cost: 0,
-      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      time: { created: 0 },
-    },
+    assistantMessage,
     sessionID,
     model,
     abort: new AbortController().signal,
@@ -82,58 +87,62 @@ async function resolveBashTool(sessionID: string) {
   }
 }
 
-test("bash detached daemon guard honors session full_access over agent guarded", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const session = await Session.create({ controlProfile: "full_access" })
-      try {
-        const { processor, bash } = await resolveBashTool(session.id)
+test("bash detached daemon guard honors session full_access over agent guarded", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const session = await Session.create({ controlProfile: "full_access" })
         try {
-          const result = await bash.execute(
-            { command: "nohup echo allowed > daemon.log 2>&1", description: "Launch daemon" },
-            { toolCallId: "call_bash_nohup" },
-          )
-          expect(result.metadata.exit).toBe(0)
+          const { processor, bash } = await resolveBashTool(session.id)
+          try {
+            const result = await bash.execute(
+              { command: "nohup echo allowed > daemon.log 2>&1", description: "Launch daemon" },
+              { toolCallId: "call_bash_nohup" },
+            )
+            expect(result.metadata.exit).toBe(0)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          await Session.remove(session.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
         }
-      } finally {
-        await Session.remove(session.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-      }
-    },
-  })
-})
+      },
+    })
+  }))
 
-test("bash detached daemon guard honors inherited session full_access", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const parent = await Session.create({ controlProfile: "full_access" })
-      const child = await Session.create({ parentID: parent.id })
-      try {
-        const { processor, bash } = await resolveBashTool(child.id)
+test("bash detached daemon guard honors inherited session full_access", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const parent = await Session.create({ controlProfile: "full_access" })
+        const child = await Session.create({ parentID: parent.id })
         try {
-          const result = await bash.execute(
-            { command: "nohup echo allowed > daemon.log 2>&1", description: "Launch daemon" },
-            { toolCallId: "call_bash_setsid" },
-          )
-          expect(result.metadata.exit).toBe(0)
+          const { processor, bash } = await resolveBashTool(child.id)
+          try {
+            const result = await bash.execute(
+              { command: "nohup echo allowed > daemon.log 2>&1", description: "Launch daemon" },
+              { toolCallId: "call_bash_setsid" },
+            )
+            expect(result.metadata.exit).toBe(0)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          await Session.remove(child.id)
+          await Session.remove(parent.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
         }
-      } finally {
-        await Session.remove(child.id)
-        await Session.remove(parent.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-      }
-    },
-  })
-})
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

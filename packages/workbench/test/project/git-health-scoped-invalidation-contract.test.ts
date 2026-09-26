@@ -24,6 +24,9 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import os from "node:os"
 import { $ } from "bun"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
 // Dynamic import — GitHealth module only, no session chain
@@ -31,12 +34,15 @@ import { $ } from "bun"
 type GitHealthModule = typeof import("../../src/project/git-health")
 let GitHealth: GitHealthModule["GitHealth"]
 const GIT_HEALTH_TEST_TIMEOUT = 30_000
-const gitHealthTest = test.serial
+const gitHealthTest = (name: string, fn: () => void | Promise<unknown>, timeout?: number) =>
+  test.serial(name, () => runtime.run(fn), timeout)
 
-beforeAll(async () => {
-  const mod = await import("../../src/project/git-health")
-  GitHealth = mod.GitHealth
-})
+beforeAll(() =>
+  runtime.run(async () => {
+    const mod = await import("../../src/project/git-health")
+    GitHealth = mod.GitHealth
+  }),
+)
 
 // ---------------------------------------------------------------------------
 // Local Issue interface
@@ -174,3 +180,5 @@ describe("GitHealth.invalidate — scoped vs global contract", () => {
     GIT_HEALTH_TEST_TIMEOUT,
   )
 })
+
+afterRuntimeTests(() => runtime.close())

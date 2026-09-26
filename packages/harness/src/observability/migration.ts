@@ -779,4 +779,6 @@ const migrations: Migration[] = [
   },
 ]
 
-MigrationRegistry.register("observability", migrations)
+export function registerObservabilityMigrations() {
+  MigrationRegistry.register("observability", migrations)
+}

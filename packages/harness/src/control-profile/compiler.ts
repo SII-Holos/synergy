@@ -14,9 +14,6 @@ export namespace ControlProfileCompiler {
   }
 
   export async function resolve(id: ProfileIdInput | string, context: ResolutionContext): Promise<ResolvedProfile> {
-    if (!context.workspace) {
-      throw new Error("workspace context is required to resolve a profile")
-    }
     return buildProfile(id, context)
   }
 }

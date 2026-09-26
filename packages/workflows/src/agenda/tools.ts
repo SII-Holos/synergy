@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "../tool-group-agenda"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { AgendaScheduleTool } from "./tools/agenda-schedule"
@@ -11,12 +12,16 @@ import { AgendaLogsTool } from "./tools/agenda-logs"
 /**
  * Agenda domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerAgendaTools(): void {
+  const instanceState = runtimeState()
+
   registerToolGroup()
-  if (registered) return
-  registered = true
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ToolRegistry.registerToolProvider("agenda", () => [
     AgendaScheduleTool,

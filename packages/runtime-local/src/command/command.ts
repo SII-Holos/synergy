@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -85,17 +86,23 @@ export namespace Command {
   export const NotFoundError = NamedError.create("CommandNotFoundError", z.object({ name: z.string() }))
   export const UnknownActionError = NamedError.create("CommandUnknownActionError", z.object({ action: z.string() }))
 
-  const actionHandlers = new Map<string, ActionHandler>()
+  const runtimeState = RuntimeContext.state(() => ({
+    actionHandlers: new Map<string, ActionHandler>(),
+  }))
 
   export function registerAction(action: string, handler: ActionHandler) {
-    actionHandlers.set(action, handler)
+    const instanceState = runtimeState()
+
+    instanceState.actionHandlers.set(action, handler)
     return () => {
-      if (actionHandlers.get(action) === handler) actionHandlers.delete(action)
+      if (instanceState.actionHandlers.get(action) === handler) instanceState.actionHandlers.delete(action)
     }
   }
 
   export async function runAction(input: { action: string; input: ActionInput; command?: Info }) {
-    const handler = actionHandlers.get(input.action)
+    const instanceState = runtimeState()
+
+    const handler = instanceState.actionHandlers.get(input.action)
     if (!handler) throw new UnknownActionError({ action: input.action })
     const command =
       input.command ??
@@ -137,10 +144,12 @@ export namespace Command {
     WORKTREE: "worktree",
   } as const
 
-  registerAction(Default.WORKTREE, async (input) => {
-    const { WorktreeCommand } = await import("../workspace/worktree-command")
-    return WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments))
-  })
+  export function registerActions() {
+    registerAction(Default.WORKTREE, async (input) => {
+      const { WorktreeCommand } = await import("../workspace/worktree-command")
+      return WorktreeCommand.run(WorktreeCommand.parse(input.sessionID, input.arguments))
+    })
+  }
 
   const subscriptions = ScopedState.create(
     () => {

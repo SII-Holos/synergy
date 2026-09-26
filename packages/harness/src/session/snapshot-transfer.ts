@@ -72,7 +72,7 @@ export namespace SnapshotTransfer {
       const catalog = new Catalog(target, await fs.mkdtemp(path.join(root, "inventory-")), options.selective)
       try {
         if (options.selective) return catalog
-        const insert = catalog.db.prepare("INSERT OR IGNORE INTO known VALUES (?)")
+        using insert = catalog.db.prepare("INSERT OR IGNORE INTO known VALUES (?)")
         for await (const oid of SnapshotGit.lines(
           target,
           ["cat-file", "--batch-all-objects", "--batch-check=%(objectname)"],
@@ -94,7 +94,7 @@ export namespace SnapshotTransfer {
       const format = await SnapshotGit.checked(source, ["rev-parse", "--show-object-format"], options)
       if (format !== "sha1") throw new SnapshotStore.StorageError("Unsupported legacy snapshot object format")
       this.db.exec("DELETE FROM incoming; DELETE FROM covered")
-      const insert = this.db.prepare("INSERT OR IGNORE INTO incoming VALUES (?, ?)")
+      using insert = this.db.prepare("INSERT OR IGNORE INTO incoming VALUES (?, ?)")
       if (options.roots) {
         const roots = new Set(options.roots)
         const rootFile = path.join(this.directory, "roots")
@@ -137,7 +137,7 @@ export namespace SnapshotTransfer {
         } finally {
           await writer.end()
         }
-        const known = this.db.prepare("INSERT OR IGNORE INTO known VALUES (?)")
+        using known = this.db.prepare("INSERT OR IGNORE INTO known VALUES (?)")
         for await (const line of SnapshotGit.lines(
           this.target,
           ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
@@ -242,7 +242,7 @@ export namespace SnapshotTransfer {
           await SnapshotGit.checked(this.target, update, { signal, input: refsFile })
           if (options.packReferences) await this.queueReferences(refsFile)
         }
-        const cover = this.db.prepare("INSERT OR IGNORE INTO covered VALUES (?)")
+        using cover = this.db.prepare("INSERT OR IGNORE INTO covered VALUES (?)")
         for await (const oid of SnapshotGit.lines(
           this.target,
           ["rev-list", "--objects", "--no-object-names", "--stdin"],
@@ -358,7 +358,9 @@ export namespace SnapshotTransfer {
     }
 
     async [Symbol.asyncDispose]() {
-      this.db.close()
+      // Unfinalized statements defer native closure and prevent Windows from deleting the inventory.
+      // Provenance: https://bun.com/reference/bun/sqlite/Database/close
+      this.db.close(true)
       await fs.rm(this.directory, { recursive: true, force: true })
     }
   }

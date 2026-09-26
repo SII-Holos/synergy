@@ -10,14 +10,20 @@ import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
 const originalInvoke = SessionInvoke.invoke
 const originalDriveRequest = SessionDrive.request
 
-afterEach(() => {
-  AgendaSessionTrigger.stop()
-  ;(SessionInvoke.invoke as typeof SessionInvoke.invoke) = originalInvoke
-  ;(SessionDrive.request as typeof SessionDrive.request) = originalDriveRequest
-})
+afterEach(() =>
+  runtime.run(() => {
+    AgendaSessionTrigger.stop()
+    ;(SessionInvoke.invoke as typeof SessionInvoke.invoke) = originalInvoke
+    ;(SessionDrive.request as typeof SessionDrive.request) = originalDriveRequest
+  }),
+)
 
 async function waitUntil(check: () => boolean, timeoutMs = 2000): Promise<void> {
   const deadline = Date.now() + timeoutMs
@@ -44,9 +50,8 @@ function makeItem(id: string, triggers: AgendaTypes.Trigger[], scopeID = "scope-
       scope: {
         type: "project",
         id: scopeID,
-        directory: "/tmp",
-        worktree: "/tmp",
-        sandboxes: [],
+        local: { directory: "/tmp", worktree: "/tmp", sandboxes: [] },
+
         time: { created: now, updated: now },
       },
     },
@@ -94,32 +99,36 @@ function sessionTrigger(overrides: Partial<AgendaTypes.Trigger & { type: "sessio
 // ---------------------------------------------------------------------------
 
 describe("register / unregister / active", () => {
-  test("register with a session trigger shows one entry", () => {
-    AgendaSessionTrigger.register("item-1", "scope-1", [sessionTrigger()])
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
-  })
+  test("register with a session trigger shows one entry", () =>
+    runtime.run(() => {
+      AgendaSessionTrigger.register("item-1", "scope-1", [sessionTrigger()])
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
+    }))
 
-  test("register with non-session triggers is ignored", () => {
-    const triggers: AgendaTypes.Trigger[] = [
-      { type: "cron", expr: "0 9 * * *" },
-      { type: "every", interval: "30m" },
-    ]
-    AgendaSessionTrigger.register("item-2", "scope-1", triggers)
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
-  })
+  test("register with non-session triggers is ignored", () =>
+    runtime.run(() => {
+      const triggers: AgendaTypes.Trigger[] = [
+        { type: "cron", expr: "0 9 * * *" },
+        { type: "every", interval: "30m" },
+      ]
+      AgendaSessionTrigger.register("item-2", "scope-1", triggers)
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
+    }))
 
-  test("unregister removes all entries for an item", () => {
-    AgendaSessionTrigger.register("item-3", "scope-1", [sessionTrigger()])
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
-    AgendaSessionTrigger.unregister("item-3")
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
-  })
+  test("unregister removes all entries for an item", () =>
+    runtime.run(() => {
+      AgendaSessionTrigger.register("item-3", "scope-1", [sessionTrigger()])
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
+      AgendaSessionTrigger.unregister("item-3")
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
+    }))
 
-  test("two items watching the same session share one session key", () => {
-    AgendaSessionTrigger.register("item-a", "scope-1", [sessionTrigger()])
-    AgendaSessionTrigger.register("item-b", "scope-2", [sessionTrigger()])
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 2 })
-  })
+  test("two items watching the same session share one session key", () =>
+    runtime.run(() => {
+      AgendaSessionTrigger.register("item-a", "scope-1", [sessionTrigger()])
+      AgendaSessionTrigger.register("item-b", "scope-2", [sessionTrigger()])
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 2 })
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -127,24 +136,27 @@ describe("register / unregister / active", () => {
 // ---------------------------------------------------------------------------
 
 describe("start / stop lifecycle", () => {
-  test("start registers items with session triggers", () => {
-    const items = [makeItem("item-b", [sessionTrigger()])]
-    AgendaSessionTrigger.start(noop, items)
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
-  })
+  test("start registers items with session triggers", () =>
+    runtime.run(() => {
+      const items = [makeItem("item-b", [sessionTrigger()])]
+      AgendaSessionTrigger.start(noop, items)
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
+    }))
 
-  test("start with items that have no session triggers gives zero entries", () => {
-    const items = [makeItem("item-c", [{ type: "cron", expr: "0 9 * * *" }])]
-    AgendaSessionTrigger.start(noop, items)
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
-  })
+  test("start with items that have no session triggers gives zero entries", () =>
+    runtime.run(() => {
+      const items = [makeItem("item-c", [{ type: "cron", expr: "0 9 * * *" }])]
+      AgendaSessionTrigger.start(noop, items)
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
+    }))
 
-  test("stop clears everything", () => {
-    AgendaSessionTrigger.start(noop, [makeItem("item-d", [sessionTrigger()])])
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
-    AgendaSessionTrigger.stop()
-    expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
-  })
+  test("stop clears everything", () =>
+    runtime.run(() => {
+      AgendaSessionTrigger.start(noop, [makeItem("item-d", [sessionTrigger()])])
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 1, entries: 1 })
+      AgendaSessionTrigger.stop()
+      expect(AgendaSessionTrigger.active()).toEqual({ sessions: 0, entries: 0 })
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -152,135 +164,144 @@ describe("start / stop lifecycle", () => {
 // ---------------------------------------------------------------------------
 
 describe("event matching", () => {
-  test("matching sessionID and event fires handler with session signal", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    const handler = async (signal: AgendaTypes.FiredSignal, scopeID: string) => {
-      calls.push({ signal, scopeID })
-    }
+  test("matching sessionID and event fires handler with session signal", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      const handler = async (signal: AgendaTypes.FiredSignal, scopeID: string) => {
+        calls.push({ signal, scopeID })
+      }
 
-    AgendaSessionTrigger.start(handler, [])
-    AgendaSessionTrigger.register("item-1", "scope-1", [sessionTrigger()])
+      AgendaSessionTrigger.start(handler, [])
+      AgendaSessionTrigger.register("item-1", "scope-1", [sessionTrigger()])
 
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1", finish: "stop", agent: "research" })
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1", finish: "stop", agent: "research" })
 
-    await waitUntil(() => calls.length === 1)
-    expect(calls[0]!.signal.type).toBe("session")
-    expect(calls[0]!.signal.source).toBe("item-1")
-    expect(calls[0]!.signal.payload).toEqual({
-      sessionID: "ses_research",
-      messageID: "msg_1",
-      finish: "stop",
-      agent: "research",
-    })
-    expect(calls[0]!.scopeID).toBe("scope-1")
-  })
+      await waitUntil(() => calls.length === 1)
+      expect(calls[0]!.signal.type).toBe("session")
+      expect(calls[0]!.signal.source).toBe("item-1")
+      expect(calls[0]!.signal.payload).toEqual({
+        sessionID: "ses_research",
+        messageID: "msg_1",
+        finish: "stop",
+        agent: "research",
+      })
+      expect(calls[0]!.scopeID).toBe("scope-1")
+    }))
 
-  test("turn.end trigger does not fire on turn.start events", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-2", "scope-1", [sessionTrigger()])
+  test("turn.end trigger does not fire on turn.start events", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-2", "scope-1", [sessionTrigger()])
 
-    await publishTurnStart({ sessionID: "ses_research", messageID: "msg_1" })
-    await Bun.sleep(50)
-    expect(calls).toHaveLength(0)
-  })
+      await publishTurnStart({ sessionID: "ses_research", messageID: "msg_1" })
+      await Bun.sleep(50)
+      expect(calls).toHaveLength(0)
+    }))
 
-  test("turn.start trigger fires on turn.start events", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-3", "scope-1", [sessionTrigger({ event: "turn.start" })])
+  test("turn.start trigger fires on turn.start events", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-3", "scope-1", [sessionTrigger({ event: "turn.start" })])
 
-    await publishTurnStart({ sessionID: "ses_research", messageID: "msg_1", agent: "research" })
+      await publishTurnStart({ sessionID: "ses_research", messageID: "msg_1", agent: "research" })
 
-    await waitUntil(() => calls.length === 1)
-    expect(calls[0]!.signal.payload).toMatchObject({ sessionID: "ses_research", messageID: "msg_1" })
-  })
+      await waitUntil(() => calls.length === 1)
+      expect(calls[0]!.signal.payload).toMatchObject({ sessionID: "ses_research", messageID: "msg_1" })
+    }))
 
-  test("non-matching sessionID does NOT fire", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-4", "scope-1", [sessionTrigger()])
+  test("non-matching sessionID does NOT fire", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-4", "scope-1", [sessionTrigger()])
 
-    await publishTurnEnd({ sessionID: "ses_other", messageID: "msg_1" })
-    await Bun.sleep(50)
-    expect(calls).toHaveLength(0)
-  })
+      await publishTurnEnd({ sessionID: "ses_other", messageID: "msg_1" })
+      await Bun.sleep(50)
+      expect(calls).toHaveLength(0)
+    }))
 
-  test("agent filter rejects non-matching agent", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-5", "scope-1", [sessionTrigger({ agent: "research" })])
+  test("agent filter rejects non-matching agent", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-5", "scope-1", [sessionTrigger({ agent: "research" })])
 
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1", agent: "boss" })
-    await Bun.sleep(50)
-    expect(calls).toHaveLength(0)
-  })
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1", agent: "boss" })
+      await Bun.sleep(50)
+      expect(calls).toHaveLength(0)
+    }))
 
-  test("finish filter rejects non-matching finish", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-6", "scope-1", [sessionTrigger({ finish: "stop" })])
+  test("finish filter rejects non-matching finish", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-6", "scope-1", [sessionTrigger({ finish: "stop" })])
 
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1", finish: "error" })
-    await Bun.sleep(50)
-    expect(calls).toHaveLength(0)
-  })
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1", finish: "error" })
+      await Bun.sleep(50)
+      expect(calls).toHaveLength(0)
+    }))
 
-  test("messageID dedup — duplicate TurnEnd for the same turn fires once", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-7", "scope-1", [sessionTrigger()])
+  test("messageID dedup — duplicate TurnEnd for the same turn fires once", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-7", "scope-1", [sessionTrigger()])
 
-    // processor and invoke both publish TurnEnd for the same assistant message
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
+      // processor and invoke both publish TurnEnd for the same assistant message
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
 
-    await waitUntil(() => calls.length === 1)
-    expect(calls[0]!.signal.payload).toMatchObject({ messageID: "msg_1" })
-  })
+      await waitUntil(() => calls.length === 1)
+      expect(calls[0]!.signal.payload).toMatchObject({ messageID: "msg_1" })
+    }))
 
-  test("a later turn with a new messageID fires again", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-8", "scope-1", [sessionTrigger({ once: false })])
+  test("a later turn with a new messageID fires again", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-8", "scope-1", [sessionTrigger({ once: false })])
 
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_2" })
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_2" })
 
-    await waitUntil(() => calls.length === 2)
-  })
+      await waitUntil(() => calls.length === 2)
+    }))
 
-  test("same item with turn.start + turn.end both fire for the same turn", async () => {
-    const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
-    AgendaSessionTrigger.start(async (signal, scopeID) => {
-      calls.push({ signal, scopeID })
-    }, [])
-    AgendaSessionTrigger.register("item-dual", "scope-1", [
-      sessionTrigger({ event: "turn.start" }),
-      sessionTrigger({ event: "turn.end" }),
-    ])
+  test("same item with turn.start + turn.end both fire for the same turn", () =>
+    runtime.run(async () => {
+      const calls: Array<{ signal: AgendaTypes.FiredSignal; scopeID: string }> = []
+      AgendaSessionTrigger.start(async (signal, scopeID) => {
+        calls.push({ signal, scopeID })
+      }, [])
+      AgendaSessionTrigger.register("item-dual", "scope-1", [
+        sessionTrigger({ event: "turn.start" }),
+        sessionTrigger({ event: "turn.end" }),
+      ])
 
-    await publishTurnStart({ sessionID: "ses_research", messageID: "msg_1" })
-    await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
+      await publishTurnStart({ sessionID: "ses_research", messageID: "msg_1" })
+      await publishTurnEnd({ sessionID: "ses_research", messageID: "msg_1" })
 
-    await waitUntil(() => calls.length === 2)
-    const events = calls.map((c) => c.signal.payload).map((p) => (p as { messageID: string }).messageID)
-    expect(events).toEqual(["msg_1", "msg_1"])
-  })
+      await waitUntil(() => calls.length === 2)
+      const events = calls.map((c) => c.signal.payload).map((p) => (p as { messageID: string }).messageID)
+      expect(events).toEqual(["msg_1", "msg_1"])
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -288,19 +309,22 @@ describe("event matching", () => {
 // ---------------------------------------------------------------------------
 
 describe("session mode inference", () => {
-  test("once:true session trigger defaults to ephemeral", () => {
-    expect(AgendaTypes.inferSessionMode([sessionTrigger({ once: true })])).toBe("ephemeral")
-  })
+  test("once:true session trigger defaults to ephemeral", () =>
+    runtime.run(() => {
+      expect(AgendaTypes.inferSessionMode([sessionTrigger({ once: true })])).toBe("ephemeral")
+    }))
 
-  test("once:false session trigger defaults to persistent", () => {
-    expect(AgendaTypes.inferSessionMode([sessionTrigger({ once: false })])).toBe("persistent")
-  })
+  test("once:false session trigger defaults to persistent", () =>
+    runtime.run(() => {
+      expect(AgendaTypes.inferSessionMode([sessionTrigger({ once: false })])).toBe("persistent")
+    }))
 
-  test("mixed session + cron defaults to persistent", () => {
-    expect(AgendaTypes.inferSessionMode([sessionTrigger({ once: true }), { type: "cron", expr: "0 9 * * *" }])).toBe(
-      "persistent",
-    )
-  })
+  test("mixed session + cron defaults to persistent", () =>
+    runtime.run(() => {
+      expect(AgendaTypes.inferSessionMode([sessionTrigger({ once: true }), { type: "cron", expr: "0 9 * * *" }])).toBe(
+        "persistent",
+      )
+    }))
 })
 
 // ---------------------------------------------------------------------------
@@ -308,61 +332,64 @@ describe("session mode inference", () => {
 // ---------------------------------------------------------------------------
 
 describe("end-to-end", () => {
-  test("publishing TurnEnd for the watched session runs the agenda item", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const origin = await Session.create({ title: "boss" })
-        let invokeCalls = 0
-        ;(SessionInvoke.invoke as unknown as (...args: unknown[]) => unknown) = mock(async () => {
-          invokeCalls++
-          return { info: { id: "exec-msg" }, parts: [] }
-        })
-        // Delivery calls SessionDrive.request with waitForProcessing on the origin
-        // session, which has no running loop in this test — mock it to resolve.
-        ;(SessionDrive.request as unknown as (...args: unknown[]) => unknown) = mock(async () => true)
+  test("publishing TurnEnd for the watched session runs the agenda item", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const origin = await Session.create({ title: "boss" })
+          let invokeCalls = 0
+          ;(SessionInvoke.invoke as unknown as (...args: unknown[]) => unknown) = mock(async () => {
+            invokeCalls++
+            return { info: { id: "exec-msg" }, parts: [] }
+          })
+          // Delivery calls SessionDrive.request with waitForProcessing on the origin
+          // session, which has no running loop in this test — mock it to resolve.
+          ;(SessionDrive.request as unknown as (...args: unknown[]) => unknown) = mock(async () => true)
 
-        const item = await AgendaStore.create({
-          title: "report research",
-          prompt: "Summarize the research session's turn.",
-          triggers: [{ type: "session", sessionID: "ses_research", event: "turn.end", once: true }],
-          createdBy: "agent",
-          sessionID: origin.id,
-        })
+          const item = await AgendaStore.create({
+            title: "report research",
+            prompt: "Summarize the research session's turn.",
+            triggers: [{ type: "session", sessionID: "ses_research", event: "turn.end", once: true }],
+            createdBy: "agent",
+            sessionID: origin.id,
+          })
 
-        const fired: AgendaTypes.FiredSignal[] = []
-        let reactorDone = false
-        AgendaSessionTrigger.start(
-          async (signal, scopeID) => {
-            fired.push(signal)
-            await AgendaReactor.execute(signal, scopeID)
-            reactorDone = true
-          },
-          [item],
-        )
+          const fired: AgendaTypes.FiredSignal[] = []
+          let reactorDone = false
+          AgendaSessionTrigger.start(
+            async (signal, scopeID) => {
+              fired.push(signal)
+              await AgendaReactor.execute(signal, scopeID)
+              reactorDone = true
+            },
+            [item],
+          )
 
-        await Bus.publish(SessionEvent.TurnEnd, {
-          sessionID: "ses_research",
-          messageID: "msg_1",
-          finish: "stop",
-          agent: "research",
-        })
+          await Bus.publish(SessionEvent.TurnEnd, {
+            sessionID: "ses_research",
+            messageID: "msg_1",
+            finish: "stop",
+            agent: "research",
+          })
 
-        // Wait for the full reactor run (session creation + invoke + run-state update)
-        await waitUntil(() => reactorDone)
+          // Wait for the full reactor run (session creation + invoke + run-state update)
+          await waitUntil(() => reactorDone)
 
-        expect(invokeCalls).toBe(1)
-        expect(fired).toHaveLength(1)
-        expect(fired[0]!.type).toBe("session")
-        expect(fired[0]!.payload).toMatchObject({ sessionID: "ses_research", messageID: "msg_1", finish: "stop" })
+          expect(invokeCalls).toBe(1)
+          expect(fired).toHaveLength(1)
+          expect(fired[0]!.type).toBe("session")
+          expect(fired[0]!.payload).toMatchObject({ sessionID: "ses_research", messageID: "msg_1", finish: "stop" })
 
-        const stored = await AgendaStore.get(ScopeContext.current.scope.id, item.id)
-        expect(stored.state.runCount).toBe(1)
-        expect(stored.state.lastRunStatus).toBe("ok")
-        // once:true + no time triggers → auto-done after the first fire
-        expect(stored.status).toBe("done")
-      },
-    })
-  })
+          const stored = await AgendaStore.get(ScopeContext.current.scope.id, item.id)
+          expect(stored.state.runCount).toBe(1)
+          expect(stored.state.lastRunStatus).toBe("ok")
+          // once:true + no time triggers → auto-done after the first fire
+          expect(stored.status).toBe("done")
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

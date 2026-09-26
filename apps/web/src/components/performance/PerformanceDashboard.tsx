@@ -37,6 +37,7 @@ import {
 import { P } from "./performance-i18n"
 import { performanceSummaryCardModel } from "./summary-card-model"
 import { usePerformance } from "./use-performance"
+import { PerformanceSnapshotBoundary, SnapshotErrorDetails } from "./snapshot-boundary"
 import { runtimeSupportItems } from "./runtime-support"
 import { toolFailureCategories, type ToolFailureItem } from "./tool-failure-model"
 import type {
@@ -119,14 +120,20 @@ export function PerformanceDashboard() {
             ? _(P.snapshotFrom.id, { time: formatTime(summary()?.generatedAt, fmt) })
             : _(P.snapshotLabel)}
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <TimeRangeControl value={perf.windowMs()} onChange={(value) => perf.setWindowMs(value)} />
           <Button
             type="button"
             variant="secondary"
             size="small"
             icon={getSemanticIcon("performance.analysis")}
-            disabled={perf.analysisStarting() || isPerformanceAnalysisActive(perf.analysis()?.status)}
+            disabled={
+              !summary() ||
+              perf.loading ||
+              !!perf.error() ||
+              perf.analysisStarting() ||
+              isPerformanceAnalysisActive(perf.analysis()?.status)
+            }
             onClick={() => void perf.startAnalysis()}
           >
             {perf.analysisStarting() || isPerformanceAnalysisActive(perf.analysis()?.status)
@@ -141,16 +148,11 @@ export function PerformanceDashboard() {
             disabled={perf.loading}
             onClick={() => void perf.refresh()}
           >
-            {_(P.refresh)}
+            {perf.error() && summary() ? _(P.retry) : _(P.refresh)}
           </Button>
         </div>
       </div>
 
-      <Show when={perf.error()}>
-        <div class="performance-card rounded-xl px-4 py-3 text-12-regular text-icon-warning-base">{perf.error()}</div>
-      </Show>
-
-      <SummaryQualityNotice _={_} summary={summary()} />
       <PerformanceAnalysisCard
         _={_}
         analysis={perf.analysis()}
@@ -158,142 +160,189 @@ export function PerformanceDashboard() {
         starting={perf.analysisStarting()}
         onCancel={() => void perf.cancelAnalysis()}
       />
-      <SummaryCards _={_} summary={summary()} />
-      <ResourceOwnership _={_} summary={summary()} />
-      <RuntimeSupport _={_} summary={summary()} />
+      <PerformanceSnapshotBoundary
+        generatedAt={summary()?.generatedAt}
+        attemptedAt={perf.attemptedAt()}
+        loading={perf.loading}
+        error={perf.error()}
+        formatTime={(value) => formatTime(value, fmt)}
+        onRetry={() => void perf.refresh()}
+      >
+        <SummaryQualityNotice _={_} summary={summary()} />
+        <SummaryCards _={_} summary={summary()} />
+        <ResourceOwnership _={_} summary={summary()} />
+        <RuntimeSupport _={_} summary={summary()} />
 
-      <div class="performance-chart-grid">
-        <PerformanceLineChart
-          _={_}
-          title={P.chartCpu}
-          description={P.chartCpuDesc}
-          points={resourcePressurePoints(perf.timeline())}
-          datasets={[
-            percentDataset("CPU", "cpu", chartColors().cpu, "Timeline process.cpu.utilization"),
-            durationDataset(
-              "Event loop",
-              "eventLoopLag",
-              chartColors().request,
-              "Timeline process.event_loop.lag",
-              "p95",
-            ),
-          ]}
-          quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
-        />
-        <PerformanceLineChart
-          _={_}
-          title={P.chartMemory}
-          description={P.chartMemoryDesc}
-          points={memoryPoints(perf.timeline(), summary())}
-          datasets={[
-            megabytesDataset(_(P.datasetRss), "memory", chartColors().memory, "Timeline process.memory.rss"),
-            megabytesDataset(
-              _(P.datasetHeapUsed),
-              "heapUsed",
-              chartColors().browser,
-              "Timeline process.memory.heap_used",
-            ),
-            megabytesDataset(
-              _(P.datasetHeapTotal),
-              "heapTotal",
-              chartColors().disk,
-              "Timeline process.memory.heap_total",
-            ),
-            megabytesDataset(
-              _(P.datasetExternal),
-              "external",
-              chartColors().request,
-              "Timeline process.memory.external",
-            ),
-            megabytesDataset(
-              _(P.datasetArrayBuffers),
-              "arrayBuffers",
-              chartColors().cpu,
-              "Timeline process.memory.array_buffers",
-            ),
-          ]}
-          quality={timelineQuality(perf.timeline(), [
-            "process.memory.rss",
-            "process.memory.heap_used",
-            "process.memory.heap_total",
-            "process.memory.external",
-            "process.memory.array_buffers",
-          ])}
-        />
-        <PerformanceLineChart
-          _={_}
-          title={P.chartRequests}
-          description={P.chartRequestsDesc}
-          points={requestTimelinePoints(perf.timeline())}
-          datasets={[
-            durationDataset("Request", "latency", chartColors().cpu, "Timeline http.request.duration", "p95"),
-            countDataset(
-              "Requests / bucket",
-              "requests",
-              chartColors().request,
-              "Bucket sample count for http.request.duration",
-            ),
-          ]}
-          quality={timelineQuality(perf.timeline(), ["http.request.duration"])}
-        />
-        <PerformanceLineChart
-          _={_}
-          title={P.chartSessions}
-          description={P.chartSessionsDesc}
-          points={sessionPoints(perf.timeline())}
-          datasets={[
-            countDataset("Active turns", "activeSessions", chartColors().memory, "Timeline session.turn.active"),
-            durationDataset("Turn", "latency", chartColors().browser, "Timeline session.turn.duration", "p95"),
-          ]}
-          quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
-          emptyLabel={P.chartSessionsEmpty}
-        />
-        <PerformanceLineChart
-          _={_}
-          title={P.chartStorage}
-          description={P.chartStorageDesc}
-          points={storagePoints(perf.timeline())}
-          datasets={[
-            countDataset("Operations / bucket", "diskOps", chartColors().disk, "Timeline storage.operation.count"),
-            durationDataset(
-              "Operation",
-              "latency",
-              chartColors().request,
-              "Timeline storage.operation.duration",
-              "p95",
-            ),
-            bytesDataset("Read bytes / bucket", "readBytes", chartColors().memory, "Timeline storage.read.bytes"),
-            bytesDataset("Write bytes / bucket", "writeBytes", chartColors().browser, "Timeline storage.write.bytes"),
-          ]}
-          quality={timelineQuality(perf.timeline(), [
-            "storage.operation.count",
-            "storage.operation.duration",
-            "storage.read.bytes",
-            "storage.write.bytes",
-          ])}
-          emptyLabel={P.chartStorageEmpty}
-        />
-      </div>
+        <Show when={perf.timelineError()}>
+          <div class="performance-snapshot-notice" role="alert">
+            <p class="text-14-medium text-text-strong">{_(P.timelineUnavailable)}</p>
+            <SnapshotErrorDetails error={perf.timelineError()!} />
+          </div>
+        </Show>
+        <Show when={perf.timelineLoading()}>
+          <p class="text-14-regular text-text-weak" role="status">
+            {_(P.timelineLoading)}
+          </p>
+        </Show>
+        <Show when={!perf.timelineError() && !perf.timelineLoading()}>
+          <div class="performance-chart-grid">
+            <PerformanceLineChart
+              _={_}
+              title={P.chartCpu}
+              description={P.chartCpuDesc}
+              points={resourcePressurePoints(perf.timeline())}
+              datasets={[
+                percentDataset("CPU", "cpu", chartColors().cpu, "Timeline process.cpu.utilization"),
+                durationDataset(
+                  "Event loop",
+                  "eventLoopLag",
+                  chartColors().request,
+                  "Timeline process.event_loop.lag",
+                  "p95",
+                ),
+              ]}
+              quality={timelineQuality(perf.timeline(), ["process.cpu.utilization", "process.event_loop.lag"])}
+            />
+            <PerformanceLineChart
+              _={_}
+              title={P.chartMemory}
+              description={P.chartMemoryDesc}
+              points={memoryPoints(perf.timeline(), summary())}
+              datasets={[
+                megabytesDataset(_(P.datasetRss), "memory", chartColors().memory, "Timeline process.memory.rss"),
+                megabytesDataset(
+                  _(P.datasetHeapUsed),
+                  "heapUsed",
+                  chartColors().browser,
+                  "Timeline process.memory.heap_used",
+                ),
+                megabytesDataset(
+                  _(P.datasetHeapTotal),
+                  "heapTotal",
+                  chartColors().disk,
+                  "Timeline process.memory.heap_total",
+                ),
+                megabytesDataset(
+                  _(P.datasetExternal),
+                  "external",
+                  chartColors().request,
+                  "Timeline process.memory.external",
+                ),
+                megabytesDataset(
+                  _(P.datasetArrayBuffers),
+                  "arrayBuffers",
+                  chartColors().cpu,
+                  "Timeline process.memory.array_buffers",
+                ),
+              ]}
+              quality={timelineQuality(perf.timeline(), [
+                "process.memory.rss",
+                "process.memory.heap_used",
+                "process.memory.heap_total",
+                "process.memory.external",
+                "process.memory.array_buffers",
+              ])}
+            />
+            <PerformanceLineChart
+              _={_}
+              title={P.chartRequests}
+              description={P.chartRequestsDesc}
+              points={requestTimelinePoints(perf.timeline())}
+              datasets={[
+                durationDataset("Request", "latency", chartColors().cpu, "Timeline http.request.duration", "p95"),
+                countDataset(
+                  "Requests / bucket",
+                  "requests",
+                  chartColors().request,
+                  "Bucket sample count for http.request.duration",
+                ),
+              ]}
+              quality={timelineQuality(perf.timeline(), ["http.request.duration"])}
+            />
+            <PerformanceLineChart
+              _={_}
+              title={P.chartSessions}
+              description={P.chartSessionsDesc}
+              points={sessionPoints(perf.timeline())}
+              datasets={[
+                countDataset("Active turns", "activeSessions", chartColors().memory, "Timeline session.turn.active"),
+                durationDataset("Turn", "latency", chartColors().browser, "Timeline session.turn.duration", "p95"),
+              ]}
+              quality={timelineQuality(perf.timeline(), ["session.turn.active", "session.turn.duration"])}
+              emptyLabel={P.chartSessionsEmpty}
+            />
+            <PerformanceLineChart
+              _={_}
+              title={P.chartStorage}
+              description={P.chartStorageDesc}
+              points={storagePoints(perf.timeline())}
+              datasets={[
+                countDataset("Operations / bucket", "diskOps", chartColors().disk, "Timeline storage.operation.count"),
+                durationDataset(
+                  "Operation",
+                  "latency",
+                  chartColors().request,
+                  "Timeline storage.operation.duration",
+                  "p95",
+                ),
+                bytesDataset("Read bytes / bucket", "readBytes", chartColors().memory, "Timeline storage.read.bytes"),
+                bytesDataset(
+                  "Write bytes / bucket",
+                  "writeBytes",
+                  chartColors().browser,
+                  "Timeline storage.write.bytes",
+                ),
+              ]}
+              quality={timelineQuality(perf.timeline(), [
+                "storage.operation.count",
+                "storage.operation.duration",
+                "storage.read.bytes",
+                "storage.write.bytes",
+              ])}
+              emptyLabel={P.chartStorageEmpty}
+            />
+          </div>
+        </Show>
 
-      <div class="performance-split-grid">
-        <Timeline _={_} traces={traces()} onSelect={(trace) => void selectTrace(trace.traceId, trace)} />
-        <IssueList
+        <div class="performance-split-grid">
+          <Show
+            when={!perf.tracesError()}
+            fallback={
+              <div class="performance-snapshot-notice" role="alert">
+                <p class="text-14-medium text-text-strong">{_(P.tracesUnavailable)}</p>
+                <SnapshotErrorDetails error={perf.tracesError()!} />
+              </div>
+            }
+          >
+            <Show
+              when={!perf.tracesLoading()}
+              fallback={
+                <p class="text-14-regular text-text-weak" role="status">
+                  {_(P.tracesLoading)}
+                </p>
+              }
+            >
+              <Timeline _={_} traces={traces()} onSelect={(trace) => void selectTrace(trace.traceId, trace)} />
+            </Show>
+          </Show>
+          <IssueList
+            _={_}
+            fmt={fmt}
+            issues={issues()}
+            onTrace={(issue) => issue.traceId && void selectTrace(issue.traceId, issueTraceFallback(issue))}
+          />
+        </div>
+
+        <ToolFailures _={_} items={summary()?.top.toolFailures ?? []} />
+
+        <TopRankings
           _={_}
-          fmt={fmt}
-          issues={issues()}
-          onTrace={(issue) => issue.traceId && void selectTrace(issue.traceId, issueTraceFallback(issue))}
+          summary={summary()}
+          onTrace={(item) => item.traceId && void selectTrace(item.traceId, rankedTraceFallback(item))}
         />
-      </div>
-
-      <ToolFailures _={_} items={summary()?.top.toolFailures ?? []} />
-
-      <TopRankings
-        _={_}
-        summary={summary()}
-        onTrace={(item) => item.traceId && void selectTrace(item.traceId, rankedTraceFallback(item))}
-      />
-      <BrowserMetricsChart _={_} samples={perf.browserSamples()} />
-      <FrontendSection _={_} summary={summary()} />
+        <BrowserMetricsChart _={_} samples={perf.browserSamples()} />
+        <FrontendSection _={_} summary={summary()} />
+      </PerformanceSnapshotBoundary>
       <TraceDrawer
         _={_}
         fmt={fmt}
@@ -414,13 +463,13 @@ function PerformanceAnalysisCard(props: {
 function TimeRangeControl(props: { value: number; onChange: (value: number) => void }) {
   const { i18n } = useLocale()
   return (
-    <div class="performance-control flex items-center rounded-lg p-1">
+    <div class="performance-control flex shrink-0 items-center rounded-lg p-1">
       <For each={TIME_RANGE_MS}>
         {(ms) => (
           <button
             type="button"
             classList={{
-              "rounded-md px-2.5 py-1 text-11-medium transition-colors": true,
+              "whitespace-nowrap rounded-md px-2.5 py-1 text-11-medium transition-colors": true,
               "workbench-selected-surface text-text-strong shadow-sm": props.value === ms,
               "text-text-weak hover:text-text-base": props.value !== ms,
             }}

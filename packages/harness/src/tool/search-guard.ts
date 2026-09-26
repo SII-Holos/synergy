@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { MessageV2 } from "../session/message-v2"
 
 export namespace SearchGuard {
@@ -32,11 +33,15 @@ export namespace SearchGuard {
     domainSummary?: string
   }
 
-  const recentSearches = new Map<string, string[]>()
+  const runtimeState = RuntimeContext.state(() => ({
+    recentSearches: new Map<string, string[]>(),
+  }))
   const MAX_RECENT_SEARCHES = 50
 
   export function reset() {
-    recentSearches.clear()
+    const instanceState = runtimeState()
+
+    instanceState.recentSearches.clear()
   }
 
   export function normalizeQuery(query: string | undefined): string {
@@ -86,9 +91,11 @@ export namespace SearchGuard {
   }
 
   export function checkDuplicate(sessionID: string, tool: string, input: any) {
+    const instanceState = runtimeState()
+
     const key = signature(tool, input)
     if (!key) return undefined
-    const recent = recentSearches.get(sessionID) ?? []
+    const recent = instanceState.recentSearches.get(sessionID) ?? []
     if (!recent.includes(key)) return undefined
 
     return {
@@ -105,11 +112,13 @@ export namespace SearchGuard {
   }
 
   export function recordAttempt(sessionID: string, tool: string, input: any) {
+    const instanceState = runtimeState()
+
     const key = signature(tool, input)
     if (!key) return
-    const recent = recentSearches.get(sessionID) ?? []
+    const recent = instanceState.recentSearches.get(sessionID) ?? []
     recent.push(key)
-    recentSearches.set(sessionID, recent.slice(-MAX_RECENT_SEARCHES))
+    instanceState.recentSearches.set(sessionID, recent.slice(-MAX_RECENT_SEARCHES))
   }
 
   export function classifyHttpStatus(status: number): FailureType | undefined {
@@ -391,15 +400,23 @@ export const SearchFailureAnalyzer: ToolFailureAnalyzer = {
 }
 
 /** Registry of active tool failure analyzers. */
-const failureAnalyzers = new Map<string, ToolFailureAnalyzer>()
+const runtimeState = RuntimeContext.state(() => ({
+  failureAnalyzers: new Map<string, ToolFailureAnalyzer>(),
+}))
 
 export function registerFailureAnalyzer(analyzer: ToolFailureAnalyzer) {
-  failureAnalyzers.set(analyzer.category, analyzer)
+  const instanceState = runtimeState()
+
+  instanceState.failureAnalyzers.set(analyzer.category, analyzer)
 }
 
 export function getFailureAnalyzers(): ReadonlyMap<string, ToolFailureAnalyzer> {
-  return failureAnalyzers
+  const instanceState = runtimeState()
+
+  return instanceState.failureAnalyzers
 }
 
 // Register the built-in search analyzer by default.
-registerFailureAnalyzer(SearchFailureAnalyzer)
+export function registerSearchFailureAnalyzer() {
+  registerFailureAnalyzer(SearchFailureAnalyzer)
+}

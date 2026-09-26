@@ -494,12 +494,14 @@ export function resolveTurnWorking(input: {
   return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 
-export function providerPreludeText(status: SessionStatus | undefined): string {
+const awaitingResponse = { id: "ui.session.awaitingResponse", message: "Awaiting response…" }
+
+export function providerPreludeText(status: SessionStatus | undefined, fallback = awaitingResponse.message): string {
   if (status?.type === "busy") {
     const description = status.description?.trim()
     if (description) return description
   }
-  return "Awaiting response\u2026"
+  return fallback
 }
 
 export function shouldShowProviderPrelude(input: {
@@ -1220,6 +1222,10 @@ export function SessionTurn(
   const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
+  const incompleteFileRecording = createMemo(() => {
+    const state = message()?.summary?.diffState
+    return state?.status === "error" && state.code === "incomplete"
+  })
 
   createEffect(
     on(diffSettlementStatus, (status) => {
@@ -1529,7 +1535,7 @@ export function SessionTurn(
                         <Show when={showProviderPrelude()}>
                           <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
                             <ProviderPrelude
-                              text={providerPreludeText(sessionStatus())}
+                              text={providerPreludeText(sessionStatus(), _(awaitingResponse))}
                               elapsed={providerPreludeElapsed()}
                             />
                           </div>
@@ -1585,6 +1591,7 @@ export function SessionTurn(
                             <TurnChangeSummaryPanel
                               diffs={msg().summary?.diffs ?? []}
                               state={state()}
+                              incomplete={incompleteFileRecording()}
                               animateReady={animateReadyDiffPanel()}
                               onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
                               onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}

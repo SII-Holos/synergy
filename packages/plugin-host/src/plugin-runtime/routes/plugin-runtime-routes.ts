@@ -22,7 +22,7 @@ const RuntimeInfo = z
   .meta({ ref: "PluginRuntimeInfo" })
 
 function runtime(pluginId: string) {
-  const entry = pluginRuntimeManager.registry.active(pluginId)
+  const entry = pluginRuntimeManager().registry.active(pluginId)
   if (!entry) return null
   return {
     key: entry.key,
@@ -38,66 +38,67 @@ function runtime(pluginId: string) {
   }
 }
 
-export const PluginRuntimeRoute = new Hono()
-  .post(
-    "/:pluginId/runtime/reload",
-    describeRoute({
-      summary: "Reload plugin runtime",
-      operationId: "plugin.runtime.reload",
-      responses: {
-        200: { description: "Runtime", content: { "application/json": { schema: resolver(RuntimeInfo) } } },
-        ...errors(404),
+export const PluginRuntimeRoute = () =>
+  new Hono()
+    .post(
+      "/:pluginId/runtime/reload",
+      describeRoute({
+        summary: "Reload plugin runtime",
+        operationId: "plugin.runtime.reload",
+        responses: {
+          200: { description: "Runtime", content: { "application/json": { schema: resolver(RuntimeInfo) } } },
+          ...errors(404),
+        },
+      }),
+      async (context) => {
+        const plugin = await Plugin.get(context.req.param("pluginId"))
+        if (!plugin) return context.json({ message: "Plugin not found" }, 404)
+        await pluginRuntimeManager().stop(plugin.id)
+        await ensureRuntime(plugin)
+        return context.json(runtime(plugin.id)!)
       },
-    }),
-    async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
-      if (!plugin) return context.json({ message: "Plugin not found" }, 404)
-      await pluginRuntimeManager.stop(plugin.id)
-      await ensureRuntime(plugin)
-      return context.json(runtime(plugin.id)!)
-    },
-  )
-  .post(
-    "/:pluginId/runtime/start",
-    describeRoute({
-      summary: "Start plugin runtime",
-      operationId: "plugin.runtime.start",
-      responses: {
-        200: { description: "Runtime", content: { "application/json": { schema: resolver(RuntimeInfo) } } },
-        ...errors(404),
+    )
+    .post(
+      "/:pluginId/runtime/start",
+      describeRoute({
+        summary: "Start plugin runtime",
+        operationId: "plugin.runtime.start",
+        responses: {
+          200: { description: "Runtime", content: { "application/json": { schema: resolver(RuntimeInfo) } } },
+          ...errors(404),
+        },
+      }),
+      async (context) => {
+        const plugin = await Plugin.get(context.req.param("pluginId"))
+        if (!plugin) return context.json({ message: "Plugin not found" }, 404)
+        await ensureRuntime(plugin)
+        return context.json(runtime(plugin.id)!)
       },
-    }),
-    async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
-      if (!plugin) return context.json({ message: "Plugin not found" }, 404)
-      await ensureRuntime(plugin)
-      return context.json(runtime(plugin.id)!)
-    },
-  )
-  .post(
-    "/:pluginId/runtime/stop",
-    describeRoute({
-      summary: "Stop plugin runtime",
-      operationId: "plugin.runtime.stop",
-      responses: { 200: { description: "Stopped" }, ...errors(404) },
-    }),
-    async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
-      if (!plugin) return context.json({ message: "Plugin not found" }, 404)
-      await pluginRuntimeManager.stop(plugin.id)
-      return context.json({ stopped: true })
-    },
-  )
-  .get(
-    "/:pluginId/runtime/logs",
-    describeRoute({
-      summary: "Get plugin runtime logs",
-      operationId: "plugin.runtime.logs",
-      responses: { 200: { description: "Logs" }, ...errors(404) },
-    }),
-    async (context) => {
-      const plugin = await Plugin.get(context.req.param("pluginId"))
-      if (!plugin) return context.json({ message: "Plugin not found" }, 404)
-      return context.json(pluginRuntimeManager.logs.list(plugin.id))
-    },
-  )
+    )
+    .post(
+      "/:pluginId/runtime/stop",
+      describeRoute({
+        summary: "Stop plugin runtime",
+        operationId: "plugin.runtime.stop",
+        responses: { 200: { description: "Stopped" }, ...errors(404) },
+      }),
+      async (context) => {
+        const plugin = await Plugin.get(context.req.param("pluginId"))
+        if (!plugin) return context.json({ message: "Plugin not found" }, 404)
+        await pluginRuntimeManager().stop(plugin.id)
+        return context.json({ stopped: true })
+      },
+    )
+    .get(
+      "/:pluginId/runtime/logs",
+      describeRoute({
+        summary: "Get plugin runtime logs",
+        operationId: "plugin.runtime.logs",
+        responses: { 200: { description: "Logs" }, ...errors(404) },
+      }),
+      async (context) => {
+        const plugin = await Plugin.get(context.req.param("pluginId"))
+        if (!plugin) return context.json({ message: "Plugin not found" }, 404)
+        return context.json(pluginRuntimeManager().logs.list(plugin.id))
+      },
+    )

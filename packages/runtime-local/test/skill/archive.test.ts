@@ -11,6 +11,9 @@ import {
 } from "@zip.js/zip.js"
 import { SkillArchive } from "../../src/skill/archive"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const standardManifest = (name: string, extra = "") => `---
 name: ${name}
@@ -82,15 +85,18 @@ describe("skill archive", () => {
       ],
       name: "nested-skill",
     },
-  ])("imports $label transactionally", async ({ entries, name }) => {
-    await using tmp = await tmpdir()
-    const destination = path.join(tmp.path, "skills")
-    const result = await SkillArchive.install({ bytes: await archive(entries), destination })
+  ])(
+    "imports $label transactionally",
+    runtime.bind(async ({ entries, name }) => {
+      await using tmp = await tmpdir()
+      const destination = path.join(tmp.path, "skills")
+      const result = await SkillArchive.install({ bytes: await archive(entries), destination })
 
-    expect(result).toEqual({ name, directory: path.join(destination, name) })
-    expect(await Bun.file(path.join(destination, name, "SKILL.md")).exists()).toBe(true)
-    expect((await stagingEntries(destination)).filter((entry) => entry.startsWith(".skill-import-"))).toEqual([])
-  })
+      expect(result).toEqual({ name, directory: path.join(destination, name) })
+      expect(await Bun.file(path.join(destination, name, "SKILL.md")).exists()).toBe(true)
+      expect((await stagingEntries(destination)).filter((entry) => entry.startsWith(".skill-import-"))).toEqual([])
+    }),
+  )
 
   test.each([
     { label: "empty archive", entries: [], code: "skill.archive_empty" },
@@ -161,33 +167,37 @@ describe("skill archive", () => {
       entries: [{ name: "SKILL.md", content: standardManifest("Bad Name") }],
       code: "skill.archive_not_standard",
     },
-  ])("rejects $label and cleans staging", async ({ entries, code }) => {
-    await using tmp = await tmpdir()
-    const destination = path.join(tmp.path, "skills")
+  ])(
+    "rejects $label and cleans staging",
+    runtime.bind(async ({ entries, code }) => {
+      await using tmp = await tmpdir()
+      const destination = path.join(tmp.path, "skills")
 
-    await expect(SkillArchive.install({ bytes: await archive(entries), destination })).rejects.toMatchObject({
-      data: { code },
-    })
-    expect((await stagingEntries(destination)).filter((entry) => entry.startsWith(".skill-import-"))).toEqual([])
-  })
+      await expect(SkillArchive.install({ bytes: await archive(entries), destination })).rejects.toMatchObject({
+        data: { code },
+      })
+      expect((await stagingEntries(destination)).filter((entry) => entry.startsWith(".skill-import-"))).toEqual([])
+    }),
+  )
 
-  test("rejects ASi hardlink metadata and cleans staging", async () => {
-    await using tmp = await tmpdir()
-    const destination = path.join(tmp.path, "skills")
-    const bytes = await archive([
-      { name: "SKILL.md", content: standardManifest("hardlink-skill") },
-      {
-        name: "hardlink",
-        content: "target",
-        options: { extraField: new Map([[0x006e, new Uint8Array([0, 0, 0, 0])]]) },
-      },
-    ])
+  test("rejects ASi hardlink metadata and cleans staging", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const destination = path.join(tmp.path, "skills")
+      const bytes = await archive([
+        { name: "SKILL.md", content: standardManifest("hardlink-skill") },
+        {
+          name: "hardlink",
+          content: "target",
+          options: { extraField: new Map([[0x006e, new Uint8Array([0, 0, 0, 0])]]) },
+        },
+      ])
 
-    await expect(SkillArchive.install({ bytes: patchAsiExtraField(bytes), destination })).rejects.toMatchObject({
-      data: { code: "skill.archive_entry_type_invalid" },
-    })
-    expect((await stagingEntries(destination)).filter((entry) => entry.startsWith(".skill-import-"))).toEqual([])
-  })
+      await expect(SkillArchive.install({ bytes: patchAsiExtraField(bytes), destination })).rejects.toMatchObject({
+        data: { code: "skill.archive_entry_type_invalid" },
+      })
+      expect((await stagingEntries(destination)).filter((entry) => entry.startsWith(".skill-import-"))).toEqual([])
+    }))
 
   test.each([
     {
@@ -223,104 +233,111 @@ describe("skill archive", () => {
       entries: [{ name: "SKILL.md", content: standardManifest("ratio-limit") + "x".repeat(1_000) }],
       code: "skill.archive_inflation_limit",
     },
-  ])("enforces the centralized $label policy", async ({ policy, entries, code }) => {
-    await using tmp = await tmpdir()
-    await expect(
-      SkillArchive.install({
-        bytes: await archive(entries),
-        destination: path.join(tmp.path, "skills"),
-        policy: { ...SkillArchive.Policy, ...policy },
-      }),
-    ).rejects.toMatchObject({ data: { code } })
-  })
+  ])(
+    "enforces the centralized $label policy",
+    runtime.bind(async ({ policy, entries, code }) => {
+      await using tmp = await tmpdir()
+      await expect(
+        SkillArchive.install({
+          bytes: await archive(entries),
+          destination: path.join(tmp.path, "skills"),
+          policy: { ...SkillArchive.Policy, ...policy },
+        }),
+      ).rejects.toMatchObject({ data: { code } })
+    }),
+  )
 
-  test("returns a structured conflict without changing the existing target", async () => {
-    await using tmp = await tmpdir()
-    const destination = path.join(tmp.path, "skills")
-    const target = path.join(destination, "conflict-skill")
-    await Bun.write(path.join(target, "existing.txt"), "keep")
+  test("returns a structured conflict without changing the existing target", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const destination = path.join(tmp.path, "skills")
+      const target = path.join(destination, "conflict-skill")
+      await Bun.write(path.join(target, "existing.txt"), "keep")
 
-    await expect(
-      SkillArchive.install({
-        bytes: await archive([{ name: "SKILL.md", content: standardManifest("conflict-skill") }]),
+      await expect(
+        SkillArchive.install({
+          bytes: await archive([{ name: "SKILL.md", content: standardManifest("conflict-skill") }]),
+          destination,
+        }),
+      ).rejects.toBeInstanceOf(SkillArchive.ConflictError)
+      expect(await Bun.file(path.join(target, "existing.txt")).text()).toBe("keep")
+      expect(await Bun.file(path.join(target, "SKILL.md")).exists()).toBe(false)
+      expect(await stagingEntries(destination)).toEqual([])
+    }))
+
+  test("preserves an install lock owned by another importer", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const destination = path.join(tmp.path, "skills")
+      const lock = path.join(destination, ".locked-skill.skill-install.lock")
+      await fs.mkdir(lock, { recursive: true })
+
+      await expect(
+        SkillArchive.install({
+          bytes: await archive([{ name: "SKILL.md", content: standardManifest("locked-skill") }]),
+          destination,
+        }),
+      ).rejects.toBeInstanceOf(SkillArchive.ConflictError)
+      expect((await fs.stat(lock)).isDirectory()).toBe(true)
+      expect(await Bun.file(path.join(destination, "locked-skill", "SKILL.md")).exists()).toBe(false)
+      expect(await stagingEntries(destination)).toEqual([])
+    }))
+
+  test("recovers an install lock whose recorded owner is no longer alive", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const destination = path.join(tmp.path, "skills")
+      const lock = path.join(destination, ".stale-lock-skill.skill-install.lock")
+      await fs.mkdir(lock, { recursive: true })
+      await Bun.write(
+        path.join(lock, "owner.json"),
+        JSON.stringify({ pid: 2_147_483_647, createdAt: 0, token: "dead-owner" }),
+      )
+
+      const result = await SkillArchive.install({
+        bytes: await archive([{ name: "SKILL.md", content: standardManifest("stale-lock-skill") }]),
         destination,
-      }),
-    ).rejects.toBeInstanceOf(SkillArchive.ConflictError)
-    expect(await Bun.file(path.join(target, "existing.txt")).text()).toBe("keep")
-    expect(await Bun.file(path.join(target, "SKILL.md")).exists()).toBe(false)
-    expect(await stagingEntries(destination)).toEqual([])
-  })
+      })
 
-  test("preserves an install lock owned by another importer", async () => {
-    await using tmp = await tmpdir()
-    const destination = path.join(tmp.path, "skills")
-    const lock = path.join(destination, ".locked-skill.skill-install.lock")
-    await fs.mkdir(lock, { recursive: true })
+      expect(result).toEqual({ name: "stale-lock-skill", directory: path.join(destination, "stale-lock-skill") })
+      expect(await Bun.file(path.join(destination, "stale-lock-skill", "SKILL.md")).exists()).toBe(true)
+      expect(await Bun.file(path.join(lock, "owner.json")).exists()).toBe(false)
+    }))
 
-    await expect(
-      SkillArchive.install({
-        bytes: await archive([{ name: "SKILL.md", content: standardManifest("locked-skill") }]),
-        destination,
-      }),
-    ).rejects.toBeInstanceOf(SkillArchive.ConflictError)
-    expect((await fs.stat(lock)).isDirectory()).toBe(true)
-    expect(await Bun.file(path.join(destination, "locked-skill", "SKILL.md")).exists()).toBe(false)
-    expect(await stagingEntries(destination)).toEqual([])
-  })
+  test("exports strict file-backed skills unchanged under one top-level directory", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const baseDir = path.join(tmp.path, ".synergy", "skill", "export-skill")
+      const manifest = standardManifest("export-skill", "compatibility: Requires git.\n")
+      const asset = new Uint8Array([0, 255, 4, 9])
+      await Bun.write(path.join(baseDir, "SKILL.md"), manifest)
+      await Bun.write(path.join(baseDir, "assets", "data.bin"), asset)
 
-  test("recovers an install lock whose recorded owner is no longer alive", async () => {
-    await using tmp = await tmpdir()
-    const destination = path.join(tmp.path, "skills")
-    const lock = path.join(destination, ".stale-lock-skill.skill-install.lock")
-    await fs.mkdir(lock, { recursive: true })
-    await Bun.write(
-      path.join(lock, "owner.json"),
-      JSON.stringify({ pid: 2_147_483_647, createdAt: 0, token: "dead-owner" }),
-    )
+      const result = await SkillArchive.createExport({
+        skill: {
+          name: "export-skill",
+          description: "export-skill description.",
+          declaredCompatibility: "Requires git.",
+          invocation: { user: true, model: true },
+          origin: { kind: "filesystem", source: "synergy", scope: "project" },
+          backing: { kind: "file", baseDir, entryFile: path.join(baseDir, "SKILL.md") },
+          diagnostics: [],
+        },
+        instanceDirectory: tmp.path,
+      })
 
-    const result = await SkillArchive.install({
-      bytes: await archive([{ name: "SKILL.md", content: standardManifest("stale-lock-skill") }]),
-      destination,
-    })
+      expect(await names(result.bytes)).toEqual([
+        "export-skill/",
+        "export-skill/assets/",
+        "export-skill/assets/data.bin",
+        "export-skill/SKILL.md",
+      ])
 
-    expect(result).toEqual({ name: "stale-lock-skill", directory: path.join(destination, "stale-lock-skill") })
-    expect(await Bun.file(path.join(destination, "stale-lock-skill", "SKILL.md")).exists()).toBe(true)
-    expect(await Bun.file(path.join(lock, "owner.json")).exists()).toBe(false)
-  })
-
-  test("exports strict file-backed skills unchanged under one top-level directory", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const baseDir = path.join(tmp.path, ".synergy", "skill", "export-skill")
-    const manifest = standardManifest("export-skill", "compatibility: Requires git.\n")
-    const asset = new Uint8Array([0, 255, 4, 9])
-    await Bun.write(path.join(baseDir, "SKILL.md"), manifest)
-    await Bun.write(path.join(baseDir, "assets", "data.bin"), asset)
-
-    const result = await SkillArchive.createExport({
-      skill: {
-        name: "export-skill",
-        description: "export-skill description.",
-        declaredCompatibility: "Requires git.",
-        invocation: { user: true, model: true },
-        origin: { kind: "filesystem", source: "synergy", scope: "project" },
-        backing: { kind: "file", baseDir, entryFile: path.join(baseDir, "SKILL.md") },
-        diagnostics: [],
-      },
-      instanceDirectory: tmp.path,
-    })
-
-    expect(await names(result.bytes)).toEqual([
-      "export-skill/",
-      "export-skill/assets/",
-      "export-skill/assets/data.bin",
-      "export-skill/SKILL.md",
-    ])
-
-    const destination = path.join(tmp.path, "roundtrip")
-    await SkillArchive.install({ bytes: result.bytes, destination })
-    expect(await Bun.file(path.join(destination, "export-skill", "SKILL.md")).text()).toBe(manifest)
-    expect(await Bun.file(path.join(destination, "export-skill", "assets", "data.bin")).bytes()).toEqual(asset)
-  })
+      const destination = path.join(tmp.path, "roundtrip")
+      await SkillArchive.install({ bytes: result.bytes, destination })
+      expect(await Bun.file(path.join(destination, "export-skill", "SKILL.md")).text()).toBe(manifest)
+      expect(await Bun.file(path.join(destination, "export-skill", "assets", "data.bin")).bytes()).toEqual(asset)
+    }))
 
   test.each([
     {
@@ -349,35 +366,41 @@ describe("skill archive", () => {
       }),
       manifest: undefined,
     },
-  ])("rejects export for $label", async ({ skill, manifest, expected }) => {
-    await using tmp = await tmpdir({ git: true })
-    const baseDir = path.join(tmp.path, ".claude", "skills", "vendor-skill")
-    if (manifest) await Bun.write(path.join(baseDir, "SKILL.md"), manifest)
+  ])(
+    "rejects export for $label",
+    runtime.bind(async ({ skill, manifest, expected }) => {
+      await using tmp = await tmpdir({ git: true })
+      const baseDir = path.join(tmp.path, ".claude", "skills", "vendor-skill")
+      if (manifest) await Bun.write(path.join(baseDir, "SKILL.md"), manifest)
 
-    await expect(
-      SkillArchive.createExport({ skill: skill(baseDir), instanceDirectory: tmp.path }),
-    ).rejects.toBeInstanceOf(expected)
-  })
+      await expect(
+        SkillArchive.createExport({ skill: skill(baseDir), instanceDirectory: tmp.path }),
+      ).rejects.toBeInstanceOf(expected)
+    }),
+  )
 
-  test("exports a strict-valid vendor skill without rewriting vendor bytes", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const baseDir = path.join(tmp.path, ".claude", "skills", "vendor-standard")
-    const manifest = standardManifest("vendor-standard")
-    await Bun.write(path.join(baseDir, "SKILL.md"), manifest)
+  test("exports a strict-valid vendor skill without rewriting vendor bytes", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const baseDir = path.join(tmp.path, ".claude", "skills", "vendor-standard")
+      const manifest = standardManifest("vendor-standard")
+      await Bun.write(path.join(baseDir, "SKILL.md"), manifest)
 
-    const result = await SkillArchive.createExport({
-      skill: {
-        name: "vendor-standard",
-        description: "vendor-standard description.",
-        invocation: { user: true, model: true },
-        origin: { kind: "filesystem", source: "claude", scope: "project" },
-        backing: { kind: "file", baseDir, entryFile: path.join(baseDir, "SKILL.md") },
-        diagnostics: [],
-      },
-      instanceDirectory: tmp.path,
-    })
-    const destination = path.join(tmp.path, "vendor-roundtrip")
-    await SkillArchive.install({ bytes: result.bytes, destination })
-    expect(await Bun.file(path.join(destination, "vendor-standard", "SKILL.md")).text()).toBe(manifest)
-  })
+      const result = await SkillArchive.createExport({
+        skill: {
+          name: "vendor-standard",
+          description: "vendor-standard description.",
+          invocation: { user: true, model: true },
+          origin: { kind: "filesystem", source: "claude", scope: "project" },
+          backing: { kind: "file", baseDir, entryFile: path.join(baseDir, "SKILL.md") },
+          diagnostics: [],
+        },
+        instanceDirectory: tmp.path,
+      })
+      const destination = path.join(tmp.path, "vendor-roundtrip")
+      await SkillArchive.install({ bytes: result.bytes, destination })
+      expect(await Bun.file(path.join(destination, "vendor-standard", "SKILL.md")).text()).toBe(manifest)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

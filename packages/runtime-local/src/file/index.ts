@@ -1,5 +1,6 @@
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
-import z from "zod"
+import { z } from "zod"
 import { $ } from "bun"
 import type { BunFile } from "bun"
 import { formatPatch, structuredPatch } from "diff"
@@ -112,7 +113,9 @@ export namespace File {
     Edited: BusEvent.define(
       "file.edited",
       z.object({
+        ...WorkspaceEvents.Fields,
         file: z.string(),
+        contentVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/),
       }),
     ),
   }
@@ -165,7 +168,7 @@ export namespace File {
 
   export async function status() {
     const scope = ScopeContext.current.scope
-    if (scope.type !== "project" || scope.vcs !== "git") return []
+    if (scope.type !== "project" || scope.local?.vcs !== "git") return []
 
     const diffOutput = await $`git diff --numstat HEAD`.cwd(ScopeContext.current.directory).quiet().nothrow().text()
 
@@ -264,7 +267,7 @@ export namespace File {
       .catch(() => "")
       .then((x) => x.trim())
 
-    if (scope.type === "project" && scope.vcs === "git") {
+    if (scope.type === "project" && scope.local?.vcs === "git") {
       let diff = await $`git diff ${file}`.cwd(ScopeContext.current.directory).quiet().nothrow().text()
       if (!diff.trim())
         diff = await $`git diff --staged ${file}`.cwd(ScopeContext.current.directory).quiet().nothrow().text()
@@ -285,7 +288,7 @@ export namespace File {
     const exclude = [".git", ".DS_Store"]
     const scope = ScopeContext.current.scope
     let ignored = (_: string) => false
-    if (scope.type === "project" && scope.vcs === "git") {
+    if (scope.type === "project" && scope.local?.vcs === "git") {
       const ig = ignore()
       const gitignore = Bun.file(path.join(ScopeContext.current.directory, ".gitignore"))
       if (await gitignore.exists()) {

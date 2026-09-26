@@ -43,7 +43,7 @@ export function createScopeRoute(conflictSchema: z.ZodType = z.object({ name: z.
             description: "Current scope information",
             content: {
               "application/json": {
-                schema: resolver(Scope.Info),
+                schema: resolver(Scope.Runtime),
               },
             },
           },
@@ -115,17 +115,7 @@ export function createScopeRoute(conflictSchema: z.ZodType = z.object({ name: z.
       async (c) => {
         const scopeID = c.req.valid("param").scopeID
         const body = c.req.valid("json")
-        const directory = c.req.query("directory")
-
-        // Resolve the target scope: an existing scopeID wins; otherwise fall
-        // back to ?directory= so clients that only know the project worktree
-        // (e.g. a freshly opened, not-yet-persisted project) can still update
-        // it. The directory resolution persists the project on first save.
-        let scope: Scope | undefined = await Scope.fromID(scopeID)
-        if (!scope && directory) {
-          const resolved = await Scope.fromDirectory(directory)
-          scope = resolved.scope
-        }
+        const scope = await Scope.fromID(scopeID)
         if (!scope || scope.type !== "project") {
           return c.json({ name: "ScopeNotFound", data: { message: "Scope not found" } }, 404)
         }

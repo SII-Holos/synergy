@@ -1,10 +1,10 @@
-import z from "zod"
+import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./revise-file.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Truncate } from "@ericsanchezok/synergy-harness/tool/truncation"
 import { trimDiff } from "./edit"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { detectConflicts } from "../conflict/detect"
@@ -38,8 +38,8 @@ class SynergyFilesystem extends BunFilesystem {
   override async readText(p: string): Promise<string> {
     return super.readText(resolveFilePath(p))
   }
-  override async writeText(p: string, content: string): Promise<WriteResult> {
-    return super.writeText(resolveFilePath(p), content)
+  override async writeText(p: string, content: string, expectedContent?: string | null): Promise<WriteResult> {
+    return super.writeText(resolveFilePath(p), content, expectedContent)
   }
   override async exists(p: string): Promise<boolean> {
     return super.exists(resolveFilePath(p))
@@ -111,350 +111,358 @@ async function boundEditFeedback(blocks: string[]) {
 
 const noRuntimeReload = undefined as Awaited<ReturnType<typeof RuntimeReloadExecutor.reload>> | undefined
 
-export const ReviseFileTool = Tool.define("revise_file", {
-  description: DESCRIPTION,
-  parameters: z.object({
-    input: z
-      .string()
-      .describe(
-        "Patch text beginning with a real [path#TAG] header returned by an anchored tool; body rows must be final +TEXT lines",
-      ),
-  }),
-  async execute(params, ctx) {
-    // ── 1. Parse input ──
-    let patch: Patch
-    try {
-      patch = Patch.parse(params.input)
-    } catch (parseErr) {
-      throw parseErr
-    }
+export const ReviseFileTool = Tool.define(
+  "revise_file",
+  {
+    description: DESCRIPTION,
+    parameters: z.object({
+      input: z
+        .string()
+        .describe(
+          "Patch text beginning with a real [path#TAG] header returned by an anchored tool; body rows must be final +TEXT lines",
+        ),
+    }),
+    async execute(params, ctx) {
+      // ── 1. Parse input ──
+      let patch: Patch
+      try {
+        patch = Patch.parse(params.input)
+      } catch (parseErr) {
+        throw parseErr
+      }
 
-    const sections = patch.sections
-    if (sections.length === 0) {
-      throw new Error("Patch input must contain at least one [path#TAG] section")
-    }
+      const sections = patch.sections
+      if (sections.length === 0) {
+        throw new Error("Patch input must contain at least one [path#TAG] section")
+      }
 
-    // ── 2. Set up Patcher with Synergy-adapted filesystem ──
-    const fs = new SynergyFilesystem()
-    const snapshots = SessionHashlineStore.get(ctx.sessionID)
-    const blockResolver = createBlockResolver()
-    const patcher = new Patcher({ fs, snapshots, blockResolver })
+      // ── 2. Set up Patcher with Synergy-adapted filesystem ──
+      const fs = new SynergyFilesystem()
+      const snapshots = SessionHashlineStore.get(ctx.sessionID)
+      const blockResolver = createBlockResolver()
+      const patcher = new Patcher({ fs, snapshots, blockResolver })
 
-    // ── 3. Pre-check each file for conflicts, existence, and stale tags ──
-    for (const section of sections) {
-      const resolvedPath = resolveFilePath(section.path)
-      const stored = snapshots.byHash(resolvedPath, section.fileHash ?? "")
-      if (!stored) {
-        throw new Error(
-          `Unknown or out-of-date [path#TAG] header for ${section.path}. STOP: do not stack additional edits. Use view_file, scan_files, parse_code, or save_file to get a current header, then retry with that header.`,
+      // ── 3. Pre-check each file for conflicts, existence, and stale tags ──
+      for (const section of sections) {
+        const resolvedPath = resolveFilePath(section.path)
+        const stored = snapshots.byHash(resolvedPath, section.fileHash ?? "")
+        if (!stored) {
+          throw new Error(
+            `Unknown or out-of-date [path#TAG] header for ${section.path}. STOP: do not stack additional edits. Use view_file, scan_files, parse_code, or save_file to get a current header, then retry with that header.`,
+          )
+        }
+
+        const file = Bun.file(resolvedPath)
+        const stats = await file.stat().catch(() => undefined)
+        if (!stats) throw new Error(`File not found: ${section.path}`)
+        if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${section.path}`)
+
+        const rawContent = await file.text()
+        const conflict = detectConflicts(rawContent)
+        if (conflict.hasConflicts) {
+          const ranges = conflict.conflicts.map((item) => `${item.startLine}-${item.endLine}`).join(", ")
+          throw new Error(
+            `Refusing revise_file on ${section.path} because it contains unresolved merge conflict markers at lines ${ranges}. Use resolve_conflicts with the current view_file tag, or use save_file only for an intentional full-file resolution.`,
+          )
+        }
+      }
+
+      // ── 4. Prepare all sections (validates tags, applies recovery, checks seen lines) ──
+      const prepared: PreparedSection[] = []
+      for (const section of sections) {
+        prepared.push(await patcher.prepare(section))
+      }
+      assertUniqueCanonicalPaths(prepared)
+
+      // ── 5. Check for no-ops and collect warnings ──
+      const allWarnings: string[] = []
+      for (const entry of prepared) {
+        for (const w of entry.parseWarnings) allWarnings.push(`[${displayPath(entry.canonicalPath)}] ${w}`)
+        for (const w of entry.applyResult.warnings ?? []) allWarnings.push(`[${displayPath(entry.canonicalPath)}] ${w}`)
+      }
+
+      const allNoop = prepared.every((p) => p.isNoop)
+      if (allNoop && prepared.length === 1) {
+        const p = prepared[0]
+        const displayTitle = displayPath(p.canonicalPath)
+
+        // ── No-op loop guard ──
+        const inputHash = computeFileHash(params.input)
+        const noop = NoopLoopGuard.record(ctx.sessionID, p.canonicalPath, inputHash)
+        if (noop.escalate) {
+          throw new Error(noopLoopDiagnostic(displayTitle, noop.count))
+        }
+
+        const block = formatHashlineHeader(displayTitle, snapshots.head(p.canonicalPath)?.hash ?? "????")
+        const diagnostics = await collectWriteDiagnostics(p.canonicalPath)
+        const noopMsg = noopSoftWarning(displayTitle, noop.count)
+        const feedback = await boundEditFeedback(`${block}\n${noopMsg}${diagnostics.output}`.split("\n"))
+        return {
+          title: displayTitle,
+          output: feedback.output,
+          metadata: {
+            truncated: feedback.truncated,
+            outputPath: feedback.outputPath,
+            partialFailure: undefined as string | undefined,
+            filepath: p.canonicalPath,
+            path: displayTitle,
+            tag: snapshots.head(p.canonicalPath)?.hash ?? "????",
+            applied: false,
+            sections: [] as ReturnType<typeof summarizeSection>[],
+            operations: 0,
+            diff: "",
+            filediff: SnapshotSchema.fromContents({
+              file: displayTitle,
+              before: p.normalized,
+              after: p.normalized,
+              additions: 0,
+              deletions: 0,
+            }),
+            operationSummary: summarizeOperations(p.section),
+            changeSummary: { additions: 0, deletions: 0 },
+            recovered: false,
+            recoveryMode: undefined as "three-way-merge" | undefined,
+            diagnostics: diagnostics.diagnostics,
+            runtimeReload: noRuntimeReload,
+            builtinSourceWarning: undefined as string | undefined,
+            warnings: allWarnings,
+          },
+        }
+      }
+      if (allNoop) throw new Error("All sections produced no changes. Verify headers and line numbers before retrying.")
+
+      // ── 6. Build diff for permission ask ──
+      const combinedBefore = prepared.map((p) => `=== ${displayPath(p.canonicalPath)} ===\n${p.normalized}`).join("\n")
+      const combinedAfter = prepared
+        .map((p) => `=== ${displayPath(p.canonicalPath)} ===\n${p.applyResult.text}`)
+        .join("\n")
+      const diff = buildSectionDiff(combinedBefore, combinedAfter)
+      const changeSummary = diffStats(diff)
+      const allPaths = prepared.map((p) => displayPath(p.canonicalPath))
+      const allOpsSummaries = prepared.flatMap((p) => summarizeOperations(p.section))
+
+      await ctx.ask({
+        permission: "revise_file",
+        patterns: allPaths,
+        metadata: {
+          sections: allPaths,
+          diff,
+          filediff: SnapshotSchema.fromContents({
+            file: allPaths.join(", "),
+            before: combinedBefore,
+            after: combinedAfter,
+            ...changeSummary,
+            preview: diff,
+          }),
+          operationSummary: allOpsSummaries,
+          changeSummary,
+        },
+      })
+
+      // ── 7. Commit each section (with file locking, Bus events) ──
+      const committedResults: PatchSectionResult[] = []
+      let firstError: Error | undefined
+
+      const beforeDiagnostics = await captureWriteDiagnosticsBefore()
+
+      for (const p of prepared) {
+        if (p.isNoop) {
+          const head = snapshots.head(p.canonicalPath)?.hash ?? "????"
+          committedResults.push({
+            path: displayPath(p.canonicalPath),
+            canonicalPath: p.canonicalPath,
+            op: "noop",
+            before: p.normalized,
+            after: p.normalized,
+            persisted: p.rawContent,
+            written: p.rawContent,
+            fileHash: head,
+            header: formatHashlineHeader(displayPath(p.canonicalPath), head),
+            warnings: [...p.parseWarnings, ...(p.applyResult.warnings ?? [])],
+          })
+          continue
+        }
+
+        let result: PatchSectionResult | undefined
+        try {
+          await FileTime.withLock(
+            p.canonicalPath,
+            async () => {
+              result = await patcher.commit(p)
+
+              // Fire format-on-write before recording final hash
+              await WorkspaceEvents.publish(File.Event.Edited, {
+                file: p.canonicalPath,
+                contentVersion: FileTime.version(result.written),
+              })
+
+              // Re-read to pick up format-on-write changes (the formatter may have
+              // rewritten the file asynchronously). Re-record the snapshot with
+              // the final formatted content so returned tags and diffs are accurate.
+              const formattedContent = await fs.readText(p.section.path)
+              const formattedNormalized = normalizeToLF(formattedContent)
+              const original = snapshots.byHash(p.canonicalPath, p.section.fileHash ?? "")
+              const known = mapSeenLines(original?.text ?? p.normalized, p.normalized, original?.seenLines ?? new Set())
+              const intended = mapSeenLines(p.normalized, p.applyResult.text, known, true)
+              const finalSeen = mapSeenLines(p.applyResult.text, formattedNormalized, intended)
+              const formattedHash = snapshots.record(p.canonicalPath, formattedNormalized, finalSeen)
+              result = {
+                ...result,
+                after: formattedNormalized,
+                written: formattedContent,
+                fileHash: formattedHash,
+                header: formatHashlineHeader(result.path, formattedHash),
+              }
+
+              // Reset noop guard after successful edit
+              NoopLoopGuard.reset(ctx.sessionID, p.canonicalPath)
+
+              FileTime.read(ctx.sessionID, p.canonicalPath, formattedContent)
+            },
+            { signal: ctx.abort },
+          )
+          if (result) committedResults.push(result)
+        } catch (error) {
+          firstError = error instanceof Error ? error : new Error(String(error))
+          if (result) {
+            committedResults.push(result)
+            snapshots.invalidate(p.canonicalPath)
+            firstError = new Error(
+              `Write completed for ${result.path}, but post-write verification failed: ${firstError.message}. The preview describes the last committed write; its tag is invalidated. Read this file again before further edits`,
+              { cause: firstError },
+            )
+          }
+          break
+        }
+      }
+
+      // ── 8. Format output ──
+      if (!committedResults.length) throw firstError ?? new Error("No file changes were committed")
+      const primary = committedResults[0]
+      const outputBlocks: { text: string; observed?: { result: PatchSectionResult; line: number } }[] = []
+      if (firstError)
+        outputBlocks.push({
+          text: `Partial failure: ${committedResults.length}/${prepared.length} files committed. Read the remaining files before retrying; do not repeat the successful edits.`,
+        })
+      const previews = committedResults.map((result) => ({
+        result,
+        preview: previewFileChanges(result.before, result.after),
+      }))
+      for (const { result, preview } of previews) {
+        outputBlocks.push({
+          text: `${result.header}\n${result.op === "noop" ? "No changes" : "Applied"}: +${preview.addedLines} -${preview.removedLines}`,
+        })
+        if (!snapshots.byHash(result.canonicalPath, result.fileHash))
+          outputBlocks.push({
+            text: "Tag invalidated after post-write verification failed; read this file before editing.",
+          })
+      }
+      for (const { result, preview } of previews) {
+        if (committedResults.length > 1) outputBlocks.push({ text: result.header })
+        for (const text of preview.preview.split("\n")) {
+          if (!text) continue
+          const match = /^(\d+):/.exec(text)
+          outputBlocks.push({ text, observed: match ? { result, line: Number(match[1]) } : undefined })
+        }
+      }
+      if (firstError) outputBlocks.push(...firstError.message.split("\n").map((text) => ({ text })))
+      if (allWarnings.length > 0)
+        outputBlocks.push(...`Warnings:\n${allWarnings.join("\n")}`.split("\n").map((text) => ({ text })))
+
+      const primaryCanonical = committedResults.find((r) => r.op !== "noop")?.canonicalPath ?? primary.canonicalPath
+      const diagnostics = await collectWriteDiagnostics(primaryCanonical, { before: beforeDiagnostics })
+      if (diagnostics.output)
+        outputBlocks.push(
+          ...diagnostics.output
+            .trim()
+            .split("\n")
+            .map((text) => ({ text })),
         )
+
+      const reloadTargets = RuntimeReloadPath.detectTargetsForFile(primaryCanonical)
+      const reloadScope = RuntimeReloadPath.detectScopeForFile(primaryCanonical) ?? "auto"
+      const runtimeReload = reloadTargets.length
+        ? await RuntimeReloadExecutor.reload({
+            targets: reloadTargets,
+            scope: reloadScope,
+            reason: `revise_file:${displayPath(primaryCanonical)}`,
+          })
+        : undefined
+      const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(primaryCanonical)
+      if (runtimeReload) outputBlocks.unshift({ text: formatCompactReloadResult(runtimeReload) })
+      if (builtinSourceWarning) outputBlocks.unshift({ text: builtinSourceWarning })
+
+      const feedback = await boundEditFeedback(outputBlocks.map((block) => block.text))
+      const seen = new Map<PatchSectionResult, number[]>()
+      for (const block of outputBlocks.slice(0, feedback.displayed)) {
+        if (block.observed) {
+          const { result, line } = block.observed
+          const lines = seen.get(result) ?? []
+          lines.push(line)
+          seen.set(result, lines)
+        }
       }
+      for (const [result, lines] of seen)
+        recordSeenSessionLines(ctx.sessionID, result.canonicalPath, lines, result.fileHash)
 
-      const file = Bun.file(resolvedPath)
-      const stats = await file.stat().catch(() => undefined)
-      if (!stats) throw new Error(`File not found: ${section.path}`)
-      if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${section.path}`)
+      const filediffBefore =
+        committedResults.length === 1
+          ? committedResults[0].before
+          : committedResults
+              .map(
+                (r) => `=== ${r.path} ===
+${r.before}`,
+              )
+              .join("\n")
+      const filediffAfter =
+        committedResults.length === 1
+          ? committedResults[0].after
+          : committedResults
+              .map(
+                (r) => `=== ${r.path} ===
+${r.after}`,
+              )
+              .join("\n")
+      const finalDiff = buildSectionDiff(filediffBefore, filediffAfter)
+      const finalChangeSummary = diffStats(finalDiff)
 
-      const rawContent = await file.text()
-      const conflict = detectConflicts(rawContent)
-      if (conflict.hasConflicts) {
-        const ranges = conflict.conflicts.map((item) => `${item.startLine}-${item.endLine}`).join(", ")
-        throw new Error(
-          `Refusing revise_file on ${section.path} because it contains unresolved merge conflict markers at lines ${ranges}. Use resolve_conflicts with the current view_file tag, or use save_file only for an intentional full-file resolution.`,
-        )
-      }
-    }
+      const appliedCount = committedResults.filter((r) => r.op !== "noop").length
+      const totalOps = prepared.reduce((sum, p) => sum + p.section.edits.length, 0)
+      const recovered = committedResults.some((r) => r.warnings.some((w) => /recover/i.test(w)))
 
-    // ── 4. Prepare all sections (validates tags, applies recovery, checks seen lines) ──
-    const prepared: PreparedSection[] = []
-    for (const section of sections) {
-      prepared.push(await patcher.prepare(section))
-    }
-    assertUniqueCanonicalPaths(prepared)
-
-    // ── 5. Check for no-ops and collect warnings ──
-    const allWarnings: string[] = []
-    for (const entry of prepared) {
-      for (const w of entry.parseWarnings) allWarnings.push(`[${displayPath(entry.canonicalPath)}] ${w}`)
-      for (const w of entry.applyResult.warnings ?? []) allWarnings.push(`[${displayPath(entry.canonicalPath)}] ${w}`)
-    }
-
-    const allNoop = prepared.every((p) => p.isNoop)
-    if (allNoop && prepared.length === 1) {
-      const p = prepared[0]
-      const displayTitle = displayPath(p.canonicalPath)
-
-      // ── No-op loop guard ──
-      const inputHash = computeFileHash(params.input)
-      const noop = NoopLoopGuard.record(ctx.sessionID, p.canonicalPath, inputHash)
-      if (noop.escalate) {
-        throw new Error(noopLoopDiagnostic(displayTitle, noop.count))
-      }
-
-      const block = formatHashlineHeader(displayTitle, snapshots.head(p.canonicalPath)?.hash ?? "????")
-      const diagnostics = await collectWriteDiagnostics(p.canonicalPath)
-      const noopMsg = noopSoftWarning(displayTitle, noop.count)
-      const feedback = await boundEditFeedback(`${block}\n${noopMsg}${diagnostics.output}`.split("\n"))
       return {
-        title: displayTitle,
+        title: committedResults.length === 1 ? committedResults[0].path : `${committedResults.length} files`,
         output: feedback.output,
         metadata: {
           truncated: feedback.truncated,
           outputPath: feedback.outputPath,
-          partialFailure: undefined as string | undefined,
-          filepath: p.canonicalPath,
-          path: displayTitle,
-          tag: snapshots.head(p.canonicalPath)?.hash ?? "????",
-          applied: false,
-          sections: [] as ReturnType<typeof summarizeSection>[],
-          operations: 0,
-          diff: "",
+          partialFailure: firstError?.message,
+          filepath: primaryCanonical,
+          path:
+            committedResults.length === 1 ? committedResults[0].path : committedResults.map((r) => r.path).join(", "),
+          tag: primary.fileHash,
+          applied: appliedCount > 0,
+          sections: committedResults.map((result, index) => summarizeSection(result, prepared[index], recovered)),
+          operations: totalOps,
+          diff: finalDiff,
           filediff: SnapshotSchema.fromContents({
-            file: displayTitle,
-            before: p.normalized,
-            after: p.normalized,
-            additions: 0,
-            deletions: 0,
+            file: committedResults.map((r) => r.path).join(", "),
+            before: filediffBefore,
+            after: filediffAfter,
+            ...finalChangeSummary,
+            preview: finalDiff,
           }),
-          operationSummary: summarizeOperations(p.section),
-          changeSummary: { additions: 0, deletions: 0 },
-          recovered: false,
-          recoveryMode: undefined as "three-way-merge" | undefined,
+          operationSummary: allOpsSummaries,
+          changeSummary: finalChangeSummary,
           diagnostics: diagnostics.diagnostics,
-          runtimeReload: noRuntimeReload,
-          builtinSourceWarning: undefined as string | undefined,
+          recovered,
+          recoveryMode: recovered ? ("three-way-merge" as const) : undefined,
+          runtimeReload,
+          builtinSourceWarning,
           warnings: allWarnings,
         },
       }
-    }
-    if (allNoop) throw new Error("All sections produced no changes. Verify headers and line numbers before retrying.")
-
-    // ── 6. Build diff for permission ask ──
-    const combinedBefore = prepared.map((p) => `=== ${displayPath(p.canonicalPath)} ===\n${p.normalized}`).join("\n")
-    const combinedAfter = prepared
-      .map((p) => `=== ${displayPath(p.canonicalPath)} ===\n${p.applyResult.text}`)
-      .join("\n")
-    const diff = buildSectionDiff(combinedBefore, combinedAfter)
-    const changeSummary = diffStats(diff)
-    const allPaths = prepared.map((p) => displayPath(p.canonicalPath))
-    const allOpsSummaries = prepared.flatMap((p) => summarizeOperations(p.section))
-
-    await ctx.ask({
-      permission: "revise_file",
-      patterns: allPaths,
-      metadata: {
-        sections: allPaths,
-        diff,
-        filediff: SnapshotSchema.fromContents({
-          file: allPaths.join(", "),
-          before: combinedBefore,
-          after: combinedAfter,
-          ...changeSummary,
-          preview: diff,
-        }),
-        operationSummary: allOpsSummaries,
-        changeSummary,
-      },
-    })
-
-    // ── 7. Commit each section (with file locking, Bus events) ──
-    const committedResults: PatchSectionResult[] = []
-    let firstError: Error | undefined
-
-    const beforeDiagnostics = await captureWriteDiagnosticsBefore()
-
-    for (const p of prepared) {
-      if (p.isNoop) {
-        const head = snapshots.head(p.canonicalPath)?.hash ?? "????"
-        committedResults.push({
-          path: displayPath(p.canonicalPath),
-          canonicalPath: p.canonicalPath,
-          op: "noop",
-          before: p.normalized,
-          after: p.normalized,
-          persisted: p.rawContent,
-          written: p.rawContent,
-          fileHash: head,
-          header: formatHashlineHeader(displayPath(p.canonicalPath), head),
-          warnings: [...p.parseWarnings, ...(p.applyResult.warnings ?? [])],
-        })
-        continue
-      }
-
-      let result: PatchSectionResult | undefined
-      try {
-        await FileTime.withLock(
-          p.canonicalPath,
-          async () => {
-            result = await patcher.commit(p)
-
-            // Fire format-on-write before recording final hash
-            await Bus.publish(File.Event.Edited, { file: p.canonicalPath })
-
-            // Re-read to pick up format-on-write changes (the formatter may have
-            // rewritten the file asynchronously). Re-record the snapshot with
-            // the final formatted content so returned tags and diffs are accurate.
-            const formattedContent = await fs.readText(p.section.path)
-            const formattedNormalized = normalizeToLF(formattedContent)
-            const original = snapshots.byHash(p.canonicalPath, p.section.fileHash ?? "")
-            const known = mapSeenLines(original?.text ?? p.normalized, p.normalized, original?.seenLines ?? new Set())
-            const intended = mapSeenLines(p.normalized, p.applyResult.text, known, true)
-            const finalSeen = mapSeenLines(p.applyResult.text, formattedNormalized, intended)
-            const formattedHash = snapshots.record(p.canonicalPath, formattedNormalized, finalSeen)
-            result = {
-              ...result,
-              after: formattedNormalized,
-              written: formattedContent,
-              fileHash: formattedHash,
-              header: formatHashlineHeader(result.path, formattedHash),
-            }
-
-            // Reset noop guard after successful edit
-            NoopLoopGuard.reset(ctx.sessionID, p.canonicalPath)
-
-            FileTime.read(ctx.sessionID, p.canonicalPath)
-          },
-          { signal: ctx.abort },
-        )
-        if (result) committedResults.push(result)
-      } catch (error) {
-        firstError = error instanceof Error ? error : new Error(String(error))
-        if (result) {
-          committedResults.push(result)
-          snapshots.invalidate(p.canonicalPath)
-          firstError = new Error(
-            `Write completed for ${result.path}, but post-write verification failed: ${firstError.message}. The preview describes the last committed write; its tag is invalidated. Read this file again before further edits`,
-            { cause: firstError },
-          )
-        }
-        break
-      }
-    }
-
-    // ── 8. Format output ──
-    if (!committedResults.length) throw firstError ?? new Error("No file changes were committed")
-    const primary = committedResults[0]
-    const outputBlocks: { text: string; observed?: { result: PatchSectionResult; line: number } }[] = []
-    if (firstError)
-      outputBlocks.push({
-        text: `Partial failure: ${committedResults.length}/${prepared.length} files committed. Read the remaining files before retrying; do not repeat the successful edits.`,
-      })
-    const previews = committedResults.map((result) => ({
-      result,
-      preview: previewFileChanges(result.before, result.after),
-    }))
-    for (const { result, preview } of previews) {
-      outputBlocks.push({
-        text: `${result.header}\n${result.op === "noop" ? "No changes" : "Applied"}: +${preview.addedLines} -${preview.removedLines}`,
-      })
-      if (!snapshots.byHash(result.canonicalPath, result.fileHash))
-        outputBlocks.push({
-          text: "Tag invalidated after post-write verification failed; read this file before editing.",
-        })
-    }
-    for (const { result, preview } of previews) {
-      if (committedResults.length > 1) outputBlocks.push({ text: result.header })
-      for (const text of preview.preview.split("\n")) {
-        if (!text) continue
-        const match = /^(\d+):/.exec(text)
-        outputBlocks.push({ text, observed: match ? { result, line: Number(match[1]) } : undefined })
-      }
-    }
-    if (firstError) outputBlocks.push(...firstError.message.split("\n").map((text) => ({ text })))
-    if (allWarnings.length > 0)
-      outputBlocks.push(...`Warnings:\n${allWarnings.join("\n")}`.split("\n").map((text) => ({ text })))
-
-    const primaryCanonical = committedResults.find((r) => r.op !== "noop")?.canonicalPath ?? primary.canonicalPath
-    const diagnostics = await collectWriteDiagnostics(primaryCanonical, { before: beforeDiagnostics })
-    if (diagnostics.output)
-      outputBlocks.push(
-        ...diagnostics.output
-          .trim()
-          .split("\n")
-          .map((text) => ({ text })),
-      )
-
-    const reloadTargets = RuntimeReloadPath.detectTargetsForFile(primaryCanonical)
-    const reloadScope = RuntimeReloadPath.detectScopeForFile(primaryCanonical) ?? "auto"
-    const runtimeReload = reloadTargets.length
-      ? await RuntimeReloadExecutor.reload({
-          targets: reloadTargets,
-          scope: reloadScope,
-          reason: `revise_file:${displayPath(primaryCanonical)}`,
-        })
-      : undefined
-    const builtinSourceWarning = RuntimeReloadPath.builtinSourceEditWarning(primaryCanonical)
-    if (runtimeReload) outputBlocks.unshift({ text: formatCompactReloadResult(runtimeReload) })
-    if (builtinSourceWarning) outputBlocks.unshift({ text: builtinSourceWarning })
-
-    const feedback = await boundEditFeedback(outputBlocks.map((block) => block.text))
-    const seen = new Map<PatchSectionResult, number[]>()
-    for (const block of outputBlocks.slice(0, feedback.displayed)) {
-      if (block.observed) {
-        const { result, line } = block.observed
-        const lines = seen.get(result) ?? []
-        lines.push(line)
-        seen.set(result, lines)
-      }
-    }
-    for (const [result, lines] of seen)
-      recordSeenSessionLines(ctx.sessionID, result.canonicalPath, lines, result.fileHash)
-
-    const filediffBefore =
-      committedResults.length === 1
-        ? committedResults[0].before
-        : committedResults
-            .map(
-              (r) => `=== ${r.path} ===
-${r.before}`,
-            )
-            .join("\n")
-    const filediffAfter =
-      committedResults.length === 1
-        ? committedResults[0].after
-        : committedResults
-            .map(
-              (r) => `=== ${r.path} ===
-${r.after}`,
-            )
-            .join("\n")
-    const finalDiff = buildSectionDiff(filediffBefore, filediffAfter)
-    const finalChangeSummary = diffStats(finalDiff)
-
-    const appliedCount = committedResults.filter((r) => r.op !== "noop").length
-    const totalOps = prepared.reduce((sum, p) => sum + p.section.edits.length, 0)
-    const recovered = committedResults.some((r) => r.warnings.some((w) => /recover/i.test(w)))
-
-    return {
-      title: committedResults.length === 1 ? committedResults[0].path : `${committedResults.length} files`,
-      output: feedback.output,
-      metadata: {
-        truncated: feedback.truncated,
-        outputPath: feedback.outputPath,
-        partialFailure: firstError?.message,
-        filepath: primaryCanonical,
-        path: committedResults.length === 1 ? committedResults[0].path : committedResults.map((r) => r.path).join(", "),
-        tag: primary.fileHash,
-        applied: appliedCount > 0,
-        sections: committedResults.map((result, index) => summarizeSection(result, prepared[index], recovered)),
-        operations: totalOps,
-        diff: finalDiff,
-        filediff: SnapshotSchema.fromContents({
-          file: committedResults.map((r) => r.path).join(", "),
-          before: filediffBefore,
-          after: filediffAfter,
-          ...finalChangeSummary,
-          preview: finalDiff,
-        }),
-        operationSummary: allOpsSummaries,
-        changeSummary: finalChangeSummary,
-        diagnostics: diagnostics.diagnostics,
-        recovered,
-        recoveryMode: recovered ? ("three-way-merge" as const) : undefined,
-        runtimeReload,
-        builtinSourceWarning,
-        warnings: allWarnings,
-      },
-    }
+    },
   },
-})
+  { requiresWorkspace: true },
+)

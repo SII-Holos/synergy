@@ -1,7 +1,8 @@
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, ipcMain } from "electron"
 import assert from "node:assert/strict"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 import { desktopStartupPage, startupStatusScript } from "../../src/startup-page.js"
 import { desktopErrorPage } from "../../src/error-page.js"
 import { DesktopServerStartup } from "../../src/server-startup.js"
@@ -16,11 +17,47 @@ async function run() {
   console.log("Startup progress: waiting for Electron")
   await app.whenReady()
   console.log("Startup progress: Electron ready")
+  let recoveryMode = "managed"
+  let maintenanceRunning = false
+  let maintenanceCalls = 0
+  let cancelCalls = 0
+  let diagnosticsCalls = 0
+  let finishMaintenance: (() => void) | undefined
+  const status = () => ({
+    mode: recoveryMode,
+    maintenance: { state: maintenanceRunning ? "running" : "idle", progress: { step: 2, current: 512, total: 0 } },
+  })
+  ipcMain.handle("fixture.recovery.status", status)
+  ipcMain.handle("fixture.recovery.restart", () => status())
+  ipcMain.handle("fixture.recovery.maintenance", async () => {
+    maintenanceCalls++
+    maintenanceRunning = true
+    await new Promise<void>((resolve) => {
+      finishMaintenance = resolve
+    })
+    return status()
+  })
+  ipcMain.handle("fixture.recovery.cancelMaintenance", () => {
+    cancelCalls++
+    maintenanceRunning = false
+    finishMaintenance?.()
+    return status()
+  })
+  ipcMain.handle("fixture.recovery.diagnostics", () => {
+    diagnosticsCalls++
+    return "startup-diagnostics.tar.gz"
+  })
   const window = new BrowserWindow({
     width: 700,
     height: 520,
     show: false,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false,
+      preload: path.join(path.dirname(fileURLToPath(import.meta.url)), "recovery-preload.cjs"),
+    },
   })
   try {
     for (const mode of ["light", "dark"] as const) {
@@ -139,7 +176,57 @@ async function run() {
       assert.ok(errorLayout.reasonBottom < errorLayout.height)
       assert.ok(errorLayout.bottom <= errorLayout.height)
       assert.ok(errorLayout.scrollable)
+      await window.webContents.executeJavaScript(`new Promise(resolve => {
+        document.querySelector('[data-error-action="maintenance"]').click()
+        const timer = setInterval(() => {
+          if (!document.querySelector('[data-error-status]').textContent.includes('512 processed')) return
+          clearInterval(timer); resolve()
+        }, 25)
+      })`)
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.querySelector('[data-error-action="retry"]').disabled`),
+        true,
+      )
+      assert.equal(
+        await window.webContents.executeJavaScript(`document.querySelector('[data-error-action="return"]').disabled`),
+        false,
+      )
+      await window.webContents.executeJavaScript(`new Promise(resolve => {
+        document.querySelector('[data-error-action="return"]').click()
+        const timer = setInterval(() => {
+          if (document.querySelector('[data-error-action="retry"]').disabled) return
+          clearInterval(timer); resolve()
+        }, 25)
+      })`)
+      await window.webContents.executeJavaScript(`new Promise(resolve => {
+        document.querySelector('[data-error-action="diagnostics"]').click()
+        const timer = setInterval(() => {
+          if (!document.querySelector('[data-error-status]').textContent.includes('startup-diagnostics.tar.gz')) return
+          clearInterval(timer); resolve()
+        }, 25)
+      })`)
     }
+    assert.equal(maintenanceCalls, 2)
+    assert.equal(cancelCalls, 2)
+    assert.equal(diagnosticsCalls, 2)
+    recoveryMode = "external"
+    await window.loadURL(
+      desktopErrorPage(
+        "Cannot connect",
+        "external server unavailable",
+        desktopThemeSnapshot(defaultDesktopSkinState("light"), false),
+      ),
+    )
+    await window.webContents.executeJavaScript(`new Promise(resolve => {
+      const timer = setInterval(() => {
+        if (!document.querySelector('[data-error-action="maintenance"]').disabled) return
+        clearInterval(timer); resolve()
+      }, 25)
+    })`)
+    assert.equal(
+      await window.webContents.executeJavaScript(`document.querySelector('[data-error-action="retry"]').disabled`),
+      false,
+    )
     console.log("Startup progress DOM checks passed")
   } finally {
     window.destroy()

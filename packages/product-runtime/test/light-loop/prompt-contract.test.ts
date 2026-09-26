@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { WorkflowUserWrapper } from "@ericsanchezok/synergy-harness/test/internal/session/workflow-user-wrapper"
 // Product domains register workflow contributions via the L4 manifest
-import "@ericsanchezok/synergy-product-runtime/product-registration"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 /**
  * Light Loop prompt contract (S3a golden). Locks the byte-level shape of the
@@ -11,49 +13,55 @@ import "@ericsanchezok/synergy-product-runtime/product-registration"
  */
 
 describe("light loop user-message wrapper golden", () => {
-  test("generic agent wrapper is byte-exact", () => {
-    expect(WorkflowUserWrapper.build("some-agent", "lightloop", "ship the importer")).toBe(
-      [
-        "<lightloop-user-request>",
-        "You are in the Light Loop workflow.",
-        "Complete the work thoroughly. Keep working until the task is fully done, then call loop_stop() to request a completion review.",
-        "",
-        "User request:",
-        "ship the importer",
-        "</lightloop-user-request>",
-      ].join("\n"),
-    )
-  })
+  test("generic agent wrapper is byte-exact", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("some-agent", "lightloop", "ship the importer")).toBe(
+        [
+          "<lightloop-user-request>",
+          "You are in the Light Loop workflow.",
+          "Complete the work thoroughly. Keep working until the task is fully done, then call loop_stop() to request a completion review.",
+          "",
+          "User request:",
+          "ship the importer",
+          "</lightloop-user-request>",
+        ].join("\n"),
+      )
+    }))
 
-  test("synergy wrapper is byte-exact", () => {
-    expect(WorkflowUserWrapper.build("synergy", "lightloop", "ship the importer")).toBe(
-      [
-        "<lightloop-user-request>",
-        "You are synergy in the Light Loop workflow.",
-        "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
-        "",
-        "User request:",
-        "ship the importer",
-        "</lightloop-user-request>",
-      ].join("\n"),
-    )
-  })
+  test("synergy wrapper is byte-exact", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("synergy", "lightloop", "ship the importer")).toBe(
+        [
+          "<lightloop-user-request>",
+          "You are synergy in the Light Loop workflow.",
+          "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
+          "",
+          "User request:",
+          "ship the importer",
+          "</lightloop-user-request>",
+        ].join("\n"),
+      )
+    }))
 
-  test("synergy-max wrapper is byte-exact", () => {
-    expect(WorkflowUserWrapper.build("synergy-max", "lightloop", "ship the importer")).toBe(
-      [
-        "<lightloop-user-request>",
-        "You are synergy-max in the Light Loop workflow.",
-        "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
-        "",
-        "User request:",
-        "ship the importer",
-        "</lightloop-user-request>",
-      ].join("\n"),
-    )
-  })
+  test("synergy-max wrapper is byte-exact", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("synergy-max", "lightloop", "ship the importer")).toBe(
+        [
+          "<lightloop-user-request>",
+          "You are synergy-max in the Light Loop workflow.",
+          "Complete the work thoroughly. Keep working and iterating until the task is fully done, then call loop_stop() to request a completion review.",
+          "",
+          "User request:",
+          "ship the importer",
+          "</lightloop-user-request>",
+        ].join("\n"),
+      )
+    }))
 
-  test("empty request normalizes to the sentinel", () => {
-    expect(WorkflowUserWrapper.build("synergy", "lightloop", "   ")).toContain("(empty request)")
-  })
+  test("empty request normalizes to the sentinel", () =>
+    runtime.run(() => {
+      expect(WorkflowUserWrapper.build("synergy", "lightloop", "   ")).toContain("(empty request)")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

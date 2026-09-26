@@ -1,3 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks"
+import { ExecutionCapacity } from "./execution-capacity"
+import { RuntimeContext } from "../lifecycle/context"
 import type { ModelMessage, Tool as AITool, ToolCallOptions } from "ai"
 import { availableParallelism } from "os"
 import { Log } from "../util/log"
@@ -54,6 +57,18 @@ interface QueuedTask {
   settle(result: ToolTaskResult): boolean
   removeAbortListener(): void
   parent?: { key: string; executor: ToolExecutorKind }
+  context: ReturnType<typeof AsyncLocalStorage.snapshot>
+}
+
+interface CapacityClaim {
+  task: QueuedTask
+  global: boolean
+  executor: boolean
+  counted: boolean
+}
+interface ResumingTask {
+  claims: CapacityClaim[]
+  resolve(): void
 }
 
 export class ToolTaskScheduler {
@@ -68,6 +83,8 @@ export class ToolTaskScheduler {
   private active = 0
   private readonly activeByExecutor = new Map<ToolExecutorKind, number>()
   private stopping = false
+  private readonly capacity = new Map<string, CapacityClaim>()
+  private readonly resuming: ResumingTask[] = []
 
   constructor(private readonly options: ToolTaskSchedulerOptions) {
     if (!Number.isInteger(options.maxConcurrent) || options.maxConcurrent <= 0) {
@@ -149,7 +166,10 @@ export class ToolTaskScheduler {
     const canStartImmediately = parent
       ? !this.nestedParents.has(parent.key) && (executor === parent.input.executor || this.executorAvailable(executor))
       : this.active < this.options.maxConcurrent && this.executorAvailable(executor) && this.queue.length === 0
-    if (!canStartImmediately && this.queue.length >= this.options.maxQueued) {
+    if (
+      (!canStartImmediately && this.queue.length >= this.options.maxQueued) ||
+      this.activeTasks.size + this.queue.length >= this.options.maxConcurrent + this.options.maxQueued
+    ) {
       const error = `Tool execution queue is full (${this.options.maxQueued} waiting)`
       const terminal = this.terminal(input, "failed", queuedAt, undefined, error)
       input.processor.beginExecution(input.callID).fail(input.input, error)
@@ -158,7 +178,10 @@ export class ToolTaskScheduler {
       return result
     }
     const maxQueuedBytes = this.options.maxQueuedBytes ?? Number.POSITIVE_INFINITY
-    if (!canStartImmediately && this.queuedBytes + taskBytes > maxQueuedBytes) {
+    const waitingBytes = [...this.capacity.values()]
+      .filter((claim) => !claim.counted)
+      .reduce((total, claim) => total + claim.task.bytes, 0)
+    if (this.queuedBytes + waitingBytes + (!canStartImmediately ? taskBytes : 0) > maxQueuedBytes) {
       const error = `Tool execution queue exceeded ${maxQueuedBytes} bytes of waiting inputs`
       const terminal = this.terminal(input, "failed", queuedAt, undefined, error)
       input.processor.beginExecution(input.callID).fail(input.input, error)
@@ -189,6 +212,7 @@ export class ToolTaskScheduler {
       settle: settleOnce,
       removeAbortListener: () => input.signal.removeEventListener("abort", onAbort),
       ...(parent ? { parent: { key: parent.key, executor: parent.input.executor! } } : {}),
+      context: AsyncLocalStorage.snapshot(),
     })
     this.queuedBytes += taskBytes
     ObservabilityMetrics.record({
@@ -208,7 +232,8 @@ export class ToolTaskScheduler {
   stats() {
     return {
       active: this.active,
-      queued: this.queue.length,
+      queued: this.queue.length + this.resuming.length,
+      waiting: [...this.capacity.values()].filter((claim) => !claim.counted).length,
       tracked: this.tasks.size,
       queuedBytes: this.queuedBytes,
       maxConcurrent: this.options.maxConcurrent,
@@ -240,6 +265,7 @@ export class ToolTaskScheduler {
       task.input.onState?.("interrupted")
     }
     for (const controller of this.activeControllers.values()) controller.abort(new Error("Tool scheduler stopped"))
+    this.drainResuming()
     const pending = [...this.activeTasks.values()]
     const settled = await Promise.race([
       Promise.allSettled([...this.tasks.values()]).then(() => true),
@@ -257,7 +283,78 @@ export class ToolTaskScheduler {
     }
   }
 
+  private count(claim: CapacityClaim, counted: boolean) {
+    if (claim.counted === counted) return
+    claim.counted = counted
+    const change = counted ? 1 : -1
+    if (claim.global) this.active += change
+    if (claim.executor) {
+      const executor = claim.task.input.executor ?? "control_plane"
+      const value = (this.activeByExecutor.get(executor) ?? 0) + change
+      if (value > 0) this.activeByExecutor.set(executor, value)
+      else this.activeByExecutor.delete(executor)
+    }
+  }
+
+  private capacityOwner(task: QueuedTask): ExecutionCapacity.Owner {
+    let paused: CapacityClaim[] = []
+    return {
+      pause: () => {
+        if (paused.length) return
+        let current: QueuedTask | undefined = task
+        while (current) {
+          const claim = this.capacity.get(current.key)
+          if (claim?.counted) {
+            paused.push(claim)
+            this.count(claim, false)
+          }
+          current = current.parent ? this.activeTasks.get(current.parent.key) : undefined
+        }
+        this.drain()
+      },
+      resume: async () => {
+        if (!paused.length) return
+        const claims = paused
+        paused = []
+        await new Promise<void>((resolve) => {
+          this.resuming.push({ claims, resolve })
+          this.drain()
+        })
+      },
+    }
+  }
+
+  private drainResuming() {
+    for (const entry of [...this.resuming]) {
+      const claims = entry.claims.filter(
+        (claim) =>
+          !claim.counted &&
+          this.activeTasks.get(claim.task.key) === claim.task &&
+          !this.activeControllers.get(claim.task.key)?.signal.aborted &&
+          !claim.task.input.signal.aborted,
+      )
+      const needed = new Map<ToolExecutorKind, number>()
+      for (const claim of claims)
+        if (claim.executor) {
+          const executor = claim.task.input.executor ?? "control_plane"
+          needed.set(executor, (needed.get(executor) ?? 0) + 1)
+        }
+      const available =
+        this.active + claims.filter((claim) => claim.global).length <= this.options.maxConcurrent &&
+        [...needed].every(
+          ([executor, count]) =>
+            (this.activeByExecutor.get(executor) ?? 0) + count <=
+            (this.options.executorConcurrency?.[executor] ?? this.options.maxConcurrent),
+        )
+      if (!this.stopping && !available) continue
+      this.resuming.splice(this.resuming.indexOf(entry), 1)
+      if (!this.stopping) for (const claim of claims) this.count(claim, true)
+      entry.resolve()
+    }
+  }
+
   private drain(): void {
+    this.drainResuming()
     while (!this.stopping && this.queue.length > 0) {
       const taskIndex = this.queue.findIndex((task) => {
         const executor = task.input.executor ?? "control_plane"
@@ -274,20 +371,23 @@ export class ToolTaskScheduler {
       this.queuedBytes -= task.bytes
       task.removeAbortListener()
       if (task.parent) this.nestedParents.add(task.parent.key)
-      else this.active++
       const executor = task.input.executor ?? "control_plane"
-      const ownsExecutorSlot = executor !== task.parent?.executor
-      if (ownsExecutorSlot) this.activeByExecutor.set(executor, (this.activeByExecutor.get(executor) ?? 0) + 1)
-      void this.run(task).finally(() => {
-        if (task.parent) this.nestedParents.delete(task.parent.key)
-        else this.active--
-        if (ownsExecutorSlot) {
-          const remaining = (this.activeByExecutor.get(executor) ?? 1) - 1
-          if (remaining > 0) this.activeByExecutor.set(executor, remaining)
-          else this.activeByExecutor.delete(executor)
-        }
-        this.drain()
-      })
+      const claim: CapacityClaim = {
+        task,
+        global: !task.parent,
+        executor: executor !== task.parent?.executor,
+        counted: false,
+      }
+      this.capacity.set(task.key, claim)
+      this.count(claim, true)
+      void task
+        .context(() => this.run(task))
+        .finally(() => {
+          if (task.parent) this.nestedParents.delete(task.parent.key)
+          this.count(claim, false)
+          if (this.capacity.get(task.key) === claim) this.capacity.delete(task.key)
+          this.drain()
+        })
     }
   }
 
@@ -308,7 +408,10 @@ export class ToolTaskScheduler {
     task.input.onState?.("running")
     const controller = new AbortController()
     this.activeControllers.set(task.key, controller)
-    const onAbort = () => controller.abort(task.input.signal.reason)
+    const onAbort = () => {
+      controller.abort(task.input.signal.reason)
+      this.drain()
+    }
     task.input.signal.addEventListener("abort", onAbort, { once: true })
     const signal = AbortSignal.any([task.input.signal, controller.signal])
     const slot = task.input.processor.beginExecution(task.input.callID)
@@ -321,7 +424,10 @@ export class ToolTaskScheduler {
         messages: [] as ModelMessage[],
         abortSignal: signal,
       } satisfies ToolCallOptions
-      await execute(task.input.input, options)
+      await ExecutionCapacity.tool(this.capacityOwner(task), async () => {
+        signal.throwIfAborted()
+        return await execute(task.input.input, options)
+      })
       if (slot.status === "pending") {
         throw new Error(`Tool "${task.input.toolName}" completed without settling its result`)
       }
@@ -389,7 +495,7 @@ export class ToolTaskScheduler {
       if (this.activeTasks.get(task.key) === task) this.activeTasks.delete(task.key)
       if (this.activeControllers.get(task.key) === controller) this.activeControllers.delete(task.key)
       const memory = SessionMemoryPressure.currentSnapshot()
-      const thresholds = SessionMemoryPressure.resolveThresholds(process.env, memory)
+      const thresholds = SessionMemoryPressure.resolveThresholds(RuntimeContext.current().host.env, memory)
       if (SessionMemoryPressure.processPressureLevel(memory, thresholds) !== "normal") {
         SessionMemoryPressure.signalRelease({
           phase: "tool.execution.complete",
@@ -466,15 +572,19 @@ export const DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS: ToolTaskSchedulerOptions = {
 }
 
 export namespace ToolScheduler {
-  let options: ToolTaskSchedulerOptions = DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS
-  let scheduler: ToolTaskScheduler | undefined
-  let accepting = true
-  let stopPromise: Promise<void> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    options: DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS as ToolTaskSchedulerOptions,
+    scheduler: undefined as ToolTaskScheduler | undefined,
+    accepting: true,
+    stopPromise: undefined as Promise<void> | undefined,
+  }))
 
   export function configure(input: Partial<ToolTaskSchedulerOptions> = {}): void {
-    if (scheduler) throw new Error("Tool scheduler cannot be reconfigured after it has started")
-    accepting = true
-    options = {
+    const instanceState = runtimeState()
+
+    if (instanceState.scheduler) throw new Error("Tool scheduler cannot be reconfigured after it has started")
+    instanceState.accepting = true
+    instanceState.options = {
       ...DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS,
       ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
       executorConcurrency: {
@@ -485,24 +595,30 @@ export namespace ToolScheduler {
   }
 
   export function closeAdmission(): void {
-    accepting = false
+    const instanceState = runtimeState()
+
+    instanceState.accepting = false
   }
 
   export function dispatch(input: ToolTaskInput, parentCallID?: string): Promise<ToolTaskResult> {
-    if (!accepting) return Promise.reject(new Error("Tool scheduler is stopping"))
-    scheduler ??= new ToolTaskScheduler(options)
-    return scheduler.dispatch(input, parentCallID)
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting) return Promise.reject(new Error("Tool scheduler is stopping"))
+    instanceState.scheduler ??= new ToolTaskScheduler(instanceState.options)
+    return instanceState.scheduler.dispatch(input, parentCallID)
   }
 
   export function stats() {
+    const instanceState = runtimeState()
+
     return (
-      scheduler?.stats() ?? {
+      instanceState.scheduler?.stats() ?? {
         active: 0,
         queued: 0,
         tracked: 0,
-        maxConcurrent: options.maxConcurrent,
-        maxQueued: options.maxQueued,
-        maxQueuedBytes: options.maxQueuedBytes,
+        maxConcurrent: instanceState.options.maxConcurrent,
+        maxQueued: instanceState.options.maxQueued,
+        maxQueuedBytes: instanceState.options.maxQueuedBytes,
         queuedBytes: 0,
         byExecutor: {},
       }
@@ -510,20 +626,22 @@ export namespace ToolScheduler {
   }
 
   export async function stop(): Promise<void> {
+    const instanceState = runtimeState()
+
     closeAdmission()
-    if (stopPromise) return stopPromise
-    const current = scheduler
-    stopPromise = (async () => {
+    if (instanceState.stopPromise) return instanceState.stopPromise
+    const current = instanceState.scheduler
+    instanceState.stopPromise = (async () => {
       try {
         await current?.stop()
       } finally {
-        if (scheduler === current) scheduler = undefined
+        if (instanceState.scheduler === current) instanceState.scheduler = undefined
       }
     })()
     try {
-      await stopPromise
+      await instanceState.stopPromise
     } finally {
-      stopPromise = undefined
+      instanceState.stopPromise = undefined
     }
   }
 }

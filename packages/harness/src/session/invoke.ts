@@ -1,3 +1,5 @@
+import { RuntimeContext } from "../lifecycle/context"
+import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
 import { RolloutContext } from "./rollout/context"
 import { Experiment } from "../config/experiment"
@@ -28,7 +30,6 @@ import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import { SessionCommandRuntime } from "./command-runtime"
 import { InstructionRegistry } from "../instruction/registry"
-import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "../util/fn"
 import { SessionProcessor } from "./processor"
@@ -55,16 +56,15 @@ import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./
 import { SessionProgress } from "./progress"
 import * as SessionWorking from "./working"
 import { SessionLifecycle } from "./lifecycle"
+import { Storage } from "../storage/storage"
 import type { PausedReason } from "./types"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
-import "./title"
 
 import { LLM } from "./llm"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { LoopJob } from "./loop-job"
-import "./loop-signals"
 import { ContinuationKernel } from "./continuation-kernel"
 import { SessionContextContributions } from "./context-contributions"
 import { SessionProjectHealth } from "./project-health"
@@ -75,7 +75,6 @@ import { WorkflowKindRegistry } from "./workflow-kind-registry"
 import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
 import { ObservabilitySpans } from "../observability/spans"
 import { ObservabilityContext } from "../observability/context"
-import { SkillSourceProfile } from "../instruction/source-profile"
 import { PausedTurnAbort } from "./error"
 import { SecretVault } from "../secrets/vault"
 
@@ -86,8 +85,10 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
-  const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
-  const maxOutputTokensByMessage = new Map<string, number>()
+  const runtimeState = RuntimeContext.state(() => ({
+    ephemeralToolsByMessage: new Map<string, ToolResolver.EphemeralTool[]>(),
+    maxOutputTokensByMessage: new Map<string, number>(),
+  }))
   // Calibration adds a cheap chars/4 delta to provider-reported input. That is
   // only trustworthy while the delta stays small relative to the measured
   // baseline; past this ratio the heuristic's own error dominates and a
@@ -179,6 +180,8 @@ export namespace SessionInvoke {
     abandoned: boolean
   }
 
+  export const AbandonError = NamedError.create("SessionAbandonError", z.object({ message: z.string() }))
+
   export interface AbortRepairOptions {
     /**
      * True when the preceding stop signal interrupted a live turn.
@@ -221,31 +224,40 @@ export namespace SessionInvoke {
     sessionID: string,
     options: AbortRepairOptions = {},
   ): Promise<AbortRepairState> {
+    if (options.abandonWorkflow) await SessionLifecycle.pause({ sessionID, reason: options.pauseReason ?? "aborted" })
     const repaired = await repairIncompleteAssistant(sessionID, { terminalize: options.terminalize === true }).catch(
       (err) => {
         log.error("assistant repair after abort failed", { sessionID, error: err })
+        if (options.abandonWorkflow)
+          throw new AbandonError(
+            { message: "Could not settle the interrupted execution. Retry abandoning the session." },
+            { cause: err },
+          )
         return false
       },
     )
     const abandoned = options.abandonWorkflow
       ? await abandonBoundWorkflow(sessionID).catch((err) => {
           log.error("workflow abandonment failed", { sessionID, error: err })
-          return false
+          throw new AbandonError(
+            { message: "Could not cancel the bound workflow. The session remains paused; retry abandoning it." },
+            { cause: err },
+          )
         })
       : false
 
     if (options.abandonWorkflow) await SessionLifecycle.clear(sessionID)
-    const paused =
-      options.internalCancel || options.abandonWorkflow
-        ? false
-        : await SessionLifecycle.pause({
-            sessionID,
-            reason: options.pauseReason ?? "aborted",
-            description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
-          }).catch((err) => {
-            log.error("session pause failed", { sessionID, error: err })
-            return false
-          })
+    if (!options.internalCancel && !options.abandonWorkflow) {
+      await SessionLifecycle.pause({
+        sessionID,
+        reason: options.pauseReason ?? "aborted",
+        description: options.turnWasRunning ? "Turn stopped mid-work" : undefined,
+      }).catch((err) => {
+        log.error("session pause failed", { sessionID, error: err })
+        return false
+      })
+    }
+    const paused = !!(await SessionLifecycle.snapshot(sessionID))
 
     await publishResolvedStatus(sessionID)
     return { repaired, paused, abandoned }
@@ -260,10 +272,23 @@ export namespace SessionInvoke {
    * opposite of what the wake was requested for.
    */
   export async function settleInterruptedTurn(sessionID: string): Promise<boolean> {
-    return repairIncompleteAssistant(sessionID, { terminalize: false }).catch((err) => {
+    try {
+      const session = await SessionManager.getSession(sessionID)
+      const rootID = await SessionInbox.latestRootID(sessionID)
+      const run =
+        session && rootID
+          ? await RolloutLedger.getRun(RolloutLifecycle.owner(session), rootID).catch((error) => {
+              if (error instanceof Storage.NotFoundError) return undefined
+              throw error
+            })
+          : undefined
+      return await repairIncompleteAssistant(sessionID, {
+        terminalize: !session?.paused && run?.status === "cancelled",
+      })
+    } catch (err) {
       log.warn("interrupted turn settlement failed", { sessionID, error: err })
       return false
-    })
+    }
   }
 
   /** Republish the derived status so a latch change reaches live clients. */
@@ -314,18 +339,21 @@ export namespace SessionInvoke {
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput, lease?: SessionManager.LoopLease) {
+    const instanceState = runtimeState()
+
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
+        await Session.assertWorkspaceAvailable(input.sessionID)
         const message = await createUserMessage(input)
         if (input.ephemeralTools?.length) {
-          ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
+          instanceState.ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
         }
-        if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
+        if (input.maxOutputTokens) instanceState.maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
 
         if (input.noReply === true) {
-          ephemeralToolsByMessage.delete(message.info.id)
-          maxOutputTokensByMessage.delete(message.info.id)
+          instanceState.ephemeralToolsByMessage.delete(message.info.id)
+          instanceState.maxOutputTokensByMessage.delete(message.info.id)
           return message
         }
 
@@ -337,8 +365,8 @@ export namespace SessionInvoke {
           })
           throw error
         } finally {
-          ephemeralToolsByMessage.delete(message.info.id)
-          maxOutputTokensByMessage.delete(message.info.id)
+          instanceState.ephemeralToolsByMessage.delete(message.info.id)
+          instanceState.maxOutputTokensByMessage.delete(message.info.id)
         }
       },
       lease ? { lease, releaseLease: false } : undefined,
@@ -357,6 +385,7 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
+        await Session.assertWorkspaceAvailable(input.sessionID)
         const item = await SessionInbox.getStored(input.sessionID, input.itemID)
         const message = await SessionInbox.materializeItem(item)
         if (!message || message.info.role !== "user") {
@@ -499,6 +528,7 @@ export namespace SessionInvoke {
     lease: SessionManager.LoopLease,
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
+    await Session.assertWorkspaceAvailable(sessionID)
     ContinuationKernel.init()
     for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
     const abort = lease.signal
@@ -530,7 +560,17 @@ export namespace SessionInvoke {
       const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
         (message) => message.info.role === "user" && message.info.isRoot === true,
       )
-      if (!root) {
+      const queued = root ? await SessionInbox.peekTask(sessionID) : undefined
+      const previousRun =
+        root && queued
+          ? await RolloutLedger.getRun(RolloutLifecycle.owner(session), root.info.id).catch((error) => {
+              if (error instanceof Storage.NotFoundError) return
+              throw error
+            })
+          : undefined
+      // Historical roots without execution evidence and finished roots cannot
+      // own a newly accepted task's configuration or block its materialization.
+      if (!root || (queued && (!previousRun || ["completed", "failed", "cancelled"].includes(previousRun.status)))) {
         // A parked failure stays in the inbox and is skipped by the next peek,
         // so the loop keeps consuming runnable tasks until none remain.
         const result = await SessionInbox.materializeNextTask(sessionID)
@@ -621,6 +661,22 @@ export namespace SessionInvoke {
                 }
               }
               previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
+              const modelSelection = await SessionModelSelection.capture(
+                sessionID,
+                R,
+                lastAssistant?.finish === "tool-calls",
+              )
+              R = {
+                ...R,
+                model: modelSelection.model,
+                thinking: modelSelection.thinking,
+                variant:
+                  modelSelection.thinking.mode === "variant"
+                    ? modelSelection.thinking.variant
+                    : modelSelection.thinking.mode === "off"
+                      ? "off"
+                      : undefined,
+              }
 
               const jobCtx: LoopJob.Context = {
                 session,
@@ -749,6 +805,7 @@ export namespace SessionInvoke {
 
                 const approvalDelegate: SessionExternalAgents.ApprovalDelegate = async () => false
 
+                await SessionModelSelection.applied(sessionID, modelSelection, R.id)
                 await SessionExternalAgents.process({
                   sessionID,
                   agent: agent.name,
@@ -765,6 +822,7 @@ export namespace SessionInvoke {
               const maxSteps = agent.steps ?? Infinity
               const isLastStep = step >= maxSteps
 
+              const producingProvider = await Provider.getProvider(model.providerID)
               const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
               const toolDisplayByName = new Map<string, ToolDisplay>()
               const processor = SessionProcessor.create({
@@ -777,8 +835,8 @@ export namespace SessionInvoke {
                   mode: agent.name,
                   agent: agent.name,
                   path: {
-                    cwd: ScopeContext.current.directory,
-                    root: ScopeContext.current.directory,
+                    cwd: ScopeContext.current.workspace?.path ?? null,
+                    root: ScopeContext.current.workspace?.path ?? null,
                   },
                   cost: 0,
                   tokens: {
@@ -789,6 +847,9 @@ export namespace SessionInvoke {
                   },
                   modelID: model.id,
                   providerID: model.providerID,
+                  modelSelection,
+                  ...(producingProvider?.profileID ? { profileID: producingProvider.profileID } : {}),
+                  ...(model.api.id ? { apiModelID: model.api.id } : {}),
                   time: {
                     created: Date.now(),
                   },
@@ -858,7 +919,7 @@ export namespace SessionInvoke {
                   sessionID,
                   session,
                   userTools: R.tools,
-                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  ephemeralTools: runtimeState().ephemeralToolsByMessage.get(R.id),
                   includeMCP: true,
                 }),
                 Promise.all([
@@ -901,17 +962,13 @@ export namespace SessionInvoke {
 
               // Layer 1.5: Semi-static — permission context (stable per session)
               try {
-                const workspace = ScopeContext.current.directory
+                const workspace = ScopeContext.current.workspace?.path ?? null
                 const workspaceInfo = ScopeContext.current.workspace
                 const profileId = await Session.resolveEffectiveControlProfile({
                   sessionID: session?.id,
                   agentControlProfile: agent.controlProfile,
                 })
-                const trustedRoots = Scope.Root.executionRoots(
-                  ScopeContext.current.scope,
-                  workspaceInfo,
-                  SkillSourceProfile.allRootPaths(workspace),
-                )
+                const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                 const resolved = await ControlProfileCompiler.resolve(profileId, {
                   workspace,
                   workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
@@ -952,7 +1009,8 @@ export namespace SessionInvoke {
                     messageID: R.id,
                     metadata: { injectedContext: injection },
                   })
-                  if (updated?.role === "user") R = updated
+                  if (updated?.role === "user")
+                    R = { ...updated, model: R.model, variant: R.variant, thinking: R.thinking }
                 }
               }
 
@@ -960,7 +1018,9 @@ export namespace SessionInvoke {
               lateSystemParts.push(...envParts)
 
               // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
-              const gitHealthBlock = SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
+              const gitHealthBlock = ScopeContext.current.workspace
+                ? SessionProjectHealth.injectCachedGitHealth(ScopeContext.current.directory)
+                : undefined
               if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
               // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
@@ -969,7 +1029,7 @@ export namespace SessionInvoke {
               // contradicts "Is directory a git repo" in the environment text.
               if ((await Config.current()).prompt?.coauthorReminder !== false) {
                 const inGitRepo =
-                  ScopeContext.current.scope.type === "project" &&
+                  ScopeContext.current.workspace &&
                   (await SessionProjectHealth.isGitRepo(ScopeContext.current.directory))
                 if (inGitRepo) {
                   lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
@@ -1025,6 +1085,12 @@ export namespace SessionInvoke {
               })
               const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
                 maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+                model: {
+                  providerID: model.providerID,
+                  modelID: model.id,
+                  profileID: producingProvider?.profileID,
+                  apiModelID: model.api.id,
+                },
               })
               const { converted, dropped, failed } = modelProjection.sanitization
               if (converted + dropped + failed > 0) {
@@ -1068,12 +1134,14 @@ export namespace SessionInvoke {
               if (!promptPlan) break
 
               const calibration = buildCalibration(msgs, model)
-              const requestedMaxOutputTokens = maxOutputTokensByMessage.get(R.id)
+              const encryptedReasoningTokens = PromptBudgeter.reasoningReplayTokens(modelSessionMessages)
+              const requestedMaxOutputTokens = runtimeState().maxOutputTokensByMessage.get(R.id)
               const promptDecideTimer = log.time("promptBudgeter.decide")
               let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
                 overflowThreshold: jobCtx.compactionOverflowThreshold,
                 calibration,
                 maxOutputTokens: requestedMaxOutputTokens,
+                encryptedReasoningTokens,
               }).catch(async (error) => {
                 await completeAssistantWithError({ sessionID, processor, model, error, abort })
                 return undefined
@@ -1135,7 +1203,7 @@ export namespace SessionInvoke {
                   processor,
                   session,
                   userTools: R.tools,
-                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  ephemeralTools: runtimeState().ephemeralToolsByMessage.get(R.id),
                   includeMCP: true,
                 },
                 toolAvailability,
@@ -1271,9 +1339,12 @@ export namespace SessionInvoke {
                 messages: msgs,
                 providerID: model.providerID,
                 modelID: model.id,
+                profileID: producingProvider?.profileID,
+                apiModelID: model.api.id,
               })
               streamInput = {
                 user: R,
+                modelSelection,
                 agent,
                 abort: combinedAbort,
                 sessionID,
@@ -1293,7 +1364,7 @@ export namespace SessionInvoke {
                   sessionID,
                   session,
                   userTools: R.tools,
-                  ephemeralTools: ephemeralToolsByMessage.get(R.id),
+                  ephemeralTools: runtimeState().ephemeralToolsByMessage.get(R.id),
                   includeMCP: true,
                 },
                 model,
@@ -1713,8 +1784,8 @@ export namespace SessionInvoke {
         mode: latestRoot.agent,
         agent: latestRoot.agent,
         path: {
-          cwd: ScopeContext.current.directory,
-          root: ScopeContext.current.directory,
+          cwd: ScopeContext.current.workspace?.path ?? null,
+          root: ScopeContext.current.workspace?.path ?? null,
         },
         cost: 0,
         tokens: {
@@ -1821,8 +1892,8 @@ export namespace SessionInvoke {
       mode: user.agent,
       agent: user.agent,
       path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
+        cwd: ScopeContext.current.workspace?.path ?? null,
+        root: ScopeContext.current.workspace?.path ?? null,
       },
       cost: 0,
       tokens: {
@@ -1880,8 +1951,8 @@ export namespace SessionInvoke {
       mode: "unknown",
       agent: "unknown",
       path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
+        cwd: ScopeContext.current.workspace?.path ?? null,
+        root: ScopeContext.current.workspace?.path ?? null,
       },
       cost: 0,
       tokens: {
@@ -2235,8 +2306,8 @@ export namespace SessionInvoke {
       agent: agentName,
       cost: 0,
       path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
+        cwd: ScopeContext.current.workspace?.path ?? null,
+        root: ScopeContext.current.workspace?.path ?? null,
       },
       time: { created: Date.now(), completed: Date.now() },
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -2437,6 +2508,7 @@ export namespace SessionInvoke {
       if (SessionManager.isRunning(sessionID)) continue
       try {
         await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
+        await repairIncompleteAssistant(sessionID, { terminalize: false })
       } catch (error) {
         log.warn("session pause reconcile failed", { sessionID, error })
       }

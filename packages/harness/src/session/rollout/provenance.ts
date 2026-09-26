@@ -77,7 +77,7 @@ export namespace RolloutProvenance {
   }
 
   export async function capture(): Promise<Info> {
-    const directory = ScopeContext.tryScope()?.directory
+    const directory = ScopeContext.tryScope()?.local?.directory
     const [checkout, workspace, installedPlugins] = await Promise.all([
       Installation.isLocal() ? git(path.resolve(import.meta.dirname, "../../../../..")) : null,
       directory ? git(directory) : null,

@@ -1,3 +1,5 @@
+import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { StatusBar } from "@/components/status-bar"
@@ -43,8 +45,15 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import type { FileDiff, Session, SessionInboxItem, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  FileDiff,
+  Session,
+  SessionInboxItem,
+  SessionStatus,
+  SessionInputProgress,
+} from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
+import { observeSessionInput } from "@/components/session/session-input-observer"
 import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
@@ -54,6 +63,7 @@ import { navMark, navParams } from "@/utils/perf"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
+import { fileRestoreFeedback } from "@/components/session/file-restore-feedback"
 import { requestErrorMessage } from "@/utils/error"
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
@@ -66,7 +76,7 @@ import { createWorkbenchService } from "@/plugin/workbench-service"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useLocale } from "@/context/locale"
 import { AP } from "@/app-i18n"
-import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
+import { MobileWorkspaceDialog } from "@/components/workspace/mobile-workspace-dialog"
 import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
 import { blueprintNoteCreateFocusRequest } from "@/context/plan-blueprint-offer"
@@ -97,7 +107,7 @@ import {
 import {
   decideSessionTransitionHandoff,
   recoverSessionTransitionHandoff,
-  scheduleSessionTransitionHandoffDeadline,
+  SESSION_TRANSITION_HANDOFF_TIMEOUT_MS,
   type SessionTransitionHandoff,
 } from "@/components/session/session-transition-handoff"
 import { selectPendingTimelineItems } from "@/components/session/conversation-pending"
@@ -142,10 +152,11 @@ const handoff = {
 }
 
 export default function Page() {
+  const sdk = useGlobalSDK()
   return (
     <TerminalProvider>
       <ResourceOpenProvider>
-        <PromptProvider>
+        <PromptProvider connection={sdk.url} drafts={sdk.drafts}>
           <BuiltinWorkbenchPanelsProvider>
             <SessionPreparation>
               <SessionPageContent />
@@ -306,7 +317,7 @@ function SessionPageContent() {
     const run = async () => {
       try {
         if (request.operation === "leave") {
-          await sdk.client.worktree.leave({ directory: request.directory, sessionID: request.sessionID })
+          await sdk.client.worktree.leave({ scopeID: request.directory, sessionID: request.sessionID })
           refreshWorkspaceTransition({
             request,
             success: createWorkspaceTransitionSuccessProgress({ operation: "leave" }),
@@ -319,7 +330,7 @@ function SessionPageContent() {
         }
 
         const result = await sdk.client.worktree.create({
-          directory: request.directory,
+          scopeID: request.directory,
           worktreeCreateInput: {
             sessionID: request.sessionID,
             bind: true,
@@ -329,7 +340,7 @@ function SessionPageContent() {
         const setupFailure = worktreeSetupFailureMessage(result.data)
         if (setupFailure) {
           await sdk.client.worktree
-            .leave({ directory: request.directory, sessionID: request.sessionID })
+            .leave({ scopeID: request.directory, sessionID: request.sessionID })
             .catch(() => undefined)
           await sync.session
             .sync(request.sessionID, { trigger: { type: "workspace-transition" } })
@@ -480,8 +491,20 @@ function SessionPageContent() {
               return requestErrorMessage(error)
             }
           }
+          let restoreFailed = false
           if (restoreFiles && result.data?.id) {
-            await sdk.client.session.files.restore({ sessionID, rollbackID: result.data.id }).catch(() => {})
+            try {
+              const restored = await sdk.client.session.files.restore(
+                { sessionID, rollbackID: result.data.id },
+                { throwOnError: true },
+              )
+              const feedback = fileRestoreFeedback(restored.data, i18n)
+              restoreFailed = feedback.type === "error"
+              showToast(feedback)
+            } catch (error) {
+              restoreFailed = true
+              showToast({ type: "error", description: requestErrorMessage(error, i18n._(S.transitionRecoveryFailed)) })
+            }
           }
           if (cutParts.length > 0) {
             const restored = extractPromptDraft({ message: targetMsg, parts: cutParts, directory: sdk.directory })
@@ -489,7 +512,7 @@ function SessionPageContent() {
             prompt.context.set(restored.context)
           }
           setActiveMessage(previousActiveMessage)
-          if (action !== "retry" || !retryInput) return
+          if (restoreFailed || action !== "retry" || !retryInput) return
           try {
             await sdk.client.session.input(retryInput, { throwOnError: true })
             prompt.resetDraft()
@@ -637,7 +660,12 @@ function SessionPageContent() {
       ? createNewSessionWorkspaceSuccessProgress({ selection })
       : createNewSessionTransitionSuccessProgress()
   }
-  const showStalledHandoff = (sessionID: string, handoff: SessionTransitionHandoff, message?: string) => {
+  const [retryingHandoffs, setRetryingHandoffs] = createSignal<Record<string, boolean>>({})
+  const showStalledHandoff = (
+    sessionID: string,
+    handoff: SessionTransitionHandoff,
+    error?: { code?: string; message: string },
+  ) => {
     const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
     const retry = () => retrySessionTransitionHandoff(sessionID, handoff)
     setSessionTransition(
@@ -645,7 +673,7 @@ function SessionPageContent() {
       createSessionTransitionHandoffErrorProgress({
         kind: accepted.kind,
         steps: accepted.steps,
-        message,
+        error,
       }),
       {
         retry,
@@ -655,6 +683,9 @@ function SessionPageContent() {
     )
   }
   const retrySessionTransitionHandoff = (sessionID: string, handoff: SessionTransitionHandoff) => {
+    const key = JSON.stringify([sessionID, handoff.messageID])
+    if (retryingHandoffs()[key]) return
+    setRetryingHandoffs((all) => ({ ...all, [key]: true }))
     const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
     const nextHandoff = {
       ...handoff,
@@ -665,29 +696,25 @@ function SessionPageContent() {
     setSessionTransition(sessionID, accepted, undefined, nextHandoff)
     const run = async () => {
       try {
-        if (handoff.itemID) {
-          await sdk.client.session.inboxRetry({ sessionID, itemID: handoff.itemID })
-          return
-        }
-        await sync.session.refresh(sessionID)
-      } catch (error) {
-        await sync.session.refresh(sessionID).catch(() => undefined)
-        if (
-          decideSessionTransitionHandoff({
-            messageID: handoff.messageID,
-            messages: messages(),
-            // Explicit exemption: decideSessionTransitionHandoff branches on
-            // inbox === undefined to trigger refresh; the view layer's shared
-            // empty array would change that loading semantics.
-            inbox: sync.data.inbox[sessionID],
-            elapsedMs: 0,
-            refreshAttempted: true,
-          }) === "ready"
-        ) {
+        const { data: status } = await sdk.client.session.inputStatus(
+          { sessionID, messageID: handoff.messageID },
+          { throwOnError: true },
+        )
+        if (status.canonical || status.state === "cancelled" || status.state === "completed") {
+          await sync.session.refresh(sessionID)
           sessionTransition.completeHandoff(sessionID, handoff.messageID)
           return
         }
-        showStalledHandoff(sessionID, nextHandoff, requestErrorMessage(error))
+        if (status.state === "failed" && status.itemID) {
+          await sdk.client.session.inboxRetry({ sessionID, itemID: status.itemID }, { throwOnError: true })
+        }
+      } catch (error) {
+        if (sessionTransition.get(sessionID)?.handoff?.messageID !== handoff.messageID) return
+        showStalledHandoff(sessionID, nextHandoff, {
+          message: requestErrorMessage(error, i18n._(S.transitionRecoveryFailed)),
+        })
+      } finally {
+        setRetryingHandoffs((all) => ({ ...all, [key]: false }))
       }
     }
     void run()
@@ -712,40 +739,84 @@ function SessionPageContent() {
       success: successProgressForHandoff(recovered),
     })
   })
-  // One-shot stall detection anchored to the attempt identity. A retry
-  // rewrites acceptedAt, which changes the entry and re-schedules a fresh
-  // window; the deadline skips itself when the attempt is no longer loading.
-  createEffect(() => {
-    const sessionID = params.id
+  const handoffAttempt = createMemo(() => {
     const entry = visibleSessionTransitionEntry()
-    if (!sessionID || entry?.progress.phase !== "loading" || !entry.handoff) return
-    const handoff = entry.handoff
-    const attempt = {
-      messageID: handoff.messageID,
-      acceptedAt: handoff.acceptedAt ?? Date.now(),
-    }
-    const cancel = scheduleSessionTransitionHandoffDeadline(
-      attempt,
-      (current) => {
-        const live = visibleSessionTransitionEntry()
-        return (
-          live?.progress.phase === "loading" &&
-          live.handoff?.messageID === current.messageID &&
-          // An unanchored attempt stays current by falling back to the
-          // scheduled identity; a retry writes a fresh acceptedAt, which
-          // changes identity and lets the old deadline expire silently.
-          (live.handoff.acceptedAt ?? current.acceptedAt) === current.acceptedAt
-        )
-      },
-      () => {
-        const live = visibleSessionTransitionEntry()
-        if (live?.handoff && live.progress.phase === "loading") {
-          showStalledHandoff(sessionID, live.handoff)
-        }
-      },
-    )
-    onCleanup(cancel)
+    return entry?.handoff &&
+      entry.progress.phase === "loading" &&
+      !retryingHandoffs()[JSON.stringify([params.id, entry.handoff.messageID])]
+      ? `${params.id}:${entry.handoff.messageID}:${entry.handoff.acceptedAt}`
+      : undefined
   })
+  createEffect(
+    on(handoffAttempt, (attempt) => {
+      if (!attempt) return
+      const sessionID = params.id!
+      const handoff = visibleSessionTransitionEntry()!.handoff!
+      const update = async (status: SessionInputProgress) => {
+        if (handoffAttempt() !== attempt) return
+        if (status.canonical) {
+          await sync.session.refresh(sessionID)
+          return
+        }
+        if (status.state === "failed") {
+          showStalledHandoff(sessionID, { ...handoff, itemID: status.itemID ?? handoff.itemID }, status.error)
+          return
+        }
+        const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+        if (status.state === "cancelled") {
+          setSessionTransition(
+            sessionID,
+            {
+              ...createSessionTransitionHandoffErrorProgress({ kind: accepted.kind, steps: accepted.steps }),
+              description: S.transitionDescCancelled,
+            },
+            { dismiss: () => dismissSessionTransitionHandoff(sessionID, handoff.messageID) },
+            handoff,
+          )
+          return
+        }
+        const description =
+          status.state === "queued_storage"
+            ? S.transitionDescStorage
+            : status.state === "retrying"
+              ? S.transitionDescRetrying
+              : Date.now() - (handoff.acceptedAt ?? Date.now()) >= SESSION_TRANSITION_HANDOFF_TIMEOUT_MS
+                ? S.transitionDescDelayed
+                : S.transitionDescInitializing
+        setSessionTransition(sessionID, { ...accepted, description }, undefined, handoff)
+      }
+      const stop = observeSessionInput({
+        read: async (signal) =>
+          (
+            await sdk.client.session.inputStatus(
+              { sessionID, messageID: handoff.messageID },
+              { signal, throwOnError: true },
+            )
+          ).data,
+        update: async (status) => {
+          if (status) await update(status)
+        },
+        unavailable: () => {
+          if (handoffAttempt() !== attempt) return
+          const accepted = handoff.accepted ?? acceptedProgressForHandoff(handoff)
+          setSessionTransition(
+            sessionID,
+            { ...accepted, description: S.transitionDescReconnecting },
+            undefined,
+            handoff,
+          )
+        },
+      })
+      const unsubscribe = sdk.event.on("session.input.progress", ({ properties }) => {
+        if (properties.sessionID === sessionID && properties.messageID === handoff.messageID)
+          void update(properties).catch(() => {})
+      })
+      onCleanup(() => {
+        stop()
+        unsubscribe()
+      })
+    }),
+  )
   // Event-driven handoff resolution: re-evaluates only when the message
   // window, inbox, or transition entry changes. A message arriving in the
   // window resolves the transition immediately — no polling required.
@@ -765,10 +836,6 @@ function SessionPageContent() {
     })
     if (decision === "ready") {
       sessionTransition.completeHandoff(sessionID, entry.handoff.messageID)
-      return
-    }
-    if (decision === "stalled") {
-      showStalledHandoff(sessionID, entry.handoff)
       return
     }
     if (decision !== "refresh") return
@@ -816,14 +883,15 @@ function SessionPageContent() {
     return (messages()?.length ?? 0) === 0 && pendingTimeline().length === 0 && visibleSessionTransition() === null
   })
   const guidePending = async (item: SessionInboxItem) => {
-    const sessionID = params.id
-    if (!sessionID) return
-    await sdk.client.session.inboxGuide({ sessionID, itemID: item.id })
+    await sdk.client.session.inboxGuide({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
   }
   const removePending = async (item: SessionInboxItem) => {
-    const sessionID = params.id
-    if (!sessionID) return
-    await sdk.client.session.inboxRemove({ sessionID, itemID: item.id })
+    const client = sdk.client
+    const { data } = await client.session.inboxRemoved({ sessionID: item.sessionID }, { throwOnError: true })
+    if (!data?.some((removed) => removed.id === item.id)) {
+      await client.session.inboxRemove({ sessionID: item.sessionID, itemID: item.id }, { throwOnError: true })
+    }
+    await sync.session.refresh(item.sessionID)
   }
 
   const timeline = createMemo(() => {
@@ -846,19 +914,19 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const scopeRoot = createMemo(() => sync.scope?.worktree ?? sync.data.path.directory)
+  const scopeRoot = createMemo(() => sync.scope?.local?.worktree ?? sync.data.path.directory)
   const newSessionWorkspacePreference = createMemo<NewSessionWorkspacePreference>(() =>
-    sync.scope?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
+    sync.scope?.local?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
   )
   const newSessionWorkspaceSelection = createMemo(() =>
     defaultNewSessionWorkspaceSelection({
       selected: store.newSessionWorkspaceSelection,
-      currentDirectory: sync.data.path.directory,
-      canonicalDirectory: scopeRoot(),
+      currentDirectory: sync.data.path.directory ?? undefined,
+      canonicalDirectory: scopeRoot() ?? undefined,
       preference: newSessionWorkspacePreference(),
     }),
   )
-  const scopeName = createMemo(() => getFilename(scopeRoot()))
+  const scopeName = createMemo(() => getFilename(scopeRoot() ?? ""))
   const branch = createMemo(() => sync.data.vcs?.branch)
   const lastModified = createMemo(() => {
     const scope = sync.scope
@@ -1011,7 +1079,7 @@ function SessionPageContent() {
     const id = params.id
     if (!session || !id) return
     const routeScope = sdk.scopeKey
-    const sessionScope = session.scope.type === "home" ? HOME_SCOPE_KEY : session.scope.directory
+    const sessionScope = session.scope.id
     if (!sessionScope) return
     if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
     navigate(`/${base64Encode(sessionScope)}/session/${id}`, sessionRouteReplaceOptions(location.state))
@@ -1080,29 +1148,7 @@ function SessionPageContent() {
   })
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) return
-    const activeElement = document.activeElement as HTMLElement | undefined
-    if (activeElement) {
-      const isProtected = activeElement.closest("[data-prevent-autofocus]")
-      // Monaco's native EditContext input is a div with role="textbox" (not a
-      // TEXTAREA and not contenteditable); treat any textbox role as an input
-      // so type-anywhere does not steal focus from the file editor.
-      const isInput =
-        /^(INPUT|TEXTAREA|SELECT)$/.test(activeElement.tagName) ||
-        activeElement.isContentEditable ||
-        activeElement.getAttribute("role") === "textbox"
-      if (isProtected || isInput) return
-    }
-    if (dialog.active) return
-
-    if (activeElement === inputRef) {
-      if (event.key === "Escape") inputRef?.blur()
-      return
-    }
-
-    if (event.key.length === 1 && event.key !== "Unidentified" && !(event.ctrlKey || event.metaKey)) {
-      inputRef?.focus()
-    }
+    handleComposerTypingAutofocus(event, inputRef, !!dialog.active)
   }
 
   const isWorking = createMemo(() => isWorkingStatus(status()))
@@ -1532,19 +1578,22 @@ function SessionPageContent() {
               return newSessionWorkspaceSelection()
             },
             get newSessionCanonicalDirectory() {
-              return scopeRoot()
+              return scopeRoot() ?? undefined
             },
             get newSessionCurrentDirectory() {
-              return sync.data.path.directory
+              return sync.data.path.directory ?? undefined
             },
             get newSessionCanCreateWorktree() {
-              return !isHomeScope(sdk.scopeKey)
+              return sync.scope?.local?.vcs === "git"
             },
             onNewSessionWorkspaceSelectionChange: (selection) => setStore("newSessionWorkspaceSelection", selection),
             onNewSessionWorkspaceSelectionReset: () => setStore("newSessionWorkspaceSelection", undefined),
             onNewSessionTransitionChange: setNewSessionTransition,
             get sessionTransitionPending() {
               return sessionTransitionPending()
+            },
+            get sessionTransitionError() {
+              return visibleSessionTransition()?.phase === "error"
             },
             get hideAgentSelector() {
               return !sessionMeta().showInputBar
@@ -1690,10 +1739,10 @@ function SessionPageContent() {
       }
     },
     get onPendingGuide() {
-      return (item: SessionInboxItem) => void guidePending(item)
+      return (item: SessionInboxItem) => guidePending(item)
     },
     get onPendingRemove() {
-      return (item: SessionInboxItem) => void removePending(item)
+      return (item: SessionInboxItem) => removePending(item)
     },
     get onForkMessage() {
       return (messageID: string) => openForkConfirm(messageID)
@@ -1809,6 +1858,8 @@ function SessionPageContent() {
     conversation: () => (
       <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
         <SessionTopBar
+          newSessionWorkspaceSelection={newSessionWorkspaceSelection()}
+          onWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
           onWorkspaceTransition={startWorkspaceTransition}
           sessionTransitionPending={sessionTransitionPending}
         />
@@ -1894,12 +1945,9 @@ function SessionPageContent() {
 
         {/* Mobile side workspace overlay */}
         <Show when={sideWorkspaceMounts().mobile}>
-          <div class="absolute inset-0 z-50 flex flex-col bg-background-stronger">
-            <WorkspaceMobileHeader onClose={() => sideSurface().close()} />
-            <div class="mobile-workbench-overlay relative flex-1 min-h-0">
-              <WorkbenchSurface surface="side" />
-            </div>
-          </div>
+          <MobileWorkspaceDialog onClose={() => sideSurface().close()}>
+            <WorkbenchSurface surface="side" />
+          </MobileWorkspaceDialog>
         </Show>
       </>
     ),
@@ -1940,6 +1988,7 @@ function SessionPageContent() {
                   const diffsArr = Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[])
                   return (
                     <SessionReviewTab
+                      workspace={() => file.workspace}
                       diffs={() => diffsArr}
                       view={view}
                       diffStyle="unified"

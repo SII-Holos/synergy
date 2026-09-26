@@ -2,6 +2,9 @@ import { test, expect, describe } from "bun:test"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function expectPending(input: Parameters<typeof PermissionNext.ask>[0], sessionID: string) {
   const promise = PermissionNext.ask(input)
@@ -18,148 +21,156 @@ async function expectPending(input: Parameters<typeof PermissionNext.ask>[0], se
 }
 
 describe("session_send identity boundary", () => {
-  test("identity_act with nonBypassable metadata stays pending", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expectPending(
-          {
-            sessionID: "ses_session_send_test_nonbypass",
-            permission: "identity_act",
-            patterns: ["session_send role=user to ses_target123"],
-            metadata: {
-              nonBypassable: true,
-              action: "session_send",
-              role: "user",
-              target: "ses_target123",
+  test("identity_act with nonBypassable metadata stays pending", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expectPending(
+            {
+              sessionID: "ses_session_send_test_nonbypass",
+              permission: "identity_act",
+              patterns: ["session_send role=user to ses_target123"],
+              metadata: {
+                nonBypassable: true,
+                action: "session_send",
+                role: "user",
+                target: "ses_target123",
+              },
+              ruleset: [{ permission: "identity_act", pattern: "*", action: "ask" }],
             },
-            ruleset: [{ permission: "identity_act", pattern: "*", action: "ask" }],
-          },
-          "ses_session_send_test_nonbypass",
-        )
-      },
-    })
-  })
+            "ses_session_send_test_nonbypass",
+          )
+        },
+      })
+    }))
 
-  test("identity_act with unattended metadata stays pending", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expectPending(
-          {
-            sessionID: "ses_session_send_test_unattended",
-            permission: "identity_act",
-            patterns: ["session_send role=user to ses_target"],
-            metadata: {
-              nonBypassable: true,
-              sessionInteractionMode: "unattended",
-              sessionInteractionSource: "agenda",
-              action: "session_send",
-              role: "user",
+  test("identity_act with unattended metadata stays pending", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expectPending(
+            {
+              sessionID: "ses_session_send_test_unattended",
+              permission: "identity_act",
+              patterns: ["session_send role=user to ses_target"],
+              metadata: {
+                nonBypassable: true,
+                sessionInteractionMode: "unattended",
+                sessionInteractionSource: "agenda",
+                action: "session_send",
+                role: "user",
+              },
+              ruleset: [{ permission: "identity_act", pattern: "*", action: "ask" }],
             },
-            ruleset: [{ permission: "identity_act", pattern: "*", action: "ask" }],
-          },
-          "ses_session_send_test_unattended",
-        )
-      },
-    })
-  })
+            "ses_session_send_test_unattended",
+          )
+        },
+      })
+    }))
 
-  test("session_send role=user evaluated as deny returns DeniedError", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expect(
-          PermissionNext.ask({
-            sessionID: "ses_session_send_test_deny",
-            permission: "identity_act",
-            patterns: ["session_send role=user to ses_target"],
-            metadata: {
-              nonBypassable: true,
-              action: "session_send",
-              role: "user",
-            },
-            ruleset: [{ permission: "identity_act", pattern: "*", action: "deny" }],
-          }),
-        ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
-      },
-    })
-  })
+  test("session_send role=user evaluated as deny returns DeniedError", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expect(
+            PermissionNext.ask({
+              sessionID: "ses_session_send_test_deny",
+              permission: "identity_act",
+              patterns: ["session_send role=user to ses_target"],
+              metadata: {
+                nonBypassable: true,
+                action: "session_send",
+                role: "user",
+              },
+              ruleset: [{ permission: "identity_act", pattern: "*", action: "deny" }],
+            }),
+          ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+        },
+      })
+    }))
 })
 
 describe("email_send communication boundary", () => {
-  test("communication_email with nonBypassable metadata stays pending", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expectPending(
-          {
-            sessionID: "ses_email_send_test_nonbypass",
-            permission: "communication_email",
-            patterns: ["to: user@example.com"],
-            metadata: {
-              nonBypassable: true,
-              action: "email_send",
-              to: "user@example.com",
-              subject: "Test email",
+  test("communication_email with nonBypassable metadata stays pending", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expectPending(
+            {
+              sessionID: "ses_email_send_test_nonbypass",
+              permission: "communication_email",
+              patterns: ["to: user@example.com"],
+              metadata: {
+                nonBypassable: true,
+                action: "email_send",
+                to: "user@example.com",
+                subject: "Test email",
+              },
+              ruleset: [{ permission: "communication_email", pattern: "*", action: "ask" }],
             },
-            ruleset: [{ permission: "communication_email", pattern: "*", action: "ask" }],
-          },
-          "ses_email_send_test_nonbypass",
-        )
-      },
-    })
-  })
+            "ses_email_send_test_nonbypass",
+          )
+        },
+      })
+    }))
 
-  test("communication_email with unattended metadata stays pending", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expectPending(
-          {
-            sessionID: "ses_email_send_test_unattended",
-            permission: "communication_email",
-            patterns: ["to: user@example.com"],
-            metadata: {
-              nonBypassable: true,
-              sessionInteractionMode: "unattended",
-              sessionInteractionSource: "agenda",
-              action: "email_send",
-              to: "user@example.com",
-              subject: "Automated report",
+  test("communication_email with unattended metadata stays pending", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expectPending(
+            {
+              sessionID: "ses_email_send_test_unattended",
+              permission: "communication_email",
+              patterns: ["to: user@example.com"],
+              metadata: {
+                nonBypassable: true,
+                sessionInteractionMode: "unattended",
+                sessionInteractionSource: "agenda",
+                action: "email_send",
+                to: "user@example.com",
+                subject: "Automated report",
+              },
+              ruleset: [{ permission: "communication_email", pattern: "*", action: "ask" }],
             },
-            ruleset: [{ permission: "communication_email", pattern: "*", action: "ask" }],
-          },
-          "ses_email_send_test_unattended",
-        )
-      },
-    })
-  })
+            "ses_email_send_test_unattended",
+          )
+        },
+      })
+    }))
 
-  test("communication_email with deny rule returns DeniedError", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await expect(
-          PermissionNext.ask({
-            sessionID: "ses_email_send_test_deny",
-            permission: "communication_email",
-            patterns: ["to: user@example.com"],
-            metadata: {
-              nonBypassable: true,
-              action: "email_send",
-              to: "user@example.com",
-            },
-            ruleset: [{ permission: "communication_email", pattern: "*", action: "deny" }],
-          }),
-        ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
-      },
-    })
-  })
+  test("communication_email with deny rule returns DeniedError", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await expect(
+            PermissionNext.ask({
+              sessionID: "ses_email_send_test_deny",
+              permission: "communication_email",
+              patterns: ["to: user@example.com"],
+              metadata: {
+                nonBypassable: true,
+                action: "email_send",
+                to: "user@example.com",
+              },
+              ruleset: [{ permission: "communication_email", pattern: "*", action: "deny" }],
+            }),
+          ).rejects.toBeInstanceOf(PermissionNext.DeniedError)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

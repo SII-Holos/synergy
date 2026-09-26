@@ -4,7 +4,8 @@ import { batch, createEffect, createMemo, createRoot, onCleanup } from "solid-js
 import { useParams } from "@solidjs/router"
 import type { FileSelection } from "@/context/file"
 import { Persist, persisted } from "@/utils/persist"
-import { clearLocalDraftMark, markDraftSession } from "./draft-index"
+import type { createDraftSessionIndex } from "./draft-index"
+import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
 import {
   sanitizeContextItemsValue,
@@ -57,7 +58,8 @@ export interface SessionAttachmentPart {
   type: "session"
   id: string
   sessionId: string
-  directory: string
+  scopeID: string | null
+  legacyDirectory?: string
   title: string
   updatedAt?: number
 }
@@ -147,11 +149,9 @@ type PromptCacheEntry = {
   dispose: VoidFunction
 }
 
-function createPromptSession(dir: string, id: string | undefined) {
-  const legacy = `${dir}/prompt${id ? "/" + id : ""}.v2`
-
+function createPromptSession(dir: string, id: string | undefined, drafts: ReturnType<typeof createDraftSessionIndex>) {
   const [store, setStore, _, ready] = persisted(
-    { ...Persist.scoped(dir, id, "prompt", [legacy]), migrate: sanitizePromptStateValue },
+    { ...Persist.scoped(dir, id, "prompt"), migrate: sanitizePromptStateValue },
     createStore<{
       prompt: Prompt
       cursor?: number
@@ -171,8 +171,8 @@ function createPromptSession(dir: string, id: string | undefined) {
   const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
   let revision = 0
 
-  createEffect(() => markDraftSession(id, dirty()))
-  onCleanup(() => clearLocalDraftMark(id))
+  createEffect(() => drafts.markDraftSession(id, dirty()))
+  onCleanup(() => drafts.clearLocalDraftMark(id))
 
   return {
     ready,
@@ -249,7 +249,7 @@ function createPromptSession(dir: string, id: string | undefined) {
 export const { use: usePrompt, provider: PromptProvider } = createSimpleContext({
   name: "Prompt",
   gate: false,
-  init: () => {
+  init: (props: { connection: string; drafts: ReturnType<typeof createDraftSessionIndex> }) => {
     const params = useParams()
     const cache = new Map<string, PromptCacheEntry>()
     const retained = new Map<PromptSession, number>()
@@ -285,7 +285,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       }
 
       const entry = createRoot((dispose) => ({
-        value: createPromptSession(dir, id),
+        value: createPromptSession(Persist.scopeKey(props.connection, base64Decode(dir)), id, props.drafts),
         dispose,
       }))
 

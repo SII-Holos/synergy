@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "./tool-group-note"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { NoteArchiveTool } from "./tools/note-archive"
@@ -11,12 +12,16 @@ import { NoteDeleteTool } from "./tools/note-delete"
 /**
  * Note domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerNoteTools(): void {
+  const instanceState = runtimeState()
+
   registerToolGroup()
-  if (registered) return
-  registered = true
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ToolRegistry.registerToolProvider("note", () => [
     NoteArchiveTool,

@@ -1,0 +1,138 @@
+diff --git a/dist/chunk/4XGMYOCT.js b/dist/chunk/4XGMYOCT.js
+index 91b8b266c385a1795286b0bc49253c67389d7dff..fbda055ff70cd4579cfbf85a44b3f2725a45d528 100644
+--- a/dist/chunk/4XGMYOCT.js
++++ b/dist/chunk/4XGMYOCT.js
+@@ -192,7 +192,7 @@ function TabsList(props) {
+     if (ref == null) {
+       return;
+     }
+-    const selectedTab = ref.querySelector(`[data-key="${context.listState().selectedKey()}"]`);
++    const selectedTab = ref.querySelector(`[data-key="${CSS.escape(context.listState().selectedKey())}"]`);
+     if (selectedTab != null) {
+       context.setSelectedTab(selectedTab);
+     }
+diff --git a/dist/chunk/DYCE77BF.js b/dist/chunk/DYCE77BF.js
+index a1a379fa5e90b3e48933f2b23c55c16a370b6f76..88eb29f92899357a2159908f2b697a96799a9d7d 100644
+--- a/dist/chunk/DYCE77BF.js
++++ b/dist/chunk/DYCE77BF.js
+@@ -695,7 +695,7 @@ function ComboboxBase(props) {
+   const activeDescendant = createMemo(() => {
+     const focusedKey = listState.selectionManager().focusedKey();
+     if (focusedKey) {
+-      return listboxRef()?.querySelector(`[data-key="${focusedKey}"]`)?.id;
++      return listboxRef()?.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)?.id;
+     }
+     return void 0;
+   });
+diff --git a/dist/chunk/E4PLEADY.jsx b/dist/chunk/E4PLEADY.jsx
+index 567b2884d742e89ddae9f7324f6b6291df6f86fc..fb78e454fb1fa4e405eebda915dd0d20a3e1caa7 100644
+--- a/dist/chunk/E4PLEADY.jsx
++++ b/dist/chunk/E4PLEADY.jsx
+@@ -824,7 +824,7 @@ function ComboboxBase(props) {
+   const activeDescendant = createMemo(() => {
+     const focusedKey = listState.selectionManager().focusedKey();
+     if (focusedKey) {
+-      return listboxRef()?.querySelector(`[data-key="${focusedKey}"]`)?.id;
++      return listboxRef()?.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)?.id;
+     }
+     return void 0;
+   });
+diff --git a/dist/chunk/GLKC2QFF.js b/dist/chunk/GLKC2QFF.js
+index 77642d4d9d98b1cffb092d4cac13ce5228f2596c..702d011da38f60431e52a318951494960d9ca77a 100644
+--- a/dist/chunk/GLKC2QFF.js
++++ b/dist/chunk/GLKC2QFF.js
+@@ -54,7 +54,7 @@ var ListKeyboardDelegate = class {
+     }
+   }
+   getItem(key) {
+-    return this.ref?.()?.querySelector(`[data-key="${key}"]`) ?? null;
++    return this.ref?.()?.querySelector(`[data-key="${CSS.escape(key)}"]`) ?? null;
+   }
+   // TODO: not working correctly
+   getKeyPageAbove(key) {
+diff --git a/dist/chunk/H6DSIDEC.js b/dist/chunk/H6DSIDEC.js
+index 938fb65e7b65282f490603f0edc790954e30d757..4310e8e8f4b7bd9ebf73a2daca7ad593538a4ec1 100644
+--- a/dist/chunk/H6DSIDEC.js
++++ b/dist/chunk/H6DSIDEC.js
+@@ -393,7 +393,7 @@ function createSelectableCollection(props, ref, scrollRef) {
+         scrollEl.scrollTop = scrollPos.top;
+         scrollEl.scrollLeft = scrollPos.left;
+         const element = scrollEl.querySelector(
+-          `[data-key="${manager.focusedKey()}"]`
++          `[data-key="${CSS.escape(manager.focusedKey())}"]`
+         );
+         if (element) {
+           focusWithoutScrolling(element);
+@@ -459,7 +459,7 @@ function createSelectableCollection(props, ref, scrollRef) {
+         } else {
+           if (focusedKey && scrollEl) {
+             const element = scrollEl.querySelector(
+-              `[data-key="${focusedKey}"]`
++              `[data-key="${CSS.escape(focusedKey)}"]`
+             );
+             if (element) {
+               scrollIntoView(scrollEl, element);
+@@ -556,6 +556,7 @@ function createSelectableItem(props, ref) {
+     }
+     if (e.target === refEl) {
+       manager().setFocusedKey(key());
++      manager().setFocused(true);
+     }
+   };
+   const tabIndex = createMemo(() => {
+diff --git a/dist/chunk/N3GAC5SS.jsx b/dist/chunk/N3GAC5SS.jsx
+index 551c446ee395ec65adff6df979e3991c1d92036e..7a0e56adeeb06fd6207bcd3c52818df39b0a9a49 100644
+--- a/dist/chunk/N3GAC5SS.jsx
++++ b/dist/chunk/N3GAC5SS.jsx
+@@ -56,7 +56,7 @@ var ListKeyboardDelegate = class {
+     }
+   }
+   getItem(key) {
+-    return this.ref?.()?.querySelector(`[data-key="${key}"]`) ?? null;
++    return this.ref?.()?.querySelector(`[data-key="${CSS.escape(key)}"]`) ?? null;
+   }
+   // TODO: not working correctly
+   getKeyPageAbove(key) {
+diff --git a/dist/chunk/QZDH5R5B.jsx b/dist/chunk/QZDH5R5B.jsx
+index c0c1a1e261d5c74d2664c8ea8f4d56a4e5001356..7e9431898b1a02f335be6f14f09f40b8d4c1b679 100644
+--- a/dist/chunk/QZDH5R5B.jsx
++++ b/dist/chunk/QZDH5R5B.jsx
+@@ -425,7 +425,7 @@ function createSelectableCollection(props, ref, scrollRef) {
+         scrollEl.scrollTop = scrollPos.top;
+         scrollEl.scrollLeft = scrollPos.left;
+         const element = scrollEl.querySelector(
+-          `[data-key="${manager.focusedKey()}"]`
++          `[data-key="${CSS.escape(manager.focusedKey())}"]`
+         );
+         if (element) {
+           focusWithoutScrolling(element);
+@@ -491,7 +491,7 @@ function createSelectableCollection(props, ref, scrollRef) {
+         } else {
+           if (focusedKey && scrollEl) {
+             const element = scrollEl.querySelector(
+-              `[data-key="${focusedKey}"]`
++              `[data-key="${CSS.escape(focusedKey)}"]`
+             );
+             if (element) {
+               scrollIntoView(scrollEl, element);
+@@ -599,6 +599,7 @@ function createSelectableItem(props, ref) {
+     }
+     if (e.target === refEl) {
+       manager().setFocusedKey(key());
++      manager().setFocused(true);
+     }
+   };
+   const tabIndex = createMemo3(() => {
+diff --git a/dist/chunk/ZABX5HRE.jsx b/dist/chunk/ZABX5HRE.jsx
+index 0d295ad548605fd85c324b1ff74aae123341b0a3..5fbd95850fef32327d729dbf7afd0d8c41112d77 100644
+--- a/dist/chunk/ZABX5HRE.jsx
++++ b/dist/chunk/ZABX5HRE.jsx
+@@ -242,7 +242,7 @@ function TabsList(props) {
+       return;
+     }
+     const selectedTab = ref.querySelector(
+-      `[data-key="${context.listState().selectedKey()}"]`
++      `[data-key="${CSS.escape(context.listState().selectedKey())}"]`
+     );
+     if (selectedTab != null) {
+       context.setSelectedTab(selectedTab);

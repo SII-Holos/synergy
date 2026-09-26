@@ -7,8 +7,9 @@ import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { registerChannelSessionProjects } from "@ericsanchezok/synergy-connections/channel/session-projects"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-
-registerChannelSessionProjects()
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function identity() {
   const suffix = crypto.randomUUID()
@@ -20,81 +21,86 @@ function identity() {
 }
 
 describe("managed Project navigation projection", () => {
-  test("annotates the canonical Scope entry and preserves remote lifecycle", async () => {
-    const input = identity()
-    const record = await ManagedProjectOwnership.ensure({
-      ...input,
-      projectName: "Managed project",
-      remoteState: "active",
-    })
-
-    const active = (await SessionNav.buildScopeIndex()).find((entry) => entry.scopeID === record.scopeID)
-    expect(active).toMatchObject({
-      scopeID: record.scopeID,
-      scopeType: "project",
-      managedProject: {
+  test("annotates the canonical Scope entry and preserves remote lifecycle", () =>
+    runtime.run(async () => {
+      const input = identity()
+      const record = await ManagedProjectOwnership.ensure({
         ...input,
+        projectName: "Managed project",
         remoteState: "active",
-      },
-    })
+      })
 
-    await ManagedProjectOwnership.markArchived(input)
+      const active = (await SessionNav.buildScopeIndex()).find((entry) => entry.scopeID === record.scopeID)
+      expect(active).toMatchObject({
+        scopeID: record.scopeID,
+        scopeType: "project",
+        managedProject: {
+          ...input,
+          remoteState: "active",
+        },
+      })
 
-    const archived = (await SessionNav.buildScopeIndex()).find((entry) => entry.scopeID === record.scopeID)
-    expect(archived).toMatchObject({
-      scopeID: record.scopeID,
-      managedProject: {
-        ...input,
-        remoteState: "archived",
-      },
-    })
-  })
+      await ManagedProjectOwnership.markArchived(input)
 
-  test("leaves ordinary Project Scope entries unmanaged", async () => {
-    await using directory = await tmpdir({ git: true })
-    const scope = await directory.scope()
+      const archived = (await SessionNav.buildScopeIndex()).find((entry) => entry.scopeID === record.scopeID)
+      expect(archived).toMatchObject({
+        scopeID: record.scopeID,
+        managedProject: {
+          ...input,
+          remoteState: "archived",
+        },
+      })
+    }))
 
-    const entry = (await SessionNav.buildScopeIndex()).find((candidate) => candidate.scopeID === scope.id)
+  test("leaves ordinary Project Scope entries unmanaged", () =>
+    runtime.run(async () => {
+      await using directory = await tmpdir({ git: true })
+      const scope = await directory.scope()
 
-    expect(entry).toBeDefined()
-    expect(entry?.managedProject).toBeUndefined()
-  })
+      const entry = (await SessionNav.buildScopeIndex()).find((candidate) => candidate.scopeID === scope.id)
 
-  test("projects Channel task identity into the standard Session nav entry", async () => {
-    const input = identity()
-    const record = await ManagedProjectOwnership.ensure({ ...input, remoteState: "active" })
-    const scope = await Scope.fromID(record.scopeID)
-    if (scope?.type !== "project") throw new Error("Expected managed Project Scope")
+      expect(entry).toBeDefined()
+      expect(entry?.managedProject).toBeUndefined()
+    }))
 
-    const target = {
-      kind: "task" as const,
-      externalProjectId: input.externalProjectId,
-      externalTaskId: `task-${crypto.randomUUID()}`,
-    }
-    const session = await ScopeContext.provide({
-      scope,
-      fn: () =>
-        Session.create({
-          scope,
-          title: "Managed task",
-          endpoint: SessionEndpoint.fromChannel({
-            type: input.channelType,
-            accountId: input.accountId,
-            target,
+  test("projects Channel task identity into the standard Session nav entry", () =>
+    runtime.run(async () => {
+      const input = identity()
+      const record = await ManagedProjectOwnership.ensure({ ...input, remoteState: "active" })
+      const scope = await Scope.fromID(record.scopeID)
+      if (scope?.type !== "project") throw new Error("Expected managed Project Scope")
+
+      const target = {
+        kind: "task" as const,
+        externalProjectId: input.externalProjectId,
+        externalTaskId: `task-${crypto.randomUUID()}`,
+      }
+      const session = await ScopeContext.provide({
+        scope,
+        fn: () =>
+          Session.create({
+            scope,
+            title: "Managed task",
+            endpoint: SessionEndpoint.fromChannel({
+              type: input.channelType,
+              accountId: input.accountId,
+              target,
+            }),
           }),
-        }),
-    })
+      })
 
-    const entry = (await SessionNav.buildNavIndex(scope.id)).entries.find((candidate) => candidate.id === session.id)
+      const entry = (await SessionNav.buildNavIndex(scope.id)).entries.find((candidate) => candidate.id === session.id)
 
-    expect(entry).toMatchObject({
-      id: session.id,
-      scopeID: scope.id,
-      category: "channel",
-      endpointKind: "channel",
-      channelType: input.channelType,
-      channelAccountId: input.accountId,
-      channelTarget: target,
-    })
-  })
+      expect(entry).toMatchObject({
+        id: session.id,
+        scopeID: scope.id,
+        category: "channel",
+        endpointKind: "channel",
+        channelType: input.channelType,
+        channelAccountId: input.accountId,
+        channelTarget: target,
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

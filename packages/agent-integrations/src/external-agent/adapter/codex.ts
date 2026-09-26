@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ExternalAgent } from "../bridge"
 
@@ -134,7 +135,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
     // between turns (Object.assign(cfg, runConfig)). Only allowlisted env keys
     // are forwarded to avoid leaking the Synergy process environment to Codex.
     const configEnv = (this.adapterConfig.env as Record<string, string> | undefined) ?? {}
-    const currentEnv = buildCodexProcessEnv(process.env, this.env, configEnv)
+    const currentEnv = buildCodexProcessEnv(RuntimeContext.current().host.env, this.env, configEnv)
     if (this.adapterConfig.nativeAuth === true) {
       delete currentEnv.SYNERGY_CODEX_API_KEY
     }
@@ -473,7 +474,9 @@ function extractItemText(item: Record<string, unknown>): string {
   return ""
 }
 
-ExternalAgent.register("codex", () => new CodexAdapter())
+export function registerAdapter() {
+  ExternalAgent.register("codex", () => new CodexAdapter())
+}
 
 export function resolveCodexCommandPath(config?: Record<string, unknown>): string | undefined {
   const configured = config?.path

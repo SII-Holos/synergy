@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityClock } from "./clock"
 import { ObservabilityLiveEvents } from "./live-events"
 import { ObservabilityContext } from "./context"
@@ -8,7 +9,9 @@ import { ObservabilityStore } from "./store"
 import { ObservabilityConfig } from "./config"
 
 export namespace ObservabilityIssues {
-  const publishedFingerprints = new Map<string, number>()
+  const runtimeState = RuntimeContext.state(() => ({
+    publishedFingerprints: new Map<string, number>(),
+  }))
   const PUBLISH_COALESCE_MS = 60_000
   const MAX_PUBLISHED_FINGERPRINTS = 1_000
 
@@ -34,7 +37,7 @@ export namespace ObservabilityIssues {
     // live-event publishing entirely so the write path and the dashboard
     // data version stay quiet (a growing data version would defeat the
     // summary cache even when nothing is stored).
-    if (!ObservabilityConfig.current().enabled) return undefined
+    if (!RuntimeContext.tryCurrent() || !ObservabilityConfig.current().enabled) return undefined
     const context = ObservabilityContext.merge({
       correlationId: input.correlationId,
       traceId: input.traceId,
@@ -91,14 +94,16 @@ export namespace ObservabilityIssues {
   }
 
   function publishIssueRaised(fingerprint: string, time: number, issue: ObservabilitySchema.Issue) {
-    const lastPublishedAt = publishedFingerprints.get(fingerprint) ?? 0
+    const instanceState = runtimeState()
+
+    const lastPublishedAt = instanceState.publishedFingerprints.get(fingerprint) ?? 0
     if (time - lastPublishedAt < PUBLISH_COALESCE_MS) return
-    publishedFingerprints.delete(fingerprint)
-    publishedFingerprints.set(fingerprint, time)
-    while (publishedFingerprints.size > MAX_PUBLISHED_FINGERPRINTS) {
-      const oldest = publishedFingerprints.keys().next().value
+    instanceState.publishedFingerprints.delete(fingerprint)
+    instanceState.publishedFingerprints.set(fingerprint, time)
+    while (instanceState.publishedFingerprints.size > MAX_PUBLISHED_FINGERPRINTS) {
+      const oldest = instanceState.publishedFingerprints.keys().next().value
       if (!oldest) break
-      publishedFingerprints.delete(oldest)
+      instanceState.publishedFingerprints.delete(oldest)
     }
     ObservabilityLiveEvents.publish({ type: "issue.raised", issue })
   }

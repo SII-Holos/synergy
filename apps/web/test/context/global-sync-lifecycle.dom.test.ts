@@ -27,13 +27,13 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-paused":{type:"paused",reason:"aborted",since:1}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
       return {
-        scope: { bootstrap: () => options.directory.startsWith("background.") ? ok({scopeID:options.directory,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.directory,resolve})) },
+        scope: { bootstrap: () => options.scopeID.startsWith("background.") ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve})) },
         permission: {list:()=>ok([])}, question: {list:()=>ok([])},
         event:{replay:()=>new Promise(resolve=>replays.push(resolve))},
-        session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.directory);inboxReady();return ok([])}},
+        session:{list:()=>new Promise(resolve=>lists.push(resolve)),inbox:()=>{inboxRequests.push(options.scopeID);inboxReady();return ok([])}},
       }
     }
-    export const useGlobalSDK = () => ({connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
+    export const useGlobalSDK = () => ({prepareScopeState(){},connected:()=>false,event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
       scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:seedStatuses},
     }})

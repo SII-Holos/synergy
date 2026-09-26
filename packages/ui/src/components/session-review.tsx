@@ -15,6 +15,8 @@ import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 import { getSemanticIcon } from "./semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { SESSION_REVIEW_DESC } from "./tool-title-descriptors"
+import { reviewFileKey } from "./session-review-model"
+export { reviewFileKey } from "./session-review-model"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 
@@ -31,14 +33,15 @@ export interface SessionReviewProps {
   classes?: { root?: string; header?: string; container?: string }
   actions?: JSX.Element
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
-  onViewFile?: (file: string) => void
+  onViewFile?: (file: string, diff: FileDiff) => void
+  canViewFile?: (diff: FileDiff) => boolean
   selectedFile?: string
 }
 
 export const SessionReview = (props: SessionReviewProps) => {
   const { _ } = useLingui()
   const [store, setStore] = createStore({
-    open: props.diffs.length > 10 ? [] : props.diffs.map((d) => d.file),
+    open: props.diffs.length > 10 ? [] : props.diffs.map(reviewFileKey),
   })
 
   const open = () => props.open ?? store.open
@@ -51,7 +54,7 @@ export const SessionReview = (props: SessionReviewProps) => {
   }
 
   const handleExpandOrCollapseAll = () => {
-    const next = open().length > 0 ? [] : props.diffs.map((d) => d.file)
+    const next = open().length > 0 ? [] : props.diffs.map(reviewFileKey)
     handleChange(next)
   }
 
@@ -100,12 +103,12 @@ export const SessionReview = (props: SessionReviewProps) => {
       >
         <Accordion multiple value={open()} onChange={handleChange}>
           <For each={props.diffs}>
-            {(diff) => (
+            {(diff, index) => (
               <Accordion.Item
-                value={diff.file}
+                value={reviewFileKey(diff)}
                 data-slot="session-review-accordion-item"
-                data-file={diff.file}
-                data-selected={props.selectedFile === diff.file ? "true" : undefined}
+                data-file={reviewFileKey(diff)}
+                data-selected={props.selectedFile === reviewFileKey(diff) ? "true" : undefined}
               >
                 <StickyAccordionHeader>
                   <Accordion.Trigger>
@@ -113,17 +116,32 @@ export const SessionReview = (props: SessionReviewProps) => {
                       <div data-slot="session-review-file-info">
                         <FileIcon node={{ path: diff.file, type: "file" }} />
                         <div data-slot="session-review-file-name-container">
+                          <Show when={diff.workspace?.root ?? diff.legacyRoot}>
+                            {(root) => <span data-slot="session-review-directory">{root()} / </span>}
+                          </Show>
                           <Show when={diff.file.includes("/")}>
                             <span data-slot="session-review-directory">{getDirectory(diff.file)}&lrm;</span>
                           </Show>
                           <span data-slot="session-review-filename">{getFilename(diff.file)}</span>
+                          <Show when={diff.operationID}>
+                            <span data-slot="session-review-operation">
+                              {_({ ...SESSION_REVIEW_DESC.operation, values: { number: index() + 1 } })}
+                            </span>
+                          </Show>
                           <Show when={props.onViewFile}>
                             <button
                               data-slot="session-review-view-button"
                               type="button"
+                              disabled={props.canViewFile?.(diff) === false}
+                              aria-label={_(SESSION_REVIEW_DESC.viewFile)}
+                              title={_(
+                                props.canViewFile?.(diff) === false
+                                  ? SESSION_REVIEW_DESC.historicalBinding
+                                  : SESSION_REVIEW_DESC.viewFile,
+                              )}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                props.onViewFile?.(diff.file)
+                                if (props.canViewFile?.(diff) !== false) props.onViewFile?.(diff.file, diff)
                               }}
                             >
                               <Icon name={getSemanticIcon("action.view")} size="small" />

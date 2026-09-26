@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { resolveNetworkArgv, loadNetworkConfig } from "../cli/network"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
@@ -50,7 +51,11 @@ export namespace DaemonSpec {
     if (!input?.config) Config.global.reset()
     const config = input?.config ?? (await loadNetworkConfig())
     const network = await resolveNetwork({ argv: input?.argv, config })
-    const command = DaemonCommand.resolve({ hostname: network.hostname, port: network.port })
+    const command = DaemonCommand.resolve({
+      hostname: network.hostname,
+      port: network.port,
+      env: RuntimeContext.current().host.env,
+    })
 
     return {
       label: DaemonCommand.serviceLabel(),

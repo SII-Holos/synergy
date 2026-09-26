@@ -3,6 +3,7 @@ import {
   resolveTurnDiffPanelState,
   TURN_DIFF_PENDING_DELAY_MS,
   turnChangeSummaryHiddenCount,
+  turnChangeSummaryFiles,
   turnChangeSummaryTitle,
   turnChangeSummaryToggleLabel,
   turnChangeSummaryVisibleDiffs,
@@ -65,4 +66,16 @@ describe("TurnChangeSummaryPanel helpers", () => {
       expect(resolveTurnDiffPanelState(input, false)).toBe(expected)
     }
   })
+})
+
+test("the compact summary counts files while full review retains operation identity", () => {
+  const workspace = { id: "wsp_a", generation: 1, root: "/a" }
+  const files = turnChangeSummaryFiles([
+    { file: "same.txt", workspace, operationID: "first", additions: 1, deletions: 2 },
+    { file: "same.txt", workspace, operationID: "last", additions: 3, deletions: 4 },
+    { file: "same.txt", workspace: { ...workspace, id: "wsp_b", root: "/b" }, additions: 1, deletions: 0 },
+  ])
+  expect(files).toHaveLength(2)
+  expect(files[0]).toMatchObject({ file: "same.txt", workspace, additions: 4, deletions: 6 })
+  expect(files[0]?.operationID).toBeUndefined()
 })

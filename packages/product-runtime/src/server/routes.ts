@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Format } from "@ericsanchezok/synergy-agent-integrations/format"
 import { GithubIdentityRoute } from "@ericsanchezok/synergy-connections/github/routes"
 import {
@@ -5,7 +6,7 @@ import {
   configureBrowserViewerOrigins,
 } from "@ericsanchezok/synergy-browser-runtime/routes/browser-route"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { ComputerRoute } from "@ericsanchezok/synergy-computer-runtime/routes/computer-route"
+import { createComputerRoute } from "@ericsanchezok/synergy-computer-runtime/routes/computer-route"
 import { ManagedProjectArchiveError } from "@ericsanchezok/synergy-connections/channel/managed-project-ownership"
 import { LSP } from "@ericsanchezok/synergy-agent-integrations/lsp"
 import { Vcs } from "@ericsanchezok/synergy-workbench/project/vcs"
@@ -89,12 +90,16 @@ function matchesPath(pathname: string, prefixes: string[]) {
   return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerProductRoutes() {
-  if (registered) return
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
   Server.registerContributions({
-    providerRoutes: GithubIdentityRoute,
+    providerRoutes: GithubIdentityRoute(),
     scopeConflictSchema: ManagedProjectArchiveError.Schema,
     bootstrap: {
       mcp: { schema: z.record(z.string(), MCP.Status), load: () => MCP.status() },
@@ -107,12 +112,12 @@ export function registerProductRoutes() {
       },
     },
     routes: {
-      "global-tools": new Hono().route("/global/git", GitRoute).route("/global/stats", StatsRoute),
-      "global-performance": new Hono().route("/global", PerformanceRoute),
+      "global-tools": new Hono().route("/global/git", GitRoute()).route("/global/stats", StatsRoute()),
+      "global-performance": new Hono().route("/global", PerformanceRoute()),
       "global-services": new Hono()
-        .route("/holos", HolosRoute)
-        .route("/push", PushRoute)
-        .route("/synergy-link", SynergyLinkRoute)
+        .route("/holos", HolosRoute())
+        .route("/push", PushRoute())
+        .route("/synergy-link", SynergyLinkRoute())
         .get(
           "/global/agenda",
           describeRoute({
@@ -136,7 +141,7 @@ export function registerProductRoutes() {
             }
           },
         ),
-      "global-navigation": new Hono().route("/global", GlobalNavRoute).post(
+      "global-navigation": new Hono().route("/global", GlobalNavRoute()).post(
         "/agenda/webhook/:token",
         describeRoute({
           summary: "Fire agenda webhook",
@@ -172,7 +177,7 @@ export function registerProductRoutes() {
           return c.json({ accepted: true })
         },
       ),
-      "scoped-version-control": new Hono().route("/session", SessionAgendaRoute).get(
+      "scoped-version-control": new Hono().route("/session", SessionAgendaRoute()).get(
         "/vcs",
         describeRoute({
           summary: "Get VCS info",
@@ -197,25 +202,25 @@ export function registerProductRoutes() {
         },
       ),
       "scoped-before-assets": new Hono()
-        .route("/library", LibraryRoute)
-        .route("/agenda", AgendaRoute)
-        .route("/note", NoteRoute)
-        .route("/blueprint", BlueprintRoute)
-        .route("/lattice", LatticeRoute)
-        .route("/workflow", WorkflowRoute)
-        .route("/boss", BossRoute),
+        .route("/library", LibraryRoute())
+        .route("/agenda", AgendaRoute())
+        .route("/note", NoteRoute())
+        .route("/blueprint", BlueprintRoute())
+        .route("/lattice", LatticeRoute())
+        .route("/workflow", WorkflowRoute())
+        .route("/boss", BossRoute()),
       "scoped-after-assets": new Hono()
-        .route("/voice", VoiceRoute)
-        .route("/holos", HolosDataRoute)
-        .route("", BrowserRoute)
-        .route("", ComputerRoute)
-        .route("/plugin", PluginRoute)
-        .route("/api/plugins", ApiPluginRoute)
-        .route("/api/plugins", PluginRuntimeRoute)
-        .route("/api/registry", RegistryRoute),
+        .route("/voice", VoiceRoute())
+        .route("/holos", HolosDataRoute())
+        .route("", BrowserRoute())
+        .route("", createComputerRoute())
+        .route("/plugin", PluginRoute())
+        .route("/api/plugins", ApiPluginRoute())
+        .route("/api/plugins", PluginRuntimeRoute())
+        .route("/api/registry", RegistryRoute()),
       "scoped-integrations": new Hono()
-        .route("/mcp", McpRoute)
-        .route("/channel", ChannelRoute)
+        .route("/mcp", McpRoute())
+        .route("/channel", ChannelRoute())
 
         .get(
           "/experimental/resource",
@@ -304,5 +309,5 @@ export function registerProductRoutes() {
     configureOrigins: configureBrowserViewerOrigins,
     listening: (url) => BrowserHostBrokerProcess.configureServerUrl(url.toString()),
   })
-  registered = true
+  instanceState.registered = true
 }

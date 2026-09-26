@@ -1,5 +1,8 @@
+import { PluginInvocationWorkspace } from "./invocation-workspace"
+import { WorkspaceFileService } from "@ericsanchezok/synergy-runtime-local/workspace-file/service"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
-import fs from "fs/promises"
 import { createHash } from "node:crypto"
 import Ajv2020 from "ajv/dist/2020"
 import {
@@ -67,15 +70,23 @@ interface PluginLifecycleHooks {
   updateConfig(plugin: { id: string; manifest: PluginManifestType }, values: unknown): Promise<unknown>
 }
 
-let lifecycleHooks: PluginLifecycleHooks | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  lifecycleHooks: undefined as PluginLifecycleHooks | undefined,
+  validators: new Map<string, ReturnType<Ajv2020["compile"]>>(),
+  sequences: new Map<string, number>(),
+}))
 
 export function setHostServiceLifecycleHooks(hooks: PluginLifecycleHooks): void {
-  lifecycleHooks = hooks
+  const instanceState = runtimeState()
+
+  instanceState.lifecycleHooks = hooks
 }
 
 function requireLifecycleHooks(): PluginLifecycleHooks {
-  if (!lifecycleHooks) throw new Error("Plugin lifecycle hooks are not registered")
-  return lifecycleHooks
+  const instanceState = runtimeState()
+
+  if (!instanceState.lifecycleHooks) throw new Error("Plugin lifecycle hooks are not registered")
+  return instanceState.lifecycleHooks
 }
 
 const capabilityByMethod = {
@@ -114,9 +125,6 @@ const AGENT_CALL_MAX_OUTPUT_CHARS = 16_000
 function pluginHostServiceError(code: string, message: string) {
   return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
 }
-
-const validators = new Map<string, ReturnType<Ajv2020["compile"]>>()
-const sequences = new Map<string, number>()
 
 function assertCapability(input: PluginHostServiceInvocationInput) {
   if (input.method === "event.publish") return
@@ -291,7 +299,7 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
     )
     .digest("hex")
   try {
-    return pluginAgentCallRuntime.start({
+    return pluginAgentCallRuntime().start({
       pluginId: input.pluginId,
       pluginGeneration: input.manifest.artifacts.generation,
       scopeId: input.invocation.scopeId,
@@ -345,9 +353,26 @@ async function startPluginAgent(input: PluginHostServiceInvocationInput, value: 
 }
 
 async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Promise<T>): Promise<T> {
+  input.signal.throwIfAborted()
+  const selected = PluginInvocationWorkspace.current()
+  if (selected) {
+    if (
+      selected.invocation.scopeId !== input.invocation.scopeId ||
+      selected.invocation.sessionId !== input.invocation.sessionId
+    )
+      throw new Error("Plugin invocation binding mismatch")
+    return ScopeContext.provide({ scope: selected.scope, workspace: selected.workspace, fn })
+  }
   const scope = await Scope.fromID(input.invocation.scopeId)
   if (!scope) throw new Error(`Plugin invocation scope not found: ${input.invocation.scopeId}`)
-  return ScopeContext.provide({ scope, fn })
+  return ScopeContext.provide({
+    scope,
+    fn: async () => {
+      if (!input.invocation.sessionId) return fn()
+      const session = await sessionInInvocationScope(input, input.invocation.sessionId)
+      return ScopeContext.provide({ scope, workspace: session.workspace, fn })
+    },
+  })
 }
 
 async function sessionInInvocationScope(input: PluginHostServiceInvocationInput, sessionId: string) {
@@ -376,13 +401,15 @@ function eventContribution(manifest: PluginManifestType, eventId: string) {
 }
 
 function validateEvent(input: PluginHostServiceInvocationInput, eventId: string, payload: unknown) {
+  const instanceState = runtimeState()
+
   const contribution = eventContribution(input.manifest, eventId)
   if (!contribution) throw new Error(`Plugin event is not declared: ${eventId}`)
   const key = `${input.pluginId}:${eventId}:${JSON.stringify(contribution.payload)}`
-  let validate = validators.get(key)
+  let validate = instanceState.validators.get(key)
   if (!validate) {
     validate = new Ajv2020({ allErrors: true, strict: false }).compile(contribution.payload)
-    validators.set(key, validate)
+    instanceState.validators.set(key, validate)
   }
   if (!validate(payload)) {
     throw new Error(`Plugin event payload is invalid: ${new Ajv2020().errorsText(validate.errors)}`)
@@ -390,13 +417,15 @@ function validateEvent(input: PluginHostServiceInvocationInput, eventId: string,
 }
 
 async function publishEvent(input: PluginHostServiceInvocationInput) {
+  const instanceState = runtimeState()
+
   const value = params(input)
   const eventId = value.eventId
   if (typeof eventId !== "string") throw new Error("event.publish requires eventId")
   validateEvent(input, eventId, value.payload)
   const sequenceKey = `${input.pluginId}:${input.manifest.artifacts.generation}:${input.invocation.scopeId}`
-  const sequence = (sequences.get(sequenceKey) ?? 0) + 1
-  sequences.set(sequenceKey, sequence)
+  const sequence = (instanceState.sequences.get(sequenceKey) ?? 0) + 1
+  instanceState.sequences.set(sequenceKey, sequence)
   await Bus.publish(PluginEvent.Published, {
     pluginId: input.pluginId,
     pluginVersion: input.manifest.version,
@@ -463,7 +492,7 @@ async function resolveStartParent(
     messageID,
     agent: actor.type === "agent" ? actor.agent : "synergy",
     callID: actor.type === "agent" ? actor.callId : undefined,
-    directory: input.invocation.directory,
+    directory: ScopeContext.current.workspace?.path,
     abort: input.signal,
   }
 }
@@ -619,25 +648,22 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   input.signal.throwIfAborted()
   const session = input.invocation.sessionId ? await Session.get(input.invocation.sessionId) : undefined
   const profileId = await Session.resolveEffectiveControlProfile({ sessionID: session?.id })
+  const directory = ScopeContext.current.directory
   const workspace = ScopeContext.current.workspace
-  const trustedRoots = Scope.Root.executionRoots(
-    ScopeContext.current.scope,
-    workspace,
-    SkillSourceProfile.allRootPaths(input.invocation.directory),
-  )
+  const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspace)
   const gate = await EnforcementGate.create({
-    activeWorkspace: input.invocation.directory,
+    activeWorkspace: directory,
     workspaceType: workspace?.type === "git_worktree" ? "worktree" : "main",
     originalCheckout: (workspace as { originalCheckout?: string } | undefined)?.originalCheckout,
     profileId,
-    readRoots: [Global.Path.root, ...trustedRoots],
+    readRoots: [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(directory)],
     trustedRoots,
     synergyRoot: Global.Path.root,
     sessionKey: input.invocation.sessionId,
   })
   const envelope = await gate.evaluateIsolated(
     "bash",
-    { command: renderShellCommand(command), workdir: input.invocation.directory },
+    { command: renderShellCommand(command), workdir: directory },
     input.signal,
   )
   if (envelope.decision !== "allow") {
@@ -657,8 +683,8 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   const wrapper = SandboxBackend.prepareWrapper({
     command: command[0],
     args: command.slice(1),
-    workspace: input.invocation.directory,
-    executionCwd: input.invocation.directory,
+    workspace: directory,
+    executionCwd: directory,
     sandboxMode: sandbox.mode,
     extraReadRoots: [
       ...new Set([...(sandboxPolicy?.fileSystem.readableRoots ?? []), Global.Path.root, ...trustedRoots]),
@@ -671,7 +697,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     backend: sandbox.backend,
   })
   const executed = await SandboxBackend.executeAsync(wrapper, {
-    cwd: input.invocation.directory,
+    cwd: directory,
     fallbackPolicy: sandbox.fallback,
     signal: input.signal,
     timeoutMs: Number(timeoutMs),
@@ -712,16 +738,40 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       return
     }
     if (input.method === "workspace.metadata") {
-      return { scopeId: input.invocation.scopeId, directory: input.invocation.directory }
+      return { scopeId: input.invocation.scopeId, directory: ScopeContext.current.directory }
     }
     if (input.method === "workspace.read") {
-      return Bun.file(workspacePath(input.invocation.directory, value.path)).text()
+      const target = workspacePath(ScopeContext.current.directory, value.path)
+      const { stream } = await WorkspaceFileService.serveFile({ path: target, signal: input.signal })
+      const bytes = new Uint8Array(await new Response(stream).arrayBuffer())
+      const content = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)
+      const versions = PluginInvocationWorkspace.current()?.versions
+      if (versions && !versions.has(target) && versions.size >= 256)
+        throw new Error("Plugin invocation file limit exceeded")
+      versions?.set(target, FileTime.version(bytes))
+      return content
     }
     if (input.method === "workspace.write") {
       if (typeof value.content !== "string") throw new Error("workspace.write requires string content")
-      const target = workspacePath(input.invocation.directory, value.path)
-      await fs.mkdir(path.dirname(target), { recursive: true })
-      await Bun.write(target, value.content)
+      const target = workspacePath(ScopeContext.current.directory, value.path)
+      const versions = PluginInvocationWorkspace.current()?.versions
+      const expectedVersion = versions?.get(target)
+      const result = await WorkspaceFileService.write(
+        {
+          path: target,
+          content: value.content,
+          expectedVersion: expectedVersion ?? null,
+          encoding: "utf-8",
+          conflictPolicy: expectedVersion === undefined ? "overwrite" : "fail",
+          createParents: true,
+        },
+        input.signal,
+      ).catch((error: unknown) => {
+        if (error instanceof WorkspaceFileService.WriteConflictError)
+          throw pluginHostServiceError("CONFLICT", error.message)
+        throw error
+      })
+      if (versions?.has(target)) versions.set(target, result.contentVersion)
       return
     }
     if (input.method === "settings.get") return getPluginConfig(input.pluginId, { manifest: input.manifest })
@@ -830,7 +880,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       messageID: actor.messageId,
       agent: actor.agent,
       callID: actor.callId,
-      directory: input.invocation.directory,
+      directory: ScopeContext.current.workspace?.path,
       abort: input.signal,
     }
     if (input.method === "blueprint.cancel") {

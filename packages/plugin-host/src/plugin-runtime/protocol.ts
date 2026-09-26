@@ -14,7 +14,7 @@ export interface RuntimeActivationData {
 export interface RuntimeInvocationContextData {
   scopeId: string
   sessionId?: string
-  directory: string
+  directory?: string
   actor: PluginActor
 }
 

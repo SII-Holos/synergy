@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -6,17 +7,23 @@ interface MailboxTransport {
   send(targetAgentId: string, event: string, payload: unknown): Promise<{ sent: boolean; reason?: string }>
 }
 
-let providerResolver: (() => Promise<MailboxTransport | null>) | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  providerResolver: undefined as (() => Promise<MailboxTransport | null>) | undefined,
+}))
 
 /** HolosRuntime owns the native provider; it registers its resolver at module
  * load so the mailbox never imports the runtime back. */
 export function setHolosProviderResolver(resolver: () => Promise<MailboxTransport | null>): void {
-  providerResolver = resolver
+  const instanceState = runtimeState()
+
+  instanceState.providerResolver = resolver
 }
 
 async function resolveProvider(): Promise<MailboxTransport | null> {
-  if (!providerResolver) throw new Error("Holos provider resolver is not registered")
-  return providerResolver()
+  const instanceState = runtimeState()
+
+  if (!instanceState.providerResolver) throw new Error("Holos provider resolver is not registered")
+  return instanceState.providerResolver()
 }
 
 const log = Log.create({ service: "holos.mailbox" })

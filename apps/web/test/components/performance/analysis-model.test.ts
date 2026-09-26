@@ -29,19 +29,19 @@ describe("performance analysis state", () => {
     expect(
       performanceAnalysisSessionPath({
         sessionID: "ses_home",
-        scope: { type: "home" },
+        scope: { id: "home" },
       }),
     ).toBe("/aG9tZQ/session/ses_home")
     expect(
       performanceAnalysisSessionPath({
         sessionID: "ses_project",
-        scope: { type: "project", directory: "/workspace/project" },
+        scope: { id: "project" },
       }),
-    ).toBe("/L3dvcmtzcGFjZS9wcm9qZWN0/session/ses_project")
+    ).toBe("/cHJvamVjdA/session/ses_project")
     expect(
       performanceAnalysisSessionPath({
         sessionID: "ses_missing",
-        scope: { type: "project" },
+        scope: { id: "" },
       }),
     ).toBeUndefined()
   })

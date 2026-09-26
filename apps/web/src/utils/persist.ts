@@ -1,5 +1,5 @@
 import { makePersisted, type SyncStorage } from "@solid-primitives/storage"
-import { checksum } from "@ericsanchezok/synergy-util/encode"
+import { base64Encode, base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { createResource, type Accessor } from "solid-js"
 import type { SetStoreFunction, Store } from "solid-js/store"
 
@@ -58,10 +58,19 @@ function parse(value: string) {
   }
 }
 
-function workspaceStorage(dir: string) {
-  const head = dir.slice(0, 12) || "workspace"
-  const sum = checksum(dir) ?? "0"
-  return `synergy.workspace.${head}.${sum}.dat`
+function workspaceStorage(scopeKey: string) {
+  return `${WORKSPACE_STORAGE_PREFIX}${base64Encode(scopeKey)}.dat`
+}
+
+export function workspaceEntryOwner(storageKey: string): string | undefined {
+  if (!storageKey.startsWith(WORKSPACE_STORAGE_PREFIX)) return
+  const end = storageKey.indexOf(".dat:", WORKSPACE_STORAGE_PREFIX.length)
+  if (end === -1) return
+  try {
+    return base64Decode(storageKey.slice(WORKSPACE_STORAGE_PREFIX.length, end))
+  } catch {
+    return
+  }
 }
 
 function workspaceSessionEntryMatcher(name: string) {
@@ -73,7 +82,10 @@ export function parseWorkspaceSessionEntryKey(storageKey: string, name: string):
   return workspaceSessionEntryMatcher(name).exec(storageKey)?.[1]
 }
 
-export function forEachWorkspaceSessionEntry(name: string, visit: (session: string, value: string) => void) {
+export function forEachWorkspaceSessionEntry(
+  name: string,
+  visit: (session: string, value: string, owner: string | undefined) => void,
+) {
   const matcher = workspaceSessionEntryMatcher(name)
   for (const storageKey of Object.keys(localStorage)) {
     if (!storageKey.startsWith(WORKSPACE_STORAGE_PREFIX)) continue
@@ -81,7 +93,7 @@ export function forEachWorkspaceSessionEntry(name: string, visit: (session: stri
     if (!session) continue
     const value = localStorage.getItem(storageKey)
     if (value === null) continue
-    visit(session, value)
+    visit(session, value, workspaceEntryOwner(storageKey))
   }
 }
 
@@ -97,6 +109,12 @@ function localStorageWithPrefix(prefix: string): SyncStorage {
 }
 
 export const Persist = {
+  scopeKey(connection: string, scopeID: string): string {
+    return JSON.stringify([connection, scopeID])
+  },
+  connection(connection: string, key: string): PersistTarget {
+    return { storage: `synergy.runtime.${base64Encode(connection)}.dat`, key }
+  },
   global(key: string, legacy?: string[]): PersistTarget {
     return { storage: GLOBAL_STORAGE, key, legacy }
   },

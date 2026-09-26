@@ -11,6 +11,7 @@ import type { LocalScope, NavCursor, NavEntry, NavListState, ScopeNavEntry } fro
 export type NavSessionUpdate = {
   id: string
   title?: string
+  tags?: string[]
   pinned?: number
   lastActivityAt?: number
   archived: boolean
@@ -26,6 +27,7 @@ export function navUpdateFromSession(
   info: {
     id: string
     title?: string
+    tags?: string[]
     pinned?: number
     parentID?: string
     time?: { updated?: number; archived?: number }
@@ -36,6 +38,7 @@ export function navUpdateFromSession(
   return {
     id: info.id,
     title: info.title,
+    tags: info.tags,
     pinned: info.pinned,
     lastActivityAt: navEntry?.lastActivityAt ?? info.time?.updated,
     archived: !!info.time?.archived,
@@ -77,6 +80,7 @@ export function applySessionToNavList(
   const merged: NavEntry = {
     ...prev,
     title: update.title ?? prev.title,
+    tags: update.tags ?? prev.tags,
     pinned: update.pinned ?? prev.pinned,
     lastActivityAt: update.lastActivityAt ?? prev.lastActivityAt,
     parentID: update.parentID ?? prev.parentID,
@@ -289,7 +293,6 @@ export function managedProjectLocalScope(
   return {
     ...metadata,
     id: entry.scopeID,
-    worktree: entry.directory,
     name: entry.name ?? metadata?.name,
     icon: { url: entry.icon?.url ?? metadata?.icon?.url, color: entry.icon?.color ?? metadata?.icon?.color },
     expanded,
@@ -331,7 +334,7 @@ export interface ChannelAccount {
   projects: ScopeNavEntry[]
   status?: ChannelAccountStatus
 }
-export function managedProjectScopesByWorktree(
+export function managedProjectScopesByID(
   accounts: readonly ChannelAccount[],
   metadataByID: ReadonlyMap<string, Partial<LocalScope>>,
   expandedWorktrees: ReadonlySet<string>,
@@ -339,8 +342,8 @@ export function managedProjectScopesByWorktree(
   return new Map(
     accounts.flatMap((account) =>
       account.projects.map((entry) => [
-        entry.directory,
-        managedProjectLocalScope(entry, metadataByID.get(entry.scopeID), expandedWorktrees.has(entry.directory)),
+        entry.scopeID,
+        managedProjectLocalScope(entry, metadataByID.get(entry.scopeID), expandedWorktrees.has(entry.scopeID)),
       ]),
     ),
   )

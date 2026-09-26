@@ -57,6 +57,7 @@ class PhaseResources:
         manager = self.pool.reserve(
             request,
             adaptive=True,
+            project=project,
             priority=int(verifier),
             on_wait=lambda reason: self.record("pressure", project, phase=stage, reason=reason),
         )
@@ -65,7 +66,7 @@ class PhaseResources:
         self.leases[project] = (manager, lease)
         try:
             await lease.phase(stage)
-            self.record("started", project, phase=stage, queue_seconds=time.monotonic() - queued)
+            self.record("admitted", project, phase=stage, queue_seconds=time.monotonic() - queued)
         except BaseException:
             await self.release(project)
             raise

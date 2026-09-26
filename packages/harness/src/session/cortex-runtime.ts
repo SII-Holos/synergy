@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9c source inversion: the L1 session domain reaches the cortex product
  * domain (delegated-task introspection, running-task reminders, parent
@@ -46,7 +47,7 @@ export namespace SessionCortexRuntime {
     reconcileParentNotifications(scopeID?: string): Promise<void>
     cancelAllForParent(parentSessionID: string): Promise<void>
     cancelAndDrainTask?(taskID: string): Promise<void>
-    drain?(): Promise<void>
+    stop?(): Promise<void>
     pluginTaskSnapshot(
       handle: { taskId: string; sessionId: string },
       delegation: unknown,
@@ -57,57 +58,86 @@ export namespace SessionCortexRuntime {
     waitForTask(taskId: string, timeoutSeconds: number): Promise<unknown>
   }
 
-  let provider: Provider | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    provider: undefined as Provider | undefined,
+  }))
 
   export function register(value: Provider): void {
-    provider = value
+    const instanceState = runtimeState()
+
+    if (instanceState.provider === value) return
+    RuntimeContext.assertCompositionOpen("session/cortex-runtime")
+    if (instanceState.provider && value) throw new Error("session/cortex-runtime is already registered")
+    instanceState.provider = value
   }
 
   export function get(): Provider | undefined {
-    return provider
+    const instanceState = runtimeState()
+
+    return instanceState.provider
   }
 
   export async function delegatedTask(sessionID: string): Promise<DelegatedTask | undefined> {
-    return provider?.delegatedTask(sessionID)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.delegatedTask(sessionID)
   }
 
   export async function runningTaskRows(parentSessionID: string): Promise<RunningTaskRow[]> {
-    return provider?.runningTaskRows(parentSessionID) ?? []
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.runningTaskRows(parentSessionID) ?? []
   }
 
   export async function activeTaskRows(sessionID: string): Promise<Array<{ id: string; description: string }>> {
-    return provider?.activeTaskRows(sessionID) ?? []
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.activeTaskRows(sessionID) ?? []
   }
 
   export async function reconcileParentNotifications(scopeID?: string): Promise<void> {
-    await provider?.reconcileParentNotifications(scopeID)
+    const instanceState = runtimeState()
+
+    await instanceState.provider?.reconcileParentNotifications(scopeID)
   }
 
   export async function cancelAllForParent(parentSessionID: string): Promise<void> {
-    await provider?.cancelAllForParent(parentSessionID)
+    const instanceState = runtimeState()
+
+    await instanceState.provider?.cancelAllForParent(parentSessionID)
   }
 
   export async function cancelAndDrainTask(taskID: string): Promise<void> {
-    if (!provider?.cancelAndDrainTask) throw new Error("Cortex cancellation runtime is unavailable")
-    await provider.cancelAndDrainTask(taskID)
+    const instanceState = runtimeState()
+
+    if (!instanceState.provider?.cancelAndDrainTask) throw new Error("Cortex cancellation runtime is unavailable")
+    await instanceState.provider.cancelAndDrainTask(taskID)
   }
 
-  export async function drain(): Promise<void> {
-    await provider?.drain?.()
+  export async function stop(): Promise<void> {
+    const instanceState = runtimeState()
+
+    await instanceState.provider?.stop?.()
   }
 
   export function pluginTaskSnapshot(
     handle: { taskId: string; sessionId: string },
     delegation: unknown,
   ): PluginTaskSnapshotInfo | undefined {
-    return provider?.pluginTaskSnapshot(handle, delegation)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.pluginTaskSnapshot(handle, delegation)
   }
 
   export function taskInfo(taskId: string): { timeoutMs?: number } | undefined {
-    return provider?.taskInfo(taskId)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.taskInfo(taskId)
   }
 
   export function waitForTask(taskId: string, timeoutSeconds: number): Promise<unknown> {
-    return provider?.waitForTask(taskId, timeoutSeconds) ?? Promise.resolve(undefined)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.waitForTask(taskId, timeoutSeconds) ?? Promise.resolve(undefined)
   }
 }

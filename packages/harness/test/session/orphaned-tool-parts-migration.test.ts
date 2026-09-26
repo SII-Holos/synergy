@@ -7,6 +7,9 @@ import { StoragePath } from "../../src/storage/path"
 import { MessageV2 } from "../../src/session/message-v2"
 import { migrations } from "../../src/session/migration"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const projectRoot = new URL("../..", import.meta.url).pathname
 
@@ -74,155 +77,163 @@ async function readToolPart(sessionID: string, messageID: string, partID: string
 }
 
 describe("orphaned tool part migration", () => {
-  test("settles a running part on an already-terminal assistant message", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const root = await writeRoot(session.id)
-        const assistant = await writeAssistant(session.id, root.id, "error")
-        const partID = await writeRunningToolPart({
-          sessionID: session.id,
-          messageID: assistant.id,
-          callID: "call_hist_1",
-        })
+  test("settles a running part on an already-terminal assistant message", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await writeRoot(session.id)
+          const assistant = await writeAssistant(session.id, root.id, "error")
+          const partID = await writeRunningToolPart({
+            sessionID: session.id,
+            messageID: assistant.id,
+            callID: "call_hist_1",
+          })
 
-        await runMigration(MIGRATION_ID)
+          await runMigration(MIGRATION_ID)
 
-        const part = await readToolPart(session.id, assistant.id, partID)
-        expect(part.state.status).toBe("error")
-        if (part.state.status !== "error") throw new Error("expected error state")
-        expect(part.state.error).toBe(MessageV2.INTERRUPTED_TOOL_ERROR)
-        expect(part.state.time.end).toBeNumber()
-      },
-    })
-  })
+          const part = await readToolPart(session.id, assistant.id, partID)
+          expect(part.state.status).toBe("error")
+          if (part.state.status !== "error") throw new Error("expected error state")
+          expect(part.state.error).toBe(MessageV2.INTERRUPTED_TOOL_ERROR)
+          expect(part.state.time.end).toBeNumber()
+        },
+      })
+    }))
 
-  test("leaves a running part on a non-terminal message alone, since that turn is legitimately unfinished", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const root = await writeRoot(session.id)
-        const assistant = await writeAssistant(session.id, root.id)
-        const partID = await writeRunningToolPart({
-          sessionID: session.id,
-          messageID: assistant.id,
-          callID: "call_hist_unfinished",
-        })
+  test("leaves a running part on a non-terminal message alone, since that turn is legitimately unfinished", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await writeRoot(session.id)
+          const assistant = await writeAssistant(session.id, root.id)
+          const partID = await writeRunningToolPart({
+            sessionID: session.id,
+            messageID: assistant.id,
+            callID: "call_hist_unfinished",
+          })
 
-        await runMigration(MIGRATION_ID)
+          await runMigration(MIGRATION_ID)
 
-        expect((await readToolPart(session.id, assistant.id, partID)).state.status).toBe("running")
-      },
-    })
-  })
+          expect((await readToolPart(session.id, assistant.id, partID)).state.status).toBe("running")
+        },
+      })
+    }))
 
-  test("leaves completed parts untouched and reports progress across parts", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const root = await writeRoot(session.id)
-        const assistant = await writeAssistant(session.id, root.id, "stop")
-        const partID = Identifier.ascending("part")
-        await Session.updatePart({
-          id: partID,
-          sessionID: session.id,
-          messageID: assistant.id,
-          type: "tool",
-          callID: "call_hist_completed",
-          tool: "bash",
-          state: {
-            status: "completed",
-            input: {},
-            output: "ok",
-            title: "ok",
-            metadata: {},
-            time: { start: Date.now() - 500, end: Date.now() - 400 },
-          },
-        })
+  test("leaves completed parts untouched and reports progress across parts", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await writeRoot(session.id)
+          const assistant = await writeAssistant(session.id, root.id, "stop")
+          const partID = Identifier.ascending("part")
+          await Session.updatePart({
+            id: partID,
+            sessionID: session.id,
+            messageID: assistant.id,
+            type: "tool",
+            callID: "call_hist_completed",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: {},
+              output: "ok",
+              title: "ok",
+              metadata: {},
+              time: { start: Date.now() - 500, end: Date.now() - 400 },
+            },
+          })
 
-        const progress: Array<{ current: number; total: number }> = []
-        const migration = migrations.find((candidate) => candidate.id === MIGRATION_ID)!
-        await migration.up((current, total) => progress.push({ current, total }))
+          const progress: Array<{ current: number; total: number }> = []
+          const migration = migrations.find((candidate) => candidate.id === MIGRATION_ID)!
+          await migration.up((current, total) => progress.push({ current, total }))
 
-        expect((await readToolPart(session.id, assistant.id, partID)).state.status).toBe("completed")
-        expect(progress.length).toBeGreaterThan(0)
-      },
-    })
-  })
+          expect((await readToolPart(session.id, assistant.id, partID)).state.status).toBe("completed")
+          expect(progress.length).toBeGreaterThan(0)
+        },
+      })
+    }))
 
-  test("is idempotent across repeated runs", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const root = await writeRoot(session.id)
-        const assistant = await writeAssistant(session.id, root.id, "error")
-        const partID = await writeRunningToolPart({
-          sessionID: session.id,
-          messageID: assistant.id,
-          callID: "call_hist_idempotent",
-        })
+  test("is idempotent across repeated runs", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await writeRoot(session.id)
+          const assistant = await writeAssistant(session.id, root.id, "error")
+          const partID = await writeRunningToolPart({
+            sessionID: session.id,
+            messageID: assistant.id,
+            callID: "call_hist_idempotent",
+          })
 
-        await runMigration(MIGRATION_ID)
-        const first = await readToolPart(session.id, assistant.id, partID)
-        if (first.state.status !== "error") throw new Error("expected error state")
-        const firstEnd = first.state.time.end
+          await runMigration(MIGRATION_ID)
+          const first = await readToolPart(session.id, assistant.id, partID)
+          if (first.state.status !== "error") throw new Error("expected error state")
+          const firstEnd = first.state.time.end
 
-        await runMigration(MIGRATION_ID)
-        const second = await readToolPart(session.id, assistant.id, partID)
-        if (second.state.status !== "error") throw new Error("expected error state")
-        expect(second.state.time.end).toBe(firstEnd)
-      },
-    })
-  })
+          await runMigration(MIGRATION_ID)
+          const second = await readToolPart(session.id, assistant.id, partID)
+          if (second.state.status !== "error") throw new Error("expected error state")
+          expect(second.state.time.end).toBe(firstEnd)
+        },
+      })
+    }))
 
-  test("does not fail on a fresh install with no parts", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await Session.create({})
-        await expect(runMigration(MIGRATION_ID)).resolves.toBeUndefined()
-      },
-    })
-  })
+  test("does not fail on a fresh install with no parts", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Session.create({})
+          await expect(runMigration(MIGRATION_ID)).resolves.toBeUndefined()
+        },
+      })
+    }))
 
-  test("keys the write back to the same part record", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const root = await writeRoot(session.id)
-        const assistant = await writeAssistant(session.id, root.id, "error")
-        const partID = await writeRunningToolPart({
-          sessionID: session.id,
-          messageID: assistant.id,
-          callID: "call_hist_key",
-        })
-        const scopeID = Identifier.asScopeID(session.scope.id)
-        const key = StoragePath.messagePart(
-          scopeID,
-          Identifier.asSessionID(session.id),
-          Identifier.asMessageID(assistant.id),
-          Identifier.asPartID(partID),
-        )
+  test("keys the write back to the same part record", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await writeRoot(session.id)
+          const assistant = await writeAssistant(session.id, root.id, "error")
+          const partID = await writeRunningToolPart({
+            sessionID: session.id,
+            messageID: assistant.id,
+            callID: "call_hist_key",
+          })
+          const scopeID = Identifier.asScopeID(session.scope.id)
+          const key = StoragePath.messagePart(
+            scopeID,
+            Identifier.asSessionID(session.id),
+            Identifier.asMessageID(assistant.id),
+            Identifier.asPartID(partID),
+          )
 
-        await runMigration(MIGRATION_ID)
+          await runMigration(MIGRATION_ID)
 
-        // The migration must rewrite the record in place rather than leaving a
-        // stale `running` record behind under the original key.
-        const stored = await Storage.read<MessageV2.Part>(key)
-        if (stored.type !== "tool") throw new Error("expected tool part")
-        expect(stored.state.status).toBe("error")
-      },
-    })
-  })
+          // The migration must rewrite the record in place rather than leaving a
+          // stale `running` record behind under the original key.
+          const stored = await Storage.read<MessageV2.Part>(key)
+          if (stored.type !== "tool") throw new Error("expected tool part")
+          expect(stored.state.status).toBe("error")
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

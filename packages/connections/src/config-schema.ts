@@ -345,58 +345,59 @@ declare module "@ericsanchezok/synergy-harness/config/schema" {
 }
 type ConfigShapeType = typeof ConfigShape
 
+const contribution: ConfigExtensions.Contribution = {
+  shape: ConfigShape,
+  references(raw, providerID) {
+    const config = raw as ConfigValues
+    const result: string[] = []
+    for (const [channelID, channel] of Object.entries(config.channel ?? {})) {
+      if (channel.type !== "feishu") continue
+      for (const [accountID, account] of Object.entries(channel.accounts)) {
+        if (account.model?.startsWith(`${providerID}/`)) result.push(`channel.${channelID}.accounts.${accountID}.model`)
+      }
+    }
+    return result
+  },
+  redact(raw, helpers) {
+    const result = raw as ConfigValues
+    const REDACTED_SENTINEL = helpers.sentinel
+    const redactSecretShapedRecord = helpers.redact
+    const mergeSecretShapedRecord = helpers.restore
+
+    if (result.email?.smtp?.password) result.email.smtp.password = REDACTED_SENTINEL
+    if (result.email?.imap?.password) result.email.imap.password = REDACTED_SENTINEL
+    if (result.channel?.feishu?.accounts) {
+      for (const account of Object.values(result.channel.feishu.accounts) as any[]) {
+        if (account?.appSecret) account.appSecret = REDACTED_SENTINEL
+      }
+    }
+  },
+  restore(raw, previous, helpers) {
+    const result = raw as ConfigValues
+    const stored = previous as ConfigValues
+    const REDACTED_SENTINEL = helpers.sentinel
+    const redactSecretShapedRecord = helpers.redact
+    const mergeSecretShapedRecord = helpers.restore
+
+    if (result.email?.smtp?.password === REDACTED_SENTINEL && stored.email?.smtp?.password) {
+      result.email.smtp.password = stored.email.smtp.password
+    }
+    if (result.email?.imap?.password === REDACTED_SENTINEL && stored.email?.imap?.password) {
+      result.email.imap.password = stored.email.imap.password
+    }
+    if (result.channel?.feishu?.accounts && stored.channel?.feishu?.accounts) {
+      for (const [key, account] of Object.entries(result.channel.feishu.accounts) as [string, any][]) {
+        if (account?.appSecret === REDACTED_SENTINEL) {
+          const storedAccount = (stored.channel.feishu.accounts as Record<string, any>)[key]
+          if (storedAccount?.appSecret) account.appSecret = storedAccount.appSecret
+        }
+      }
+    }
+  },
+}
+
 export function registerConfig() {
-  ConfigExtensions.register("connections", {
-    shape: ConfigShape,
-    references(raw, providerID) {
-      const config = raw as ConfigValues
-      const result: string[] = []
-      for (const [channelID, channel] of Object.entries(config.channel ?? {})) {
-        if (channel.type !== "feishu") continue
-        for (const [accountID, account] of Object.entries(channel.accounts)) {
-          if (account.model?.startsWith(`${providerID}/`))
-            result.push(`channel.${channelID}.accounts.${accountID}.model`)
-        }
-      }
-      return result
-    },
-    redact(raw, helpers) {
-      const result = raw as ConfigValues
-      const REDACTED_SENTINEL = helpers.sentinel
-      const redactSecretShapedRecord = helpers.redact
-      const mergeSecretShapedRecord = helpers.restore
-
-      if (result.email?.smtp?.password) result.email.smtp.password = REDACTED_SENTINEL
-      if (result.email?.imap?.password) result.email.imap.password = REDACTED_SENTINEL
-      if (result.channel?.feishu?.accounts) {
-        for (const account of Object.values(result.channel.feishu.accounts) as any[]) {
-          if (account?.appSecret) account.appSecret = REDACTED_SENTINEL
-        }
-      }
-    },
-    restore(raw, previous, helpers) {
-      const result = raw as ConfigValues
-      const stored = previous as ConfigValues
-      const REDACTED_SENTINEL = helpers.sentinel
-      const redactSecretShapedRecord = helpers.redact
-      const mergeSecretShapedRecord = helpers.restore
-
-      if (result.email?.smtp?.password === REDACTED_SENTINEL && stored.email?.smtp?.password) {
-        result.email.smtp.password = stored.email.smtp.password
-      }
-      if (result.email?.imap?.password === REDACTED_SENTINEL && stored.email?.imap?.password) {
-        result.email.imap.password = stored.email.imap.password
-      }
-      if (result.channel?.feishu?.accounts && stored.channel?.feishu?.accounts) {
-        for (const [key, account] of Object.entries(result.channel.feishu.accounts) as [string, any][]) {
-          if (account?.appSecret === REDACTED_SENTINEL) {
-            const storedAccount = (stored.channel.feishu.accounts as Record<string, any>)[key]
-            if (storedAccount?.appSecret) account.appSecret = storedAccount.appSecret
-          }
-        }
-      }
-    },
-  })
+  ConfigExtensions.register("connections", contribution)
   for (const domain of [
     {
       id: "channels",
@@ -441,7 +442,6 @@ export function registerConfig() {
   ] satisfies ConfigDomain.Definition[])
     ConfigDomain.register(domain)
 }
-registerConfig()
 
 export async function readConfig(): Promise<ConfigValues> {
   const { Config } = await import("@ericsanchezok/synergy-harness/config/config")

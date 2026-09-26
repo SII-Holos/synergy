@@ -1,3 +1,4 @@
+import { Global } from "@ericsanchezok/synergy-harness/global"
 import z from "zod"
 import { manifestHasTrustedUI, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import {
@@ -162,7 +163,7 @@ async function resolveConfiguredTarget(pluginId: string): Promise<ResolvedTarget
   if (!spec) throw new ApprovalPluginNotFoundError(`Plugin not configured: ${pluginId}`)
   try {
     const resolved = await resolvePluginSpec(spec, {
-      cwd: ScopeContext.current.directory,
+      cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
       install: !spec.startsWith("file://"),
     })
     if (resolved.manifest.id !== pluginId) {
@@ -188,7 +189,7 @@ async function resolveRegistryTarget(
   const registry = await resolveRegistrySpec(target.pluginId, target.version, target.source)
   try {
     const resolved = await resolvePluginSpec(registry.spec, {
-      cwd: ScopeContext.current.directory,
+      cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
       install: !registry.spec.startsWith("file://"),
     })
     if (resolved.manifest.id !== target.pluginId) {

@@ -21,10 +21,10 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
   const { _ } = useLingui()
   const { pickProjectDirectories } = useProjectDirectoryPicker()
   const [name, setName] = createSignal(props.scope.name ?? "")
-  const [folders, setFolders] = createSignal<string[]>(props.scope.sandboxes ?? [])
+  const [folders, setFolders] = createSignal<string[]>(props.scope.local?.sandboxes ?? [])
   const [saving, setSaving] = createSignal(false)
 
-  const mainFolder = () => props.scope.worktree
+  const mainFolder = () => props.scope.local?.worktree
 
   const handleSave = async () => {
     setSaving(true)
@@ -78,15 +78,15 @@ export function DialogScopeEdit(props: { scope: LocalScope }) {
               <Icon name={getSemanticIcon("workspace.main")} size="small" />
             </span>
             <span data-slot="dialog-meta-label">{_(dialog.worktree)}</span>
-            <code data-slot="dialog-meta-value">{props.scope.worktree}</code>
+            <code data-slot="dialog-meta-value">{props.scope.local?.worktree}</code>
           </div>
-          {props.scope.directory && props.scope.directory !== props.scope.worktree && (
+          {props.scope.local?.directory && props.scope.local?.directory !== props.scope.local?.worktree && (
             <div data-slot="dialog-meta-row">
               <span data-slot="dialog-meta-icon" aria-hidden="true">
                 <Icon name={getSemanticIcon("workspace.main")} size="small" />
               </span>
               <span data-slot="dialog-meta-label">{_(dialog.directory)}</span>
-              <code data-slot="dialog-meta-value">{props.scope.directory}</code>
+              <code data-slot="dialog-meta-value">{props.scope.local?.directory}</code>
             </div>
           )}
           {props.scope.type && (

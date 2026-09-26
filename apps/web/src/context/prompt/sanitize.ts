@@ -135,14 +135,16 @@ function sanitizePromptPart(part: unknown): Record<string, unknown> | undefined 
 
   if (type === "session") {
     const sessionId = stringValue(part.sessionId)
-    const directory = stringValue(part.directory)
-    if (!sessionId || !directory) return undefined
+    const scopeID = stringValue(part.scopeID) || null
+    const legacyDirectory = stringValue(part.legacyDirectory) || stringValue(part.directory)
+    if (!sessionId || (!scopeID && !legacyDirectory)) return undefined
     const updatedAt = part.updatedAt
     return {
       type,
       id: stringValue(part.id),
       sessionId,
-      directory,
+      scopeID,
+      ...(!scopeID && legacyDirectory ? { legacyDirectory } : {}),
       title: stringValue(part.title),
       ...(typeof updatedAt === "number" && Number.isFinite(updatedAt) ? { updatedAt } : {}),
     }

@@ -1,3 +1,5 @@
+import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
 import { expect, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { DaemonPaths } from "@ericsanchezok/synergy-harness/util/daemon-paths"
@@ -11,39 +13,38 @@ async function fixture(
   run: (spec: DaemonService.InstallSpec, commands: string[][]) => Promise<void>,
 ) {
   await using tmp = await tmpdir()
-  const previousHome = process.env.SYNERGY_HOME
-  process.env.SYNERGY_HOME = tmp.path
-  const commands: string[][] = []
-  const spawn = spyOn(Bun, "spawn").mockImplementation((input) => {
-    if (!Array.isArray(input) || !["launchctl", "schtasks"].includes(String(input[0])))
-      throw new Error("unexpected OS operation")
-    const command = input as string[]
-    commands.push(command)
-    const result = reply(command)
-    return {
-      stdout: new Response(result.stdout ?? "").body,
-      stderr: new Response(result.stderr ?? "").body,
-      exited: Promise.resolve(result.exitCode ?? 0),
-    } as never
+  await using runtime = await migrationFixture({ home: tmp.path, register: registerLocalRuntime })
+  await runtime.run(async () => {
+    const commands: string[][] = []
+    const spawn = spyOn(Bun, "spawn").mockImplementation((input) => {
+      if (!Array.isArray(input) || !["launchctl", "schtasks"].includes(String(input[0])))
+        throw new Error("unexpected OS operation")
+      const command = input as string[]
+      commands.push(command)
+      const result = reply(command)
+      return {
+        stdout: new Response(result.stdout ?? "").body,
+        stderr: new Response(result.stderr ?? "").body,
+        exited: Promise.resolve(result.exitCode ?? 0),
+      } as never
+    })
+    try {
+      await run(
+        {
+          label: "fixture.synergy",
+          hostname: "127.0.0.1",
+          port: 49234,
+          cwd: tmp.path,
+          command: ["/app path/synergy", "server", '<arg&"quoted">'],
+          env: { SAMPLE: "a&b<q>\"x'y", SYSTEMROOT: "do-not-copy", EMPTY: "" },
+          logFile: DaemonPaths.logFile(),
+        },
+        commands,
+      )
+    } finally {
+      spawn.mockRestore()
+    }
   })
-  try {
-    await run(
-      {
-        label: "fixture.synergy",
-        hostname: "127.0.0.1",
-        port: 49234,
-        cwd: tmp.path,
-        command: ["/app path/synergy", "server", '<arg&"quoted">'],
-        env: { SAMPLE: "a&b<q>\"x'y", SYSTEMROOT: "do-not-copy", EMPTY: "" },
-        logFile: DaemonPaths.logFile(),
-      },
-      commands,
-    )
-  } finally {
-    spawn.mockRestore()
-    if (previousHome === undefined) delete process.env.SYNERGY_HOME
-    else process.env.SYNERGY_HOME = previousHome
-  }
 }
 
 test("launchd lifecycle persists escaped plist, bootstraps unloaded jobs and reports exited state", async () => {

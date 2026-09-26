@@ -241,4 +241,52 @@
     width: 32px;
     height: 32px;
   }
+
+  .stb-center .stb-selector-btn {
+    height: 22px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .stb-center .settings-model-variant-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stb-center .stb-icon-btn {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+}
+
+.stb-location-btn {
+  min-width: 0;
+  max-width: 100%;
+}
+.stb-location-caption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+@media (max-width: 767px) {
+  .stb-center {
+    flex: 1;
+    max-width: none;
+  }
+  .stb-location-caption {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0;
+    overflow: hidden;
+  }
+  .stb-location-caption > span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 14px;
+  }
 }

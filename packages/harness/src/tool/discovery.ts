@@ -35,9 +35,7 @@ export namespace ToolDiscovery {
     userTools?: Record<string, boolean>
   }): Promise<Catalog> {
     const { ToolRegistry } = await import("./registry")
-    const groupByID = new Map(
-      ToolExposure.BUILTIN_GROUPS.map((group) => [group.id, { ...group, tools: [...group.tools] }]),
-    )
+    const groupByID = new Map(ToolExposure.groups().map((group) => [group.id, { ...group, tools: [...group.tools] }]))
     const tools: Entry[] = []
 
     for (const item of await ToolRegistry.tools(input.providerID, input.agent)) {

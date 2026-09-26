@@ -7,13 +7,13 @@ type AuthContribution = Extract<LoadedPlugin["manifest"]["contributions"][number
 
 async function invoke(plugin: LoadedPlugin, contribution: AuthContribution, action: string, payload?: unknown) {
   await ensureRuntime(plugin)
-  return pluginRuntimeManager.invoke({
+  return pluginRuntimeManager().invoke({
     pluginId: plugin.id,
     handlerId: `authProvider:${contribution.id}`,
     value: { action, payload },
     context: {
       scopeId: ScopeContext.current.scope.id,
-      directory: ScopeContext.current.directory,
+      directory: ScopeContext.current.workspace?.path,
       actor: { type: "lifecycle" },
     },
     pluginDir: plugin.pluginDir,

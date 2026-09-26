@@ -1,12 +1,19 @@
+import { RuntimeContext } from "../../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
 import { AgentTurnProtocol } from "./protocol"
 
-const runnerPath = fileURLToPath(new URL("./runner.ts", import.meta.url))
-let runtimeEntrypoint: string | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  runtimeEntrypoint: undefined as string | undefined,
+}))
 
 export function registerAgentWorkerEntrypoint(entrypoint: URL): void {
-  runtimeEntrypoint = fileURLToPath(entrypoint)
+  const instanceState = runtimeState()
+
+  const filename = fileURLToPath(entrypoint)
+  if (instanceState.runtimeEntrypoint === filename) return
+  RuntimeContext.assertCompositionOpen("Agent worker entrypoint")
+  instanceState.runtimeEntrypoint = filename
 }
 
 export interface AgentWorkerProcess {
@@ -21,16 +28,22 @@ export interface SpawnAgentWorkerProcessOptions {
 }
 
 export function resolveAgentWorkerCommand(): string[] {
-  if (runtimeEntrypoint && fs.existsSync(runtimeEntrypoint)) return [process.execPath, "run", runtimeEntrypoint]
-  if (fs.existsSync(runnerPath)) return [process.execPath, "run", runnerPath]
+  const instanceState = runtimeState()
+
+  if (instanceState.runtimeEntrypoint && fs.existsSync(instanceState.runtimeEntrypoint))
+    return [process.execPath, "run", instanceState.runtimeEntrypoint]
+  if (!instanceState.runtimeEntrypoint) throw new Error("No agent worker host is registered")
   return [process.execPath, "__agent-turn-runner"]
 }
 
 export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions): AgentWorkerProcess {
+  const owner = RuntimeContext.current()
   const processHandle = Bun.spawn({
     cmd: resolveAgentWorkerCommand(),
     env: {
-      ...process.env,
+      ...owner.host.env,
+      SYNERGY_HOME: owner.host.home,
+      SYNERGY_RUNTIME_ROOT: owner.host.root,
       SYNERGY_AGENT_WORKER: "1",
       SYNERGY_AGENT_PARENT_PID: String(process.pid),
     },
@@ -38,7 +51,7 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
       try {
         const parsed = AgentTurnProtocol.parseWorkerToHost(typeof message === "string" ? JSON.parse(message) : message)
         AgentTurnProtocol.assertIpcFrameBound(parsed)
-        options.onMessage(parsed)
+        owner.run(() => options.onMessage(parsed))
       } catch {
         processHandle.kill()
       }
@@ -46,7 +59,7 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
     stdout: "ignore",
     stderr: "ignore",
     onExit(_process, exitCode, signalCode) {
-      options.onExit(exitCode, signalCode?.toString() ?? null)
+      owner.run(() => options.onExit(exitCode, signalCode?.toString() ?? null))
     },
   })
 
@@ -65,10 +78,13 @@ export function spawnAgentWorkerProcess(options: SpawnAgentWorkerProcessOptions)
         await processHandle.exited.catch(() => undefined)
         return
       }
+      let timer: ReturnType<typeof setTimeout> | undefined
       const exited = await Promise.race([
         processHandle.exited.then(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), graceMs)),
-      ])
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), graceMs)
+        }),
+      ]).finally(() => clearTimeout(timer))
       if (!exited) {
         processHandle.kill()
         await processHandle.exited.catch(() => undefined)

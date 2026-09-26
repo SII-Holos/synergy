@@ -12,6 +12,9 @@ import {
   PolicyWorkerStartupTimeoutError,
   PolicyWorkerTimeoutError,
 } from "../../src/enforcement/policy-worker/worker-pool"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function classificationInput() {
   return {
@@ -122,482 +125,501 @@ function fakeProcess(
 }
 
 describe("PolicyWorkerPool", () => {
-  test("does not reuse a worker until the released memory sample arrives", async () => {
-    let workerOptions: SpawnPolicyWorkerProcessOptions | undefined
-    const sent: PolicyWorkerProtocol.HostToWorker[] = []
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 500,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => {
-        workerOptions = options
-        queueMicrotask(() =>
-          options.onMessage({
-            type: "ready",
-            protocolVersion: PolicyWorkerProtocol.VERSION,
-            pid: 101,
-            memory: {
-              rssBytes: 100,
-              heapUsedBytes: 40,
-              heapTotalBytes: 80,
-              externalBytes: 20,
-              arrayBuffersBytes: 10,
+  test("does not reuse a worker until the released memory sample arrives", () =>
+    runtime.run(async () => {
+      let workerOptions: SpawnPolicyWorkerProcessOptions | undefined
+      const sent: PolicyWorkerProtocol.HostToWorker[] = []
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 500,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => {
+          workerOptions = options
+          queueMicrotask(() =>
+            options.onMessage({
+              type: "ready",
+              protocolVersion: PolicyWorkerProtocol.VERSION,
+              pid: 101,
+              memory: {
+                rssBytes: 100,
+                heapUsedBytes: 40,
+                heapTotalBytes: 80,
+                externalBytes: 20,
+                arrayBuffersBytes: 10,
+              },
+            }),
+          )
+          return {
+            process: { exitCode: null, kill() {} } as unknown as Bun.Subprocess,
+            send(message) {
+              sent.push(message)
+              if (message.type === "run-start") {
+                queueMicrotask(() => options.onMessage({ type: "run-ready", requestId: message.requestId }))
+              } else if (message.type === "run-chunk") {
+                queueMicrotask(() =>
+                  options.onMessage({ type: "chunk-ack", requestId: message.requestId, index: message.index }),
+                )
+              } else if (message.type === "run-commit") {
+                queueMicrotask(() =>
+                  options.onMessage({
+                    type: "result",
+                    requestId: message.requestId,
+                    result: { capabilities: [{ class: "shell", nonBypassable: false }] },
+                    requests: 1,
+                    memoryBeforeRelease: {
+                      rssBytes: 140,
+                      heapUsedBytes: 50,
+                      heapTotalBytes: 90,
+                      externalBytes: 30,
+                      arrayBuffersBytes: 12,
+                    },
+                    memoryAfterRelease: {
+                      rssBytes: 130,
+                      heapUsedBytes: 45,
+                      heapTotalBytes: 90,
+                      externalBytes: 25,
+                      arrayBuffersBytes: 11,
+                    },
+                  }),
+                )
+              }
             },
-          }),
-        )
-        return {
-          process: { exitCode: null, kill() {} } as unknown as Bun.Subprocess,
-          send(message) {
-            sent.push(message)
-            if (message.type === "run-start") {
-              queueMicrotask(() => options.onMessage({ type: "run-ready", requestId: message.requestId }))
-            } else if (message.type === "run-chunk") {
-              queueMicrotask(() =>
-                options.onMessage({ type: "chunk-ack", requestId: message.requestId, index: message.index }),
-              )
-            } else if (message.type === "run-commit") {
-              queueMicrotask(() =>
-                options.onMessage({
-                  type: "result",
-                  requestId: message.requestId,
-                  result: { capabilities: [{ class: "shell", nonBypassable: false }] },
-                  requests: 1,
-                  memoryBeforeRelease: {
-                    rssBytes: 140,
-                    heapUsedBytes: 50,
-                    heapTotalBytes: 90,
-                    externalBytes: 30,
-                    arrayBuffersBytes: 12,
-                  },
-                  memoryAfterRelease: {
-                    rssBytes: 130,
-                    heapUsedBytes: 45,
-                    heapTotalBytes: 90,
-                    externalBytes: 25,
-                    arrayBuffersBytes: 11,
-                  },
-                }),
-              )
-            }
+            async stop() {},
+          }
+        },
+      )
+
+      try {
+        const first = pool.run(classificationInput())
+        const second = pool.run(classificationInput())
+        await expect(first).resolves.toMatchObject({ capabilities: [{ class: "shell" }] })
+        expect(sent.filter((message) => message.type === "run-start")).toHaveLength(1)
+
+        const firstStart = sent.find(
+          (message): message is Extract<PolicyWorkerProtocol.HostToWorker, { type: "run-start" }> =>
+            message.type === "run-start",
+        )!
+        workerOptions?.onMessage({
+          type: "released",
+          requestId: firstStart.requestId,
+          requests: 1,
+          memory: {
+            rssBytes: 110,
+            heapUsedBytes: 42,
+            heapTotalBytes: 90,
+            externalBytes: 21,
+            arrayBuffersBytes: 10,
           },
-          async stop() {},
+        })
+        for (let i = 0; i < 20 && sent.filter((message) => message.type === "run-start").length < 2; i++) {
+          await Bun.sleep(1)
         }
-      },
-    )
-
-    try {
-      const first = pool.run(classificationInput())
-      const second = pool.run(classificationInput())
-      await expect(first).resolves.toMatchObject({ capabilities: [{ class: "shell" }] })
-      expect(sent.filter((message) => message.type === "run-start")).toHaveLength(1)
-
-      const firstStart = sent.find(
-        (message): message is Extract<PolicyWorkerProtocol.HostToWorker, { type: "run-start" }> =>
-          message.type === "run-start",
-      )!
-      workerOptions?.onMessage({
-        type: "released",
-        requestId: firstStart.requestId,
-        requests: 1,
-        memory: {
-          rssBytes: 110,
-          heapUsedBytes: 42,
-          heapTotalBytes: 90,
-          externalBytes: 21,
-          arrayBuffersBytes: 10,
-        },
-      })
-      for (let i = 0; i < 20 && sent.filter((message) => message.type === "run-start").length < 2; i++) {
-        await Bun.sleep(1)
+        expect(sent.filter((message) => message.type === "run-start")).toHaveLength(2)
+        pool.stop()
+        await second.catch(() => undefined)
+      } finally {
+        await pool.stop()
       }
-      expect(sent.filter((message) => message.type === "run-start")).toHaveLength(2)
-      pool.stop()
-      await second.catch(() => undefined)
-    } finally {
-      await pool.stop()
-    }
-  })
+    }))
 
-  test("bounds a worker that returns a result without releasing its request", async () => {
-    const states: Array<{ killed: boolean }> = []
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 10,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => {
-        const state = { killed: false }
-        states.push(state)
-        return fakeProcess(options, "result-no-release", state)
-      },
-    )
-
-    try {
-      await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell" }],
-      })
-      for (let i = 0; i < 40 && !states[0]?.killed; i++) await Bun.sleep(1)
-      expect(states[0]?.killed).toBe(true)
-    } finally {
-      await pool.stop()
-    }
-  })
-
-  test("waits for a worker handshake before reporting the pool ready", async () => {
-    let workerOptions: SpawnPolicyWorkerProcessOptions | undefined
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        heartbeatTimeoutMs: 100,
-      },
-      (options) => {
-        workerOptions = options
-        return fakeProcess(options, "unready", { killed: false })
-      },
-    )
-
-    try {
-      pool.start()
-      const ready = pool.ready()
-      let settled = false
-      void ready.finally(() => {
-        settled = true
-      })
-
-      await Bun.sleep(1)
-      expect(settled).toBe(false)
-
-      workerOptions?.onMessage({
-        type: "ready",
-        protocolVersion: PolicyWorkerProtocol.VERSION,
-        pid: 100,
-        memory: policyMemory(),
-      })
-
-      await expect(ready).resolves.toBeUndefined()
-      expect(pool.stats().ready).toBe(1)
-    } finally {
-      await pool.stop()
-    }
-  })
-
-  test("bounds readiness when a worker process never completes its handshake", async () => {
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => fakeProcess(options, "unready", { killed: false }),
-      {
-        startupReadyTimeoutMs: 5,
-      },
-    )
-
-    try {
-      await expect(pool.ready()).rejects.toBeInstanceOf(PolicyWorkerStartupTimeoutError)
-    } finally {
-      await pool.stop()
-    }
-  })
-
-  test("stays ready while all workers are busy so later requests can enter the bounded queue", async () => {
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 500,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => fakeProcess(options, "hang", { killed: false }),
-    )
-    const controller = new AbortController()
-
-    try {
-      const active = pool.run(classificationInput(), controller.signal)
-      for (let i = 0; i < 20 && pool.stats().active === 0; i++) await Bun.sleep(1)
-
-      expect(pool.stats().active).toBe(1)
-      await expect(pool.ready()).resolves.toBeUndefined()
-
-      controller.abort()
-      await expect(active).rejects.toMatchObject({ name: "AbortError" })
-    } finally {
-      await pool.stop()
-    }
-  })
-
-  test("backs off repeated startup exits and opens a finite startup circuit", async () => {
-    let spawned = 0
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 100,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => {
-        spawned++
-        const host = fakeProcess(options, "unready", { killed: false })
-        queueMicrotask(() => options.onExit(1, null))
-        return host
-      },
-      {
-        startupBackoffBaseMs: 0,
-        startupBackoffMaxMs: 0,
-        maxConsecutiveStartupFailures: 2,
-        sleep: async () => {},
-      },
-    )
-
-    try {
-      pool.start()
-      for (let i = 0; i < 20 && spawned < 3; i++) await Bun.sleep(1)
-
-      expect(spawned).toBe(3)
-      await expect(pool.run(classificationInput())).rejects.toThrow(
-        "Policy worker failed to start after 3 consecutive attempts",
-      )
-      await Bun.sleep(1)
-      expect(spawned).toBe(3)
-    } finally {
-      await pool.stop()
-    }
-  })
-
-  test("keeps the default Policy startup circuit within its ten-second readiness bound", async () => {
-    let spawned = 0
-    const delays: number[] = []
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 100,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => {
-        spawned++
-        const host = fakeProcess(options, "unready", { killed: false })
-        queueMicrotask(() => options.onExit(1, null))
-        return host
-      },
-      {
-        sleep(ms) {
-          delays.push(ms)
-          return Promise.resolve()
+  test("bounds a worker that returns a result without releasing its request", () =>
+    runtime.run(async () => {
+      const states: Array<{ killed: boolean }> = []
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 10,
+          heartbeatTimeoutMs: 10_000,
         },
-      },
-    )
-
-    try {
-      pool.start()
-      for (let i = 0; i < 30 && spawned < 6; i++) await Bun.sleep(1)
-
-      expect(delays).toEqual([250, 500, 1_000, 2_000, 4_000])
-      expect(delays.reduce((total, delay) => total + delay, 0)).toBe(7_750)
-      await expect(pool.run(classificationInput())).rejects.toThrow(
-        "Policy worker failed to start after 6 consecutive attempts",
+        (options) => {
+          const state = { killed: false }
+          states.push(state)
+          return fakeProcess(options, "result-no-release", state)
+        },
       )
-    } finally {
-      await pool.stop()
-    }
-  })
 
-  test("rejects queue overflow and replaces only the worker owned by an aborted request", async () => {
-    const states = [{ killed: false }, { killed: false }]
-    let spawned = 0
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        maxQueued: 0,
-        timeoutMs: 500,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => fakeProcess(options, spawned++ === 0 ? "hang" : "result", states[spawned - 1]),
-    )
-    const controller = new AbortController()
+      try {
+        await expect(pool.run(classificationInput())).resolves.toMatchObject({
+          capabilities: [{ class: "shell" }],
+        })
+        for (let i = 0; i < 40 && !states[0]?.killed; i++) await Bun.sleep(1)
+        expect(states[0]?.killed).toBe(true)
+      } finally {
+        await pool.stop()
+      }
+    }))
 
-    try {
-      const active = pool.run(classificationInput(), controller.signal)
-      for (let i = 0; i < 20 && pool.stats().active === 0; i++) await Bun.sleep(1)
+  test("waits for a worker handshake before reporting the pool ready", () =>
+    runtime.run(async () => {
+      let workerOptions: SpawnPolicyWorkerProcessOptions | undefined
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          heartbeatTimeoutMs: 100,
+        },
+        (options) => {
+          workerOptions = options
+          return fakeProcess(options, "unready", { killed: false })
+        },
+      )
 
-      expect(pool.stats().active).toBe(1)
-      await expect(pool.run(classificationInput())).rejects.toThrow("Policy worker queue is full")
-      expect(states[0].killed).toBe(false)
+      try {
+        pool.start()
+        const ready = pool.ready()
+        let settled = false
+        void ready.finally(() => {
+          settled = true
+        })
 
-      controller.abort()
-      await expect(active).rejects.toMatchObject({ name: "AbortError" })
-      expect(states[0].killed).toBe(true)
-      await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell" }],
-      })
-    } finally {
-      await pool.stop()
-    }
-  })
+        await Bun.sleep(1)
+        expect(settled).toBe(false)
 
-  test("kills a timed-out worker and replaces it for the next classification", async () => {
-    const states = [{ killed: false }, { killed: false }]
-    let spawned = 0
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 50,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => fakeProcess(options, spawned++ === 0 ? "hang" : "result", states[spawned - 1]),
-    )
+        workerOptions?.onMessage({
+          type: "ready",
+          protocolVersion: PolicyWorkerProtocol.VERSION,
+          pid: 100,
+          memory: policyMemory(),
+        })
 
-    try {
-      await expect(pool.run(classificationInput())).rejects.toBeInstanceOf(PolicyWorkerTimeoutError)
-      expect(states[0].killed).toBe(true)
-      await expect(pool.run(classificationInput())).resolves.toEqual({
-        capabilities: [{ class: "shell", nonBypassable: false }],
-      })
-      expect(spawned).toBe(2)
-    } finally {
-      await pool.stop()
-    }
-  })
+        await expect(ready).resolves.toBeUndefined()
+        expect(pool.stats().ready).toBe(1)
+      } finally {
+        await pool.stop()
+      }
+    }))
 
-  test("replaces a worker that never becomes ready when its queued request expires", async () => {
-    const states = [{ killed: false }, { killed: false }]
-    let spawned = 0
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 50,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => fakeProcess(options, spawned++ === 0 ? "unready" : "result", states[spawned - 1]),
-    )
+  test("bounds readiness when a worker process never completes its handshake", () =>
+    runtime.run(async () => {
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => fakeProcess(options, "unready", { killed: false }),
+        {
+          startupReadyTimeoutMs: 5,
+        },
+      )
 
-    try {
-      await expect(pool.run(classificationInput())).rejects.toBeInstanceOf(PolicyWorkerTimeoutError)
-      expect(states[0].killed).toBe(true)
-      await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell" }],
-      })
-    } finally {
-      await pool.stop()
-    }
-  })
+      try {
+        await expect(pool.ready()).rejects.toBeInstanceOf(PolicyWorkerStartupTimeoutError)
+      } finally {
+        await pool.stop()
+      }
+    }))
 
-  test("recycles a worker after a classifier exception", async () => {
-    const states = [{ killed: false }, { killed: false }]
-    let spawned = 0
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        timeoutMs: 100,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => fakeProcess(options, spawned++ === 0 ? "error" : "result", states[spawned - 1]),
-    )
+  test("stays ready while all workers are busy so later requests can enter the bounded queue", () =>
+    runtime.run(async () => {
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 500,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => fakeProcess(options, "hang", { killed: false }),
+      )
+      const controller = new AbortController()
 
-    try {
-      await expect(pool.run(classificationInput())).rejects.toMatchObject({
-        name: "ClassifierError",
-        message: "classification failed",
-      })
-      expect(states[0].killed).toBe(true)
-      await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell" }],
-      })
-    } finally {
-      await pool.stop()
-    }
-  })
+      try {
+        const active = pool.run(classificationInput(), controller.signal)
+        for (let i = 0; i < 20 && pool.stats().active === 0; i++) await Bun.sleep(1)
 
-  test("recycles a healthy worker after its configured request budget", async () => {
-    const states = [{ killed: false }, { killed: false }]
-    let spawned = 0
-    const pool = new PolicyWorkerPool(
-      {
-        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
-        size: 1,
-        maxRequests: 2,
-        timeoutMs: 100,
-        heartbeatTimeoutMs: 10_000,
-      },
-      (options) => fakeProcess(options, "result", states[spawned++]),
-    )
+        expect(pool.stats().active).toBe(1)
+        await expect(pool.ready()).resolves.toBeUndefined()
 
-    try {
-      await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell" }],
-      })
-      expect(states[0].killed).toBe(false)
-      await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell" }],
-      })
-      expect(states[0].killed).toBe(true)
-      await expect(pool.run(classificationInput())).resolves.toMatchObject({
-        capabilities: [{ class: "shell" }],
-      })
-      expect(spawned).toBe(2)
-    } finally {
-      await pool.stop()
-    }
-  })
+        controller.abort()
+        await expect(active).rejects.toMatchObject({ name: "AbortError" })
+      } finally {
+        await pool.stop()
+      }
+    }))
 
-  test("records worker ready latency when a spawned worker becomes ready", async () => {
-    using _metrics = spyOn(ObservabilityMetrics, "record")
-    const pool = new PolicyWorkerPool(
-      { ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1, heartbeatTimeoutMs: 10_000 },
-      (options) => fakeProcess(options, "result", { killed: false }),
-    )
-    try {
-      pool.start()
-      await Bun.sleep(0)
-      const calls = (
-        _metrics as unknown as {
-          mock: { calls: Array<Array<{ name?: string; unit?: string }>> }
-        }
-      ).mock.calls
-      expect(calls.some((call) => call[0]?.name === "policy.worker.ready_latency" && call[0]?.unit === "ms")).toBe(true)
-    } finally {
-      await pool.stop()
-    }
-  })
+  test("backs off repeated startup exits and opens a finite startup circuit", () =>
+    runtime.run(async () => {
+      let spawned = 0
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 100,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => {
+          spawned++
+          const host = fakeProcess(options, "unready", { killed: false })
+          queueMicrotask(() => options.onExit(1, null))
+          return host
+        },
+        {
+          startupBackoffBaseMs: 0,
+          startupBackoffMaxMs: 0,
+          maxConsecutiveStartupFailures: 2,
+          sleep: async () => {},
+        },
+      )
+
+      try {
+        pool.start()
+        for (let i = 0; i < 20 && spawned < 3; i++) await Bun.sleep(1)
+
+        expect(spawned).toBe(3)
+        await expect(pool.run(classificationInput())).rejects.toThrow(
+          "Policy worker failed to start after 3 consecutive attempts",
+        )
+        await Bun.sleep(1)
+        expect(spawned).toBe(3)
+      } finally {
+        await pool.stop()
+      }
+    }))
+
+  test("keeps the default Policy startup circuit within its ten-second readiness bound", () =>
+    runtime.run(async () => {
+      let spawned = 0
+      const delays: number[] = []
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 100,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => {
+          spawned++
+          const host = fakeProcess(options, "unready", { killed: false })
+          queueMicrotask(() => options.onExit(1, null))
+          return host
+        },
+        {
+          sleep(ms) {
+            delays.push(ms)
+            return Promise.resolve()
+          },
+        },
+      )
+
+      try {
+        pool.start()
+        for (let i = 0; i < 30 && spawned < 6; i++) await Bun.sleep(1)
+
+        expect(delays).toEqual([250, 500, 1_000, 2_000, 4_000])
+        expect(delays.reduce((total, delay) => total + delay, 0)).toBe(7_750)
+        await expect(pool.run(classificationInput())).rejects.toThrow(
+          "Policy worker failed to start after 6 consecutive attempts",
+        )
+      } finally {
+        await pool.stop()
+      }
+    }))
+
+  test("rejects queue overflow and replaces only the worker owned by an aborted request", () =>
+    runtime.run(async () => {
+      const states = [{ killed: false }, { killed: false }]
+      let spawned = 0
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          maxQueued: 0,
+          timeoutMs: 500,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => fakeProcess(options, spawned++ === 0 ? "hang" : "result", states[spawned - 1]),
+      )
+      const controller = new AbortController()
+
+      try {
+        const active = pool.run(classificationInput(), controller.signal)
+        for (let i = 0; i < 20 && pool.stats().active === 0; i++) await Bun.sleep(1)
+
+        expect(pool.stats().active).toBe(1)
+        await expect(pool.run(classificationInput())).rejects.toThrow("Policy worker queue is full")
+        expect(states[0].killed).toBe(false)
+
+        controller.abort()
+        await expect(active).rejects.toMatchObject({ name: "AbortError" })
+        expect(states[0].killed).toBe(true)
+        await expect(pool.run(classificationInput())).resolves.toMatchObject({
+          capabilities: [{ class: "shell" }],
+        })
+      } finally {
+        await pool.stop()
+      }
+    }))
+
+  test("kills a timed-out worker and replaces it for the next classification", () =>
+    runtime.run(async () => {
+      const states = [{ killed: false }, { killed: false }]
+      let spawned = 0
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 50,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => fakeProcess(options, spawned++ === 0 ? "hang" : "result", states[spawned - 1]),
+      )
+
+      try {
+        await expect(pool.run(classificationInput())).rejects.toBeInstanceOf(PolicyWorkerTimeoutError)
+        expect(states[0].killed).toBe(true)
+        await expect(pool.run(classificationInput())).resolves.toEqual({
+          capabilities: [{ class: "shell", nonBypassable: false }],
+        })
+        expect(spawned).toBe(2)
+      } finally {
+        await pool.stop()
+      }
+    }))
+
+  test("replaces a worker that never becomes ready when its queued request expires", () =>
+    runtime.run(async () => {
+      const states = [{ killed: false }, { killed: false }]
+      let spawned = 0
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 50,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => fakeProcess(options, spawned++ === 0 ? "unready" : "result", states[spawned - 1]),
+      )
+
+      try {
+        await expect(pool.run(classificationInput())).rejects.toBeInstanceOf(PolicyWorkerTimeoutError)
+        expect(states[0].killed).toBe(true)
+        await expect(pool.run(classificationInput())).resolves.toMatchObject({
+          capabilities: [{ class: "shell" }],
+        })
+      } finally {
+        await pool.stop()
+      }
+    }))
+
+  test("recycles a worker after a classifier exception", () =>
+    runtime.run(async () => {
+      const states = [{ killed: false }, { killed: false }]
+      let spawned = 0
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          timeoutMs: 100,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => fakeProcess(options, spawned++ === 0 ? "error" : "result", states[spawned - 1]),
+      )
+
+      try {
+        await expect(pool.run(classificationInput())).rejects.toMatchObject({
+          name: "ClassifierError",
+          message: "classification failed",
+        })
+        expect(states[0].killed).toBe(true)
+        await expect(pool.run(classificationInput())).resolves.toMatchObject({
+          capabilities: [{ class: "shell" }],
+        })
+      } finally {
+        await pool.stop()
+      }
+    }))
+
+  test("recycles a healthy worker after its configured request budget", () =>
+    runtime.run(async () => {
+      const states = [{ killed: false }, { killed: false }]
+      let spawned = 0
+      const pool = new PolicyWorkerPool(
+        {
+          ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+          size: 1,
+          maxRequests: 2,
+          timeoutMs: 100,
+          heartbeatTimeoutMs: 10_000,
+        },
+        (options) => fakeProcess(options, "result", states[spawned++]),
+      )
+
+      try {
+        await expect(pool.run(classificationInput())).resolves.toMatchObject({
+          capabilities: [{ class: "shell" }],
+        })
+        expect(states[0].killed).toBe(false)
+        await expect(pool.run(classificationInput())).resolves.toMatchObject({
+          capabilities: [{ class: "shell" }],
+        })
+        expect(states[0].killed).toBe(true)
+        await expect(pool.run(classificationInput())).resolves.toMatchObject({
+          capabilities: [{ class: "shell" }],
+        })
+        expect(spawned).toBe(2)
+      } finally {
+        await pool.stop()
+      }
+    }))
+
+  test("records worker ready latency when a spawned worker becomes ready", () =>
+    runtime.run(async () => {
+      using _metrics = spyOn(ObservabilityMetrics, "record")
+      const pool = new PolicyWorkerPool(
+        { ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1, heartbeatTimeoutMs: 10_000 },
+        (options) => fakeProcess(options, "result", { killed: false }),
+      )
+      try {
+        pool.start()
+        await Bun.sleep(0)
+        const calls = (
+          _metrics as unknown as {
+            mock: { calls: Array<Array<{ name?: string; unit?: string }>> }
+          }
+        ).mock.calls
+        expect(calls.some((call) => call[0]?.name === "policy.worker.ready_latency" && call[0]?.unit === "ms")).toBe(
+          true,
+        )
+      } finally {
+        await pool.stop()
+      }
+    }))
 })
 
 describe("PolicyWorker prewarm", () => {
-  test("creates the pool once without awaiting readiness and locks later reconfiguration", async () => {
-    using _start = spyOn(PolicyWorkerPool.prototype, "start").mockImplementation(() => {})
-    await PolicyWorker.stop()
-    PolicyWorker.configure({ ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1 })
-    try {
-      PolicyWorker.prewarm()
-      PolicyWorker.prewarm()
-      expect(() => PolicyWorker.configure()).toThrow("cannot be reconfigured")
-      expect(PolicyWorker.stats().configured).toBe(1)
-    } finally {
+  test("creates the pool once without awaiting readiness and locks later reconfiguration", () =>
+    runtime.run(async () => {
+      using _start = spyOn(PolicyWorkerPool.prototype, "start").mockImplementation(() => {})
       await PolicyWorker.stop()
-      PolicyWorker.configure()
-    }
-  })
+      PolicyWorker.configure({ ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1 })
+      try {
+        PolicyWorker.prewarm()
+        PolicyWorker.prewarm()
+        expect(() => PolicyWorker.configure()).toThrow("cannot be reconfigured")
+        expect(PolicyWorker.stats().configured).toBe(1)
+      } finally {
+        await PolicyWorker.stop()
+        PolicyWorker.configure()
+      }
+    }))
 
-  test("is a no-op while admission is closed", async () => {
-    await PolicyWorker.stop()
-    // stop() closes admission; configure() re-opens it, so close it explicitly.
-    PolicyWorker.configure({ ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1 })
-    PolicyWorker.closeAdmission()
-    try {
-      PolicyWorker.prewarm()
-      expect(() => PolicyWorker.configure()).not.toThrow()
-    } finally {
-      PolicyWorker.configure()
-    }
-  })
+  test("is a no-op while admission is closed", () =>
+    runtime.run(async () => {
+      await PolicyWorker.stop()
+      // stop() closes admission; configure() re-opens it, so close it explicitly.
+      PolicyWorker.configure({ ...DEFAULT_POLICY_WORKER_POOL_OPTIONS, size: 1 })
+      PolicyWorker.closeAdmission()
+      try {
+        PolicyWorker.prewarm()
+        expect(() => PolicyWorker.configure()).not.toThrow()
+      } finally {
+        PolicyWorker.configure()
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

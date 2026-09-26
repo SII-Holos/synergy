@@ -47,6 +47,7 @@ const EventContribution = ContributionBase.extend({
 
 const ToolContribution = ContributionBase.extend({
   kind: z.literal("tool"),
+  requiresWorkspace: z.boolean().optional(),
   description: z.string().min(1),
   input: JsonSchema,
   exposure: z.record(z.string(), z.unknown()).optional(),

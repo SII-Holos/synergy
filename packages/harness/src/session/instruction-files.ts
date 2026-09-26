@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
@@ -35,11 +36,12 @@ export namespace InstructionFiles {
   }
 
   function searchDirsWithinScope() {
+    if (!ScopeContext.current.workspace) return []
     const cwd = path.resolve(ScopeContext.current.directory)
     const scope = ScopeContext.current.scope
     if (scope.type !== "project") return [cwd]
 
-    const root = path.resolve(scope.directory)
+    const root = path.resolve(scope.local?.directory ?? cwd)
     if (!isPathContained(root, cwd)) return [cwd]
 
     const dirs: string[] = []
@@ -80,26 +82,35 @@ export namespace InstructionFiles {
   // must still be observed instead of serving stale text for the whole turn.
   // Remote instruction URLs stay outside the memo because they expose no
   // equivalent revalidation.
-  const loads = new WeakMap<object, Map<string, CachedLoad>>()
-  let fileReads = 0
-  let fileReuses = 0
+
+  const runtimeState = RuntimeContext.state(() => ({
+    fileReads: 0,
+    fileReuses: 0,
+    loads: new WeakMap<object, Map<string | null, CachedLoad>>(),
+  }))
 
   export function stats() {
-    return { fileReads, fileReuses }
+    const instanceState = runtimeState()
+
+    return { fileReads: instanceState.fileReads, fileReuses: instanceState.fileReuses }
   }
 
   export function resetStatsForTest() {
-    fileReads = 0
-    fileReuses = 0
+    const instanceState = runtimeState()
+
+    instanceState.fileReads = 0
+    instanceState.fileReuses = 0
   }
 
   function loadCache(revision: object): CachedLoad {
-    let byWorkspace = loads.get(revision)
+    const instanceState = runtimeState()
+
+    let byWorkspace = instanceState.loads.get(revision)
     if (!byWorkspace) {
       byWorkspace = new Map()
-      loads.set(revision, byWorkspace)
+      instanceState.loads.set(revision, byWorkspace)
     }
-    const key = ScopeContext.current.directory
+    const key = ScopeContext.current.workspace?.path ?? null
     let entry = byWorkspace.get(key)
     if (!entry) {
       entry = { files: new Map() }
@@ -130,17 +141,19 @@ export namespace InstructionFiles {
   }
 
   async function cachedInstructionFilePart(cache: CachedLoad, filepath: string, maxBytes?: number) {
+    const instanceState = runtimeState()
+
     if (maxBytes !== undefined && maxBytes <= 0) return undefined
 
     const fingerprint = await fileFingerprint(filepath)
     const key = `${maxBytes ?? "all"}\0${filepath}`
     const cached = fingerprint === undefined ? undefined : cache.files.get(key)
     if (cached && cached.fingerprint === fingerprint) {
-      fileReuses++
+      instanceState.fileReuses++
       return cached.part
     }
 
-    fileReads++
+    instanceState.fileReads++
     const part = await readInstructionFilePart(filepath, maxBytes)
     if (fingerprint !== undefined) cache.files.set(key, { fingerprint, part })
     return part
@@ -167,7 +180,7 @@ export namespace InstructionFiles {
       path.join(Global.Path.config, LOCAL_PRIMARY_FILE),
     ]
     if (!Flag.SYNERGY_DISABLE_CLAUDE_CODE_PROMPT) {
-      result.push(path.join(os.homedir(), ".claude", "CLAUDE.md"))
+      result.push(path.join(Global.Path.home, ".claude", "CLAUDE.md"))
     }
     if (Flag.SYNERGY_CONFIG_DIR) {
       result.push(path.join(Flag.SYNERGY_CONFIG_DIR, LOCAL_OVERRIDE_FILE))
@@ -198,7 +211,7 @@ export namespace InstructionFiles {
         continue
       }
       if (instruction.startsWith("~/")) {
-        instruction = path.join(os.homedir(), instruction.slice(2))
+        instruction = path.join(Global.Path.home, instruction.slice(2))
       }
       let matches: string[] = []
       if (path.isAbsolute(instruction)) {
@@ -209,7 +222,7 @@ export namespace InstructionFiles {
             onlyFiles: true,
           }),
         ).catch(() => [])
-      } else {
+      } else if (ScopeContext.current.workspace) {
         matches = await Filesystem.globUp(
           instruction,
           ScopeContext.current.directory,

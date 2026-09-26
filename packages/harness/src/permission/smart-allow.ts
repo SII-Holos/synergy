@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { MessageV2 } from "../session/message-v2"
 import { SessionManager } from "../session/manager"
 import { record, RolloutRecordingError } from "../session/rollout/error"
@@ -29,7 +30,7 @@ export namespace SmartAllow {
     tool: string
     args: Record<string, any>
     capabilities: string[]
-    workspace: string
+    workspace: string | null
     policyAction: "ask" | "deny"
     redactedEvidence?: RedactedEvidence
     userMessage?: string
@@ -48,14 +49,18 @@ export namespace SmartAllow {
   const PLACEHOLDER_VALUE_PATTERN =
     /^(|example|placeholder|changeme|change_me|your[_-]?(key|token|secret|password)?[_-]?here|xxx+|todo)$/i
   const GLOBAL_SCOPE = "__global__"
-  const states = new Map<string, SessionState>()
+  const runtimeState = RuntimeContext.state(() => ({
+    states: new Map<string, SessionState>(),
+  }))
 
   function state(sessionID?: string): SessionState {
+    const instanceState = runtimeState()
+
     const key = sessionID ?? GLOBAL_SCOPE
-    let existing = states.get(key)
+    let existing = instanceState.states.get(key)
     if (!existing) {
       existing = { cache: new Map(), consecutiveDisagreements: 0, disabled: false }
-      states.set(key, existing)
+      instanceState.states.set(key, existing)
     }
     return existing
   }
@@ -190,11 +195,13 @@ export namespace SmartAllow {
   }
 
   export function resetCircuitBreaker(sessionID?: string) {
+    const instanceState = runtimeState()
+
     if (sessionID) {
-      states.delete(sessionID)
+      instanceState.states.delete(sessionID)
       return
     }
-    states.clear()
+    instanceState.states.clear()
   }
 
   export async function classify(input: ClassifyInput): Promise<Classification | undefined> {

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { SnapshotLifecycle } from "../session/snapshot-lifecycle"
 import { Log } from "../util/log"
 import { SessionInvoke } from "../session/invoke"
@@ -6,25 +7,21 @@ import type { Scope } from "."
 
 const log = Log.create({ service: "scope-startup" })
 
-/**
- * H5 startup contribution registry (L1): product domains register their
- * scope-startup steps (plugin activation/init, lattice runtime, LSP, Vcs,
- * the command initialization watcher) instead of scope/runtime.ts importing
- * them. Built-in harness steps are modeled as chained anchor contributions
- * so order-sensitive product steps can pin themselves with before/after
- * declarations; the chain reproduces the historical startup order exactly:
- * plugin-activate → listeners → plugin-init → session-recovery → lattice →
- * session-pause-reconcile → format → lsp → file-watcher → vcs →
- * command-watcher. Execution is a deterministic topological sort; ties break
- * by (phase rank, registration rank).
- */
 export namespace ScopeStartup {
-  let runtimeMode: "server" | "oneshot" = "server"
-  export function configure(mode: typeof runtimeMode) {
-    runtimeMode = mode
+  const runtimeState = RuntimeContext.state(() => ({
+    runtimeMode: "server" as "server" | "oneshot",
+    contributions: new Map<string, Contribution>(),
+    active: new Map<string, { scopeID: string; steps: Step[] }>(),
+  }))
+  export function configure(mode: ReturnType<typeof runtimeState>["runtimeMode"]) {
+    const instanceState = runtimeState()
+
+    instanceState.runtimeMode = mode
   }
   export function resident() {
-    return runtimeMode === "server"
+    const instanceState = runtimeState()
+
+    return instanceState.runtimeMode === "server"
   }
   export type Phase = "core" | "workflow" | "surface"
 
@@ -33,11 +30,12 @@ export namespace ScopeStartup {
   export interface Contribution {
     name: string
     phase: Phase
+    owner?: "workspace"
     /** This step must run after the named steps complete. */
     after?: string[]
     /** This step must run before the named steps start. */
     before?: string[]
-    init(scope: Scope.Project): Promise<void> | void
+    init(scope: Scope): Promise<void> | void
     /** Scope disposal hook; runs before scoped state disposal. */
     dispose?(scopeID: string): Promise<void> | void
   }
@@ -46,19 +44,31 @@ export namespace ScopeStartup {
     rank: number
   }
 
-  const contributions: Step[] = []
-
   export function register(contribution: Contribution): void {
-    if (contributions.some((candidate) => candidate.name === contribution.name)) return
-    contributions.push({ ...contribution, rank: contributions.length })
+    const instanceState = runtimeState()
+
+    const existing = instanceState.contributions.get(contribution.name)
+    if (existing === contribution) return
+    if (existing || BUILTIN_CHAIN.some((step) => step.name === contribution.name))
+      throw new Error(`Scope startup step ${contribution.name} is already registered`)
+    RuntimeContext.assertCompositionOpen(`Scope startup step ${contribution.name}`)
+    instanceState.contributions.set(contribution.name, contribution)
   }
 
   export function registered(): Array<{ name: string; phase: Phase }> {
-    return contributions.map((contribution) => ({ name: contribution.name, phase: contribution.phase }))
+    const instanceState = runtimeState()
+
+    return [...instanceState.contributions.values()].map((contribution) => ({
+      name: contribution.name,
+      phase: contribution.phase,
+    }))
   }
 
   export function reset(): void {
-    contributions.length = 0
+    const instanceState = runtimeState()
+
+    RuntimeContext.assertCompositionOpen("Scope startup steps")
+    instanceState.contributions.clear()
   }
 
   /** The built-in anchor chain, in execution order. Each step runs after the
@@ -91,7 +101,10 @@ export namespace ScopeStartup {
       phase: "core" as const,
       rank: index,
       after: index > 0 ? [BUILTIN_CHAIN[index - 1]!.name] : undefined,
-      init: step.name === "starting-listeners" ? (scope: Scope.Project) => notifyStarting(scope) : step.init,
+      init: (scope: Scope) => {
+        if (scope.type !== "project") return
+        return step.name === "starting-listeners" ? notifyStarting(scope) : step.init(scope)
+      },
     }))
   }
 
@@ -113,6 +126,8 @@ export namespace ScopeStartup {
     }
     const connect = (from: string, to: string) => {
       if (from === to) throw new Error(`scope startup step '${from}' cannot order against itself`)
+      if (byName.get(from)?.owner === "workspace" && byName.get(to)?.owner !== "workspace")
+        throw new Error(`Scope startup step '${to}' cannot depend on Workspace step '${from}'`)
       outgoing.get(from)!.add(to)
       incoming.get(to)!.add(from)
     }
@@ -152,18 +167,61 @@ export namespace ScopeStartup {
    * contributions in topological order. Throws on unknown ordering
    * references or cycles so a mis-registered domain fails loudly instead of
    * silently skipping steps. */
-  export async function run(input: { scope: Scope.Project; notifyStarting(scope: Scope.Project): void }) {
-    const steps = topoSort([...builtinSteps(input.notifyStarting), ...contributions])
-    for (const step of steps) await step.init(input.scope)
+  export async function run(input: {
+    scope: Scope
+    workspaceKey?: string
+    notifyStarting(scope: Scope.Project): void
+  }) {
+    const instanceState = runtimeState()
+
+    const steps = topoSort([
+      ...builtinSteps(input.notifyStarting),
+      ...[...instanceState.contributions.values()].map((step, rank) => ({ ...step, rank })),
+    ]).filter((step) => (step.owner === "workspace") === (input.workspaceKey !== undefined))
+    const active: Step[] = []
+    const key = input.workspaceKey ?? input.scope.id
+    instanceState.active.set(key, { scopeID: input.scope.id, steps: active })
+    try {
+      for (const step of steps) {
+        active.push(step)
+        await step.init(input.scope)
+      }
+    } catch (error) {
+      try {
+        await dispose(key)
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "Scope startup and cleanup failed")
+      }
+      throw error
+    }
   }
 
   /** Ordered plan without executing; exposed for tests. */
-  export function plan(): string[] {
-    return topoSort([...builtinSteps(() => {}), ...contributions]).map((step) => step.name)
+  export function plan(owner?: "scope" | "workspace"): string[] {
+    const instanceState = runtimeState()
+
+    return topoSort([
+      ...builtinSteps(() => {}),
+      ...[...instanceState.contributions.values()].map((step, rank) => ({ ...step, rank })),
+    ])
+      .filter((step) => !owner || (step.owner === "workspace") === (owner === "workspace"))
+      .map((step) => step.name)
   }
 
-  /** Run registered disposal hooks in registration order. */
+  /** Release acquired steps in reverse startup order, including a partially initialized step. */
   export async function dispose(scopeID: string) {
-    for (const contribution of contributions) await contribution.dispose?.(scopeID)
+    const instanceState = runtimeState()
+
+    const active = instanceState.active.get(scopeID)
+    instanceState.active.delete(scopeID)
+    const errors: unknown[] = []
+    for (const step of active?.steps.toReversed() ?? []) {
+      try {
+        await step.dispose?.(active!.scopeID)
+      } catch (error) {
+        errors.push(error)
+      }
+    }
+    if (errors.length) throw new AggregateError(errors, "Scope cleanup failed")
   }
 }

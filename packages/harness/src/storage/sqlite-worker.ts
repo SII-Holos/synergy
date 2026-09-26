@@ -10,7 +10,7 @@ import type { SqliteRequest, SqliteResponse } from "./sql-contract"
 if (process.platform !== "win32") process.umask(0o077)
 
 let writer: Database | undefined
-let reader: Database | undefined
+let readonly = false
 let filename: string | undefined
 
 // The authoritative store is orders of magnitude larger than either
@@ -61,6 +61,7 @@ process.on("message", (request: SqliteRequest) => {
   const response: SqliteResponse = { id: request.id }
   try {
     if (request.action === "open") {
+      readonly = request.readonly ?? false
       writer = new Database(request.filename!, {
         create: !request.readonly,
         readonly: request.readonly,
@@ -83,24 +84,20 @@ process.on("message", (request: SqliteRequest) => {
         // TRUNCATE checkpoint.
         writer.run("PRAGMA journal_size_limit = 67108864")
       }
+      if (readonly) writer.run("PRAGMA query_only = ON")
       applySizePragmas(writer)
-      reader = new Database(request.filename!, { readonly: true, strict: true, safeIntegers: true })
-      reader.run("PRAGMA busy_timeout = 5000")
-      reader.run("PRAGMA query_only = ON")
-      applySizePragmas(reader)
       filename = request.filename
     } else if (request.action === "ping") {
       // Liveness probes answer from the event loop without touching SQLite, so
       // they succeed whenever this worker is able to serve any request at all.
       response.rows = []
     } else if (request.action === "close") {
-      reader?.close()
       writer?.close()
-      reader = undefined
       writer = undefined
       filename = undefined
     } else if (request.action === "maintain") {
       if (!writer || !filename) throw new Error("SQLite connection is not open")
+      if (readonly) throw new Error("A read-only storage worker cannot run maintenance")
       const operation = request.maintain!.operation
       if (operation === "enable-incremental-vacuum") {
         response.maintain = {
@@ -116,7 +113,7 @@ process.on("message", (request: SqliteRequest) => {
         response.maintain = { changed: result.releasedPages > 0, ...result }
       }
     } else {
-      const connection = request.reader ? reader : writer
+      const connection = writer
       if (!connection) throw new Error("SQLite connection is not open")
       response.rows = connection.query(request.statement!).all(...(request.values ?? [])) as NonNullable<
         SqliteResponse["rows"]

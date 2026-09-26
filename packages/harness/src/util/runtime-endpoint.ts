@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 type RuntimeEndpointErrorCode = "PLUGIN_RUNTIME_ENDPOINT_UNAVAILABLE" | "PLUGIN_RUNTIME_ENDPOINT_UNSAFE"
 
 export type RuntimeEndpoint = {
@@ -11,7 +12,9 @@ type Listener = {
   generation?: string
 }
 
-let listener: Listener | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  listener: undefined as Listener | undefined,
+}))
 
 function endpointError(code: RuntimeEndpointErrorCode, message: string) {
   return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
@@ -36,27 +39,33 @@ function listenerUrl(hostname: string, port: number) {
 }
 
 export function configureRuntimeEndpoint(value: Listener | undefined) {
-  listener = value ? { ...value, generation: value.generation ?? crypto.randomUUID() } : undefined
-  return listener?.generation
+  const instanceState = runtimeState()
+
+  instanceState.listener = value ? { ...value, generation: value.generation ?? crypto.randomUUID() } : undefined
+  return instanceState.listener?.generation
 }
 
 export function peekRuntimeEndpointGeneration(): string | undefined {
-  if (!listener || !isLoopbackReachable(listener.hostname)) return undefined
-  return listener.generation
+  const instanceState = runtimeState()
+
+  if (!instanceState.listener || !isLoopbackReachable(instanceState.listener.hostname)) return undefined
+  return instanceState.listener.generation
 }
 
 export function getRuntimeEndpoint(): RuntimeEndpoint {
-  if (!listener) {
+  const instanceState = runtimeState()
+
+  if (!instanceState.listener) {
     throw endpointError("PLUGIN_RUNTIME_ENDPOINT_UNAVAILABLE", "The Synergy runtime endpoint is not available")
   }
-  if (!isLoopbackReachable(listener.hostname)) {
+  if (!isLoopbackReachable(instanceState.listener.hostname)) {
     throw endpointError(
       "PLUGIN_RUNTIME_ENDPOINT_UNSAFE",
       "The Synergy runtime endpoint is not reachable over loopback; start the server with --hostname 127.0.0.1 (or 0.0.0.0)",
     )
   }
   return {
-    url: listenerUrl(listener.hostname, listener.port),
-    generation: listener.generation!,
+    url: listenerUrl(instanceState.listener.hostname, instanceState.listener.port),
+    generation: instanceState.listener.generation!,
   }
 }

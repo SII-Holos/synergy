@@ -25,8 +25,9 @@ describe("setSessionDragData", () => {
     const event = { dataTransfer: transfer } as unknown as DragEvent
 
     setSessionDragData(event, {
+      connection: "http://server",
       id: "ses_abc",
-      directory: "/repo",
+      scopeID: "/repo",
       title: "My session",
       updatedAt: 1700000000000,
     })
@@ -35,8 +36,9 @@ describe("setSessionDragData", () => {
     expect(transfer.getData("text/plain")).toBe("My session")
     const payload = JSON.parse(transfer.getData("application/x-synergy-session")) as Record<string, unknown>
     expect(payload).toEqual({
+      connection: "http://server",
       id: "ses_abc",
-      directory: "/repo",
+      scopeID: "/repo",
       title: "My session",
       updatedAt: 1700000000000,
     })
@@ -58,10 +60,10 @@ describe("setSessionDragData", () => {
     document.body.removeChild = ((node: Node) => node) as typeof document.body.removeChild
 
     try {
-      setSessionDragData(event, { id: "ses_abc", directory: "home", title: "Home" })
+      setSessionDragData(event, { connection: "http://server", id: "ses_abc", scopeID: "home", title: "Home" })
 
       const payload = JSON.parse(transfer.getData("application/x-synergy-session")) as Record<string, unknown>
-      expect(payload).toEqual({ id: "ses_abc", directory: "home", title: "Home" })
+      expect(payload).toEqual({ connection: "http://server", id: "ses_abc", scopeID: "home", title: "Home" })
       expect(appended.length).toBe(1)
       expect(transfer.dragImage).not.toBeNull()
     } finally {
@@ -71,31 +73,27 @@ describe("setSessionDragData", () => {
   })
 
   test("no-ops when dataTransfer is absent", () => {
-    setSessionDragData({} as DragEvent, { id: "ses_abc", directory: "/repo", title: "T" })
+    setSessionDragData({} as DragEvent, { connection: "http://server", id: "ses_abc", scopeID: "/repo", title: "T" })
     expect(true).toBe(true)
   })
 })
 
 describe("parseSessionDragPayload", () => {
-  test("parses the canonical sidebar payload into scope/session parts", () => {
-    const payload = JSON.stringify({ id: "ses_1", directory: "/repo", title: "T" })
-    expect(parseSessionDragPayload(payload)).toEqual({ scopeKey: "/repo", sessionID: "ses_1" })
+  test("requires the source connection even when session identifiers are identical", () => {
+    const payload = JSON.stringify({ connection: "http://server-a", scopeID: "home", id: "session", title: "Title" })
+    expect(parseSessionDragPayload(payload, "http://server-a")).toEqual({ scopeKey: "home", sessionID: "session" })
+    expect(parseSessionDragPayload(payload, "http://server-b")).toBeUndefined()
   })
-
-  test("accepts the legacy { scopeKey, sessionID } shape", () => {
-    const payload = JSON.stringify({ scopeKey: "/repo", sessionID: "ses_1" })
-    expect(parseSessionDragPayload(payload)).toEqual({ scopeKey: "/repo", sessionID: "ses_1" })
-  })
-
-  test("prefers scopeKey/sessionID when both shapes are present", () => {
-    const payload = JSON.stringify({ scopeKey: "/a", sessionID: "s1", directory: "/b", id: "s2" })
-    expect(parseSessionDragPayload(payload)).toEqual({ scopeKey: "/a", sessionID: "s1" })
-  })
-
-  test("returns undefined for malformed or foreign payloads", () => {
-    expect(parseSessionDragPayload("not json")).toBeUndefined()
-    expect(parseSessionDragPayload("")).toBeUndefined()
-    expect(parseSessionDragPayload(JSON.stringify({ id: "", directory: "/repo" }))).toBeUndefined()
-    expect(parseSessionDragPayload(JSON.stringify({ id: "ses_1" }))).toBeUndefined()
+  test("ignores malformed payloads and old drags without connection identity", () => {
+    for (const value of [
+      "not json",
+      "",
+      "null",
+      JSON.stringify({ scopeKey: "home", sessionID: "session" }),
+      JSON.stringify({ scopeID: "home", id: "session" }),
+      JSON.stringify({ connection: "http://server", scopeID: "home", id: "" }),
+    ]) {
+      expect(parseSessionDragPayload(value, "http://server")).toBeUndefined()
+    }
   })
 })

@@ -6,6 +6,16 @@ import { ToolRegistry } from "../../src/tool/registry"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { SandboxHost } from "../../src/sandbox/host"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+let implementation = containmentHost(true)
+const runtime = await testRuntime({
+  register: () =>
+    SandboxHost.register({
+      prepareWrapper: (options) => implementation.prepareWrapper(options),
+      cleanupWrapper: () => implementation.cleanupWrapper(),
+    }),
+})
 
 // ---------------------------------------------------------------------------
 // session/shell-containment-authorization.test.ts
@@ -159,122 +169,129 @@ async function resolveBash(input: { controlProfile: string; sessionID: string; e
   }
 }
 
-afterEach(async () => {
-  SandboxHost.register(undefined)
-  try {
-    for (const entry of await PermissionNext.list()) {
-      await PermissionNext.reply({ requestID: entry.id, reply: "reject" }).catch(() => {})
+afterEach(() =>
+  runtime.run(async () => {
+    implementation = containmentHost(true)
+    try {
+      for (const entry of await PermissionNext.list()) {
+        await PermissionNext.reply({ requestID: entry.id, reply: "reject" }).catch(() => {})
+      }
+    } catch {
+      // Pending asks are scope-scoped.
     }
-  } catch {
-    // Pending asks are scope-scoped.
-  }
-})
+  }),
+)
 
 describe("bash authorization follows containment", () => {
-  test("guarded allows contained read-only commands without prompting", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        SandboxHost.register(containmentHost(true))
-        const executed: string[] = []
-        const { bash, executions, restore } = await resolveBash({
-          controlProfile: "guarded",
-          sessionID: "ses_p3_guarded_contained",
-          executed,
-        })
-        try {
-          for (const command of READ_ONLY_CORPUS) {
-            const callID = `call_p3_${command.replace(/\W+/g, "_")}`
-            await bash.execute({ command, description: command }, { toolCallId: callID })
-            const outcome = await executions.get(callID)
-            expect({ command, status: outcome?.status }).toEqual({ command, status: "completed" })
-            const pending = (await PermissionNext.list()).filter(
-              (item) => item.sessionID === "ses_p3_guarded_contained",
-            )
-            expect({ command, asks: pending.length }).toEqual({ command, asks: 0 })
+  test("guarded allows contained read-only commands without prompting", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          implementation = containmentHost(true)
+          const executed: string[] = []
+          const { bash, executions, restore } = await resolveBash({
+            controlProfile: "guarded",
+            sessionID: "ses_p3_guarded_contained",
+            executed,
+          })
+          try {
+            for (const command of READ_ONLY_CORPUS) {
+              const callID = `call_p3_${command.replace(/\W+/g, "_")}`
+              await bash.execute({ command, description: command }, { toolCallId: callID })
+              const outcome = await executions.get(callID)
+              expect({ command, status: outcome?.status }).toEqual({ command, status: "completed" })
+              const pending = (await PermissionNext.list()).filter(
+                (item) => item.sessionID === "ses_p3_guarded_contained",
+              )
+              expect({ command, asks: pending.length }).toEqual({ command, asks: 0 })
+            }
+            expect(executed).toEqual(READ_ONLY_CORPUS)
+          } finally {
+            restore()
           }
-          expect(executed).toEqual(READ_ONLY_CORPUS)
-        } finally {
-          restore()
-        }
-      },
-    })
-  })
+        },
+      })
+    }))
 
-  test("guarded asks when the sandbox cannot contain the command", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        SandboxHost.register(containmentHost(false))
-        const executed: string[] = []
-        const { bash, restore } = await resolveBash({
-          controlProfile: "guarded",
-          sessionID: "ses_p3_guarded_uncontained",
-          executed,
-        })
-        try {
-          const pending = waitForPermission("ses_p3_guarded_uncontained")
-          const run = bash
-            .execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_uncontained" })
-            .catch((error: unknown) => error)
-          const request = await pending
-          expect(request).toBeDefined()
-          expect(request!.permission).toBe("bash")
-          await PermissionNext.reply({ requestID: request!.id, reply: "reject" })
-          await run
-          // Refused, not run silently outside the sandbox.
-          expect(executed).toEqual([])
-        } finally {
-          restore()
-        }
-      },
-    })
-  })
+  test("guarded asks when the sandbox cannot contain the command", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          implementation = containmentHost(false)
+          const executed: string[] = []
+          const { bash, restore } = await resolveBash({
+            controlProfile: "guarded",
+            sessionID: "ses_p3_guarded_uncontained",
+            executed,
+          })
+          try {
+            const pending = waitForPermission("ses_p3_guarded_uncontained")
+            const run = bash
+              .execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_uncontained" })
+              .catch((error: unknown) => error)
+            const request = await pending
+            expect(request).toBeDefined()
+            expect(request!.permission).toBe("bash")
+            await PermissionNext.reply({ requestID: request!.id, reply: "reject" })
+            await run
+            // Refused, not run silently outside the sandbox.
+            expect(executed).toEqual([])
+          } finally {
+            restore()
+          }
+        },
+      })
+    }))
 
-  test("autonomous allows contained commands and refuses uncontained ones", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        SandboxHost.register(containmentHost(true))
-        const containedRuns: string[] = []
-        const contained = await resolveBash({
-          controlProfile: "autonomous",
-          sessionID: "ses_p3_auto_contained",
-          executed: containedRuns,
-        })
-        try {
-          await contained.bash.execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_auto_ok" })
-          const outcome = await contained.executions.get("call_p3_auto_ok")
-          expect(outcome?.status).toBe("completed")
-          expect(containedRuns).toEqual(["ls -la"])
-        } finally {
-          contained.restore()
-        }
+  test("autonomous allows contained commands and refuses uncontained ones", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          implementation = containmentHost(true)
+          const containedRuns: string[] = []
+          const contained = await resolveBash({
+            controlProfile: "autonomous",
+            sessionID: "ses_p3_auto_contained",
+            executed: containedRuns,
+          })
+          try {
+            await contained.bash.execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_auto_ok" })
+            const outcome = await contained.executions.get("call_p3_auto_ok")
+            expect(outcome?.status).toBe("completed")
+            expect(containedRuns).toEqual(["ls -la"])
+          } finally {
+            contained.restore()
+          }
 
-        SandboxHost.register(containmentHost(false))
-        const uncontainedRuns: string[] = []
-        const uncontained = await resolveBash({
-          controlProfile: "autonomous",
-          sessionID: "ses_p3_auto_uncontained",
-          executed: uncontainedRuns,
-        })
-        try {
-          await uncontained.bash
-            .execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_auto_denied" })
-            .catch((error: unknown) => error)
-          const outcome = await uncontained.executions.get("call_p3_auto_denied")
-          expect(outcome?.status).toBe("error")
-          expect(outcome?.error).toMatch(/cannot contain/i)
-          expect(uncontainedRuns).toEqual([])
-          const pending = (await PermissionNext.list()).filter((item) => item.sessionID === "ses_p3_auto_uncontained")
-          expect(pending).toHaveLength(0)
-        } finally {
-          uncontained.restore()
-        }
-      },
-    })
-  })
+          implementation = containmentHost(false)
+          const uncontainedRuns: string[] = []
+          const uncontained = await resolveBash({
+            controlProfile: "autonomous",
+            sessionID: "ses_p3_auto_uncontained",
+            executed: uncontainedRuns,
+          })
+          try {
+            await uncontained.bash
+              .execute({ command: "ls -la", description: "ls" }, { toolCallId: "call_p3_auto_denied" })
+              .catch((error: unknown) => error)
+            const outcome = await uncontained.executions.get("call_p3_auto_denied")
+            expect(outcome?.status).toBe("error")
+            expect(outcome?.error).toMatch(/cannot contain/i)
+            expect(uncontainedRuns).toEqual([])
+            const pending = (await PermissionNext.list()).filter((item) => item.sessionID === "ses_p3_auto_uncontained")
+            expect(pending).toHaveLength(0)
+          } finally {
+            uncontained.restore()
+          }
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -30,61 +30,62 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024
 
 const TranscriptionResult = z.object({ text: z.string() }).meta({ ref: "VoiceTranscriptionResult" })
 
-export const VoiceRoute = new Hono().post(
-  "/transcribe",
-  describeRoute({
-    summary: "Transcribe audio",
-    description:
-      "Transcribe a short audio recording to text for composer voice dictation. Audio is processed in memory and never persisted.",
-    operationId: "voice.transcribe",
-    responses: {
-      200: {
-        description: "Transcribed text",
-        content: { "application/json": { schema: resolver(TranscriptionResult) } },
+export const VoiceRoute = () =>
+  new Hono().post(
+    "/transcribe",
+    describeRoute({
+      summary: "Transcribe audio",
+      description:
+        "Transcribe a short audio recording to text for composer voice dictation. Audio is processed in memory and never persisted.",
+      operationId: "voice.transcribe",
+      responses: {
+        200: {
+          description: "Transcribed text",
+          content: { "application/json": { schema: resolver(TranscriptionResult) } },
+        },
+        ...errors(400),
       },
-      ...errors(400),
-    },
-  }),
-  validator(
-    "form",
-    z.object({
-      file: z.any(),
-      context: z.string().optional(),
-      language: z.string().optional(),
     }),
-  ),
-  async (c) => {
-    try {
-      const { file, context, language } = c.req.valid("form")
-      if (!(file instanceof File)) return c.json({ message: "Missing file field" }, 400)
-      if (file.size > MAX_AUDIO_BYTES) {
-        return c.json({ message: `Audio too large: ${file.size} bytes (max ${MAX_AUDIO_BYTES})` }, 400)
-      }
-      const data = new Uint8Array(await file.arrayBuffer())
-      if (data.byteLength === 0) return c.json({ message: "Empty audio recording" }, 400)
-      if (!isAudioLike(file)) {
-        return c.json({ message: `Not an audio file: ${file.type || file.name}` }, 400)
-      }
+    validator(
+      "form",
+      z.object({
+        file: z.any(),
+        context: z.string().optional(),
+        language: z.string().optional(),
+      }),
+    ),
+    async (c) => {
+      try {
+        const { file, context, language } = c.req.valid("form")
+        if (!(file instanceof File)) return c.json({ message: "Missing file field" }, 400)
+        if (file.size > MAX_AUDIO_BYTES) {
+          return c.json({ message: `Audio too large: ${file.size} bytes (max ${MAX_AUDIO_BYTES})` }, 400)
+        }
+        const data = new Uint8Array(await file.arrayBuffer())
+        if (data.byteLength === 0) return c.json({ message: "Empty audio recording" }, 400)
+        if (!isAudioLike(file)) {
+          return c.json({ message: `Not an audio file: ${file.type || file.name}` }, 400)
+        }
 
-      const result = await Voice.transcribe({ data, context, language })
-      return c.json(result)
-    } catch (err: any) {
-      if (err instanceof VoiceNotConfiguredError) {
-        return c.json({ message: err.message, reason: "voice_stt_not_configured" }, 400)
+        const result = await Voice.transcribe({ data, context, language })
+        return c.json(result)
+      } catch (err: any) {
+        if (err instanceof VoiceNotConfiguredError) {
+          return c.json({ message: err.message, reason: "voice_stt_not_configured" }, 400)
+        }
+        // STT providers return an empty transcript (200 with no text) when no
+        // speech is detected; the AI SDK surfaces that as NoTranscriptGenerated.
+        // Translate it into an actionable reason instead of the raw SDK error.
+        if (err?.name === "AI_NoTranscriptGeneratedError") {
+          return c.json(
+            {
+              message: "No speech was detected in the recording. Move closer to the microphone and try again.",
+              reason: "voice_no_speech",
+            },
+            400,
+          )
+        }
+        return c.json({ message: err?.message ?? String(err) }, 400)
       }
-      // STT providers return an empty transcript (200 with no text) when no
-      // speech is detected; the AI SDK surfaces that as NoTranscriptGenerated.
-      // Translate it into an actionable reason instead of the raw SDK error.
-      if (err?.name === "AI_NoTranscriptGeneratedError") {
-        return c.json(
-          {
-            message: "No speech was detected in the recording. Move closer to the microphone and try again.",
-            reason: "voice_no_speech",
-          },
-          400,
-        )
-      }
-      return c.json({ message: err?.message ?? String(err) }, 400)
-    }
-  },
-)
+    },
+  )

@@ -6,7 +6,7 @@ import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
 
 export interface Composition {
   id: string
-  register(): Promise<void>
+  register(): void
   open: typeof openLocalRuntime
 }
 

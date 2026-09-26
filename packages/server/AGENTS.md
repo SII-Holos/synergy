@@ -7,4 +7,4 @@ Own the reusable HTTP server, core routes, transport middleware, and OpenAPI gen
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
 
-Run bun run typecheck and the affected tests, then the root package and dependency checks.
+Run bun run typecheck and the affected tests, then the root package and dependency checks. Package test and coverage commands prepare the native PTY library before real WebSocket transport tests; direct test invocations require bun ../runtime-local/script/build-pty.ts first.

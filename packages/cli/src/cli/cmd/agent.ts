@@ -78,7 +78,7 @@ const AgentCreateCommand = cmd({
         let scope: "global" | "project" = "global"
         if (cliPath) {
           targetDirectory = cliPath
-        } else if (instanceScope.type === "project" && instanceScope.vcs === "git") {
+        } else if (instanceScope.type === "project" && instanceScope.local?.vcs === "git") {
           const scopeResult = await prompts.select({
             message: "Location",
             options: [

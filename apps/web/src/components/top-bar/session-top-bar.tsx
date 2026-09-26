@@ -1,4 +1,9 @@
+import { workspaceLocation } from "./workspace-location"
+import { WorkspaceLocationButton } from "./workspace-location-button"
+import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
+import type { SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 import { useLingui } from "@lingui/solid"
+import { PI } from "@/components/prompt-input/prompt-input-i18n"
 import { topBar } from "@/locales/messages"
 import { Show, createMemo, createSignal, type Accessor } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
@@ -11,6 +16,7 @@ import { archiveSessionConfirm, leaveWorktreeConfirm } from "@/components/dialog
 import { DialogSessionExport } from "@/components/dialog/dialog-session-export"
 import { DialogSessionImport } from "@/components/dialog/dialog-session-import"
 import { useLayout } from "@/context/layout"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocal } from "@/context/local"
 import { useCommand } from "@/context/command"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -33,6 +39,13 @@ import {
 import { copySessionID } from "@/utils/session-copy"
 import "./session-top-bar.css"
 import { SlotOutlet } from "@/plugin/slot-outlet"
+import { SessionTagMenu } from "@/components/session/session-tag-menu"
+import { ModelVariantPicker } from "@/components/provider/model-thinking-picker"
+
+const selectionSaving = { id: "session.modelSelection.saving", message: "Saving…" }
+const selectionPending = { id: "session.modelSelection.pending", message: "Applies to the next request" }
+const selectionToolTurn = { id: "session.modelSelection.toolTurn", message: "Applies after this tool turn" }
+const selectionRetry = { id: "session.modelSelection.retry", message: "Could not save. Retry" }
 
 function SessionActionMenu(props: {
   visibility: ReturnType<typeof sessionActionVisibility>
@@ -43,7 +56,11 @@ function SessionActionMenu(props: {
   onWorktreeToggle: () => void
   onExport: () => void
   onImport: () => void
+  onAbandon?: () => void
   onArchive: () => void
+  tags: string[]
+  availableTags: string[]
+  onTagsChange: (tags: string[]) => Promise<string[]>
 }) {
   const [open, setOpen] = createSignal(false)
   const { _ } = useLingui()
@@ -96,6 +113,9 @@ function SessionActionMenu(props: {
             <span>{_(topBar.copySessionID)}</span>
           </button>
         </Show>
+        <Show when={props.visibility.menu}>
+          <SessionTagMenu tags={props.tags} availableTags={props.availableTags} onChange={props.onTagsChange} />
+        </Show>
         <Show when={props.visibility.worktree}>
           <button
             type="button"
@@ -124,6 +144,17 @@ function SessionActionMenu(props: {
             <span>{_(topBar.importSessionData)}</span>
           </button>
         </Show>
+        <Show when={props.onAbandon}>
+          <button
+            type="button"
+            class="stb-menu-item stb-menu-item--danger"
+            role="menuitem"
+            onClick={() => run(props.onAbandon!)}
+          >
+            <Icon name={getSemanticIcon("action.stop")} size="small" />
+            <span>{_(PI.abandonExecution)}</span>
+          </button>
+        </Show>
         <Show when={props.visibility.archive}>
           <button
             type="button"
@@ -143,6 +174,8 @@ function SessionActionMenu(props: {
 export function SessionTopBar(props: {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   sessionTransitionPending?: Accessor<boolean>
+  newSessionWorkspaceSelection?: SessionWorkspaceSelection
+  onWorkspaceSelectionChange?: (selection: SessionWorkspaceSelection) => void
 }) {
   const { _ } = useLingui()
 
@@ -151,6 +184,7 @@ export function SessionTopBar(props: {
   const dialog = useDialog()
   const confirm = useConfirm()
   const layout = useLayout()
+  const globalSDK = useGlobalSDK()
   const local = useLocal()
   const command = useCommand()
   const sync = useSync()
@@ -165,10 +199,47 @@ export function SessionTopBar(props: {
 
   const projectScope = createMemo(() => resolveProjectScope(directory() || undefined, sync.scope, layout.scopes.list()))
   const projectLabel = createMemo(() => getScopeLabel(projectScope(), directory()))
-  const projectPath = createMemo(() => directory())
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
-  const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
+  const location = createMemo(() =>
+    params.id && !sessionInfo()
+      ? { state: "unavailable" as const }
+      : workspaceLocation({
+          session: sessionInfo(),
+          selection: props.newSessionWorkspaceSelection,
+          current: sync.data.path.workspace,
+          records: sync.data.workspaces,
+        }),
+  )
+  const LocationButton = () => (
+    <WorkspaceLocationButton
+      project={isGlobal() ? _({ id: "workspace.location.home", message: "Home" }) : projectLabel()}
+      location={location()}
+      disabled={!!params.id && !sessionInfo()}
+      onChoose={() =>
+        dialog.show(() => (
+          <DialogWorkspace
+            sessionID={params.id}
+            selection={params.id ? undefined : props.newSessionWorkspaceSelection}
+            onSelect={params.id ? undefined : props.onWorkspaceSelectionChange}
+          />
+        ))
+      }
+    />
+  )
+  const availableSessionTags = createMemo(() => {
+    const tags = new Set(sessionInfo()?.tags ?? [])
+    const entries = [
+      ...layout.nav.recentEntries(),
+      ...layout.nav.rootNavEntries("home"),
+      ...layout.nav.rootNavEntries("channel"),
+      ...layout.nav.rootNavEntries("background"),
+      ...layout.scopes.list().flatMap((scope) => layout.nav.projectNavEntries(scope)),
+    ]
+    for (const entry of entries) for (const tag of entry.tags ?? []) tags.add(tag)
+    return [...tags].sort()
+  })
+  const sessionDirectory = createMemo(() => sessionInfo()?.scope.id ?? directory())
   const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
   const worktreeDisabled = createMemo(() =>
     isSessionRunningForWorkspaceChange({
@@ -187,7 +258,7 @@ export function SessionTopBar(props: {
   const modelControlVisibility = createMemo(() =>
     sessionModelControlVisibility({
       canSelectModel: sessionMeta().canSelectModel,
-      variantCount: local.model.variant.list().length,
+      variantCount: local.agent.current()?.external ? 0 : Math.max(1, local.model.variant.list().length),
     }),
   )
 
@@ -259,38 +330,74 @@ export function SessionTopBar(props: {
           </Tooltip>
         }
       >
-        <ModelSelectorPopover>
-          <TooltipKeybind placement="bottom" title={_(topBar.chooseModel)} keybind={command.keybind("model.choose")}>
-            <button type="button" class="stb-selector-btn">
-              <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
-              <Show when={local.model.current()?.catalogState === "retained"}>
-                <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
-                  <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
-                </Tooltip>
-              </Show>
-              <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
-            </button>
-          </TooltipKeybind>
-        </ModelSelectorPopover>
+        <ModelSelectorPopover
+          triggerAs={(triggerProps) => (
+            <TooltipKeybind placement="bottom" title={_(topBar.chooseModel)} keybind={command.keybind("model.choose")}>
+              <button {...triggerProps} type="button" class="stb-selector-btn">
+                <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
+                <Show when={local.model.current()?.catalogState === "retained"}>
+                  <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
+                    <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
+                  </Tooltip>
+                </Show>
+                <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
+              </button>
+            </TooltipKeybind>
+          )}
+        />
       </Show>
     </Show>
   )
 
   const VariantSelectorButton = () => (
     <Show when={modelControlVisibility().variant}>
-      <TooltipKeybind
-        placement="bottom"
-        title={_(topBar.thinkingEffort)}
-        keybind={command.keybind("model.variant.cycle")}
+      <ModelVariantPicker
+        value={local.model.variant.displayed()}
+        availableVariants={local.model.variant.list()}
+        onChange={(value) => local.model.variant.set(value || undefined)}
+        triggerClass="stb-selector-btn"
+      />
+      <Show
+        when={
+          local.model.selection.saving() ||
+          local.model.selection.state()?.pendingReason ||
+          local.model.selection.error()
+        }
       >
-        <button
-          type="button"
-          class="stb-selector-btn border-transparent! hover:border-border-weak-base!"
-          onClick={() => local.model.variant.cycle()}
+        <Tooltip
+          placement="bottom"
+          value={
+            local.model.selection.error()
+              ? _(selectionRetry)
+              : local.model.selection.saving()
+                ? _(selectionSaving)
+                : local.model.selection.state()?.pendingReason === "tool-turn"
+                  ? _(selectionToolTurn)
+                  : _(selectionPending)
+          }
         >
-          <span class="stb-variant-label">{local.model.variant.displayed() ?? _(topBar.defaultVariant)}</span>
-        </button>
-      </TooltipKeybind>
+          <button
+            type="button"
+            class="stb-icon-btn"
+            aria-label={
+              local.model.selection.error()
+                ? _(selectionRetry)
+                : local.model.selection.saving()
+                  ? _(selectionSaving)
+                  : local.model.selection.state()?.pendingReason === "tool-turn"
+                    ? _(selectionToolTurn)
+                    : _(selectionPending)
+            }
+            onClick={() => {
+              if (local.model.selection.error()) local.model.selection.retry()
+            }}
+          >
+            <Show when={local.model.selection.error()} fallback={<span aria-hidden="true">…</span>}>
+              <Icon name={getSemanticIcon("state.warning")} size="small" />
+            </Show>
+          </button>
+        </Tooltip>
+      </Show>
     </Show>
   )
 
@@ -317,7 +424,7 @@ export function SessionTopBar(props: {
           </button>
         </div>
         <div class="stb-center flex min-w-0 items-center justify-center">
-          <ModelSelectorButton />
+          <LocationButton />
         </div>
         <div class="flex items-center gap-1">
           <button
@@ -339,6 +446,26 @@ export function SessionTopBar(props: {
               onExport={() => dialog.show(() => <DialogSessionExport />)}
               onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
+              tags={sessionInfo()?.tags ?? []}
+              availableTags={availableSessionTags()}
+              onTagsChange={async (tags) => {
+                const session = sessionInfo()
+                if (!session) throw new Error("Session is unavailable")
+                const result = await globalSDK.client.session.update(
+                  {
+                    ...sessionScopeRequestFor(session),
+                    sessionID: session.id,
+                    tags,
+                  },
+                  { throwOnError: true },
+                )
+                return result.data.tags ?? []
+              }}
+              onAbandon={
+                command.options.some((option) => option.id === "session.abandon" && !option.disabled)
+                  ? () => command.trigger("session.abandon")
+                  : undefined
+              }
             />
           </Show>
         </div>
@@ -347,15 +474,7 @@ export function SessionTopBar(props: {
       {/* Desktop layout */}
       <div class="hidden md:flex w-full items-center justify-between pointer-events-auto">
         <div class="stb-left">
-          <Show when={!isGlobal()}>
-            <span class="stb-project">
-              <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
-              <Tooltip placement="bottom" value={projectPath()}>
-                <span class="stb-project-name">{projectLabel()}</span>
-              </Tooltip>
-            </span>
-            <span class="stb-slash">/</span>
-          </Show>
+          <LocationButton />
           <ModelSelectorButton />
           <VariantSelectorButton />
         </div>
@@ -371,6 +490,26 @@ export function SessionTopBar(props: {
               onExport={() => dialog.show(() => <DialogSessionExport />)}
               onImport={() => dialog.show(() => <DialogSessionImport />)}
               onArchive={archiveSession}
+              tags={sessionInfo()?.tags ?? []}
+              availableTags={availableSessionTags()}
+              onTagsChange={async (tags) => {
+                const session = sessionInfo()
+                if (!session) throw new Error("Session is unavailable")
+                const result = await globalSDK.client.session.update(
+                  {
+                    ...sessionScopeRequestFor(session),
+                    sessionID: session.id,
+                    tags,
+                  },
+                  { throwOnError: true },
+                )
+                return result.data.tags ?? []
+              }}
+              onAbandon={
+                command.options.some((option) => option.id === "session.abandon" && !option.disabled)
+                  ? () => command.trigger("session.abandon")
+                  : undefined
+              }
             />
           </Show>
           <Tooltip

@@ -1,9 +1,10 @@
+import { RuntimeContext } from "../lifecycle/context"
+import { ModelSelection } from "./model-selection-schema"
 import { RolloutArtifact } from "./rollout/artifact"
 import { RolloutAttachment } from "./rollout/attachment"
 import { findRecordingError } from "./rollout/error"
 import path from "path"
 import { pathToFileURL } from "url"
-import os from "os"
 import fs from "fs/promises"
 import z from "zod"
 import { Identifier } from "../id/id"
@@ -66,6 +67,7 @@ export const InvokeInput = z.object({
     .describe("Per-prompt tool visibility toggle. Does not affect session permissions."),
   system: z.string().optional(),
   variant: z.string().optional(),
+  thinking: ModelSelection.Thinking.optional(),
   parts: z.array(
     z.discriminatedUnion("type", [
       MessageV2.TextPart.omit({
@@ -100,6 +102,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
       text: template,
     },
   ]
+  if (!ScopeContext.current.workspace) return parts
   const files = ConfigMarkdown.files(template)
   const seen = new Set<string>()
   await Promise.all(
@@ -108,7 +111,7 @@ export async function resolveInputParts(template: string): Promise<InvokeInput["
       if (seen.has(name)) return
       seen.add(name)
       const filepath = name.startsWith("~/")
-        ? path.join(os.homedir(), name.slice(2))
+        ? path.join(RuntimeContext.current().host.home, name.slice(2))
         : path.resolve(ScopeContext.current.directory, name)
 
       const stats = await fs.stat(filepath).catch(() => undefined)
@@ -269,12 +272,38 @@ async function materializeUserMessage(
 
   const model =
     input.model ??
+    session?.modelSelection?.selected.model ??
     session?.modelOverride ??
     (await Agent.getAvailableModel(agent)) ??
     (await lastModel(input.sessionID))
-  const variant = isRoot
-    ? await SessionRootVariant.resolveForRoot({ explicit: input.variant, agent, model })
+  const saved = session?.modelSelection?.selected
+  const thinking = isRoot
+    ? (input.thinking ??
+      (saved && ModelSelection.key(saved.model) === ModelSelection.key(model) && input.variant === undefined
+        ? saved.thinking
+        : undefined))
     : undefined
+  const variant = thinking
+    ? thinking.mode === "variant"
+      ? thinking.variant
+      : thinking.mode === "off"
+        ? "off"
+        : undefined
+    : isRoot
+      ? await SessionRootVariant.resolveForRoot({ explicit: input.variant, agent, model })
+      : undefined
+
+  if (
+    isRoot &&
+    (input.thinking ||
+      input.variant ||
+      (input.model && saved && ModelSelection.key(input.model) !== ModelSelection.key(saved.model)))
+  ) {
+    await Session.setModelSelection(input.sessionID, {
+      model,
+      thinking: thinking ?? ModelSelection.fromVariant(variant),
+    })
+  }
 
   const info: MessageV2.Info = {
     id: messageID,
@@ -288,6 +317,7 @@ async function materializeUserMessage(
     model,
     system: input.system,
     variant,
+    thinking: isRoot ? thinking : undefined,
     ...(input.summary?.title ? { summary: { title: input.summary.title, diffs: [] } } : {}),
     origin,
     isRoot,

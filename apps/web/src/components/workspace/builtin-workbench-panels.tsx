@@ -2,6 +2,7 @@ import { createEffect, onCleanup, type ParentProps } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { useTerminal } from "@/context/terminal"
+import { workspaceFilePath } from "@/context/file/workspace"
 import { useFile } from "@/context/file"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
@@ -79,19 +80,24 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         loader: async () => ({ default: (await import("@/components/file-workbench/content")).FileWorkbenchContent }),
         createTab() {
           file.explorer.setOpen(true)
-          return { title: i18n._(P.openFile), source: "explorer" }
+          return { title: i18n._(P.openFile), source: "explorer", state: { workspace: file.workspace } }
         },
         title(tab, siblings) {
           if (!tab.resourceId) return tab.source === "explorer" ? i18n._(P.openFile) : tab.title
           return shortestUniqueFileTitle(
-            tab.resourceId,
+            workspaceFilePath(tab.resourceId),
             siblings
               .filter((candidate) => candidate.panelId === "file" && !!candidate.resourceId)
-              .map((candidate) => candidate.resourceId!),
+              .map((candidate) => workspaceFilePath(candidate.resourceId)),
           )
         },
         tabIcon(tab) {
-          return <FileIcon node={{ path: tab.resourceId ?? tab.title ?? "file", type: "file" }} class="size-4" />
+          return (
+            <FileIcon
+              node={{ path: workspaceFilePath(tab.resourceId) || tab.title || "file", type: "file" }}
+              class="size-4"
+            />
+          )
         },
       }),
       registerWorkbenchPanel({

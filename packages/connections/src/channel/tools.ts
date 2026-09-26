@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerChannelToolPolicy } from "./tool-policy"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { ChannelPushTool } from "./tools/channel-push"
@@ -9,11 +10,15 @@ import { GithubDeliverFixTool } from "./tools/github-deliver-fix"
 /**
  * Channel domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerChannelTools(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
   registerChannelToolPolicy()
 
   ToolRegistry.registerToolProvider("channel", () => [

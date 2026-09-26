@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any
 
+from .inventory import Inventory
 from .storage import atomic_json, digest, read_json
 
 OWNER = "synergy-benchmark-cache-v1"
@@ -38,30 +39,8 @@ def cache_lock(path: Path, *, timeout: float = 1800) -> Iterator[None]:
             fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
 
-def inventory(path: Path) -> dict[str, Any]:
-    entries: list[dict[str, Any]] = []
-    size = 0
-    for file in sorted(path.rglob("*")):
-        if file.name == "cache.json" and file.parent == path:
-            continue
-        if file.is_symlink():
-            entries.append({"path": file.relative_to(path).as_posix(), "link": os.readlink(file)})
-        elif file.is_file():
-            import hashlib
-
-            with file.open("rb") as stream:
-                sha = hashlib.file_digest(stream, "sha256").hexdigest()
-            stat = file.stat()
-            size += stat.st_size
-            entries.append(
-                {
-                    "path": file.relative_to(path).as_posix(),
-                    "bytes": stat.st_size,
-                    "sha256": sha,
-                    "mode": stat.st_mode & 0o777,
-                }
-            )
-    return {"digest": digest(entries), "bytes": size}
+def inventory(path: Path, *, prepared_inventory: Inventory | None = None) -> dict[str, Any]:
+    return Inventory(path, reuse=prepared_inventory).cache_receipt()
 
 
 def publish(stage: Path, cache: Path, identity: dict[str, Any]) -> Path:
@@ -337,7 +316,14 @@ def release_run(cache: Path, run: Path) -> None:
         (cache / "references" / (digest(str(run.resolve())) + ".json")).unlink(missing_ok=True)
 
 
-def register_directory(cache: Path, path: Path, *, identity: dict[str, Any], contents: Path | None = None) -> None:
+def register_directory(
+    cache: Path,
+    path: Path,
+    *,
+    identity: dict[str, Any],
+    contents: Path | None = None,
+    prepared_inventory: Inventory | None = None,
+) -> None:
     relative = path.relative_to(cache)
     if len(relative.parts) != 2 or relative.parts[0] not in {"prepared", "datasets", "downloads"}:
         raise ValueError("Unsupported managed cache directory")
@@ -350,7 +336,7 @@ def register_directory(cache: Path, path: Path, *, identity: dict[str, Any], con
             "id": path.name,
             "path": relative.as_posix(),
             "identity": identity,
-            **inventory(contents if contents is not None else path),
+            **inventory(contents if contents is not None else path, prepared_inventory=prepared_inventory),
             "created_at": time.time(),
         },
     )

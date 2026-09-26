@@ -1,3 +1,5 @@
+import { ScopeContext } from "../scope/context"
+import { Scope } from "../scope"
 import type { RolloutProcess } from "../session/rollout/process"
 import z from "zod"
 import type { MessageV2 } from "../session/message-v2"
@@ -51,6 +53,7 @@ export namespace Tool {
   }
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string
+    requiresWorkspace?: boolean
     exposure?: ToolExposure.Info
     display?: ToolDisplay
     source?: Source
@@ -97,6 +100,7 @@ export namespace Tool {
     id: string,
     init: Info<Parameters, Result>["init"] | Awaited<ReturnType<Info<Parameters, Result>["init"]>>,
     options?: {
+      requiresWorkspace?: boolean
       exposure?: ToolExposure.Info
       display?: ToolDisplay
     },
@@ -115,12 +119,18 @@ export namespace Tool {
 
     return {
       id,
+      requiresWorkspace: options?.requiresWorkspace,
       exposure: options?.exposure,
       display: options?.display,
       init: async (initCtx) => {
-        const toolInfo = init instanceof Function ? await init(initCtx) : init
+        const toolInfo = { ...(init instanceof Function ? await init(initCtx) : init) }
         const execute = originalExecute ?? toolInfo.execute
         toolInfo.execute = async (args, ctx) => {
+          if (options?.requiresWorkspace && !ScopeContext.current.workspace)
+            throw new Scope.WorkspaceRequiredError({
+              message: "This tool requires a local workspace.",
+              scopeID: ScopeContext.current.scope.id,
+            })
           let parsed: typeof args
           try {
             parsed = toolInfo.parameters.parse(args)

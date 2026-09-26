@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { createHash } from "node:crypto"
 import nodemailer from "nodemailer"
 import type { Transporter } from "nodemailer"
@@ -45,25 +46,31 @@ export namespace Email {
     fromName?: string
   }
 
-  let pooledTransport: Transporter | undefined
-  let idleTimer: ReturnType<typeof setTimeout> | undefined
-  let transportKey: string | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    pooledTransport: undefined as Transporter | undefined,
+    idleTimer: undefined as ReturnType<typeof setTimeout> | undefined,
+    transportKey: undefined as string | undefined,
+  }))
 
   function resetIdleTimer() {
-    if (idleTimer) clearTimeout(idleTimer)
-    idleTimer = setTimeout(() => closePool(), POOL_IDLE_MS)
+    const instanceState = runtimeState()
+
+    if (instanceState.idleTimer) clearTimeout(instanceState.idleTimer)
+    instanceState.idleTimer = setTimeout(() => closePool(), POOL_IDLE_MS)
   }
 
   function closePool() {
-    if (idleTimer) {
-      clearTimeout(idleTimer)
-      idleTimer = undefined
+    const instanceState = runtimeState()
+
+    if (instanceState.idleTimer) {
+      clearTimeout(instanceState.idleTimer)
+      instanceState.idleTimer = undefined
     }
-    if (pooledTransport) {
-      pooledTransport.close()
-      pooledTransport = undefined
+    if (instanceState.pooledTransport) {
+      instanceState.pooledTransport.close()
+      instanceState.pooledTransport = undefined
     }
-    transportKey = undefined
+    instanceState.transportKey = undefined
   }
 
   async function resolveConfig(): Promise<ResolvedConfig> {
@@ -132,12 +139,15 @@ export namespace Email {
   }
 
   async function getTransport() {
+    const instanceState = runtimeState()
+
     const config = await resolveConfig()
     const nextKey = transportIdentityKey(config)
-    if (pooledTransport && transportKey === nextKey) return { transporter: pooledTransport, config }
+    if (instanceState.pooledTransport && instanceState.transportKey === nextKey)
+      return { transporter: instanceState.pooledTransport, config }
 
     closePool()
-    pooledTransport = nodemailer.createTransport({
+    instanceState.pooledTransport = nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure,
@@ -146,14 +156,14 @@ export namespace Email {
       maxConnections: 2,
       maxMessages: 50,
     })
-    transportKey = nextKey
+    instanceState.transportKey = nextKey
 
-    pooledTransport.on("error", (err) => {
+    instanceState.pooledTransport.on("error", (err) => {
       log.warn("smtp transport error, will reconnect on next send", { error: err })
       closePool()
     })
 
-    return { transporter: pooledTransport, config }
+    return { transporter: instanceState.pooledTransport, config }
   }
 
   export async function send(input: {

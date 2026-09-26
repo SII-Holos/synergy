@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { AgendaTypes } from "./types"
@@ -31,39 +32,47 @@ export namespace AgendaSessionTrigger {
   }
 
   /** Watched sessionID → registered entries. */
-  const bySession = new Map<string, Entry[]>()
+  const runtimeState = RuntimeContext.state(() => ({
+    bySession: new Map<string, Entry[]>(),
+    lastFiredMessage: new Map<string, string>(),
+    handler: null as Handler | null,
+    unsubscribers: [] as Array<() => void>,
+    started: false,
+  }))
 
   /** Entry fingerprint (itemID + event + filters) → last fired messageID.
    *  Dedup is per entry, not per item, so multiple session triggers on the
    *  same item (e.g. turn.start + turn.end) can each fire independently. */
-  const lastFiredMessage = new Map<string, string>()
-  let handler: Handler | null = null
-  let unsubscribers: Array<() => void> = []
-  let started = false
 
   export function start(onFire: Handler, items: AgendaTypes.Item[]): void {
-    handler = onFire
+    const instanceState = runtimeState()
+
+    instanceState.handler = onFire
     for (const item of items) {
       register(item.id, item.origin.scope.id, item.triggers)
     }
-    unsubscribers = [
+    instanceState.unsubscribers = [
       Bus.subscribeGlobal(SessionEvent.TurnStart, (event) => handleEvent("turn.start", event.properties)),
       Bus.subscribeGlobal(SessionEvent.TurnEnd, (event) => handleEvent("turn.end", event.properties)),
     ]
-    started = true
-    log.info("started", { sessions: bySession.size, entries: countEntries() })
+    instanceState.started = true
+    log.info("started", { sessions: instanceState.bySession.size, entries: countEntries() })
   }
 
   export function stop(): void {
-    bySession.clear()
-    lastFiredMessage.clear()
-    for (const unsub of unsubscribers) unsub()
-    unsubscribers = []
-    started = false
-    handler = null
+    const instanceState = runtimeState()
+
+    instanceState.bySession.clear()
+    instanceState.lastFiredMessage.clear()
+    for (const unsub of instanceState.unsubscribers) unsub()
+    instanceState.unsubscribers = []
+    instanceState.started = false
+    instanceState.handler = null
   }
 
   export function register(itemID: string, scopeID: string, triggers: AgendaTypes.Trigger[]): void {
+    const instanceState = runtimeState()
+
     unregister(itemID)
     for (const trigger of triggers) {
       if (trigger.type !== "session") continue
@@ -75,30 +84,36 @@ export namespace AgendaSessionTrigger {
         agent: trigger.agent,
         finish: trigger.finish,
       }
-      const list = bySession.get(entry.sessionID) ?? []
+      const list = instanceState.bySession.get(entry.sessionID) ?? []
       list.push(entry)
-      bySession.set(entry.sessionID, list)
+      instanceState.bySession.set(entry.sessionID, list)
     }
   }
 
   export function unregister(itemID: string): void {
-    for (const [sessionID, list] of bySession) {
+    const instanceState = runtimeState()
+
+    for (const [sessionID, list] of instanceState.bySession) {
       const filtered = list.filter((entry) => entry.itemID !== itemID)
-      if (filtered.length === 0) bySession.delete(sessionID)
-      else bySession.set(sessionID, filtered)
+      if (filtered.length === 0) instanceState.bySession.delete(sessionID)
+      else instanceState.bySession.set(sessionID, filtered)
     }
-    for (const key of lastFiredMessage.keys()) {
-      if (key.startsWith(`${itemID}:`)) lastFiredMessage.delete(key)
+    for (const key of instanceState.lastFiredMessage.keys()) {
+      if (key.startsWith(`${itemID}:`)) instanceState.lastFiredMessage.delete(key)
     }
   }
 
   export function active(): { sessions: number; entries: number } {
-    return { sessions: bySession.size, entries: countEntries() }
+    const instanceState = runtimeState()
+
+    return { sessions: instanceState.bySession.size, entries: countEntries() }
   }
 
   function countEntries(): number {
+    const instanceState = runtimeState()
+
     let n = 0
-    for (const list of bySession.values()) n += list.length
+    for (const list of instanceState.bySession.values()) n += list.length
     return n
   }
 
@@ -106,8 +121,10 @@ export namespace AgendaSessionTrigger {
     event: "turn.start" | "turn.end",
     props: { sessionID: string; messageID: string; finish?: string; agent?: string },
   ): void {
-    if (!started) return
-    const entries = bySession.get(props.sessionID)
+    const instanceState = runtimeState()
+
+    if (!instanceState.started) return
+    const entries = instanceState.bySession.get(props.sessionID)
     if (!entries || entries.length === 0) return
     for (const entry of entries) {
       if (entry.event !== event) continue
@@ -118,10 +135,12 @@ export namespace AgendaSessionTrigger {
   }
 
   function fire(entry: Entry, props: { sessionID: string; messageID: string; finish?: string; agent?: string }): void {
+    const instanceState = runtimeState()
+
     const dedupKey = `${entry.itemID}:${entry.event}:${entry.agent ?? ""}:${entry.finish ?? ""}`
-    if (lastFiredMessage.get(dedupKey) === props.messageID) return
-    lastFiredMessage.set(dedupKey, props.messageID)
-    if (!handler) return
+    if (instanceState.lastFiredMessage.get(dedupKey) === props.messageID) return
+    instanceState.lastFiredMessage.set(dedupKey, props.messageID)
+    if (!instanceState.handler) return
 
     const signal: AgendaTypes.FiredSignal = {
       type: "session",
@@ -134,7 +153,7 @@ export namespace AgendaSessionTrigger {
       },
       timestamp: Date.now(),
     }
-    handler(signal, entry.scopeID).catch((err) => {
+    instanceState.handler(signal, entry.scopeID).catch((err) => {
       log.error("session trigger handler failed", {
         itemID: entry.itemID,
         error: err instanceof Error ? err : new Error(String(err)),

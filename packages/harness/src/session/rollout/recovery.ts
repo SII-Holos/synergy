@@ -6,6 +6,7 @@ import { RolloutSnapshot } from "./snapshot"
 import type { RolloutSchema } from "./schema"
 import { record } from "./error"
 import { RolloutPending } from "./pending"
+import { SnapshotEvidence } from "../snapshot-evidence"
 
 export namespace RolloutRecovery {
   async function committed(
@@ -72,6 +73,12 @@ export namespace RolloutRecovery {
         })
         onProgress?.()
       }
+      if (identity.kind === "session")
+        await SnapshotEvidence.recover(
+          identity,
+          snapshot.tools.map((tool) => tool.messageID),
+          onProgress,
+        )
       for (const run of snapshot.runs) {
         if (run.status === "running") await RolloutLedger.finishRun(identity, run.id, "interrupted")
         onProgress?.()

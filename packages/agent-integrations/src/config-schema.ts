@@ -170,56 +170,58 @@ declare module "@ericsanchezok/synergy-harness/config/schema" {
 }
 type ConfigShapeType = typeof ConfigShape
 
+const contribution: ConfigExtensions.Contribution = {
+  shape: ConfigShape,
+  references(raw, providerID) {
+    const config = raw as ConfigValues
+    return Object.entries(config.external_agent ?? {}).flatMap(([id, agent]) =>
+      agent.model?.startsWith(`${providerID}/`) ? [`external_agent.${id}.model`] : [],
+    )
+  },
+  normalize(raw) {
+    const result = raw as ConfigValues
+    if (result.lspWriteDiagnostics === undefined) result.lspWriteDiagnostics = true
+  },
+  redact(raw, helpers) {
+    const result = raw as ConfigValues
+    const REDACTED_SENTINEL = helpers.sentinel
+    const redactSecretShapedRecord = helpers.redact
+    const mergeSecretShapedRecord = helpers.restore
+
+    if (result.mcp) {
+      for (const server of Object.values(result.mcp) as any[]) {
+        if (server?.oauth?.clientSecret) server.oauth.clientSecret = REDACTED_SENTINEL
+        if (server?.headers) redactSecretShapedRecord(server.headers)
+        if (server?.environment) redactSecretShapedRecord(server.environment)
+        if (server?.apiKey) server.apiKey = REDACTED_SENTINEL
+      }
+    }
+  },
+  restore(raw, previous, helpers) {
+    const result = raw as ConfigValues
+    const stored = previous as ConfigValues
+    const REDACTED_SENTINEL = helpers.sentinel
+    const redactSecretShapedRecord = helpers.redact
+    const mergeSecretShapedRecord = helpers.restore
+
+    if (result.mcp && stored.mcp) {
+      for (const [key, server] of Object.entries(result.mcp) as [string, any][]) {
+        const storedServer = (stored.mcp as Record<string, any>)[key]
+        if (server?.oauth?.clientSecret === REDACTED_SENTINEL) {
+          if (storedServer?.oauth?.clientSecret) server.oauth.clientSecret = storedServer.oauth.clientSecret
+        }
+        if (server?.headers) mergeSecretShapedRecord(server.headers, storedServer?.headers)
+        if (server?.environment) mergeSecretShapedRecord(server.environment, storedServer?.environment)
+        if (server?.apiKey === REDACTED_SENTINEL && storedServer?.apiKey) {
+          server.apiKey = storedServer.apiKey
+        }
+      }
+    }
+  },
+}
+
 export function registerConfig() {
-  ConfigExtensions.register("agent-integrations", {
-    shape: ConfigShape,
-    references(raw, providerID) {
-      const config = raw as ConfigValues
-      return Object.entries(config.external_agent ?? {}).flatMap(([id, agent]) =>
-        agent.model?.startsWith(`${providerID}/`) ? [`external_agent.${id}.model`] : [],
-      )
-    },
-    normalize(raw) {
-      const result = raw as ConfigValues
-      if (result.lspWriteDiagnostics === undefined) result.lspWriteDiagnostics = true
-    },
-    redact(raw, helpers) {
-      const result = raw as ConfigValues
-      const REDACTED_SENTINEL = helpers.sentinel
-      const redactSecretShapedRecord = helpers.redact
-      const mergeSecretShapedRecord = helpers.restore
-
-      if (result.mcp) {
-        for (const server of Object.values(result.mcp) as any[]) {
-          if (server?.oauth?.clientSecret) server.oauth.clientSecret = REDACTED_SENTINEL
-          if (server?.headers) redactSecretShapedRecord(server.headers)
-          if (server?.environment) redactSecretShapedRecord(server.environment)
-          if (server?.apiKey) server.apiKey = REDACTED_SENTINEL
-        }
-      }
-    },
-    restore(raw, previous, helpers) {
-      const result = raw as ConfigValues
-      const stored = previous as ConfigValues
-      const REDACTED_SENTINEL = helpers.sentinel
-      const redactSecretShapedRecord = helpers.redact
-      const mergeSecretShapedRecord = helpers.restore
-
-      if (result.mcp && stored.mcp) {
-        for (const [key, server] of Object.entries(result.mcp) as [string, any][]) {
-          const storedServer = (stored.mcp as Record<string, any>)[key]
-          if (server?.oauth?.clientSecret === REDACTED_SENTINEL) {
-            if (storedServer?.oauth?.clientSecret) server.oauth.clientSecret = storedServer.oauth.clientSecret
-          }
-          if (server?.headers) mergeSecretShapedRecord(server.headers, storedServer?.headers)
-          if (server?.environment) mergeSecretShapedRecord(server.environment, storedServer?.environment)
-          if (server?.apiKey === REDACTED_SENTINEL && storedServer?.apiKey) {
-            server.apiKey = storedServer.apiKey
-          }
-        }
-      }
-    },
-  })
+  ConfigExtensions.register("agent-integrations", contribution)
   for (const domain of [
     {
       id: "mcp",
@@ -254,7 +256,6 @@ export function registerConfig() {
   ] satisfies ConfigDomain.Definition[])
     ConfigDomain.register(domain)
 }
-registerConfig()
 
 export function normalizeMcp(server: Mcp, defaults?: McpDefaults, defaultCallTimeoutMs?: number): Mcp {
   const result = { ...server }

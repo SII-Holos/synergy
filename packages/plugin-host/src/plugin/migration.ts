@@ -223,4 +223,6 @@ function pathToFileSpec(directory: string) {
   return pathToFileURL(directory).href
 }
 
-MigrationRegistry.register("plugin_catalog", migrations)
+export function registerPluginMigrations() {
+  MigrationRegistry.register("plugin_catalog", migrations)
+}

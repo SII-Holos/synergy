@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { buildPty } from "../packages/runtime-local/script/build-pty"
 import { buildWatcher } from "../packages/runtime-local/script/build-watcher"
 import { buildSqlite } from "../packages/harness/script/build-sqlite"
 import { cp, mkdir, mkdtemp, rm, chmod } from "node:fs/promises"
@@ -72,6 +73,8 @@ export async function packWorkspace(
     if (pkg.directory === "packages/harness" && target.os === "darwin")
       await cp(await buildSqlite(), path.join(sourceDirectory, "dist/libsqlite3.dylib"))
     if (pkg.directory === "packages/runtime-local") {
+      const pty = await buildPty({ os: target.os, arch: target.arch, libc: target.abi === "musl" ? "musl" : "glibc" })
+      await cp(pty, path.join(sourceDirectory, "dist", path.basename(pty)))
       await stageWorkspaceSandbox(path.join(sourceDirectory, "dist"), target, options.assetsRoot)
       if (target.os === "linux") {
         const binding = await buildWatcher({ arch: target.arch, libc: target.abi === "musl" ? "musl" : "glibc" })

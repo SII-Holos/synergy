@@ -61,41 +61,42 @@ async function loadSessionVolatileState(sessionID: string): Promise<VolatileResu
   }
 }
 
-export const SessionVolatileBatchRoute = new Hono().post(
-  "/batch/volatile",
-  describeRoute({
-    summary: "Batch session volatile state",
-    description: "Retrieve inbox, todo, and DAG state for multiple sessions in the current scope.",
-    operationId: "session.volatileBatch",
-    responses: {
-      200: {
-        description: "Session volatile state by session ID",
-        content: {
-          "application/json": {
-            schema: resolver(SessionVolatileBatchResponse),
+export const SessionVolatileBatchRoute = () =>
+  new Hono().post(
+    "/batch/volatile",
+    describeRoute({
+      summary: "Batch session volatile state",
+      description: "Retrieve inbox, todo, and DAG state for multiple sessions in the current scope.",
+      operationId: "session.volatileBatch",
+      responses: {
+        200: {
+          description: "Session volatile state by session ID",
+          content: {
+            "application/json": {
+              schema: resolver(SessionVolatileBatchResponse),
+            },
           },
         },
+        ...errors(400),
       },
-      ...errors(400),
+    }),
+    validator("json", SessionVolatileBatchInput),
+    async (c) => {
+      const stampSeq = Bus.currentSeq()
+      const stampEpoch = Bus.epoch()
+      const sessionIDs = [...new Set(c.req.valid("json").sessionIDs)]
+      const results = await Promise.all(sessionIDs.map(loadSessionVolatileState))
+      const sessions: Record<string, z.infer<typeof SessionVolatileState>> = {}
+      const batchErrors: Record<string, z.infer<typeof SessionVolatileError>> = {}
+      for (const result of results) {
+        if ("state" in result) sessions[result.sessionID] = result.state
+        else batchErrors[result.sessionID] = result.error
+      }
+      c.header("x-synergy-seq", String(stampSeq))
+      c.header("x-synergy-epoch", stampEpoch)
+      return c.json({
+        sessions,
+        ...(Object.keys(batchErrors).length > 0 ? { errors: batchErrors } : {}),
+      })
     },
-  }),
-  validator("json", SessionVolatileBatchInput),
-  async (c) => {
-    const stampSeq = Bus.currentSeq()
-    const stampEpoch = Bus.epoch()
-    const sessionIDs = [...new Set(c.req.valid("json").sessionIDs)]
-    const results = await Promise.all(sessionIDs.map(loadSessionVolatileState))
-    const sessions: Record<string, z.infer<typeof SessionVolatileState>> = {}
-    const batchErrors: Record<string, z.infer<typeof SessionVolatileError>> = {}
-    for (const result of results) {
-      if ("state" in result) sessions[result.sessionID] = result.state
-      else batchErrors[result.sessionID] = result.error
-    }
-    c.header("x-synergy-seq", String(stampSeq))
-    c.header("x-synergy-epoch", stampEpoch)
-    return c.json({
-      sessions,
-      ...(Object.keys(batchErrors).length > 0 ? { errors: batchErrors } : {}),
-    })
-  },
-)
+  )

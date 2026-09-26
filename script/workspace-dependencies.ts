@@ -1,24 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import path from "node:path"
 import ts from "typescript"
-
-export interface Workspace {
-  directory: string
-  name: string
-  exports?: Record<string, unknown>
-  dependencies?: Record<string, string>
-  optionalDependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
-}
-
-export function workspaces(root: string): Workspace[] {
-  const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"))
-  return manifest.workspaces.packages.map((directory: string) => ({
-    ...JSON.parse(readFileSync(path.join(root, directory, "package.json"), "utf8")),
-    directory,
-  }))
-}
+import { workspaces, workspaceGraph } from "./workspace-manifest"
+export { workspaces, workspaceGraph, type Workspace } from "./workspace-manifest"
 
 export function sourceFiles(directory: string): string[] {
   if (!existsSync(directory)) return []
@@ -82,18 +66,6 @@ export function cycles(edges: Record<string, string[]>): string[][] {
   return [...found.values()]
 }
 
-export function workspaceGraph(packages: Workspace[]) {
-  const names = new Set(packages.map((pkg) => pkg.name))
-  return Object.fromEntries(
-    packages.map((pkg) => [
-      pkg.name,
-      Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies, ...pkg.peerDependencies }).filter((name) =>
-        names.has(name),
-      ),
-    ]),
-  )
-}
-
 export function validateWorkspaces(root: string) {
   const packages = workspaces(root)
   const byName = new Map(packages.map((pkg) => [pkg.name, pkg]))
@@ -105,13 +77,14 @@ export function validateWorkspaces(root: string) {
   )
   for (const pkg of packages) {
     const allowed = rules[pkg.directory]
+    const dependencies = graph[pkg.name]!
     if (allowed)
-      for (const target of graph[pkg.name]) {
+      for (const target of dependencies) {
         if (!allowed.includes(byName.get(target)!.directory))
           failures.push(`${pkg.directory}: forbidden dependency ${target}`)
       }
     if (pkg.directory.startsWith("packages/"))
-      for (const target of graph[pkg.name]) {
+      for (const target of dependencies) {
         if (byName.get(target)!.directory.startsWith("apps/"))
           failures.push(`${pkg.directory}: library imports application ${target}`)
       }
@@ -128,7 +101,7 @@ export function validateWorkspaces(root: string) {
         const name = spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]!
         const target = byName.get(name)
         if (!target) continue
-        if (target !== pkg && !graph[pkg.name].includes(name))
+        if (target !== pkg && !dependencies.includes(name))
           failures.push(`${path.relative(root, file)}: undeclared production dependency ${name}`)
         const subpath = spec === name ? "." : `.${spec.slice(name.length)}`
         if (subpath.startsWith("./test/"))

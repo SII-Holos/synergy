@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { isActiveLightLoopWorkflow } from "../session/light-loop-state"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionAbort } from "@ericsanchezok/synergy-harness/session/abort"
@@ -16,7 +17,9 @@ import { LightLoopRejectTool } from "./tools/light-loop-reject"
  * contribution with lifecycle hooks + domain tools). Loaded through
  * src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 function lightLoopContextBlock(instructions: string): string {
   return `<light-loop-context>
@@ -53,8 +56,10 @@ function wrapperText(agentName: string, query: string): string {
 }
 
 export function registerLightLoopDomain(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ContinuationKernel.registerProvider("lightloop", () => [LightLoopContinuationPolicy])
 

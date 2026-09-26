@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
 import { createBuiltinLegacySubagents } from "../../src/agent/builtin-legacy-subagents"
 import { PermissionNext } from "../../src/permission/next"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const ctx = {
   defaults: [],
@@ -15,155 +18,165 @@ function action(agent: ReturnType<typeof createBuiltinMaxSubagents>[string], per
 }
 
 describe("synergy-max subagents", () => {
-  const agents = createBuiltinMaxSubagents(ctx)
+  const agents = runtime.run(() => createBuiltinMaxSubagents(ctx))
 
-  test("does not expose workflow-designer", () => {
-    expect(agents["workflow-designer"]).toBeUndefined()
-  })
+  test("does not expose workflow-designer", () =>
+    runtime.run(() => {
+      expect(agents["workflow-designer"]).toBeUndefined()
+    }))
 
-  test("all max subagents receive the base utility tool bundle", () => {
-    for (const agent of Object.values(agents)) {
-      for (const permission of ["bash", "process", "skill", "webfetch", "look_at", "glob", "list"]) {
-        expect(action(agent, permission)).toBe("allow")
+  test("all max subagents receive the base utility tool bundle", () =>
+    runtime.run(() => {
+      for (const agent of Object.values(agents)) {
+        for (const permission of ["bash", "process", "skill", "webfetch", "look_at", "glob", "list"]) {
+          expect(action(agent, permission)).toBe("allow")
+        }
       }
-    }
-  })
+    }))
 
-  test("deferred permissions stay within the owning subagent profiles", () => {
-    const readOnly = agents["code-cartographer"]
-    expect(action(readOnly, "note_read")).toBe("allow")
-    expect(action(readOnly, "note_write")).toBe("deny")
-    expect(action(readOnly, "note_edit")).toBe("deny")
-    expect(action(readOnly, "memory_get")).toBe("deny")
-    expect(action(readOnly, "session_read")).toBe("deny")
-    expect(action(readOnly, "mcp__any_server__any_tool")).toBe("deny")
+  test("deferred permissions stay within the owning subagent profiles", () =>
+    runtime.run(() => {
+      const readOnly = agents["code-cartographer"]
+      expect(action(readOnly, "note_read")).toBe("allow")
+      expect(action(readOnly, "note_write")).toBe("deny")
+      expect(action(readOnly, "note_edit")).toBe("deny")
+      expect(action(readOnly, "memory_get")).toBe("deny")
+      expect(action(readOnly, "session_read")).toBe("deny")
+      expect(action(readOnly, "mcp__any_server__any_tool")).toBe("deny")
 
-    const historian = agents["session-historian"]
-    expect(action(historian, "session_list")).toBe("allow")
-    expect(action(historian, "session_read")).toBe("allow")
-    expect(action(historian, "session_search")).toBe("allow")
-    expect(action(historian, "session_send")).toBe("deny")
+      const historian = agents["session-historian"]
+      expect(action(historian, "session_list")).toBe("allow")
+      expect(action(historian, "session_read")).toBe("allow")
+      expect(action(historian, "session_search")).toBe("allow")
+      expect(action(historian, "session_send")).toBe("deny")
 
-    for (const name of ["docs-researcher", "research-scout", "literature-searcher", "literature-analyst"]) {
-      expect(action(agents[name], "mcp__any_server__any_tool"), name).toBe("allow")
-    }
-  })
-
-  test("all max subagents can discover, expand, and use deferred Browser tools", () => {
-    for (const [name, agent] of Object.entries(agents)) {
-      for (const permission of [
-        "search_tools",
-        "expand_tools",
-        "browser_navigation",
-        "browser_action",
-        "browser_upload",
-      ]) {
-        expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+      for (const name of ["docs-researcher", "research-scout", "literature-searcher", "literature-analyst"]) {
+        expect(action(agents[name], "mcp__any_server__any_tool"), name).toBe("allow")
       }
-    }
-  })
+    }))
 
-  test("anchored write agents use only the anchored file harness", () => {
-    const anchoredWriters = [
-      "implementation-engineer",
-      "refactoring-engineer",
-      "integration-engineer",
-      "documentation-engineer",
-      "test-strategist",
-      "fixture-builder",
-      "property-test-engineer",
-      "type-test-engineer",
-    ]
+  test("all max subagents can discover, expand, and use deferred Browser tools", () =>
+    runtime.run(() => {
+      for (const [name, agent] of Object.entries(agents)) {
+        for (const permission of [
+          "search_tools",
+          "expand_tools",
+          "browser_navigation",
+          "browser_action",
+          "browser_upload",
+        ]) {
+          expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+        }
+      }
+    }))
 
-    for (const name of anchoredWriters) {
-      const agent = agents[name]
-      expect(agent, name).toBeDefined()
-      expect(action(agent, "view_file")).toBe("allow")
-      expect(action(agent, "scan_files")).toBe("allow")
-      expect(action(agent, "parse_code")).toBe("allow")
-      expect(action(agent, "revise_file")).toBe("ask")
-      expect(action(agent, "resolve_conflicts")).toBe("ask")
-      expect(action(agent, "save_file")).toBe("ask")
-      expect(action(agent, "read")).toBe("deny")
-      expect(action(agent, "grep")).toBe("deny")
-      expect(action(agent, "ast_grep")).toBe("deny")
-      expect(action(agent, "edit")).toBe("deny")
-      expect(action(agent, "write")).toBe("deny")
-    }
-  })
+  test("anchored write agents use only the anchored file harness", () =>
+    runtime.run(() => {
+      const anchoredWriters = [
+        "implementation-engineer",
+        "refactoring-engineer",
+        "integration-engineer",
+        "documentation-engineer",
+        "test-strategist",
+        "fixture-builder",
+        "property-test-engineer",
+        "type-test-engineer",
+      ]
 
-  test("classic read agents use only the classic read harness and cannot write files", () => {
-    const classicReaders = [
-      "requirements-engineer",
-      "code-cartographer",
-      "dependency-tracer",
-      "solution-architect",
-      "api-contract-designer",
-      "migration-architect",
-      "quality-gatekeeper",
-      "python-quality-engineer",
-      "rust-quality-engineer",
-      "typescript-quality-engineer",
-      "maintainability-reviewer",
-      "security-reviewer",
-      "performance-reviewer",
-      "api-compatibility-reviewer",
-      "documentation-reviewer",
-      "docs-researcher",
-      "research-scout",
-      "research-methodologist",
-    ]
+      for (const name of anchoredWriters) {
+        const agent = agents[name]
+        expect(agent, name).toBeDefined()
+        expect(action(agent, "view_file")).toBe("allow")
+        expect(action(agent, "scan_files")).toBe("allow")
+        expect(action(agent, "parse_code")).toBe("allow")
+        expect(action(agent, "revise_file")).toBe("ask")
+        expect(action(agent, "resolve_conflicts")).toBe("ask")
+        expect(action(agent, "save_file")).toBe("ask")
+        expect(action(agent, "read")).toBe("deny")
+        expect(action(agent, "grep")).toBe("deny")
+        expect(action(agent, "ast_grep")).toBe("deny")
+        expect(action(agent, "edit")).toBe("deny")
+        expect(action(agent, "write")).toBe("deny")
+      }
+    }))
 
-    for (const name of classicReaders) {
-      const agent = agents[name]
-      expect(agent, name).toBeDefined()
-      expect(action(agent, "read")).toBe("allow")
-      expect(action(agent, "grep")).toBe("allow")
-      expect(action(agent, "ast_grep")).toBe("allow")
-      expect(action(agent, "view_file")).toBe("deny")
-      expect(action(agent, "scan_files")).toBe("deny")
-      expect(action(agent, "parse_code")).toBe("deny")
-      expect(action(agent, "revise_file")).toBe("deny")
-      expect(action(agent, "resolve_conflicts")).toBe("deny")
-      expect(action(agent, "save_file")).toBe("deny")
-      expect(action(agent, "edit")).toBe("deny")
-      expect(action(agent, "write")).toBe("deny")
-    }
-  })
+  test("classic read agents use only the classic read harness and cannot write files", () =>
+    runtime.run(() => {
+      const classicReaders = [
+        "requirements-engineer",
+        "code-cartographer",
+        "dependency-tracer",
+        "solution-architect",
+        "api-contract-designer",
+        "migration-architect",
+        "quality-gatekeeper",
+        "python-quality-engineer",
+        "rust-quality-engineer",
+        "typescript-quality-engineer",
+        "maintainability-reviewer",
+        "security-reviewer",
+        "performance-reviewer",
+        "api-compatibility-reviewer",
+        "documentation-reviewer",
+        "docs-researcher",
+        "research-scout",
+        "research-methodologist",
+      ]
 
-  test("recursive coordinator profiles allow task and DAG tools while ordinary subagents do not", () => {
-    const coordinatorTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
+      for (const name of classicReaders) {
+        const agent = agents[name]
+        expect(agent, name).toBeDefined()
+        expect(action(agent, "read")).toBe("allow")
+        expect(action(agent, "grep")).toBe("allow")
+        expect(action(agent, "ast_grep")).toBe("allow")
+        expect(action(agent, "view_file")).toBe("deny")
+        expect(action(agent, "scan_files")).toBe("deny")
+        expect(action(agent, "parse_code")).toBe("deny")
+        expect(action(agent, "revise_file")).toBe("deny")
+        expect(action(agent, "resolve_conflicts")).toBe("deny")
+        expect(action(agent, "save_file")).toBe("deny")
+        expect(action(agent, "edit")).toBe("deny")
+        expect(action(agent, "write")).toBe("deny")
+      }
+    }))
 
-    for (const name of ["supervisor", "lightloop-reviewer"]) {
-      const agent = agents[name]
-      expect(agent, name).toBeDefined()
+  test("recursive coordinator profiles allow task and DAG tools while ordinary subagents do not", () =>
+    runtime.run(() => {
+      const coordinatorTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
+
+      for (const name of ["supervisor", "lightloop-reviewer"]) {
+        const agent = agents[name]
+        expect(agent, name).toBeDefined()
+        for (const permission of coordinatorTools) {
+          expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+        }
+      }
+
+      const ordinary = agents["implementation-engineer"]
+      expect(ordinary).toBeDefined()
       for (const permission of coordinatorTools) {
-        expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+        expect(action(ordinary, permission), `implementation-engineer:${permission}`).toBe("deny")
       }
-    }
-
-    const ordinary = agents["implementation-engineer"]
-    expect(ordinary).toBeDefined()
-    for (const permission of coordinatorTools) {
-      expect(action(ordinary, permission), `implementation-engineer:${permission}`).toBe("deny")
-    }
-  })
+    }))
 })
 
 describe("synergy subagents", () => {
-  const agents = createBuiltinLegacySubagents(ctx)
+  const agents = runtime.run(() => createBuiltinLegacySubagents(ctx))
 
-  test("all classic subagents can discover, expand, and use deferred Browser tools", () => {
-    for (const [name, agent] of Object.entries(agents)) {
-      for (const permission of [
-        "search_tools",
-        "expand_tools",
-        "browser_navigation",
-        "browser_action",
-        "browser_upload",
-      ]) {
-        expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+  test("all classic subagents can discover, expand, and use deferred Browser tools", () =>
+    runtime.run(() => {
+      for (const [name, agent] of Object.entries(agents)) {
+        for (const permission of [
+          "search_tools",
+          "expand_tools",
+          "browser_navigation",
+          "browser_action",
+          "browser_upload",
+        ]) {
+          expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+        }
       }
-    }
-  })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

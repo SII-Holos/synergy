@@ -58,10 +58,13 @@ async def test_live_event_disconnect_retains_observed_lower_bound(tmp_path, monk
 
 
 async def test_resource_samples_include_separate_verifier_and_exclude_other_runs(tmp_path, monkeypatch):
+    import asyncio
     import uuid
     from pathlib import Path
 
     from aiohttp import web
+
+    from synergy_bench.docker_resources import DockerStats
 
     socket = Path("/tmp") / ("sb-stats-" + uuid.uuid4().hex + ".sock")
     seen = []
@@ -96,13 +99,18 @@ async def test_resource_samples_include_separate_verifier_and_exclude_other_runs
     await web.UnixSite(server, str(socket)).start()
     monkeypatch.setenv("DOCKER_HOST", "unix://" + str(socket))
     monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
-    monitor = ResourceMonitor(tmp_path, "sb-run")
+    sampler = DockerStats()
+    monitor = ResourceMonitor(tmp_path, "sb-run", sampler=sampler)
+    other_path = tmp_path / "other"
+    other_path.mkdir()
+    other = ResourceMonitor(other_path, "sb-run-other", sampler=sampler)
     try:
-        await monitor.sample()
-        assert sorted(seen) == ["one", "two"]
+        await asyncio.gather(monitor.sample(), other.sample())
+        assert sorted(seen) == ["one", "other", "two"]
         assert monitor.samples[0]["memory_bytes"] == 2 * 1024**3
         assert monitor.samples[0]["cpu_percent"] == 40
         assert monitor.samples[0]["process_rss_sum_bytes"] is None
+        assert other.samples[0]["memory_bytes"] == 1024**3
     finally:
         await server.cleanup()
         socket.unlink(missing_ok=True)

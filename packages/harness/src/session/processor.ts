@@ -1,4 +1,5 @@
 import { RolloutLedger } from "./rollout/ledger"
+import { SessionModelSelection } from "./model-selection"
 import { RolloutAccounting } from "./rollout/accounting"
 import { RolloutRecordingError } from "./rollout/error"
 import { MessageV2 } from "./message-v2"
@@ -7,7 +8,6 @@ import { Identifier } from "../id/id"
 import { Session } from "."
 import { SessionEvent } from "./event"
 import { Agent } from "../agent/agent"
-import { Snapshot } from "./snapshot"
 import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
@@ -220,7 +220,6 @@ export namespace SessionProcessor {
     const toolCallStateUpdates = new Map<string, Promise<void>>()
     const generatingAccum: Record<string, string> = {}
     const generatingBytes: Record<string, number> = {}
-    let snapshot: string | undefined
     let blocked = false
     let attempt = 0
     let fastAbort = input.abort.aborted
@@ -831,7 +830,6 @@ export namespace SessionProcessor {
       recordedToolFailures.clear()
       for (const callID of Object.keys(generatingAccum)) delete generatingAccum[callID]
       for (const callID of Object.keys(generatingBytes)) delete generatingBytes[callID]
-      snapshot = undefined
       log.info("processor disposed", {
         sessionID: input.sessionID,
         messageID: input.assistantMessage.id,
@@ -1055,6 +1053,12 @@ export namespace SessionProcessor {
                 ...agentTurnInput
               } = streamInput
               retryEligible = true
+              if (streamInput.modelSelection)
+                await SessionModelSelection.applied(
+                  input.sessionID,
+                  streamInput.modelSelection,
+                  input.assistantMessage.id,
+                )
               const stream = await AgentTurn.stream(agentTurnInput)
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []
@@ -1492,12 +1496,10 @@ export namespace SessionProcessor {
                       throw value.error
 
                     case "start-step":
-                      snapshot = await Snapshot.track(input.sessionID, input.abort)
                       await Session.updatePart({
                         id: Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
                         sessionID: input.sessionID,
-                        snapshot,
                         type: "step-start",
                       })
                       break
@@ -1525,6 +1527,15 @@ export namespace SessionProcessor {
                       ObservabilityMetrics.record({
                         name: "llm.tokens.output",
                         value: usage.tokens.output,
+                        unit: "tokens",
+                        module: "llm",
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        labels: { provider: input.model.providerID, model: input.model.id },
+                      })
+                      ObservabilityMetrics.record({
+                        name: "llm.tokens.cached_input",
+                        value: usage.tokens.cache.read,
                         unit: "tokens",
                         module: "llm",
                         sessionID: input.sessionID,
@@ -1563,7 +1574,6 @@ export namespace SessionProcessor {
                       const step = await Session.updatePart({
                         id: Identifier.ascending("part"),
                         reason: value.finishReason,
-                        snapshot: await Snapshot.track(input.sessionID, input.abort),
                         messageID: input.assistantMessage.id,
                         sessionID: input.assistantMessage.sessionID,
                         type: "step-finish",
@@ -1575,23 +1585,6 @@ export namespace SessionProcessor {
                       })
                       if (step.type === "step-finish") stepFinishes.push(step)
                       await Session.updateMessage(input.assistantMessage)
-                      if (snapshot) {
-                        const patch = await Snapshot.patch(snapshot, input.sessionID, {
-                          indexFresh: true,
-                          signal: input.abort,
-                        })
-                        if (patch.files.length) {
-                          await Session.updatePart({
-                            id: Identifier.ascending("part"),
-                            messageID: input.assistantMessage.id,
-                            sessionID: input.sessionID,
-                            type: "patch",
-                            hash: patch.hash,
-                            files: patch.files,
-                          })
-                        }
-                        snapshot = undefined
-                      }
                       break
                     }
 
@@ -1666,6 +1659,12 @@ export namespace SessionProcessor {
                       break
 
                     case "finish":
+                      if (
+                        input.assistantMessage.finish === "stop" &&
+                        streamStats.text.outputChars === 0 &&
+                        deferredToolCalls.length === 0
+                      )
+                        throw new MessageV2.EmptyResponseError({ message: "Provider returned an empty response" })
                       break
 
                     case "abort":
@@ -1890,22 +1889,6 @@ export namespace SessionProcessor {
               }
             }
             fastAbort ||= input.abort.aborted
-            if (snapshot) {
-              if (!fastAbort) {
-                const patch = await Snapshot.patch(snapshot, input.sessionID, { signal: input.abort })
-                if (patch.files.length) {
-                  await Session.updatePart({
-                    id: Identifier.ascending("part"),
-                    messageID: input.assistantMessage.id,
-                    sessionID: input.sessionID,
-                    type: "patch",
-                    hash: patch.hash,
-                    files: patch.files,
-                  })
-                }
-              }
-              snapshot = undefined
-            }
             await waitForTrackedSettlements()
             SessionMemoryPressure.probe("processor.after_tool_settlement", {
               sessionID: input.sessionID,

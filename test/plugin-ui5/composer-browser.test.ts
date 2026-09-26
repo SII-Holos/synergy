@@ -64,6 +64,7 @@ test("custom composer submits once and a running response survives switching to 
   const browser = await chromium.launch({ headless: true })
   let preview: Awaited<ReturnType<typeof startPluginPreview>> | undefined
   let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+  const responses: Promise<string>[] = []
   try {
     scaffoldPluginProject("composer-shell", "shell", project.root)
     expect(await buildPluginProject(project.root)).toBe(true)
@@ -110,6 +111,10 @@ test("custom composer submits once and a running response survives switching to 
     )
     await approvePreviewPlugins(preview)
     const page = await browser.newPage()
+    page.on("response", (response) => {
+      if (response.status() >= 400)
+        responses.push(response.text().then((body) => `${response.status()} ${response.url()}: ${body}`))
+    })
     await page.addInitScript(() => {
       HTMLMediaElement.prototype.play = async () => {
         throw new DOMException("Audio output is unavailable", "NotSupportedError")
@@ -164,7 +169,10 @@ test("custom composer submits once and a running response survives switching to 
     ).toHaveLength(1)
     expect(diagnostics.errors.map((error) => error.message)).toEqual([])
   } catch (error) {
-    throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Composer real-host acceptance failed")
+    throw new AggregateError(
+      [error, ...(diagnostics?.errors ?? []), ...(await Promise.all(responses)).map((response) => new Error(response))],
+      "Composer real-host acceptance failed",
+    )
   } finally {
     resume.resolve()
     diagnostics?.dispose()

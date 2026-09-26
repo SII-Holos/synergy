@@ -5,6 +5,9 @@ import { BlueprintLoopStore } from "../../src/blueprint"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function createWakeup(sessionID: string) {
   return AgendaStore.create({
@@ -20,66 +23,70 @@ async function createWakeup(sessionID: string) {
 }
 
 describe("AgendaSessionWakeup.loopInstruction", () => {
-  test("does not wake a Light Loop after its stop intent is recorded", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await Session.update(session.id, (draft) => {
-          draft.workflow = {
-            kind: "lightloop",
-            instructions: "Complete the task",
-            stopRequest: {
-              summary: "Done",
-              requestedAt: Date.now(),
-              requesterSessionID: session.id,
-              requesterMessageID: "msg_stop",
-            },
-          }
-        })
-        const item = await createWakeup(session.id)
+  test("does not wake a Light Loop after its stop intent is recorded", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = {
+              kind: "lightloop",
+              instructions: "Complete the task",
+              stopRequest: {
+                summary: "Done",
+                requestedAt: Date.now(),
+                requesterSessionID: session.id,
+                requesterMessageID: "msg_stop",
+              },
+            }
+          })
+          const item = await createWakeup(session.id)
 
-        expect(
-          await AgendaSessionWakeup.loopInstruction({
-            session: await Session.get(session.id),
-            item,
-          }),
-        ).toBeUndefined()
-      },
-    })
-  })
+          expect(
+            await AgendaSessionWakeup.loopInstruction({
+              session: await Session.get(session.id),
+              item,
+            }),
+          ).toBeUndefined()
+        },
+      })
+    }))
 
-  test("does not wake a BlueprintLoop after its stop intent is recorded", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const loop = await BlueprintLoopStore.create({
-          noteID: "note_blueprint",
-          title: "Test Blueprint",
-          sessionID: session.id,
-        })
-        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
-        await BlueprintLoopStore.recordStopRequest(ScopeContext.current.scope.id, loop.id, {
-          summary: "Done",
-          requestedAt: Date.now(),
-          requesterSessionID: session.id,
-          requesterMessageID: "msg_stop",
-        })
-        await Session.update(session.id, (draft) => {
-          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
-        })
-        const item = await createWakeup(session.id)
+  test("does not wake a BlueprintLoop after its stop intent is recorded", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const loop = await BlueprintLoopStore.create({
+            noteID: "note_blueprint",
+            title: "Test Blueprint",
+            sessionID: session.id,
+          })
+          await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+          await BlueprintLoopStore.recordStopRequest(ScopeContext.current.scope.id, loop.id, {
+            summary: "Done",
+            requestedAt: Date.now(),
+            requesterSessionID: session.id,
+            requesterMessageID: "msg_stop",
+          })
+          await Session.update(session.id, (draft) => {
+            draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+          })
+          const item = await createWakeup(session.id)
 
-        expect(
-          await AgendaSessionWakeup.loopInstruction({
-            session: await Session.get(session.id),
-            item,
-          }),
-        ).toBeUndefined()
-      },
-    })
-  })
+          expect(
+            await AgendaSessionWakeup.loopInstruction({
+              session: await Session.get(session.id),
+              item,
+            }),
+          ).toBeUndefined()
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

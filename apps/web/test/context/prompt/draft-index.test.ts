@@ -1,15 +1,13 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { afterAll, beforeEach, describe, expect, test } from "bun:test"
 import { Persist } from "../../../src/utils/persist"
-import {
-  clearLocalDraftMark,
-  forgetDraftSession,
-  hasDraftSession,
-  markDraftSession,
-  rebuildDraftSessionIndex,
-} from "../../../src/context/prompt/draft-index"
+import { createDraftSessionIndex } from "../../../src/context/prompt/draft-index"
 
-const DIR_A = "/tmp/workspace-draft-test-a"
-const DIR_B = "/tmp/workspace-draft-test-b"
+const CONNECTION = "http://127.0.0.1:4401"
+const index = createDraftSessionIndex(CONNECTION)
+const { clearLocalDraftMark, forgetDraftSession, hasDraftSession, markDraftSession, rebuildDraftSessionIndex } = index
+const DIR_A = Persist.scopeKey(CONNECTION, "a")
+const DIR_B = Persist.scopeKey(CONNECTION, "b")
+afterAll(() => index.dispose())
 
 function writeEntry(target: { storage?: string; key: string }, value: string) {
   const localStorageKey = target.storage ? `${target.storage}:${target.key}` : target.key
@@ -189,4 +187,25 @@ describe("draft session index marks", () => {
 
     expect(hasDraftSession("ses_pruned")).toBe(false)
   })
+})
+
+test("same Scope and Session IDs on separate servers retain independent drafts", () => {
+  const otherConnection = "http://127.0.0.1:4402"
+  const other = createDraftSessionIndex(otherConnection)
+  try {
+    const first = Persist.scopeKey(CONNECTION, "same-scope")
+    const second = Persist.scopeKey(otherConnection, "same-scope")
+    writePromptState(first, "same-session", dirtyState)
+    writePromptState(second, "same-session", cleanState)
+    index.rebuildDraftSessionIndex()
+    other.rebuildDraftSessionIndex()
+    expect(index.hasDraftSession("same-session")).toBe(true)
+    expect(other.hasDraftSession("same-session")).toBe(false)
+    other.markDraftSession("same-session", true)
+    index.forgetDraftSession("same-session")
+    expect(index.hasDraftSession("same-session")).toBe(false)
+    expect(other.hasDraftSession("same-session")).toBe(true)
+  } finally {
+    other.dispose()
+  }
 })

@@ -1,3 +1,6 @@
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as AgentIntegrationsConfigSchema from "@ericsanchezok/synergy-agent-integrations/config-schema"
 import { dynamicTool, type Tool, jsonSchema, type JSONSchema7 } from "ai"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -34,7 +37,9 @@ import {
 
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
-  const toolCallTimeouts = new Map<string, number | undefined>()
+  const runtimeState = RuntimeContext.state(() => ({
+    toolCallTimeouts: new Map<string, number | undefined>(),
+  }))
 
   // ── Public schemas/events (re-exposed via the MCP namespace) ────────
   // These are declared here to satisfy the public API surface; the actual
@@ -87,6 +92,7 @@ export namespace MCP {
     mcpTool: MCPToolDef,
     client: Client,
     callTimeout: number | undefined,
+    requiresWorkspace: boolean,
   ): Promise<Pick<ToolEntry, "inputSchema" | "tool">> {
     const source = mcpTool.inputSchema
     const inputSchema: JSONSchema7 = {
@@ -102,6 +108,11 @@ export namespace MCP {
         description: mcpTool.description ?? "",
         inputSchema: jsonSchema(inputSchema),
         execute: async (args: unknown) => {
+          if (requiresWorkspace && !ScopeContext.current.workspace)
+            throw new Scope.WorkspaceRequiredError({
+              message: "This MCP tool requires a local workspace.",
+              scopeID: ScopeContext.current.scope.id,
+            })
           return client.callTool(
             {
               name: mcpTool.name,
@@ -119,35 +130,37 @@ export namespace MCP {
   }
 
   export function ensureStarted(): void {
-    McpSupervisor.ensureStarted()
+    McpSupervisor().ensureStarted()
   }
 
   export function toolCallTimeout(toolName: string): number | undefined {
-    return toolCallTimeouts.get(toolName)
+    const instanceState = runtimeState()
+
+    return instanceState.toolCallTimeouts.get(toolName)
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────
 
   export async function stop() {
     await McpOAuthCallback.stop()
-    await McpSupervisor.reset()
+    await McpSupervisor().reset()
   }
 
   export async function reload() {
     log.info("reloading mcp state")
-    await McpSupervisor.reset()
-    McpSupervisor.ensureStarted()
+    await McpSupervisor().reset()
+    McpSupervisor().ensureStarted()
     log.info("mcp state reloaded")
   }
 
   // ── Status / clients ───────────────────────────────────────────────
 
   export async function resolveServer(name: string): Promise<Server | undefined> {
-    await McpSupervisor.ready()
+    await McpSupervisor().ready()
     const cfg = await Config.current()
     const configured = cfg.mcp?.[name]
     if (configured && typeof configured === "object" && "type" in configured && configured.enabled !== false) {
-      const handle = McpSupervisor.get(name)
+      const handle = McpSupervisor().get(name)
       if (!handle || handle.source !== "config") return undefined
       return {
         name,
@@ -162,7 +175,7 @@ export namespace MCP {
       }
     }
 
-    const handle = McpSupervisor.get(name)
+    const handle = McpSupervisor().get(name)
     if (!handle || handle.config.enabled === false || handle.source === "config") return undefined
     return {
       name: handle.name,
@@ -174,14 +187,14 @@ export namespace MCP {
   }
 
   export async function listServers(): Promise<Server[]> {
-    await McpSupervisor.ready()
+    await McpSupervisor().ready()
     const cfg = await Config.current()
     const servers = new Map<string, Server>()
 
     for (const [name, configured] of Object.entries(cfg.mcp ?? {})) {
       if (!configured || typeof configured !== "object" || !("type" in configured) || configured.enabled === false)
         continue
-      const handle = McpSupervisor.get(name)
+      const handle = McpSupervisor().get(name)
       if (!handle || handle.source !== "config") continue
       servers.set(name, {
         name,
@@ -196,7 +209,7 @@ export namespace MCP {
       })
     }
 
-    for (const handle of McpSupervisor.getAll()) {
+    for (const handle of McpSupervisor().getAll()) {
       if (servers.has(handle.name) || handle.source === "config" || handle.config.enabled === false) continue
       servers.set(handle.name, {
         name: handle.name,
@@ -221,7 +234,7 @@ export namespace MCP {
   export async function builtins(): Promise<
     Array<{ name: string; url: string; status: Status; keyConfigured: boolean; keyHint?: string }>
   > {
-    await McpSupervisor.ready()
+    await McpSupervisor().ready()
     const cfg = await Config.current()
     const result: Array<{ name: string; url: string; status: Status; keyConfigured: boolean; keyHint?: string }> = []
     for (const info of builtinMcpServerInfos()) {
@@ -230,7 +243,7 @@ export namespace MCP {
       // here.
       const configured = cfg.mcp?.[info.name]
       if (configured && typeof configured === "object" && "type" in configured) continue
-      const handle = McpSupervisor.get(info.name)
+      const handle = McpSupervisor().get(info.name)
       const status =
         configured && typeof configured === "object" && configured.enabled === false
           ? ({ status: "disabled" } as const)
@@ -249,9 +262,9 @@ export namespace MCP {
   }
 
   export async function clients(): Promise<Record<string, Client>> {
-    await McpSupervisor.ready()
+    await McpSupervisor().ready()
     const result: Record<string, Client> = {}
-    for (const handle of McpSupervisor.getAll()) {
+    for (const handle of McpSupervisor().getAll()) {
       if (handle.client) result[handle.name] = handle.client
     }
     return result
@@ -264,22 +277,22 @@ export namespace MCP {
       log.error("MCP server not found", { name })
       return
     }
-    const handle = McpSupervisor.get(name)
+    const handle = McpSupervisor().get(name)
     if (!handle || handle.identity !== server.identity) return
     handle.retryCount = 0
-    await McpSupervisor.connect(name, server.identity)
+    await McpSupervisor().connect(name, server.identity)
   }
 
   export async function disconnect(name: string) {
     ensureStarted()
-    await McpSupervisor.disconnect(name)
+    await McpSupervisor().disconnect(name)
   }
 
   export async function add(name: string, mcp: AgentIntegrationsConfigSchema.Mcp) {
     ensureStarted()
     const cfg = await Config.current()
     const server = AgentIntegrationsConfigSchema.normalizeMcp(mcp, cfg.mcpDefaults, cfg.mcpDefaults?.callTimeout)
-    const handle = McpSupervisor.add(name, server)
+    const handle = McpSupervisor().add(name, server)
     return { status: mapStatus(handle) }
   }
 
@@ -287,13 +300,13 @@ export namespace MCP {
 
   export async function restart(name: string): Promise<Status> {
     ensureStarted()
-    const handle = await McpSupervisor.restart(name)
+    const handle = await McpSupervisor().restart(name)
     return mapStatus(handle)
   }
 
   export async function refresh(name: string): Promise<Status> {
     ensureStarted()
-    const handle = await McpSupervisor.refresh(name)
+    const handle = await McpSupervisor().refresh(name)
     return mapStatus(handle)
   }
 
@@ -303,15 +316,15 @@ export namespace MCP {
     resourceNames: string[]
     promptNames: string[]
   } | null> {
-    await McpSupervisor.ready()
-    const result = McpSupervisor.inspect(name)
+    await McpSupervisor().ready()
+    const result = McpSupervisor().inspect(name)
     if (!result) return null
     return result
   }
 
   export async function test(name: string): Promise<Status | null> {
-    await McpSupervisor.ready()
-    const result = McpSupervisor.test(name)
+    await McpSupervisor().ready()
+    const result = McpSupervisor().test(name)
     if (!result) return null
     return result
   }
@@ -335,12 +348,13 @@ export namespace MCP {
    * conversion, no network calls.
    */
   export async function deferredGroupCatalog(): Promise<DeferredGroupCatalog> {
-    await McpSupervisor.ready()
+    await McpSupervisor().ready()
     const servers: DeferredGroupCatalogServer[] = []
     let totalTools = 0
-    for (const handle of McpSupervisor.getAll()) {
+    for (const handle of McpSupervisor().getAll()) {
       if (mapStatus(handle).status !== "connected") continue
       if (!handle.client || handle.toolDefs.length === 0) continue
+      if ((handle.config.requiresWorkspace ?? true) && !ScopeContext.current.workspace) continue
       const toolNames = ToolExposure.unique(handle.toolDefs.map((tool) => tool.name))
       servers.push({ serverName: handle.name, toolNames })
       totalTools += toolNames.length
@@ -349,20 +363,28 @@ export namespace MCP {
   }
 
   export async function toolEntries(): Promise<ToolEntry[]> {
-    await McpSupervisor.ready()
+    const instanceState = runtimeState()
+
+    await McpSupervisor().ready()
     const result: ToolEntry[] = []
-    toolCallTimeouts.clear()
+    instanceState.toolCallTimeouts.clear()
     const callTimeout = (await Config.current()).mcpDefaults?.callTimeout
 
-    for (const handle of McpSupervisor.getAll()) {
+    for (const handle of McpSupervisor().getAll()) {
       if (mapStatus(handle).status !== "connected") continue
       if (!handle.client || handle.toolDefs.length === 0) continue
+      if ((handle.config.requiresWorkspace ?? true) && !ScopeContext.current.workspace) continue
 
       for (const mcpTool of handle.toolDefs) {
         const toolName = ToolExposure.mcpToolID(handle.name, mcpTool.name)
         const effectiveCallTimeout = handle.config.callTimeout ?? callTimeout
-        toolCallTimeouts.set(toolName, effectiveCallTimeout)
-        const converted = await convertMcpTool(mcpTool, handle.client, effectiveCallTimeout)
+        instanceState.toolCallTimeouts.set(toolName, effectiveCallTimeout)
+        const converted = await convertMcpTool(
+          mcpTool,
+          handle.client,
+          effectiveCallTimeout,
+          handle.config.requiresWorkspace ?? true,
+        )
         result.push({
           id: toolName,
           serverName: handle.name,
@@ -386,7 +408,7 @@ export namespace MCP {
   export async function prompts(): Promise<PromptCache> {
     ensureStarted()
     const result: PromptCache = {}
-    for (const handle of McpSupervisor.getAll()) {
+    for (const handle of McpSupervisor().getAll()) {
       if (mapStatus(handle).status !== "connected") continue
       Object.assign(result, handle.prompts)
     }
@@ -396,7 +418,7 @@ export namespace MCP {
   export async function resources(): Promise<ResourceCache> {
     ensureStarted()
     const result: ResourceCache = {}
-    for (const handle of McpSupervisor.getAll()) {
+    for (const handle of McpSupervisor().getAll()) {
       if (mapStatus(handle).status !== "connected") continue
       Object.assign(result, handle.resources)
     }
@@ -405,7 +427,7 @@ export namespace MCP {
 
   export async function getPrompt(clientName: string, name: string, args?: Record<string, string>) {
     ensureStarted()
-    const client = McpSupervisor.getClient(clientName)
+    const client = McpSupervisor().getClient(clientName)
     if (!client) {
       log.warn("client not found for prompt", { clientName })
       return undefined
@@ -423,7 +445,7 @@ export namespace MCP {
 
   export async function readResource(clientName: string, resourceUri: string) {
     ensureStarted()
-    const client = McpSupervisor.getClient(clientName)
+    const client = McpSupervisor().getClient(clientName)
     if (!client) {
       log.warn("client not found for resource", { clientName })
       return undefined
@@ -477,7 +499,7 @@ export namespace MCP {
     const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("")
-    const isCurrent = () => McpSupervisor.get(mcpName)?.identity === server.identity
+    const isCurrent = () => McpSupervisor().get(mcpName)?.identity === server.identity
     await McpAuth.updateOAuthState(mcpName, oauthState, { isCurrent })
 
     const oauthConfig = typeof mcpConfig.oauth === "object" ? mcpConfig.oauth : undefined
@@ -504,7 +526,7 @@ export namespace MCP {
     try {
       const connectTimeout = await resolveMcpTimeout(mcpName)
       await withTimeout(client.connect(transport), connectTimeout)
-      if (McpSupervisor.get(mcpName)?.identity !== server.identity) {
+      if (McpSupervisor().get(mcpName)?.identity !== server.identity) {
         throw new Error("MCP server changed while OAuth was in progress; restart authentication")
       }
       await client.close().catch((closeError) => {
@@ -572,7 +594,7 @@ export namespace MCP {
 
     try {
       await pending.transport.finishAuth(authorizationCode)
-      const handle = McpSupervisor.get(mcpName)
+      const handle = McpSupervisor().get(mcpName)
       if (!handle || handle.identity !== pending.identity || handle.config.enabled === false) {
         await PendingOAuth.disposeIfCurrent(mcpName, pending, "stale OAuth owner")
         return {
@@ -582,8 +604,8 @@ export namespace MCP {
       }
 
       await PendingOAuth.disposeIfCurrent(mcpName, pending, "OAuth completed")
-      const connected = await McpSupervisor.connect(mcpName, pending.identity)
-      if (McpSupervisor.get(mcpName) !== connected || connected.identity !== pending.identity) {
+      const connected = await McpSupervisor().connect(mcpName, pending.identity)
+      if (McpSupervisor().get(mcpName) !== connected || connected.identity !== pending.identity) {
         return {
           status: "failed",
           error: "MCP server changed while OAuth was in progress; restart authentication",
@@ -592,7 +614,7 @@ export namespace MCP {
       return mapStatus(connected)
     } catch (error) {
       await PendingOAuth.disposeIfCurrent(mcpName, pending, "OAuth failed")
-      const handle = McpSupervisor.get(mcpName)
+      const handle = McpSupervisor().get(mcpName)
       if (handle && handle.identity !== pending.identity) {
         return {
           status: "failed",

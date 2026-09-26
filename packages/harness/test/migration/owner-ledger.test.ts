@@ -1,14 +1,26 @@
 import { expect, test } from "bun:test"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("optional migration owners retain their original ledger and leave unloaded entries intact", async () => {
-  const isolated = await createIsolatedTestEnv()
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
+test("optional migration owners retain their original ledger and leave unloaded entries intact", () =>
+  runtime.run(async () => {
+    const isolated = await createIsolatedTestEnv()
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "--eval",
+        `
       import assert from "node:assert/strict"
+      import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+      import { registerHarness } from "@ericsanchezok/synergy-harness/lifecycle"
+      import path from "node:path"
+      const home = process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME
+      const context = RuntimeContext.create({ home, root: path.join(home, ".synergy"), env: { ...process.env } })
+      await context.run(async () => {
+      registerHarness()
+
       const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
       await using storageHandle = await StorageMaintenance.open({ migrate: false })
       const { MigrationRegistry } = await import("@ericsanchezok/synergy-harness/migration/registry")
@@ -35,16 +47,20 @@ test("optional migration owners retain their original ledger and leave unloaded 
       await runMigrations({ targetDomain: "legacy-ledger", output: "silent" })
       assert.equal(applied, 1)
       assert.equal(await Storage.read(StoragePath.metaMigrationLogDomain("new-owner")).catch(() => undefined), undefined)
+      })
+      context.dispose()
     `,
-    ],
-    env: isolated.env,
-    stdout: "pipe",
-    stderr: "pipe",
-  })
-  try {
-    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-    expect(code, stderr).toBe(0)
-  } finally {
-    await isolated.dispose()
-  }
-})
+      ],
+      env: isolated.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    try {
+      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      expect(code, stderr).toBe(0)
+    } finally {
+      await isolated.dispose()
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

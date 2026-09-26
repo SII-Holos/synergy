@@ -17,18 +17,25 @@ export namespace ProviderStream {
     input: {
       controller: AbortController
       signal: AbortSignal
-      timeoutMs: number
+      timeoutMs: number | false
+      observer?: {
+        onFirstByte?: () => void
+        onIdleTimeout?: () => void
+        onSettled?: () => void
+      }
     },
   ): ReadableStream<Uint8Array> {
     let idleTimer: ReturnType<typeof setTimeout> | undefined
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
     let readerReleased = false
     let settled = false
+    let firstByteSeen = false
 
     const cleanup = () => {
       if (settled) return
       settled = true
       if (idleTimer) clearTimeout(idleTimer)
+      input.observer?.onSettled?.()
     }
     const releaseReader = () => {
       if (!reader || readerReleased) return
@@ -38,12 +45,13 @@ export namespace ProviderStream {
       } catch {}
     }
     const resetIdle = () => {
+      const timeoutMs = input.timeoutMs
+      if (timeoutMs === false) return
       if (idleTimer) clearTimeout(idleTimer)
       idleTimer = setTimeout(() => {
-        input.controller.abort(
-          new DOMException(`Idle timeout: no data received within ${input.timeoutMs}ms`, "TimeoutError"),
-        )
-      }, input.timeoutMs).unref()
+        input.observer?.onIdleTimeout?.()
+        input.controller.abort(new DOMException(`Idle timeout: no data received within ${timeoutMs}ms`, "TimeoutError"))
+      }, timeoutMs).unref()
     }
     const readWithAbort = async (ownedReader: ReadableStreamDefaultReader<Uint8Array>) => {
       input.signal.throwIfAborted()
@@ -71,6 +79,10 @@ export namespace ProviderStream {
             releaseReader()
             controller.close()
             return
+          }
+          if (!firstByteSeen) {
+            firstByteSeen = true
+            input.observer?.onFirstByte?.()
           }
           resetIdle()
           controller.enqueue(value)

@@ -163,14 +163,14 @@ async function executePluginHooks<Input, Output>(
     try {
       await ensureRuntime(plugin)
       options?.signal?.throwIfAborted()
-      const result = await pluginRuntimeManager.invoke({
+      const result = await pluginRuntimeManager().invoke({
         pluginId: plugin.id,
         handlerId: `hook:${contribution.id}`,
         value: point.mode === "transform" ? pluginHookHandlerInput(pointName, input, value) : input,
         context: {
           scopeId: ScopeContext.current.scope.id,
           sessionId: options?.sessionId ?? sessionId(input),
-          directory: ScopeContext.current.directory,
+          directory: ScopeContext.current.workspace?.path,
           actor: { type: "lifecycle" },
         },
         pluginDir: plugin.pluginDir,
@@ -285,11 +285,11 @@ export async function deliverHookForPlugin<Input>(
 }
 
 export function activateScope(scopeId: string) {
-  pluginAgentCallRuntime.enableScope(scopeId)
+  pluginAgentCallRuntime().enableScope(scopeId)
 }
 
 export function disposeScope(scopeId: string) {
-  return pluginAgentCallRuntime.disableScope(scopeId)
+  return pluginAgentCallRuntime().disableScope(scopeId)
 }
 
 /** Reattach workflow-domain timers (lightloop and BlueprintLoop) through the
@@ -316,7 +316,13 @@ export async function reload() {
   const plugins = await state()
     .then((value) => [...value.loaded])
     .catch(() => [])
-  await Promise.all(plugins.map((plugin) => pluginRuntimeManager.stop(plugin.id).catch(() => undefined)))
+  await Promise.all(
+    plugins.map((plugin) =>
+      pluginRuntimeManager()
+        .stop(plugin.id)
+        .catch(() => undefined),
+    ),
+  )
   await resetAllPluginState()
   const [{ Agent }, { ToolRegistry }] = await Promise.all([
     import("@ericsanchezok/synergy-harness/agent/agent"),
@@ -365,4 +371,6 @@ export async function manifest(pluginId: string) {
   return (await getPlugin(pluginId))?.manifest ?? null
 }
 
-setHostServiceLifecycleHooks({ deliverHookForPlugin, updateConfig })
+export function registerPluginLifecycle() {
+  setHostServiceLifecycleHooks({ deliverHookForPlugin, updateConfig })
+}

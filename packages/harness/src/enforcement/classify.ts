@@ -49,7 +49,7 @@ export namespace PathClassifier {
   export type Confidence = "high" | "medium" | "low"
 
   export interface Options {
-    workspace: string
+    workspace: string | null
     originalCheckout?: string
     /**
      * When false, a symlink in the final component is judged as the directory
@@ -94,6 +94,7 @@ export namespace PathClassifier {
   }
 
   export function classify(input: string, options: Options): Result {
+    if (!options.workspace) return outside("no local workspace is bound")
     const workspace = normalizeWorkspace(options.workspace)
     if (hasShellExpansion(input)) return outside("path uses shell expansion outside the active workspace")
     if (containsParentTraversal(input)) return outside("path traverses outside the active workspace")
@@ -148,6 +149,7 @@ export namespace PathClassifier {
     // reside under the repo root (the original checkout), so without this guard
     // every worktree-internal path would be incorrectly classified as outside.
     if (base.boundary === "inside") return base
+    if (!options.workspace) return outside("no local workspace is bound")
     const workspace = normalizeWorkspace(options.workspace)
     const candidate = normalizeCandidate(input, workspace)
     const oc = path.resolve(options.originalCheckout)

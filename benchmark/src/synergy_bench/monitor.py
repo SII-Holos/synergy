@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,7 @@ from typing import Any
 import aiohttp
 import psutil
 
+from .docker_resources import DockerStats
 from .process import run_process
 from .scheduling import PhaseResources
 from .storage import atomic_json
@@ -23,12 +25,17 @@ class ResourceRecordingError(RuntimeError):
 
 class ResourceMonitor:
     def __init__(
-        self, directory: Path, project: str, *, interval: float = 1, scheduler: PhaseResources | None = None
+        self,
+        directory: Path,
+        project: str,
+        *,
+        interval: float = 1,
+        scheduler: PhaseResources | None = None,
+        sampler: DockerStats | None = None,
     ) -> None:
         self.owner: asyncio.Task[Any] | None = None
         self.scheduler = scheduler
-        self.endpoint: str | None = None
-        self.previous_cpu: dict[str, dict[str, Any]] = {}
+        self.sampler = sampler or (scheduler.pool.sampler if scheduler else None) or DockerStats()
         self.directory = directory
         self.project = project
         self.interval = interval
@@ -108,53 +115,8 @@ class ResourceMonitor:
             raise ResourceRecordingError("Could not persist resource observations") from error
 
     async def sample(self) -> None:
-        self.endpoint = self.endpoint or await self.docker_endpoint()
-        if not self.endpoint.startswith("unix://"):
-            raise ValueError("Resource sampling requires the local Docker Unix endpoint")
-        connector = aiohttp.UnixConnector(path=self.endpoint.removeprefix("unix://"))
-        async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(total=5)) as client:
-            async with client.get("http://docker/containers/json") as response:
-                response.raise_for_status()
-                containers = [
-                    row
-                    for row in await response.json()
-                    if self.owns(row.get("Labels", {}).get("com.docker.compose.project", ""))
-                ]
-
-            async def inspect(row: dict[str, Any]) -> dict[str, Any]:
-                identity = row["Id"]
-                async with client.get(
-                    f"http://docker/containers/{identity}/stats", params={"stream": "false", "one-shot": "true"}
-                ) as response:
-                    response.raise_for_status()
-                    value = await response.json()
-                memory = value.get("memory_stats", {})
-                usage = memory.get("usage")
-                inactive = memory.get("stats", {}).get(
-                    "inactive_file", memory.get("stats", {}).get("total_inactive_file", 0)
-                )
-                memory_bytes = max(0, usage - inactive) if isinstance(usage, int) else None
-                cpu = value.get("cpu_stats", {})
-                previous = self.previous_cpu.get(identity) or value.get("precpu_stats", {})
-                self.previous_cpu[identity] = cpu
-                system_delta = cpu.get("system_cpu_usage", 0) - previous.get("system_cpu_usage", 0)
-                cpu_delta = cpu.get("cpu_usage", {}).get("total_usage", 0) - previous.get("cpu_usage", {}).get(
-                    "total_usage", 0
-                )
-                cpu_percent = (
-                    cpu_delta / system_delta * cpu.get("online_cpus", 1) * 100
-                    if previous.get("system_cpu_usage") and system_delta > 0 and cpu_delta >= 0
-                    else None
-                )
-                return {
-                    "ID": identity,
-                    "Name": row.get("Names", [identity])[0],
-                    "project": row["Labels"]["com.docker.compose.project"],
-                    "memory_bytes": memory_bytes,
-                    "cpu_percent": cpu_percent,
-                }
-
-            metrics = await asyncio.gather(*(inspect(row) for row in containers))
+        snapshot = await self.sampler.snapshot()
+        metrics = [row for row in snapshot.containers if self.owns(row["project"])]
         groups: dict[str, tuple[int | None, float | None]] = {}
         for row in metrics:
             memory, cpus = groups.get(row["project"], (0, 0.0))
@@ -195,19 +157,7 @@ class ResourceMonitor:
         return project == self.project or project.startswith(self.project + "__verifier__")
 
     async def docker_endpoint(self) -> str:
-        if os.environ.get("DOCKER_HOST") and not os.environ.get("DOCKER_CONTEXT"):
-            return os.environ["DOCKER_HOST"]
-        log = self.directory / "docker-context.log"
-        code = await run_process(
-            ["docker", "context", "inspect", "--format", "{{json .Endpoints.docker.Host}}"], log=log, deadline=10
-        )
-        if code:
-            raise RuntimeError("Docker context unavailable")
-        endpoint = json.loads(log.read_text())
-        if not isinstance(endpoint, str):
-            raise ValueError("Invalid Docker endpoint")
-        log.unlink(missing_ok=True)
-        return endpoint
+        return await self.sampler.endpoint()
 
     def accept_event(self, row: dict[str, Any]) -> None:
         project = row.get("Actor", {}).get("Attributes", {}).get("com.docker.compose.project", "")
@@ -316,7 +266,16 @@ class ResourceMonitor:
                 if self.owner:
                     self.owner.cancel()
                 raise
-            except (OSError, ValueError, TypeError, KeyError, RuntimeError, TimeoutError, aiohttp.ClientError) as error:
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                RuntimeError,
+                TimeoutError,
+                subprocess.SubprocessError,
+                aiohttp.ClientError,
+            ) as error:
                 if self.scheduler:
                     await self.scheduler.sample(None)
                 self.errors.append(type(error).__name__)

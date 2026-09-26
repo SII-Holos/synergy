@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { PackedBackup } from "./packed-backup"
@@ -11,8 +12,55 @@ import { Storage } from "./storage"
 import { StorageBootstrap } from "./bootstrap"
 import { StorageRecovery } from "./recovery"
 import { StorageIntegrityError } from "./errors"
+import { StorageReclamation } from "./format-reclamation"
+import { observeStorageMaintenance } from "./maintenance-progress"
+import { UpgradeWork } from "./upgrade-work"
+import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
+import { z } from "zod"
+import { StorageRetention } from "./retention"
+import { ObservabilityConfig } from "../observability/config"
+import { Config } from "../config/config"
+
+const exclusive = new WeakSet<object>()
 
 export namespace StorageMaintenance {
+  export function observe<T>(
+    operation: () => Promise<T>,
+    reporter: (event: StorageMaintenanceEvent) => void,
+    signal?: AbortSignal,
+  ) {
+    return UpgradeWork.run({ background: false, signal }, () => {
+      signal?.throwIfAborted()
+      return observeStorageMaintenance(operation, reporter)
+    })
+  }
+  export const Status = StorageReclamation.Status.extend({
+    prune: z.object({ owners: z.number().int().nonnegative(), updatedAt: z.number() }),
+  }).meta({ ref: "StorageMaintenanceStatus" })
+  export const status = async () => ({
+    ...(await StorageReclamation.status(Storage.current().store)),
+    prune: await StorageRetention.deferred(),
+  })
+  export async function prune(signal?: AbortSignal) {
+    if (!exclusive.has(Storage.current().store))
+      throw new StorageIntegrityError("Pruning requires an exclusive maintenance window")
+    ObservabilityConfig.refresh(await Config.globalResolved())
+    const config = ObservabilityConfig.current().storage
+    return StorageRetention.run({
+      retentionMs: config.retentionMs,
+      maxBytes: config.retentionBytes,
+      liveSessionIDs: [],
+      maintenance: true,
+      signal,
+    })
+  }
+  export const controlReclaim = async (action: "pause" | "resume") => {
+    await StorageReclamation.control(Storage.current().store, action)
+    return status()
+  }
+  export const reclaim = (
+    options: { signal?: AbortSignal; progress?: (current: number, total: number, phase: number) => void } = {},
+  ) => StorageReclamation.drain(Storage.current().store, options)
   export async function restoreBackup(backupRoot: string, destination: string) {
     const target = path.resolve(destination)
     const parent = path.dirname(target)
@@ -66,31 +114,32 @@ export namespace StorageMaintenance {
   }
 
   export async function open(options: { readonly?: boolean; migrate?: boolean; recover?: boolean } = {}) {
-    if (Storage.available()) throw new StorageIntegrityError("Maintenance cannot replace an installed Runtime Handle")
+    const runtime = RuntimeContext.current()
+    if (Storage.available())
+      throw new StorageIntegrityError("Maintenance cannot replace an attached Runtime storage Handle")
     if (options.readonly) {
       const handle = await StorageBootstrap.inspect(Global.Path.root)
       if (!handle)
         throw new StorageIntegrityError("Storage has not been initialized; run data storage resume before inspection")
-      const uninstall = Storage.install(handle)
+      runtime.storage = handle
       const close = async () => {
         try {
           await handle.store.close()
         } finally {
-          uninstall()
+          runtime.storage = undefined
         }
       }
       return { ...handle, close, [Symbol.asyncDispose]: close }
     }
     const ownership = await ServerProcessLock.acquire(undefined, "oneshot")
     let prepared: StorageBootstrap.Prepared | undefined
-    let uninstall: (() => void) | undefined
     let closing: Promise<void> | undefined
     const close = () =>
       (closing ??= (async () => {
         try {
           await prepared?.store.close()
         } finally {
-          uninstall?.()
+          runtime.storage = undefined
           await ownership.release()
         }
       })())
@@ -98,8 +147,9 @@ export namespace StorageMaintenance {
       await Global.initialize({ cache: false })
       if (options.recover) await StorageBootstrap.resumeTargetSwitch(Global.Path.root)
       prepared = await StorageBootstrap.prepare({ root: Global.Path.root, recover: options.recover })
+      exclusive.add(prepared.store)
       const handle = { store: prepared.store, artifactDirectory: Global.Path.data }
-      uninstall = Storage.install(handle)
+      runtime.storage = handle
       await SessionStaging.recover()
       const pending = prepared
       const activate = async () => {

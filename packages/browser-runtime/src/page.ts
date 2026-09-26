@@ -456,7 +456,9 @@ export class PlaywrightBrowserPage implements BrowserPageBackend {
           throw new Error("Browser upload exceeds the 25 MB per-file or 50 MB request limit.")
         }
         const basename = sanitizeBrowserFilename(file.name, `upload-${index}`)
-        const filepath = path.join(requestDir, `${index}-${basename}`)
+        const directory = path.join(requestDir, String(index))
+        await fs.mkdir(directory, { mode: 0o700 })
+        const filepath = path.join(directory, basename)
         await fs.writeFile(filepath, data, { flag: "wx", mode: 0o600 })
         paths.push(filepath)
       }

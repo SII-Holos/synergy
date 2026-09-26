@@ -1,27 +1,34 @@
+import { RuntimeContext } from "../../lifecycle/context"
 import { Log } from "../../util/log"
 import type { GateOptions, ClassifyResult } from "../gate"
 import type { PolicyClassificationContext } from "./protocol"
 import { DEFAULT_POLICY_WORKER_POOL_OPTIONS, PolicyWorkerPool, type PolicyWorkerPoolOptions } from "./worker-pool"
 
 export namespace PolicyWorker {
-  let pool: PolicyWorkerPool | undefined
-  let options = DEFAULT_POLICY_WORKER_POOL_OPTIONS
-  let accepting = true
-  let stopPromise: Promise<void> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    pool: undefined as PolicyWorkerPool | undefined,
+    options: DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+    accepting: true,
+    stopPromise: undefined as Promise<void> | undefined,
+  }))
 
   const log = Log.create({ service: "policy.worker" })
 
   export function configure(input: Partial<PolicyWorkerPoolOptions> = {}): void {
-    if (pool) throw new Error("Policy worker pool cannot be reconfigured after it has started")
-    accepting = true
-    options = {
+    const instanceState = runtimeState()
+
+    if (instanceState.pool) throw new Error("Policy worker pool cannot be reconfigured after it has started")
+    instanceState.accepting = true
+    instanceState.options = {
       ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
       ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
     }
   }
 
   export function closeAdmission(): void {
-    accepting = false
+    const instanceState = runtimeState()
+
+    instanceState.accepting = false
   }
 
   export function context(options: GateOptions): PolicyClassificationContext {
@@ -47,10 +54,12 @@ export namespace PolicyWorker {
   }
 
   export function prewarm(): void {
-    if (!accepting || stopPromise) return
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting || instanceState.stopPromise) return
     try {
-      pool ??= new PolicyWorkerPool(options)
-      pool.start()
+      instanceState.pool ??= new PolicyWorkerPool(instanceState.options)
+      instanceState.pool.start()
     } catch (error) {
       // Option validation cannot succeed in any later attempt either; log it
       // and let the first classification surface the failure through lazy creation.
@@ -59,10 +68,12 @@ export namespace PolicyWorker {
   }
 
   export async function start(): Promise<void> {
-    if (!accepting || stopPromise) throw new Error("Policy worker pool is stopping")
-    pool ??= new PolicyWorkerPool(options)
-    pool.start()
-    await pool.ready()
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Policy worker pool is stopping")
+    instanceState.pool ??= new PolicyWorkerPool(instanceState.options)
+    instanceState.pool.start()
+    await instanceState.pool.ready()
   }
 
   export async function classify(input: {
@@ -71,11 +82,14 @@ export namespace PolicyWorker {
     args: Record<string, unknown>
     signal?: AbortSignal
   }): Promise<ClassifyResult> {
-    if (!accepting || stopPromise) return Promise.reject(new Error("Policy worker pool is stopping"))
-    pool ??= new PolicyWorkerPool(options)
-    pool.start()
-    await pool.ready(input.signal)
-    return await pool.run(
+    const instanceState = runtimeState()
+
+    if (!instanceState.accepting || instanceState.stopPromise)
+      return Promise.reject(new Error("Policy worker pool is stopping"))
+    instanceState.pool ??= new PolicyWorkerPool(instanceState.options)
+    instanceState.pool.start()
+    await instanceState.pool.ready(input.signal)
+    return await instanceState.pool.run(
       {
         context: input.context,
         toolName: input.toolName,
@@ -86,11 +100,13 @@ export namespace PolicyWorker {
   }
 
   export function stats() {
+    const instanceState = runtimeState()
+
     return (
-      pool?.stats() ?? {
-        configured: options.size,
-        maxQueued: options.maxQueued,
-        maxQueuedBytes: options.maxQueuedBytes,
+      instanceState.pool?.stats() ?? {
+        configured: instanceState.options.size,
+        maxQueued: instanceState.options.maxQueued,
+        maxQueuedBytes: instanceState.options.maxQueuedBytes,
         workers: 0,
         ready: 0,
         active: 0,
@@ -111,17 +127,19 @@ export namespace PolicyWorker {
   }
 
   export async function stop(): Promise<void> {
+    const instanceState = runtimeState()
+
     closeAdmission()
-    if (stopPromise) return stopPromise
-    const current = pool
-    stopPromise = (async () => {
+    if (instanceState.stopPromise) return instanceState.stopPromise
+    const current = instanceState.pool
+    instanceState.stopPromise = (async () => {
       await current?.stop()
-      if (pool === current) pool = undefined
+      if (instanceState.pool === current) instanceState.pool = undefined
     })()
     try {
-      await stopPromise
+      await instanceState.stopPromise
     } finally {
-      stopPromise = undefined
+      instanceState.stopPromise = undefined
     }
   }
 }

@@ -16,8 +16,9 @@ import { EnforcementError } from "@ericsanchezok/synergy-harness/enforcement/err
 import { formatExplanationForModel } from "@ericsanchezok/synergy-harness/sandbox/explain"
 import { LocalBashBackend } from "../../src/tools/bash/local"
 import { SandboxBackend } from "../../src/sandbox/backend"
-
-SandboxHost.register(SandboxBackend)
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
 // session/shell-containment-real-sandbox.test.ts
@@ -112,83 +113,86 @@ async function waitForPermission(sessionID: string, timeoutMs = 5_000) {
   return undefined
 }
 
-test("real Seatbelt denial is actionable and the guarded approval makes the retry succeed", async () => {
-  // The denial explanation needs the kernel audit channel, which is macOS-only.
-  if (process.platform !== "darwin") return
-  const probe = SandboxBackend.prepareWrapper({
-    command: "/usr/bin/true",
-    args: [],
-    workspace: process.cwd(),
-    sandboxMode: "workspace_write",
-  })
-  if (probe.skipReason) return
+test("real Seatbelt denial is actionable and the guarded approval makes the retry succeed", () =>
+  runtime.run(async () => {
+    // The denial explanation needs the kernel audit channel, which is macOS-only.
+    if (process.platform !== "darwin") return
+    const probe = SandboxBackend.prepareWrapper({
+      command: "/usr/bin/true",
+      args: [],
+      workspace: process.cwd(),
+      sandboxMode: "workspace_write",
+    })
+    if (probe.skipReason) return
 
-  await using tmp = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const originalRegistryTools = ToolRegistry.tools
-      ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
-      const session = await Session.create({ controlProfile: "guarded" })
-      // The kernel reports the resolved path, and macOS resolves `/var` to
-      // `/private/var`, so the expectation has to start from the real tmpdir.
-      const target = path.join(fs.realpathSync(os.tmpdir()), `synergy-p3-denied-${process.pid}-${Date.now()}.txt`)
-      // The redirect failure must decide the child's exit status. A trailing
-      // command that succeeds on its own would mask the refusal, and the bash
-      // backend deliberately surfaces a denial only when the child failed —
-      // otherwise a partially denied command that finished would be reported
-      // to the model as blocked. `|| exit 1` is what makes the refusal the
-      // command's outcome.
-      const command = `{ echo hi; } > "${target}" 2>&1 || exit 1; echo done`
-      try {
-        const { processor, bash } = await resolveBash(session.id)
+    await using tmp = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRegistryTools = ToolRegistry.tools
+        ;(ToolRegistry.tools as any) = mock(async () => [bashRegistryTool()])
+        const session = await Session.create({ controlProfile: "guarded" })
+        // The kernel reports the resolved path, and macOS resolves `/var` to
+        // `/private/var`, so the expectation has to start from the real tmpdir.
+        const target = path.join(fs.realpathSync(os.tmpdir()), `synergy-p3-denied-${process.pid}-${Date.now()}.txt`)
+        // The redirect failure must decide the child's exit status. A trailing
+        // command that succeeds on its own would mask the refusal, and the bash
+        // backend deliberately surfaces a denial only when the child failed —
+        // otherwise a partially denied command that finished would be reported
+        // to the model as blocked. `|| exit 1` is what makes the refusal the
+        // command's outcome.
+        const command = `{ echo hi; } > "${target}" 2>&1 || exit 1; echo done`
         try {
-          // ── First attempt: the kernel refuses the write ──────────────
-          const pending = waitForPermission(session.id)
-          const first = bash.execute({ command, description: "denied write" }, { toolCallId: "call_p3_real_first" })
-          const request = await pending
-          expect(request).toBeDefined()
-          // The ask names exactly the denied path, not a wildcard.
-          expect(request!.permission).toBe("external_directory")
-          expect(request!.patterns).toEqual([target])
-          await PermissionNext.reply({ requestID: request!.id, reply: "once" })
-          const firstError = await first.catch((error: unknown) => error)
-          expect(firstError).toBeInstanceOf(EnforcementError.SandboxBlocked)
-          const blocked = firstError as InstanceType<typeof EnforcementError.SandboxBlocked>
-          // The backend's own message names the denied path, so a bare EPERM
-          // never reaches the model. The access is what makes the denial
-          // approvable, and it is only knowable from the kernel audit record —
-          // the child's own error text names the path but never the operation.
-          expect(blocked.message).toContain(target)
-          expect(blocked.explanation?.path).toBe(target)
-          expect(blocked.explanation?.access).toBe("write")
-          // The resolver formats that explanation into the text the model sees.
-          const text = formatExplanationForModel(blocked.explanation, { controlProfile: "guarded" })
-          expect(text).toContain(target)
-          expect(text).toMatch(/execution-time boundary/i)
-          expect(text).toMatch(/partial side effects/i)
-          expect(text).not.toMatch(/Do not retry the same approach/i)
-          // The host file was never created.
-          expect(fs.existsSync(target)).toBe(false)
+          const { processor, bash } = await resolveBash(session.id)
+          try {
+            // ── First attempt: the kernel refuses the write ──────────────
+            const pending = waitForPermission(session.id)
+            const first = bash.execute({ command, description: "denied write" }, { toolCallId: "call_p3_real_first" })
+            const request = await pending
+            expect(request).toBeDefined()
+            // The ask names exactly the denied path, not a wildcard.
+            expect(request!.permission).toBe("external_directory")
+            expect(request!.patterns).toEqual([target])
+            await PermissionNext.reply({ requestID: request!.id, reply: "once" })
+            const firstError = await first.catch((error: unknown) => error)
+            expect(firstError).toBeInstanceOf(EnforcementError.SandboxBlocked)
+            const blocked = firstError as InstanceType<typeof EnforcementError.SandboxBlocked>
+            // The backend's own message names the denied path, so a bare EPERM
+            // never reaches the model. The access is what makes the denial
+            // approvable, and it is only knowable from the kernel audit record —
+            // the child's own error text names the path but never the operation.
+            expect(blocked.message).toContain(target)
+            expect(blocked.explanation?.path).toBe(target)
+            expect(blocked.explanation?.access).toBe("write")
+            // The resolver formats that explanation into the text the model sees.
+            const text = formatExplanationForModel(blocked.explanation, { controlProfile: "guarded" })
+            expect(text).toContain(target)
+            expect(text).toMatch(/execution-time boundary/i)
+            expect(text).toMatch(/partial side effects/i)
+            expect(text).not.toMatch(/Do not retry the same approach/i)
+            // The host file was never created.
+            expect(fs.existsSync(target)).toBe(false)
 
-          // ── Retry: the approved path is now a sandbox write root ─────
-          const second = await bash.execute(
-            { command, description: "retry after approval" },
-            { toolCallId: "call_p3_real_retry" },
-          )
-          expect(second.output).toContain("done")
-          expect(fs.existsSync(target)).toBe(true)
+            // ── Retry: the approved path is now a sandbox write root ─────
+            const second = await bash.execute(
+              { command, description: "retry after approval" },
+              { toolCallId: "call_p3_real_retry" },
+            )
+            expect(second.output).toContain("done")
+            expect(fs.existsSync(target)).toBe(true)
+          } finally {
+            processor.dispose("test")
+          }
         } finally {
-          processor.dispose("test")
+          SandboxSessionApproval.clear(session.id)
+          await Session.remove(session.id)
+          ;(ToolRegistry.tools as any) = originalRegistryTools
+          try {
+            fs.unlinkSync(target)
+          } catch {}
         }
-      } finally {
-        SandboxSessionApproval.clear(session.id)
-        await Session.remove(session.id)
-        ;(ToolRegistry.tools as any) = originalRegistryTools
-        try {
-          fs.unlinkSync(target)
-        } catch {}
-      }
-    },
-  })
-})
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

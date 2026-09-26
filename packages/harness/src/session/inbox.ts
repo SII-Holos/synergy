@@ -1,4 +1,5 @@
 import z from "zod"
+import { ModelSelection } from "./model-selection-schema"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Bus } from "../bus"
 import { BusEvent } from "../bus/bus-event"
@@ -25,6 +26,7 @@ import type { SessionManager } from "./manager"
 import { SessionHistory } from "./history"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { SessionRootVariant } from "./root-variant"
+import { SessionInputProgress } from "./input-progress"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -105,6 +107,7 @@ export namespace SessionInbox {
           system: z.string().optional(),
           tools: z.record(z.string(), z.boolean()).optional(),
           variant: z.string().optional(),
+          thinking: ModelSelection.Thinking.optional(),
         })
         .optional(),
       summaryPreview: z.string().optional(),
@@ -138,6 +141,9 @@ export namespace SessionInbox {
       z.object({
         status: z.literal("queued"),
         item: Item,
+        runID: Identifier.schema("message")
+          .optional()
+          .meta({ description: "Existing task run resumed by this input, when continuing a paused task" }),
       }),
     ])
     .meta({ ref: "SessionInputResult" })
@@ -170,6 +176,7 @@ export namespace SessionInbox {
         system: z.string().optional(),
         tools: z.record(z.string(), z.boolean()).optional(),
         variant: z.string().optional(),
+        thinking: ModelSelection.Thinking.optional(),
       }),
     })
     export const Output = z.object({
@@ -201,7 +208,10 @@ export namespace SessionInbox {
   }
 
   function publicItem(item: StoredItem): Item {
-    const message = item.mode === "task" || !item.message ? item.message : { ...item.message, variant: undefined }
+    const message =
+      item.mode === "task" || !item.message
+        ? item.message
+        : { ...item.message, variant: undefined, thinking: undefined }
     return Item.parse({
       id: item.id,
       sessionID: item.sessionID,
@@ -364,7 +374,12 @@ export namespace SessionInbox {
 
     const agent = await Agent.get(agentName ?? (await Agent.defaultAgent()))
     const inheritedModel = await lastModel(sessionID).catch(() => undefined)
-    const model = payload.model ?? session?.modelOverride ?? (await Agent.getAvailableModel(agent)) ?? inheritedModel
+    const model =
+      payload.model ??
+      session?.modelSelection?.selected.model ??
+      session?.modelOverride ??
+      (await Agent.getAvailableModel(agent)) ??
+      inheritedModel
     return {
       agent,
       model: model ?? { providerID: "system", modelID: "fallback" },
@@ -503,6 +518,7 @@ export namespace SessionInbox {
         system: input.message.system,
         tools: input.message.tools,
         variant: input.message.variant,
+        thinking: input.message.thinking,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -616,13 +632,14 @@ export namespace SessionInbox {
     return deliverUniqueWithPreparedMessage(input, writeItem)
   }
 
-  export async function enqueueUser(input: InvokeInput): Promise<Item> {
-    const itemID = Identifier.ascending("inbox")
-    const messageID = Identifier.ascending("message")
+  export async function enqueueUser(input: InvokeInput, options?: { mode: "task" | "steer" }): Promise<Item> {
+    await Session.assertWorkspaceAvailable(input.sessionID)
+    const messageID = input.messageID ?? Identifier.ascending("message")
+    const itemID = stableDeliveryItemID(input.sessionID, `user:${messageID}`)
     const { messageID: _queuedMessageID, ...queuedInput } = input
     const summarized = summarizeParts(input.parts)
     const origin = MessageV2.originFromMetadata(input.metadata)
-    const mode: ItemMode = input.noReply === true ? "steer" : "task"
+    const mode: ItemMode = options?.mode ?? (input.noReply === true ? "steer" : "task")
     let taskSession: Info | undefined
     if (mode === "task") {
       taskSession = await readSession(input.sessionID)
@@ -649,6 +666,7 @@ export namespace SessionInbox {
         system: input.system,
         tools: input.tools,
         variant: input.variant,
+        thinking: input.thinking,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -658,11 +676,36 @@ export namespace SessionInbox {
       detail: summarized.detail,
       source: { type: "user", label: "You" },
       time: { created: Date.now() },
-      orderKey: itemID,
+      orderKey: Identifier.ascending("inbox"),
       messageID,
       input: queuedInput,
     }
-    const stored = await writeItem(item)
+    const admitted = await Storage.transaction(async () => {
+      const session = taskSession ?? (await readSession(input.sessionID))
+      const root = StoragePath.sessionRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id))
+      const [existing, receipt] = await Storage.readMany<StoredItem | { messageID: string }>([
+        StoragePath.sessionInboxItem(
+          Identifier.asScopeID(session.scope.id),
+          Identifier.asSessionID(session.id),
+          itemID,
+        ),
+        [...root, "inbox-materialized", itemID],
+      ])
+      if (existing && "id" in existing) return { stored: normalizeStored(existing), created: false }
+      if (receipt) return { stored: item, created: false }
+      if (taskSession) {
+        const { RolloutLedger } = await import("./rollout/ledger")
+        const { RolloutLifecycle } = await import("./rollout/lifecycle")
+        const run = await RolloutLedger.getRun(RolloutLifecycle.owner(taskSession), messageID).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return
+          throw error
+        })
+        if (run && ["cancelled", "completed", "failed"].includes(run.status)) return { stored: item, created: false }
+      }
+      return { stored: await writeItem(item), created: true }
+    })
+    const stored = admitted.stored
+    if (!admitted.created) return publicItem(stored)
     if (taskSession) {
       // Open a lightweight run shell (no configuration or provenance) so
       // status polls and cancellation observe a durable record immediately;
@@ -810,6 +853,61 @@ export namespace SessionInbox {
     await removeItems(input.sessionID, [input.itemID])
   }
 
+  type RemovedItem = { item: StoredItem; restoredAt?: number }
+
+  export async function listRemoved(sessionID: string): Promise<Item[]> {
+    const session = await readSession(sessionID)
+    const keys = await Storage.list(
+      StoragePath.sessionInboxRemovedRoot(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(sessionID)),
+    )
+    const records = await Storage.readMany<RemovedItem>(keys)
+    return sortItems(records.flatMap((record) => (record && !record.restoredAt ? [publicItem(record.item)] : [])))
+  }
+
+  export async function removeForRestore(input: { sessionID: string; itemID: string }): Promise<void> {
+    await Storage.transaction(async () => {
+      const session = await readSession(input.sessionID)
+      const scopeID = Identifier.asScopeID(session.scope.id)
+      const sessionID = Identifier.asSessionID(input.sessionID)
+      const key = StoragePath.sessionInboxRemovedItem(scopeID, sessionID, input.itemID)
+      const [active, removed] = await Storage.readMany<StoredItem | RemovedItem>([
+        StoragePath.sessionInboxItem(scopeID, sessionID, input.itemID),
+        key,
+      ])
+      if (!active && removed && "item" in removed) return
+      const item = await assertMutable(input)
+      await Storage.write(key, { item } satisfies RemovedItem)
+      await removeItems(input.sessionID, [input.itemID])
+    })
+  }
+
+  export async function restore(input: {
+    sessionID: string
+    itemID: string
+  }): Promise<{ item: Item; restored: boolean }> {
+    return Storage.transaction(async () => {
+      const session = await readSession(input.sessionID)
+      const scopeID = Identifier.asScopeID(session.scope.id)
+      const sessionID = Identifier.asSessionID(input.sessionID)
+      const key = StoragePath.sessionInboxRemovedItem(scopeID, sessionID, input.itemID)
+      const record = await Storage.read<RemovedItem>(key)
+      if (record.restoredAt) return { item: publicItem(record.item), restored: false }
+      const { RolloutLedger } = await import("./rollout/ledger")
+      const { RolloutLifecycle } = await import("./rollout/lifecycle")
+      const run = await RolloutLedger.getRun(RolloutLifecycle.owner(session), record.item.messageID).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return
+        throw error
+      })
+      if (run && (run.status === "cancelled" || run.status === "completed")) {
+        throw new ItemFailedError({ message: "This input has already completed or been cancelled.", ...input })
+      }
+      const restored = await writeItem(record.item, true)
+      // Retain the receipt after consumption so a lost restore response cannot enqueue the same input again.
+      await Storage.write(key, { item: restored, restoredAt: Date.now() } satisfies RemovedItem)
+      return { item: publicItem(restored), restored: true }
+    })
+  }
+
   async function drainWhere(sessionID: string, predicate: (item: StoredItem) => boolean): Promise<StoredItem[]> {
     return Storage.transaction(async () => {
       const items = await listStored(sessionID)
@@ -865,7 +963,10 @@ export namespace SessionInbox {
     return items.find((item) => item.mode === "task" && item.status !== "failed")
   }
 
-  export async function fenceQueuedWork(sessionID: string, onFence: (createdBefore: number) => void): Promise<number> {
+  export async function fenceQueuedWork(
+    sessionID: string,
+    onFence: (createdBefore: number, items: StoredItem[]) => void,
+  ): Promise<number> {
     return Storage.transaction(async () => {
       let removed: number
       {
@@ -874,7 +975,12 @@ export namespace SessionInbox {
         const createdBefore =
           SessionManager.fenceQueuedBefore(sessionID) ??
           Math.max(Date.now(), ...items.map((item) => item.time.created)) + 1
-        Storage.afterCommit(() => onFence(createdBefore))
+        Storage.afterCommit(() =>
+          onFence(
+            createdBefore,
+            items.filter((item) => item.time.created < createdBefore),
+          ),
+        )
         removed = await removeByModesUnlocked(sessionID, ["task", "steer", "context"], createdBefore)
       }
       if (removed > 0) await publish(sessionID)
@@ -912,7 +1018,10 @@ export namespace SessionInbox {
     options?: { guiding?: boolean },
   ): Promise<MessageV2.WithParts | undefined> {
     try {
-      return await materializeStoredItem(item, rootID, options)
+      return await SessionInputProgress.run(
+        { sessionID: item.sessionID, messageID: item.messageID, itemID: item.id },
+        () => materializeStoredItem(item, rootID, options),
+      )
     } catch (error) {
       if (item.mode !== "task" && error instanceof Attachment.InvalidUrlError)
         await parkTaskFailure(item.sessionID, item, error.message)
@@ -982,9 +1091,34 @@ export namespace SessionInbox {
 
       const origin = payload.origin ?? { type: "user" as const }
       const runtime = await resolveUserRuntime(item.sessionID, payload)
-      const variant = isRoot
-        ? await SessionRootVariant.resolveForRoot({ explicit: payload.variant, ...runtime })
+      const selected = (await Session.get(item.sessionID)).modelSelection?.selected
+      const thinking = isRoot
+        ? (payload.thinking ??
+          (selected &&
+          ModelSelection.key(selected.model) === ModelSelection.key(runtime.model) &&
+          payload.variant === undefined
+            ? selected.thinking
+            : undefined))
         : undefined
+      const variant = thinking
+        ? thinking.mode === "variant"
+          ? thinking.variant
+          : thinking.mode === "off"
+            ? "off"
+            : undefined
+        : isRoot
+          ? await SessionRootVariant.resolveForRoot({ explicit: payload.variant, ...runtime })
+          : undefined
+      if (
+        isRoot &&
+        (payload.thinking ||
+          payload.variant ||
+          (payload.model && selected && ModelSelection.key(payload.model) !== ModelSelection.key(selected.model)))
+      )
+        await Session.setModelSelection(item.sessionID, {
+          model: runtime.model,
+          thinking: thinking ?? ModelSelection.fromVariant(variant),
+        })
       const summary =
         payload.summary?.title || payload.summary?.body
           ? {
@@ -1018,6 +1152,7 @@ export namespace SessionInbox {
         ...(payload.system ? { system: payload.system } : {}),
         ...(payload.tools ? { tools: payload.tools } : {}),
         ...(variant ? { variant } : {}),
+        ...(thinking ? { thinking } : {}),
       }
       return SessionUserMessageMaterialization.write({ info, parts }, commitOptions)
     }
@@ -1037,7 +1172,7 @@ export namespace SessionInbox {
       finish: "stop",
       cost: 0,
       tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-      path: { cwd: ScopeContext.current.directory, root: ScopeContext.current.directory },
+      path: { cwd: ScopeContext.current.workspace?.path ?? null, root: ScopeContext.current.workspace?.path ?? null },
       modelID: assistantModel.modelID,
       providerID: assistantModel.providerID,
       visible: payload.visible,
@@ -1133,8 +1268,15 @@ export namespace SessionInbox {
     return true
   }
 
+  export async function failScheduledTask(sessionID: string): Promise<void> {
+    const task = await peekTask(sessionID)
+    if (task)
+      await parkTaskFailure(sessionID, task, "The saved message could not be scheduled. Retry to resume processing.")
+  }
+
   /** Clear a parked failure so the item becomes runnable again. */
   export async function rearm(input: { sessionID: string; itemID: string }): Promise<Item> {
+    SessionInputProgress.clearFailure(input.sessionID)
     const item = await getStored(input.sessionID, input.itemID)
     if (item.status !== "failed") return publicItem(item)
     // The failed materialization terminalized this task's rollout before the

@@ -39,7 +39,7 @@ describe("Browser native view manager", () => {
       () => {},
     )
     const hiddenRequest: BrowserNativeAttachRequest & { visible: boolean } = {
-      protocolVersion: 2,
+      protocolVersion: 3,
       ownerKey: "scope:test:session:test",
       pageId: "page-test",
       bounds: { x: 12, y: 24, width: 640, height: 480 },
@@ -81,7 +81,7 @@ describe("Browser native view manager", () => {
     )
 
     await manager.attach({
-      protocolVersion: 2,
+      protocolVersion: 3,
       ownerKey: "scope:test:session:test",
       pageId: "page-test",
     })
@@ -135,7 +135,7 @@ describe("Browser native view manager", () => {
       () => {},
     )
     await manager.attach({
-      protocolVersion: 2,
+      protocolVersion: 3,
       ownerKey: "scope:test:session:generation",
       pageId: "page-generation",
     })

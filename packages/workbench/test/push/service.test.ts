@@ -8,6 +8,9 @@ import { PushStore } from "../../src/push/store"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 type SentCall = {
   subscription: { endpoint: string; keys: { p256dh: string; auth: string } }
@@ -55,125 +58,134 @@ function recordingSender(behavior: (endpoint: string) => { status: number } | un
   return { calls, send }
 }
 
-afterEach(() => {
-  PushService.resetSender()
-})
+afterEach(() =>
+  runtime.run(() => {
+    PushService.resetSender()
+  }),
+)
 
 describe("PushService.send", () => {
-  test("sends nothing when there are no subscriptions", async () => {
-    await withIsolatedHome(async () => {
-      const { calls, send } = recordingSender()
-      PushService.setSender(send)
-      await PushService.send({
-        title: "Response ready",
-        body: "s",
-        href: "/x",
-        tag: "t",
-        category: "completion",
+  test("sends nothing when there are no subscriptions", () =>
+    runtime.run(async () => {
+      await withIsolatedHome(async () => {
+        const { calls, send } = recordingSender()
+        PushService.setSender(send)
+        await PushService.send({
+          title: "Response ready",
+          body: "s",
+          href: "/x",
+          tag: "t",
+          category: "completion",
+        })
+        expect(calls).toHaveLength(0)
       })
-      expect(calls).toHaveLength(0)
-    })
-  })
+    }))
 
-  test("fans out to all devices with per-category TTL/urgency", async () => {
-    await withIsolatedHome(async () => {
-      await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
-      await PushStore.upsert({ endpoint: FCM, keys: { p256dh: "c", auth: "d" } })
-      const { calls, send } = recordingSender()
-      PushService.setSender(send)
+  test("fans out to all devices with per-category TTL/urgency", () =>
+    runtime.run(async () => {
+      await withIsolatedHome(async () => {
+        await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
+        await PushStore.upsert({ endpoint: FCM, keys: { p256dh: "c", auth: "d" } })
+        const { calls, send } = recordingSender()
+        PushService.setSender(send)
 
-      await PushService.send({
-        title: "Session needs your input",
-        body: "s",
-        href: "/x",
-        tag: "input-1",
-        category: "input",
+        await PushService.send({
+          title: "Session needs your input",
+          body: "s",
+          href: "/x",
+          tag: "input-1",
+          category: "input",
+        })
+        expect(calls).toHaveLength(2)
+        for (const call of calls) {
+          expect(call.options.TTL).toBe(3600)
+          expect(call.options.urgency).toBe("high")
+          const payload = JSON.parse(call.payload)
+          expect(payload.category).toBe("input")
+          expect(payload.title).toBe("Session needs your input")
+          expect(call.options.vapidDetails!.publicKey).toBeTruthy()
+          expect(call.options.vapidDetails!.privateKey).toBeTruthy()
+          expect(call.options.vapidDetails!.subject).toBe("https://github.com/SII-Holos/synergy")
+        }
+
+        await PushService.send({
+          title: "Response ready",
+          body: "s",
+          href: "/x",
+          tag: "session-1",
+          category: "completion",
+          badge: 3,
+        })
+        const completionCall = calls.find((c) => c.payload.includes("completion"))!
+        expect(completionCall.options.TTL).toBe(300)
+        expect(completionCall.options.urgency).toBe("normal")
+        expect(JSON.parse(completionCall.payload).badge).toBe(3)
       })
-      expect(calls).toHaveLength(2)
-      for (const call of calls) {
-        expect(call.options.TTL).toBe(3600)
-        expect(call.options.urgency).toBe("high")
-        const payload = JSON.parse(call.payload)
-        expect(payload.category).toBe("input")
-        expect(payload.title).toBe("Session needs your input")
-        expect(call.options.vapidDetails!.publicKey).toBeTruthy()
-        expect(call.options.vapidDetails!.privateKey).toBeTruthy()
-        expect(call.options.vapidDetails!.subject).toBe("https://github.com/SII-Holos/synergy")
-      }
+    }))
 
-      await PushService.send({
-        title: "Response ready",
-        body: "s",
-        href: "/x",
-        tag: "session-1",
-        category: "completion",
-        badge: 3,
+  test("filters by per-subscription categories", () =>
+    runtime.run(async () => {
+      await withIsolatedHome(async () => {
+        await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
+        await PushStore.upsert({
+          endpoint: FCM,
+          keys: { p256dh: "c", auth: "d" },
+          categories: { completion: false, error: true, input: false },
+        })
+        const { calls, send } = recordingSender()
+        PushService.setSender(send)
+
+        await PushService.send({
+          title: "Response ready",
+          body: "s",
+          href: "/x",
+          tag: "session-1",
+          category: "completion",
+        })
+        expect(calls).toHaveLength(1)
+        expect(calls[0]!.subscription.endpoint).toBe(APPLE)
+
+        calls.length = 0
+        await PushService.send({ title: "T", body: "s", href: "/x", tag: "push-test", category: "test" })
+        expect(calls).toHaveLength(2)
       })
-      const completionCall = calls.find((c) => c.payload.includes("completion"))!
-      expect(completionCall.options.TTL).toBe(300)
-      expect(completionCall.options.urgency).toBe("normal")
-      expect(JSON.parse(completionCall.payload).badge).toBe(3)
-    })
-  })
+    }))
 
-  test("filters by per-subscription categories", async () => {
-    await withIsolatedHome(async () => {
-      await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
-      await PushStore.upsert({
-        endpoint: FCM,
-        keys: { p256dh: "c", auth: "d" },
-        categories: { completion: false, error: true, input: false },
+  test("prunes subscription on 410 and keeps other devices delivering", () =>
+    runtime.run(async () => {
+      await withIsolatedHome(async () => {
+        const stale = await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
+        await PushStore.upsert({ endpoint: FCM, keys: { p256dh: "c", auth: "d" } })
+        const { calls, send } = recordingSender((endpoint) => (endpoint === APPLE ? { status: 410 } : undefined))
+        PushService.setSender(send)
+
+        await PushService.send({ title: "T", body: "s", href: "/x", tag: "t", category: "error" })
+        expect(calls).toHaveLength(2)
+
+        const remaining = await PushStore.list()
+        expect(remaining).toHaveLength(1)
+        expect(remaining[0]!.id).not.toBe(stale.id)
+
+        calls.length = 0
+        await PushService.send({ title: "T", body: "s", href: "/x", tag: "t", category: "error" })
+        expect(calls).toHaveLength(1)
+        expect(calls[0]!.subscription.endpoint).toBe(FCM)
       })
-      const { calls, send } = recordingSender()
-      PushService.setSender(send)
+    }))
 
-      await PushService.send({
-        title: "Response ready",
-        body: "s",
-        href: "/x",
-        tag: "session-1",
-        category: "completion",
+  test("non-410 endpoint errors never propagate and never prune", () =>
+    runtime.run(async () => {
+      await withIsolatedHome(async () => {
+        const sub = await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
+        const { send } = recordingSender(() => ({ status: 500 }))
+        PushService.setSender(send)
+
+        await PushService.send({ title: "T", body: "s", href: "/x", tag: "t", category: "error" })
+        const remaining = await PushStore.list()
+        expect(remaining).toHaveLength(1)
+        expect(remaining[0]!.id).toBe(sub.id)
       })
-      expect(calls).toHaveLength(1)
-      expect(calls[0]!.subscription.endpoint).toBe(APPLE)
-
-      calls.length = 0
-      await PushService.send({ title: "T", body: "s", href: "/x", tag: "push-test", category: "test" })
-      expect(calls).toHaveLength(2)
-    })
-  })
-
-  test("prunes subscription on 410 and keeps other devices delivering", async () => {
-    await withIsolatedHome(async () => {
-      const stale = await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
-      await PushStore.upsert({ endpoint: FCM, keys: { p256dh: "c", auth: "d" } })
-      const { calls, send } = recordingSender((endpoint) => (endpoint === APPLE ? { status: 410 } : undefined))
-      PushService.setSender(send)
-
-      await PushService.send({ title: "T", body: "s", href: "/x", tag: "t", category: "error" })
-      expect(calls).toHaveLength(2)
-
-      const remaining = await PushStore.list()
-      expect(remaining).toHaveLength(1)
-      expect(remaining[0]!.id).not.toBe(stale.id)
-
-      calls.length = 0
-      await PushService.send({ title: "T", body: "s", href: "/x", tag: "t", category: "error" })
-      expect(calls).toHaveLength(1)
-      expect(calls[0]!.subscription.endpoint).toBe(FCM)
-    })
-  })
-
-  test("non-410 endpoint errors never propagate and never prune", async () => {
-    await withIsolatedHome(async () => {
-      const sub = await PushStore.upsert({ endpoint: APPLE, keys: { p256dh: "a", auth: "b" } })
-      const { send } = recordingSender(() => ({ status: 500 }))
-      PushService.setSender(send)
-
-      await PushService.send({ title: "T", body: "s", href: "/x", tag: "t", category: "error" })
-      const remaining = await PushStore.list()
-      expect(remaining).toHaveLength(1)
-      expect(remaining[0]!.id).toBe(sub.id)
-    })
-  })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

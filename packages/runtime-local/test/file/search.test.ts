@@ -5,32 +5,38 @@ import { Ripgrep } from "../../src/file/ripgrep"
 import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 describe("File.search", () => {
-  test("returns paths collected before the index output limit is reached", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        await Bun.write(path.join(dir, "partial.ts"), "export const partial = true")
-      },
-    })
-
-    const originalFiles = Ripgrep.files
-    const mutableRipgrep = Ripgrep as { files: typeof Ripgrep.files }
-    mutableRipgrep.files = async function* () {
-      yield "partial.ts"
-      throw new ProcessOutput.LimitError("max_output_bytes", 20 * 1024 * 1024)
-    }
-
-    try {
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          await expect(File.search({ query: "partial", type: "file" })).resolves.toEqual(["partial.ts"])
+  test("returns paths collected before the index output limit is reached", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "partial.ts"), "export const partial = true")
         },
       })
-    } finally {
-      mutableRipgrep.files = originalFiles
-    }
-  })
+
+      const originalFiles = Ripgrep.files
+      const mutableRipgrep = Ripgrep as { files: typeof Ripgrep.files }
+      mutableRipgrep.files = async function* () {
+        yield "partial.ts"
+        throw new ProcessOutput.LimitError("max_output_bytes", 20 * 1024 * 1024)
+      }
+
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            await expect(File.search({ query: "partial", type: "file" })).resolves.toEqual(["partial.ts"])
+          },
+        })
+      } finally {
+        mutableRipgrep.files = originalFiles
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

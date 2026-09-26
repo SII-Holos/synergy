@@ -11,6 +11,10 @@
         {
           "glob": "src/main.ts",
           "reason": "Electron main-process entry; launches the full desktop runtime"
+        },
+        {
+          "glob": "src/browser-page-preload.ts",
+          "reason": "Electron page preload is compiled and exercised by test/browser-runtime-smoke.test.ts for prompt defaults, text, empty acceptance and cancellation; child Electron execution does not contribute coverage to Bun."
         }
       ]
     },
@@ -379,6 +383,10 @@
           "reason": "Solid presentation is exercised in test/components/session/session-preparation.dom.test.tsx with real Chromium, readiness gating, retries, quarantine, navigation/server cancellation and reactive localization. Bun cannot instrument Vite/browser execution; session-preparation-controller.ts remains measured by unit tests."
         },
         {
+          "glob": "src/components/session/session-tag-menu.tsx",
+          "reason": "Rendered by test/components/session/session-tag-menu.dom.test.tsx in real Chromium, covering failed-save input retention, serialized pending edits, delayed events, localization and Escape dismissal. Bun cannot instrument Vite/browser execution; session-tag-filter.ts remains measured by unit tests."
+        },
+        {
           "glob": "src/components/session/dialog-fork-confirm.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -503,8 +511,8 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/components/ModelVariantPicker.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
+          "glob": "src/components/provider/model-thinking-picker.tsx",
+          "reason": "shared picker renders through Solid/browser; browser tests cover selection, layering, keyboard and focus"
         },
         {
           "glob": "src/components/settings/components/PasswordField.tsx",
@@ -1157,6 +1165,50 @@
         {
           "glob": "src/plugin/surface-overlays.tsx",
           "reason": "owned overlay lifecycle exercised in test/plugin/overlays.dom.test.ts through the browser; Bun instrumentation cannot observe the portal runtime"
+        },
+        {
+          "glob": "src/components/file-workbench/entry-dialog.tsx",
+          "reason": "Entry operation dialog executes in real Chromium under test/components/dialog/file-entry-dialog.dom.test.ts; Bun coverage does not instrument the Vite browser bundle"
+        },
+        {
+          "glob": "src/components/agenda/series-list.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/agenda/series-list.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/app-shell/mobile-drawer-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/app-shell/mobile-tools-drawer.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/performance/snapshot-boundary.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/performance/snapshot-boundary.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/search/session-search-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/search/session-search-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/session/pending-timeline-item.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/session/session-recovery.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/session/request-submission-notice.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/sidebar/sidebar-section-button.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/sidebar/sidebar-collections.dom.test.tsx and test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/top-bar/workspace-location-button.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/toolbar-selector.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/workspace/browser/page-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/workspace/browser/browser-interaction.dom.test.tsx; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
+        },
+        {
+          "glob": "src/components/workspace/mobile-workspace-dialog.tsx",
+          "reason": "Solid wrapper behavior is verified in test/components/workspace/mobile-workspace-dialog.dom.test.ts; the Vite-compiled Chromium bundle does not contribute TSX coverage to Bun."
         }
       ]
     },
@@ -1191,7 +1243,7 @@
       ]
     },
     "packages/browser": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1434,6 +1486,10 @@
         {
           "glob": "src/storage/sqlite-worker.ts",
           "reason": "dedicated IPC child process exercised by test/storage/transactional-store.test.ts and test/storage/crash-recovery.test.ts, including committed snapshots, rollback, owner loss and process-group cancellation; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/process/handle.ts",
+          "reason": "types-only ProcessHandle contract; no runtime implementation"
         }
       ]
     },
@@ -1479,7 +1535,7 @@
       ]
     },
     "packages/plugin": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1531,7 +1587,7 @@
       ]
     },
     "packages/plugin-kit": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1579,10 +1635,6 @@
           "reason": "source worker composition entry runs in a child process; real IPC, SDK retry and shutdown behavior is verified by test/session/agent-worker-process.test.ts, and installed/compiled CLI behavior by packages/cli/test/cli/artifact.test.ts; Bun does not merge child-process coverage"
         },
         {
-          "glob": "src/process/pty.ts",
-          "reason": "process/PTY handling requires real child-process runtime"
-        },
-        {
           "glob": "src/sandbox/index.ts",
           "reason": "barrel re-export"
         },
@@ -1593,11 +1645,19 @@
         {
           "glob": "src/tools/process/shared.ts",
           "reason": "tool implementations require live tool runtime context"
+        },
+        {
+          "glob": "src/policy-worker.ts",
+          "reason": "source policy worker entry runs in a child process; test/enforcement/policy-worker-process.test.ts verifies the production local composition, classifier parity and shutdown across IPC; Bun does not merge child-process coverage"
+        },
+        {
+          "glob": "src/process/owned-worker.ts",
+          "reason": "Native process worker executes in a separate launchd process; test/process/owned-process.test.ts and test/process/pty.test.ts verify activation, output, descendant lifetime and crash cleanup; Bun does not merge worker coverage"
         }
       ]
     },
     "packages/sdk/js": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1661,7 +1721,7 @@
       ]
     },
     "packages/synergy-link": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -1675,7 +1735,7 @@
       ]
     },
     "packages/synergy-link-protocol": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -2043,7 +2103,7 @@
       ]
     },
     "packages/util": {
-      "command": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 80,
@@ -2109,7 +2169,7 @@
       ]
     },
     "packages/secret-detection": {
-      "command": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage test/",
+      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
       "lcov": "coverage/lcov.info",
       "thresholds": {
         "lines": 85,

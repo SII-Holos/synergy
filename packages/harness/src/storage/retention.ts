@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "./storage"
 import { Log } from "../util/log"
 import { SqliteMaintenance } from "./sqlite-maintenance"
@@ -45,6 +46,7 @@ export namespace StorageRetention {
     protectedByWindow: number
     protectedLive: number
     pruned: Array<{ key: string[]; records: number }>
+    deferred: Array<{ key: string[]; reason: "records" | "nodes" | "artifacts" }>
     deletedRecords: number
     releasedPages: number
     footprintBytes: number
@@ -66,6 +68,7 @@ export namespace StorageRetention {
 
   const SWEEP_INTERVAL_MS = 15 * 60_000
   const DEFAULT_BUDGET_MS = 500
+  export const ONLINE_LIMITS = { records: 2048, nodes: 4096, artifacts: 256 }
   const RECLAIM_PAGES = 8192
   // A store that stays over budget after a pass is not converging on its own;
   // repeating the same destructive pass every tick would keep paying its cost
@@ -87,6 +90,11 @@ export namespace StorageRetention {
   // artifact migration, notification reconciliation), so a restart resumes from
   // the measured rate instead of re-learning it.
   export const INGRESS_KEY = ["storage_meta", "retention-ingress"]
+  const DEFERRED_KEY = ["storage_meta", "retention-deferred"]
+  export async function deferred() {
+    const [value] = await Storage.current().store.readMany<{ owners: number; updatedAt: number }>([DEFERRED_KEY])
+    return value ?? { owners: 0, updatedAt: 0 }
+  }
   // The worker never sets `page_size`, so a page a pass released is SQLite's
   // documented 4096 bytes. Reading the real value would put a statement on the
   // sweep whose whole point is to decide its work from signals it already has.
@@ -102,10 +110,12 @@ export namespace StorageRetention {
     sampledAt: number
     ingressBytesPerMs?: number
   }
-  let timer: ReturnType<typeof setInterval> | undefined
-  let running: Promise<Report> | undefined
-  let consecutiveCapped = 0
-  let cooldownUntil = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    timer: undefined as ReturnType<typeof setInterval> | undefined,
+    running: undefined as Promise<Report> | undefined,
+    consecutiveCapped: 0,
+    cooldownUntil: 0,
+  }))
 
   export function isEnabled(retentionMs: number | undefined): retentionMs is number {
     return typeof retentionMs === "number" && Number.isFinite(retentionMs) && retentionMs > 0
@@ -152,17 +162,19 @@ export namespace StorageRetention {
     current(): { retentionMs: number; maxBytes: number }
     liveSessionIDs(): string[]
   }) {
+    const instanceState = runtimeState()
+
     stop()
-    timer = setInterval(() => {
-      if (running) return
-      if (Date.now() < cooldownUntil) return
+    instanceState.timer = setInterval(() => {
+      if (instanceState.running) return
+      if (Date.now() < instanceState.cooldownUntil) return
       const config = input.current()
       if (!isEnabled(config.retentionMs)) return
-      running = run({ ...config, liveSessionIDs: input.liveSessionIDs() })
+      instanceState.running = run({ ...config, liveSessionIDs: input.liveSessionIDs })
         .then((report) => {
-          consecutiveCapped = report.capped ? consecutiveCapped + 1 : 0
-          cooldownUntil = report.capped
-            ? Date.now() + BACKOFF_BASE_MS * 2 ** Math.min(consecutiveCapped - 1, BACKOFF_MAX_STEPS)
+          instanceState.consecutiveCapped = report.capped ? instanceState.consecutiveCapped + 1 : 0
+          instanceState.cooldownUntil = report.capped
+            ? Date.now() + BACKOFF_BASE_MS * 2 ** Math.min(instanceState.consecutiveCapped - 1, BACKOFF_MAX_STEPS)
             : 0
           return report
         })
@@ -184,17 +196,19 @@ export namespace StorageRetention {
           return undefined as unknown as Report
         })
         .finally(() => {
-          running = undefined
+          instanceState.running = undefined
         }) as Promise<Report>
     }, SWEEP_INTERVAL_MS)
-    timer.unref()
+    instanceState.timer.unref()
   }
 
   export function stop() {
-    if (timer) clearInterval(timer)
-    timer = undefined
-    consecutiveCapped = 0
-    cooldownUntil = 0
+    const instanceState = runtimeState()
+
+    if (instanceState.timer) clearInterval(instanceState.timer)
+    instanceState.timer = undefined
+    instanceState.consecutiveCapped = 0
+    instanceState.cooldownUntil = 0
   }
 
   export function protectedOwners(input: {
@@ -224,10 +238,9 @@ export namespace StorageRetention {
 
   /**
    * Enumerates evidence owners with the recency of their newest record. The scan
-   * reads only keys and timestamps, never record bodies, so it stays bounded
-   * by owner count rather than by how much evidence an owner holds; it is still
-   * the single most expensive statement in a pass, which is why a pass reaches
-   * it only once the store is already over budget.
+   * reads indexed owner columns and timestamps, never record bodies. Its cost
+   * still grows with the evidence record count, so a pass reaches it only once
+   * the store is already over budget.
    */
   export async function owners(): Promise<Owner[]> {
     const rows = await Storage.current().store.evidenceOwners()
@@ -248,20 +261,25 @@ export namespace StorageRetention {
   export async function run(input: {
     retentionMs: number | undefined
     maxBytes: number
-    liveSessionIDs: Iterable<string>
+    liveSessionIDs: Iterable<string> | (() => Iterable<string>)
     now?: number
     budgetMs?: number
+    maintenance?: boolean
+    signal?: AbortSignal
   }): Promise<Report> {
     const handle = Storage.current()
     const filename = handle.store.sqliteFilename
     const footprint = () => (filename ? SqliteMaintenance.physicalFootprint(filename) : 0)
     const sampledAt = input.now ?? Date.now()
+    const liveSessionIDs = () =>
+      typeof input.liveSessionIDs === "function" ? input.liveSessionIDs() : input.liveSessionIDs
     const startFootprintBytes = footprint()
     const empty: Report = {
       considered: 0,
       protectedByWindow: 0,
       protectedLive: 0,
       pruned: [],
+      deferred: [],
       deletedRecords: 0,
       releasedPages: 0,
       footprintBytes: startFootprintBytes,
@@ -271,11 +289,15 @@ export namespace StorageRetention {
       ingressBytesPerMs: undefined,
       infeasible: false,
     }
-    if (!isEnabled(input.retentionMs)) return empty
+    const clearOfflineDeferral = async () => {
+      if (input.maintenance) await handle.store.write(DEFERRED_KEY, { owners: 0, updatedAt: sampledAt })
+      return empty
+    }
+    if (!isEnabled(input.retentionMs)) return clearOfflineDeferral()
     // The budget gates the pass, so it is read before any enumeration: an
     // over-budget recovery is the only reason to pay for the owner scan.
     const overBudget = () => !filename || footprint() > input.maxBytes
-    if (!overBudget()) return empty
+    if (!overBudget()) return clearOfflineDeferral()
 
     const previous = filename ? await readIngressSample(handle.store) : undefined
     const effective = deriveWindow({
@@ -358,7 +380,7 @@ export namespace StorageRetention {
     const { candidates, protectedByWindow, protectedLive } = protectedOwners({
       owners: all,
       retentionMs: effective.windowMs,
-      liveSessionIDs: input.liveSessionIDs,
+      liveSessionIDs: liveSessionIDs(),
       now: input.now,
     })
     const report: Report = {
@@ -375,16 +397,34 @@ export namespace StorageRetention {
     // evidence protecting this budget is outside it. That is what the
     // scheduler's capped backoff bounds, so this pass neither loops here nor
     // reports a condition the next sweep resolves.
-    const deadline = performance.now() + (input.budgetMs ?? DEFAULT_BUDGET_MS)
+    const deadline = performance.now() + (input.budgetMs ?? (input.maintenance ? Infinity : DEFAULT_BUDGET_MS))
     for (const owner of candidates) {
+      input.signal?.throwIfAborted()
       if (!overBudget() || performance.now() > deadline) break
       // Re-check liveness immediately before deleting: a session can start
       // between enumeration and this prune.
-      if (owner.kind === "session" && new Set(input.liveSessionIDs).has(owner.id)) continue
-      const removed = await handle.store.pruneTree(owner.key)
-      report.pruned.push({ key: owner.key, records: removed })
-      report.deletedRecords += removed
+      const result = input.maintenance
+        ? {
+            records: await handle.store.transaction((tx) =>
+              tx.pruneTree(owner.key, { maintenance: true, signal: input.signal }),
+            ),
+            deferred: undefined,
+          }
+        : await handle.store.pruneTreeWithinBudget(owner.key, {
+            limits: ONLINE_LIMITS,
+            cutoff: sampledAt - effective.windowMs,
+            active: () => owner.kind === "session" && new Set(liveSessionIDs()).has(owner.id),
+          })
+      if (result.deferred === "active") report.protectedLive++
+      else if (result.deferred === "recent") report.protectedByWindow++
+      else if (result.deferred) report.deferred.push({ key: owner.key, reason: result.deferred })
+      else {
+        report.pruned.push({ key: owner.key, records: result.records })
+        report.deletedRecords += result.records
+      }
     }
+    if (report.deferred.length || input.maintenance)
+      await handle.store.write(DEFERRED_KEY, { owners: report.deferred.length, updatedAt: sampledAt })
     // Reclaim only when this pass returned bytes; an unconditional reclaim would
     // pay the checkpoint and vacuum cost on every tick including the ones that
     // pruned nothing.

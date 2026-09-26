@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { createHash } from "crypto"
 import fs from "fs/promises"
 import { authLockDirectory, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
@@ -148,16 +149,20 @@ export namespace SecretVault {
     await fs.rename(tmp, filename)
   }
 
-  const locks = new Map<string, Promise<unknown>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    locks: new Map<string, Promise<unknown>>(),
+  }))
 
   async function mutate<T>(fn: (store: Store) => Promise<T> | T): Promise<T> {
-    const previous = locks.get("secret-vault") ?? Promise.resolve()
+    const instanceState = runtimeState()
+
+    const previous = instanceState.locks.get("secret-vault") ?? Promise.resolve()
     let release!: () => void
     const current = new Promise<void>((resolve) => {
       release = resolve
     })
     const next = previous.catch(() => {}).then(() => current)
-    locks.set("secret-vault", next)
+    instanceState.locks.set("secret-vault", next)
     await previous.catch(() => {})
     try {
       return await withFileLock(
@@ -175,7 +180,7 @@ export namespace SecretVault {
       )
     } finally {
       release()
-      if (locks.get("secret-vault") === next) locks.delete("secret-vault")
+      if (instanceState.locks.get("secret-vault") === next) instanceState.locks.delete("secret-vault")
     }
   }
 

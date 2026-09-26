@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { SessionControlTool } from "./tools/session-control"
 import { WorktreeEnterTool } from "./tools/worktree-enter"
@@ -7,11 +8,15 @@ import { WorktreeListTool } from "./tools/worktree-list"
 /**
  * Project domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerProjectTools(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ToolRegistry.registerToolProvider("project", () => [
     SessionControlTool,

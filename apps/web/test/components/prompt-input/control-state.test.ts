@@ -44,7 +44,7 @@ describe("composer primary control", () => {
 
 describe("long-press abandon", () => {
   test("arms whenever there is something to abandon", () => {
-    expect(canLongPressAbandon({ hasDraft: true, activity: "idle", hasBoundWorkflow: false })).toBe(true)
+    expect(canLongPressAbandon({ hasDraft: true, activity: "idle", hasBoundWorkflow: false })).toBe(false)
     expect(canLongPressAbandon({ hasDraft: false, activity: "working", hasBoundWorkflow: false })).toBe(true)
     expect(canLongPressAbandon({ hasDraft: false, activity: "paused", hasBoundWorkflow: false })).toBe(true)
     expect(canLongPressAbandon({ hasDraft: false, activity: "idle", hasBoundWorkflow: true })).toBe(true)

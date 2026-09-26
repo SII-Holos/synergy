@@ -3,6 +3,9 @@ import * as os from "node:os"
 import * as path from "node:path"
 import { buildPermissionProfile } from "../../src/sandbox/policy-engine"
 import { CREDENTIAL_PATHS, READ_DENY_PATHS, readDenyPathsFor } from "../../src/sandbox/policy"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
 // sandbox/read-deny-invariant.test.ts
@@ -61,111 +64,121 @@ function readDeniesFor(configuration: (typeof CONFIGURATIONS)[number]): string[]
 
 describe("read deny list never collapses", () => {
   for (const configuration of CONFIGURATIONS) {
-    test(`${configuration.name} keeps every credential deny`, () => {
-      const denies = readDeniesFor(configuration)
+    test(`${configuration.name} keeps every credential deny`, () =>
+      runtime.run(() => {
+        const denies = readDeniesFor(configuration)
 
-      // A zero-length deny set means the global read allow is unqualified:
-      // every credential store on the host becomes readable. This is the
-      // exact failure the measured configurations above produced.
-      expect(denies.length).toBeGreaterThan(0)
+        // A zero-length deny set means the global read allow is unqualified:
+        // every credential store on the host becomes readable. This is the
+        // exact failure the measured configurations above produced.
+        expect(denies.length).toBeGreaterThan(0)
 
-      for (const credential of CREDENTIAL_PATHS(home)) {
-        if (READ_EXEMPT_CREDENTIALS.includes(credential)) continue
-        // The one legitimate carve-out: a Scope directory rooted exactly at a
-        // credential path cannot deny itself or the project is unusable.
-        if (credential === configuration.workspace) continue
-        expect({ configuration: configuration.name, credential, denied: denies.includes(credential) }).toEqual({
-          configuration: configuration.name,
-          credential,
-          denied: true,
-        })
-      }
-    })
+        for (const credential of CREDENTIAL_PATHS(home)) {
+          if (READ_EXEMPT_CREDENTIALS.includes(credential)) continue
+          // The one legitimate carve-out: a Scope directory rooted exactly at a
+          // credential path cannot deny itself or the project is unusable.
+          if (credential === configuration.workspace) continue
+          expect({ configuration: configuration.name, credential, denied: denies.includes(credential) }).toEqual({
+            configuration: configuration.name,
+            credential,
+            denied: true,
+          })
+        }
+      }))
   }
 
-  test("a writable root is never grounds to drop a credential deny", () => {
-    const withoutHome = readDeniesFor(CONFIGURATIONS[0]!)
-    const withHome = readDeniesFor(CONFIGURATIONS[2]!)
+  test("a writable root is never grounds to drop a credential deny", () =>
+    runtime.run(() => {
+      const withoutHome = readDeniesFor(CONFIGURATIONS[0]!)
+      const withHome = readDeniesFor(CONFIGURATIONS[2]!)
 
-    // Adding a writable root may only ever keep or add denies. Dropping one is
-    // what turned the home directory into a readable credential store.
-    for (const deny of withoutHome) expect(withHome).toContain(deny)
-    expect(withHome).toContain(path.join(home, ".ssh"))
-    expect(withHome).toContain(path.join(home, ".netrc"))
-  })
+      // Adding a writable root may only ever keep or add denies. Dropping one is
+      // what turned the home directory into a readable credential store.
+      for (const deny of withoutHome) expect(withHome).toContain(deny)
+      expect(withHome).toContain(path.join(home, ".ssh"))
+      expect(withHome).toContain(path.join(home, ".netrc"))
+    }))
 
-  test("keeps credential denies strictly inside the workspace", () => {
-    // A deny inside the workspace used to be pruned as "shadowed by the deeper
-    // writable bind". The mount order guarantees it is not shadowed, so it is
-    // kept and enforced; this pins the entry rather than the mechanism.
-    const denies = readDeniesFor(CONFIGURATIONS[1]!)
-    expect(denies).toContain(path.join(home, ".ssh"))
-    expect(denies).toContain(path.join(home, ".synergy", "data", "auth"))
-    expect(denies).toContain(path.join(home, ".netrc"))
-  })
+  test("keeps credential denies strictly inside the workspace", () =>
+    runtime.run(() => {
+      // A deny inside the workspace used to be pruned as "shadowed by the deeper
+      // writable bind". The mount order guarantees it is not shadowed, so it is
+      // kept and enforced; this pins the entry rather than the mechanism.
+      const denies = readDeniesFor(CONFIGURATIONS[1]!)
+      expect(denies).toContain(path.join(home, ".ssh"))
+      expect(denies).toContain(path.join(home, ".synergy", "data", "auth"))
+      expect(denies).toContain(path.join(home, ".netrc"))
+    }))
 
-  test("drops only a deny equal to the workspace itself", () => {
-    const workspace = path.join(home, ".ssh")
-    const denies = readDenyPathsFor({ workspace })
-    expect(denies).not.toContain(workspace)
-    expect(denies).toContain(path.join(home, ".aws"))
-    expect(denies).toContain(path.join(home, ".gnupg"))
-  })
+  test("drops only a deny equal to the workspace itself", () =>
+    runtime.run(() => {
+      const workspace = path.join(home, ".ssh")
+      const denies = readDenyPathsFor({ workspace })
+      expect(denies).not.toContain(workspace)
+      expect(denies).toContain(path.join(home, ".aws"))
+      expect(denies).toContain(path.join(home, ".gnupg"))
+    }))
 
-  test("drops only a workspace-equal deny, never an unrelated credential", () => {
-    const denies = readDenyPathsFor({ workspace: home })
-    expect(denies).toContain(path.join(home, ".ssh"))
-    expect(denies).not.toContain(home)
-  })
+  test("drops only a workspace-equal deny, never an unrelated credential", () =>
+    runtime.run(() => {
+      const denies = readDenyPathsFor({ workspace: home })
+      expect(denies).toContain(path.join(home, ".ssh"))
+      expect(denies).not.toContain(home)
+    }))
 })
 
 describe("deny list covers Linux reachable stores", () => {
-  test("denies Linux credential spellings hidden only by the old tmpfs root", () => {
-    const denies = READ_DENY_PATHS(home)
-    for (const linuxStore of [
-      ".zsh_history",
-      ".bash_history",
-      path.join(".config", "google-chrome"),
-      path.join(".config", "chromium"),
-      path.join(".config", "BraveSoftware"),
-      path.join(".config", "vivaldi"),
-      ".thunderbird",
-      path.join(".local", "share", "keyrings"),
-      ".password-store",
-      path.join(".config", "rclone", "rclone.conf"),
-      path.join(".terraform.d", "credentials.tfrc.json"),
-      ".my.cnf",
-      ".pgpass",
-      path.join(".config", "wrangler"),
-    ]) {
-      expect({ linuxStore, denied: denies.includes(path.join(home, linuxStore)) }).toEqual({
-        linuxStore,
-        denied: true,
-      })
-    }
-  })
+  test("denies Linux credential spellings hidden only by the old tmpfs root", () =>
+    runtime.run(() => {
+      const denies = READ_DENY_PATHS(home)
+      for (const linuxStore of [
+        ".zsh_history",
+        ".bash_history",
+        path.join(".config", "google-chrome"),
+        path.join(".config", "chromium"),
+        path.join(".config", "BraveSoftware"),
+        path.join(".config", "vivaldi"),
+        ".thunderbird",
+        path.join(".local", "share", "keyrings"),
+        ".password-store",
+        path.join(".config", "rclone", "rclone.conf"),
+        path.join(".terraform.d", "credentials.tfrc.json"),
+        ".my.cnf",
+        ".pgpass",
+        path.join(".config", "wrangler"),
+      ]) {
+        expect({ linuxStore, denied: denies.includes(path.join(home, linuxStore)) }).toEqual({
+          linuxStore,
+          denied: true,
+        })
+      }
+    }))
 
-  test("denies Synergy runtime secret stores reachable under the full-read root", () => {
-    const denies = READ_DENY_PATHS(home)
-    for (const store of [
-      path.join(".synergy", "data", "browser", "profiles"),
-      path.join(".synergy", "cache", "inspire-token.json"),
-      path.join(".synergy", "data", "library.db"),
-      path.join(".synergy", "log"),
-      path.join(".synergy", "state"),
-      path.join(".synergy", "config", "skills"),
-    ]) {
-      expect({ store, denied: denies.includes(path.join(home, store)) }).toEqual({ store, denied: true })
-    }
-  })
+  test("denies Synergy runtime secret stores reachable under the full-read root", () =>
+    runtime.run(() => {
+      const denies = READ_DENY_PATHS(home)
+      for (const store of [
+        path.join(".synergy", "data", "browser", "profiles"),
+        path.join(".synergy", "cache", "inspire-token.json"),
+        path.join(".synergy", "data", "library.db"),
+        path.join(".synergy", "log"),
+        path.join(".synergy", "state"),
+        path.join(".synergy", "config", "skills"),
+      ]) {
+        expect({ store, denied: denies.includes(path.join(home, store)) }).toEqual({ store, denied: true })
+      }
+    }))
 
-  test("the runtime cache staging root stays readable", () => {
-    // Stage 2 of the Linux helper re-reads the staged permission profile and
-    // re-execs the staged helper binary from this directory. Denying it would
-    // break sandboxed execution outright, so only the token file inside it is
-    // denied.
-    const denies = READ_DENY_PATHS(home)
-    expect(denies).not.toContain(path.join(home, ".synergy", "cache"))
-    expect(denies).not.toContain(path.join(home, ".synergy", "cache", "synergy-sandbox"))
-  })
+  test("the runtime cache staging root stays readable", () =>
+    runtime.run(() => {
+      // Stage 2 of the Linux helper re-reads the staged permission profile and
+      // re-execs the staged helper binary from this directory. Denying it would
+      // break sandboxed execution outright, so only the token file inside it is
+      // denied.
+      const denies = READ_DENY_PATHS(home)
+      expect(denies).not.toContain(path.join(home, ".synergy", "cache"))
+      expect(denies).not.toContain(path.join(home, ".synergy", "cache", "synergy-sandbox"))
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

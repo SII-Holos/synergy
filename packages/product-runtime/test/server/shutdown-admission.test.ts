@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 interface ShutdownProbe {
   response: { status: number; body: unknown }
@@ -11,7 +14,6 @@ interface ShutdownProbe {
 async function runShutdownProbe(): Promise<ShutdownProbe> {
   const script = String.raw`
     const { Log } = await import("@ericsanchezok/synergy-harness/util/log")
-    Log.init({ print: false })
     const [{ Server }, { ProductRuntimeHandle }, { AgentTurn }, { PolicyWorker }, { ToolScheduler }] = await Promise.all([
       import("@ericsanchezok/synergy-server/server/server"),
       import("./src/server/runtime-handle"),
@@ -21,6 +23,7 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
     ])
     const origin = "http://localhost:5173"
     const runtime = await ProductRuntimeHandle.open({ mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } })
+    const result = await runtime.run(async () => {
     runtime.closeAdmission()
     const response = await Server.App().request("/global/health")
     const crossOrigin = await Server.App().request("/global/health", { headers: { origin } })
@@ -36,7 +39,7 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
         return error instanceof Error ? error.message : String(error)
       }
     }
-    const result = {
+    return {
       response: { status: response.status, body: await response.json() },
       crossOrigin: {
         status: crossOrigin.status,
@@ -53,6 +56,7 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
         capture(() => ToolScheduler.dispatch({})),
       ]),
     }
+    })
     await runtime.close()
     await Bun.write(Bun.stdout, JSON.stringify(result))
     process.exit(0)
@@ -72,26 +76,29 @@ async function runShutdownProbe(): Promise<ShutdownProbe> {
   return JSON.parse(stdout) as ShutdownProbe
 }
 
-test("closes runtime admission without leaking process state", async () => {
-  const result = await runShutdownProbe()
+test("closes runtime admission without leaking process state", () =>
+  runtime.run(async () => {
+    const result = await runShutdownProbe()
 
-  expect(result.response).toEqual({
-    status: 503,
-    body: {
-      name: "RuntimeShuttingDown",
-      data: { message: "Synergy runtime is shutting down" },
-    },
-  })
-  expect(result.crossOrigin).toEqual({
-    status: 503,
-    allowOrigin: "http://localhost:5173",
-  })
-  expect(result.preflight.status).toBe(204)
-  expect(result.preflight.allowOrigin).toBe("http://localhost:5173")
-  expect(result.preflight.allowMethods).toContain("GET")
-  expect(result.admissions).toEqual([
-    "Agent worker pool is stopping",
-    "Policy worker pool is stopping",
-    "Tool scheduler is stopping",
-  ])
-})
+    expect(result.response).toEqual({
+      status: 503,
+      body: {
+        name: "RuntimeShuttingDown",
+        data: { message: "Synergy runtime is shutting down" },
+      },
+    })
+    expect(result.crossOrigin).toEqual({
+      status: 503,
+      allowOrigin: "http://localhost:5173",
+    })
+    expect(result.preflight.status).toBe(204)
+    expect(result.preflight.allowOrigin).toBe("http://localhost:5173")
+    expect(result.preflight.allowMethods).toContain("GET")
+    expect(result.admissions).toEqual([
+      "Agent worker pool is stopping",
+      "Policy worker pool is stopping",
+      "Tool scheduler is stopping",
+    ])
+  }))
+
+afterRuntimeTests(() => runtime.close())

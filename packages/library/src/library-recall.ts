@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 export namespace SessionLibraryRecall {
   /** Persisted memory category vocabulary mirrored for prompt rendering. */
   export const MEMORY_CATEGORIES = [
@@ -81,26 +82,38 @@ export namespace SessionLibraryRecall {
     ): void
   }
 
-  let provider: Provider | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    provider: undefined as Provider | undefined,
+  }))
 
   export function register(value: Provider): () => void {
-    const previous = provider
-    provider = value
+    const instanceState = runtimeState()
+
+    const previous = instanceState.provider
+    instanceState.provider = value
     return () => {
-      if (provider === value) provider = previous
+      const instanceState = runtimeState()
+
+      if (instanceState.provider === value) instanceState.provider = previous
     }
   }
 
   export function get(): Provider | undefined {
-    return provider
+    const instanceState = runtimeState()
+
+    return instanceState.provider
   }
 
   export function listAlwaysMemories(): StoredMemoryRow[] {
-    return provider?.listAlwaysMemories() ?? []
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.listAlwaysMemories() ?? []
   }
 
   export function searchMemories(input: MemorySearchInput): Promise<RetrievedMemory[]> {
-    return provider?.searchMemories(input) ?? Promise.resolve([])
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.searchMemories(input) ?? Promise.resolve([])
   }
 
   export function retrieveExperiences(
@@ -108,21 +121,29 @@ export namespace SessionLibraryRecall {
     query: string,
     options?: ExperienceOptions,
   ): Promise<ExperienceResult[]> {
-    return provider?.retrieveExperiences(scopeID, query, options) ?? Promise.resolve([])
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.retrieveExperiences(scopeID, query, options) ?? Promise.resolve([])
   }
 
   export function trackExperienceRetrieval(sessionID: string, experienceIDs: string[]): void {
-    provider?.trackExperienceRetrieval(sessionID, experienceIDs)
+    const instanceState = runtimeState()
+
+    instanceState.provider?.trackExperienceRetrieval(sessionID, experienceIDs)
   }
 
   /** Commit the session's pending experience-retrieval pull counters (the
    * turn that actually injected experience owns the commit). */
   export function commitExperienceRetrieval(sessionID: string): void {
-    provider?.commitExperienceRetrieval(sessionID)
+    const instanceState = runtimeState()
+
+    instanceState.provider?.commitExperienceRetrieval(sessionID)
   }
 
   export function buildExperienceEvaluation(rewards: unknown, snapThreshold?: number): string | undefined {
-    return provider?.buildExperienceEvaluation(rewards, snapThreshold)
+    const instanceState = runtimeState()
+
+    return instanceState.provider?.buildExperienceEvaluation(rewards, snapThreshold)
   }
 
   export function writeExperienceDebugLog(
@@ -132,6 +153,8 @@ export namespace SessionLibraryRecall {
     results: ExperienceResult[],
     injected: string,
   ): void {
-    provider?.writeExperienceDebugLog(sessionID, scopeID, query, results, injected)
+    const instanceState = runtimeState()
+
+    instanceState.provider?.writeExperienceDebugLog(sessionID, scopeID, query, results, injected)
   }
 }

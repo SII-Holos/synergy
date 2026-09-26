@@ -5,6 +5,9 @@ import { NoteStore } from "@ericsanchezok/synergy-note"
 import { NoteDeleteTool } from "@ericsanchezok/synergy-note/tools/note-delete"
 import { NoteArchiveTool } from "@ericsanchezok/synergy-note/tools/note-archive"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const ctx = {
   sessionID: "test-note-delete",
@@ -26,76 +29,80 @@ function paragraph(text: string) {
 }
 
 describe("note_delete", () => {
-  test("returns archive-first error for active notes and does not delete them", async () => {
-    await using tmp = await tmpdir()
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+  test("returns archive-first error for active notes and does not delete them", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const note = await NoteStore.create({
-          title: "Active note",
-          content: { type: "doc", content: [paragraph("keep me")] },
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const note = await NoteStore.create({
+            title: "Active note",
+            content: { type: "doc", content: [paragraph("keep me")] },
+          })
 
-        const result = await execute({ id: note.id })
+          const result = await execute({ id: note.id })
 
-        expect(result.title).toBe("Cannot delete active note")
-        expect(result.output).toContain("must be archived")
-        expect(result.output).toContain(`"${note.title}"`)
-        expect(result.output).toContain(`[${note.id}]`)
-        expect(result.metadata.id).toBe(note.id)
-        expect(result.metadata.archived).toBe(false)
+          expect(result.title).toBe("Cannot delete active note")
+          expect(result.output).toContain("must be archived")
+          expect(result.output).toContain(`"${note.title}"`)
+          expect(result.output).toContain(`[${note.id}]`)
+          expect(result.metadata.id).toBe(note.id)
+          expect(result.metadata.archived).toBe(false)
 
-        const current = await NoteStore.get(scope.id, note.id)
-        expect(current).toBeDefined()
-        expect(current.title).toBe("Active note")
-      },
-    })
-  })
+          const current = await NoteStore.get(scope.id, note.id)
+          expect(current).toBeDefined()
+          expect(current.title).toBe("Active note")
+        },
+      })
+    }))
 
-  test("permanently deletes archived notes", async () => {
-    await using tmp = await tmpdir()
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+  test("permanently deletes archived notes", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const note = await NoteStore.create({
-          title: "To delete",
-          content: { type: "doc", content: [paragraph("goodbye")] },
-        })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const note = await NoteStore.create({
+            title: "To delete",
+            content: { type: "doc", content: [paragraph("goodbye")] },
+          })
 
-        const archiveTool = await NoteArchiveTool.init()
-        await archiveTool.execute(
-          { ids: [note.id], unarchive: false },
-          {
-            sessionID: "test-note-delete",
-            messageID: "",
-            callID: "",
-            agent: "test-strategist",
-            abort: AbortSignal.any([]),
-            metadata: () => {},
-            ask: async () => {},
-          },
-        )
+          const archiveTool = await NoteArchiveTool.init()
+          await archiveTool.execute(
+            { ids: [note.id], unarchive: false },
+            {
+              sessionID: "test-note-delete",
+              messageID: "",
+              callID: "",
+              agent: "test-strategist",
+              abort: AbortSignal.any([]),
+              metadata: () => {},
+              ask: async () => {},
+            },
+          )
 
-        const result = await execute({ id: note.id })
+          const result = await execute({ id: note.id })
 
-        expect(result.title).toBe("Deleted note")
-        expect(result.output).toContain("Permanently deleted")
-        expect(result.output).toContain(`"${note.title}"`)
-        expect(result.output).toContain(`[${note.id}]`)
-        expect(result.metadata.id).toBe(note.id)
-        expect(result.metadata.archived).toBe(true)
+          expect(result.title).toBe("Deleted note")
+          expect(result.output).toContain("Permanently deleted")
+          expect(result.output).toContain(`"${note.title}"`)
+          expect(result.output).toContain(`[${note.id}]`)
+          expect(result.metadata.id).toBe(note.id)
+          expect(result.metadata.archived).toBe(true)
 
-        try {
-          await NoteStore.get(scope.id, note.id)
-          expect.unreachable("Expected get to throw after permanent deletion")
-        } catch (err: any) {
-          expect(err).toBeDefined()
-        }
-      },
-    })
-  })
+          try {
+            await NoteStore.get(scope.id, note.id)
+            expect.unreachable("Expected get to throw after permanent deletion")
+          } catch (err: any) {
+            expect(err).toBeDefined()
+          }
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

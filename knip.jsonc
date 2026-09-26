@@ -84,6 +84,7 @@
     "taskkill.exe",
     "which",
     "gh",
+    "getconf",
     "dev",
     "synergy",
     "build",

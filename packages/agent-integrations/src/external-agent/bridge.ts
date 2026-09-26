@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import z from "zod"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { AgentExternal } from "@ericsanchezok/synergy-harness/agent/external-source"
@@ -137,34 +138,44 @@ export namespace ExternalAgent {
   // Adapter registry — adapters self-register here
   // ---------------------------------------------------------------------------
 
-  const adapters = new Map<string, () => Adapter>()
-  const instances = new Map<string, Adapter>()
+  const runtimeState = RuntimeContext.state(() => ({
+    adapters: new Map<string, () => Adapter>(),
+    instances: new Map<string, Adapter>(),
+  }))
 
   function instanceKey(name: string, sessionID?: string) {
     return sessionID ? `${name}:${sessionID}` : name
   }
 
   export function register(name: string, factory: () => Adapter) {
-    adapters.set(name, factory)
+    const instanceState = runtimeState()
+
+    instanceState.adapters.set(name, factory)
   }
 
   export function listAdapters(): string[] {
-    return [...adapters.keys()]
+    const instanceState = runtimeState()
+
+    return [...instanceState.adapters.keys()]
   }
 
   export function getAdapter(name: string, sessionID?: string): Adapter | undefined {
+    const instanceState = runtimeState()
+
     const key = instanceKey(name, sessionID)
-    let instance = instances.get(key)
+    let instance = instanceState.instances.get(key)
     if (instance) return instance
-    const factory = adapters.get(name)
+    const factory = instanceState.adapters.get(name)
     if (!factory) return undefined
     instance = factory()
-    instances.set(key, instance)
+    instanceState.instances.set(key, instance)
     return instance
   }
 
   export async function shutdownAll(): Promise<void> {
-    const tasks = [...instances.entries()].map(async ([name, adapter]) => {
+    const instanceState = runtimeState()
+
+    const tasks = [...instanceState.instances.entries()].map(async ([name, adapter]) => {
       try {
         await adapter.shutdown()
       } catch (e) {
@@ -172,14 +183,16 @@ export namespace ExternalAgent {
       }
     })
     await Promise.allSettled(tasks)
-    instances.clear()
+    instanceState.instances.clear()
   }
 
   export async function shutdownAdapter(name: string, sessionID?: string): Promise<void> {
+    const instanceState = runtimeState()
+
     const key = instanceKey(name, sessionID)
-    const adapter = instances.get(key)
+    const adapter = instanceState.instances.get(key)
     if (!adapter) return
-    instances.delete(key)
+    instanceState.instances.delete(key)
     try {
       await adapter.shutdown()
     } catch (e) {

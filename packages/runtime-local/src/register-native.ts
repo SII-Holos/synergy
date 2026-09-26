@@ -7,8 +7,15 @@ export function registerLocalNativeRuntime(): void {
   SandboxHost.register(SandboxBackend)
   ScopeStartup.register({
     name: "file-watcher",
+    owner: "workspace",
     phase: "surface",
     after: ["session-pause-reconcile"],
     init: () => FileWatcher.init(),
+  })
+  ScopeStartup.register({
+    name: "config-watcher",
+    phase: "surface",
+    after: ["session-pause-reconcile"],
+    init: () => FileWatcher.initScope(),
   })
 }

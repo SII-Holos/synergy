@@ -7,6 +7,9 @@ import { SnapshotGit } from "../../src/session/snapshot-git"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function fixture() {
   const tmp = await tmpdir({ git: true })
@@ -32,84 +35,89 @@ async function fixture() {
   return { tmp, scope, pool, borrower, tree, unknown, loose }
 }
 
-test("scope migration consolidates an unowned pool while retaining borrowers and portable paths", async () => {
-  const { tmp, scope, pool, borrower, tree, unknown, loose } = await fixture()
-  await using cleanup = tmp
-  const dry = await SnapshotMaintenance.migrate(scope.id)
-  expect(dry.applied).toBe(false)
-  expect(dry.pool?.status).toBe("pending")
-  expect(await Bun.file(loose).exists()).toBe(true)
-  const result = await SnapshotMaintenance.migrate(scope.id, { apply: true })
-  expect(result.pool?.status).toBe("consolidated")
-  expect(await Bun.file(loose).exists()).toBe(false)
-  expect((await fs.readdir(path.join(pool, "objects", "pack"))).filter((name) => /\.(pack|idx)$/.test(name))).toEqual(
-    [],
-  )
-  expect(await Bun.file(path.join(pool, "objects", "notes.txt")).text()).toBe("unclassified artifact")
-  expect(await SnapshotStore.owner(scope.id, "borrower")).toBeUndefined()
-  expect(await SnapshotStore.command(pool, ["rev-parse", "refs/synergy/old"])).toBe(tree)
-  await SnapshotMaintenance.compact(scope.id, { apply: true, prune: true })
-  expect(await SnapshotStore.command(borrower, ["show", `${tree}:file.txt`])).toBe("pooled history")
-  expect(await SnapshotStore.command(pool, ["cat-file", "-p", unknown])).toBe("unreferenced pool evidence")
-  expect((await SnapshotMaintenance.migrate(scope.id, { apply: true })).applied).toBe(false)
-  const moved = path.join(tmp.path, "moved")
-  await fs.cp(path.dirname(pool), path.join(moved, "snapshot", scope.id), { recursive: true })
-  await fs.cp(SnapshotStore.root(scope.id), path.join(moved, "snapshot-v2", scope.id), { recursive: true })
-  expect(
-    await SnapshotStore.command(path.join(moved, "snapshot", scope.id, "borrower"), ["show", `${tree}:file.txt`]),
-  ).toBe("pooled history")
-})
+test("scope migration consolidates an unowned pool while retaining borrowers and portable paths", () =>
+  runtime.run(async () => {
+    const { tmp, scope, pool, borrower, tree, unknown, loose } = await fixture()
+    await using cleanup = tmp
+    const dry = await SnapshotMaintenance.migrate(scope.id)
+    expect(dry.applied).toBe(false)
+    expect(dry.pool?.status).toBe("pending")
+    expect(await Bun.file(loose).exists()).toBe(true)
+    const result = await SnapshotMaintenance.migrate(scope.id, { apply: true })
+    expect(result.pool?.status).toBe("consolidated")
+    expect(await Bun.file(loose).exists()).toBe(false)
+    expect((await fs.readdir(path.join(pool, "objects", "pack"))).filter((name) => /\.(pack|idx)$/.test(name))).toEqual(
+      [],
+    )
+    expect(await Bun.file(path.join(pool, "objects", "notes.txt")).text()).toBe("unclassified artifact")
+    expect(await SnapshotStore.owner(scope.id, "borrower")).toBeUndefined()
+    expect(await SnapshotStore.command(pool, ["rev-parse", "refs/synergy/old"])).toBe(tree)
+    await SnapshotMaintenance.compact(scope.id, { apply: true, prune: true })
+    expect(await SnapshotStore.command(borrower, ["show", `${tree}:file.txt`])).toBe("pooled history")
+    expect(await SnapshotStore.command(pool, ["cat-file", "-p", unknown])).toBe("unreferenced pool evidence")
+    expect((await SnapshotMaintenance.migrate(scope.id, { apply: true })).applied).toBe(false)
+    const moved = path.join(tmp.path, "moved")
+    await fs.cp(path.dirname(pool), path.join(moved, "snapshot", scope.id), { recursive: true })
+    await fs.cp(SnapshotStore.root(scope.id), path.join(moved, "snapshot-v2", scope.id), { recursive: true })
+    expect(
+      await SnapshotStore.command(path.join(moved, "snapshot", scope.id, "borrower"), ["show", `${tree}:file.txt`]),
+    ).toBe("pooled history")
+  }))
 
 for (const phase of ["rename", "file-sync", "directory-sync", "cleanup"] as const) {
   test.skipIf(process.platform === "win32" && phase === "directory-sync")(
     `pool consolidation resumes after interrupted ${phase} without losing borrowed objects`,
-    async () => {
-      const { tmp, scope, pool, borrower, tree, loose } = await fixture()
-      await using cleanup = tmp
-      const alternate = path.join(pool, "objects", "info", "alternates")
-      const rename = fs.rename
-      const open = fs.open
-      const rm = fs.rm
-      {
-        using renameFault = spyOn(fs, "rename").mockImplementation(async (...args) => {
-          if (phase === "rename" && args[1] === alternate) throw new Error("interrupted pool rename")
-          return rename(...args)
-        })
-        using syncFault = spyOn(fs, "open").mockImplementation(async (...args) => {
-          const file = await open(...args)
-          if (
-            (phase === "directory-sync" && args[0] === path.dirname(alternate)) ||
-            (phase === "file-sync" && String(args[0]).startsWith(alternate + ".") && String(args[0]).endsWith(".tmp"))
-          )
-            file.sync = async () => {
-              throw new Error("interrupted pool sync")
-            }
-          return file
-        })
-        using cleanupFault = spyOn(fs, "rm").mockImplementation(async (...args) => {
-          await rm(...args)
-          if (phase === "cleanup" && args[0] === loose) throw new Error("interrupted pool cleanup")
-        })
-        await expect(SnapshotMaintenance.migrate(scope.id, { apply: true })).rejects.toThrow("interrupted pool")
-      }
-      expect(await SnapshotStore.command(borrower, ["show", `${tree}:file.txt`])).toBe("pooled history")
-      if (phase !== "cleanup") expect(await Bun.file(loose).exists()).toBe(true)
-      expect((await SnapshotMaintenance.migrate(scope.id, { apply: true })).pool?.status).toBe("consolidated")
-      await SnapshotGit.checked(SnapshotStore.repository(scope.id), ["fsck", "--full"])
-      expect(await SnapshotStore.command(borrower, ["show", `${tree}:file.txt`])).toBe("pooled history")
-    },
+    () =>
+      runtime.run(async () => {
+        const { tmp, scope, pool, borrower, tree, loose } = await fixture()
+        await using cleanup = tmp
+        const alternate = path.join(pool, "objects", "info", "alternates")
+        const rename = fs.rename
+        const open = fs.open
+        const rm = fs.rm
+        {
+          using renameFault = spyOn(fs, "rename").mockImplementation(async (...args) => {
+            if (phase === "rename" && args[1] === alternate) throw new Error("interrupted pool rename")
+            return rename(...args)
+          })
+          using syncFault = spyOn(fs, "open").mockImplementation(async (...args) => {
+            const file = await open(...args)
+            if (
+              (phase === "directory-sync" && args[0] === path.dirname(alternate)) ||
+              (phase === "file-sync" && String(args[0]).startsWith(alternate + ".") && String(args[0]).endsWith(".tmp"))
+            )
+              file.sync = async () => {
+                throw new Error("interrupted pool sync")
+              }
+            return file
+          })
+          using cleanupFault = spyOn(fs, "rm").mockImplementation(async (...args) => {
+            await rm(...args)
+            if (phase === "cleanup" && args[0] === loose) throw new Error("interrupted pool cleanup")
+          })
+          await expect(SnapshotMaintenance.migrate(scope.id, { apply: true })).rejects.toThrow("interrupted pool")
+        }
+        expect(await SnapshotStore.command(borrower, ["show", `${tree}:file.txt`])).toBe("pooled history")
+        if (phase !== "cleanup") expect(await Bun.file(loose).exists()).toBe(true)
+        expect((await SnapshotMaintenance.migrate(scope.id, { apply: true })).pool?.status).toBe("consolidated")
+        await SnapshotGit.checked(SnapshotStore.repository(scope.id), ["fsck", "--full"])
+        expect(await SnapshotStore.command(borrower, ["show", `${tree}:file.txt`])).toBe("pooled history")
+      }),
   )
 }
 
-test("pool consolidation waits for legacy owners and stays outside session pilots", async () => {
-  const { tmp, scope, pool, loose } = await fixture()
-  await using cleanup = tmp
-  expect((await SnapshotMaintenance.migrate(scope.id, { apply: true, sessionID: "borrower" })).pool).toBeUndefined()
-  await SnapshotStore.write(StoragePath.snapshotOwner(scope.id, "borrower"), { version: 2, backend: "legacy" })
-  const blocked = await SnapshotMaintenance.migrate(scope.id, { apply: true })
-  expect(blocked.pool?.status).toBe("blocked")
-  expect(await Bun.file(loose).exists()).toBe(true)
-  expect(await Bun.file(path.join(pool, "objects", "info", "alternates")).exists()).toBe(false)
-  await Storage.remove(StoragePath.snapshotOwner(scope.id, "borrower"))
-  expect((await SnapshotMaintenance.migrate(scope.id, { apply: true })).pool?.status).toBe("consolidated")
-})
+test("pool consolidation waits for legacy owners and stays outside session pilots", () =>
+  runtime.run(async () => {
+    const { tmp, scope, pool, loose } = await fixture()
+    await using cleanup = tmp
+    expect((await SnapshotMaintenance.migrate(scope.id, { apply: true, sessionID: "borrower" })).pool).toBeUndefined()
+    await SnapshotStore.write(StoragePath.snapshotOwner(scope.id, "borrower"), { version: 2, backend: "legacy" })
+    const blocked = await SnapshotMaintenance.migrate(scope.id, { apply: true })
+    expect(blocked.pool?.status).toBe("blocked")
+    expect(await Bun.file(loose).exists()).toBe(true)
+    expect(await Bun.file(path.join(pool, "objects", "info", "alternates")).exists()).toBe(false)
+    await Storage.remove(StoragePath.snapshotOwner(scope.id, "borrower"))
+    expect((await SnapshotMaintenance.migrate(scope.id, { apply: true })).pool?.status).toBe("consolidated")
+  }))
+
+afterRuntimeTests(() => runtime.close())

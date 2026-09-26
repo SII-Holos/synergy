@@ -1,8 +1,11 @@
 import { describe, expect, test, beforeAll } from "bun:test"
 import { LoopJob } from "../../src/session/loop-job"
 import { Log } from "../../src/util/log"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 // ─── helpers ───────────────────────────────────────────────────────
 
@@ -95,251 +98,269 @@ function makeCtx(step: number, messages: any[], lastUserParts: any[] = [], agent
 
 // ─── import signals (registers them into LoopJob) ──────────────────
 
-beforeAll(async () => {
-  await import("../../src/session/loop-signals")
-})
+beforeAll(() =>
+  runtime.run(async () => {
+    await import("../../src/session/loop-signals")
+  }),
+)
 
 // ─── tests ─────────────────────────────────────────────────────────
 
 describe("loop-signals: repeat_loop signal", () => {
-  test("fires when the same tool+params succeeds 3 times in a row", async () => {
-    const ctx = makeCtx(3, [
-      makeUserWrapper(),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("repeat_loop")
-  })
-
-  test("does not fire below threshold", async () => {
-    const ctx = makeCtx(2, [
-      makeUserWrapper(),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("repeat_loop")
-  })
-
-  test("does not fire when params differ", async () => {
-    const ctx = makeCtx(3, [
-      makeUserWrapper(),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/b" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("repeat_loop")
-  })
-
-  test("does not fire when tool differs", async () => {
-    const ctx = makeCtx(3, [
-      makeUserWrapper(),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Grep", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("repeat_loop")
-  })
-
-  test("does not fire when a call failed in the sequence", async () => {
-    const ctx = makeCtx(3, [
-      makeUserWrapper(),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "error")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("repeat_loop")
-  })
-
-  test("does not fire when assistant message has no tool parts", async () => {
-    const ctx = makeCtx(3, [
-      makeUserWrapper(),
-      makeAssistant([]),
-      makeAssistant([makeTextPart("hello")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("repeat_loop")
-  })
-
-  test("does not fire when fewer than 3 messages have tool parts", async () => {
-    const ctx = makeCtx(3, [
-      makeUserWrapper(),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("repeat_loop")
-  })
-})
-
-describe("loop-signals: repeat_loop_injector job", () => {
-  test("is collected when repeat_loop signal fires", async () => {
-    const ctx = makeCtx(3, [
-      makeUserWrapper(),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-    ])
-
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("repeat_loop")
-
-    const instances = LoopJob.collect("pre", ctx, fired)
-    const repeatJob = instances.find((i: any) => i.type === "repeat_loop_injector")
-    expect(repeatJob).toBeDefined()
-    expect(repeatJob!.type).toBe("repeat_loop_injector")
-  })
-})
-
-describe("loop-signals: compact signal", () => {
-  test("detects when compaction part exists", async () => {
-    const ctx = makeCtx(
-      1,
-      [makeUserWrapper()],
-      [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: false }],
-    )
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("compact")
-  })
-
-  test("does not detect when no compaction part", async () => {
-    const ctx = makeCtx(
-      1,
-      [makeUserWrapper()],
-      [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "text", text: "hello" }],
-    )
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("compact")
-  })
-
-  test("coexists with repeat_loop without interference", async () => {
-    const ctx = makeCtx(
-      5,
-      [
+  test("fires when the same tool+params succeeds 3 times in a row", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(3, [
         makeUserWrapper(),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
         makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
-      ],
-      [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true }],
-    )
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("compact")
-    expect(fired).toContain("repeat_loop")
-    expect(fired).not.toContain("error_loop")
-  })
+      ])
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).toContain("repeat_loop")
+    }))
+
+  test("does not fire below threshold", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(2, [
+        makeUserWrapper(),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+      ])
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("repeat_loop")
+    }))
+
+  test("does not fire when params differ", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(3, [
+        makeUserWrapper(),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/b" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+      ])
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("repeat_loop")
+    }))
+
+  test("does not fire when tool differs", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(3, [
+        makeUserWrapper(),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Grep", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+      ])
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("repeat_loop")
+    }))
+
+  test("does not fire when a call failed in the sequence", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(3, [
+        makeUserWrapper(),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "error")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+      ])
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("repeat_loop")
+    }))
+
+  test("does not fire when assistant message has no tool parts", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(3, [
+        makeUserWrapper(),
+        makeAssistant([]),
+        makeAssistant([makeTextPart("hello")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+      ])
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("repeat_loop")
+    }))
+
+  test("does not fire when fewer than 3 messages have tool parts", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(3, [
+        makeUserWrapper(),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+      ])
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("repeat_loop")
+    }))
+})
+
+describe("loop-signals: repeat_loop_injector job", () => {
+  test("is collected when repeat_loop signal fires", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(3, [
+        makeUserWrapper(),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+      ])
+
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).toContain("repeat_loop")
+
+      const instances = LoopJob.collect("pre", ctx, fired)
+      const repeatJob = instances.find((i: any) => i.type === "repeat_loop_injector")
+      expect(repeatJob).toBeDefined()
+      expect(repeatJob!.type).toBe("repeat_loop_injector")
+    }))
+})
+
+describe("loop-signals: compact signal", () => {
+  test("detects when compaction part exists", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(
+        1,
+        [makeUserWrapper()],
+        [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: false }],
+      )
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).toContain("compact")
+    }))
+
+  test("does not detect when no compaction part", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(
+        1,
+        [makeUserWrapper()],
+        [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "text", text: "hello" }],
+      )
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("compact")
+    }))
+
+  test("coexists with repeat_loop without interference", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(
+        5,
+        [
+          makeUserWrapper(),
+          makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+          makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+          makeAssistant([makeTool("Read", { path: "/a" }, "completed")]),
+        ],
+        [{ id: "p1", sessionID: "ses_test", messageID: "m1", type: "compaction", auto: true }],
+      )
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).toContain("compact")
+      expect(fired).toContain("repeat_loop")
+      expect(fired).not.toContain("error_loop")
+    }))
 })
 
 describe("loop-signals: tool_failure_pattern (scholar search)", () => {
-  test("fires after consecutive no-result scholar searches", async () => {
-    const ctx = makeCtx(
-      2,
-      [
-        makeUserWrapper("scholar"),
-        makeAssistant(
-          [
-            makeTool("webfetch", { url: "https://example.com/very-specific-paper-xyz" }, "completed", {
-              output: "No search results found. Please try a different query.",
-              metadata: { searchFailureType: "no_results" },
-            }),
-          ],
-          "scholar",
-        ),
-        makeAssistant(
-          [
-            makeTool("webfetch", { url: "https://example.com/papers/very-specific-paper-xyz" }, "completed", {
-              output: "No papers found matching your search criteria.",
-              metadata: { searchFailureType: "no_results" },
-            }),
-          ],
-          "scholar",
-        ),
-      ],
-      [],
-      "scholar",
-    )
+  test("fires after consecutive no-result scholar searches", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(
+        2,
+        [
+          makeUserWrapper("scholar"),
+          makeAssistant(
+            [
+              makeTool("webfetch", { url: "https://example.com/very-specific-paper-xyz" }, "completed", {
+                output: "No search results found. Please try a different query.",
+                metadata: { searchFailureType: "no_results" },
+              }),
+            ],
+            "scholar",
+          ),
+          makeAssistant(
+            [
+              makeTool("webfetch", { url: "https://example.com/papers/very-specific-paper-xyz" }, "completed", {
+                output: "No papers found matching your search criteria.",
+                metadata: { searchFailureType: "no_results" },
+              }),
+            ],
+            "scholar",
+          ),
+        ],
+        [],
+        "scholar",
+      )
 
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("tool_failure_pattern")
-  })
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).toContain("tool_failure_pattern")
+    }))
 
-  test("does not fire for non-scholar agents", async () => {
-    const ctx = makeCtx(2, [
-      makeUserWrapper(),
-      makeAssistant([
-        makeTool("webfetch", { url: "https://example.com/missing-one" }, "completed", {
-          output: "No search results found. Please try a different query.",
-          metadata: { searchFailureType: "no_results" },
-        }),
-      ]),
-      makeAssistant([
-        makeTool("webfetch", { url: "https://example.com/missing-two" }, "completed", {
-          output: "No search results found. Please try a different query.",
-          metadata: { searchFailureType: "no_results" },
-        }),
-      ]),
-    ])
+  test("does not fire for non-scholar agents", () =>
+    runtime.run(async () => {
+      const ctx = makeCtx(2, [
+        makeUserWrapper(),
+        makeAssistant([
+          makeTool("webfetch", { url: "https://example.com/missing-one" }, "completed", {
+            output: "No search results found. Please try a different query.",
+            metadata: { searchFailureType: "no_results" },
+          }),
+        ]),
+        makeAssistant([
+          makeTool("webfetch", { url: "https://example.com/missing-two" }, "completed", {
+            output: "No search results found. Please try a different query.",
+            metadata: { searchFailureType: "no_results" },
+          }),
+        ]),
+      ])
 
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).not.toContain("tool_failure_pattern")
-  })
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).not.toContain("tool_failure_pattern")
+    }))
 
-  test("fires early stop after reflection and continued failures", async () => {
-    // The early-stop check is independent: it only checks the earlyStopMarker,
-    // not the reflectionMarker. So having the reflection marker present won't block it.
-    const reflectionMarker = makeTextPart("[Search failure reflection]\nPrevious search failed.")
-    reflectionMarker.synthetic = true
+  test("fires early stop after reflection and continued failures", () =>
+    runtime.run(async () => {
+      // The early-stop check is independent: it only checks the earlyStopMarker,
+      // not the reflectionMarker. So having the reflection marker present won't block it.
+      const reflectionMarker = makeTextPart("[Search failure reflection]\nPrevious search failed.")
+      reflectionMarker.synthetic = true
 
-    const ctx = makeCtx(
-      4,
-      [
-        makeUserWrapper("scholar"),
-        makeAssistant(
-          [
-            makeTool("webfetch", { url: "https://example.com/a" }, "completed", {
-              output: "No search results found. Please try a different query.",
-              metadata: { searchFailureType: "no_results" },
-            }),
-          ],
-          "scholar",
-        ),
-        makeAssistant(
-          [
-            makeTool("webfetch", { url: "https://example.com/a" }, "error", {
-              error: "Request failed with status code: 403",
-            }),
-          ],
-          "scholar",
-        ),
-        makeAssistant(
-          [
-            makeTool("webfetch", { url: "https://example.com/b" }, "error", {
-              error: "Request failed with status code: 404",
-            }),
-          ],
-          "scholar",
-        ),
-        makeAssistant(
-          [
-            makeTool("webfetch", { url: "https://example.com/b" }, "completed", {
-              output: "No papers found matching your search criteria.",
-              metadata: { searchFailureType: "no_results" },
-            }),
-          ],
-          "scholar",
-        ),
-      ],
-      [reflectionMarker],
-      "scholar",
-    )
+      const ctx = makeCtx(
+        4,
+        [
+          makeUserWrapper("scholar"),
+          makeAssistant(
+            [
+              makeTool("webfetch", { url: "https://example.com/a" }, "completed", {
+                output: "No search results found. Please try a different query.",
+                metadata: { searchFailureType: "no_results" },
+              }),
+            ],
+            "scholar",
+          ),
+          makeAssistant(
+            [
+              makeTool("webfetch", { url: "https://example.com/a" }, "error", {
+                error: "Request failed with status code: 403",
+              }),
+            ],
+            "scholar",
+          ),
+          makeAssistant(
+            [
+              makeTool("webfetch", { url: "https://example.com/b" }, "error", {
+                error: "Request failed with status code: 404",
+              }),
+            ],
+            "scholar",
+          ),
+          makeAssistant(
+            [
+              makeTool("webfetch", { url: "https://example.com/b" }, "completed", {
+                output: "No papers found matching your search criteria.",
+                metadata: { searchFailureType: "no_results" },
+              }),
+            ],
+            "scholar",
+          ),
+        ],
+        [reflectionMarker],
+        "scholar",
+      )
 
-    const fired = await LoopJob.detectSignals(ctx)
-    expect(fired).toContain("tool_failure_pattern")
-  })
+      const fired = await LoopJob.detectSignals(ctx)
+      expect(fired).toContain("tool_failure_pattern")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -114,11 +114,11 @@ function sessionsDeletedDesc(count: number) {
 }
 
 function scopeLabel(item: ArchivedSessionItem) {
-  return getScopeLabel({ worktree: item.scope.directory, name: item.scope.name }, item.scope.directory)
+  return getScopeLabel(item.scope)
 }
 
 function sessionDirectory(item: ArchivedSessionItem) {
-  return item.scope.type === "home" ? "home" : item.scope.directory
+  return item.scope.type === "home" ? "home" : item.scope.id
 }
 
 function formatArchivedAt(fmt: IntlFormatter, value: number | undefined, unknownLabel: string) {
@@ -238,7 +238,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
         targets.map((item) =>
           globalSDK.client.session.update({
             sessionID: item.id,
-            directory: sessionDirectory(item),
+            scopeID: sessionDirectory(item),
             time: { archived: 0 },
           }),
         ),
@@ -269,9 +269,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
     else setBatchBusy("delete")
     try {
       await Promise.all(
-        targets.map((item) =>
-          globalSDK.client.session.delete({ sessionID: item.id, directory: sessionDirectory(item) }),
-        ),
+        targets.map((item) => globalSDK.client.session.delete({ sessionID: item.id, scopeID: sessionDirectory(item) })),
       )
       showToast({
         type: "success",

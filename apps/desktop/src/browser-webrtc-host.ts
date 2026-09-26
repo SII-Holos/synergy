@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { pathToFileURL } from "node:url"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { createHash } from "node:crypto"
 import {
   BROWSER_PROTOCOL_VERSION,
@@ -128,6 +128,7 @@ export class BrowserWebRTCHost {
         nodeIntegration: false,
         offscreen: true,
         sandbox: true,
+        preload: fileURLToPath(new URL("./browser-page-preload.cjs", import.meta.url)),
       },
     })
     this.browserWindow.setMenuBarVisibility(false)

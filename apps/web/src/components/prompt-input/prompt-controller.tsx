@@ -1,3 +1,5 @@
+import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
+import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import type { PluginInputService, PluginInputViewPart } from "@ericsanchezok/synergy-plugin"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { useFilteredList } from "@ericsanchezok/synergy-ui/hooks"
@@ -19,6 +21,9 @@ import {
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
 import { useLocal } from "@/context/local"
+import { useSessionMeta } from "@/composables/use-session-meta"
+import { ModelSelectorPopover } from "@/components/dialog/dialog-select-model"
+import { topBar } from "@/locales/messages"
 import { useInput, type ControlProfileId } from "@/context/input"
 import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
 import { useFile } from "@/context/file"
@@ -36,6 +41,7 @@ import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSessionTransition } from "@/context/session-transition"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
@@ -191,6 +197,7 @@ function WorkflowChip(props: {
 export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
   const workflowDialog = useDialog()
+  const confirm = useConfirm()
   const globalSync = useGlobalSync()
   const fullAccessAck = useFullAccessAcknowledgement()
   const sync = useSync()
@@ -272,14 +279,8 @@ export function createPromptInputController(props: PromptInputProps) {
     const workflow = activeWorkflow()
     return workflow?.kind === "boss" && workflow.role === "boss"
   })
-  const sessionScopeDirectory = createMemo(() => {
-    const scope = info()?.scope
-    if (!scope || typeof scope !== "object") return undefined
-    if (!("directory" in scope) || typeof scope.directory !== "string") return undefined
-    return scope.directory
-  })
-  const blueprintLoopRequest = (loopID: string, directory = sessionScopeDirectory()) =>
-    directory ? { id: loopID, directory } : { id: loopID }
+  const sessionScopeID = createMemo(() => info()?.scope.id)
+  const blueprintLoopRequest = (loopID: string, scopeID = sessionScopeID()) => ({ id: loopID, scopeID })
 
   createEffect(
     on(
@@ -300,7 +301,7 @@ export function createPromptInputController(props: PromptInputProps) {
     if (!loopID) return null
     // Track reconnectVersion so the loop refetches after a backend restart,
     // whose in-memory state the server cannot replay via events (issue #331).
-    return { loopID, directory: sessionScopeDirectory(), reconnect: globalSync.reconnectVersion() }
+    return { loopID, directory: sessionScopeID(), reconnect: globalSync.reconnectVersion() }
   })
 
   const [sessionLoop, { mutate: mutateSessionLoop }] = createResource(
@@ -329,13 +330,15 @@ export function createPromptInputController(props: PromptInputProps) {
 
   const abortSession = async (sessionID = params.id) => {
     if (!sessionID) return
-    await sdk.client.session.abort({ sessionID })
+    const result = await sdk.client.session.abort({ sessionID })
+    if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
   }
 
   /** Resume a paused session from the breakpoint the interruption left behind. */
   const continueSession = async (sessionID = params.id) => {
     if (!sessionID) return
-    await sdk.client.session.continue({ sessionID })
+    const result = await sdk.client.session.continue({ sessionID })
+    if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
   }
 
   /** The destructive gesture: terminalize the interrupted turn and cancel any
@@ -343,7 +346,8 @@ export function createPromptInputController(props: PromptInputProps) {
    *  what it changed rather than failing. */
   const abandonSession = async (sessionID = params.id) => {
     if (!sessionID) return
-    await sdk.client.session.abandon({ sessionID })
+    const result = await sdk.client.session.abandon({ sessionID })
+    if (result.error || !result.data) throw new Error(blueprintRequestErrorMessage(result.error))
   }
 
   const clearBoundLoop = (sessionID: string | undefined, loopID: string) => {
@@ -373,26 +377,43 @@ export function createPromptInputController(props: PromptInputProps) {
     return loop?.id === loopID && isTerminalBlueprintLoopStatus(loop.status) ? undefined : loopID
   })
 
-  /** One implementation of "stop the current turn and release the workflow
-   *  holding this session". The slot long-press, Esc/Ctrl+G, and the composer's
-   *  stop control all route through here so none of them can interrupt a turn
-   *  while leaving a BlueprintLoop bound to a session it no longer drives.
-   *  The failure is returned rather than thrown so callers keep the partial
-   *  progress (turn stopped, loop still bound) their toasts report. */
-
-  /** Turn-only stop. This is the historical contract for Esc, Ctrl+G, the
-   *  plugin's stop(), and the empty-composer primary button, and it must stay
-   *  turn-only: cancelling a workflow is a separate, explicit action. A
-   *  *driverless* loop is released by the backend abort route, which does so
-   *  only when no live runtime owns the session; cancelling here would silently
-   *  turn "stop this turn" into "terminate the workflow" for healthy loops. */
   const abortController = createAbortRequestController({
     request: () => abortSession(params.id),
     setPending: setAbortStopping,
   })
+  const reportControlError = (error: unknown) =>
+    showToast({
+      type: "error",
+      title: i18n._(PI.controlFailed),
+      description: blueprintRequestErrorMessage(error),
+    })
   const abort = () => {
-    abortController.run().catch(() => {})
+    void abortController.run().catch(reportControlError)
   }
+  const [continuePending, setContinuePending] = createSignal(false)
+  const continueController = createAbortRequestController({
+    request: () => continueSession(),
+    setPending: setContinuePending,
+  })
+  const [abandonPending, setAbandonPending] = createSignal(false)
+  const abandonController = createAbortRequestController({
+    setPending: setAbandonPending,
+    request: async () => {
+      const sessionID = params.id
+      const slot = localArmedLoop()
+      const boundID = boundLoopID()
+      await abandonSession(sessionID)
+      if (slot?.type === "loop" && slot.loopID !== boundID) {
+        const result = await sdk.client.blueprint.loop.cancel(blueprintLoopRequest(slot.loopID))
+        if (result.error) throw new Error(blueprintRequestErrorMessage(result.error))
+      }
+      if (params.id !== sessionID) return
+      if (localArmedLoop() === slot) setLocalArmedLoop(null)
+      setPendingLattice(null)
+      setPendingLightLoop(false)
+      showToast({ type: "info", title: i18n._(PI.abandonDone) })
+    },
+  })
 
   const applySessionLoopEvent = (loop: BlueprintLoopInfo) => {
     const activeLoopID = params.id ? info()?.blueprint?.loopID : undefined
@@ -419,6 +440,7 @@ export function createPromptInputController(props: PromptInputProps) {
 
   const [abandonPress, setAbandonPress] = createSignal<ReturnType<typeof setTimeout> | null>(null)
   const [abandonProgress, setAbandonProgress] = createSignal(0)
+  let abandonGestureConsumed = false
   let abandonFrame: number | undefined
   let abandonOrigin: { x: number; y: number } | undefined
 
@@ -427,11 +449,16 @@ export function createPromptInputController(props: PromptInputProps) {
    *  confirmation dialog — the ring is the confirmation — so the press must not
    *  fire during a drag or a scroll. */
   const startAbandonPress = (event: PointerEvent) => {
-    if (event.button !== 0 || abandonPress()) return
+    abandonGestureConsumed = false
+    if (event.button !== 0 || abandonPress() || controlDisabled() || !canAbandon()) return
     abandonOrigin = { x: event.clientX, y: event.clientY }
+    const owningSession = sessionKey()
     const startedAt = performance.now()
     const tick = (now: number) => {
-      setAbandonProgress(Math.min(1, (now - startedAt) / ABANDON_HOLD_MS))
+      if (now - startedAt >= 250) {
+        abandonGestureConsumed = true
+        setAbandonProgress(Math.min(1, (now - startedAt) / ABANDON_HOLD_MS))
+      }
       abandonFrame = requestAnimationFrame(tick)
     }
     setAbandonProgress(0)
@@ -441,11 +468,11 @@ export function createPromptInputController(props: PromptInputProps) {
         setAbandonPress(null)
         if (abandonFrame !== undefined) cancelAnimationFrame(abandonFrame)
         abandonFrame = undefined
+        if (sessionKey() !== owningSession || !canAbandon()) return
+        abandonGestureConsumed = true
         setAbandonProgress(1)
         try {
-          await abandonSession()
-          setLocalArmedLoop(null)
-          showToast({ type: "info", title: i18n._(PI.abandonDone) })
+          await abandonController.run()
         } catch (error) {
           showToast({
             type: "error",
@@ -463,7 +490,10 @@ export function createPromptInputController(props: PromptInputProps) {
   const trackAbandonPress = (event: PointerEvent) => {
     if (!abandonOrigin || !abandonPress()) return
     const travel = Math.hypot(event.clientX - abandonOrigin.x, event.clientY - abandonOrigin.y)
-    if (travel > ABANDON_HOLD_TOLERANCE_PX) cancelLongPress()
+    if (travel > ABANDON_HOLD_TOLERANCE_PX) {
+      abandonGestureConsumed = true
+      cancelLongPress()
+    }
   }
 
   const cancelLongPress = () => {
@@ -533,35 +563,49 @@ export function createPromptInputController(props: PromptInputProps) {
     canLongPressAbandon({
       hasDraft: hasDraft(),
       activity: activity(),
-      hasBoundWorkflow: !!boundLoopID() || !!localArmedLoop(),
+      hasBoundWorkflow:
+        !!boundLoopID() ||
+        !!localArmedLoop() ||
+        backendLightLoopActive() ||
+        activeWorkflow()?.kind === "lattice" ||
+        !!pendingLattice() ||
+        pendingLightLoop(),
     }),
   )
   const controlDisabled = createMemo(() => {
-    if (props.readOnly || abortStopping() || submitPending()) return true
+    if (props.readOnly || abortStopping() || submitPending() || abandonPending() || (continuePending() && !working()))
+      return true
     if (controlState() === "pause" || controlState() === "continue") return false
     return !canSubmit()
   })
   const controlLabel = createMemo(() => {
+    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
+    if (abandonPending()) return i18n._(PI.abandoning)
+    if (continuePending() && !working()) return i18n._(PI.startingSession)
     switch (controlState()) {
       case "pause":
         return i18n._(PI.pauseControl)
       case "continue":
         return i18n._(PI.continueControl)
       default:
-        return attachmentsUploading() ? i18n._(PI.submitWaitUploadsTitle) : i18n._(PI.sendMessage)
+        if (attachmentsUploading()) return i18n._(PI.submitWaitUploadsTitle)
+        if (activity() === "paused" && hasDraft()) return i18n._(PI.sendAndContinue)
+        if (working() && hasDraft()) return i18n._(PI.queueMessage)
+        return i18n._(PI.sendMessage)
     }
   })
   const controlIcon = createMemo<IconName>(() => {
     switch (controlState()) {
       case "pause":
-        return "circle-pause"
+        return getSemanticIcon("session.pause")
       case "continue":
-        return "circle-play"
+        return getSemanticIcon("session.continue")
       default:
         return getSemanticIcon("prompt.submitArrow")
     }
   })
   const controlHint = createMemo(() => {
+    if (props.sessionTransitionError) return i18n._(PI.recoveryRequired)
     switch (controlState()) {
       case "pause":
         return i18n._(PI.pauseControlHint)
@@ -570,12 +614,18 @@ export function createPromptInputController(props: PromptInputProps) {
       case "disabled":
         return i18n._(PI.disabledControlHint)
       default:
-        return i18n._(PI.sendAction)
+        return i18n._(activity() === "paused" ? PI.steerHint : working() ? PI.queueMessage : PI.sendAction)
     }
   })
   /** Pause and Continue are not submits, so they intercept the click; Send lets
    *  the form's submit path run unchanged. */
   const handleControlClick = (event: MouseEvent) => {
+    if (abandonGestureConsumed || abandonPending()) {
+      abandonGestureConsumed = false
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
     if (controlState() === "pause") {
       event.preventDefault()
       abort()
@@ -583,15 +633,39 @@ export function createPromptInputController(props: PromptInputProps) {
     }
     if (controlState() === "continue") {
       event.preventDefault()
-      void continueSession()
+      void continueController.run().catch(reportControlError)
     }
   }
+
+  command.register(() => [
+    {
+      id: "session.abandon",
+      title: i18n._(PI.abandonExecution),
+      description: i18n._(PI.abandonDescription),
+      disabled: props.readOnly || !canAbandon() || abandonPending(),
+      onSelect: () => {
+        const owningSession = sessionKey()
+        confirm.show({
+          title: PI.abandonExecution,
+          description: PI.abandonDescription,
+          confirmLabel: PI.abandonConfirm,
+          cancelLabel: PI.abandonBack,
+          tone: "danger",
+          onConfirm: async () => {
+            if (sessionKey() !== owningSession) return
+            await abandonController.run()
+          },
+        })
+      },
+    },
+  ])
 
   createEffect(
     on(
       () => sessionKey(),
       () => {
         cancelLongPress()
+        abandonGestureConsumed = false
         setLocalArmedLoop(null)
         pendingUploads.clear()
       },
@@ -932,6 +1006,9 @@ export function createPromptInputController(props: PromptInputProps) {
     return view().messagesFor(params.id).length > 0
   })
 
+  const sessionMeta = useSessionMeta(info, sessionHasMessages)
+  const modelLocked = createMemo(() => sessionHasMessages() && local.agent.current()?.external?.adapter === "codex")
+
   const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
     controller.activeLocale()
     const agentSection: PromptAddMenuSection = {
@@ -1118,8 +1195,25 @@ export function createPromptInputController(props: PromptInputProps) {
             label: mainLabel,
             description: localDescription,
             icon: getSemanticIcon("workspace.main"),
-            selected: !worktreeSelected,
+            selected: workspaceSelection.mode === "current",
             onSelect: () => props.onNewSessionWorkspaceSelectionChange?.({ mode: "current" }),
+          },
+          {
+            id: "workspace.directory",
+            label:
+              workspaceSelection.mode === "workspace"
+                ? (sync.data.workspaces.find((record) => record.id === workspaceSelection.workspaceID)?.binding.path ??
+                  i18n._(workspaceCopy.title))
+                : workspaceSelection.mode === "none"
+                  ? i18n._(workspaceCopy.none)
+                  : i18n._(workspaceCopy.title),
+            description: i18n._(workspaceCopy.description),
+            icon: getSemanticIcon("workspace.main"),
+            selected: workspaceSelection.mode === "workspace" || workspaceSelection.mode === "none",
+            onSelect: () =>
+              workflowDialog.show(() => (
+                <DialogWorkspace selection={workspaceSelection} onSelect={props.onNewSessionWorkspaceSelectionChange} />
+              )),
           },
           {
             id: "workspace.worktree",
@@ -1817,7 +1911,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }
   }
 
-  const handleSubmit = usePromptSubmit({
+  const submitPrompt = usePromptSubmit({
     props,
     uploadedAttachments,
     noteAttachments,
@@ -1853,6 +1947,13 @@ export function createPromptInputController(props: PromptInputProps) {
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
     beforeSubmit: () => composerDocument!.beforeSubmit(),
   })
+  const handleSubmit = (event: Event) => {
+    if (abandonPending() || (continuePending() && !working())) {
+      event.preventDefault()
+      return
+    }
+    return submitPrompt(event)
+  }
 
   createEffect(() => {
     if (params.id || !prompt.ready()) return
@@ -2009,10 +2110,14 @@ export function createPromptInputController(props: PromptInputProps) {
               </Match>
               <Match when={store.mode === "normal"}>
                 <Show when={!props.hideAgentSelector}>
-                  <div class="hidden md:block">
+                  <div class="min-w-0 shrink-0">
                     <ToolbarSelectorPopover
-                      trigger={
-                        <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
+                      triggerAs={(triggerProps) => (
+                        <button
+                          {...triggerProps}
+                          type="button"
+                          class="prompt-input-toolbar-button flex items-center gap-1.5"
+                        >
                           <span class="text-12-medium text-text-base whitespace-nowrap">
                             {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
                           </span>
@@ -2022,7 +2127,7 @@ export function createPromptInputController(props: PromptInputProps) {
                             class="text-icon-weak-base shrink-0"
                           />
                         </button>
-                      }
+                      )}
                       title={i18n._(PI.selectAgent)}
                       contentClass="w-52 max-h-80"
                       placement="top-start"
@@ -2067,6 +2172,51 @@ export function createPromptInputController(props: PromptInputProps) {
                         </List>
                       )}
                     </ToolbarSelectorPopover>
+                  </div>
+                </Show>
+                <Show when={sessionMeta().canSelectModel}>
+                  <div class="min-w-0 max-w-full md:hidden">
+                    <Show
+                      when={!modelLocked()}
+                      fallback={
+                        <Tooltip value={i18n._(topBar.modelLocked)}>
+                          <button type="button" class="prompt-input-toolbar-button max-w-full" aria-disabled="true">
+                            <span class="truncate text-12-medium text-text-base">
+                              {local.model.current()?.name ?? i18n._(topBar.modelLockedLabel)}
+                            </span>
+                          </button>
+                        </Tooltip>
+                      }
+                    >
+                      <ModelSelectorPopover
+                        triggerAs={(triggerProps) => (
+                          <button
+                            {...triggerProps}
+                            type="button"
+                            class="prompt-input-toolbar-button max-w-full flex items-center gap-1.5"
+                            aria-label={i18n._(topBar.chooseModel)}
+                          >
+                            <span class="truncate text-12-medium text-text-base">
+                              {local.model.current()?.name ?? i18n._(topBar.selectModel)}
+                            </span>
+                            <Show when={local.model.current()?.catalogState === "retained"}>
+                              <Tooltip value={i18n._(topBar.retainedModel)}>
+                                <Icon
+                                  name={getSemanticIcon("state.warning")}
+                                  size="small"
+                                  class="text-icon-warning-base"
+                                />
+                              </Tooltip>
+                            </Show>
+                            <Icon
+                              name={getSemanticIcon("navigation.collapse")}
+                              size="small"
+                              class="text-icon-weak-base shrink-0"
+                            />
+                          </button>
+                        )}
+                      />
+                    </Show>
                   </div>
                 </Show>
                 <PermissionModeSelector
@@ -2164,18 +2314,25 @@ export function createPromptInputController(props: PromptInputProps) {
                 </div>
               </Tooltip>
             </Show>
-            <div class="relative flex items-center">
+            <div class="relative flex items-center gap-2">
+              <Show when={props.sessionTransitionError}>
+                <span class="max-w-40 text-12-regular text-text-weak" role="status">
+                  {i18n._(PI.recoveryRequired)}
+                </span>
+              </Show>
               <Tooltip
                 placement="top"
-                inactive={!controlDisabled()}
+                open={abandonProgress() > 0 || abandonPending() ? false : undefined}
                 value={
                   <div class="flex max-w-72 flex-col gap-1">
                     <span>
                       {abortStopping()
                         ? i18n._(PI.stopping)
-                        : submitPending()
-                          ? i18n._(PI.startingSession)
-                          : controlLabel()}
+                        : props.sessionTransitionError
+                          ? i18n._(PI.recoveryRequired)
+                          : submitPending()
+                            ? i18n._(PI.startingSession)
+                            : controlLabel()}
                     </span>
                     <span class="text-10-regular text-text-weak">{controlHint()}</span>
                     <Show when={canAbandon()}>
@@ -2190,21 +2347,42 @@ export function createPromptInputController(props: PromptInputProps) {
                   disabled={controlDisabled()}
                   icon={controlIcon()}
                   variant="primary"
-                  class={`prompt-input-submit size-[34px] rounded-full!${controlState() === "send" ? "" : " bg-text-strong!"}`}
-                  onPointerDown={canAbandon() ? startAbandonPress : undefined}
+                  class="prompt-input-submit size-[34px] rounded-full!"
+                  onPointerDown={startAbandonPress}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") abandonGestureConsumed = false
+                  }}
                   onPointerMove={canAbandon() ? trackAbandonPress : undefined}
                   onPointerUp={cancelLongPress}
-                  onPointerCancel={cancelLongPress}
-                  onPointerLeave={cancelLongPress}
+                  onPointerCancel={() => {
+                    abandonGestureConsumed = true
+                    cancelLongPress()
+                  }}
+                  onPointerLeave={() => {
+                    if (abandonPress()) abandonGestureConsumed = true
+                    cancelLongPress()
+                  }}
                   onClick={handleControlClick}
                 />
               </Tooltip>
-              <Show when={abandonProgress() > 0}>
-                <span
-                  class="pointer-events-none absolute bottom-0 left-0 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
-                  style={{ width: `${abandonProgress() * 100}%` }}
-                  aria-hidden="true"
-                />
+              <Show when={abandonProgress() > 0 || abandonPending()}>
+                <svg class="prompt-abandon-ring" viewBox="0 0 40 40" aria-hidden="true">
+                  <circle
+                    cx="20"
+                    cy="20"
+                    r="18"
+                    pathLength="1"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-dasharray="1"
+                    stroke-dashoffset={1 - abandonProgress()}
+                    transform="rotate(-90 20 20)"
+                  />
+                </svg>
+                <span class="prompt-abandon-feedback" role="status">
+                  {i18n._(abandonPending() ? PI.abandoning : PI.abandonHolding)}
+                </span>
               </Show>
             </div>
           </div>
@@ -2261,8 +2439,11 @@ export function createPromptInputController(props: PromptInputProps) {
         if (store.mode === "shell") return i18n._(PI.placeholderShell)
         if (planActive()) return i18n._(PI.placeholderPlan)
         return isHomeScope(sdk.scopeKey)
-          ? `Ask me anything... "${PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]}"`
-          : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`
+          ? i18n._({
+              ...PI.placeholderExampleGlobal,
+              values: { example: i18n._(PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]) },
+            })
+          : i18n._({ ...PI.placeholderExampleProject, values: { example: i18n._(PLACEHOLDERS[store.placeholder]) } })
       },
     },
     readOnly: () => !!props.readOnly,
@@ -2274,7 +2455,7 @@ export function createPromptInputController(props: PromptInputProps) {
     },
     ready: prompt.ready,
     canSubmit: () => canSubmit() && !composing() && !submitStopsSession(),
-    submitting: () => submitPending() || composerSubmitting(),
+    submitting: () => (submitPending() && !props.sessionTransitionError) || composerSubmitting(),
     stopping: abortStopping,
     dragging: () => store.dragging,
     className: () => props.class,

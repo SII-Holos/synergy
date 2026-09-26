@@ -56,6 +56,7 @@ export function MobileDrawerRecent(props: {
   loadMoreLabel: string
   untitledLabel: string
   draftLabel: string
+  hasDraft: (sessionID: string) => boolean
   entries: NavEntry[]
   currentSessionID?: string
   visualFor: (entry: NavEntry) => MobileDrawerRecentVisual
@@ -104,6 +105,7 @@ export function MobileDrawerRecent(props: {
                     </Show>
                   </span>
                   <SessionDraftBadge
+                    dirty={props.hasDraft(entry.id)}
                     sessionID={entry.id}
                     label={props.draftLabel}
                     class="shrink-0 translate-y-px text-10-medium text-text-error"

@@ -58,8 +58,10 @@ declare module "@ericsanchezok/synergy-harness/config/schema" {
 }
 type ConfigShapeType = typeof ConfigShape
 
+const contribution: ConfigExtensions.Contribution = { shape: ConfigShape }
+
 export function registerConfig() {
-  ConfigExtensions.register("workflows", { shape: ConfigShape })
+  ConfigExtensions.register("workflows", contribution)
   for (const domain of [
     {
       id: "runtime",
@@ -74,7 +76,6 @@ export function registerConfig() {
   ] satisfies ConfigDomain.Definition[])
     ConfigDomain.register(domain)
 }
-registerConfig()
 
 export async function readConfig(): Promise<ConfigValues> {
   const { Config } = await import("@ericsanchezok/synergy-harness/config/config")

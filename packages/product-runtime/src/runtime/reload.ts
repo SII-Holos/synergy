@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Experiment } from "@ericsanchezok/synergy-harness/config/experiment"
 import { DEFAULT_AGENT_WORKER_POOL_OPTIONS } from "@ericsanchezok/synergy-harness/session/agent-turn/worker-pool"
 import path from "path"
@@ -83,9 +84,9 @@ export namespace RuntimeReload {
 
   interface ReloadOptions {
     configChange?: Config.Change
-    eventDirectory?: string
+    eventScopeID?: string | null
     includePrerequisites?: boolean
-    useCurrentDirectory?: boolean
+    useCurrentScope?: boolean
     /** File paths that triggered the reload; lets Config.reload skip unaffected markdown scans. */
     files?: string[]
   }
@@ -119,7 +120,7 @@ export namespace RuntimeReload {
   // ─── Core reload function ────────────────────────────────────────────
 
   export async function reload(input: Input, options: ReloadOptions = {}): Promise<Result> {
-    return reloadInternal(input, { ...options, includePrerequisites: true, useCurrentDirectory: true })
+    return reloadInternal(input, { ...options, includePrerequisites: true, useCurrentScope: true })
   }
 
   export async function reloadGlobal(input: Input, options: ReloadOptions = {}): Promise<Result> {
@@ -206,8 +207,8 @@ export namespace RuntimeReload {
       diagnostics,
     }
 
-    GlobalBus.emit("event", {
-      directory: options.useCurrentDirectory ? ScopeContext.current.directory : options.eventDirectory,
+    GlobalBus().emit("event", {
+      scopeID: options.useCurrentScope ? ScopeContext.current.scope.id : (options.eventScopeID ?? null),
       payload: {
         type: Event.Reloaded.type,
         properties: {
@@ -590,7 +591,7 @@ export namespace RuntimeReload {
         path.join(".synergy", "synergy.jsonc"),
         path.join(".synergy", "synergy.json"),
       ].some((file) => existsSync(path.join(ScopeContext.current.directory, file))) ||
-      ConfigDomain.definitions.some((domain) =>
+      ConfigDomain.definitions().some((domain) =>
         existsSync(path.join(ScopeContext.current.directory, ".synergy", "synergy.d", domain.filename)),
       )
     )
@@ -730,14 +731,20 @@ export namespace RuntimeReload {
 
   // P12: Debounce per scope rather than per file.
   // Multiple file changes within the same scope during the debounce window
-  const debounceTimers = new Map<
-    string,
-    { timer: ReturnType<typeof setTimeout>; targets: Set<Target>; files: Set<string> }
-  >()
+  const runtimeState = RuntimeContext.state(() => ({
+    debounceTimers: new Map<
+      string,
+      { timer: ReturnType<typeof setTimeout>; targets: Set<Target>; files: Set<string> }
+    >(),
+    autoReloadStarted: false,
+    pendingAutoReloads: new Set<Promise<void>>(),
+  }))
 
   function debounceReload(file: string, scope: "global" | "project", targets: Target[]) {
+    const instanceState = runtimeState()
+
     const key = scope
-    const existing = debounceTimers.get(key)
+    const existing = instanceState.debounceTimers.get(key)
     if (existing) {
       clearTimeout(existing.timer)
       for (const t of targets) existing.targets.add(t)
@@ -750,7 +757,9 @@ export namespace RuntimeReload {
     const timer = setTimeout(
       () =>
         trackAutoReload(async () => {
-          debounceTimers.delete(key)
+          const instanceState = runtimeState()
+
+          instanceState.debounceTimers.delete(key)
           const finalTargets = [...mergedTargets]
           if (finalTargets.length === 0) return
           reloadLog.info("auto-reloading", { scope, targets: finalTargets })
@@ -777,10 +786,12 @@ export namespace RuntimeReload {
       DEFAULT_DEBOUNCE_MS,
     )
 
-    debounceTimers.set(key, { timer, targets: mergedTargets, files: mergedFiles })
+    instanceState.debounceTimers.set(key, { timer, targets: mergedTargets, files: mergedFiles })
   }
 
   async function handleGlobalConfigEvent(event: { file: string; event: string }) {
+    const instanceState = runtimeState()
+
     // Settings saves already run their full reload inside the write
     // transaction; skip the watcher's follow-up reload for those writes so a
     // save never triggers a second full config reload.
@@ -798,35 +809,44 @@ export namespace RuntimeReload {
       reloadLog.info("could not detect scope for file, skipping", { file: event.file })
       return
     }
-    if (autoReloadStarted) debounceReload(event.file, scope, targets)
+    if (instanceState.autoReloadStarted) debounceReload(event.file, scope, targets)
   }
 
-  let autoReloadStarted = false
-  const pendingAutoReloads = new Set<Promise<void>>()
   function trackAutoReload(action: () => Promise<void>) {
+    const instanceState = runtimeState()
+
     const pending = action()
       .catch((error) => {
         reloadLog.error("auto-reload failed", { error })
       })
-      .finally(() => pendingAutoReloads.delete(pending))
-    pendingAutoReloads.add(pending)
+      .finally(() => {
+        const instanceState = runtimeState()
+        return instanceState.pendingAutoReloads.delete(pending)
+      })
+    instanceState.pendingAutoReloads.add(pending)
   }
   function receiveConfigEvent(event: { payload?: { type?: string; properties?: unknown } }) {
-    if (!autoReloadStarted || event.payload?.type !== "global.config.file.changed") return
+    const instanceState = runtimeState()
+
+    if (!instanceState.autoReloadStarted || event.payload?.type !== "global.config.file.changed") return
     const properties = event.payload.properties as { file: string; event: string } | undefined
     if (properties) trackAutoReload(() => handleGlobalConfigEvent(properties))
   }
   export function startAutoReload() {
-    if (autoReloadStarted) return
-    autoReloadStarted = true
-    GlobalBus.on("event", receiveConfigEvent)
+    const instanceState = runtimeState()
+
+    if (instanceState.autoReloadStarted) return
+    instanceState.autoReloadStarted = true
+    GlobalBus().on("event", receiveConfigEvent)
     reloadLog.info("auto-reload listener started")
   }
   export async function stopAutoReload() {
-    autoReloadStarted = false
-    GlobalBus.off("event", receiveConfigEvent)
-    for (const { timer } of debounceTimers.values()) clearTimeout(timer)
-    debounceTimers.clear()
-    await Promise.all([...pendingAutoReloads])
+    const instanceState = runtimeState()
+
+    instanceState.autoReloadStarted = false
+    GlobalBus().off("event", receiveConfigEvent)
+    for (const { timer } of instanceState.debounceTimers.values()) clearTimeout(timer)
+    instanceState.debounceTimers.clear()
+    await Promise.all([...instanceState.pendingAutoReloads])
   }
 }

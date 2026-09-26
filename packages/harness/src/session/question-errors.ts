@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * S9c source inversion: the L1 session processor classifies rejected
  * interactive questions through this registry instead of importing the
@@ -7,21 +8,31 @@
 export namespace SessionQuestionErrors {
   type RejectedErrorClass = abstract new () => Error
 
-  let rejectedError: RejectedErrorClass | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    rejectedError: undefined as RejectedErrorClass | undefined,
+  }))
 
   export function registerRejectedError(value: RejectedErrorClass): void {
-    rejectedError = value
+    const instanceState = runtimeState()
+
+    instanceState.rejectedError = value
   }
 
   export function get(): RejectedErrorClass | undefined {
-    return rejectedError
+    const instanceState = runtimeState()
+
+    return instanceState.rejectedError
   }
 
   export function isRejected(error: unknown): boolean {
-    return rejectedError !== undefined && error instanceof rejectedError
+    const instanceState = runtimeState()
+
+    return instanceState.rejectedError !== undefined && error instanceof instanceState.rejectedError
   }
 
   export function isRejectedErrorName(name: string | undefined): boolean {
-    return name !== undefined && rejectedError !== undefined && name === rejectedError.name
+    const instanceState = runtimeState()
+
+    return name !== undefined && instanceState.rejectedError !== undefined && name === instanceState.rejectedError.name
   }
 }

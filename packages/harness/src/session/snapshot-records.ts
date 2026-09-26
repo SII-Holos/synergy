@@ -19,10 +19,19 @@ export namespace SnapshotRecords {
         : ["snapshot", "step-start", "step-finish"].includes(String(value.type))
           ? value.snapshot
           : undefined
-    if (hash === undefined || (hash === "" && ["step-start", "step-finish"].includes(String(value.type)))) return []
-    if (typeof hash !== "string" || !SnapshotStore.OID.test(hash))
+    const operation =
+      value.type === "patch" && value.operation && typeof value.operation === "object"
+        ? (value.operation as Record<string, unknown>)
+        : undefined
+    const empty =
+      hash === "" &&
+      (["step-start", "step-finish"].includes(String(value.type)) ||
+        operation?.status === "pending" ||
+        operation?.status === "incomplete")
+    const hashes = [empty ? undefined : hash, operation?.afterHash].filter((item) => item !== undefined)
+    if (hashes.some((item) => typeof item !== "string" || !SnapshotStore.OID.test(item)))
       throw new SnapshotStore.StorageError("Invalid historical snapshot reference")
-    return [hash]
+    return [...new Set(hashes)] as string[]
   }
 
   export async function historicalRoots(scopeID: string, sessionID: string) {

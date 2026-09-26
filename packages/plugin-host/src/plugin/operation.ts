@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import Ajv2020 from "ajv/dist/2020"
 import type { ErrorObject, ValidateFunction } from "ajv"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
@@ -33,13 +34,17 @@ export class PluginOperationError extends Error {
 }
 
 const ajv = new Ajv2020({ allErrors: true, strict: false })
-const validators = new WeakMap<object, ValidateFunction>()
+const runtimeState = RuntimeContext.state(() => ({
+  validators: new WeakMap<object, ValidateFunction>(),
+}))
 
 function validator(schema: Record<string, unknown>) {
-  let validate = validators.get(schema)
+  const instanceState = runtimeState()
+
+  let validate = instanceState.validators.get(schema)
   if (!validate) {
     validate = ajv.compile(schema)
-    validators.set(schema, validate)
+    instanceState.validators.set(schema, validate)
   }
   return validate
 }
@@ -93,14 +98,14 @@ export async function invokePluginOperation(input: {
   validatePluginOperationValue(operation.input, input.value, "INPUT_INVALID")
   try {
     await ensureRuntime(plugin)
-    const result = await pluginRuntimeManager.invoke({
+    const result = await pluginRuntimeManager().invoke({
       pluginId: plugin.id,
       handlerId: `operation:${operation.id}`,
       value: input.value,
       context: {
         scopeId: ScopeContext.current.scope.id,
         sessionId: input.sessionId,
-        directory: ScopeContext.current.directory,
+        directory: ScopeContext.current.workspace?.path,
         actor: { type: input.caller },
       },
       pluginDir: plugin.pluginDir,

@@ -2,6 +2,7 @@ import { createSynergyClient, type Event } from "@ericsanchezok/synergy-sdk/clie
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, createSignal, onCleanup } from "solid-js"
+import { createDraftSessionIndex } from "./prompt/draft-index"
 import { createEventQueue } from "./event-queue"
 import { usePlatform } from "./platform"
 import { recordTokenReceive, stopBrowserPerformanceMetrics } from "@/components/performance/browser-metrics"
@@ -16,12 +17,14 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
   name: "GlobalSDK",
   init: () => {
     const server = useServer()
+    const drafts = createDraftSessionIndex(server.url)
+    onCleanup(() => drafts.dispose())
     const emitter = createGlobalEmitter<{
       [key: string]: Event
     }>()
 
     const eventQueue = createEventQueue({
-      emit: (directory, payload) => emitter.emit(directory, payload as Event),
+      emit: (scopeID, payload) => emitter.emit(scopeID, payload as Event),
       isHidden: () => document.visibilityState === "hidden",
       batch,
     })
@@ -107,7 +110,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       }
 
       socket.onmessage = (msg) => {
-        let parsed: { directory?: string; payload?: Event }
+        let parsed: { scopeID?: string | null; payload?: Event }
         try {
           parsed = JSON.parse(msg.data)
         } catch {
@@ -129,8 +132,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         const tokenReceipt = streamingTokenReceipt(payload)
         if (tokenReceipt) recordTokenReceive(tokenReceipt.part, { delta: tokenReceipt.delta })
 
-        const directory = parsed.directory ?? "global"
-        eventQueue.push(directory, payload)
+        if (parsed.scopeID !== null && typeof parsed.scopeID !== "string") return
+        eventQueue.push(parsed.scopeID ?? "global", payload)
       }
 
       socket.onclose = () => {
@@ -169,6 +172,17 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       throwOnError: true,
     })
 
-    return { url: server.url, client: sdk, event: emitter, connected, disconnectedAt }
+    return {
+      url: server.url,
+      client: sdk,
+      event: emitter,
+      connected,
+      disconnectedAt,
+      drafts,
+      prepareScopeState(scopes: Parameters<typeof server.scopes.prepare>[0]) {
+        server.scopes.prepare(scopes)
+        drafts.rebuildDraftSessionIndex()
+      },
+    }
   },
 })

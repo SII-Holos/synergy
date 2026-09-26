@@ -9,7 +9,7 @@
 
 Stable desktop updates use `electron-updater` against the GitHub Release metadata files below. The app stores its desktop update preference under Electron `userData`; `auto` downloads in the background, `notify` reports availability, `manual` waits for an explicit check, and `none` disables checks. Settings and the bottom sidebar update prompt show availability, download progress, install readiness, and errors. Installing an already downloaded update stops the managed local server before calling Electron's updater install action.
 
-On first launch after an upgrade, Desktop displays saved-data migration progress and waits for advancing work before opening the application. Verify both a fresh install and an upgrade that exceeds the ordinary startup deadline; see [startup waiting limits](../reference/development.md#development-modes).
+On first launch after an upgrade, Desktop displays saved-data migration progress and waits for advancing work before opening the application. Optional database rewrites require an explicit maintenance action in Settings → Storage or the recovery page. Managed Desktop refuses maintenance while work is active, stops only its own server, uses the matching bundled CLI, and restarts after the format commits. Return to Synergy cancels at a durable boundary and opens the committed data. External-server mode provides host-side instructions. Failed launches offer Retry, Continue maintenance and Export diagnostics; diagnostic export does not open storage. Verify both a fresh install and an upgrade that exceeds the ordinary startup deadline; see [startup waiting limits](../reference/development.md#development-modes).
 
 Runtime environment:
 
@@ -60,7 +60,7 @@ The Linux `.deb` depends on the system `bubblewrap` package. Linux portable arti
 
 The product release also publishes the minimal remote Browser Host for every supported OS/architecture:
 
-`browser-host:build` stages an independent manifest and bundled entry in `apps/desktop/build/browser-host-app`. Browser Host packaging explicitly excludes node_modules, and its afterPack hook verifies the actual ASAR contains only the entry and manifest. It must never inherit Desktop Computer drivers, runtime packages, source trees or test/coverage outputs.
+`browser-host:build` stages an independent manifest, bundled entry, and sandboxed page prompt preload in `apps/desktop/build/browser-host-app`. Browser Host packaging explicitly excludes node_modules, and its afterPack hook verifies the actual ASAR contains only the entry, `browser-page-preload.cjs`, and manifest. It must never inherit Desktop Computer drivers, runtime packages, source trees or test/coverage outputs.
 
 - `synergy-browser-host-{darwin|win32|linux}-{x64|arm64}-${version}.zip`
 - the matching `.manifest.json`

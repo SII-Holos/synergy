@@ -11,20 +11,20 @@ import { formatBytes } from "@/components/library/shared"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { requestErrorMessage } from "@/utils/error"
-import { getScopeLabel } from "@/utils/scope"
+import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   canDeleteWorktree,
   gitProjectScopes,
-  groupWorktreesByDirectory,
-  loadWorktreesByDirectory,
+  groupWorktreesByScope,
+  loadWorktreesByScope,
   worktreeLifecycleLabel,
 } from "./worktrees-panel-model"
 
-type GroupedWorktrees = { scopeLabel: string; directory: string; worktrees: Worktree[] }
+type GroupedWorktrees = { scopeLabel: string; scopeID: string; worktrees: Worktree[] }
 
 function scopeLabel(directory: string, name?: string) {
-  return getScopeLabel({ worktree: directory, name }, directory)
+  return name || getFilename(directory)
 }
 
 const pageTitle = { id: "settings.worktrees.page.title", message: "Worktrees" }
@@ -90,12 +90,11 @@ export function WorktreesPanel() {
   const [refreshKey, setRefreshKey] = createSignal(0)
 
   const projectScopes = createMemo(() => {
-    const home = globalSync.data.paths?.home
-    return gitProjectScopes(globalSync.data.scope, home)
+    return gitProjectScopes(globalSync.data.scope)
   })
 
   const grouped = createMemo<GroupedWorktrees[]>(() =>
-    groupWorktreesByDirectory(projectScopes(), allWorktrees(), scopeLabel),
+    groupWorktreesByScope(projectScopes(), allWorktrees(), scopeLabel),
   )
 
   const totalCount = createMemo(() => grouped().reduce((sum, group) => sum + group.worktrees.length, 0))
@@ -104,10 +103,10 @@ export function WorktreesPanel() {
     if (!globalSDK.connected()) return
     setLoading(true)
     try {
-      const result = await loadWorktreesByDirectory(
+      const result = await loadWorktreesByScope(
         scopes,
         async (directory) => {
-          const response = await globalSDK.client.worktree.list({ directory })
+          const response = await globalSDK.client.worktree.list({ scopeID: directory })
           return Array.isArray(response.data) ? response.data : []
         },
         3,
@@ -149,7 +148,7 @@ export function WorktreesPanel() {
     setBusyID(item.id)
     try {
       await globalSDK.client.worktree.remove({
-        directory,
+        scopeID: directory,
         worktreeRemoveInput: { target: item.id, force },
       })
       showToast({
@@ -284,7 +283,7 @@ export function WorktreesPanel() {
                                     size="small"
                                     icon={getSemanticIcon("action.remove")}
                                     disabled={busy()}
-                                    onClick={() => confirmDelete(item, group.directory)}
+                                    onClick={() => confirmDelete(item, group.scopeID)}
                                   >
                                     {busy()
                                       ? item.dirty

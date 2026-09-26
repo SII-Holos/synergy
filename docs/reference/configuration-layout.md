@@ -54,6 +54,14 @@ Holos login creates the matching Clarus Channel account when it is absent and pr
 
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs. Startup migrates legacy global and project files into domain files and archives the originals once every field has a registered owner. A reduced composition defers a migration containing unregistered fields, retains the original file, and reads its core values beneath canonical domain overrides until the complete owner set is available.
 
+### Provider request timeouts
+
+Global `timeout.provider` and per-provider `provider.<id>.timeout` fields use seconds. The defaults are 300 seconds until the first response body byte, 120 seconds between body chunks, and 1,800 seconds total per HTTP request. Response headers alone do not satisfy TTFB. SSE keep-alive traffic resets idle time but does not extend the wall budget. These request limits do not shorten the session or tool execution budget.
+
+Each provider timeout field overrides its global counterpart. For idle only, the resolved legacy `options.timeout` sits between the provider timeout field and the global field: model options override provider options, and legacy numbers use milliseconds. `idle_sec: false` or `idle_sec: 0` disables idle protection; legacy `options.timeout: false` also disables it. `wall_sec: 0` disables the wall watchdog, including when a provider overrides a positive global value.
+
+The Control Plane resolves the effective model policy before transferring a turn to its worker. SDK and language-model caches distinguish effective policies so a reused worker applies the current request's configuration. See the [provider watchdog decision](../decisions/implemented/bug-fix/2026-09-21-provider-stream-watchdog-and-stage-metrics.md) for the trade-offs.
+
 ### Execution isolation
 
 The optional `execution` object in `120-runtime.jsonc` controls bounded Agent and tool scheduling:
@@ -703,19 +711,18 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Experimental and diagnostic escape hatches
 
-| Variable                             | Effect                                                                                                                                                   |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `SYNERGY_ALLOW_REAL_HOME=1`          | Opt out of the test-home guard (`TestHomeGuardError`) for a deliberate real-home or non-isolated test run                                                |
-| `SYNERGY_TEST_HOME`                  | Isolated home for test processes (positive marker required by the test-home guard; set by `test:ci`/`test:coverage` orchestrators and `test/preload.ts`) |
-| `SYNERGY_TEST_ROOT`                  | Isolated fixture root for test processes (set by the orchestrators and `test/preload.ts`)                                                                |
-| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it                                                                                     |
-| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                                                                                            |
-| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                                                                                         |
-| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                                                                                                |
-| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read                                                             |
-| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare the cached model working set with storage and fall back when they diverge                                                                        |
-| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the aggregate and per-session model-working-set cache byte budget; defaults to 256 MiB                                                               |
-| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand                                                                                   |
-| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two                                                                        |
+| Variable                          | Effect                                                                                                                                                   |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SYNERGY_ALLOW_REAL_HOME=1`       | Opt out of the test-home guard (`TestHomeGuardError`) for a deliberate real-home or non-isolated test run                                                |
+| `SYNERGY_TEST_HOME`               | Isolated home for test processes (positive marker required by the test-home guard; set by `test:ci`/`test:coverage` orchestrators and `test/preload.ts`) |
+| `SYNERGY_TEST_ROOT`               | Isolated fixture root for test processes (set by the orchestrators and `test/preload.ts`)                                                                |
+| `SYNERGY_EXPERIMENTAL=1`          | Enable the grouped experimental behaviors that explicitly consult it                                                                                     |
+| `SYNERGY_EXPERIMENTAL_OXFMT=1`    | Allow the experimental `oxfmt` formatter path                                                                                                            |
+| `SYNERGY_EXPERIMENTAL_LSP_TY=1`   | Prefer the experimental `ty` Python language server over Pyright                                                                                         |
+| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1` | Register the experimental direct LSP tool                                                                                                                |
+| `SYNERGY_DISABLE_MESSAGE_CACHE=1` | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read                                                             |
+| `SYNERGY_VERIFY_MESSAGE_CACHE=1`  | Compare the cached model working set with storage and fall back when they diverge                                                                        |
+| `SYNERGY_SESSION_CACHE_MAX_BYTES` | Set the aggregate and per-session model-working-set cache byte budget; defaults to 256 MiB                                                               |
+| `SYNERGY_DISABLE_LSP_REAP=1`      | Disable idle-age reaping; native write contention still retires idle LSP clients                                                                         |
 
 Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).

@@ -31,7 +31,12 @@ beforeAll(async () => {
     Bun.write(
       fileStubPath,
       `
+        export const FileWorkspaceProvider = (props) => props.children
         export const useFile = () => ({
+          draft: { backupUnavailable: () => false, get: () => undefined, dirty: () => false, begin() {}, discard() {} },
+          workspace: { id: "wsp_demo", generation: 1, scopeID: "home", path: "/workspace/demo", type: "directory" },
+          reference: () => ({ workspaceID: "wsp_demo", workspaceGeneration: 1 }),
+          resourceKey: "demo",
           get: () => ({
             loading: false,
             stale: false,
@@ -117,7 +122,7 @@ beforeAll(async () => {
               i18n,
               children: () =>
                 createComponent(FileWorkbenchContent, {
-                  tab: { id: "file", type: "file", title: file, resourceId: file },
+                  tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "home", path: "/workspace/demo", type: "directory" } } },
                   onRequestClose: () => {},
                 }),
             }),
@@ -172,7 +177,7 @@ beforeAll(async () => {
     cacheDir: path.join(fixtureDirectory, ".vite"),
     server: {
       host: "127.0.0.1",
-      port: 5217,
+      port: 0,
       strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
     },
@@ -201,7 +206,7 @@ beforeAll(async () => {
     if (pageError) throw new Error(`file workbench fixture page failed to render: ${pageError.stack}`, { cause: error })
     throw error
   }
-})
+}, 30_000)
 
 afterAll(async () => {
   await page?.close()

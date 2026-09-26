@@ -1,8 +1,15 @@
+import { WorkspaceCatalog } from "../workspace/catalog"
+import { normalizeSessionWorkspaceInfo } from "./migration"
+import { ModelSelection } from "./model-selection-schema"
 import { SessionStaging } from "./staging"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SnapshotLifecycle } from "./snapshot-lifecycle"
 import { SnapshotRecords } from "./snapshot-records"
-import z from "zod"
+import { z } from "zod"
+import { WorkspaceTransfer } from "./workspace-transfer"
+import { SnapshotEvidence } from "./snapshot-evidence"
+import { WorkspaceBinding } from "../workspace/binding"
+import { SessionRecords } from "./records"
 import { gunzipSync } from "node:zlib"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
@@ -51,7 +58,7 @@ export namespace SessionImport {
     const sourceScopes = collectSourceScopes(report)
     if (sourceScopes.size === 0) return warnings
 
-    const targetDir = targetScope.directory
+    const targetDir = targetScope.local?.directory
     for (const [scopeID, source] of sourceScopes) {
       if (source.directory && source.directory !== targetDir) {
         warnings.push(
@@ -62,14 +69,14 @@ export namespace SessionImport {
     return warnings
   }
 
-  function collectSourceScopes(report: SessionExport.Report): Map<string, { type: string; directory: string }> {
-    const scopes = new Map<string, { type: string; directory: string }>()
+  function collectSourceScopes(report: SessionExport.Report): Map<string, { type: string; directory: string | null }> {
+    const scopes = new Map<string, { type: string; directory: string | null }>()
     for (const session of report.sessions) {
       const scope = session.info.scope as Scope | undefined
       if (!scope) continue
       const id = scope.id ?? "unknown"
       if (scopes.has(id)) continue
-      scopes.set(id, { type: scope.type, directory: scope.directory ?? "" })
+      scopes.set(id, { type: scope.type, directory: scope.local?.directory ?? null })
     }
     return scopes
   }
@@ -105,6 +112,20 @@ export namespace SessionImport {
       raw = JSON.parse(new TextDecoder().decode(body))
     } catch (error) {
       throw new Error(`Invalid session import JSON: ${error instanceof Error ? error.message : String(error)}`)
+    }
+
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      const value = raw as Record<string, unknown>
+      const normalizeEntry = (entry: unknown) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry
+        const record = entry as Record<string, unknown>
+        if (!record.info || typeof record.info !== "object" || Array.isArray(record.info)) return entry
+        const info = normalizeSessionWorkspaceInfo(record.info as Record<string, unknown>)
+        return { ...record, info: { ...info, workspace: info.workspace ?? null } }
+      }
+      raw = Array.isArray(value.sessions)
+        ? { ...value, sessions: value.sessions.map(normalizeEntry) }
+        : normalizeEntry(value)
     }
 
     const report = SessionExport.PersistedReport.safeParse(raw)
@@ -205,7 +226,6 @@ export namespace SessionImport {
             scopeID: scope.id,
             sourceSessionID: data.info.id,
             targetSessionID: sessionID,
-            workspace: info.workspace?.path ?? ScopeContext.current.directory,
             hashes: data.messages.flatMap((message) => message.parts.flatMap(SnapshotRecords.partRoots)),
             allowMissing: true,
           })
@@ -223,10 +243,53 @@ export namespace SessionImport {
             )
           messages.push({ info: await remapMessage(message.info, sessionID, idMap), parts })
         }
+        info.modelSelection ??= ModelSelection.legacy(
+          info.modelOverride,
+          messages.flatMap((message) => (message.info.role === "user" && message.info.isRoot ? [message.info] : [])),
+        )
         prepared.push({ data, sessionID, parentID, info, messages })
       }
       return await Storage.transaction(async () => {
+        const workspaces = new Map<string, NonNullable<Session.Info["workspace"]>>()
+        for (const source of WorkspaceTransfer.sources(report.sessions)) {
+          if (workspaces.has(source.id)) continue
+          const imported = await WorkspaceBinding.importHistory(
+            { id: source.id, scopeID: scope.id, type: "directory", path: source.root, generation: source.generation },
+            scope.id,
+            report.workspaces?.find((workspace) => workspace.id === source.id),
+          )
+          workspaces.set(source.id, imported)
+        }
+        const workspaceIDs = new Map([...workspaces].map(([sourceID, workspace]) => [sourceID, workspace.id!]))
         for (const { data, sessionID, parentID, info, messages } of prepared) {
+          if (info.workspace) {
+            const key = info.workspaceID ?? JSON.stringify([info.workspace.scopeID, info.workspace.path])
+            let imported = workspaces.get(key)
+            if (!imported) {
+              imported = await WorkspaceBinding.importHistory(
+                info.workspace,
+                scope.id,
+                report.workspaces?.find((workspace) => workspace.id === info.workspaceID),
+              )
+              workspaces.set(key, imported)
+            }
+            workspaceIDs.set(key, imported.id!)
+            info.workspace = imported
+            info.workspaceID = imported.id!
+          } else if (info.workspaceID) {
+            const key = info.workspaceID
+            const mapped = workspaceIDs.get(key)
+            const record = report.workspaces?.find((workspace) => workspace.id === key)
+            if (record && record.scopeID !== scope.id) throw new Error("Workspace belongs to a different Scope")
+            const imported = mapped
+              ? await WorkspaceCatalog.get(mapped, scope.id)
+              : record
+                ? await WorkspaceCatalog.importRecord(record)
+                : await WorkspaceCatalog.importMissingReference(key, scope.id)
+            workspaceIDs.set(key, imported.id)
+            info.workspace = WorkspaceCatalog.projection(imported)
+            info.workspaceID = imported.id
+          }
           await Session.create({
             scope,
             id: sessionID,
@@ -238,11 +301,13 @@ export namespace SessionImport {
             interaction: info.interaction,
             cortex: info.cortex,
             workspace: info.workspace,
+            workspaceID: info.workspaceID,
             forkedFrom: info.forkedFrom,
             completionNotice: info.completionNotice,
           })
           await writeSessionInfo(scopeID, info)
-          for (const message of messages) {
+          for (const original of messages) {
+            const message = WorkspaceTransfer.message(original, workspaceIDs)
             await Session.updateMessage(message.info)
             messageCount++
 
@@ -262,7 +327,7 @@ export namespace SessionImport {
           if (data.diffs.length > 0) {
             await Storage.write(
               StoragePath.sessionSummary(scopeID, Identifier.asSessionID(sessionID)),
-              SnapshotSchema.boundArray(data.diffs),
+              SnapshotSchema.boundArray(data.diffs.map((diff) => WorkspaceTransfer.diff(diff, workspaceIDs))),
             )
           }
 
@@ -341,11 +406,7 @@ export namespace SessionImport {
     idMap: Map<string, string>
   }): Session.Info {
     const scopeType = input.scope.type === "home" ? "home" : "project"
-    const workspace = {
-      type: "main",
-      path: input.scope.directory,
-      scopeID: input.scope.id,
-    }
+    const workspace = input.info.workspace?.scopeID === input.scope.id ? input.info.workspace : null
     const cortex = input.info.cortex
       ? {
           ...input.info.cortex,
@@ -452,7 +513,7 @@ export namespace SessionImport {
         attachment.localPath = undefined
       }
     }
-    return next
+    return SnapshotEvidence.interrupt(next)
   }
 
   function remapSessionIDs(value: unknown, idMap: Map<string, string>): unknown {
@@ -470,7 +531,7 @@ export namespace SessionImport {
   async function writeSessionInfo(scopeID: Identifier.ScopeID, info: Session.Info) {
     await Storage.write(
       StoragePath.sessionInfo(scopeID, Identifier.asSessionID(info.id)),
-      Session.withoutRuntimeInfo(info),
+      SessionRecords.serialize(info),
     )
     await Storage.write(StoragePath.sessionIndex(Identifier.asSessionID(info.id)), Session.toIndex(info))
     await Session.upsertPageIndexEntry(scopeID, {

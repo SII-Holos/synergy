@@ -127,6 +127,7 @@ export const AgendaWatchTool = Tool.define("agenda_watch", {
       params.title,
       [trigger],
       params.global,
+      session?.workspaceID ?? null,
     )
     if (conflicts.length > 0) {
       return {

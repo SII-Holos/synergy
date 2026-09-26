@@ -4,99 +4,107 @@ import { pathToFileURL } from "url"
 import { localRegistryArtifactDir } from "../../src/plugin/local-registry-store"
 import { classifyPluginInstallation, getStatusForLoadedPlugin, PluginStatusSchema } from "../../src/plugin/status"
 import { markContributionDegraded, type LoadedPlugin } from "../../src/plugin/loader"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 describe("plugin installation classification", () => {
-  test("PluginStatus uses installation origin instead of the overloaded source field", () => {
-    expect(PluginStatusSchema.shape).toHaveProperty("installation")
-    expect(PluginStatusSchema.shape).toHaveProperty("compatibility")
-    expect(PluginStatusSchema.shape).not.toHaveProperty("source")
-  })
+  test("PluginStatus uses installation origin instead of the overloaded source field", () =>
+    runtime.run(() => {
+      expect(PluginStatusSchema.shape).toHaveProperty("installation")
+      expect(PluginStatusSchema.shape).toHaveProperty("compatibility")
+      expect(PluginStatusSchema.shape).not.toHaveProperty("source")
+    }))
 
-  test("distinguishes directory, archive, registry, package and builtin installations", () => {
-    const directory = path.resolve("C:/plugins/focus/dist")
-    expect(
-      classifyPluginInstallation({ spec: pathToFileURL(directory).href, source: "local", pluginDir: directory }),
-    ).toEqual({ kind: "directory", spec: pathToFileURL(directory).href, path: directory })
+  test("distinguishes directory, archive, registry, package and builtin installations", () =>
+    runtime.run(() => {
+      const directory = path.resolve("C:/plugins/focus/dist")
+      expect(
+        classifyPluginInstallation({ spec: pathToFileURL(directory).href, source: "local", pluginDir: directory }),
+      ).toEqual({ kind: "directory", spec: pathToFileURL(directory).href, path: directory })
 
-    const archive = path.resolve("C:/plugins/focus.synergy-plugin.tgz")
-    expect(classifyPluginInstallation({ spec: pathToFileURL(archive).href, source: "local" })).toEqual({
-      kind: "archive",
-      spec: pathToFileURL(archive).href,
-      path: archive,
-    })
+      const archive = path.resolve("C:/plugins/focus.synergy-plugin.tgz")
+      expect(classifyPluginInstallation({ spec: pathToFileURL(archive).href, source: "local" })).toEqual({
+        kind: "archive",
+        spec: pathToFileURL(archive).href,
+        path: archive,
+      })
 
-    const localRegistryArtifact = path.join(localRegistryArtifactDir("focus", "1.0.0"), "focus.tgz")
-    expect(classifyPluginInstallation({ spec: pathToFileURL(localRegistryArtifact).href, source: "local" })).toEqual({
-      kind: "registry",
-      registry: "local",
-      spec: pathToFileURL(localRegistryArtifact).href,
-    })
+      const localRegistryArtifact = path.join(localRegistryArtifactDir("focus", "1.0.0"), "focus.tgz")
+      expect(classifyPluginInstallation({ spec: pathToFileURL(localRegistryArtifact).href, source: "local" })).toEqual({
+        kind: "registry",
+        registry: "local",
+        spec: pathToFileURL(localRegistryArtifact).href,
+      })
 
-    expect(classifyPluginInstallation({ spec: pathToFileURL(archive).href, source: "official" })).toEqual({
-      kind: "registry",
-      registry: "official",
-      spec: pathToFileURL(archive).href,
-    })
-    expect(classifyPluginInstallation({ spec: "github:owner/plugin", source: "git" })).toEqual({
-      kind: "package",
-      source: "git",
-      spec: "github:owner/plugin",
-    })
-    expect(classifyPluginInstallation({ spec: "builtin:plugin", source: "builtin" })).toEqual({
-      kind: "builtin",
-      spec: "builtin:plugin",
-    })
-  })
+      expect(classifyPluginInstallation({ spec: pathToFileURL(archive).href, source: "official" })).toEqual({
+        kind: "registry",
+        registry: "official",
+        spec: pathToFileURL(archive).href,
+      })
+      expect(classifyPluginInstallation({ spec: "github:owner/plugin", source: "git" })).toEqual({
+        kind: "package",
+        source: "git",
+        spec: "github:owner/plugin",
+      })
+      expect(classifyPluginInstallation({ spec: "builtin:plugin", source: "builtin" })).toEqual({
+        kind: "builtin",
+        spec: "builtin:plugin",
+      })
+    }))
 
-  test("qualifies contribution health by kind", async () => {
-    const plugin = {
-      id: "health-test",
-      name: "Health Test",
-      manifest: {
-        manifestVersion: 1,
-        apiVersion: "4.0",
-        compatibility: { synergy: ">=3.0.11" },
+  test("qualifies contribution health by kind", () =>
+    runtime.run(async () => {
+      const plugin = {
         id: "health-test",
         name: "Health Test",
-        version: "1.0.0",
-        description: "Health identity test",
-        capabilities: [],
-        contributions: [
-          {
-            kind: "tool",
-            id: "public-tool",
-            description: "Visible to agents",
-            input: { type: "object", properties: {}, additionalProperties: false },
-          },
-          {
-            kind: "tool",
-            id: "internal-tool",
-            description: "Only available inside the plugin runtime",
-            input: { type: "object", properties: {}, additionalProperties: false },
-            exposure: { mode: "internal" },
-          },
-        ],
-        artifacts: { generation: "generation-one" },
-      },
-      pluginDir: "/plugins/health-test",
-      source: "builtin",
-      spec: "builtin:health-test",
-      enabledScopes: new Set(["home"]),
-      contributionHealth: new Map(),
-    } satisfies LoadedPlugin
+        manifest: {
+          manifestVersion: 1,
+          apiVersion: "4.0",
+          compatibility: { synergy: ">=3.0.11" },
+          id: "health-test",
+          name: "Health Test",
+          version: "1.0.0",
+          description: "Health identity test",
+          capabilities: [],
+          contributions: [
+            {
+              kind: "tool",
+              id: "public-tool",
+              description: "Visible to agents",
+              input: { type: "object", properties: {}, additionalProperties: false },
+            },
+            {
+              kind: "tool",
+              id: "internal-tool",
+              description: "Only available inside the plugin runtime",
+              input: { type: "object", properties: {}, additionalProperties: false },
+              exposure: { mode: "internal" },
+            },
+          ],
+          artifacts: { generation: "generation-one" },
+        },
+        pluginDir: "/plugins/health-test",
+        source: "builtin",
+        spec: "builtin:health-test",
+        enabledScopes: new Set(["home"]),
+        contributionHealth: new Map(),
+      } satisfies LoadedPlugin
 
-    markContributionDegraded(plugin, { kind: "operation", id: "shared" }, new Error("operation failed"))
-    markContributionDegraded(plugin, { kind: "hook", id: "shared" }, new Error("hook failed"))
-    markContributionDegraded(plugin, { kind: "tool", id: "shared" }, new Error("tool failed"))
+      markContributionDegraded(plugin, { kind: "operation", id: "shared" }, new Error("operation failed"))
+      markContributionDegraded(plugin, { kind: "hook", id: "shared" }, new Error("hook failed"))
+      markContributionDegraded(plugin, { kind: "tool", id: "shared" }, new Error("tool failed"))
 
-    const status = await getStatusForLoadedPlugin(plugin)
-    expect(status.compatibility).toEqual({ synergy: ">=3.0.11" })
-    expect(status.tools.map((tool) => tool.id)).toEqual(["public-tool"])
-    expect(status.contributionHealth).toMatchObject({
-      "operation:shared": { state: "degraded", lastError: "operation failed" },
-      "hook:shared": { state: "degraded", lastError: "hook failed" },
-      "tool:shared": { state: "degraded", lastError: "tool failed" },
-    })
-    expect(status.contributionHealth).not.toHaveProperty("shared")
-  })
+      const status = await getStatusForLoadedPlugin(plugin)
+      expect(status.compatibility).toEqual({ synergy: ">=3.0.11" })
+      expect(status.tools.map((tool) => tool.id)).toEqual(["public-tool"])
+      expect(status.contributionHealth).toMatchObject({
+        "operation:shared": { state: "degraded", lastError: "operation failed" },
+        "hook:shared": { state: "degraded", lastError: "hook failed" },
+        "tool:shared": { state: "degraded", lastError: "tool failed" },
+      })
+      expect(status.contributionHealth).not.toHaveProperty("shared")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

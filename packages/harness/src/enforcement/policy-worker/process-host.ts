@@ -1,8 +1,17 @@
+import { RuntimeContext } from "../../lifecycle/context"
 import fs from "fs"
 import { fileURLToPath } from "url"
 import { PolicyWorkerProtocol } from "./protocol"
 
-const runnerPath = fileURLToPath(new URL("./runner.ts", import.meta.url))
+const state = RuntimeContext.state(() => ({ entrypoint: undefined as string | undefined }))
+
+export function registerPolicyWorkerEntrypoint(entrypoint: URL) {
+  const filename = fileURLToPath(entrypoint)
+  if (state().entrypoint === filename) return
+  RuntimeContext.assertCompositionOpen("policy worker entrypoint")
+  if (state().entrypoint) throw new Error("Policy worker entrypoint is already registered")
+  state().entrypoint = filename
+}
 
 export interface PolicyWorkerProcess {
   readonly process: Bun.Subprocess
@@ -16,15 +25,20 @@ export interface SpawnPolicyWorkerProcessOptions {
 }
 
 export function resolvePolicyWorkerCommand(): string[] {
-  if (fs.existsSync(runnerPath)) return [process.execPath, "run", runnerPath]
+  const entrypoint = state().entrypoint
+  if (!entrypoint) throw new Error("No policy worker host is registered")
+  if (fs.existsSync(entrypoint)) return [process.execPath, "run", entrypoint]
   return [process.execPath, "__policy-worker-runner"]
 }
 
 export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOptions): PolicyWorkerProcess {
+  const owner = RuntimeContext.current()
   const processHandle = Bun.spawn({
     cmd: resolvePolicyWorkerCommand(),
     env: {
-      ...process.env,
+      ...owner.host.env,
+      SYNERGY_HOME: owner.host.home,
+      SYNERGY_RUNTIME_ROOT: owner.host.root,
       SYNERGY_POLICY_WORKER: "1",
       SYNERGY_POLICY_PARENT_PID: String(process.pid),
     },
@@ -34,7 +48,7 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
           typeof message === "string" ? JSON.parse(message) : message,
         )
         PolicyWorkerProtocol.assertIpcFrameBound(parsed)
-        options.onMessage(parsed)
+        owner.run(() => options.onMessage(parsed))
       } catch {
         processHandle.kill()
       }
@@ -42,7 +56,7 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
     stdout: "ignore",
     stderr: "ignore",
     onExit(_process, exitCode, signalCode) {
-      options.onExit(exitCode, signalCode?.toString() ?? null)
+      owner.run(() => options.onExit(exitCode, signalCode?.toString() ?? null))
     },
   })
 
@@ -61,10 +75,13 @@ export function spawnPolicyWorkerProcess(options: SpawnPolicyWorkerProcessOption
         await processHandle.exited.catch(() => undefined)
         return
       }
+      let timeout: ReturnType<typeof setTimeout> | undefined
       const exited = await Promise.race([
         processHandle.exited.then(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), graceMs)),
-      ])
+        new Promise<boolean>((resolve) => {
+          timeout = setTimeout(() => resolve(false), graceMs)
+        }),
+      ]).finally(() => clearTimeout(timeout))
       if (!exited) {
         processHandle.kill()
         await processHandle.exited.catch(() => undefined)

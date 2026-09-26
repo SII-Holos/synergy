@@ -334,4 +334,3 @@ export const migrations: Migration[] = [
 export function registerSessionMigrations() {
   MigrationRegistry.register("workflows-session", migrations)
 }
-registerSessionMigrations()

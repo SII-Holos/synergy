@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "fs/promises"
 import path from "node:path"
 import type { Browser, BrowserContext, Page } from "playwright-core"
@@ -19,9 +20,13 @@ export interface PlaywrightBrowserDriverOptions {
   browserType?: string
 }
 
-let seq = 0
+const runtimeState = RuntimeContext.state(() => ({
+  seq: 0,
+}))
 function nextContextId(): string {
-  return `ctx-${++seq}`
+  const instanceState = runtimeState()
+
+  return `ctx-${++instanceState.seq}`
 }
 export class PlaywrightBrowserDriver implements BrowserDriver.Driver {
   private contexts = new Map<string, InternalContext>()

@@ -108,7 +108,7 @@ async function defaultServices(): Promise<PluginCliCommandServices> {
     scope: { id: ScopeContext.current.scope.id, directory: ScopeContext.current.directory },
     getPlugin,
     ensureRuntime,
-    invoke: (input) => pluginRuntimeManager.invoke(input),
+    invoke: (input) => pluginRuntimeManager().invoke(input),
   }
 }
 

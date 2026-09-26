@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * H7 source inversion: instruction domains (skill, command) receive their
  * raw entries from owning product domains (plugin skills, MCP prompts)
@@ -20,19 +21,27 @@ export namespace SkillSourceProviders {
 
   type Provider = () => Promise<Entry[]>
 
-  const providers = new Map<string, Provider>()
+  const runtimeState = RuntimeContext.state(() => ({
+    providers: new Map<string, Provider>(),
+  }))
 
   export function register(id: string, provider: Provider): void {
-    providers.set(id, provider)
+    const instanceState = runtimeState()
+
+    instanceState.providers.set(id, provider)
   }
 
   export function unregister(id: string): void {
-    providers.delete(id)
+    const instanceState = runtimeState()
+
+    instanceState.providers.delete(id)
   }
 
   export async function list(): Promise<Entry[]> {
+    const instanceState = runtimeState()
+
     const result: Entry[] = []
-    for (const provider of providers.values()) result.push(...(await provider()))
+    for (const provider of instanceState.providers.values()) result.push(...(await provider()))
     return result
   }
 }
@@ -54,20 +63,28 @@ export namespace CommandSourceProviders {
     subscribe(change: () => void): () => void
   }
 
-  const providers = new Map<string, Provider>()
+  const runtimeState = RuntimeContext.state(() => ({
+    providers: new Map<string, Provider>(),
+  }))
 
   export function register(id: string, provider: Provider): void {
-    providers.set(id, provider)
+    const instanceState = runtimeState()
+
+    instanceState.providers.set(id, provider)
   }
 
   export async function prompts(): Promise<Record<string, PromptInfo>> {
+    const instanceState = runtimeState()
+
     const result: Record<string, PromptInfo> = {}
-    for (const provider of providers.values()) Object.assign(result, await provider.prompts())
+    for (const provider of instanceState.providers.values()) Object.assign(result, await provider.prompts())
     return result
   }
 
   export async function getPrompt(client: string, name: string, args?: Record<string, string>) {
-    for (const provider of providers.values()) {
+    const instanceState = runtimeState()
+
+    for (const provider of instanceState.providers.values()) {
       const template = await provider.getPrompt(client, name, args)
       if (template !== undefined) return template
     }
@@ -75,7 +92,9 @@ export namespace CommandSourceProviders {
   }
 
   export function subscribeAll(change: () => void): () => void {
-    const unsubscribers = [...providers.values()].map((provider) => provider.subscribe(change))
+    const instanceState = runtimeState()
+
+    const unsubscribers = [...instanceState.providers.values()].map((provider) => provider.subscribe(change))
     return () => {
       for (const unsubscribe of unsubscribers) unsubscribe()
     }

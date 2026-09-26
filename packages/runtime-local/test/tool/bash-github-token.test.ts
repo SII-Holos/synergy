@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test"
+import { expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
@@ -7,33 +7,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { LocalBashBackend } from "@ericsanchezok/synergy-runtime-local/tools/bash/local"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-
-const originalGHToken = process.env.GH_TOKEN
-const originalGITHUBToken = process.env.GITHUB_TOKEN
-const originalPath = process.env.PATH
-const originalShell = process.env.SHELL
-
-async function reset() {
-  await Auth.remove(GitHubProvider.PROVIDER_ID).catch(() => {})
-  if (originalGHToken === undefined) delete process.env.GH_TOKEN
-  else process.env.GH_TOKEN = originalGHToken
-  if (originalGITHUBToken === undefined) delete process.env.GITHUB_TOKEN
-  else process.env.GITHUB_TOKEN = originalGITHUBToken
-  if (originalPath === undefined) delete process.env.PATH
-  else process.env.PATH = originalPath
-  if (originalShell === undefined) delete process.env.SHELL
-  else process.env.SHELL = originalShell
-  Shell.preferred.reset()
-  Shell.acceptable.reset()
-}
-
-beforeEach(async () => {
-  if (process.platform !== "win32") process.env.SHELL = "/bin/bash"
-  else delete process.env.SHELL
-  Shell.preferred.reset()
-  Shell.acceptable.reset()
-})
-afterEach(reset)
+import { testRuntime } from "../support/runtime"
 
 function testContext() {
   return {
@@ -47,40 +21,38 @@ function testContext() {
   }
 }
 
-async function withManagedToken(fn: (tmp: Awaited<ReturnType<typeof tmpdir>>) => Promise<void>) {
-  const savedGH = process.env.GH_TOKEN
-  const savedGITHUB = process.env.GITHUB_TOKEN
-  const savedPath = process.env.PATH
-  delete process.env.GH_TOKEN
-  delete process.env.GITHUB_TOKEN
-  await Auth.remove(GitHubProvider.PROVIDER_ID).catch(() => {})
-  await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "stored-gh-token" })
-
-  try {
-    await using tmp = await tmpdir({ git: true })
-    const shell = Shell.acceptable()
-    const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
+async function withBash(credential: boolean, fn: (tmp: Awaited<ReturnType<typeof tmpdir>>) => Promise<void>) {
+  await using tmp = await tmpdir({ git: true })
+  await using runtime = await testRuntime({
+    env: {
+      PATH: `${tmp.path}${path.delimiter}${process.env.PATH ?? ""}`,
+      SHELL: process.platform === "win32" ? undefined : "/bin/bash",
+      GH_TOKEN: undefined,
+      GITHUB_TOKEN: undefined,
+    },
+  })
+  await runtime.run(async () => {
+    const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(Shell.acceptable())
     if (process.platform === "win32" && !usesBash) {
-      await Bun.write(`${tmp.path}/gh.cmd`, "@echo off\r\n<nul set /p dummy=%GH_TOKEN%\r\n")
+      await Bun.write(
+        `${tmp.path}/gh.cmd`,
+        credential ? "@echo off\r\n<nul set /p dummy=%GH_TOKEN%\r\n" : "@echo off\r\n@echo gh-ok\r\n",
+      )
     } else {
       const ghPath = `${tmp.path}/gh`
-      await Bun.write(ghPath, "#!/usr/bin/env bash\nprintf '%s' \"$GH_TOKEN\"")
+      await Bun.write(
+        ghPath,
+        credential ? "#!/usr/bin/env bash\nprintf '%s' \"$GH_TOKEN\"" : "#!/usr/bin/env bash\nprintf '%s' 'gh-ok'",
+      )
       await fs.chmod(ghPath, 0o755)
     }
-    process.env.PATH = `${tmp.path}${path.delimiter}${savedPath ?? ""}`
+    if (credential) await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "stored-gh-token" })
     await fn(tmp)
-  } finally {
-    if (savedGH === undefined) delete process.env.GH_TOKEN
-    else process.env.GH_TOKEN = savedGH
-    if (savedGITHUB === undefined) delete process.env.GITHUB_TOKEN
-    else process.env.GITHUB_TOKEN = savedGITHUB
-    if (savedPath === undefined) delete process.env.PATH
-    else process.env.PATH = savedPath
-  }
+  })
 }
 
 test("local bash injects the managed GH_TOKEN via env for GitHub CLI commands", async () => {
-  await withManagedToken(async (tmp) => {
+  await withBash(true, async (tmp) => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
@@ -111,7 +83,7 @@ test("local bash injects the managed GH_TOKEN via env for GitHub CLI commands", 
 })
 
 test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invocations", async () => {
-  await withManagedToken(async (tmp) => {
+  await withBash(true, async (tmp) => {
     const shell = Shell.acceptable()
     const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
     const usesPosixShell = process.platform !== "win32" || usesBash
@@ -162,7 +134,7 @@ test("local bash injects the managed GH_TOKEN for mixed, chained, and piped invo
 })
 
 test("local bash does not override an explicit GH_TOKEN established in the command", async () => {
-  await withManagedToken(async (tmp) => {
+  await withBash(true, async (tmp) => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
@@ -193,26 +165,7 @@ test("local bash does not override an explicit GH_TOKEN established in the comma
 })
 
 test("local bash adds no output notice when no GitHub credential is connected", async () => {
-  const savedGH = process.env.GH_TOKEN
-  const savedGITHUB = process.env.GITHUB_TOKEN
-  const savedPath = process.env.PATH
-  delete process.env.GH_TOKEN
-  delete process.env.GITHUB_TOKEN
-  await Auth.remove(GitHubProvider.PROVIDER_ID).catch(() => {})
-
-  try {
-    await using tmp = await tmpdir({ git: true })
-    const shell = Shell.acceptable()
-    const usesBash = /(?:^|[\\/])bash(?:\.exe)?$/i.test(shell)
-    if (process.platform === "win32" && !usesBash) {
-      await Bun.write(`${tmp.path}/gh.cmd`, "@echo off\r\n@echo gh-ok\r\n")
-    } else {
-      const ghPath = `${tmp.path}/gh`
-      await Bun.write(ghPath, "#!/usr/bin/env bash\nprintf '%s' 'gh-ok'")
-      await fs.chmod(ghPath, 0o755)
-    }
-    process.env.PATH = `${tmp.path}${path.delimiter}${savedPath ?? ""}`
-
+  await withBash(false, async (tmp) => {
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
@@ -228,12 +181,5 @@ test("local bash adds no output notice when no GitHub credential is connected", 
         expect(result.output).not.toContain("GitHub CLI token skipped")
       },
     })
-  } finally {
-    if (savedGH === undefined) delete process.env.GH_TOKEN
-    else process.env.GH_TOKEN = savedGH
-    if (savedGITHUB === undefined) delete process.env.GITHUB_TOKEN
-    else process.env.GITHUB_TOKEN = savedGITHUB
-    if (savedPath === undefined) delete process.env.PATH
-    else process.env.PATH = savedPath
-  }
+  })
 })

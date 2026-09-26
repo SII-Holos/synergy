@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { EventEmitter } from "node:events"
 import { BROWSER_MAX_DOWNLOAD_BYTES } from "@ericsanchezok/synergy-browser"
@@ -100,6 +100,8 @@ class MockSession extends EventEmitter {
 }
 
 class MockContents extends EventEmitter {
+  readonly ipc = new EventEmitter()
+  readonly mainFrame = {}
   readonly debugger: MockDebugger
   destroyed = false
   readonly id = 42
@@ -179,6 +181,58 @@ afterEach(async () => {
 })
 
 describe("Browser Host diagnostics", () => {
+  test("routes prompt responses only to the requesting page and releases them on disposal", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const event = () => ({
+      sender: fixture.contents,
+      senderFrame: fixture.contents.mainFrame,
+      returnValue: undefined as unknown,
+    })
+    const emit = (request: ReturnType<typeof event>, payload: unknown) =>
+      fixture.contents.ipc.emit("synergy:browser:prompt", request, payload)
+    for (const answer of ["edited", "", null]) {
+      const request = event()
+      emit(request, { message: "Name", defaultValue: "draft" })
+      const opened = fixture.events.at(-1) as { requestId: string }
+      expect(fixture.events.at(-1)).toMatchObject({
+        type: "dialog.opened",
+        pageId: "page-1",
+        dialogType: "prompt",
+        message: "Name",
+        defaultValue: "draft",
+      })
+      expect(request.returnValue).toBeUndefined()
+      await fixture.diagnostics.respondToDialog(opened.requestId, answer !== null, answer ?? undefined)
+      expect(request.returnValue).toBe(answer)
+    }
+    const invalidRequests = [
+      { ...event(), sender: {} },
+      { ...event(), senderFrame: {} },
+    ]
+    for (const request of invalidRequests) {
+      fixture.contents.ipc.emit("synergy:browser:prompt", request, { message: "Name", defaultValue: "draft" })
+      expect(request.returnValue).toBeNull()
+    }
+    for (const payload of [
+      { message: "x".repeat(100_001), defaultValue: "" },
+      { message: 1, defaultValue: "" },
+    ]) {
+      const request = event()
+      emit(request, payload)
+      expect(request.returnValue).toBeNull()
+    }
+    const pending = event()
+    emit(pending, { message: "Name", defaultValue: "draft" })
+    const duplicate = event()
+    emit(duplicate, { message: "Another", defaultValue: "" })
+    expect(duplicate.returnValue).toBeNull()
+    expect(pending.returnValue).toBeUndefined()
+    await fixture.diagnostics.dispose()
+    expect(pending.returnValue).toBeNull()
+    expect(fixture.contents.ipc.listenerCount("synergy:browser:prompt")).toBe(0)
+  })
+
   test("installs content permissions, subscribes downloads, and enables CDP domains on start", async () => {
     const fixture = await createFixture({ start: false })
     fixtures.push(fixture)
@@ -244,6 +298,7 @@ describe("Browser Host diagnostics", () => {
     expect(command.method).toBe("DOM.setFileInputFiles")
     const files = command.params.files as string[]
     expect(files).toHaveLength(1)
+    expect(path.basename(files[0]!)).toBe("notes.txt")
     expect(await readFile(files[0]!, "utf8")).toBe("hello world")
     expect(command.params.backendNodeId).toBe(7)
 
@@ -361,6 +416,35 @@ describe("Browser Host diagnostics", () => {
     expect(fileEvent.entry.warning).toContain("unsafe")
   })
 
+  test("stages an empty upload as an actual zero-byte file", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const staged = await fixture.diagnostics.stageFiles([{ name: "empty.txt", data: "" }])
+    try {
+      expect(staged.paths).toHaveLength(1)
+      expect((await stat(staged.paths[0]!)).size).toBe(0)
+    } finally {
+      await staged.cleanup()
+    }
+  })
+
+  test("preserves duplicate upload filenames without replacing either file", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const staged = await fixture.diagnostics.stageFiles([
+      { name: "same.txt", data: Buffer.from("first").toString("base64") },
+      { name: "same.txt", data: Buffer.from("second").toString("base64") },
+    ])
+    try {
+      expect(staged.paths.map((file) => path.basename(file))).toEqual(["same.txt", "same.txt"])
+      expect(await Promise.all(staged.paths.map((file) => readFile(file, "utf8")))).toEqual(["first", "second"])
+      for (const file of staged.paths) expect((await stat(path.dirname(file))).mode & 0o777).toBe(0o700)
+    } finally {
+      await staged.cleanup()
+    }
+    for (const file of staged.paths) expect(await Bun.file(file).exists()).toBe(false)
+  })
+
   test("writes uploaded files with restricted permissions and cleans up on failure", async () => {
     const fixture = await createFixture()
     fixtures.push(fixture)
@@ -370,13 +454,13 @@ describe("Browser Host diagnostics", () => {
       { name: "b.txt", data: Buffer.from("two").toString("base64") },
     ])
     expect(staged.paths).toHaveLength(2)
-    const uploadDir = path.dirname(staged.paths[0]!)
-    expect((await stat(uploadDir)).mode & 0o777).toBe(0o700)
-    const entries = (await readdir(uploadDir)).toSorted()
-    expect(entries.length).toBe(2)
+    for (const file of staged.paths) {
+      expect((await stat(path.dirname(file))).mode & 0o777).toBe(0o700)
+      expect((await stat(file)).mode & 0o777).toBe(0o600)
+    }
 
     await staged.cleanup()
-    expect(await Bun.file(uploadDir).exists()).toBe(false)
+    for (const file of staged.paths) expect(await Bun.file(file).exists()).toBe(false)
   })
 
   test("blocks downloads by mime type even with a safe extension", async () => {

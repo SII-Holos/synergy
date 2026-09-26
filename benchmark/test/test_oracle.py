@@ -1,6 +1,82 @@
 from synergy_bench.oracle import oracle_configuration, oracle_result
 
 
+async def test_oracle_uses_stage_leases_and_retains_cleanup_failure_before_stopping(tmp_path, monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    import pytest
+
+    from synergy_bench import oracle, runner
+    from synergy_bench.catalog import tree_digest
+    from synergy_bench.resources import Request
+    from synergy_bench.scheduling import current_resources
+    from synergy_bench.storage import atomic_json, digest, read_json
+
+    task = tmp_path / "task"
+    task.mkdir()
+    root = tmp_path / "oracle-12345678"
+    atomic_json(root / "owner.json", {"kind": "synergy-benchmark-oracle", "version": 1})
+    plan = {
+        "evaluator": "fixture",
+        "host": {"capacity": {"cpus": 2, "memory_bytes": 2 * 1024**3}},
+        "concurrency": 1,
+        "cache": str(tmp_path / "cache"),
+        "platform": "linux/amd64",
+        "config": {"resources": {"cache_budget_gib": 1, "min_free_disk_gib": 0}},
+        "tasks": [
+            {
+                "id": "task",
+                "local_path": str(task),
+                "digest": tree_digest(task),
+                "resources": {"cpus": 1, "memory_bytes": 1024**3},
+            }
+        ],
+    }
+    atomic_json(root / "plan.json", {**plan, "digest": digest(plan)})
+    monkeypatch.setattr(oracle, "evaluator_identity", lambda: "fixture")
+    monkeypatch.setattr(oracle, "enforce_budget", lambda *args, **kwargs: None)
+    monkeypatch.setattr(oracle, "admission_for", lambda *args: None)
+    monkeypatch.setattr(oracle, "shared_pool_options", lambda *args: {})
+    captured = []
+
+    @asynccontextmanager
+    async def monitor(*args, **kwargs):
+        assert kwargs.get("scheduler") is current_resources.get()
+        yield
+
+    async def create(config):
+        async def run():
+            scheduler = current_resources.get()
+            assert scheduler is not None, "Oracle bypassed stage admission"
+            assert not scheduler.leases
+            captured.append(scheduler)
+            await scheduler.acquire(config.trial_name, Request(1, 1024**3))
+            return SimpleNamespace(model_dump=lambda **kwargs: {"verifier_result": {"rewards": {"reward": 1}}})
+
+        return SimpleNamespace(run=run)
+
+    def audit(root, ownership, agent):
+        atomic_json(ownership.parent / "cleanup.json", {"status": "failed", "resources_removed": False})
+
+    monkeypatch.setattr(oracle, "ResourceMonitor", monitor)
+    monkeypatch.setattr(oracle.BenchmarkTrial, "create", create)
+    monkeypatch.setattr(runner, "audit_environment", audit)
+    try:
+        with pytest.raises(ExceptionGroup, match="TaskGroup"):
+            await oracle.run_oracle(root)
+        record = read_json(root / "oracles/0000/attempt-001/oracle.json")
+        assert record["reward"] == 1
+        assert record["native_exception"] is None
+        assert record["status"] == "failed"
+        assert record["cleanup_error"]["resources_removed"] is False
+        assert captured[0].pool.active == 1
+        assert current_resources.get() is None
+    finally:
+        for scheduler in captured:
+            await scheduler.finish(resources_removed=True)
+
+
 def test_oracle_uses_three_hours_for_both_stages_without_harness_or_inference(tmp_path):
     task = {"local_path": str(tmp_path / "task"), "agent_seconds": 51}
     config = oracle_configuration(

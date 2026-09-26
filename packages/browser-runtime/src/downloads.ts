@@ -1,8 +1,11 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser"
 import { BrowserOwner } from "./owner.js"
 import { Global } from "@ericsanchezok/synergy-harness/global"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { BrowserExport } from "./export"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
 export namespace BrowserDownloads {
@@ -22,34 +25,48 @@ export namespace BrowserDownloads {
     record: DownloadRecord
   }
 
-  const records = new Map<string, Map<string, ManagedRecord>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    records: new Map<string, Map<string, ManagedRecord>>(),
+  }))
   const MAX_OWNER_RECORDS = 10_000
 
   export function list(owner: BrowserOwner.Info): DownloadRecord[] {
-    return Array.from(records.get(BrowserOwner.key(owner))?.values() ?? [], (entry) => ({ ...entry.record }))
+    const instanceState = runtimeState()
+
+    return Array.from(instanceState.records.get(BrowserOwner.key(owner))?.values() ?? [], (entry) => ({
+      ...entry.record,
+    }))
   }
 
   export function add(owner: BrowserOwner.Info, record: DownloadRecord): boolean {
+    const instanceState = runtimeState()
+
     const key = BrowserOwner.key(owner)
-    const ownerRecords = records.get(key) ?? new Map()
+    const ownerRecords = instanceState.records.get(key) ?? new Map()
     if (!ownerRecords.has(record.id) && ownerRecords.size >= MAX_OWNER_RECORDS) return false
     ownerRecords.set(record.id, { record })
-    records.set(key, ownerRecords)
+    instanceState.records.set(key, ownerRecords)
     return true
   }
 
   export function get(owner: BrowserOwner.Info, id: string): DownloadRecord | undefined {
-    const record = records.get(BrowserOwner.key(owner))?.get(id)?.record
+    const instanceState = runtimeState()
+
+    const record = instanceState.records.get(BrowserOwner.key(owner))?.get(id)?.record
     return record ? { ...record } : undefined
   }
 
   export function update(owner: BrowserOwner.Info, id: string, patch: Partial<DownloadRecord>): void {
-    const entry = records.get(BrowserOwner.key(owner))?.get(id)
+    const instanceState = runtimeState()
+
+    const entry = instanceState.records.get(BrowserOwner.key(owner))?.get(id)
     if (entry) Object.assign(entry.record, patch)
   }
 
   export async function cancel(owner: BrowserOwner.Info, id: string): Promise<DownloadRecord> {
-    const entry = records.get(BrowserOwner.key(owner))?.get(id)
+    const instanceState = runtimeState()
+
+    const entry = instanceState.records.get(BrowserOwner.key(owner))?.get(id)
     if (!entry) throw new Error(`Download ${id} was not found for this browser owner.`)
     if (entry.record.state === "cancelled") return { ...entry.record }
     if (entry.record.state !== "pending") {
@@ -88,7 +105,14 @@ export namespace BrowserDownloads {
     return ensureManagedDirectory(directory)
   }
 
-  export async function exportTo(owner: BrowserOwner.Info, id: string, target: string): Promise<string> {
+  export async function exportTo(
+    owner: BrowserOwner.Info,
+    id: string,
+    target: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const workspace = BrowserExport.capture()
+    if (owner.scopeID !== ScopeContext.current.scope.id) throw new Error("Download belongs to another Scope")
     const record = get(owner, id)
     if (!record) throw new Error(`Download ${id} was not found for this browser owner.`)
     if (record.state !== "completed" || !record.path) throw new Error(`Download ${id} is not complete.`)
@@ -103,16 +127,24 @@ export namespace BrowserDownloads {
     if (!source.startsWith(`${ownerRoot}${path.sep}`)) throw new Error(`Managed download ${id} escaped owner storage.`)
     const stat = await fs.stat(source)
     if (!stat.isFile()) throw new Error(`Managed download ${id} is not a regular file.`)
-    await fs.mkdir(path.dirname(target), { recursive: true })
-    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL)
-    return target
+    return BrowserExport.copy(workspace, target, source, signal, async (file) => {
+      const current = await fs.realpath(file)
+      if (!current.startsWith(`${ownerRoot}${path.sep}`))
+        throw new Error(`Managed download ${id} escaped owner storage.`)
+      const info = await fs.lstat(file)
+      if (!info.isFile() || info.isSymbolicLink()) throw new Error(`Managed download ${id} is not a safe regular file.`)
+    })
   }
 
   export function clearForTest(): void {
-    records.clear()
+    const instanceState = runtimeState()
+
+    instanceState.records.clear()
   }
 
   export function restore(owner: BrowserOwner.Info, restored: DownloadRecord[]): void {
+    const instanceState = runtimeState()
+
     const root = path.resolve(Global.Path.data, "browser", "downloads", BrowserOwner.storageID(owner))
     const ownerRecords = new Map<string, ManagedRecord>()
     for (const record of restored) {
@@ -127,7 +159,7 @@ export namespace BrowserDownloads {
         },
       })
     }
-    if (ownerRecords.size) records.set(BrowserOwner.key(owner), ownerRecords)
+    if (ownerRecords.size) instanceState.records.set(BrowserOwner.key(owner), ownerRecords)
   }
 }
 

@@ -6,26 +6,32 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { LatticeStore } from "../../src/lattice/store"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("a failed current pointer cannot publish an orphan active Run", async () => {
-  await using tmp = await tmpdir({ git: true })
-  const scope = (await Scope.fromDirectory(tmp.path)).scope
-  await ScopeContext.provide({
-    scope,
-    fn: async () => {
-      const sessionID = Identifier.ascending("session")
-      const pointer = StoragePath.latticeCurrent(Identifier.asScopeID(scope.id), sessionID)
-      const write = Storage.write
-      const failure = spyOn(Storage, "write").mockImplementation(async (key, value) => {
-        if (JSON.stringify(key) === JSON.stringify(pointer)) throw new Error("pointer unavailable")
-        return write(key, value)
-      })
-      try {
-        await expect(LatticeStore.create({ sessionID, mode: "auto" })).rejects.toThrow("pointer unavailable")
-      } finally {
-        failure.mockRestore()
-      }
-      expect(await LatticeStore.listBySession(scope.id, sessionID)).toEqual([])
-    },
-  })
-})
+test("a failed current pointer cannot publish an orphan active Run", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const sessionID = Identifier.ascending("session")
+        const pointer = StoragePath.latticeCurrent(Identifier.asScopeID(scope.id), sessionID)
+        const write = Storage.write
+        const failure = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+          if (JSON.stringify(key) === JSON.stringify(pointer)) throw new Error("pointer unavailable")
+          return write(key, value)
+        })
+        try {
+          await expect(LatticeStore.create({ sessionID, mode: "auto" })).rejects.toThrow("pointer unavailable")
+        } finally {
+          failure.mockRestore()
+        }
+        expect(await LatticeStore.listBySession(scope.id, sessionID)).toEqual([])
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

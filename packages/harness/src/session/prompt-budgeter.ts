@@ -1,8 +1,10 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { JSONSchema7, ModelMessage } from "ai"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { ProviderTransform } from "../provider/transform"
 import type { Provider } from "../provider/provider"
+import type { MessageV2 } from "./message-v2"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { ToolResolver } from "./tool-resolver"
@@ -15,7 +17,9 @@ export namespace PromptBudgeter {
   const TOOL_OVERHEAD_PER_TOOL = 48
   const MESSAGE_OVERHEAD_PER_ITEM = 12
   const ESTIMATE_CACHE_MAX = 4096
-  const estimateCache = new Map<string, number>()
+  const runtimeState = RuntimeContext.state(() => ({
+    estimateCache: new Map<string, number>(),
+  }))
 
   export interface PromptPlanInput {
     sessionID: string
@@ -207,15 +211,38 @@ export namespace PromptBudgeter {
    * compactions while still catching genuine overflows from many images.
    */
   const IMAGE_TOKEN_ESTIMATE = 500
+  export function reasoningReplayTokens(messages: MessageV2.WithParts[]): ReadonlyMap<string, number> {
+    const result = new Map<string, number>()
+    for (const message of messages) {
+      if (message.info.role !== "assistant") continue
+      const ids = new Set<string>()
+      for (const part of message.parts) {
+        if (part.type !== "reasoning") continue
+        const openai = part.metadata?.openai
+        if (typeof openai?.itemId !== "string" || !openai.itemId) continue
+        if (typeof openai.reasoningEncryptedContent !== "string" || !openai.reasoningEncryptedContent) continue
+        ids.add(openai.itemId)
+      }
+      const reported = message.info.tokens.reasoning || message.info.tokens.output
+      if (!Number.isSafeInteger(reported) || reported <= 0 || ids.size === 0) continue
+      const perItem = Math.ceil(reported / ids.size)
+      for (const id of ids) result.set(id, Math.max(result.get(id) ?? 0, perItem))
+    }
+    return result
+  }
+
+  const ENCRYPTED_REASONING_TOKEN_ESTIMATE = 1_024
 
   /**
    * Sanitize ModelMessage content for token estimation by replacing
-   * base64 data URLs with short placeholders. Text tokenizers cannot
-   * distinguish binary data from natural language and would count every
-   * base64 character as a text token, producing wildly inflated counts.
+   * opaque image, file, and encrypted reasoning payloads with placeholders.
+   * Text tokenizers count encoded bytes as text rather than provider-side
+   * tokens, producing inflated estimates and premature compaction.
    */
-  function sanitizeForEstimation(msgs: ModelMessage[]) {
+  function sanitizeForEstimation(msgs: ModelMessage[], encryptedReasoningTokens?: ReadonlyMap<string, number>) {
     let imageParts = 0
+    let encryptedReasoningCost = 0
+    const reasoningItems = new Set<string>()
     const sanitized = msgs.map((msg) => ({
       ...msg,
       content: Array.isArray(msg.content)
@@ -228,20 +255,47 @@ export namespace PromptBudgeter {
               imageParts++
               return { ...part, data: "[file data]", mediaType: part.mediaType }
             }
+            if (
+              part.type === "reasoning" &&
+              typeof part.providerOptions?.openai?.reasoningEncryptedContent === "string"
+            ) {
+              const content = part.providerOptions.openai.reasoningEncryptedContent
+              if (content.length > 0) {
+                const id = part.providerOptions.openai.itemId
+                if (typeof id !== "string" || !reasoningItems.has(id)) {
+                  encryptedReasoningCost +=
+                    typeof id === "string" && Number.isFinite(encryptedReasoningTokens?.get(id))
+                      ? Math.max(ENCRYPTED_REASONING_TOKEN_ESTIMATE, encryptedReasoningTokens!.get(id)!)
+                      : ENCRYPTED_REASONING_TOKEN_ESTIMATE
+                  if (typeof id === "string") reasoningItems.add(id)
+                }
+              }
+              return {
+                ...part,
+                providerOptions: {
+                  ...part.providerOptions,
+                  openai: { ...part.providerOptions.openai, reasoningEncryptedContent: "[encrypted reasoning]" },
+                },
+              }
+            }
             return part
           })
         : msg.content,
     }))
-    return { sanitized, imageParts }
+    return { sanitized, imageParts, encryptedReasoningCost }
   }
 
-  export async function measure(plan: PromptPlan, modelID: string): Promise<Measure> {
+  export async function measure(
+    plan: PromptPlan,
+    modelID: string,
+    options?: { encryptedReasoningTokens?: ReadonlyMap<string, number> },
+  ): Promise<Measure> {
     await Token.warmup(modelID)
     const systemCost = await estimateModelJSONCached(
       modelID,
       [...plan.system, ...(plan.lateSystem ?? [])].map((content) => ({ role: "system", content })),
     )
-    const messageCost = await estimateMessages(plan.messages, modelID)
+    const messageCost = await estimateMessages(plan.messages, modelID, options?.encryptedReasoningTokens)
     const toolCost = await estimateTools(plan.toolDefinitions, modelID)
     return {
       system: systemCost,
@@ -251,26 +305,36 @@ export namespace PromptBudgeter {
     }
   }
 
-  async function estimateMessages(messages: ModelMessage[], modelID: string) {
+  async function estimateMessages(
+    messages: ModelMessage[],
+    modelID: string,
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+  ) {
     let total = 0
     for (const message of messages) {
-      const { sanitized, imageParts } = sanitizeForEstimation([message])
-      total += (await estimateModelJSONCached(modelID, sanitized)) + imageParts * IMAGE_TOKEN_ESTIMATE
+      const { sanitized, imageParts, encryptedReasoningCost } = sanitizeForEstimation(
+        [message],
+        encryptedReasoningTokens,
+      )
+      total +=
+        (await estimateModelJSONCached(modelID, sanitized)) + imageParts * IMAGE_TOKEN_ESTIMATE + encryptedReasoningCost
     }
     return total
   }
 
   async function estimateModelJSONCached(modelID: string, value: unknown) {
+    const instanceState = runtimeState()
+
     const serialized = serializeForEstimate(value)
     if (serialized === undefined) return 0
     const key = estimateKey(modelID, serialized)
-    const cached = estimateCache.get(key)
+    const cached = instanceState.estimateCache.get(key)
     if (cached !== undefined) return cached
     const estimated = await Token.estimateModelJSON(modelID, serialized)
-    estimateCache.set(key, estimated)
-    if (estimateCache.size > ESTIMATE_CACHE_MAX) {
-      const first = estimateCache.keys().next().value
-      if (first) estimateCache.delete(first)
+    instanceState.estimateCache.set(key, estimated)
+    if (instanceState.estimateCache.size > ESTIMATE_CACHE_MAX) {
+      const first = instanceState.estimateCache.keys().next().value
+      if (first) instanceState.estimateCache.delete(first)
     }
     return estimated
   }
@@ -299,6 +363,7 @@ export namespace PromptBudgeter {
       overflowThreshold?: number
       calibration?: Calibration
       maxOutputTokens?: number
+      encryptedReasoningTokens?: ReadonlyMap<string, number>
     },
   ): Promise<Decision> {
     const resultBudget = budget(limits, options)
@@ -315,7 +380,7 @@ export namespace PromptBudgeter {
       }
     }
 
-    const resultMeasure = await measure(plan, modelID)
+    const resultMeasure = await measure(plan, modelID, options)
     return {
       budget: resultBudget,
       measure: resultMeasure,

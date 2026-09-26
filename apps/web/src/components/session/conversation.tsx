@@ -6,15 +6,13 @@ import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
 import { MailboxMessage } from "@ericsanchezok/synergy-ui/mailbox-message"
 import { MessageSlotOutlet } from "@ericsanchezok/synergy-ui/message-slots"
 import { CommandResultOutput } from "@ericsanchezok/synergy-ui/command-result-output"
-import type { UserMessage, AssistantMessage, Message, SessionInboxItem } from "@ericsanchezok/synergy-sdk"
+import type { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
 import { SessionTimeline } from "./session-timeline"
 import { buildConversationTimelineSnapshot } from "./conversation-timeline"
 import { ConversationViewport } from "./conversation-viewport"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
-import { pendingTimelineItemView } from "./conversation-pending"
+import { PendingTimelineItem } from "./pending-timeline-item"
 
 export function SessionConversation(input: PluginComponentProps<PluginConversationService>) {
   const props = input.context
@@ -182,62 +180,20 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
       </For>
       {props.transition?.()}
       <Show when={props.pendingTimeline?.()?.length}>
-        <div class="w-full flex flex-col items-start gap-2 opacity-50">
-          <For each={props.pendingTimeline?.() ?? []}>
-            {(item) => {
-              const view = () =>
-                pendingTimelineItemView(item.mode, props.rollbackActive === true, {
-                  hasCanonicalRoot: props.hasCanonicalRoot(),
-                })
-              const label = () =>
-                item.message?.parts?.[0]?.type === "text"
-                  ? (item.message.parts[0] as { text: string }).text
-                  : (item.summary?.title ?? _(S.convPending))
+        <div class="w-full flex flex-col items-start gap-2">
+          <For each={(props.pendingTimeline?.() ?? []).map((item) => item.id)}>
+            {(id) => {
+              const item = () => props.pendingTimeline?.()?.find((item) => item.id === id)
               return (
-                <div
-                  data-slot="pending-timeline-item"
-                  data-mode={item.mode}
-                  data-frozen={view().frozen}
-                  class="flex w-full items-center gap-2 rounded-lg bg-background-weak px-3 py-2 text-sm text-text-weak"
-                  style={{ animation: "fadeUp 0.3s ease-out both" }}
-                >
-                  <Show when={view().frozen} fallback={<Icon name={getSemanticIcon("agenda.main")} size="small" />}>
-                    <span class="inline-flex items-center gap-1 text-11-medium" title={_(S.convPausedTooltip)}>
-                      <Icon name={getSemanticIcon("agenda.main")} size="small" />
-                      {_(S.convPaused)}
-                    </span>
-                  </Show>
-                  <div class="min-w-0 flex-1 text-14-regular line-clamp-2">{label()}</div>
-                  <div class="ml-auto flex shrink-0 items-center gap-1">
-                    <Show when={view().primaryAction}>
-                      {(primaryAction) => (
-                        <button
-                          type="button"
-                          class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium hover:bg-background-base hover:text-text-base"
-                          title={primaryAction() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}
-                          onClick={() => props.onPendingGuide?.(item)}
-                        >
-                          <Icon
-                            name={getSemanticIcon(primaryAction() === "queue" ? "prompt.submit" : "command.start")}
-                            size="small"
-                          />
-                          <span>{primaryAction() === "queue" ? _(S.convQueue) : _(S.convGuide)}</span>
-                        </button>
-                      )}
-                    </Show>
-                    <Show when={view().canWithdraw}>
-                      <button
-                        type="button"
-                        class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium hover:bg-background-base hover:text-text-base"
-                        title={_(S.convRemovePendingTitle)}
-                        onClick={() => props.onPendingRemove?.(item)}
-                      >
-                        <Icon name={getSemanticIcon("action.close")} size="small" />
-                        <span>{_(S.convWithdraw)}</span>
-                      </button>
-                    </Show>
-                  </div>
-                </div>
+                <Show when={item()}>
+                  <PendingTimelineItem
+                    item={item()!}
+                    rollbackActive={props.rollbackActive === true}
+                    hasCanonicalRoot={props.hasCanonicalRoot()}
+                    onGuide={props.onPendingGuide}
+                    onRemove={props.onPendingRemove}
+                  />
+                </Show>
               )
             }}
           </For>

@@ -3,6 +3,9 @@ import { Permission } from "../../src/permission"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // Tests for the Permission runtime session memory feature.
 //
@@ -26,24 +29,26 @@ async function withScopeContext<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("Permission session memory", () => {
-  test("clearSessionMemory is a no-op when no memory exists", async () => {
-    await withScopeContext(async () => {
-      const session = await Session.create({ title: "no-op-clear" })
-      // Should not throw
-      Permission.clearSessionMemory(session.id)
-      Permission.clearSessionMemory()
-      Permission.clearSessionMemory("nonexistent")
-      expect(true).toBe(true) // reached without error
-    })
-  })
+  test("clearSessionMemory is a no-op when no memory exists", () =>
+    runtime.run(async () => {
+      await withScopeContext(async () => {
+        const session = await Session.create({ title: "no-op-clear" })
+        // Should not throw
+        Permission.clearSessionMemory(session.id)
+        Permission.clearSessionMemory()
+        Permission.clearSessionMemory("nonexistent")
+        expect(true).toBe(true) // reached without error
+      })
+    }))
 
-  test("Response enum includes 'session' option", () => {
-    // Verify the schema accepts the new value
-    expect(Permission.Response.parse("session")).toBe("session")
-    expect(Permission.Response.parse("once")).toBe("once")
-    expect(Permission.Response.parse("reject")).toBe("reject")
-    expect(Permission.Response.safeParse("invalid").success).toBe(false)
-  })
+  test("Response enum includes 'session' option", () =>
+    runtime.run(() => {
+      // Verify the schema accepts the new value
+      expect(Permission.Response.parse("session")).toBe("session")
+      expect(Permission.Response.parse("once")).toBe("once")
+      expect(Permission.Response.parse("reject")).toBe("reject")
+      expect(Permission.Response.safeParse("invalid").success).toBe(false)
+    }))
 })
 
 // The following tests exercise the memory-store behavior by directly invoking
@@ -54,14 +59,17 @@ describe("Permission session memory", () => {
 // full pipeline coverage.
 
 describe("Permission memory contract (documented)", () => {
-  test("memoryKey format: toolName:capability", () => {
-    // The internal memoryKey helper produces keys of the form
-    // `${toolName}:${metadata.capability ?? metadata.type ?? "default"}`
-    // This is verified by the enforcement suite's integration tests.
-    // Document the expected format here for future reference.
-    const expectedKey = (tool: string, cap: string) => `${tool}:${cap}`
-    expect(expectedKey("bash", "shell")).toBe("bash:shell")
-    expect(expectedKey("bash", "file_external")).toBe("bash:file_external")
-    expect(expectedKey("email_send", "communication_email")).toBe("email_send:communication_email")
-  })
+  test("memoryKey format: toolName:capability", () =>
+    runtime.run(() => {
+      // The internal memoryKey helper produces keys of the form
+      // `${toolName}:${metadata.capability ?? metadata.type ?? "default"}`
+      // This is verified by the enforcement suite's integration tests.
+      // Document the expected format here for future reference.
+      const expectedKey = (tool: string, cap: string) => `${tool}:${cap}`
+      expect(expectedKey("bash", "shell")).toBe("bash:shell")
+      expect(expectedKey("bash", "file_external")).toBe("bash:file_external")
+      expect(expectedKey("email_send", "communication_email")).toBe("email_send:communication_email")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

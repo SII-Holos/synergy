@@ -31,7 +31,12 @@ beforeAll(async () => {
     Bun.write(
       fileStubPath,
       `
+        export const FileWorkspaceProvider = (props) => props.children
         export const useFile = () => ({
+          draft: { backupUnavailable: () => false, get: () => undefined, dirty: () => false, begin() {}, discard() {} },
+          workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" },
+          reference: () => ({ workspaceID: "wsp_demo", workspaceGeneration: 1 }),
+          resourceKey: "demo",
           get: () => ({ loading: true, content: undefined }),
           load: async () => {},
           save: async () => {},
@@ -64,7 +69,7 @@ beforeAll(async () => {
     ),
     Bun.write(
       sdkStubPath,
-      `export const useSDK = () => ({ url: "http://127.0.0.1:4096", scopeID: undefined, directory: "/workspace/demo" })`,
+      `export const useSDK = () => ({ url: "http://127.0.0.1:4096", scopeID: "project", directory: "/workspace/demo" })`,
     ),
     Bun.write(
       localeStubPath,
@@ -117,7 +122,7 @@ beforeAll(async () => {
               i18n,
               children: () =>
                 createComponent(FileWorkbenchContent, {
-                  tab: { id: "file", type: "file", title: file, resourceId: file },
+                  tab: { id: "file", type: "file", title: file, resourceId: "wsp_demo@1/" + file, state: { workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" } } },
                   onRequestClose: () => {},
                 }),
             }),
@@ -195,6 +200,7 @@ beforeAll(async () => {
   // fails here with page errors attached instead of three 30s timeouts.
   try {
     await page.goto(`${baseUrl}?path=README.md`)
+    await page.getByRole("navigation", { name: "File path" }).waitFor({ state: "visible" })
     await page.waitForSelector(".file-workbench-toolbar", { timeout: 30000 })
   } catch (error) {
     const pageError = pageErrors[0]
@@ -211,6 +217,15 @@ afterAll(async () => {
 })
 
 describe("file workbench open-in-browser action", () => {
+  test("the file breadcrumb identifies its owning Workspace", async () => {
+    await page.goto(`${baseUrl}?path=README.md`)
+    const owner = page
+      .getByRole("navigation", { name: "File path" })
+      .getByRole("button", { name: "/workspace/demo", exact: true })
+    expect(await owner.isVisible()).toBe(true)
+    expect(await owner.textContent()).toBe("demo")
+  }, 60000)
+
   test("renders the toolbar button for an HTML file and opens the raw content URL", async () => {
     await page.goto(`${baseUrl}?path=docs%2Findex.html`)
     const button = page.getByRole("button", { name: "Open in browser" })
@@ -218,7 +233,7 @@ describe("file workbench open-in-browser action", () => {
     await button.click()
     await page.waitForFunction(() => ((window as any).__openedUrls?.length ?? 0) > 0)
     const urls = await page.evaluate(() => (window as any).__openedUrls as string[])
-    expect(urls).toEqual(["http://127.0.0.1:4096/workspace/files/raw/L3dvcmtzcGFjZS9kZW1v/docs/index.html"])
+    expect(urls).toEqual(["http://127.0.0.1:4096/workspace/files/raw/cHJvamVjdA/wsp_demo/1/docs/index.html"])
   }, 60000)
 
   test("treats .htm files as HTML too", async () => {

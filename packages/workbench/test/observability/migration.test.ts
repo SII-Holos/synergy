@@ -6,241 +6,256 @@ import { ObservabilityMigration } from "@ericsanchezok/synergy-harness/test/inte
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { PerformanceDashboard } from "@ericsanchezok/synergy-workbench/performance/dashboard"
 import { ObservabilityConfig } from "@ericsanchezok/synergy-harness/observability/config"
-import { cleanupObservabilityHomes, resetObservabilityHome } from "../../../harness/test/observability/fixture"
+import { clearObservabilityState, resetObservabilityState } from "../../../harness/test/observability/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { migrationFixture } from "@ericsanchezok/synergy-harness/test/migration/fixture"
+import { registerHarness } from "@ericsanchezok/synergy-harness/lifecycle"
+const runtime = await migrationFixture({ register: registerHarness })
 
 describe("ObservabilityMigration", () => {
-  beforeEach(() => resetObservabilityHome())
-  afterEach(() => cleanupObservabilityHomes())
+  beforeEach(() => runtime.run(() => resetObservabilityState()))
+  afterEach(() => runtime.run(() => clearObservabilityState()))
 
-  test("migrates legacy perf tables into obs tables idempotently", async () => {
-    seedLegacyPerformanceStore()
+  test("migrates legacy perf tables into obs tables idempotently", () =>
+    runtime.run(async () => {
+      seedLegacyPerformanceStore()
 
-    await ObservabilityMigration.migrateLegacyPerformance()
-    ObservabilityStore.flush()
-    await ObservabilityMigration.migrateLegacyPerformance()
-    ObservabilityStore.flush()
+      await ObservabilityMigration.migrateLegacyPerformance()
+      ObservabilityStore.flush()
+      await ObservabilityMigration.migrateLegacyPerformance()
+      ObservabilityStore.flush()
 
-    const metrics = ObservabilityStore.queryMetrics({ since: 0, names: ["http.request.duration"] })
-    expect(metrics).toHaveLength(1)
-    expect(metrics[0].metric_id).toBe("legacy_metric_1")
+      const metrics = ObservabilityStore.queryMetrics({ since: 0, names: ["http.request.duration"] })
+      expect(metrics).toHaveLength(1)
+      expect(metrics[0].metric_id).toBe("legacy_metric_1")
 
-    const spans = ObservabilityStore.querySpans({ traceId: "trace_legacy" })
-    expect(spans).toHaveLength(1)
-    expect(spans[0].span_id).toBe("legacy_span_1")
-    expect(spans[0].kind).toBe("http")
+      const spans = ObservabilityStore.querySpans({ traceId: "trace_legacy" })
+      expect(spans).toHaveLength(1)
+      expect(spans[0].span_id).toBe("legacy_span_1")
+      expect(spans[0].kind).toBe("http")
 
-    expect(ObservabilityStore.resourceSince(0).map((row) => row.sample_id)).toEqual(["legacy_resource_1"])
-    const issues = ObservabilityStore.queryIssues({ status: "open" })
-    expect(issues.map((row) => row.issue_id)).toEqual(["legacy_issue_1"])
-    expect(issues[0].fingerprint).toStartWith("legacy:")
-    const evidence = JSON.parse(issues[0].evidence_json)
-    expect(evidence.stack).toBe("[redacted]")
-    expect(evidence.scopeID).toBe("sc_legacy")
-    const resources = ObservabilityStore.resourceSince(0)
-    const migratedJson = JSON.stringify({ metrics, spans, issues, resources })
-    expect(migratedJson).not.toContain("sk-legacy-secret")
-    expect(migratedJson).not.toContain("ghp_legacysecret")
-    expect(migratedJson).not.toContain("Bearer legacy-authorization-secret")
-    expect(ObservabilityStore.meta().some((row) => row.key === "legacyPerfMigratedAt")).toBe(true)
+      expect(ObservabilityStore.resourceSince(0).map((row) => row.sample_id)).toEqual(["legacy_resource_1"])
+      const issues = ObservabilityStore.queryIssues({ status: "open" })
+      expect(issues.map((row) => row.issue_id)).toEqual(["legacy_issue_1"])
+      expect(issues[0].fingerprint).toStartWith("legacy:")
+      const evidence = JSON.parse(issues[0].evidence_json)
+      expect(evidence.stack).toBe("[redacted]")
+      expect(evidence.scopeID).toBe("sc_legacy")
+      const resources = ObservabilityStore.resourceSince(0)
+      const migratedJson = JSON.stringify({ metrics, spans, issues, resources })
+      expect(migratedJson).not.toContain("sk-legacy-secret")
+      expect(migratedJson).not.toContain("ghp_legacysecret")
+      expect(migratedJson).not.toContain("Bearer legacy-authorization-secret")
+      expect(ObservabilityStore.meta().some((row) => row.key === "legacyPerfMigratedAt")).toBe(true)
 
-    const summary = await PerformanceDashboard.summary({ windowMs: 60_000 })
-    expect(summary.backend.requestCount).toBe(1)
-  })
+      const summary = await PerformanceDashboard.summary({ windowMs: 60_000 })
+      expect(summary.backend.requestCount).toBe(1)
+    }))
 
-  test("migrates the camel-case traceId metric schema", async () => {
-    seedLegacyPerformanceStore("camel")
+  test("migrates the camel-case traceId metric schema", () =>
+    runtime.run(async () => {
+      seedLegacyPerformanceStore("camel")
 
-    await ObservabilityMigration.migrateLegacyPerformance()
+      await ObservabilityMigration.migrateLegacyPerformance()
 
-    const metrics = ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_legacy" })
-    expect(metrics.map((row) => row.metric_id)).toEqual(["legacy_metric_1"])
-  })
+      const metrics = ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_legacy" })
+      expect(metrics.map((row) => row.metric_id)).toEqual(["legacy_metric_1"])
+    }))
 
-  test("prefers the canonical trace_id when both legacy metric columns exist", async () => {
-    seedLegacyPerformanceStore("both")
+  test("prefers the canonical trace_id when both legacy metric columns exist", () =>
+    runtime.run(async () => {
+      seedLegacyPerformanceStore("both")
 
-    await ObservabilityMigration.migrateLegacyPerformance()
+      await ObservabilityMigration.migrateLegacyPerformance()
 
-    expect(ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_legacy" })).toHaveLength(1)
-    expect(ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_camel_fallback" })).toHaveLength(0)
-  })
+      expect(ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_legacy" })).toHaveLength(1)
+      expect(ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_camel_fallback" })).toHaveLength(0)
+    }))
 
-  test("records a released-schema upgrade through the central migration runner", async () => {
-    seedLegacyPerformanceStore()
+  test("records a released-schema upgrade through the central migration runner", () =>
+    runtime.run(async () => {
+      seedLegacyPerformanceStore()
 
-    const summary = await runMigrations({ output: "silent", targetDomain: "observability" })
-    const status = await getMigrationStatus("observability")
+      const summary = await runMigrations({ output: "silent", targetDomain: "observability" })
+      const status = await getMigrationStatus("observability")
 
-    expect(summary.completed).toBe(6)
-    expect(status.observability.pending).toHaveLength(0)
-    expect(status.observability.completed.map((migration) => migration.id)).toContain(ObservabilityMigration.id)
-  })
+      expect(summary.completed).toBe(6)
+      expect(status.observability.pending).toHaveLength(0)
+      expect(status.observability.completed.map((migration) => migration.id)).toContain(ObservabilityMigration.id)
+    }))
 
-  test("rolls back the canonical copy when a legacy table is malformed", async () => {
-    seedLegacyPerformanceStore()
-    const legacy = new Database(ObservabilityStore.legacyPerformancePath())
-    legacy.exec("ALTER TABLE perf_spans DROP COLUMN source")
-    legacy.close(true)
+  test("rolls back the canonical copy when a legacy table is malformed", () =>
+    runtime.run(async () => {
+      seedLegacyPerformanceStore()
+      const legacy = new Database(ObservabilityStore.legacyPerformancePath())
+      legacy.exec("ALTER TABLE perf_spans DROP COLUMN source")
+      legacy.close(true)
 
-    await expect(ObservabilityMigration.migrateLegacyPerformance()).rejects.toThrow("source")
+      await expect(ObservabilityMigration.migrateLegacyPerformance()).rejects.toThrow("source")
 
-    const target = ObservabilityStore.initializeForMigration()
-    const row = getRow<{ count: number }>(target, "SELECT COUNT(*) AS count FROM obs_metrics")
-    expect(row.count).toBe(0)
-  })
+      const target = ObservabilityStore.initializeForMigration()
+      const row = getRow<{ count: number }>(target, "SELECT COUNT(*) AS count FROM obs_metrics")
+      expect(row.count).toBe(0)
+    }))
 
-  test("migrates legacy perf tables even when runtime observability is disabled", async () => {
-    seedLegacyPerformanceStore()
-    ObservabilityConfig.refresh({
-      observability: { enabled: false, performance: { storage: { sqliteEnabled: false } } },
-    })
+  test("migrates legacy perf tables even when runtime observability is disabled", () =>
+    runtime.run(async () => {
+      seedLegacyPerformanceStore()
+      ObservabilityConfig.refresh({
+        observability: { enabled: false, performance: { storage: { sqliteEnabled: false } } },
+      })
 
-    await ObservabilityMigration.migrateLegacyPerformance()
-    ObservabilityConfig.refresh()
+      await ObservabilityMigration.migrateLegacyPerformance()
+      ObservabilityConfig.refresh()
 
-    const metrics = ObservabilityStore.queryMetrics({ since: 0, names: ["http.request.duration"] })
-    expect(metrics).toHaveLength(1)
-    expect(metrics[0].metric_id).toBe("legacy_metric_1")
-  })
+      const metrics = ObservabilityStore.queryMetrics({ since: 0, names: ["http.request.duration"] })
+      expect(metrics).toHaveLength(1)
+      expect(metrics[0].metric_id).toBe("legacy_metric_1")
+    }))
 
-  test("enables incremental vacuum idempotently for an existing observability database", async () => {
-    ObservabilityStore.close()
-    mkdirSync(ObservabilityStore.dir(), { recursive: true })
-    const legacy = new Database(ObservabilityStore.pathName(), { create: true })
-    legacy.exec("PRAGMA auto_vacuum=NONE")
-    legacy.exec("CREATE TABLE existing_state (id INTEGER PRIMARY KEY)")
-    legacy.close(true)
+  test("enables incremental vacuum idempotently for an existing observability database", () =>
+    runtime.run(async () => {
+      ObservabilityStore.close()
+      mkdirSync(ObservabilityStore.dir(), { recursive: true })
+      const legacy = new Database(ObservabilityStore.pathName(), { create: true })
+      legacy.exec("PRAGMA auto_vacuum=NONE")
+      legacy.exec("CREATE TABLE existing_state (id INTEGER PRIMARY KEY)")
+      legacy.close(true)
 
-    await ObservabilityMigration.enableIncrementalVacuum()
-    await ObservabilityMigration.enableIncrementalVacuum()
+      await ObservabilityMigration.enableIncrementalVacuum()
+      await ObservabilityMigration.enableIncrementalVacuum()
 
-    const db = ObservabilityStore.initializeForMigration()
-    const row = getRow<{ auto_vacuum: number }>(db, "PRAGMA auto_vacuum")
-    expect(row.auto_vacuum).toBe(2)
-  })
+      const db = ObservabilityStore.initializeForMigration()
+      const row = getRow<{ auto_vacuum: number }>(db, "PRAGMA auto_vacuum")
+      expect(row.auto_vacuum).toBe(2)
+    }))
 
-  test("synchronizes schema metadata for an existing observability database", async () => {
-    const db = ObservabilityStore.initializeForMigration()
-    runStatement(db, "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', '2')")
+  test("synchronizes schema metadata for an existing observability database", () =>
+    runtime.run(async () => {
+      const db = ObservabilityStore.initializeForMigration()
+      runStatement(db, "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', '2')")
 
-    await ObservabilityMigration.synchronizeSchemaMetadata()
-    await ObservabilityMigration.synchronizeSchemaMetadata()
+      await ObservabilityMigration.synchronizeSchemaMetadata()
+      await ObservabilityMigration.synchronizeSchemaMetadata()
 
-    const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
-    expect(row.value).toBe("4")
-  })
+      const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
+      expect(row.value).toBe("4")
+    }))
 
-  test("adds resource cgroup columns to a v4 database idempotently", async () => {
-    seedV4ObservabilityStore()
+  test("adds resource cgroup columns to a v4 database idempotently", () =>
+    runtime.run(async () => {
+      seedV4ObservabilityStore()
 
-    await ObservabilityMigration.addResourceCgroupColumns()
-    await ObservabilityMigration.addResourceCgroupColumns()
+      await ObservabilityMigration.addResourceCgroupColumns()
+      await ObservabilityMigration.addResourceCgroupColumns()
 
-    const db = ObservabilityStore.initializeForMigration()
-    const columns = new Set(
-      allRows<{ name: string }>(db, "PRAGMA table_info(obs_resource_samples)").map((row) => row.name),
-    )
-    expect([...columns]).toEqual(
-      expect.arrayContaining([
-        "cgroup_current_bytes",
-        "cgroup_high_bytes",
-        "cgroup_max_bytes",
-        "cgroup_peak_bytes",
-        "cgroup_oom_count",
-        "cgroup_oom_kill_count",
-        "service_memory_rss_bytes",
-        "service_memory_source",
-        "service_memory_completeness",
-      ]),
-    )
-    const indexes = new Set(
-      allRows<{ name: string }>(db, "SELECT name FROM sqlite_master WHERE type = 'index'").map((row) => row.name),
-    )
-    expect(indexes).toContain("idx_obs_issues_status_last_seen")
-    const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
-    expect(row.value).toBe("6")
-  })
+      const db = ObservabilityStore.initializeForMigration()
+      const columns = new Set(
+        allRows<{ name: string }>(db, "PRAGMA table_info(obs_resource_samples)").map((row) => row.name),
+      )
+      expect([...columns]).toEqual(
+        expect.arrayContaining([
+          "cgroup_current_bytes",
+          "cgroup_high_bytes",
+          "cgroup_max_bytes",
+          "cgroup_peak_bytes",
+          "cgroup_oom_count",
+          "cgroup_oom_kill_count",
+          "service_memory_rss_bytes",
+          "service_memory_source",
+          "service_memory_completeness",
+        ]),
+      )
+      const indexes = new Set(
+        allRows<{ name: string }>(db, "SELECT name FROM sqlite_master WHERE type = 'index'").map((row) => row.name),
+      )
+      expect(indexes).toContain("idx_obs_issues_status_last_seen")
+      const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
+      expect(row.value).toBe("6")
+    }))
 
-  test("backfills redaction across previously written canonical tables idempotently", async () => {
-    seedLegacyPerformanceStore()
-    await ObservabilityMigration.migrateLegacyPerformance()
-    const db = ObservabilityStore.initializeForMigration()
-    runStatement(
-      db,
-      "UPDATE obs_metrics SET labels_json = ? WHERE metric_id = 'legacy_metric_1'",
-      '{"authorization":"Bearer canonical-secret","path":"/?token=tok_canonical_metric_secret"}',
-    )
-    runStatement(
-      db,
-      "UPDATE obs_spans SET error_message = ?, attributes_json = ? WHERE span_id = 'legacy_span_1'",
-      "failed ghp_canonicalspansecret",
-      '{"password":"canonical-password"}',
-    )
-    runStatement(
-      db,
-      "UPDATE obs_resource_samples SET labels_json = ? WHERE sample_id = 'legacy_resource_1'",
-      '{"command":"curl --token=tok_canonical_resource_secret"}',
-    )
-    runStatement(
-      db,
-      "UPDATE obs_issues SET title = ?, evidence_json = ? WHERE issue_id = 'legacy_issue_1'",
-      "issue sk-canonical-secret",
-      '{"authorization":"Bearer canonical-secret","stack":"private stack","scopeID":"sc_legacy"}',
-    )
-    runStatement(
-      db,
-      "UPDATE obs_browser_batches SET page_json = ? WHERE batch_id = 'legacy_batch_1'",
-      '{"url":"https://example.test/?token=tok_canonical_browser_secret"}',
-    )
-    runStatement(
-      db,
-      `INSERT INTO obs_events (event_id,time,iso,type,cwd,source,module,data_json,redaction_json)
+  test("backfills redaction across previously written canonical tables idempotently", () =>
+    runtime.run(async () => {
+      seedLegacyPerformanceStore()
+      await ObservabilityMigration.migrateLegacyPerformance()
+      const db = ObservabilityStore.initializeForMigration()
+      runStatement(
+        db,
+        "UPDATE obs_metrics SET labels_json = ? WHERE metric_id = 'legacy_metric_1'",
+        '{"authorization":"Bearer canonical-secret","path":"/?token=tok_canonical_metric_secret"}',
+      )
+      runStatement(
+        db,
+        "UPDATE obs_spans SET error_message = ?, attributes_json = ? WHERE span_id = 'legacy_span_1'",
+        "failed ghp_canonicalspansecret",
+        '{"password":"canonical-password"}',
+      )
+      runStatement(
+        db,
+        "UPDATE obs_resource_samples SET labels_json = ? WHERE sample_id = 'legacy_resource_1'",
+        '{"command":"curl --token=tok_canonical_resource_secret"}',
+      )
+      runStatement(
+        db,
+        "UPDATE obs_issues SET title = ?, evidence_json = ? WHERE issue_id = 'legacy_issue_1'",
+        "issue sk-canonical-secret",
+        '{"authorization":"Bearer canonical-secret","stack":"private stack","scopeID":"sc_legacy"}',
+      )
+      runStatement(
+        db,
+        "UPDATE obs_browser_batches SET page_json = ? WHERE batch_id = 'legacy_batch_1'",
+        '{"url":"https://example.test/?token=tok_canonical_browser_secret"}',
+      )
+      runStatement(
+        db,
+        `INSERT INTO obs_events (event_id,time,iso,type,cwd,source,module,data_json,redaction_json)
        VALUES ('legacy_event_1',1,'1970-01-01T00:00:00.001Z','legacy','/Users/private/project','backend','observability','{"cookie":"canonical-cookie"}','{}')`,
-    )
+      )
 
-    await ObservabilityMigration.redactCanonicalTelemetry()
-    await ObservabilityMigration.redactCanonicalTelemetry()
+      await ObservabilityMigration.redactCanonicalTelemetry()
+      await ObservabilityMigration.redactCanonicalTelemetry()
 
-    const canonical = JSON.stringify({
-      metrics: allRows(db, "SELECT labels_json FROM obs_metrics"),
-      spans: allRows(db, "SELECT error_message,attributes_json,redaction_json FROM obs_spans"),
-      resources: allRows(db, "SELECT labels_json,redaction_json FROM obs_resource_samples"),
-      issues: allRows(db, "SELECT title,evidence_json,redaction_json FROM obs_issues"),
-      batches: allRows(db, "SELECT page_json FROM obs_browser_batches"),
-      events: allRows(db, "SELECT cwd,data_json,redaction_json FROM obs_events"),
-    })
-    expect(canonical).not.toContain("canonical-secret")
-    expect(canonical).not.toContain("canonical-password")
-    expect(canonical).not.toContain("canonical-cookie")
-    expect(canonical).not.toContain("private stack")
-    expect(canonical).not.toContain("/Users/private/project")
-    expect(canonical).toContain("sc_legacy")
-  })
+      const canonical = JSON.stringify({
+        metrics: allRows(db, "SELECT labels_json FROM obs_metrics"),
+        spans: allRows(db, "SELECT error_message,attributes_json,redaction_json FROM obs_spans"),
+        resources: allRows(db, "SELECT labels_json,redaction_json FROM obs_resource_samples"),
+        issues: allRows(db, "SELECT title,evidence_json,redaction_json FROM obs_issues"),
+        batches: allRows(db, "SELECT page_json FROM obs_browser_batches"),
+        events: allRows(db, "SELECT cwd,data_json,redaction_json FROM obs_events"),
+      })
+      expect(canonical).not.toContain("canonical-secret")
+      expect(canonical).not.toContain("canonical-password")
+      expect(canonical).not.toContain("canonical-cookie")
+      expect(canonical).not.toContain("private stack")
+      expect(canonical).not.toContain("/Users/private/project")
+      expect(canonical).toContain("sc_legacy")
+    }))
 
-  test("redacts canonical telemetry across multiple bounded batches", async () => {
-    const db = ObservabilityStore.initializeForMigration()
-    const insert = db.prepare(
-      `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,module,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
+  test("redacts canonical telemetry across multiple bounded batches", () =>
+    runtime.run(async () => {
+      const db = ObservabilityStore.initializeForMigration()
+      const insert = db.prepare(
+        `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,module,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
        VALUES (?1,1,'1970-01-01T00:00:00.001Z','warning','open','BATCH','Batch issue','Batch message','test',?2,1,1,1,?3,'{}')`,
-    )
-    try {
-      db.transaction(() => {
-        for (let index = 0; index < 1_001; index++) {
-          insert.run(`batch-issue-${index}`, '{"authorization":"Bearer batch-secret"}', `batch-fingerprint-${index}`)
-        }
-      })()
-    } finally {
-      insert.finalize()
-    }
+      )
+      try {
+        db.transaction(() => {
+          for (let index = 0; index < 1_001; index++) {
+            insert.run(`batch-issue-${index}`, '{"authorization":"Bearer batch-secret"}', `batch-fingerprint-${index}`)
+          }
+        })()
+      } finally {
+        insert.finalize()
+      }
 
-    await ObservabilityMigration.redactCanonicalTelemetry()
+      await ObservabilityMigration.redactCanonicalTelemetry()
 
-    const row = getRow<{ count: number }>(
-      db,
-      "SELECT COUNT(*) AS count FROM obs_issues WHERE evidence_json LIKE '%batch-secret%'",
-    )
-    expect(row.count).toBe(0)
-  })
+      const row = getRow<{ count: number }>(
+        db,
+        "SELECT COUNT(*) AS count FROM obs_issues WHERE evidence_json LIKE '%batch-secret%'",
+      )
+      expect(row.count).toBe(0)
+    }))
 })
 
 function seedV4ObservabilityStore() {
@@ -358,3 +373,5 @@ function runStatement(db: Database, sql: string, ...params: SqlBinding[]) {
     statement.finalize()
   }
 }
+
+afterRuntimeTests(() => runtime.close())

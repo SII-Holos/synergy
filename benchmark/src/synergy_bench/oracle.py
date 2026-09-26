@@ -18,14 +18,27 @@ from .evaluator import freeze_evaluator
 from .evidence import grading_evidence
 from .monitor import ResourceMonitor
 from .prepare import evaluator_identity
-from .resources import Capacity, Request, ResourcePool, admission_for, inspect_host, shared_pool_options
+from .resources import (
+    Capacity,
+    Request,
+    ResourcePool,
+    admission_for,
+    inspect_host,
+    shared_pool_options,
+    working_set_request,
+)
 from .results import native_reward
+from .scheduling import PhaseResources, current_resources
 from .storage import atomic_json, digest, locked, read_json
 from .trial import BenchmarkTrial
 
 
+def oracle_project(root: Path, attempt: Path) -> str:
+    return f"sb-{root.name[-8:]}-oracle-{attempt.parent.name}-{attempt.name}"
+
+
 def oracle_configuration(root: Path, task: dict[str, Any], attempt: Path, *, cache: Path, platform: str) -> TrialConfig:
-    name = f"sb-{root.name[-8:]}-oracle-{attempt.parent.name}-{attempt.name}"
+    name = oracle_project(root, attempt)
     mounts = []
     for category in ["agent", "verifier", "artifacts"]:
         directory = attempt / name / category
@@ -101,7 +114,7 @@ def prepare_oracle(suite_path: Path, output: Path, cache: Path, *, concurrency: 
     root.mkdir(parents=True, mode=0o700)
     atomic_json(root / "owner.json", {"kind": "synergy-benchmark-oracle", "version": 1})
     tasks = []
-    pool = ResourcePool(Capacity(**host["capacity"]), concurrency)
+    pool = ResourcePool(Capacity(**host["ceiling"]), concurrency)
     with cache_activity(cache):
         for item in suite.tasks:
             path = materialize(suite, item, cache)
@@ -120,7 +133,7 @@ def prepare_oracle(suite_path: Path, output: Path, cache: Path, *, concurrency: 
                     for env in environments
                 ),
             )
-            pool.validate(request)
+            pool.validate(working_set_request(request))
             tasks.append(
                 {
                     **item.model_dump(),
@@ -159,7 +172,7 @@ async def run_oracle(root: Path) -> dict[str, Any]:
         ):
             raise ValueError("Oracle plan or evaluator changed")
         pool = ResourcePool(
-            Capacity(**plan["host"]["capacity"]),
+            Capacity(**plan["host"].get("ceiling", plan["host"]["capacity"])),
             plan["concurrency"],
             admission=admission_for(root, plan),
             **shared_pool_options(root, plan),
@@ -181,7 +194,9 @@ async def run_oracle(root: Path) -> dict[str, Any]:
                             raise ValueError("Oracle evidence changed")
                 rows[task["id"]] = result
                 return
-            async with pool.reserve(Request(**task["resources"])):
+            resources = PhaseResources(pool, attempt)
+            token = current_resources.set(resources)
+            try:
                 if tree_digest(Path(task["local_path"])) != task["digest"]:
                     raise ValueError("Oracle task input changed")
                 attempt.mkdir(parents=True, exist_ok=True)
@@ -201,7 +216,7 @@ async def run_oracle(root: Path) -> dict[str, Any]:
                         )
                     else:
                         with cache_activity(Path(plan["cache"])):
-                            async with ResourceMonitor(attempt, config.trial_name):
+                            async with ResourceMonitor(attempt, config.trial_name, scheduler=resources):
                                 trial = await BenchmarkTrial.create(config)
                                 native = (await trial.run()).model_dump(mode="json")
                 except BaseException as error:
@@ -218,6 +233,12 @@ async def run_oracle(root: Path) -> dict[str, Any]:
                         )
                     except Exception as error:
                         cleanup_error = {"type": type(error).__name__, "message": str(error)}
+                    cleanup_file = attempt / "cleanup.json"
+                    if (
+                        cleanup_file.exists()
+                        and (cleanup := read_json(cleanup_file)).get("resources_removed") is not True
+                    ):
+                        cleanup_error = cleanup
                     result = {
                         **await asyncio.to_thread(oracle_result, trial_dir, native),
                         "task": task["id"],
@@ -230,6 +251,15 @@ async def run_oracle(root: Path) -> dict[str, Any]:
                     atomic_json(file, result)
                     rows[task["id"]] = result
                     progress(f"oracle: {task['id']} {result['status']} reward={result['reward']}")
+            finally:
+                current_resources.reset(token)
+                cleanup_file = attempt / "cleanup.json"
+                removed = (
+                    read_json(cleanup_file).get("resources_removed") is True
+                    if cleanup_file.exists()
+                    else not resources.leases
+                )
+                await resources.finish(resources_removed=removed)
 
         try:
             width = plan["concurrency"]

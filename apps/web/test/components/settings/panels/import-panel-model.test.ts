@@ -12,22 +12,12 @@ import {
 } from "../../../../src/components/settings/panels/import-panel-model"
 
 const scopes: Scope[] = [
-  {
-    id: "home",
-    type: "home",
-    directory: "/home/user",
-    worktree: "/home/user",
-    time: { created: 1, updated: 1 },
-    sandboxes: [],
-  },
+  { id: "project_missing", type: "project", local: null, time: { created: 1, updated: 1 } },
   {
     id: "scope_project",
     type: "project",
-    directory: "/workspace/project",
-    worktree: "/workspace/project",
-    vcs: "git",
+    local: { directory: "/workspace/project", worktree: "/workspace/project", vcs: "git", sandboxes: [] },
     time: { created: 1, updated: 1 },
-    sandboxes: [],
   },
 ]
 
@@ -97,7 +87,7 @@ describe("config import settings model", () => {
         only: ["general"],
       }),
     ).toMatchObject({
-      directory: "/workspace/project",
+      scopeID: "scope_project",
       configDomainImportPlanInput: {
         config: { username: "Ada" },
         source: "settings.jsonc",
@@ -124,7 +114,7 @@ describe("config import settings model", () => {
         revision: "revision-1",
       }),
     ).toMatchObject({
-      directory: "/workspace/project",
+      scopeID: "scope_project",
       configDomainImportApplyInput: {
         config: { username: "Ada" },
         source: "pasted",

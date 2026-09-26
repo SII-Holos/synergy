@@ -10,6 +10,7 @@ import { LSP } from "."
 export function registerLspStartup() {
   ScopeStartup.register({
     name: "format",
+    owner: "workspace",
     phase: "surface",
     after: ["session-pause-reconcile"],
     before: ["file-watcher"],
@@ -17,6 +18,7 @@ export function registerLspStartup() {
   })
   ScopeStartup.register({
     name: "lsp-init",
+    owner: "workspace",
     phase: "surface",
     after: ["format"],
     before: ["file-watcher"],

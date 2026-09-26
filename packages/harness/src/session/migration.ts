@@ -1,4 +1,8 @@
+import { normalizeLocalScope } from "../scope/migration"
+import { WorkspaceBinding } from "../workspace/binding"
+import { RuntimeContext } from "../lifecycle/context"
 import { SessionMigrationTarget } from "../migration/session-target"
+import type { Session } from "."
 import { RolloutMigration } from "./rollout/migration"
 import { $ } from "bun"
 import path from "path"
@@ -1896,7 +1900,7 @@ export const migrations: Migration[] = [
 
           await fs.mkdir(sessionRepo, { recursive: true })
           await $`git init`
-            .env({ GIT_DIR: sessionRepo, ...process.env })
+            .env({ GIT_DIR: sessionRepo, ...RuntimeContext.current().host.env })
             .quiet()
             .nothrow()
 
@@ -2231,6 +2235,18 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260921-session-nav-tags",
+    scope: "derived",
+    async upSession(owner) {
+      const { SessionCompat } = await import("./compat-import")
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    description: "Rebuild session nav indexes to backfill canonical session tags",
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
   RolloutMigration.migration,
 
   {
@@ -2351,6 +2367,24 @@ export const migrations: Migration[] = [
     },
   },
   {
+    id: "20260921-session-workspace-binding",
+    onAccess: true,
+    scope: "session",
+    description: "Normalize nullable workspace and embedded Scope metadata in each Session ownership transaction",
+    upSession: migrateSessionWorkspaceBinding,
+    async up(progress) {
+      const scopes = await SessionMigrationTarget.scopes()
+      let done = 0
+      for (const scopeID of scopes) {
+        for (const sessionID of await SessionMigrationTarget.sessions(Identifier.asScopeID(scopeID))) {
+          await migrateSessionWorkspaceBinding({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      }
+      progress(done, done)
+    },
+  },
+  {
     id: "20260920-session-pause-latch",
     scope: "session",
     upSession(owner, progress) {
@@ -2388,6 +2422,107 @@ export const migrations: Migration[] = [
       await SessionNav.rebuildAllNavIndexes(progress)
     },
   },
+  {
+    id: "20260922-session-nav-workspace-binding",
+    scope: "derived",
+    dependsOn: ["20260921-session-workspace-binding"],
+    description: "Rebuild session navigation after applying on-access workspace binding upgrades",
+    async upSession(owner) {
+      const { SessionRecords } = await import("./records")
+      const { SessionCompat } = await import("./compat-import")
+      await SessionRecords.read(
+        StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID)),
+      )
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
+  {
+    id: "20260923-session-workspace-reference",
+    onAccess: true,
+    scope: "session",
+    dependsOn: ["20260921-session-workspace-binding"],
+    description: "Replace embedded Session locations with stable Workspace references",
+    upSession: migrateSessionWorkspaceReference,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        for (const sessionID of await SessionMigrationTarget.sessions(Identifier.asScopeID(scopeID))) {
+          await migrateSessionWorkspaceReference({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      }
+      progress(done, done)
+    },
+  },
+  {
+    id: "20260923-session-nav-workspace-reference",
+    scope: "derived",
+    dependsOn: ["20260923-session-workspace-reference"],
+    description: "Rebuild navigation from canonical Workspace references",
+    async upSession(owner) {
+      const { SessionRecords } = await import("./records")
+      const { SessionCompat } = await import("./compat-import")
+      await SessionRecords.read(
+        StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID)),
+      )
+      await SessionCompat.writeSessionIndexes(owner)
+    },
+    async up(progress) {
+      await SessionNav.rebuildAllNavIndexes(progress)
+    },
+  },
+  {
+    id: "20260923-session-operation-snapshot-cursor",
+    scope: "derived",
+    description: "Upgrade snapshot summary cursors to preserve individual write operations",
+    upSession: migrateOperationSnapshotCursor,
+    async up(progress) {
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID)) {
+          await migrateOperationSnapshotCursor({ scopeID, sessionID })
+          progress(++done, 0)
+        }
+      }
+      progress(done, done)
+    },
+  },
+  {
+    id: "20260923-session-model-selection",
+    scope: "session",
+    description: "Preserve session models and root thinking choices in durable model selections",
+    upSession(owner, progress) {
+      return SessionMigrationTarget.provide(owner, () => this.up(progress))
+    },
+    async up(progress) {
+      const { ModelSelection } = await import("./model-selection-schema")
+      let done = 0
+      for (const scopeID of await SessionMigrationTarget.scopes()) {
+        const scope = Identifier.asScopeID(scopeID)
+        const sessionIDs = await SessionMigrationTarget.sessions(scope)
+        for (const sessionID of sessionIDs) {
+          const sid = Identifier.asSessionID(sessionID)
+          const key = StoragePath.sessionInfo(scope, sid)
+          const info = await Storage.read<Session.Info>(key).catch(missingHistoricalRecord)
+          if (!info || info.modelSelection) continue
+          const roots: MessageV2.User[] = []
+          for (const messageID of await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid))) {
+            const message = await Storage.read<MessageV2.Info>(
+              StoragePath.messageInfo(scope, sid, Identifier.asMessageID(messageID)),
+            ).catch(missingHistoricalRecord)
+            if (message?.role === "user" && message.isRoot) roots.push(message)
+          }
+          roots.sort((a, b) => a.id.localeCompare(b.id))
+          const selection = ModelSelection.legacy(info.modelOverride, roots)
+          if (selection) await Storage.write(key, { ...info, modelSelection: selection })
+          progress(++done, sessionIDs.length)
+        }
+      }
+    },
+  },
 ]
 
 function canonicalFieldsDiffer(before: any, after: any): boolean {
@@ -2399,4 +2534,75 @@ function canonicalFieldsDiffer(before: any, after: any): boolean {
     JSON.stringify(before?.origin) !== JSON.stringify(after?.origin)
   )
 }
-MigrationRegistry.register("session", migrations)
+export function registerSessionMigrations() {
+  MigrationRegistry.register("session", migrations)
+}
+
+export function normalizeWorkspaceBinding(value: unknown, scope: Record<string, unknown>, scopeID: string) {
+  if (value === null) return null
+  const workspace = asRecord(value)
+  if (workspace) {
+    if (
+      typeof workspace.type !== "string" ||
+      typeof workspace.path !== "string" ||
+      !path.isAbsolute(workspace.path) ||
+      workspace.scopeID !== scopeID
+    )
+      return null
+    if (scopeID === "home" && workspace.type === "main" && workspace.path === scope.directory) return null
+    return workspace
+  }
+  if (value !== undefined || scopeID === "home") return null
+  const local = asRecord(scope.local) ?? (scope.local === null ? undefined : scope)
+  if (typeof local?.directory !== "string" || !path.isAbsolute(local.directory)) return null
+  if (typeof local.worktree === "string" && path.isAbsolute(local.worktree) && local.directory !== local.worktree) {
+    return { type: "git_worktree", path: local.directory, scopeID, originalCheckout: local.worktree }
+  }
+  return { type: "main", path: local.directory, scopeID }
+}
+
+export function normalizeSessionWorkspaceInfo(info: Record<string, unknown>): Record<string, unknown> {
+  const source = asRecord(info.scope)
+  if (!source || typeof source.id !== "string") return info
+  if (info.workspaceID !== undefined) return { ...info, scope: normalizeLocalScope(source) }
+  return {
+    ...info,
+    scope: normalizeLocalScope(source),
+    workspace: normalizeWorkspaceBinding(info.workspace, source, source.id),
+  }
+}
+
+async function migrateSessionWorkspaceBinding(owner: { scopeID: string; sessionID: string }) {
+  const key = StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID))
+  const info = await Storage.read<Record<string, unknown>>(key)
+  await Storage.write(key, normalizeSessionWorkspaceInfo(info))
+}
+
+export async function migrateSessionWorkspaceReference(owner: { scopeID: string; sessionID: string }) {
+  const key = StoragePath.sessionInfo(Identifier.asScopeID(owner.scopeID), Identifier.asSessionID(owner.sessionID))
+  const info = normalizeSessionWorkspaceInfo(await Storage.read<Record<string, unknown>>(key))
+  if (info.workspaceID !== undefined) {
+    if (Object.hasOwn(info, "workspace")) {
+      delete info.workspace
+      await Storage.write(key, info)
+    }
+    return
+  }
+  const workspace = await WorkspaceBinding.migrate(
+    info.workspace as import("./workspace-schema").Workspace | null,
+    owner.scopeID,
+  )
+  const { workspace: _workspace, ...stored } = info
+  await Storage.write(key, { ...stored, workspaceID: workspace?.id ?? null })
+}
+
+async function migrateOperationSnapshotCursor(owner: { scopeID: string; sessionID: string }) {
+  const key = StoragePath.sessionSummaryCursor(
+    Identifier.asScopeID(owner.scopeID),
+    Identifier.asSessionID(owner.sessionID),
+  )
+  const value = await Storage.read<Record<string, unknown>>(key).catch(missingHistoricalRecord)
+  if (!value || value.version === 3) return
+  if (value.version === 2 && Array.isArray(value.ranges)) await Storage.write(key, { ...value, version: 3 })
+  else await Storage.remove(key)
+}

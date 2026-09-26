@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 export namespace GithubWatchPolicy {
   export interface Value {
     enabled: boolean
@@ -5,18 +6,26 @@ export namespace GithubWatchPolicy {
   }
 
   type Reader = () => Promise<Value>
-  let reader: Reader | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    reader: undefined as Reader | undefined,
+  }))
 
   export function register(value: Reader) {
-    const previous = reader
-    reader = value
+    const instanceState = runtimeState()
+
+    const previous = instanceState.reader
+    instanceState.reader = value
     return () => {
-      if (reader === value) reader = previous
+      const instanceState = runtimeState()
+
+      if (instanceState.reader === value) instanceState.reader = previous
     }
   }
 
   export async function read(): Promise<Value> {
-    if (!reader) throw new Error("GitHub watch policy is not registered in this runtime")
-    return reader()
+    const instanceState = runtimeState()
+
+    if (!instanceState.reader) throw new Error("GitHub watch policy is not registered in this runtime")
+    return instanceState.reader()
   }
 }

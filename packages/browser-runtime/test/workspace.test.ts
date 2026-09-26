@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { beforeEach, afterEach, describe, expect, test } from "bun:test"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserHostMessageSchema,
@@ -16,6 +16,14 @@ import { BrowserTicket } from "../src/ticket"
 import { BrowserWebRTCSignaling } from "../src/webrtc-signaling"
 import { BrowserWorkspace } from "../src/workspace"
 import { BunProc } from "@ericsanchezok/synergy-harness/util/bun"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "./support/runtime"
+let runtime: Awaited<ReturnType<typeof testRuntime>>
+beforeEach(async () => {
+  runtime = await testRuntime(undefined, {
+    SYNERGY_BROWSER_HOST_COMMAND: JSON.stringify([BunProc.which(), "-e", "setInterval(() => {}, 1000)"]),
+  })
+})
 
 const owner: BrowserOwner.Info = {
   mode: "session",
@@ -137,120 +145,131 @@ async function createBrokerPage() {
   })
 }
 
-const originalAutostart = process.env.SYNERGY_BROWSER_HOST_AUTOSTART
-const originalCommand = process.env.SYNERGY_BROWSER_HOST_COMMAND
-
-afterEach(async () => {
-  if (originalAutostart === undefined) delete process.env.SYNERGY_BROWSER_HOST_AUTOSTART
-  else process.env.SYNERGY_BROWSER_HOST_AUTOSTART = originalAutostart
-  if (originalCommand === undefined) delete process.env.SYNERGY_BROWSER_HOST_COMMAND
-  else process.env.SYNERGY_BROWSER_HOST_COMMAND = originalCommand
-  BrowserWebRTCSignaling.resetForTest()
-  BrowserHostBrokerProcess.resetForTest()
-  BrowserBroker.resetForTest()
-  BrowserTicket.resetForTest()
-  await BrowserNetworkGateway.stop()
-})
+afterEach(() =>
+  runtime.run(async () => {
+    BrowserWebRTCSignaling.resetForTest()
+    BrowserHostBrokerProcess.resetForTest()
+    BrowserBroker.resetForTest()
+    BrowserTicket.resetForTest()
+    await BrowserNetworkGateway.stop()
+  }),
+)
 
 describe("Browser workspace Host readiness", () => {
-  test("reports a broker-owned WebRTC page detached until Host signaling attaches", async () => {
-    await createBrokerPage()
+  test("reports a broker-owned WebRTC page detached until Host signaling attaches", () =>
+    runtime.run(async () => {
+      await createBrokerPage()
 
-    expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("webrtc")).hostStatus).toBe("detached")
+      expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("webrtc")).hostStatus).toBe("detached")
 
-    const host = { send() {}, close() {} }
-    BrowserWebRTCSignaling.attachHost(owner, "page-1", host, { hostReady: true })
-    expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("webrtc")).hostStatus).toBe("ready")
+      const host = { send() {}, close() {} }
+      BrowserWebRTCSignaling.attachHost(owner, "page-1", host, { hostReady: true })
+      expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("webrtc")).hostStatus).toBe("ready")
 
-    BrowserWebRTCSignaling.detachHost(owner, "page-1", host)
-    expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("webrtc")).hostStatus).toBe("detached")
-  })
+      BrowserWebRTCSignaling.detachHost(owner, "page-1", host)
+      expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("webrtc")).hostStatus).toBe("detached")
+    }))
 
-  test("keeps a broker-owned native page ready without WebRTC signaling", async () => {
-    await createBrokerPage()
+  test("keeps a broker-owned native page ready without WebRTC signaling", () =>
+    runtime.run(async () => {
+      await createBrokerPage()
 
-    expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("native")).hostStatus).toBe("ready")
-  })
+      expect(BrowserWorkspace.sessionStatePayload(owner, session, presentation("native")).hostStatus).toBe("ready")
+    }))
 })
 
 describe("Browser workspace Host registration wait", () => {
-  test("fails immediately when the WebRTC Host is unavailable", async () => {
-    process.env.SYNERGY_BROWSER_HOST_AUTOSTART = "false"
-    await expect(
-      BrowserWorkspace.executeControl(
-        {
-          directory: "/tmp",
-          owner,
-          presentation: presentation("webrtc"),
-          requestedPresentation: "webrtc",
-          nativePresentation: false,
-        },
-        { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-unavailable" },
-        "http://localhost:4096",
-      ),
-    ).rejects.toMatchObject({ code: "browser_host_unavailable", message: expect.stringContaining("unavailable") })
-  })
-
-  test("returns browser_host_pending after the bounded wait while the WebRTC Host starts", async () => {
-    process.env.SYNERGY_BROWSER_HOST_COMMAND = JSON.stringify([BunProc.which(), "-e", "setInterval(() => {}, 1000)"])
-    const restoreRuntime = BrowserCommandService.useRuntimeForTest({
-      async getOrCreateSession() {
-        return fakeSession()
-      },
-    })
-    try {
-      const control = BrowserWorkspace.executeControl(
-        {
-          directory: "/tmp",
-          owner,
-          presentation: presentation("webrtc"),
-          requestedPresentation: "webrtc",
-          nativePresentation: false,
-        },
-        { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-starting" },
-        "http://localhost:4096",
-      )
-      await expect(control).rejects.toMatchObject({
-        code: "browser_host_pending",
-        retryable: true,
-        message: expect.stringContaining("starting"),
+  test("fails immediately when the WebRTC Host is unavailable", () =>
+    runtime.run(async () => {
+      await runtime.close()
+      runtime = await testRuntime(undefined, { SYNERGY_BROWSER_HOST_AUTOSTART: "false" })
+      return runtime.run(async () => {
+        await expect(
+          BrowserWorkspace.executeControl(
+            {
+              directory: "/tmp",
+              owner,
+              presentation: presentation("webrtc"),
+              requestedPresentation: "webrtc",
+              nativePresentation: false,
+            },
+            { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-unavailable" },
+            "http://localhost:4096",
+          ),
+        ).rejects.toMatchObject({ code: "browser_host_unavailable", message: expect.stringContaining("unavailable") })
       })
-    } finally {
-      restoreRuntime()
-    }
-  }, 15_000)
+    }))
 
-  test("succeeds when the Host registers within the bounded wait", async () => {
-    process.env.SYNERGY_BROWSER_HOST_COMMAND = JSON.stringify([BunProc.which(), "-e", "setInterval(() => {}, 1000)"])
-    const restoreRuntime = BrowserCommandService.useRuntimeForTest({
-      async getOrCreateSession() {
-        return fakeSession()
-      },
-    })
-    try {
-      const control = BrowserWorkspace.executeControl(
-        {
-          directory: "/tmp",
-          owner,
-          presentation: presentation("webrtc"),
-          requestedPresentation: "webrtc",
-          nativePresentation: false,
-        },
-        { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-ready" },
-        "http://localhost:4096",
-      )
-      const broker = new BrokerSocket()
-      BrowserBroker.attach(broker, {
-        type: "host.register",
-        protocolVersion: BROWSER_PROTOCOL_VERSION,
-        hostId: "host-workspace",
-        token: BrowserBroker.secret(),
-        capabilities: { native: false, webrtc: true },
-      })
-      const result = await control
-      expect(result.status).toBe(200)
-    } finally {
-      restoreRuntime()
-    }
-  }, 15_000)
+  test(
+    "returns browser_host_pending after the bounded wait while the WebRTC Host starts",
+    () =>
+      runtime.run(async () => {
+        const restoreRuntime = BrowserCommandService.useRuntimeForTest({
+          async getOrCreateSession() {
+            return fakeSession()
+          },
+        })
+        try {
+          const control = BrowserWorkspace.executeControl(
+            {
+              directory: "/tmp",
+              owner,
+              presentation: presentation("webrtc"),
+              requestedPresentation: "webrtc",
+              nativePresentation: false,
+            },
+            { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-starting" },
+            "http://localhost:4096",
+          )
+          await expect(control).rejects.toMatchObject({
+            code: "browser_host_pending",
+            retryable: true,
+            message: expect.stringContaining("starting"),
+          })
+        } finally {
+          restoreRuntime()
+        }
+      }),
+    15_000,
+  )
+
+  test(
+    "succeeds when the Host registers within the bounded wait",
+    () =>
+      runtime.run(async () => {
+        const restoreRuntime = BrowserCommandService.useRuntimeForTest({
+          async getOrCreateSession() {
+            return fakeSession()
+          },
+        })
+        try {
+          const control = BrowserWorkspace.executeControl(
+            {
+              directory: "/tmp",
+              owner,
+              presentation: presentation("webrtc"),
+              requestedPresentation: "webrtc",
+              nativePresentation: false,
+            },
+            { command: { type: "navigate", source: "user", url: "https://example.com" }, commandId: "cmd-ready" },
+            "http://localhost:4096",
+          )
+          const broker = new BrokerSocket()
+          BrowserBroker.attach(broker, {
+            type: "host.register",
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            hostId: "host-workspace",
+            token: BrowserBroker.secret(),
+            capabilities: { native: false, webrtc: true },
+          })
+          const result = await control
+          expect(result.status).toBe(200)
+        } finally {
+          restoreRuntime()
+        }
+      }),
+    15_000,
+  )
 })
+
+afterEach(() => runtime.close())

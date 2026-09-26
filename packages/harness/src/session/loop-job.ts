@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { RolloutRecordingError } from "./rollout/error"
 import { RolloutContext } from "./rollout/context"
 import { AsyncLocalStorage } from "node:async_hooks"
@@ -89,26 +90,36 @@ export namespace LoopJob {
     cancel?: AbortController
   }
 
-  const registry = new Map<string, RegisteredJob>()
-  const signals = new Map<string, Signal>()
-  const background = new Map<string, BackgroundState>()
-  const failures = new Map<string, { error: InstanceType<typeof RolloutRecordingError>; detached: boolean }>()
+  const runtimeState = RuntimeContext.state(() => ({
+    registry: new Map<string, RegisteredJob>(),
+    signals: new Map<string, Signal>(),
+    background: new Map<string, BackgroundState>(),
+    failures: new Map<string, { error: InstanceType<typeof RolloutRecordingError>; detached: boolean }>(),
+    backgroundSequence: 0,
+  }))
+
   const ownerKey = (sessionID: string, rootID: string) => `${sessionID}:${rootID}`
-  let backgroundSequence = 0
+
   const DEFAULT_BACKGROUND_TIMEOUT_MS = 180_000
   const NEVER_ABORTED_SIGNAL = new AbortController().signal
 
   export function register<Payload extends JobInstance>(job: Job<Payload>) {
-    registry.set(job.type, job as RegisteredJob)
+    const instanceState = runtimeState()
+
+    instanceState.registry.set(job.type, job as RegisteredJob)
   }
 
   export function defineSignal(signal: Signal) {
-    signals.set(signal.type, signal)
+    const instanceState = runtimeState()
+
+    instanceState.signals.set(signal.type, signal)
   }
 
   export async function detectSignals(ctx: Context): Promise<string[]> {
+    const instanceState = runtimeState()
+
     const fired: string[] = []
-    for (const [type, signal] of signals) {
+    for (const [type, signal] of instanceState.signals) {
       if (await signal.detect(ctx)) {
         fired.push(type)
       }
@@ -117,8 +128,10 @@ export namespace LoopJob {
   }
 
   export function collect(phase: "pre" | "post", ctx: Context, firedSignals: string[] = []): JobInstance[] {
+    const instanceState = runtimeState()
+
     const instances: JobInstance[] = []
-    for (const job of registry.values()) {
+    for (const job of instanceState.registry.values()) {
       if (job.phase !== phase) continue
       instances.push(...job.collect(ctx))
       if (firedSignals.length > 0 && job.signals) {
@@ -133,12 +146,14 @@ export namespace LoopJob {
   }
 
   export async function execute(instances: JobInstance[], ctx: Context): Promise<FlowResult> {
-    const recorded = failures.get(ownerKey(ctx.sessionID, ctx.lastUser.rootID ?? ctx.lastUser.id))
+    const instanceState = runtimeState()
+
+    const recorded = instanceState.failures.get(ownerKey(ctx.sessionID, ctx.lastUser.rootID ?? ctx.lastUser.id))
     if (recorded && !recorded.detached) throw recorded.error
     const nonBlocking: { instance: JobInstance; job: RegisteredBackgroundJob }[] = []
     const blocking: { instance: JobInstance; job: BlockingJob }[] = []
     for (const instance of instances) {
-      const job = registry.get(instance.type)
+      const job = instanceState.registry.get(instance.type)
       if (!job) {
         log.warn("no job registered", { type: instance.type })
         continue
@@ -166,9 +181,12 @@ export namespace LoopJob {
   }
 
   export async function drainAll() {
-    while (background.size) await Promise.all([...background.values()].map((state) => state.completion))
-    const errors = [...failures.values()].map((entry) => entry.error)
-    failures.clear()
+    const instanceState = runtimeState()
+
+    while (instanceState.background.size)
+      await Promise.all([...instanceState.background.values()].map((state) => state.completion))
+    const errors = [...instanceState.failures.values()].map((entry) => entry.error)
+    instanceState.failures.clear()
     if (errors.length) throw new AggregateError(errors, "Background loop jobs failed during runtime shutdown")
   }
 
@@ -178,8 +196,10 @@ export namespace LoopJob {
    * outlive the turn and settle through settleDetached instead.
    */
   export async function drain(sessionID: string, rootID?: string) {
+    const instanceState = runtimeState()
+
     while (true) {
-      const owned = [...background.values()].filter(
+      const owned = [...instanceState.background.values()].filter(
         (state) =>
           !state.detached &&
           state.current.sessionID === sessionID &&
@@ -191,11 +211,11 @@ export namespace LoopJob {
       if (rejected?.status === "rejected") throw rejected.reason
     }
     let failure: InstanceType<typeof RolloutRecordingError> | undefined
-    for (const [key, entry] of failures) {
+    for (const [key, entry] of instanceState.failures) {
       if (entry.detached) continue
       if (rootID === undefined ? key.startsWith(`${sessionID}:`) : key === ownerKey(sessionID, rootID)) {
         failure ??= entry.error
-        failures.delete(key)
+        instanceState.failures.delete(key)
       }
     }
     if (failure) throw failure
@@ -211,7 +231,9 @@ export namespace LoopJob {
    * session registered by now is settled.
    */
   export async function settleDetached(sessionID: string, rootIDs?: ReadonlySet<string>) {
-    const owned = [...background.values()].filter(
+    const instanceState = runtimeState()
+
+    const owned = [...instanceState.background.values()].filter(
       (state) =>
         state.detached &&
         state.current.sessionID === sessionID &&
@@ -221,18 +243,20 @@ export namespace LoopJob {
     const rejected = settled.find((result) => result.status === "rejected")
     if (rejected?.status === "rejected") throw rejected.reason
     let failure: InstanceType<typeof RolloutRecordingError> | undefined
-    for (const [key, entry] of failures) {
+    for (const [key, entry] of instanceState.failures) {
       if (!entry.detached || !key.startsWith(`${sessionID}:`)) continue
       if (rootIDs !== undefined && !rootIDs.has(key.slice(sessionID.length + 1))) continue
       failure ??= entry.error
-      failures.delete(key)
+      instanceState.failures.delete(key)
     }
     if (failure) throw failure
   }
 
   /** Abort a session's detached runs and drop their pending payloads. */
   export function cancelDetached(sessionID: string, rootIDs?: ReadonlySet<string>): void {
-    for (const state of background.values()) {
+    const instanceState = runtimeState()
+
+    for (const state of instanceState.background.values()) {
       if (!state.detached || state.current.sessionID !== sessionID) continue
       if (rootIDs !== undefined && !rootIDs.has(state.current.rootID)) continue
       state.pending = undefined
@@ -242,7 +266,9 @@ export namespace LoopJob {
 
   /** Abort every detached run in the process, regardless of lease state. */
   export function cancelDetachedAll(): void {
-    for (const state of background.values()) {
+    const instanceState = runtimeState()
+
+    for (const state of instanceState.background.values()) {
       if (!state.detached) continue
       state.pending = undefined
       state.cancel?.abort()
@@ -256,7 +282,9 @@ export namespace LoopJob {
    * machine running only background jobs would otherwise look idle.
    */
   export function activeBackgroundCount(): number {
-    return background.size
+    const instanceState = runtimeState()
+
+    return instanceState.background.size
   }
 
   export interface ScheduleDetachedInput {
@@ -276,7 +304,9 @@ export namespace LoopJob {
    * job types.
    */
   export function scheduleDetached(input: ScheduleDetachedInput): boolean {
-    const job = registry.get(input.type)
+    const instanceState = runtimeState()
+
+    const job = instanceState.registry.get(input.type)
     if (!job || job.blocking || job.detached !== true) return false
     const backgroundJob = job as RegisteredBackgroundJob
     const payload = { type: input.type, ...(input.payload ?? {}) }
@@ -296,8 +326,10 @@ export namespace LoopJob {
     abort: AbortSignal,
     rootID: string,
   ) {
+    const instanceState = runtimeState()
+
     const coalescingKey = job.key?.(payload)
-    const key = `${ownerKey(sessionID, rootID)}:${job.type}:${coalescingKey ?? `run:${++backgroundSequence}`}`
+    const key = `${ownerKey(sessionID, rootID)}:${job.type}:${coalescingKey ?? `run:${++instanceState.backgroundSequence}`}`
     const run = {
       job,
       payload,
@@ -308,7 +340,7 @@ export namespace LoopJob {
       detached: job.detached === true,
       resume: AsyncLocalStorage.snapshot(),
     }
-    const current = background.get(key)
+    const current = instanceState.background.get(key)
     if (current) {
       current.pending = run
       recordMetric("session.loop_job.background.coalesced", 1, "count", job.type, sessionID)
@@ -327,13 +359,15 @@ export namespace LoopJob {
       cancel: run.detached ? new AbortController() : undefined,
       completion: Promise.resolve(),
     }
-    background.set(key, state)
+    instanceState.background.set(key, state)
     recordMetric("session.loop_job.background.active", activeCount(job.type), "count", job.type, sessionID)
     state.completion = runBackground(state)
     void state.completion.catch((error) => log.error("background job finalization failed", { type: job.type, error }))
   }
 
   async function runBackground(state: BackgroundState) {
+    const instanceState = runtimeState()
+
     let run: BackgroundRun | undefined = state.current
     while (run) {
       state.current = run
@@ -348,7 +382,7 @@ export namespace LoopJob {
         outcome = error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "error"
         log.error("job failed", { type: state.type, outcome, error })
         if (RolloutRecordingError.isInstance(error)) {
-          failures.set(ownerKey(run.sessionID, run.rootID), { error, detached: run.detached })
+          instanceState.failures.set(ownerKey(run.sessionID, run.rootID), { error, detached: run.detached })
           if (!run.detached) {
             // Bound recording failures still abort the owning loop: the turn
             // cannot produce trustworthy evidence without its ledger. A
@@ -372,7 +406,7 @@ export namespace LoopJob {
       run = state.pending
       state.pending = undefined
     }
-    if (background.get(state.key) === state) background.delete(state.key)
+    if (instanceState.background.get(state.key) === state) instanceState.background.delete(state.key)
     recordMetric(
       "session.loop_job.background.active",
       activeCount(state.type),
@@ -421,8 +455,10 @@ export namespace LoopJob {
   }
 
   function activeCount(jobType: string) {
+    const instanceState = runtimeState()
+
     let count = 0
-    for (const state of background.values()) {
+    for (const state of instanceState.background.values()) {
       if (state.type === jobType) count++
     }
     return count

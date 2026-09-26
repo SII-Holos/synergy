@@ -475,4 +475,6 @@ export const migrations: Migration[] = [
   },
 ]
 
-MigrationRegistry.register("lattice", migrations)
+export function registerLatticeMigrations() {
+  MigrationRegistry.register("lattice", migrations)
+}

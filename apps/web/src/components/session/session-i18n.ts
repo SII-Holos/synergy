@@ -144,6 +144,11 @@ export const S = {
     message: "New messages have been added. This rollback can no longer be redone.",
   },
   rollbackFilesRestored: { id: "session.rollback.filesRestored", message: "Files restored" },
+  rollbackPartialRestore: {
+    id: "session.rollback.partialRestore",
+    message:
+      "{restored, plural, one {# file restored} other {# files restored}}; {failed, plural, one {# file could not be restored} other {# files could not be restored}}.",
+  },
   rollbackFilesRestoreFailed: { id: "session.rollback.filesRestoreFailed", message: "Failed to restore files" },
   rollbackRedo: { id: "session.rollback.redo", message: "Redo" },
   rollbackRestoreFiles: { id: "session.rollback.restoreFiles", message: "Restore files ({count})" },
@@ -337,6 +342,19 @@ export const S = {
   inboxGuideAllFailed: { id: "session.inbox.guideAllFailed", message: "Failed to send queued messages now" },
   inboxRequestFailed: { id: "session.inbox.requestFailed", message: "Request failed" },
   inboxDelete: { id: "session.inbox.delete", message: "Delete" },
+  inboxOperationPending: { id: "session.inbox.operationPending", message: "Updating message…" },
+  inboxRemoveFailed: {
+    id: "session.inbox.removeFailed",
+    message: "Removal could not be confirmed. The message is preserved until the result is verified.",
+  },
+  inboxRestoreFailed: {
+    id: "session.inbox.restoreFailed",
+    message: "Restore could not be confirmed. The original content and execution settings are preserved.",
+  },
+  inboxRetryRemove: { id: "session.inbox.retryRemove", message: "Retry removal" },
+  inboxRetryRestore: { id: "session.inbox.retryRestore", message: "Retry restore" },
+  inboxRemovedHeading: { id: "session.inbox.removedHeading", message: "Removed messages" },
+  inboxRemovedLoadFailed: { id: "session.inbox.removedLoadFailed", message: "Removed messages could not be loaded." },
   inboxRemoved: { id: "session.inbox.removed", message: "Removed queued message" },
   inboxRemovedDesc: {
     id: "session.inbox.removedDesc",
@@ -433,6 +451,15 @@ export const S = {
   // session-transition-card.tsx — generic transition card
   transitionCardDismissAria: { id: "session.transition.card.dismissAria", message: "Dismiss session progress" },
   transitionCardDismissTitle: { id: "session.transition.card.dismissTitle", message: "Dismiss" },
+  transitionStepInitialize: { id: "session.transition.step.initialize", message: "Initialize execution" },
+  transitionStepFailed: { id: "session.transition.step.failed", message: "Failed" },
+  transitionRetryInitialization: { id: "session.transition.retryInitialization", message: "Retry initialization" },
+  transitionContinue: { id: "session.transition.continue", message: "Continue task" },
+  transitionErrorDetails: { id: "session.transition.errorDetails", message: "Error details" },
+  transitionRecoveryFailed: {
+    id: "session.transition.recoveryFailed",
+    message: "Recovery could not be confirmed. Check the connection and retry.",
+  },
   transitionCardRetry: { id: "session.transition.card.retry", message: "Retry" },
 
   // session-transition-progress.ts — general session startup factory
@@ -451,6 +478,26 @@ export const S = {
     message: "Your first message is queued for processing.",
   },
   transitionTitleStalled: { id: "session.transition.title.stalled", message: "Conversation setup needs attention" },
+  transitionDescDelayed: {
+    id: "session.transition.desc.delayed",
+    message: "Your message is saved. Preparation is taking longer than usual; processing will continue automatically.",
+  },
+  transitionDescStorage: {
+    id: "session.transition.desc.storage",
+    message: "Your message is saved and waiting for storage to become available.",
+  },
+  transitionDescRetrying: {
+    id: "session.transition.desc.retrying",
+    message: "Your message is saved. Retrying preparation automatically.",
+  },
+  transitionDescReconnecting: {
+    id: "session.transition.desc.reconnecting",
+    message: "Your message was saved. Reconnecting to check its progress.",
+  },
+  transitionDescCancelled: {
+    id: "session.transition.desc.cancelled",
+    message: "This message was cancelled. You can dismiss this notice.",
+  },
   transitionDescStalled: {
     id: "session.transition.desc.stalled",
     message: "Your first message is still saved, but initialization did not finish. Retry to resume processing.",

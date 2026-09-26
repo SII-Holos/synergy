@@ -17,9 +17,11 @@ import { LatticeStore } from "./store"
 import { LatticeTypes } from "./types"
 import { LatticeRunService } from "./run-service"
 
-LatticeRunService.setReconcileDirect((scopeID, sessionID, reason) =>
-  LatticeController.reconcileDirect(scopeID, sessionID, reason),
-)
+export function registerLatticeController() {
+  LatticeRunService.setReconcileDirect((scopeID, sessionID, reason) =>
+    LatticeController.reconcileDirect(scopeID, sessionID, reason),
+  )
+}
 
 export namespace LatticeController {
   const log = Log.create({ service: "lattice.controller" })

@@ -131,6 +131,11 @@ export async function buildWorkspace(directory: string, options: { output?: stri
       )
     await Bun.write(destination, compiled.outputText)
   }
+  if (manifest.name === "@ericsanchezok/synergy-runtime-local") {
+    const { buildPty } = await import("../packages/runtime-local/script/build-pty")
+    const library = await buildPty()
+    await copyFile(library, path.join(output, path.basename(library)))
+  }
   return { name: manifest.name as string, files: files.length, output }
 }
 

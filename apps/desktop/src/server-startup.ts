@@ -18,6 +18,7 @@ type Maintenance = {
 const maintenanceLabels: Record<StorageMaintenanceOperation, string> = {
   vacuum: "Rebuilding the database.",
   reclaim: "Reclaiming database space.",
+  prune: "Removing expired execution evidence.",
   "integrity-check": "Checking database integrity.",
   "create-index": "Building a database index.",
   "drop-index": "Removing a retired database index.",
@@ -48,6 +49,7 @@ export class DesktopServerStartup {
       healthTimeoutMs?: number
       migrationIdleMs?: number
       onStatus?: (status: DesktopStartupStatus) => void
+      onProgress?: (progress: Exclude<RuntimeStartupProgress, StorageMaintenanceEvent>) => void
     } = {},
   ) {
     this.now = options.now ?? (() => performance.now())
@@ -105,6 +107,7 @@ export class DesktopServerStartup {
         return
     }
     this.progress = next
+    this.options.onProgress?.(next)
     if (next.phase === "starting" && previous?.phase === "recovery") this.recoveryCompleted = true
     const complete = next.phase === "starting" || (next.phase === "storage" && next.stage === "complete")
     const timeout =

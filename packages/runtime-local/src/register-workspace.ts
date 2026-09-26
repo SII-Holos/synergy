@@ -1,11 +1,45 @@
+import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
+import { FileLink } from "./file/link"
+import { SnapshotRestore } from "@ericsanchezok/synergy-harness/session/snapshot-restore"
+import { WorkspaceFileRestore } from "./workspace-file/restore"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceCoordinator } from "./workspace/coordinator"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Pty } from "./process/pty"
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { CortexWorkspace } from "@ericsanchezok/synergy-harness/cortex/workspace"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Worktree } from "./workspace/worktree"
+import { WorkspaceFileImport } from "@ericsanchezok/synergy-harness/workspace/file-import"
+import { WorkspaceFileService } from "./workspace-file/service"
 
 const log = Log.create({ service: "runtime.workspace" })
 
+const workspaceServices: SessionWorkspaceRuntime.Provider = {
+  lockWorktree: (directory) => Worktree.lock(directory),
+  unlockWorktree: (directory) => Worktree.unlock(directory),
+  withWorktree: (directory, sessionID, fn) => Worktree.withUse(directory, sessionID, fn),
+  createWorktree: (input) => Worktree.create(input),
+  enterWorktree: (input) => Worktree.enter(input),
+  async releaseSession(session) {
+    await ScopeContext.provide({
+      scope: session.scope,
+      workspace: session.workspace,
+      fn: async () => {
+        await Pty.removeForSession(session.id)
+        if (session.workspace?.type === "git_worktree") await Worktree.detachSession(session.id, session.workspace)
+      },
+    })
+  },
+}
+
 export function registerWorkspace() {
+  SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
+  SnapshotRestore.register(WorkspaceFileRestore)
+  WorkspaceFileImport.register(WorkspaceFileService)
+  WorkspaceAccess.register(new WorkspaceCoordinator())
+  SessionWorkspaceRuntime.register(workspaceServices)
   CortexWorkspace.register({
     async create(input) {
       const created = await Worktree.create({
@@ -38,7 +72,7 @@ export function registerWorkspace() {
         // before trusting the count, because `--not --remotes` degenerates to
         // the whole local history when the repository has no remote-tracking ref.
         if (state.worktree.branch) {
-          const localOnly = await Worktree.localOnlyCommitCount(state.path)
+          const localOnly = await Worktree.localOnlyCommitCount(workspace.path)
           if (localOnly > 0) {
             log.info("child worktree has local-only commits, kept for review", {
               taskID: input.taskID,

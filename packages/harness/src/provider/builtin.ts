@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ProviderProfile } from "./profile"
 import { GrokProvider } from "./grok"
 import { CodexProvider } from "./codex"
@@ -13,7 +14,9 @@ import { SYNERGY_REFERER } from "./branding"
 import { ProviderSdkSource } from "./sdk-source"
 import { ProviderAuthRecovery } from "./auth-recovery"
 
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 function recommended(input: {
   rank: number
@@ -33,8 +36,10 @@ function recommended(input: {
 }
 
 export function registerBuiltinProviderProfiles() {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ProviderProfile.register({
     id: "openai",

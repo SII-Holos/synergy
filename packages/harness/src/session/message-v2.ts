@@ -1,3 +1,5 @@
+import { RuntimeContext } from "../lifecycle/context"
+import { ModelSelection } from "./model-selection-schema"
 import { RolloutRecordingError } from "./rollout/error"
 import { BusEvent } from "../bus/bus-event"
 import path from "path"
@@ -48,15 +50,20 @@ export namespace MessageV2 {
     scope: Scope
   }
 
-  let requireSession = async (sessionID: string): Promise<SessionLookup> => {
-    throw new Error(`Session resolver is not installed for ${sessionID}`)
-  }
+  const runtimeState = RuntimeContext.state(() => ({
+    requireSession: async (sessionID: string): Promise<SessionLookup> => {
+      throw new Error(`Session resolver is not installed for ${sessionID}`)
+    },
+  }))
 
   export function installSessionResolver(resolver: (sessionID: string) => Promise<SessionLookup>) {
-    requireSession = resolver
+    const instanceState = runtimeState()
+
+    instanceState.requireSession = resolver
   }
 
   export const OutputLengthError = NamedError.create("MessageOutputLengthError", z.object({}))
+  export const EmptyResponseError = NamedError.create("MessageEmptyResponseError", z.object({ message: z.string() }))
   export const AbortedError = NamedError.create("MessageAbortedError", z.object({ message: z.string() }))
   export const AuthError = NamedError.create(
     "ProviderAuthError",
@@ -97,6 +104,7 @@ export namespace MessageV2 {
   export const SnapshotPart = PartBase.extend({
     type: z.literal("snapshot"),
     snapshot: z.string(),
+    workspace: SnapshotSchema.Workspace.optional(),
   }).meta({
     ref: "SnapshotPart",
   })
@@ -105,6 +113,18 @@ export namespace MessageV2 {
   export const PatchPart = PartBase.extend({
     type: z.literal("patch"),
     hash: z.string(),
+    operation: z
+      .discriminatedUnion("status", [
+        z.object({ status: z.literal("pending"), toolCallID: z.string() }),
+        z.object({ status: z.literal("incomplete"), toolCallID: z.string() }),
+        z.object({
+          status: z.literal("complete"),
+          toolCallID: z.string(),
+          afterHash: z.string().regex(/^[0-9a-f]{40}$/),
+        }),
+      ])
+      .optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
     files: z.string().array(),
   }).meta({
     ref: "PatchPart",
@@ -267,6 +287,7 @@ export namespace MessageV2 {
   export const StepStartPart = PartBase.extend({
     type: z.literal("step-start"),
     snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
   }).meta({
     ref: "StepStartPart",
   })
@@ -277,6 +298,7 @@ export namespace MessageV2 {
     accounting: RolloutSchema.MessageAccounting.optional(),
     reason: z.string(),
     snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
     cost: z.number(),
     tokens: z.object({
       input: z.number(),
@@ -480,7 +502,7 @@ export namespace MessageV2 {
             z.object({ status: z.literal("ready") }),
             z.object({
               status: z.literal("error"),
-              code: z.enum(["timeout", "git_failure", "unknown"]),
+              code: z.enum(["timeout", "git_failure", "unknown", "incomplete"]),
             }),
           ])
           .optional(),
@@ -494,6 +516,7 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    thinking: ModelSelection.Thinking.optional(),
     origin: OriginUser.optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
@@ -627,6 +650,7 @@ export namespace MessageV2 {
   function modelProviderMetadata(
     metadata: Record<string, any> | undefined,
     stats: PromptSanitizationStats,
+    replayReasoning = false,
   ): Record<string, any> | undefined {
     if (!metadata) return undefined
     const openai = metadata.openai
@@ -634,8 +658,10 @@ export namespace MessageV2 {
     if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return sanitizePromptPayload(metadata, stats)
 
     const nextOpenAI = { ...openai }
-    delete nextOpenAI.itemId
-    delete nextOpenAI.reasoningEncryptedContent
+    if (!replayReasoning) {
+      delete nextOpenAI.itemId
+      delete nextOpenAI.reasoningEncryptedContent
+    }
 
     const next = { ...metadata }
     if (Object.keys(nextOpenAI).length > 0) next.openai = nextOpenAI
@@ -645,6 +671,7 @@ export namespace MessageV2 {
   }
 
   export const Assistant = Base.extend({
+    modelSelection: ModelSelection.Request.optional(),
     role: z.literal("assistant"),
     time: z.object({
       created: z.number(),
@@ -665,14 +692,16 @@ export namespace MessageV2 {
     parentID: z.string(),
     modelID: z.string(),
     providerID: z.string(),
+    profileID: z.string().optional(),
+    apiModelID: z.string().optional(),
     /**
      * @deprecated
      */
     mode: z.string(),
     agent: z.string(),
     path: z.object({
-      cwd: z.string(),
-      root: z.string(),
+      cwd: z.string().nullable(),
+      root: z.string().nullable(),
     }),
     summary: z.boolean().optional(),
     accounting: RolloutSchema.MessageAccounting.optional(),
@@ -1127,7 +1156,10 @@ export namespace MessageV2 {
 
   export function projectModelMessages(
     input: WithParts[],
-    opts?: { maxHistoryImages?: number },
+    opts?: {
+      maxHistoryImages?: number
+      model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
+    },
   ): { messages: ModelMessage[]; provenance: ModelMessageProvenance; sanitization: PromptSanitizationStats } {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
@@ -1205,6 +1237,33 @@ export namespace MessageV2 {
           parts: [],
         }
         const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
+        const sameModel =
+          !opts?.model ||
+          (msg.info.providerID === opts.model.providerID &&
+            (msg.info.apiModelID && opts.model.apiModelID
+              ? msg.info.apiModelID === opts.model.apiModelID &&
+                (!msg.info.profileID || !opts.model.profileID || msg.info.profileID === opts.model.profileID)
+              : msg.info.modelID === opts.model.modelID))
+        const replayCodexReasoning =
+          opts?.model?.profileID === "openai-codex" &&
+          msg.info.providerID === opts.model.providerID &&
+          msg.info.profileID === opts.model.profileID &&
+          !!opts.model.apiModelID &&
+          msg.info.apiModelID === opts.model.apiModelID
+        const encryptedReasoningIds = new Set(
+          replayCodexReasoning
+            ? msg.parts.flatMap((part) => {
+                if (part.type !== "reasoning") return []
+                const openai = part.metadata?.openai
+                return typeof openai?.itemId === "string" &&
+                  openai.itemId.length > 0 &&
+                  typeof openai.reasoningEncryptedContent === "string" &&
+                  openai.reasoningEncryptedContent.length > 0
+                  ? [openai.itemId]
+                  : []
+              })
+            : [],
+        )
         for (const part of msg.parts) {
           if (part.type === "text") {
             assistantMessage.parts.push({
@@ -1271,10 +1330,15 @@ export namespace MessageV2 {
             }
           }
           if (part.type === "reasoning") {
+            if (!sameModel) continue
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
-              providerMetadata: modelProviderMetadata(part.metadata, sanitization),
+              providerMetadata: modelProviderMetadata(
+                part.metadata,
+                sanitization,
+                encryptedReasoningIds.has(part.metadata?.openai?.itemId),
+              ),
             })
             addModelMessageContribution(provenance, "conversation", part.text)
           }
@@ -1292,7 +1356,13 @@ export namespace MessageV2 {
     }
   }
 
-  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+  export function toModelMessage(
+    input: WithParts[],
+    opts?: {
+      maxHistoryImages?: number
+      model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
+    },
+  ): ModelMessage[] {
     return projectModelMessages(input, opts).messages
   }
 
@@ -1576,7 +1646,9 @@ export namespace MessageV2 {
       sessionID: Identifier.schema("session"),
     }),
     async function* (input) {
-      const session = input.scopeID ? undefined : await requireSession(input.sessionID)
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
 
@@ -1608,7 +1680,9 @@ export namespace MessageV2 {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      const session = input.scopeID ? undefined : await requireSession(input.sessionID)
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
@@ -1653,7 +1727,9 @@ export namespace MessageV2 {
       messageID: Identifier.schema("message"),
     }),
     async (input) => {
-      const session = input.scopeID ? undefined : await requireSession(input.sessionID)
+      const instanceState = runtimeState()
+
+      const session = input.scopeID ? undefined : await instanceState.requireSession(input.sessionID)
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
@@ -1731,6 +1807,15 @@ export namespace MessageV2 {
         ).toObject()
       case MessageV2.OutputLengthError.isInstance(e):
         return e
+      case MessageV2.EmptyResponseError.isInstance(e):
+        return new MessageV2.APIError(
+          {
+            message: e.data.message,
+            isRetryable: true,
+            metadata: { code: "empty_response" },
+          },
+          { cause: e },
+        ).toObject()
       case ProviderModelUnavailableError.isInstance(e):
         return e
       case ProviderModelVariantUnavailableError.isInstance(e):

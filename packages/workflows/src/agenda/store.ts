@@ -4,6 +4,9 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { WorkspaceTransfer } from "@ericsanchezok/synergy-harness/session/workspace-transfer"
+import type { ScopeTransfer } from "@ericsanchezok/synergy-harness/scope/transfer"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { AgendaEvent } from "./event"
 import { AgendaTypes } from "./types"
@@ -11,6 +14,15 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 
 export namespace AgendaStore {
+  export function transferWorkspace(
+    value: unknown,
+    resolve: WorkspaceTransfer.Resolve,
+    relocate?: ScopeTransfer.Relocate,
+  ): unknown {
+    const item = value as AgendaTypes.Item
+    return { ...item, origin: WorkspaceTransfer.selection({ ...item.origin }, item.origin.scope.id, resolve, relocate) }
+  }
+
   const log = Log.create({ service: "agenda.store" })
   const HOME_SCOPE_ID = "home"
 
@@ -98,8 +110,13 @@ export namespace AgendaStore {
     input: InternalCreateInput,
     id: string = Identifier.ascending("agenda"),
   ): Promise<AgendaTypes.Item> {
+    const scope = ScopeContext.current.scope
+    const session = input.sessionID ? await Session.get(input.sessionID) : undefined
+    if (session && session.scope.id !== scope.id) throw new Error("Agenda origin Session belongs to another Scope")
+    const workspaceID = session ? session.workspaceID : (ScopeContext.current.workspace?.id ?? null)
+    if (!workspaceID && input.triggers?.some((trigger) => trigger.type === "watch" && trigger.watch.kind === "file"))
+      throw new Scope.WorkspaceRequiredError({ message: "Select a Workspace before watching files", scopeID: scope.id })
     return Storage.transaction(async () => {
-      const scope = ScopeContext.current.scope
       const now = Date.now()
       const triggers = input.triggers ?? []
 
@@ -128,7 +145,7 @@ export namespace AgendaStore {
         wake: input.wake ?? true,
         silent: input.silent ?? false,
         autoDone: input.autoDone ?? false,
-        origin: { scope, sessionID: input.sessionID, endpoint: input.endpoint },
+        origin: { scope, sessionID: input.sessionID, workspaceID, endpoint: input.endpoint },
         createdBy: input.createdBy ?? "user",
         state: {
           consecutiveErrors: 0,
@@ -182,6 +199,14 @@ export namespace AgendaStore {
         if (patch.status !== undefined) draft.status = patch.status
         if (patch.tags !== undefined) draft.tags = patch.tags
         if (patch.triggers !== undefined) {
+          if (
+            !draft.origin.workspaceID &&
+            patch.triggers.some((trigger) => trigger.type === "watch" && trigger.watch.kind === "file")
+          )
+            throw new Scope.WorkspaceRequiredError({
+              message: "Select a Workspace before watching files",
+              scopeID: draft.origin.scope.id,
+            })
           for (const trigger of patch.triggers) {
             if (trigger.type === "webhook" && !trigger.token) {
               trigger.token = randomUUID()

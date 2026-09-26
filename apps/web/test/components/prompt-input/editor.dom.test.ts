@@ -32,7 +32,7 @@ beforeAll(async () => {
   await server.listen()
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
-  await page.goto(`${server.resolvedUrls!.local[0]}scope/session/a`)
+  await page.goto(`${server.resolvedUrls!.local[0]}c2NvcGU/session/a`)
   await page.waitForSelector("#seed")
 }, 30000)
 

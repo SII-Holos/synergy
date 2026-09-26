@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -13,9 +14,11 @@ interface Schedule {
   interval: ReturnType<typeof setInterval>
 }
 
-const schedules = new Map<string, Schedule>()
-const sweeping = new Map<string, Promise<void>>()
-const rerunRequested = new Set<string>()
+const runtimeState = RuntimeContext.state(() => ({
+  schedules: new Map<string, Schedule>(),
+  sweeping: new Map<string, Promise<void>>(),
+  rerunRequested: new Set<string>(),
+}))
 
 /**
  * Background reaper for managed git worktrees.
@@ -27,10 +30,12 @@ const rerunRequested = new Set<string>()
  * otherwise let two sweeps race on the same worktree.
  */
 export async function startWorktreeJanitor(scope: Scope.Project) {
+  const instanceState = runtimeState()
+
   // The cap owner asks for a sweep after each creation; routing that request back
   // here keeps one implementation of the timing, config, and mutual exclusion.
   Worktree.setSweepRequester(requestScopeSweep)
-  if (scope.vcs !== "git" || schedules.has(scope.id)) return
+  if (scope.local?.vcs !== "git" || instanceState.schedules.has(scope.id)) return
   const config = await readWorktreeConfig().catch(() => undefined)
   if (config?.janitor === false) {
     log.info("worktree janitor disabled by config", { scopeID: scope.id })
@@ -42,19 +47,21 @@ export async function startWorktreeJanitor(scope: Scope.Project) {
   first.unref()
   const interval = setInterval(trigger, intervalMs)
   interval.unref()
-  schedules.set(scope.id, { first, interval })
+  instanceState.schedules.set(scope.id, { first, interval })
   log.info("worktree janitor scheduled", { scopeID: scope.id, intervalMs })
 }
 
 export async function stopWorktreeJanitor(scopeID: string) {
-  const schedule = schedules.get(scopeID)
+  const instanceState = runtimeState()
+
+  const schedule = instanceState.schedules.get(scopeID)
   if (schedule) {
     clearTimeout(schedule.first)
     clearInterval(schedule.interval)
   }
-  schedules.delete(scopeID)
-  rerunRequested.delete(scopeID)
-  await sweeping.get(scopeID)
+  instanceState.schedules.delete(scopeID)
+  instanceState.rerunRequested.delete(scopeID)
+  await instanceState.sweeping.get(scopeID)
 }
 
 /**
@@ -67,36 +74,44 @@ export async function stopWorktreeJanitor(scopeID: string) {
  * sweep may have read its inventory before this worktree existed.
  */
 export function requestScopeSweep(scope: Scope.Project) {
+  const instanceState = runtimeState()
+
   // Only a scope whose janitor actually started may sweep. The requester is
   // installed process-wide by the first scope that starts one, so without this
   // guard a creation in any other scope would run a background sweep it never
   // opted into — cancelling registrations that scope is still using.
-  if (scope.vcs !== "git" || !schedules.has(scope.id)) return
-  if (sweeping.has(scope.id)) {
-    rerunRequested.add(scope.id)
+  if (scope.local?.vcs !== "git" || !instanceState.schedules.has(scope.id)) return
+  if (instanceState.sweeping.has(scope.id)) {
+    instanceState.rerunRequested.add(scope.id)
     return
   }
   void sweep(scope)
 }
 
 function sweep(scope: Scope.Project): Promise<void> {
-  const current = sweeping.get(scope.id)
+  const instanceState = runtimeState()
+
+  const current = instanceState.sweeping.get(scope.id)
   if (current) return current
-  if (!schedules.has(scope.id)) return Promise.resolve()
+  if (!instanceState.schedules.has(scope.id)) return Promise.resolve()
   const task = runSweep(scope).finally(() => {
-    if (sweeping.get(scope.id) === task) sweeping.delete(scope.id)
-    if (rerunRequested.delete(scope.id) && schedules.has(scope.id)) void sweep(scope)
+    const instanceState = runtimeState()
+
+    if (instanceState.sweeping.get(scope.id) === task) instanceState.sweeping.delete(scope.id)
+    if (instanceState.rerunRequested.delete(scope.id) && instanceState.schedules.has(scope.id)) void sweep(scope)
   })
-  sweeping.set(scope.id, task)
+  instanceState.sweeping.set(scope.id, task)
   return task
 }
 
 async function runSweep(scope: Scope.Project) {
+  const instanceState = runtimeState()
+
   try {
     // Resolved per sweep so a config reload takes effect without a restart, and
     // so a read failure falls back to the cap default rather than skipping.
     const config = await readWorktreeConfig().catch(() => undefined)
-    if (config?.janitor === false || !schedules.has(scope.id)) return
+    if (config?.janitor === false || !instanceState.schedules.has(scope.id)) return
     const report = await ScopeContext.provide({ scope, fn: () => Worktree.sweep({ maxManaged: config?.maxManaged }) })
     // Reasons are reported rather than swallowed: a cap that cannot converge is
     // the signal that worktrees are blocked on unpushed work, not a silent

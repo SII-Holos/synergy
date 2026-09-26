@@ -4,14 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from synergy_bench.prepare import BENCHMARK, command
+from synergy_bench.prepare import BENCHMARK, command, verify_prepared
 
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit Linux binding test")
 
 
 def test_compiled_watcher_survives_a_real_interrupted_poll(tmp_path: Path) -> None:
-    owner = BENCHMARK.parent / "packages/runtime-local"
-    command(["bun", str(owner / "script/build-watcher.ts"), "--arch", "x64"], tmp_path / "build.log", timeout=900)
+    prepared = os.environ.get("SYNERGY_BENCH_TEST_ARTIFACT")
+    if prepared:
+        artifact = Path(prepared)
+        verify_prepared(artifact)
+        owner = artifact / "bundle/source/packages/runtime-local"
+    else:
+        owner = BENCHMARK.parent / "packages/runtime-local"
+        command(["bun", str(owner / "script/build-watcher.ts"), "--arch", "x64"], tmp_path / "build.log", timeout=900)
     binding = owner / ".artifacts/watcher/linux-x64-glibc"
     fixture = owner / "test/file/fixtures"
     observed = command(

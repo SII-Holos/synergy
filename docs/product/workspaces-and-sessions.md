@@ -27,11 +27,15 @@ The global runtime serves every Scope. Project services start lazily when the Sc
 
 A project Scope can declare multiple project folders — the main worktree plus additional folders such as sibling checkouts or related sub-projects. Opening a directory inside a Git repository records it under the same project; the project editor can also add or remove folders explicitly.
 
-Every declared project folder is trusted automatically by the active control profile, the execution sandbox, and the file tools: reading, writing, and building inside any project folder needs no per-path approval, matching the main worktree. In an isolated worktree session the original main checkout stays outside this trust boundary and requires explicit authorization, while other declared project folders remain trusted.
+The selected Workspace defines the default writable directory. Declaring another project folder does not grant write access: additional writable Workspaces must be shared explicitly. Ordinary non-sensitive files outside that boundary remain readable under the active execution policy.
 
 ## Workspace Binding
 
-A session belongs to a Scope and can also carry a workspace binding. The normal workspace is the Scope directory. A code task can instead enter an existing worktree or create a dedicated worktree while retaining the original Scope identity.
+A session belongs to a Scope and references a stable Workspace identity, or has no local files. The default Workspace is the Scope directory. The composer and Session status bar can select another existing directory; a code task can also enter or create a managed worktree while retaining its Scope identity.
+
+Sessions can share a Workspace. Explicitly changing its local binding updates every referencing Session and requires idle file resources. Imported history remains unavailable for local execution until deliberately rebound. Open file tabs retain the directory version they were opened against, so rebinding cannot silently redirect a pending edit.
+
+If a directory was missing during an upgrade, its history keeps the original location. Recreating that path does not activate the historical Workspace; explicitly rebind it to confirm which files the Session may use.
 
 This distinction lets configuration and project ownership remain stable while execution files move to an isolated checkout. Worktree sessions can inspect ordinary files from the original checkout, but writes and command execution outside the active worktree remain protected unless explicitly authorized.
 
@@ -130,6 +134,8 @@ See [Browser workspace](browser.md).
 
 ## Invariants
 
+Model and thinking choices can be changed while a session runs. The current request completes with its original choice; the next eligible request uses the saved choice. The toolbar indicates pending changes and offers retry after a failed save. Default uses the provider default; Off appears only when supported. Switching back to a model restores its saved level within that session. Anthropic transitions that would change thinking mode or model inside a tool-use turn wait until a new turn.
+
 - The server owns runtime state; clients select context for each operation.
 - Scope is explicit and uses the selected directory without upward project discovery.
 - Managed worktree deletion never removes a checkout while a session is executing in it.
@@ -138,3 +144,11 @@ See [Browser workspace](browser.md).
 - Scheduling, visibility, model inclusion, and provenance are independent semantics.
 - Delegation hierarchy and fork provenance are different relationships.
 - Compaction changes model context without erasing durable history.
+
+## Pause, continue and abandon
+
+Pause stops current execution and keeps its task resumable. Continue resumes it; typing new requirements in the ordinary composer and choosing Send and continue supplies those requirements before the next model call. Abandon current execution is available through the session actions menu with confirmation or a three-second hold on the primary composer control. It cancels the current workflow and queued messages while preserving history, generated files and the unsent draft. Releasing a partial hold cancels the gesture. A service restart leaves interrupted sessions paused and marks unfinished tool calls as interrupted rather than running. Discovering a paused session during startup or when opening a project preserves its position in recent conversations.
+
+## Session tags
+
+Sessions carry optional user-defined tags, with up to 20 tags of 40 characters each. The session actions menu adds or removes tags. Sidebar tag search filters matching sessions across Home and Projects, including paginated history; pressing Enter also searches a tag absent from the loaded suggestions. Clearing the filter restores normal navigation.

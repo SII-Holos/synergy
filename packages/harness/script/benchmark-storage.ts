@@ -88,6 +88,20 @@ try {
     const keys = await store.list(["probe"])
     const listMs = performance.now() - listStarted
     if (children.length !== 1 || keys.length !== 1) throw new Error("Traversal benchmark verification failed")
+    const missingDelete: number[] = []
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const started = performance.now()
+      await store.removeTree(["missing", "order-markers"])
+      missingDelete.push(performance.now() - started)
+    }
+    missingDelete.sort((a, b) => a - b)
+    const batchKeys = Array.from({ length: 128 }, (_, index) => ["inbox", "owner", String(index)])
+    await store.transaction((tx) => tx.writeMany(batchKeys.map((key) => ({ key, value: { queued: true } }))))
+    const deleteStarted = performance.now()
+    await store.transaction((tx) => tx.removeMany(batchKeys))
+    const batchDeleteMs = performance.now() - deleteStarted
+    if ((await store.list(["inbox"])).length || (await store.list(["probe"])).length !== 1)
+      throw new Error("Cleanup benchmark verification failed")
     console.log(
       JSON.stringify({
         harness: "storage-traversal",
@@ -96,6 +110,8 @@ try {
         probeSubtreeRecords: 1,
         scanMs: +scanMs.toFixed(2),
         listMs: +listMs.toFixed(2),
+        missingDeleteP95Ms: +missingDelete[94].toFixed(2),
+        delete128Ms: +batchDeleteMs.toFixed(2),
       }),
     )
   } finally {

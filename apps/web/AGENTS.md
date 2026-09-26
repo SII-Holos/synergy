@@ -15,7 +15,7 @@ Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before 
 - Use a store for coherent keyed collections and targeted updates; use signals for genuinely independent scalar state.
 - Apply entity writes with `reconcile` or a targeted `setStore(..., reconcile(value))`. Do not replace an entity object when one field changes.
 - Read entities by stable key so reactive consumers subscribe only to the row they use.
-- Preserve composer resolution layers: explicit draft → session default → fallback. A derived/historical value must not write back into the user's draft; an explicit selector choice persists through `modelOverride`.
+- Preserve composer resolution layers: explicit draft → session default → fallback. A derived/historical value must not write back into the user's draft. Existing-session selector choices persist through revisioned `modelSelection`; `modelOverride` is its legacy projection.
 - Preserve `seq`/`epoch` watermarks, reconnect replay, fail-open resync, unsequenced streaming deltas, write-behind behavior, and LRU protection of the active session. Do not add per-event REST refetches.
 - Keep the event queue visibility-aware: hidden pages relax to a 1 s cadence and merge streaming deltas per part (server checkpoints converge), visible pages return to 16 ms with per-delta telemetry; never drop sequenced state events.
 - Keep the rendered turn tree bounded: while pinned at the bottom in latest mode, `turnStart` auto-advances (trim from the top, re-pin the scroller after layout) so the DOM does not grow with session length; parts stay fine-grained store reads and must not move into the turn projection.

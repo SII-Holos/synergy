@@ -281,5 +281,3 @@ export const migrations: Migration[] = [
     },
   },
 ]
-
-MigrationRegistry.register("browser", migrations)

@@ -17,6 +17,17 @@ const PATH = "a.ts"
 // Patcher snapshot tag integrity
 // ============================================================================
 describe("Patcher snapshot tag integrity", () => {
+  test("refuses a prepared patch after the file changes before commit", async () => {
+    const content = "original\n"
+    const fs = new InMemoryFilesystem([[PATH, content]])
+    const patcher = new Patcher({ fs, snapshots: new InMemorySnapshotStore() })
+    const patch = Patch.parse(`[${PATH}#${computeFileHash(content)}]\nSWAP 1.=1:\n+changed\n`)
+    const prepared = await patcher.prepare(patch.sections[0])
+    fs.set(PATH, "external\n")
+    await expect(patcher.commit(prepared)).rejects.toThrow("changed")
+    expect(fs.get(PATH)).toBe("external\n")
+  })
+
   test("requires a snapshot store at construction", () => {
     const fs = new InMemoryFilesystem()
     expect(() => new Patcher({ fs } as unknown as PatcherOptions)).toThrow(/requires a SnapshotStore/)

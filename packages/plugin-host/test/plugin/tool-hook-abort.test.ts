@@ -11,6 +11,9 @@ import { pluginRuntimeManager } from "../../src/plugin/runtime"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { sha256File } from "@ericsanchezok/synergy-harness/util/crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function writeToolHookPlugin(root: string) {
   const pluginDir = path.join(root, "tool-hook-abort-plugin")
@@ -107,37 +110,44 @@ async function waitForFile(filePath: string) {
 }
 
 describe.serial("process plugin tool hook cancellation", () => {
-  test("propagates abort into the active handler and skips later handlers", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const fixture = await writeToolHookPlugin(tmp.path)
+  test(
+    "propagates abort into the active handler and skips later handlers",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const fixture = await writeToolHookPlugin(tmp.path)
 
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await approve(fixture.manifest)
-        await Config.update({ plugin: [pathToFileURL(fixture.pluginDir).href] } as Config.Info)
-        await resetAllPluginState()
-        const controller = new AbortController()
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            await approve(fixture.manifest)
+            await Config.update({ plugin: [pathToFileURL(fixture.pluginDir).href] } as Config.Info)
+            await resetAllPluginState()
+            const controller = new AbortController()
 
-        try {
-          const triggered = Plugin.trigger(
-            "tool.execute.before",
-            { tool: "file_search", sessionID: "ses_hook_abort", callID: "call_hook_abort" },
-            { args: { query: "evidence" } },
-            { signal: controller.signal },
-          )
-          await waitForFile(fixture.startedPath)
-          controller.abort(new DOMException("Tool execution timed out", "TimeoutError"))
+            try {
+              const triggered = Plugin.trigger(
+                "tool.execute.before",
+                { tool: "file_search", sessionID: "ses_hook_abort", callID: "call_hook_abort" },
+                { args: { query: "evidence" } },
+                { signal: controller.signal },
+              )
+              await waitForFile(fixture.startedPath)
+              controller.abort(new DOMException("Tool execution timed out", "TimeoutError"))
 
-          await expect(triggered).rejects.toThrow("Tool execution timed out")
-          await waitForFile(fixture.abortedPath)
-          expect(await Bun.file(fixture.secondPath).exists()).toBe(false)
-        } finally {
-          controller.abort()
-          await pluginRuntimeManager.stop(fixture.manifest.id, 0)
-          await resetAllPluginState()
-        }
-      },
-    })
-  }, 15_000)
+              await expect(triggered).rejects.toThrow("Tool execution timed out")
+              await waitForFile(fixture.abortedPath)
+              expect(await Bun.file(fixture.secondPath).exists()).toBe(false)
+            } finally {
+              controller.abort()
+              await pluginRuntimeManager().stop(fixture.manifest.id, 0)
+              await resetAllPluginState()
+            }
+          },
+        })
+      }),
+    15_000,
+  )
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
@@ -17,13 +18,29 @@ export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
 
   type ModelsCatalogRuntime = (typeof import("./models"))["ModelsCatalog"]
-  let modelsCatalogRuntime: Promise<ModelsCatalogRuntime> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    shutdown: new AbortController(),
+    jobs: new Set<Promise<unknown>>(),
+    modelsCatalogRuntime: undefined as Promise<ModelsCatalogRuntime> | undefined,
+    inFlight: new Map<string, Promise<Record<string, ModelsDev.Provider>>>(),
+    memoryCache: new Map<string, CacheEntry>(),
+    refreshInFlight: new Map<string, Promise<ModelCatalogState>>(),
+    catalogStates: new Map<string, ModelCatalogState>(),
+    freshlyVerified: new Set<string>(),
+    scheduledRefreshes: new Set<string>(),
+    retryTimers: new Map<string, ReturnType<typeof setTimeout>>(),
+    snapshots: undefined as Map<string, Snapshot> | undefined,
+    writeQueue: Promise.resolve(),
+    cacheGeneration: 0,
+  }))
 
   function loadModelsCatalogRuntime() {
-    if (!modelsCatalogRuntime) {
-      modelsCatalogRuntime = import("./models").then((module) => module.ModelsCatalog)
+    const instanceState = runtimeState()
+
+    if (!instanceState.modelsCatalogRuntime) {
+      instanceState.modelsCatalogRuntime = import("./models").then((module) => module.ModelsCatalog)
     }
-    return modelsCatalogRuntime
+    return instanceState.modelsCatalogRuntime
   }
 
   export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
@@ -98,17 +115,6 @@ export namespace ProviderCatalog {
     createdAt: number
     ttlMs: number
   }
-
-  const inFlight = new Map<string, Promise<Record<string, ModelsDev.Provider>>>()
-  const memoryCache = new Map<string, CacheEntry>()
-  const refreshInFlight = new Map<string, Promise<ModelCatalogState>>()
-  const catalogStates = new Map<string, ModelCatalogState>()
-  const freshlyVerified = new Set<string>()
-  const scheduledRefreshes = new Set<string>()
-  const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  let snapshots: Map<string, Snapshot> | undefined
-  let writeQueue = Promise.resolve()
-  let cacheGeneration = 0
 
   function snapshotKey(providerID: string, identityHash: string) {
     return `${providerID}:${identityHash}`
@@ -202,21 +208,25 @@ export namespace ProviderCatalog {
   }
 
   async function readSnapshots() {
-    if (snapshots) return snapshots
+    const instanceState = runtimeState()
+
+    if (instanceState.snapshots) return instanceState.snapshots
     const parsed = SnapshotStore.safeParse(
       await Bun.file(Global.Path.providerModelCatalogCache)
         .json()
         .catch(() => undefined),
     )
-    snapshots = new Map(
+    instanceState.snapshots = new Map(
       parsed.success
         ? parsed.data.snapshots.map((snapshot) => [snapshotKey(snapshot.providerID, snapshot.identityHash), snapshot])
         : [],
     )
-    return snapshots
+    return instanceState.snapshots
   }
 
   async function persistSnapshots(currentKey: string) {
+    const instanceState = runtimeState()
+
     const store = await readSnapshots()
     const protectedKeys = new Set([currentKey])
     for (const profile of ProviderProfile.all()) {
@@ -232,11 +242,11 @@ export namespace ProviderCatalog {
         const entry = removable.shift()
         if (!entry) break
         store.delete(entry[0])
-        freshlyVerified.delete(entry[0])
+        instanceState.freshlyVerified.delete(entry[0])
       }
     }
     const value = SnapshotStore.parse({ version: 1, snapshots: [...store.values()] })
-    writeQueue = writeQueue
+    instanceState.writeQueue = instanceState.writeQueue
       .catch(() => undefined)
       .then(async () => {
         await fs.mkdir(Global.Path.cache, { recursive: true })
@@ -244,7 +254,7 @@ export namespace ProviderCatalog {
         await Bun.write(temporary, JSON.stringify(value, null, 2))
         await fs.rename(temporary, Global.Path.providerModelCatalogCache)
       })
-    await writeQueue
+    await instanceState.writeQueue
   }
 
   function classifyFailure(error: unknown): Failure {
@@ -498,7 +508,7 @@ export namespace ProviderCatalog {
     configured?: ConfiguredProvider,
   ): Promise<LiveDiscoveryContext> {
     const selected = await Auth.select(providerID)
-    const environmentValues = ScopeContext.tryScope() ? Env.all() : process.env
+    const environmentValues = ScopeContext.tryScope() ? Env.all() : RuntimeContext.current().host.env
     const environmentNames = configured?.env ?? (providerID === profile.id ? (profile.env ?? []) : [])
     const environment = environmentNames
       .map((name) => ({ name, value: environmentValues[name]?.trim() }))
@@ -598,10 +608,12 @@ export namespace ProviderCatalog {
     context: LiveDiscoveryContext | undefined,
     providerID = profile.id,
   ): Promise<ModelsDev.Provider> {
+    const instanceState = runtimeState()
+
     if (!profile.fetchModelCatalog && !profile.fetchModels) return provider
     const auth = context?.auth
     if (!auth && profile.authKind !== "none") {
-      catalogStates.delete(catalogStateKey(providerID))
+      instanceState.catalogStates.delete(catalogStateKey(providerID))
       return provider
     }
     const key = context ? snapshotKey(providerID, context.identityHash) : undefined
@@ -613,16 +625,16 @@ export namespace ProviderCatalog {
     const modelCount = neverVerified
       ? Object.keys(provider.models).length
       : (snapshot?.activeModels.length ?? Object.keys(provider.models).length)
-    catalogStates.set(catalogStateKey(providerID), {
+    instanceState.catalogStates.set(catalogStateKey(providerID), {
       source:
-        snapshot && key && freshlyVerified.has(key)
+        snapshot && key && instanceState.freshlyVerified.has(key)
           ? "live"
           : snapshot
             ? neverVerified
               ? "bundled"
               : "cached"
             : "bundled",
-      refreshing: key ? refreshInFlight.has(key) || scheduledRefreshes.has(key) : false,
+      refreshing: key ? instanceState.refreshInFlight.has(key) || instanceState.scheduledRefreshes.has(key) : false,
       modelCount,
       lastVerifiedAt: snapshot?.lastVerifiedAt,
       failure: snapshot?.failure,
@@ -647,17 +659,20 @@ export namespace ProviderCatalog {
     failure: Failure,
     error?: unknown,
   ) {
-    const current = retryTimers.get(providerID)
+    const instanceState = runtimeState()
+
+    if (instanceState.shutdown.signal.aborted) return
+    const current = instanceState.retryTimers.get(providerID)
     if (current) clearTimeout(current)
     const timer = setTimeout(
       () => {
-        retryTimers.delete(providerID)
+        instanceState.retryTimers.delete(providerID)
         void refreshAndReload(providerID, profileID, baseURL, configured)
       },
       retryDelay({ failure, retryAfterMs: retryAfterMs(error) }),
     )
     timer.unref()
-    retryTimers.set(providerID, timer)
+    instanceState.retryTimers.set(providerID, timer)
   }
 
   function mergeRefresh(
@@ -686,12 +701,23 @@ export namespace ProviderCatalog {
     }
   }
 
-  export async function refresh(
+  export function refresh(
     providerID: string,
     profileID?: string,
     baseURL?: string,
     configuredInput?: ConfiguredProvider,
   ): Promise<ModelCatalogState> {
+    return tracked(() => refreshCatalog(providerID, profileID, baseURL, configuredInput))
+  }
+
+  async function refreshCatalog(
+    providerID: string,
+    profileID?: string,
+    baseURL?: string,
+    configuredInput?: ConfiguredProvider,
+  ): Promise<ModelCatalogState> {
+    const instanceState = runtimeState()
+
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
     let profile = ProviderProfile.resolve(providerID, profileID)
@@ -713,7 +739,7 @@ export namespace ProviderCatalog {
       profile.baseURL
     const context = await resolveLiveDiscoveryContext(profile, providerID, resolvedBaseURL, configured)
     const key = snapshotKey(providerID, context.identityHash)
-    const pending = refreshInFlight.get(key)
+    const pending = instanceState.refreshInFlight.get(key)
     if (pending) return pending
 
     let request: Promise<ModelCatalogState>
@@ -721,8 +747,8 @@ export namespace ProviderCatalog {
       const store = await readSnapshots()
       const previous = store.get(key)
       const now = Date.now()
-      catalogStates.set(catalogStateKey(providerID), {
-        source: previous ? (freshlyVerified.has(key) ? "live" : "cached") : "bundled",
+      instanceState.catalogStates.set(catalogStateKey(providerID), {
+        source: previous ? (instanceState.freshlyVerified.has(key) ? "live" : "cached") : "bundled",
         refreshing: true,
         modelCount: previous?.activeModels.length ?? 0,
         lastVerifiedAt: previous?.lastVerifiedAt,
@@ -730,17 +756,35 @@ export namespace ProviderCatalog {
       })
 
       let entries: ProviderProfile.ModelCatalogEntry[]
+      const catalogFetch: ProviderProfile.FetchLike = (input, init) => {
+        const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined)
+        return fetch(input, {
+          ...init,
+          signal: signal ? AbortSignal.any([signal, instanceState.shutdown.signal]) : instanceState.shutdown.signal,
+        })
+      }
       try {
         entries = profile.fetchModelCatalog
-          ? await profile.fetchModelCatalog({ providerID, auth: context.auth, fetch, baseURL: resolvedBaseURL })
-          : (await profile.fetchModels!({ providerID, auth: context.auth, fetch, baseURL: resolvedBaseURL })).map(
-              (id) => ({ id }),
-            )
+          ? await profile.fetchModelCatalog({
+              providerID,
+              auth: context.auth,
+              fetch: catalogFetch,
+              baseURL: resolvedBaseURL,
+            })
+          : (
+              await profile.fetchModels!({
+                providerID,
+                auth: context.auth,
+                fetch: catalogFetch,
+                baseURL: resolvedBaseURL,
+              })
+            ).map((id) => ({ id }))
         if (entries.length === 0)
           throw Object.assign(new Error("provider returned an empty model catalog"), {
             catalogFailure: "invalid_response",
           })
       } catch (error) {
+        instanceState.shutdown.signal.throwIfAborted()
         const failure =
           error && typeof error === "object" && (error as Record<string, unknown>).catalogFailure === "invalid_response"
             ? ("invalid_response" as const)
@@ -757,41 +801,42 @@ export namespace ProviderCatalog {
         }
         store.set(key, failed)
         await persistSnapshots(key)
-        memoryCache.clear()
+        instanceState.memoryCache.clear()
         const state: ModelCatalogState = {
-          source: previous ? (freshlyVerified.has(key) ? "live" : "cached") : "bundled",
+          source: previous ? (instanceState.freshlyVerified.has(key) ? "live" : "cached") : "bundled",
           refreshing: false,
           modelCount: failed.activeModels.length,
           lastVerifiedAt: failed.lastVerifiedAt,
           failure,
         }
-        catalogStates.set(catalogStateKey(providerID), state)
+        instanceState.catalogStates.set(catalogStateKey(providerID), state)
         scheduleRetry(providerID, profile.id, resolvedBaseURL, configured, failure, error)
         log.warn("failed to refresh provider model catalog", { providerID, profileID: profile.id, failure, error })
         return state
       }
 
+      instanceState.shutdown.signal.throwIfAborted()
       const next = mergeRefresh(previous, entries, { providerID, identityHash: context.identityHash, now })
       store.set(key, next)
       await persistSnapshots(key)
-      memoryCache.clear()
-      freshlyVerified.add(key)
-      const retry = retryTimers.get(providerID)
+      instanceState.memoryCache.clear()
+      instanceState.freshlyVerified.add(key)
+      const retry = instanceState.retryTimers.get(providerID)
       if (retry) clearTimeout(retry)
-      retryTimers.delete(providerID)
+      instanceState.retryTimers.delete(providerID)
       const state: ModelCatalogState = {
         source: "live",
         refreshing: false,
         modelCount: next.activeModels.length,
         lastVerifiedAt: next.lastVerifiedAt,
       }
-      catalogStates.set(catalogStateKey(providerID), state)
+      instanceState.catalogStates.set(catalogStateKey(providerID), state)
       return state
     })().finally(() => {
-      if (refreshInFlight.get(key) === request) refreshInFlight.delete(key)
-      scheduledRefreshes.delete(key)
+      if (instanceState.refreshInFlight.get(key) === request) instanceState.refreshInFlight.delete(key)
+      instanceState.scheduledRefreshes.delete(key)
     })
-    refreshInFlight.set(key, request)
+    instanceState.refreshInFlight.set(key, request)
     return request
   }
 
@@ -801,13 +846,18 @@ export namespace ProviderCatalog {
     baseURL?: string,
     configured?: ConfiguredProvider,
   ) {
-    try {
-      await refresh(providerID, profileID, baseURL, configured)
-      const { RuntimeReloadExecutor } = await import("../config/reload-executor")
-      await RuntimeReloadExecutor.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
-    } catch (error) {
-      log.warn("failed to apply provider model catalog refresh", { providerID, error })
-    }
+    if (runtimeState().shutdown.signal.aborted) return
+    return tracked(async () => {
+      try {
+        await refresh(providerID, profileID, baseURL, configured)
+        if (runtimeState().shutdown.signal.aborted) return
+        const { RuntimeReloadExecutor } = await import("../config/reload-executor")
+        if (runtimeState().shutdown.signal.aborted) return
+        await RuntimeReloadExecutor.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
+      } catch (error) {
+        log.warn("failed to apply provider model catalog refresh", { providerID, error })
+      }
+    })
   }
 
   function scheduleRefresh(
@@ -818,41 +868,65 @@ export namespace ProviderCatalog {
     configured: ConfiguredProvider | undefined,
     snapshot: Snapshot | undefined,
   ) {
+    const instanceState = runtimeState()
+
+    if (instanceState.shutdown.signal.aborted) return
     if (!context.auth && profile.authKind !== "none") return
     const now = Date.now()
     const verifiedRecently = snapshot?.lastVerifiedAt && now - snapshot.lastVerifiedAt < DEFAULT_CACHE_TTL_MS
     const failedRecently = snapshot?.failure && now - snapshot.lastAttemptAt < RETRY_DELAY_MS
     if (verifiedRecently || failedRecently) return
     const key = snapshotKey(providerID, context.identityHash)
-    if (refreshInFlight.has(key) || scheduledRefreshes.has(key)) return
-    scheduledRefreshes.add(key)
+    if (instanceState.refreshInFlight.has(key) || instanceState.scheduledRefreshes.has(key)) return
+    instanceState.scheduledRefreshes.add(key)
     queueMicrotask(() => {
-      void refreshAndReload(providerID, profile.id, baseURL, configured).finally(() => scheduledRefreshes.delete(key))
+      void refreshAndReload(providerID, profile.id, baseURL, configured).finally(() =>
+        instanceState.scheduledRefreshes.delete(key),
+      )
     })
   }
 
-  export async function resolve(input?: {
+  function tracked<T>(body: () => Promise<T>): Promise<T> {
+    const state = runtimeState()
+    state.shutdown.signal.throwIfAborted()
+    const task = body()
+    state.jobs.add(task)
+    return task.finally(() => state.jobs.delete(task))
+  }
+
+  export function resolve(input?: {
+    config?: unknown
+    includeLive?: boolean
+    refresh?: boolean
+    forceRefresh?: boolean
+  }) {
+    return tracked(() => resolveCatalog(input))
+  }
+
+  async function resolveCatalog(input?: {
     config?: unknown
     includeLive?: boolean
     refresh?: boolean
     forceRefresh?: boolean
   }): Promise<Record<string, ModelsDev.Provider>> {
+    const instanceState = runtimeState()
+
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
     const liveContexts = await resolveLiveDiscoveryContexts(input?.includeLive, input?.config)
     const key = cacheKey(input, liveContexts)
-    const cached = memoryCache.get(key)
+    const cached = instanceState.memoryCache.get(key)
     if (!input?.forceRefresh && cached && Date.now() - cached.createdAt < cached.ttlMs) {
       return cached.value
     }
-    const pending = inFlight.get(key)
+    const pending = instanceState.inFlight.get(key)
     if (!input?.forceRefresh && pending) return pending
-    const generation = cacheGeneration
+    const generation = instanceState.cacheGeneration
     let request: Promise<Record<string, ModelsDev.Provider>>
     request = doResolve(input, liveContexts, key, generation).finally(() => {
-      if (inFlight.get(key) === request) inFlight.delete(key)
+      if (instanceState.inFlight.get(key) === request) instanceState.inFlight.delete(key)
     })
-    inFlight.set(key, request)
+    instanceState.inFlight.set(key, request)
     return request
   }
 
@@ -897,6 +971,8 @@ export namespace ProviderCatalog {
     key: string,
     generation: number,
   ): Promise<Record<string, ModelsDev.Provider>> {
+    const instanceState = runtimeState()
+
     const runtimeModelsCatalog = await loadModelsCatalogRuntime()
     const modelsDev = withBuiltinSourceSurfaces(await runtimeModelsCatalog.get())
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
@@ -938,9 +1014,9 @@ export namespace ProviderCatalog {
         const discovered = await applyCachedDiscovery(provider, target.profile, modelsDev, target.context, providerID)
         const projected = target.configured ? applyConfiguredModelRules(discovered, target.configured) : discovered
         result[providerID] = projected
-        const state = catalogStates.get(catalogStateKey(providerID))
+        const state = instanceState.catalogStates.get(catalogStateKey(providerID))
         if (state && target.configured) {
-          catalogStates.set(catalogStateKey(providerID), {
+          instanceState.catalogStates.set(catalogStateKey(providerID), {
             ...state,
             modelCount: Object.values(projected.models).filter((model) => model.catalog_state !== "retained").length,
           })
@@ -952,8 +1028,8 @@ export namespace ProviderCatalog {
       }
     }
 
-    if (generation === cacheGeneration) {
-      memoryCache.set(key, {
+    if (generation === instanceState.cacheGeneration) {
+      instanceState.memoryCache.set(key, {
         value: result,
         createdAt: Date.now(),
         ttlMs: DEFAULT_CACHE_TTL_MS,
@@ -994,37 +1070,54 @@ export namespace ProviderCatalog {
   }
 
   function invalidateModelsDevProjection() {
-    cacheGeneration++
-    memoryCache.clear()
-    inFlight.clear()
+    const instanceState = runtimeState()
+
+    instanceState.cacheGeneration++
+    instanceState.memoryCache.clear()
+    instanceState.inFlight.clear()
+  }
+
+  export async function stop() {
+    const state = runtimeState()
+    state.shutdown.abort(new Error("Provider catalog is stopping"))
+    for (const timer of state.retryTimers.values()) clearTimeout(timer)
+    state.retryTimers.clear()
+    await Promise.allSettled(state.jobs)
+    await state.writeQueue
+    reset()
   }
 
   export function reset() {
-    cacheGeneration++
-    for (const timer of retryTimers.values()) clearTimeout(timer)
-    retryTimers.clear()
-    refreshInFlight.clear()
-    scheduledRefreshes.clear()
-    memoryCache.clear()
-    inFlight.clear()
-    catalogStates.clear()
-    freshlyVerified.clear()
-    snapshots = undefined
+    const instanceState = runtimeState()
+
+    instanceState.cacheGeneration++
+    for (const timer of instanceState.retryTimers.values()) clearTimeout(timer)
+    instanceState.retryTimers.clear()
+    instanceState.refreshInFlight.clear()
+    instanceState.scheduledRefreshes.clear()
+    instanceState.memoryCache.clear()
+    instanceState.inFlight.clear()
+    instanceState.catalogStates.clear()
+    instanceState.freshlyVerified.clear()
+    instanceState.snapshots = undefined
   }
 
-  void loadModelsCatalogRuntime()
-    .then((modelsCatalogRuntime) =>
-      modelsCatalogRuntime.onRefresh(async () => {
+  export async function subscribeModelCatalog() {
+    const state = runtimeState()
+    return (await loadModelsCatalogRuntime()).onRefresh(() => {
+      if (state.shutdown.signal.aborted) return
+      return tracked(async () => {
         invalidateModelsDevProjection()
         const { RuntimeReloadExecutor } = await import("../config/reload-executor")
+        if (state.shutdown.signal.aborted) return
         await RuntimeReloadExecutor.reloadGlobal({ targets: ["provider"], reason: "models.dev catalog refreshed" })
-      }),
-    )
-    .catch((error) => {
-      log.warn("failed to register models.dev refresh listener", { error })
+      })
     })
+  }
 
   export function modelCatalogState(providerID: string) {
-    return catalogStates.get(catalogStateKey(providerID))
+    const instanceState = runtimeState()
+
+    return instanceState.catalogStates.get(catalogStateKey(providerID))
   }
 }

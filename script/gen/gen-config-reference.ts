@@ -95,9 +95,13 @@ export function parseDomainObject(body: string): Domain | null {
 
 async function ownerSchemaPaths(): Promise<string[]> {
   const composition = await readFile(COMPOSITION, "utf8")
-  return [...composition.matchAll(/import\s+"([^"]+\/config-schema)"/g)].map((match) =>
-    Bun.resolveSync(match[1]!, COMPOSITION),
-  )
+  const source = ts.createSourceFile(COMPOSITION, composition, ts.ScriptTarget.Latest, true)
+  return source.statements.filter(ts.isImportDeclaration).flatMap((statement) => {
+    const specifier = statement.moduleSpecifier
+    return ts.isStringLiteral(specifier) && specifier.text.endsWith("/config-schema")
+      ? [Bun.resolveSync(specifier.text, COMPOSITION)]
+      : []
+  })
 }
 
 async function parseDomains(): Promise<Domain[]> {
@@ -124,7 +128,11 @@ async function parseDomains(): Promise<Domain[]> {
       }
     }
     function visit(node: ts.Node) {
-      if (ts.isVariableDeclaration(node) && node.name.getText(source) === "definitions" && node.initializer)
+      if (
+        ts.isVariableDeclaration(node) &&
+        ["definitions", "builtinDefinitions"].includes(node.name.getText(source)) &&
+        node.initializer
+      )
         collect(node.initializer)
       if (ts.isForOfStatement(node) && node.initializer.getText(source) === "const domain") collect(node.expression)
       ts.forEachChild(node, visit)

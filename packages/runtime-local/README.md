@@ -4,11 +4,11 @@
 
 `openLocalRuntime({ mode: "oneshot" })` registers local capabilities and acquires the harness lifecycle handle. Await `close()` or use `await using` to drain sessions, worker pools, child processes and telemetry before releasing the isolated home. Lifecycle implementation belongs to `@ericsanchezok/synergy-harness/lifecycle`.
 
-`createLocalClient()` provides the session, event, permission and question operations used by the CLI. Call it within an explicit `ScopeContext.provide()` scope. HTTP routes delegate session creation, input and command submission to the same `session-api` functions; remote CLI calls continue to use the SDK.
+`createLocalClient(handle, { scopeID })` (or an explicit directory selector) provides the session, event, permission and question operations used by the CLI. The client enters its supplied Runtime and resolves its Scope for each operation. HTTP routes delegate session creation, input and command submission to the same `session-api` functions; remote CLI calls continue to use the SDK.
 
 Run `bun test test/client.test.ts` for the in-process Scope/event contract and `bun run typecheck`. Tests use the isolated home preload declared in `bunfig.toml`.
 
-`registerLocalRuntime()` also registers bundled model SDK factories and the custom SDK loader. Agent worker bootstrap performs the same registration before starting the harness runner.
+`registerLocalRuntime()` also registers bundled model SDK factories and the custom SDK loader. Agent worker bootstrap creates an explicit Runtime context, registers local capabilities, then starts the harness runner.
 
 Source workers launch this package’s `src/agent-worker.ts` through the harness worker-entry registration. The full product registers its own entry; compiled executables dispatch the same composition through `__agent-turn-runner`.
 

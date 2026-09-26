@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import { ServiceMemoryMetrics } from "../../src/observability/service-memory-metrics"
 import type { ServiceMemory } from "../../src/process/service-memory"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function cgroup(input: { highBytes?: number; maxBytes?: number; oom?: number } = {}): ServiceMemory.CgroupV2 {
   return {
@@ -30,33 +33,37 @@ function cgroup(input: { highBytes?: number; maxBytes?: number; oom?: number } =
 }
 
 describe("ServiceMemoryMetrics", () => {
-  beforeEach(() => ServiceMemoryMetrics.resetForTest())
+  beforeEach(() => runtime.run(() => ServiceMemoryMetrics.resetForTest()))
 
-  test("bounds steady cgroup metric rows over one hour", () => {
-    const rows = Array.from({ length: 720 }, (_, index) =>
-      ServiceMemoryMetrics.plan({ now: index * 5_000, cgroup: cgroup() }),
-    ).flat()
-    const count = (name: string) => rows.filter((row) => row.name === name).length
+  test("bounds steady cgroup metric rows over one hour", () =>
+    runtime.run(() => {
+      const rows = Array.from({ length: 720 }, (_, index) =>
+        ServiceMemoryMetrics.plan({ now: index * 5_000, cgroup: cgroup() }),
+      ).flat()
+      const count = (name: string) => rows.filter((row) => row.name === name).length
 
-    expect(count("service.memory.current")).toBe(720)
-    expect(count("service.memory.high")).toBe(12)
-    expect(count("service.memory.max")).toBe(12)
-    expect(count("service.memory.anon")).toBe(60)
-    expect(rows.some((row) => row.name.endsWith(".delta"))).toBe(false)
-    expect(rows.length).toBeLessThanOrEqual(2_184)
-  })
+      expect(count("service.memory.current")).toBe(720)
+      expect(count("service.memory.high")).toBe(12)
+      expect(count("service.memory.max")).toBe(12)
+      expect(count("service.memory.anon")).toBe(60)
+      expect(rows.some((row) => row.name.endsWith(".delta"))).toBe(false)
+      expect(rows.length).toBeLessThanOrEqual(2_184)
+    }))
 
-  test("emits changed limits and positive deltas without waiting for detail sampling", () => {
-    ServiceMemoryMetrics.plan({ now: 0, cgroup: cgroup() })
-    const changed = ServiceMemoryMetrics.plan({
-      now: 5_000,
-      cgroup: cgroup({ highBytes: 2_500, oom: 1 }),
-    })
+  test("emits changed limits and positive deltas without waiting for detail sampling", () =>
+    runtime.run(() => {
+      ServiceMemoryMetrics.plan({ now: 0, cgroup: cgroup() })
+      const changed = ServiceMemoryMetrics.plan({
+        now: 5_000,
+        cgroup: cgroup({ highBytes: 2_500, oom: 1 }),
+      })
 
-    expect(changed).toContainEqual(expect.objectContaining({ name: "service.memory.current", value: 1_000 }))
-    expect(changed).toContainEqual(expect.objectContaining({ name: "service.memory.high", value: 2_500 }))
-    expect(changed).toContainEqual(expect.objectContaining({ name: "service.memory.events.oom.delta", value: 1 }))
-    expect(changed.some((row) => row.name === "service.memory.max")).toBe(false)
-    expect(changed.some((row) => row.name === "service.memory.anon")).toBe(false)
-  })
+      expect(changed).toContainEqual(expect.objectContaining({ name: "service.memory.current", value: 1_000 }))
+      expect(changed).toContainEqual(expect.objectContaining({ name: "service.memory.high", value: 2_500 }))
+      expect(changed).toContainEqual(expect.objectContaining({ name: "service.memory.events.oom.delta", value: 1 }))
+      expect(changed.some((row) => row.name === "service.memory.max")).toBe(false)
+      expect(changed.some((row) => row.name === "service.memory.anon")).toBe(false)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

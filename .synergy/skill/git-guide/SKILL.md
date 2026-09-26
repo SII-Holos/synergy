@@ -38,6 +38,8 @@ git worktree add -b synergy/<topic> "$WORKTREE_ROOT/$TASK_SLUG" origin/dev
 
 This is `<repository>/.synergy/worktrees/<task-slug>`, not the installation or runtime home under `SYNERGY_HOME`. Use a different worktree location only when the user explicitly requests it. If the default path is unavailable, stop and ask rather than silently creating the worktree elsewhere.
 
+`copyIgnored` setup entries must be relative paths with unused destinations; their bytes and tree identity are checked before atomic publication. Use an explicit setup command for intentional replacement of existing checkout files.
+
 Worktrees are optional branch- and file-isolation tools, not something to recreate for every edit or every feature. One task branch should keep using its existing worktree. After entering it, inspect status again; do not assume it is clean.
 
 If task changes already exist in a shared checkout, do not stash, reset, clean, or switch that checkout to move them. Create a new task worktree and deliberately migrate only task-owned changes, leaving unrelated and untracked user work untouched.

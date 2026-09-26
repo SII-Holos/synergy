@@ -83,7 +83,7 @@ export const WorktreeLeaveTool = Tool.define<typeof parameters, WorktreeLeaveMet
     const previous = { type: workspace.type, path: worktreePath, name: worktreeName }
 
     await Worktree.leave(ctx.sessionID)
-    const restored = { type: "main", path: ScopeContext.current.scope.directory }
+    const restored = { type: "main", path: ScopeContext.current.directory }
 
     let cleanupResult: { performed: boolean; skippedReason?: string; error?: string; cleanupDeferred?: boolean } = {
       performed: false,

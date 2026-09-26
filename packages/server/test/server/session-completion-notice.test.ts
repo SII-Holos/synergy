@@ -4,71 +4,79 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Server } from "../../src/server/server"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 describe("session completion notice route", () => {
-  test("clears unread without bumping session updated time", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const app = Server.App()
-        const session = await Session.create({})
-        await Session.update(session.id, (draft) => {
-          draft.completionNotice.unread = true
-          draft.completionNotice.unreadCount = 2
-        })
-        const before = await Session.get(session.id)
+  test("clears unread without bumping session updated time", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          const session = await Session.create({ tags: ["focus"] })
+          await Session.update(session.id, (draft) => {
+            draft.completionNotice.unread = true
+            draft.completionNotice.unreadCount = 2
+          })
+          const before = await Session.get(session.id)
 
-        const response = await app.request(`/session/${session.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ completionNotice: { unread: false } }),
-        })
+          const response = await app.request(`/session/${session.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ completionNotice: { unread: false } }),
+          })
 
-        expect(response.status).toBe(200)
-        const body = await response.json()
-        expect(body.completionNotice).toEqual({ unread: false, unreadCount: 0, silent: false })
-        expect(body.time.updated).toBe(before.time.updated)
+          expect(response.status).toBe(200)
+          const body = await response.json()
+          expect(body.completionNotice).toEqual({ unread: false, unreadCount: 0, silent: false })
+          expect(body.time.updated).toBe(before.time.updated)
+          expect(body.tags).toEqual(["focus"])
 
-        const repeated = await app.request(`/session/${session.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ completionNotice: { unread: false } }),
-        })
-        expect(repeated.status).toBe(200)
-        expect((await repeated.json()).time.updated).toBe(before.time.updated)
+          const repeated = await app.request(`/session/${session.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ completionNotice: { unread: false } }),
+          })
+          expect(repeated.status).toBe(200)
+          expect((await repeated.json()).time.updated).toBe(before.time.updated)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 
-  test("rejects client attempts to set unread true or patch silent", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const app = Server.App()
-        const session = await Session.create({})
+  test("rejects client attempts to set unread true or patch silent", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const app = Server.App()
+          const session = await Session.create({})
 
-        const unreadTrue = await app.request(`/session/${session.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ completionNotice: { unread: true } }),
-        })
-        expect(unreadTrue.status).toBe(400)
+          const unreadTrue = await app.request(`/session/${session.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ completionNotice: { unread: true } }),
+          })
+          expect(unreadTrue.status).toBe(400)
 
-        const silent = await app.request(`/session/${session.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ completionNotice: { silent: true } }),
-        })
-        expect(silent.status).toBe(400)
+          const silent = await app.request(`/session/${session.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ completionNotice: { silent: true } }),
+          })
+          expect(silent.status).toBe(400)
 
-        await Session.remove(session.id)
-      },
-    })
-  })
+          await Session.remove(session.id)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

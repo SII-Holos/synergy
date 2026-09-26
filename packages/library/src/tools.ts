@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "./tool-group-memory"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool } from "./tools/memory"
@@ -5,12 +6,16 @@ import { MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool } from
 /**
  * Library domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerLibraryTools(): void {
+  const instanceState = runtimeState()
+
   registerToolGroup()
-  if (registered) return
-  registered = true
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ToolRegistry.registerToolProvider("library", () => [MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool])
 }

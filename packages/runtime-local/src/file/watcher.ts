@@ -1,7 +1,12 @@
-import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import type { Scope } from "@ericsanchezok/synergy-harness/scope"
+import type { Workspace } from "@ericsanchezok/synergy-harness/session/types"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { FileWatcherEvent } from "./watcher-event"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
-import z from "zod"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -28,21 +33,7 @@ export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
   type WorkspaceFileEvent = FileWatcherEvents.WorkspaceEvent
 
-  export const Event = {
-    Updated: BusEvent.define(
-      "file.watcher.updated",
-      z.object({
-        file: z.string(),
-        event: z.enum(["added", "changed", "deleted", "renamed"]),
-        absolute: z.string().optional(),
-        oldPath: z.string().optional(),
-        oldAbsolute: z.string().optional(),
-        parent: z.string().optional(),
-        node: z.any().optional(),
-        resync: z.boolean().optional(),
-      }),
-    ),
-  }
+  export const Event = FileWatcherEvent
 
   function indexerEvent(event: Exclude<WorkspaceFileEvent, "renamed">): "add" | "change" | "unlink" {
     if (event === "added") return "add"
@@ -83,7 +74,7 @@ export namespace FileWatcher {
     })
 
     for (const item of changes) {
-      await Bus.publish(Event.Updated, {
+      await WorkspaceEvents.publish(Event.Updated, {
         file: item.relative,
         event: item.event,
         absolute: item.path,
@@ -98,7 +89,7 @@ export namespace FileWatcher {
   async function publishWorkspaceResync() {
     WorkspaceFileIndexer.invalidate()
     WorkspaceFileStatus.invalidate()
-    await Bus.publish(Event.Updated, {
+    await WorkspaceEvents.publish(Event.Updated, {
       file: "",
       event: "changed",
       parent: "",
@@ -123,7 +114,10 @@ export namespace FileWatcher {
   // Scope IDs whose watcher state is live. FileWatcher.reload() tears down and
   // re-creates exactly these so the advertised remediation actually restores
   // live file events.
-  const liveWatcherScopeIDs = new Set<string>()
+  const runtimeState = RuntimeContext.state(() => ({
+    liveWatchers: new Map<string, { scope: Scope; workspace: Workspace | null; kind: "scope" | "workspace" }>(),
+    reportedMissingBinding: false,
+  }))
 
   type SubscriptionRecovery = {
     start(): Promise<void>
@@ -163,7 +157,7 @@ export namespace FileWatcher {
         if (process.platform === "linux" && FileWatcherEvents.isLinuxInotifyCapacityTripped()) {
           throw FileWatcherEvents.linuxInotifyCapacityError()
         }
-        const callback: ParcelWatcher.SubscribeCallback = (error, events) => {
+        const callback: ParcelWatcher.SubscribeCallback = AsyncLocalStorage.bind((error, events) => {
           if (!context.isCurrent()) return
           if (error) {
             void context.fail(error)
@@ -174,7 +168,7 @@ export namespace FileWatcher {
           } catch (error) {
             void context.fail(error)
           }
-        }
+        })
         const subscribe = async () => {
           // Guard again under the gate: a trip can land while this attempt was
           // queued behind an earlier scan, and refusing here beats letting a
@@ -282,26 +276,33 @@ export namespace FileWatcher {
     return recovery
   }
 
-  const state = ScopedState.create(
-    async () => {
-      log.info("init", { scopeType: ScopeContext.current.scope.type })
-      liveWatcherScopeIDs.add(ScopeContext.current.scope.id)
-      const cfg = await Config.current().catch(() => null)
-      const backend = (() => {
-        if (process.platform === "win32") return "windows"
-        if (process.platform === "darwin") return "fs-events"
-        if (process.platform === "linux") return "inotify"
-      })()
-      if (!backend) {
-        log.error("watcher backend not supported", { platform: process.platform })
-        return { subs: [], scopeID: ScopeContext.current.scope.id }
-      }
-      log.info("watcher backend", { platform: process.platform, backend })
+  async function initialize(kind: "scope" | "workspace") {
+    const instanceState = runtimeState()
 
-      const subs: SubscriptionRecovery[] = []
+    log.info("init", { scopeType: ScopeContext.current.scope.type })
+    const key = kind === "scope" ? ScopeContext.current.scope.id : WorkspaceState.key()
+    instanceState.liveWatchers.set(key, {
+      scope: ScopeContext.current.scope,
+      workspace: ScopeContext.current.workspace,
+      kind,
+    })
+    const cfg = await Config.current().catch(() => null)
+    const backend = (() => {
+      if (process.platform === "win32") return "windows"
+      if (process.platform === "darwin") return "fs-events"
+      if (process.platform === "linux") return "inotify"
+    })()
+    if (!backend) {
+      log.error("watcher backend not supported", { platform: process.platform })
+      return { subs: [], key }
+    }
+    log.info("watcher backend", { platform: process.platform, backend })
 
-      // Home context in GlobalRuntime watches global config and emits via GlobalBus.
-      if (ScopeContext.current.scope.type === "home") {
+    const subs: SubscriptionRecovery[] = []
+    let drain: ReturnType<typeof FileWatcherEvents.createDrain> | undefined
+    try {
+      // Home context in GlobalRuntime watches global config and emits via GlobalBus().
+      if (kind === "scope" && ScopeContext.current.scope.type === "home") {
         const globalConfigDir = Global.Path.config
         const globalRecovery = await subscribeWithRecovery({
           directory: globalConfigDir,
@@ -326,8 +327,8 @@ export namespace FileWatcher {
                       : null
               if (!eventType) continue
               log.info("global config file event", { file: evt.path, event: eventType })
-              GlobalBus.emit("event", {
-                directory: "global",
+              GlobalBus().emit("event", {
+                scopeID: null,
                 payload: {
                   type: "global.config.file.changed",
                   properties: { file: evt.path, event: eventType },
@@ -337,63 +338,70 @@ export namespace FileWatcher {
           },
         })
         subs.push(globalRecovery)
-        return { subs, scopeID: ScopeContext.current.scope.id }
+        return { subs, key }
+      }
+
+      if (kind === "scope") {
+        // Project runtime inputs have a dedicated subscription; generated worktrees,
+        // caches, and other .synergy state remain outside the workspace hot path.
+        const directory = ScopeContext.current.scope.local?.directory
+        if (!directory) return { subs, key }
+        const synergyDir = path.join(directory, ".synergy")
+        if (existsSync(synergyDir)) {
+          const synergyRecovery = await subscribeWithRecovery({
+            directory: synergyDir,
+            label: "project .synergy",
+            options: {
+              backend,
+              ignore: FileWatcherEvents.projectRuntimeSubscriptionIgnores(),
+            },
+            resync: async () => {
+              const { RuntimeReloadExecutor } = await import("@ericsanchezok/synergy-harness/config/reload-executor")
+              await RuntimeReloadExecutor.reload({
+                targets: ["config", "agent", "command", "skill", "tool_registry"],
+                scope: "project",
+                reason: "project config watcher recovery",
+              })
+            },
+            onEvents: (evts) => {
+              for (const evt of evts) {
+                const eventType =
+                  evt.type === "create"
+                    ? "add"
+                    : evt.type === "update"
+                      ? "change"
+                      : evt.type === "delete"
+                        ? "unlink"
+                        : null
+                if (!eventType || !FileWatcherEvents.isProjectRuntimeInput(evt.path)) continue
+                log.info("project .synergy file event", { file: evt.path, event: eventType })
+                GlobalBus().emit("event", {
+                  scopeID: ScopeContext.current.scope.id,
+                  payload: {
+                    type: "global.config.file.changed",
+                    properties: { file: evt.path, event: eventType },
+                  },
+                })
+              }
+            },
+          })
+          subs.push(synergyRecovery)
+        }
+
+        return { subs, key }
       }
 
       // Project scopes watch workspace files. Git scopes additionally watch HEAD
       // so branch updates do not depend on ordinary workspace file traffic.
-      const drain = FileWatcherEvents.createDrain({
+      const workspaceDrain = FileWatcherEvents.createDrain({
         debounceMs: 50,
         maxPending: 4_096,
         process: publishWorkspaceBatch,
         overflow: publishWorkspaceResync,
       })
 
+      drain = workspaceDrain
       const cfgIgnores = cfg?.watcher?.ignore ?? []
-
-      // Project runtime inputs have a dedicated subscription; generated worktrees,
-      // caches, and other .synergy state remain outside the workspace hot path.
-      const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
-      if (existsSync(synergyDir)) {
-        const synergyRecovery = await subscribeWithRecovery({
-          directory: synergyDir,
-          label: "project .synergy",
-          options: {
-            backend,
-            ignore: FileWatcherEvents.projectRuntimeSubscriptionIgnores(),
-          },
-          resync: async () => {
-            const { RuntimeReloadExecutor } = await import("@ericsanchezok/synergy-harness/config/reload-executor")
-            await RuntimeReloadExecutor.reload({
-              targets: ["config", "agent", "command", "skill", "tool_registry"],
-              scope: "project",
-              reason: "project config watcher recovery",
-            })
-          },
-          onEvents: (evts) => {
-            for (const evt of evts) {
-              const eventType =
-                evt.type === "create"
-                  ? "add"
-                  : evt.type === "update"
-                    ? "change"
-                    : evt.type === "delete"
-                      ? "unlink"
-                      : null
-              if (!eventType || !FileWatcherEvents.isProjectRuntimeInput(evt.path)) continue
-              log.info("project .synergy file event", { file: evt.path, event: eventType })
-              GlobalBus.emit("event", {
-                directory: ScopeContext.current.directory,
-                payload: {
-                  type: "global.config.file.changed",
-                  properties: { file: evt.path, event: eventType },
-                },
-              })
-            }
-          },
-        })
-        subs.push(synergyRecovery)
-      }
 
       const workspaceRecovery = await subscribeWithRecovery({
         directory: ScopeContext.current.directory,
@@ -402,21 +410,14 @@ export namespace FileWatcher {
           ignore: FileWatcherEvents.workspaceSubscriptionIgnores(cfgIgnores),
           backend,
         },
-        resync: () => drain.resync(),
-        onEvents: (events) => drain.enqueue(FileWatcherEvents.normalize(events)),
+        resync: () => workspaceDrain.resync(),
+        onEvents: (events) => workspaceDrain.enqueue(FileWatcherEvents.normalize(events)),
       })
       subs.push(workspaceRecovery)
 
+      const git = await $`git rev-parse --git-dir`.quiet().nothrow().cwd(ScopeContext.current.directory)
       const vcsDir =
-        ScopeContext.current.scope.vcs === "git"
-          ? await $`git rev-parse --git-dir`
-              .quiet()
-              .nothrow()
-              .cwd(ScopeContext.current.directory)
-              .text()
-              .then((x) => path.resolve(ScopeContext.current.directory, x.trim()))
-              .catch(() => undefined)
-          : undefined
+        git.exitCode === 0 ? path.resolve(ScopeContext.current.directory, git.stdout.toString().trim()) : undefined
       if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
         const gitDirContents = await readdir(vcsDir).catch(() => [])
         const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
@@ -427,9 +428,9 @@ export namespace FileWatcher {
             ignore: ignoreList,
             backend,
           },
-          resync: () => drain.resync(),
+          resync: () => workspaceDrain.resync(),
           onEvents: (events) =>
-            drain.enqueue(
+            workspaceDrain.enqueue(
               FileWatcherEvents.normalize(
                 events.filter(
                   (event) =>
@@ -442,41 +443,65 @@ export namespace FileWatcher {
         subs.push(vcsRecovery)
       }
 
-      return { subs, drain, scopeID: ScopeContext.current.scope.id }
-    },
-    async (state) => {
-      liveWatcherScopeIDs.delete(state.scopeID)
-      await Promise.all(state.subs.map((sub) => sub.dispose()))
-      if ("drain" in state) await state.drain?.dispose()
-    },
-  )
+      return { subs, drain, key }
+    } catch (error) {
+      runtimeState().liveWatchers.delete(key)
+      try {
+        await cleanupSubscriptions(subs, drain)
+      } catch (cleanup) {
+        throw new AggregateError([error, cleanup], "Workspace watcher initialization failed")
+      }
+      throw error
+    }
+  }
+
+  async function cleanupSubscriptions(
+    subs: SubscriptionRecovery[],
+    drain?: ReturnType<typeof FileWatcherEvents.createDrain>,
+  ) {
+    const results = await Promise.allSettled(subs.map((sub) => sub.dispose()))
+    if (drain) results.push(...(await Promise.allSettled([drain.dispose()])))
+    const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (errors.length) throw new AggregateError(errors, "Workspace watcher shutdown failed")
+  }
+
+  async function disposeWatcher(state: Awaited<ReturnType<typeof initialize>>) {
+    runtimeState().liveWatchers.delete(state.key)
+    await cleanupSubscriptions(state.subs, "drain" in state ? state.drain : undefined)
+  }
+
+  const scopeState = ScopedState.create(() => initialize("scope"), disposeWatcher)
+  const workspaceState = WorkspaceState.create(() => initialize("workspace"), disposeWatcher)
 
   export async function reload() {
+    const instanceState = runtimeState()
+
     if (!bindingAvailable()) return
     log.info("reloading file watcher state")
     // A capacity trip is process-wide but operator-fixable: reloading watcher
     // state (e.g. after raising fs.inotify.max_user_watches) re-arms Linux
     // subscriptions.
     FileWatcherEvents.resetLinuxInotifyCapacity()
-    // Known snapshot race: a scope torn down between this snapshot and the
-    // re-creation below can be re-created here. The orphaned watcher state is
-    // bounded (that scope's subscriptions) and is cleared by the next reload
-    // or process restart; reload is an operator-triggered action, so the
-    // window is accepted.
-    const scopeIDs = [...liveWatcherScopeIDs]
-    await state.resetAll()
-    // resetAll() disposed every watcher state; re-create the live ones so the
-    // advertised remediation actually restores live file events instead of
-    // leaving the watcher disabled until the next scope startup.
-    const { Scope } = await import("@ericsanchezok/synergy-harness/scope")
-    for (const scopeID of scopeIDs) {
-      const scope = await Scope.fromID(scopeID).catch(() => undefined)
-      if (!scope) continue
-      await ScopeContext.provide({ scope, fn: () => state() }).catch((error) => {
-        log.error("failed to re-create watcher state after reload", { scopeID, error })
+    const live = [...instanceState.liveWatchers.values()]
+    await Promise.all([scopeState.resetAll(), workspaceState.resetAll()])
+    for (const entry of live) {
+      if (entry.kind === "workspace" && entry.workspace?.id) {
+        const valid = await WorkspaceBinding.validate(
+          entry.workspace.id,
+          entry.scope.id,
+          entry.workspace.generation,
+        ).catch(() => undefined)
+        if (!valid) continue
+      }
+      await ScopeContext.provide({
+        scope: entry.scope,
+        workspace: entry.workspace,
+        fn: () => (entry.kind === "scope" ? scopeState() : workspaceState()),
+      }).catch((error) => {
+        log.error("failed to re-create watcher state after reload", { scopeID: entry.scope.id, error })
       })
     }
-    log.info("file watcher state reloaded", { recreated: scopeIDs.length })
+    log.info("file watcher state reloaded", { recreated: live.length })
   }
 
   export async function init() {
@@ -484,15 +509,21 @@ export namespace FileWatcher {
       return
     }
     if (!bindingAvailable()) return
-    await state()
+    if (ScopeContext.current.workspace) await workspaceState()
+    else await scopeState()
   }
 
-  let reportedMissingBinding = false
+  export async function initScope() {
+    if (Flag.SYNERGY_DISABLE_FILEWATCHER || !bindingAvailable()) return
+    await scopeState()
+  }
 
   function bindingAvailable(): boolean {
+    const instanceState = runtimeState()
+
     if (FileWatcherBinding.available()) return true
-    if (!reportedMissingBinding) {
-      reportedMissingBinding = true
+    if (!instanceState.reportedMissingBinding) {
+      instanceState.reportedMissingBinding = true
       log.error("file watcher binding unavailable; file watching disabled", {
         package: FileWatcherBinding.packageName(),
         packaged: FileWatcherBinding.packagedPath(),

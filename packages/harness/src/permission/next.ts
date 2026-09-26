@@ -6,6 +6,7 @@ import { Identifier } from "../id/id"
 import { PermissionRules } from "./rules"
 import { ScopedState } from "../scope/scoped-state"
 import { SessionInteraction } from "../session/interaction"
+import { Lock } from "../util/lock"
 import { fn } from "../util/fn"
 import { Log } from "../util/log"
 import { Wildcard } from "../util/wildcard"
@@ -191,8 +192,21 @@ export namespace PermissionNext {
     }),
     async (input) => {
       const s = await state()
+      const first = s.pending[input.requestID]
+      if (!first) return
+      using lock = await Lock.write(`permission-reply:${first.info.sessionID}`)
       const existing = s.pending[input.requestID]
       if (!existing) return
+      if (input.reply === "always") {
+        await PermissionRules.addUserRules(
+          existing.info.patterns.map((pattern) => ({
+            permission: existing.info.permission,
+            pattern,
+            action: "allow",
+          })),
+        )
+        if (s.pending[input.requestID] !== existing) return
+      }
       delete s.pending[input.requestID]
       Bus.publish(Event.Replied, {
         sessionID: existing.info.sessionID,
@@ -225,8 +239,6 @@ export namespace PermissionNext {
           }
           if (input.reply === "session") {
             PermissionRules.addSessionRule(existing.info.sessionID, rule)
-          } else {
-            await PermissionRules.addUserRule(rule)
           }
         }
         existing.resolve()

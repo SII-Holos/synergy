@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
 import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
@@ -12,11 +13,15 @@ import { BlueprintLoopRejectTool } from "./tools/blueprint-loop-reject"
  * contribution with the plugin-timer reattach hook + domain tools + the
  * protocol-5 host adapter slot). Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerBlueprintDomain(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ContinuationKernel.registerProvider("blueprint", () => [BlueprintContinuationPolicy])
 

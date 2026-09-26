@@ -1,15 +1,8 @@
 import { createSignal } from "solid-js"
-import { forEachWorkspaceSessionEntry, parseWorkspaceSessionEntryKey } from "../../utils/persist"
+import { forEachWorkspaceSessionEntry, parseWorkspaceSessionEntryKey, workspaceEntryOwner } from "../../utils/persist"
 import { sanitizePromptValue } from "./sanitize"
 import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
 import type { Prompt } from "."
-
-// Stored marks mirror persisted prompt entries; local marks mirror the dirty
-// state of composer sessions mounted in this tab. The badge is their union so
-// a cross-tab clear cannot erase the fact that the composer the user is typing
-// into still holds unsent input, while a submit in this tab clears both.
-const [storedDrafts, setStoredDrafts] = createSignal<ReadonlySet<string>>(new Set())
-const [localDrafts, setLocalDrafts] = createSignal<ReadonlySet<string>>(new Set())
 
 function withMark(current: ReadonlySet<string>, session: string, marked: boolean): ReadonlySet<string> {
   if (current.has(session) === marked) return current
@@ -31,43 +24,66 @@ function isStoredDraft(value: string): boolean {
   return !isPromptEqual(prompt, DEFAULT_PROMPT)
 }
 
-export function rebuildDraftSessionIndex() {
-  const next = new Set<string>()
-  forEachWorkspaceSessionEntry("prompt", (session, value) => {
-    if (isStoredDraft(value)) next.add(session)
-  })
-  setStoredDrafts(next)
-}
+export function createDraftSessionIndex(connection: string) {
+  const [storedDrafts, setStoredDrafts] = createSignal<ReadonlySet<string>>(new Set())
+  const [localDrafts, setLocalDrafts] = createSignal<ReadonlySet<string>>(new Set())
+  const owns = (key: string | undefined) => {
+    if (!key) return false
+    try {
+      const owner: unknown = JSON.parse(key)
+      return Array.isArray(owner) && owner.length === 2 && owner[0] === connection
+    } catch {
+      return false
+    }
+  }
+  function rebuildDraftSessionIndex() {
+    const next = new Set<string>()
+    forEachWorkspaceSessionEntry("prompt", (session, value, owner) => {
+      if (owns(owner) && isStoredDraft(value)) next.add(session)
+    })
+    setStoredDrafts(next)
+  }
 
-export function markDraftSession(session: string | undefined, dirty: boolean) {
-  if (!session) return
-  setLocalDrafts((current) => withMark(current, session, dirty))
-  setStoredDrafts((current) => withMark(current, session, dirty))
-}
+  function markDraftSession(session: string | undefined, dirty: boolean) {
+    if (!session) return
+    setLocalDrafts((current) => withMark(current, session, dirty))
+    setStoredDrafts((current) => withMark(current, session, dirty))
+  }
 
-export function clearLocalDraftMark(session: string | undefined) {
-  if (!session) return
-  setLocalDrafts((current) => withMark(current, session, false))
-}
+  function clearLocalDraftMark(session: string | undefined) {
+    if (!session) return
+    setLocalDrafts((current) => withMark(current, session, false))
+  }
 
-export function forgetDraftSession(session: string) {
-  clearLocalDraftMark(session)
-  setStoredDrafts((current) => withMark(current, session, false))
-}
+  function forgetDraftSession(session: string) {
+    clearLocalDraftMark(session)
+    setStoredDrafts((current) => withMark(current, session, false))
+  }
 
-export function hasDraftSession(session: string): boolean {
-  return storedDrafts().has(session) || localDrafts().has(session)
-}
+  function hasDraftSession(session: string): boolean {
+    return storedDrafts().has(session) || localDrafts().has(session)
+  }
 
-if (typeof window !== "undefined") {
-  window.addEventListener("storage", (event) => {
+  const onStorage = (event: StorageEvent) => {
     if (event.key === null) {
       rebuildDraftSessionIndex()
       return
     }
+    if (!owns(workspaceEntryOwner(event.key))) return
     const session = parseWorkspaceSessionEntryKey(event.key, "prompt")
     if (!session) return
     setStoredDrafts((current) => withMark(current, session, event.newValue !== null && isStoredDraft(event.newValue)))
-  })
+  }
+  window.addEventListener("storage", onStorage)
   rebuildDraftSessionIndex()
+  return {
+    rebuildDraftSessionIndex,
+    markDraftSession,
+    clearLocalDraftMark,
+    forgetDraftSession,
+    hasDraftSession,
+    dispose() {
+      window.removeEventListener("storage", onStorage)
+    },
+  }
 }

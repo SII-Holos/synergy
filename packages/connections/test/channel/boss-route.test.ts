@@ -13,6 +13,9 @@ import { Channel } from "../../src/channel"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import type { Provider, StreamingSession } from "../../src/channel/types"
 import type { ChannelHost } from "../../src/channel/host"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const originalConfigCurrent = Config.current
 const ACCOUNT_ID = "acct_boss"
@@ -27,28 +30,32 @@ const ACCOUNT_ID = "acct_boss"
  */
 describe("Feishu boss routing", () => {
   let removeAccountSource: (() => void) | undefined
-  beforeEach(() => {
-    removeAccountSource = BossRuntime.registerAccountSource(readBossAccounts)
-  })
-  afterEach(async () => {
-    Config.current = originalConfigCurrent
-    await BossRuntime.sync(false).catch(() => {})
-    await ScopeContext.provide({ scope: Scope.home(), fn: () => Channel.stopAll() }).catch(() => {})
-    // Remove any boss sessions left in home scope so each test starts clean.
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        const sessions: Session.Info[] = []
-        for await (const s of Session.listAll()) sessions.push(s)
-        for (const s of sessions) {
-          if (s.workflow?.kind === "boss" && s.workflow.role === "boss" && s.endpoint?.kind === "channel") {
-            await Session.remove(s.id).catch(() => {})
+  beforeEach(() =>
+    runtime.run(() => {
+      removeAccountSource = BossRuntime.registerAccountSource(readBossAccounts)
+    }),
+  )
+  afterEach(() =>
+    runtime.run(async () => {
+      Config.current = originalConfigCurrent
+      await BossRuntime.sync(false).catch(() => {})
+      await ScopeContext.provide({ scope: Scope.home(), fn: () => Channel.stopAll() }).catch(() => {})
+      // Remove any boss sessions left in home scope so each test starts clean.
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const sessions: Session.Info[] = []
+          for await (const s of Session.listAll()) sessions.push(s)
+          for (const s of sessions) {
+            if (s.workflow?.kind === "boss" && s.workflow.role === "boss" && s.endpoint?.kind === "channel") {
+              await Session.remove(s.id).catch(() => {})
+            }
           }
-        }
-      },
-    }).catch(() => {})
-    removeAccountSource?.()
-  })
+        },
+      }).catch(() => {})
+      removeAccountSource?.()
+    }),
+  )
 
   function bossConfig(accountOverrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -114,194 +121,199 @@ describe("Feishu boss routing", () => {
     return host
   }
 
-  test("routes accepted group and DM messages into the one runtime boss session with source metadata", async () => {
-    await using tmp = await tmpdir({ git: true })
-    stubConfig(bossConfig())
+  test("routes accepted group and DM messages into the one runtime boss session with source metadata", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      stubConfig(bossConfig())
 
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        await BossRuntime.ensure()
-        const bossID = BossRuntime.bossSessionForAccount(ACCOUNT_ID)
-        expect(bossID).toBeDefined()
-        if (!bossID) throw new Error("expected a boss session")
-        const boss = await Session.get(bossID)
-        expect(boss.workflow).toEqual({ kind: "boss", role: "boss" })
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await BossRuntime.ensure()
+          const bossID = BossRuntime.bossSessionForAccount(ACCOUNT_ID)
+          expect(bossID).toBeDefined()
+          if (!bossID) throw new Error("expected a boss session")
+          const boss = await Session.get(bossID)
+          expect(boss.workflow).toEqual({ kind: "boss", role: "boss" })
 
-        // Hold the boss lease so every routed message is durably queued
-        // instead of executing an LLM turn.
-        const lease = SessionManager.acquire(bossID)
-        expect(lease).toBeDefined()
-        if (!lease) throw new Error("expected to acquire the boss lease")
-        try {
-          const host = await connectHost()
-          const timestamp = Date.now()
-          const messages = [
-            {
-              chatId: "oc_group_a",
-              chatType: "group" as const,
-              chatName: "项目A群",
-              senderId: "ou_a",
-              senderName: "小明",
-              text: "你好 boss",
-              messageId: "om_msg_a",
-              timestamp,
-            },
-            {
-              chatId: "oc_group_b",
-              chatType: "group" as const,
-              chatName: "项目B群",
-              senderId: "ou_b",
-              senderName: "小红",
-              text: "帮忙看一下",
-              messageId: "om_msg_b",
-              // Replying to an earlier message must not change the anchor:
-              // boss routing forces the reply to the current message.
-              replyToMessageId: "om_prev",
-              timestamp,
-            },
-            {
-              chatId: "oc_dm_1",
-              chatType: "dm" as const,
-              chatName: "Alice",
-              senderId: "ou_alice",
-              senderName: "Alice",
-              text: "私聊消息",
-              messageId: "om_msg_c",
-              timestamp,
-            },
-          ]
-          for (const message of messages) {
-            await host.conversations.receive({ ...message })
-          }
-
-          const items = (await SessionInbox.list(bossID)).filter((item) => item.deliveryKey?.startsWith("channel:"))
-          expect(items).toHaveLength(3)
-          const byMessageID = new Map(messages.map((m) => [m.messageId, m]))
-          for (const item of items) {
-            expect(item.sessionID).toBe(bossID)
-            const expected = byMessageID.get(item.deliveryKey!.split(":").pop()!)
-            expect(expected).toBeDefined()
-            if (!expected) continue
-            expect(item.message?.metadata).toMatchObject({
-              channelReply: true,
-              channelReplyToMessageId: expected.messageId,
-              channelChatId: expected.chatId,
-              channelChatName: expected.chatName,
-              channelSenderId: expected.senderId,
-              channelSenderName: expected.senderName,
-            })
-            const textPart = item.message?.parts.find((part) => part.type === "text")
-            expect(textPart?.type).toBe("text")
-            if (textPart?.type === "text") {
-              expect(textPart.text).toContain(`[群: ${expected.chatName} | 发送者: ${expected.senderName} | `)
-              expect(textPart.text).toContain(expected.text)
-            }
-          }
-
-          // The boss session must keep its boss interaction and provisioned
-          // display name after routing (multi-chat aggregation must not flap
-          // the chatName to whichever chat messaged last).
-          const after = await Session.get(bossID)
-          expect(after.interaction).toEqual({ mode: "interactive", source: "boss" })
-          if (after.endpoint?.kind === "channel") {
-            expect(after.endpoint.channel.chatName).toBe("Runtime Boss")
-          }
-        } finally {
-          await SessionManager.release(lease, { requestNextWork: false })
-        }
-      },
-    })
-  })
-
-  test("disabling boss mode restores per-chat session routing and leaves the boss session untouched", async () => {
-    await using tmp = await tmpdir({ git: true })
-    stubConfig(bossConfig())
-
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        await BossRuntime.ensure()
-        const bossID = BossRuntime.bossSessionForAccount(ACCOUNT_ID)
-        expect(bossID).toBeDefined()
-        if (!bossID) throw new Error("expected a boss session")
-
-        const bossLease = SessionManager.acquire(bossID)
-        expect(bossLease).toBeDefined()
-        if (!bossLease) throw new Error("expected to acquire the boss lease")
-        try {
-          const host = await connectHost()
-          await BossRuntime.sync(false)
-
-          // Pre-bind the per-chat session (what getOrCreateForEndpoint would
-          // create) and hold its lease so the message is durably queued there.
-          const chatEndpoint = SessionEndpoint.fromChannel({
-            type: "feishu",
-            accountId: ACCOUNT_ID,
-            chatId: "oc_group_x",
-            chatType: "group",
-            chatName: "普通群",
-            createdAt: Date.now(),
-          })
-          const chatSession = await Session.create({
-            scope: Scope.home(),
-            endpoint: chatEndpoint,
-            interaction: SessionInteraction.interactive("channel:feishu"),
-          })
-          const chatLease = SessionManager.acquire(chatSession.id)
-          expect(chatLease).toBeDefined()
-          if (!chatLease) throw new Error("expected to acquire the chat lease")
+          // Hold the boss lease so every routed message is durably queued
+          // instead of executing an LLM turn.
+          const lease = SessionManager.acquire(bossID)
+          expect(lease).toBeDefined()
+          if (!lease) throw new Error("expected to acquire the boss lease")
           try {
-            await host.conversations.receive({
+            const host = await connectHost()
+            const timestamp = Date.now()
+            const messages = [
+              {
+                chatId: "oc_group_a",
+                chatType: "group" as const,
+                chatName: "项目A群",
+                senderId: "ou_a",
+                senderName: "小明",
+                text: "你好 boss",
+                messageId: "om_msg_a",
+                timestamp,
+              },
+              {
+                chatId: "oc_group_b",
+                chatType: "group" as const,
+                chatName: "项目B群",
+                senderId: "ou_b",
+                senderName: "小红",
+                text: "帮忙看一下",
+                messageId: "om_msg_b",
+                // Replying to an earlier message must not change the anchor:
+                // boss routing forces the reply to the current message.
+                replyToMessageId: "om_prev",
+                timestamp,
+              },
+              {
+                chatId: "oc_dm_1",
+                chatType: "dm" as const,
+                chatName: "Alice",
+                senderId: "ou_alice",
+                senderName: "Alice",
+                text: "私聊消息",
+                messageId: "om_msg_c",
+                timestamp,
+              },
+            ]
+            for (const message of messages) {
+              await host.conversations.receive({ ...message })
+            }
+
+            const items = (await SessionInbox.list(bossID)).filter((item) => item.deliveryKey?.startsWith("channel:"))
+            expect(items).toHaveLength(3)
+            const byMessageID = new Map(messages.map((m) => [m.messageId, m]))
+            for (const item of items) {
+              expect(item.sessionID).toBe(bossID)
+              const expected = byMessageID.get(item.deliveryKey!.split(":").pop()!)
+              expect(expected).toBeDefined()
+              if (!expected) continue
+              expect(item.message?.metadata).toMatchObject({
+                channelReply: true,
+                channelReplyToMessageId: expected.messageId,
+                channelChatId: expected.chatId,
+                channelChatName: expected.chatName,
+                channelSenderId: expected.senderId,
+                channelSenderName: expected.senderName,
+              })
+              const textPart = item.message?.parts.find((part) => part.type === "text")
+              expect(textPart?.type).toBe("text")
+              if (textPart?.type === "text") {
+                expect(textPart.text).toContain(`[群: ${expected.chatName} | 发送者: ${expected.senderName} | `)
+                expect(textPart.text).toContain(expected.text)
+              }
+            }
+
+            // The boss session must keep its boss interaction and provisioned
+            // display name after routing (multi-chat aggregation must not flap
+            // the chatName to whichever chat messaged last).
+            const after = await Session.get(bossID)
+            expect(after.interaction).toEqual({ mode: "interactive", source: "boss" })
+            if (after.endpoint?.kind === "channel") {
+              expect(after.endpoint.channel.chatName).toBe("Runtime Boss")
+            }
+          } finally {
+            await SessionManager.release(lease, { requestNextWork: false })
+          }
+        },
+      })
+    }))
+
+  test("disabling boss mode restores per-chat session routing and leaves the boss session untouched", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      stubConfig(bossConfig())
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await BossRuntime.ensure()
+          const bossID = BossRuntime.bossSessionForAccount(ACCOUNT_ID)
+          expect(bossID).toBeDefined()
+          if (!bossID) throw new Error("expected a boss session")
+
+          const bossLease = SessionManager.acquire(bossID)
+          expect(bossLease).toBeDefined()
+          if (!bossLease) throw new Error("expected to acquire the boss lease")
+          try {
+            const host = await connectHost()
+            await BossRuntime.sync(false)
+
+            // Pre-bind the per-chat session (what getOrCreateForEndpoint would
+            // create) and hold its lease so the message is durably queued there.
+            const chatEndpoint = SessionEndpoint.fromChannel({
+              type: "feishu",
+              accountId: ACCOUNT_ID,
               chatId: "oc_group_x",
               chatType: "group",
               chatName: "普通群",
-              senderId: "ou_x",
-              senderName: "小王",
-              text: "未路由消息",
-              messageId: "om_msg_x",
-              timestamp: Date.now(),
+              createdAt: Date.now(),
             })
+            const chatSession = await Session.create({
+              scope: Scope.home(),
+              endpoint: chatEndpoint,
+              interaction: SessionInteraction.interactive("channel:feishu"),
+            })
+            const chatLease = SessionManager.acquire(chatSession.id)
+            expect(chatLease).toBeDefined()
+            if (!chatLease) throw new Error("expected to acquire the chat lease")
+            try {
+              await host.conversations.receive({
+                chatId: "oc_group_x",
+                chatType: "group",
+                chatName: "普通群",
+                senderId: "ou_x",
+                senderName: "小王",
+                text: "未路由消息",
+                messageId: "om_msg_x",
+                timestamp: Date.now(),
+              })
 
-            const chatItems = await SessionInbox.list(chatSession.id)
-            expect(chatItems).toHaveLength(1)
-            const item = chatItems[0]
-            expect(item?.sessionID).toBe(chatSession.id)
-            expect(item?.message?.metadata).toMatchObject({
-              channelReplyToMessageId: "om_msg_x",
-              channelChatId: "oc_group_x",
-            })
-            const textPart = item?.message?.parts.find((part) => part.type === "text")
-            expect(textPart?.type).toBe("text")
-            if (textPart?.type === "text") {
-              expect(textPart.text).not.toContain("[群:")
-              expect(textPart.text).toContain("未路由消息")
+              const chatItems = await SessionInbox.list(chatSession.id)
+              expect(chatItems).toHaveLength(1)
+              const item = chatItems[0]
+              expect(item?.sessionID).toBe(chatSession.id)
+              expect(item?.message?.metadata).toMatchObject({
+                channelReplyToMessageId: "om_msg_x",
+                channelChatId: "oc_group_x",
+              })
+              const textPart = item?.message?.parts.find((part) => part.type === "text")
+              expect(textPart?.type).toBe("text")
+              if (textPart?.type === "text") {
+                expect(textPart.text).not.toContain("[群:")
+                expect(textPart.text).toContain("未路由消息")
+              }
+
+              // The boss session is untouched: no channel delivery, still alive.
+              const bossItems = await SessionInbox.list(bossID)
+              expect(bossItems.some((i) => i.deliveryKey?.startsWith("channel:"))).toBe(false)
+              expect(await Session.get(bossID)).toBeDefined()
+            } finally {
+              await SessionManager.release(chatLease, { requestNextWork: false })
             }
-
-            // The boss session is untouched: no channel delivery, still alive.
-            const bossItems = await SessionInbox.list(bossID)
-            expect(bossItems.some((i) => i.deliveryKey?.startsWith("channel:"))).toBe(false)
-            expect(await Session.get(bossID)).toBeDefined()
           } finally {
-            await SessionManager.release(chatLease, { requestNextWork: false })
+            await SessionManager.release(bossLease, { requestNextWork: false })
           }
-        } finally {
-          await SessionManager.release(bossLease, { requestNextWork: false })
-        }
-      },
-    })
-  })
+        },
+      })
+    }))
 
-  test("accounts with a projectDir are fail-closed: no boss session is provisioned", async () => {
-    await using tmp = await tmpdir({ git: true })
-    stubConfig(bossConfig({ projectDir: "/tmp/some-project" }))
+  test("accounts with a projectDir are fail-closed: no boss session is provisioned", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      stubConfig(bossConfig({ projectDir: "/tmp/some-project" }))
 
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        await BossRuntime.ensure()
-        expect(BossRuntime.bossSessionForAccount(ACCOUNT_ID)).toBeUndefined()
-      },
-    })
-  })
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await BossRuntime.ensure()
+          expect(BossRuntime.bossSessionForAccount(ACCOUNT_ID)).toBeUndefined()
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

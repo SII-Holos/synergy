@@ -1,6 +1,7 @@
 import path from "node:path"
 import { existsSync } from "node:fs"
-import "../product-registration"
+import { registerProductRuntime } from "../product-registration"
+import { createLocalHost, createLocalStorage, type LocalRuntimeOptions } from "@ericsanchezok/synergy-runtime-local"
 import { RuntimeHandle as HarnessRuntimeHandle, type RuntimeServices } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeReload } from "../runtime/reload"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
@@ -47,14 +48,32 @@ export namespace ProductRuntimeHandle {
     }
   }
 
-  export async function openTask(options: Omit<Parameters<typeof HarnessRuntimeHandle.open>[0], "services">) {
-    const { transport: _, resident: __, ...taskServices } = services()
-    return HarnessRuntimeHandle.open({ ...options, mode: "oneshot", services: taskServices })
+  export async function openTask(options: LocalRuntimeOptions) {
+    const host = options.host ?? createLocalHost()
+    return HarnessRuntimeHandle.open({
+      ...options,
+      host,
+      mode: "oneshot",
+      storage: options.storage ?? createLocalStorage(host, options.storageReporter),
+      composition: {
+        register: registerProductRuntime,
+        services: () => {
+          const { transport: _, resident: __, ...taskServices } = services()
+          return taskServices
+        },
+      },
+    })
   }
 
-  export async function open(options: Omit<Parameters<typeof HarnessRuntimeHandle.open>[0], "services">) {
-    const handle = await HarnessRuntimeHandle.open({ ...options, services: services() })
+  export async function open(options: LocalRuntimeOptions) {
+    const host = options.host ?? createLocalHost()
+    const handle = await HarnessRuntimeHandle.open({
+      ...options,
+      host,
+      storage: options.storage ?? createLocalStorage(host, options.storageReporter),
+      composition: { register: registerProductRuntime, services },
+    })
     if (!handle.server) throw new Error("Product runtime transport did not start")
-    return { ...handle, server: handle.server }
+    return Object.assign(handle, { server: handle.server })
   }
 }

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import http from "node:http"
 import net from "node:net"
 import { randomBytes, timingSafeEqual } from "node:crypto"
@@ -22,13 +23,16 @@ export interface BrowserProxyDescriptor {
   password: string
 }
 
-let gateway: Gateway | null = null
-let starting: Promise<Gateway> | null = null
-let stopping: Promise<void> | null = null
-const grantsByOwner = new Map<string, OwnerGrant>()
-const grantsByUsername = new Map<string, OwnerGrant>()
-const sockets = new Set<net.Socket>()
-const upstreamSockets = new Set<net.Socket>()
+const runtimeState = RuntimeContext.state(() => ({
+  gateway: null as Gateway | null,
+  starting: null as Promise<Gateway> | null,
+  stopping: null as Promise<void> | null,
+  grantsByOwner: new Map<string, OwnerGrant>(),
+  grantsByUsername: new Map<string, OwnerGrant>(),
+  sockets: new Set<net.Socket>(),
+  upstreamSockets: new Set<net.Socket>(),
+}))
+
 const MAX_OWNER_CONNECTIONS = 64
 const PROXY_AUTHENTICATE = 'Basic realm="Synergy Browser"'
 export const BROWSER_CONNECT_ESTABLISHMENT_TIMEOUT_MS = 30_000
@@ -38,12 +42,14 @@ class BrowserProxyAuthenticationError extends Error {}
 
 export namespace BrowserNetworkGateway {
   export async function proxyFor(owner: BrowserOwner.Info): Promise<BrowserProxyDescriptor> {
+    const instanceState = runtimeState()
+
     while (true) {
       const current = await ensure()
-      if (stopping || gateway !== current) continue
+      if (instanceState.stopping || instanceState.gateway !== current) continue
 
       const ownerKey = BrowserOwner.key(owner)
-      let grant = grantsByOwner.get(ownerKey)
+      let grant = instanceState.grantsByOwner.get(ownerKey)
       if (!grant) {
         grant = {
           username: randomBytes(16).toString("hex"),
@@ -51,8 +57,8 @@ export namespace BrowserNetworkGateway {
           activeConnections: 0,
           sockets: new Set(),
         }
-        grantsByOwner.set(ownerKey, grant)
-        grantsByUsername.set(grant.username, grant)
+        instanceState.grantsByOwner.set(ownerKey, grant)
+        instanceState.grantsByUsername.set(grant.username, grant)
       }
       return {
         server: `http://${current.address.host}:${current.address.port}`,
@@ -63,52 +69,63 @@ export namespace BrowserNetworkGateway {
   }
 
   export function revoke(owner: BrowserOwner.Info): void {
+    const instanceState = runtimeState()
+
     const ownerKey = BrowserOwner.key(owner)
-    const grant = grantsByOwner.get(ownerKey)
-    grantsByOwner.delete(ownerKey)
+    const grant = instanceState.grantsByOwner.get(ownerKey)
+    instanceState.grantsByOwner.delete(ownerKey)
     if (!grant) return
-    grantsByUsername.delete(grant.username)
+    instanceState.grantsByUsername.delete(grant.username)
     for (const socket of grant.sockets) socket.destroy()
   }
 
   export function stop(): Promise<void> {
-    if (stopping) return stopping
-    stopping = stopGateway().finally(() => {
-      stopping = null
+    const instanceState = runtimeState()
+
+    if (instanceState.stopping) return instanceState.stopping
+    instanceState.stopping = stopGateway().finally(() => {
+      const instanceState = runtimeState()
+
+      instanceState.stopping = null
     })
-    return stopping
+    return instanceState.stopping
   }
 
   async function ensure(): Promise<Gateway> {
+    const instanceState = runtimeState()
+
     while (true) {
-      const pendingStop = stopping
+      const pendingStop = instanceState.stopping
       if (pendingStop) {
         await pendingStop
         continue
       }
-      if (gateway) return gateway
+      if (instanceState.gateway) return instanceState.gateway
 
-      const pendingStart = starting ?? startGateway()
-      if (!starting) starting = pendingStart
+      const pendingStart = instanceState.starting ?? startGateway()
+      if (!instanceState.starting) instanceState.starting = pendingStart
       let current: Gateway
       try {
         current = await pendingStart
       } finally {
-        if (starting === pendingStart) starting = null
+        if (instanceState.starting === pendingStart) instanceState.starting = null
       }
-      const pendingShutdown = stopping
-      if (!pendingShutdown && gateway === current) return current
+      const pendingShutdown = instanceState.stopping
+      if (!pendingShutdown && instanceState.gateway === current) return current
       if (pendingShutdown) await pendingShutdown
     }
   }
 }
 
 async function startGateway(): Promise<Gateway> {
-  const next = http.createServer(handleHttp)
-  next.on("connect", handleConnect)
+  const instanceState = runtimeState()
+
+  const owner = RuntimeContext.current()
+  const next = http.createServer(owner.bind(handleHttp))
+  next.on("connect", owner.bind(handleConnect))
   next.on("connection", (socket) => {
-    sockets.add(socket)
-    socket.once("close", () => sockets.delete(socket))
+    instanceState.sockets.add(socket)
+    socket.once("close", () => instanceState.sockets.delete(socket))
   })
   next.on("clientError", (_error, socket) => socket.destroy())
   await new Promise<void>((resolve, reject) => {
@@ -118,12 +135,14 @@ async function startGateway(): Promise<Gateway> {
   const bound = next.address()
   if (!bound || typeof bound === "string") throw new Error("Browser Network Gateway failed to bind.")
   const current = { server: next, address: { host: "127.0.0.1", port: bound.port } }
-  gateway = current
+  instanceState.gateway = current
   return current
 }
 
 async function stopGateway(): Promise<void> {
-  const pending = starting
+  const instanceState = runtimeState()
+
+  const pending = instanceState.starting
   if (pending) {
     try {
       await pending
@@ -132,14 +151,14 @@ async function stopGateway(): Promise<void> {
     }
   }
 
-  const active = gateway
-  gateway = null
-  grantsByOwner.clear()
-  grantsByUsername.clear()
-  for (const socket of sockets) socket.destroy()
-  sockets.clear()
-  for (const socket of upstreamSockets) socket.destroy()
-  upstreamSockets.clear()
+  const active = instanceState.gateway
+  instanceState.gateway = null
+  instanceState.grantsByOwner.clear()
+  instanceState.grantsByUsername.clear()
+  for (const socket of instanceState.sockets) socket.destroy()
+  instanceState.sockets.clear()
+  for (const socket of instanceState.upstreamSockets) socket.destroy()
+  instanceState.upstreamSockets.clear()
   if (!active) return
   await new Promise<void>((resolve) => active.server.close(() => resolve()))
 }
@@ -230,12 +249,17 @@ function acquire(grant: OwnerGrant): () => void {
 }
 
 function trackUpstreamRequest(grant: OwnerGrant, request: http.ClientRequest): void {
-  request.on("socket", (socket) => trackSocket(grant, socket))
+  request.on(
+    "socket",
+    RuntimeContext.current().bind((socket) => trackSocket(grant, socket)),
+  )
 }
 
 function trackSocket(grant: OwnerGrant, socket: net.Socket, connecting = false): void {
-  upstreamSockets.add(socket)
-  socket.once("close", () => upstreamSockets.delete(socket))
+  const instanceState = runtimeState()
+
+  instanceState.upstreamSockets.add(socket)
+  socket.once("close", () => instanceState.upstreamSockets.delete(socket))
   trackGrantSocket(grant, socket)
   configureBrowserTunnelTimeouts(socket, connecting)
 }
@@ -252,10 +276,12 @@ function trackGrantSocket(grant: OwnerGrant, socket: net.Socket): void {
 }
 
 function authenticate(header: string | undefined): OwnerGrant {
+  const instanceState = runtimeState()
+
   if (!header?.startsWith("Basic "))
     throw new BrowserProxyAuthenticationError("Browser proxy authentication is required.")
   const [username, password] = Buffer.from(header.slice(6), "base64").toString("utf8").split(":", 2)
-  const grant = grantsByUsername.get(username ?? "")
+  const grant = instanceState.grantsByUsername.get(username ?? "")
   if (!grant || !secureEqual(password ?? "", grant.password)) {
     throw new BrowserProxyAuthenticationError("Invalid Browser proxy credentials.")
   }

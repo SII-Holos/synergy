@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
 import z from "zod"
@@ -7,7 +8,7 @@ import { ConfigExtensions } from "./extensions"
 
 export namespace ConfigDomain {
   export const Id: z.ZodEnum<Record<string, string>> = ConfigExtensions.dynamicSchema(() =>
-    z.enum([...byId.keys()] as [string, ...string[]]),
+    z.enum([...state().byId.keys()] as [string, ...string[]]),
   )
   export type Id = z.infer<typeof Id>
 
@@ -27,7 +28,7 @@ export namespace ConfigDomain {
     importable: boolean
   }
 
-  export const definitions: Definition[] = [
+  const builtinDefinitions: Definition[] = [
     {
       id: "general",
       filename: "00-general.jsonc",
@@ -136,42 +137,58 @@ export namespace ConfigDomain {
     },
   ] satisfies Definition[]
 
-  export const byId = new Map<Id, Definition>(definitions.map((item) => [item.id, item]))
-  export const byFilename = new Map<string, Definition>(definitions.map((item) => [item.filename, item]))
-  export const byKey = new Map<Key, Definition>()
-
-  for (const domain of definitions) {
-    for (const key of domain.ownedKeys) {
-      if (byKey.has(key)) throw new Error(`Config key "${String(key)}" is assigned to multiple domains`)
-      byKey.set(key, domain)
+  const state = RuntimeContext.state(() => {
+    const definitions = structuredClone(builtinDefinitions)
+    const byId = new Map<Id, Definition>(definitions.map((item) => [item.id, item]))
+    const byFilename = new Map<string, Definition>(definitions.map((item) => [item.filename, item]))
+    const byKey = new Map<Key, Definition>()
+    for (const domain of definitions) {
+      for (const key of domain.ownedKeys) {
+        if (byKey.has(key)) throw new Error(`Config key "${key}" is assigned to multiple domains`)
+        byKey.set(key, domain)
+      }
     }
+    return { definitions, byId, byFilename, byKey }
+  })
+
+  export function definitions(): readonly Definition[] {
+    return state().definitions
+  }
+  export function byId(): ReadonlyMap<Id, Definition> {
+    return state().byId
+  }
+  export function byFilename(): ReadonlyMap<string, Definition> {
+    return state().byFilename
+  }
+  export function byKey(): ReadonlyMap<Key, Definition> {
+    return state().byKey
   }
 
   export function register(contribution: Definition): void {
     ConfigExtensions.assertRegistrationOpen(contribution.id)
-    let domain = byId.get(contribution.id)
+    let domain = state().byId.get(contribution.id)
     if (domain && domain.filename !== contribution.filename)
       throw new Error("Conflicting config domain filename: " + contribution.id)
     for (const key of contribution.ownedKeys) {
-      const owner = byKey.get(key)
+      const owner = state().byKey.get(key)
       if (owner && owner.id !== contribution.id) throw new Error("Conflicting config field owner: " + key)
     }
     if (!domain) {
       domain = { ...contribution, ownedKeys: [] }
-      definitions.push(domain)
-      definitions.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }))
-      byId.set(domain.id, domain)
-      byFilename.set(domain.filename, domain)
+      state().definitions.push(domain)
+      state().definitions.sort((a, b) => a.filename.localeCompare(b.filename, undefined, { numeric: true }))
+      state().byId.set(domain.id, domain)
+      state().byFilename.set(domain.filename, domain)
     }
     for (const key of contribution.ownedKeys) {
       if (!domain.ownedKeys.includes(key)) domain.ownedKeys.push(key)
-      byKey.set(key, domain)
+      state().byKey.set(key, domain)
     }
   }
 
   export function assertRegistryComplete() {
     const schemaKeys = Object.keys(Schema.Info.shape).sort()
-    const domainKeys = [...byKey.keys()].map(String).sort()
+    const domainKeys = [...state().byKey.keys()].map(String).sort()
     const missing = schemaKeys.filter((key) => !domainKeys.includes(key))
     const extra = domainKeys.filter((key) => !schemaKeys.includes(key))
     if (missing.length || extra.length) {
@@ -188,21 +205,21 @@ export namespace ConfigDomain {
   }
 
   export function filepath(id: Id, root = Global.Path.config) {
-    const domain = byId.get(id)
+    const domain = state().byId.get(id)
     if (!domain) throw new Error(`Unknown config domain: ${id}`)
     return path.join(directory(root), domain.filename)
   }
 
   export function domainForKey(key: string): Definition | undefined {
-    return byKey.get(key as Key)
+    return state().byKey.get(key as Key)
   }
 
   export function domainForFile(file: string): Definition | undefined {
-    return byFilename.get(path.basename(file))
+    return state().byFilename.get(path.basename(file))
   }
 
   export function extract(config: Partial<Schema.Info>, id: Id): Partial<Schema.Info> {
-    const domain = byId.get(id)
+    const domain = state().byId.get(id)
     if (!domain) throw new Error(`Unknown config domain: ${id}`)
     const result: Record<string, unknown> = {}
     for (const key of domain.ownedKeys) {
@@ -230,7 +247,7 @@ export namespace ConfigDomain {
     id: Id,
     options: { preserveUnregistered?: boolean } = {},
   ) {
-    const domain = byId.get(id)
+    const domain = state().byId.get(id)
     if (!domain) throw new Error(`Unknown config domain: ${id}`)
     const allowed = new Set(domain.ownedKeys.map(String))
     const invalid = Object.keys(config).filter(

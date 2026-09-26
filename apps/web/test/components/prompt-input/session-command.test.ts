@@ -9,7 +9,7 @@ describe("session command attachment parts", () => {
           type: "session",
           id: "prt_session_fixture",
           sessionId: "ses_fixture",
-          directory: "/repo",
+          scopeID: "/repo",
           title: "Session <ref> & 长文本 🚀",
           updatedAt: 123,
         },

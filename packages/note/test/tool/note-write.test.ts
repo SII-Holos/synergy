@@ -7,6 +7,9 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { NoteWriteTool } from "@ericsanchezok/synergy-note/tools/note-write"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function ctx(sessionID: string): Tool.Context {
   return {
@@ -31,135 +34,140 @@ function markdownText(content: unknown) {
 }
 
 describe("note_write", () => {
-  test("does not expose or persist a model-selected Blueprint default agent", async () => {
-    await using tmp = await tmpdir()
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+  test("does not expose or persist a model-selected Blueprint default agent", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({})
-        await Session.update(session.id, (draft) => {
-          draft.workflow = { kind: "lattice", runID: "ltr_test", mode: "auto" }
-        })
-        const tool = await NoteWriteTool.init()
-        const schema = z.toJSONSchema(tool.parameters) as { properties?: Record<string, unknown> }
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = { kind: "lattice", runID: "ltr_test", mode: "auto" }
+          })
+          const tool = await NoteWriteTool.init()
+          const schema = z.toJSONSchema(tool.parameters) as { properties?: Record<string, unknown> }
 
-        expect(schema.properties).not.toHaveProperty("defaultAgent")
+          expect(schema.properties).not.toHaveProperty("defaultAgent")
 
-        const legacyInput = {
-          mode: "create",
-          title: "Model-authored Blueprint",
-          content: "Execute the current Step.",
-          kind: "blueprint",
-          defaultAgent: "implementation-engineer",
-          scope: "current",
-        } as unknown as Parameters<typeof tool.execute>[0]
-        const result = await tool.execute(legacyInput, ctx(session.id))
-
-        const note = await NoteStore.get(scope.id, result.metadata.id as string)
-        expect(note.blueprint?.defaultAgent).toBeUndefined()
-
-        const existing = await NoteStore.create({
-          title: "User-configured Blueprint",
-          content: NoteMarkdown.fromMarkdown("Original"),
-          kind: "blueprint",
-          blueprint: { defaultAgent: "developer" },
-        })
-        await tool.execute(
-          {
-            mode: "replace",
-            id: existing.id,
-            content: "Updated",
+          const legacyInput = {
+            mode: "create",
+            title: "Model-authored Blueprint",
+            content: "Execute the current Step.",
+            kind: "blueprint",
+            defaultAgent: "implementation-engineer",
             scope: "current",
-          },
-          ctx(session.id),
-        )
+          } as unknown as Parameters<typeof tool.execute>[0]
+          const result = await tool.execute(legacyInput, ctx(session.id))
 
-        const updated = await NoteStore.get(scope.id, existing.id)
-        expect(updated.blueprint?.defaultAgent).toBe("developer")
-      },
-    })
-  })
+          const note = await NoteStore.get(scope.id, result.metadata.id as string)
+          expect(note.blueprint?.defaultAgent).toBeUndefined()
 
-  test("does not expose or persist a model-selected Blueprint audit agent", async () => {
-    await using tmp = await tmpdir()
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+          const existing = await NoteStore.create({
+            title: "User-configured Blueprint",
+            content: NoteMarkdown.fromMarkdown("Original"),
+            kind: "blueprint",
+            blueprint: { defaultAgent: "developer" },
+          })
+          await tool.execute(
+            {
+              mode: "replace",
+              id: existing.id,
+              content: "Updated",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({})
-        await Session.update(session.id, (draft) => {
-          draft.workflow = { kind: "lattice", runID: "ltr_test", mode: "auto" }
-        })
-        const tool = await NoteWriteTool.init()
-        const schema = z.toJSONSchema(tool.parameters) as { properties?: Record<string, unknown> }
+          const updated = await NoteStore.get(scope.id, existing.id)
+          expect(updated.blueprint?.defaultAgent).toBe("developer")
+        },
+      })
+    }))
 
-        expect(schema.properties).not.toHaveProperty("auditAgent")
+  test("does not expose or persist a model-selected Blueprint audit agent", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-        const legacyInput = {
-          mode: "create",
-          title: "Model-authored Blueprint",
-          content: "Execute the current Step.",
-          kind: "blueprint",
-          auditAgent: "reviewer",
-          scope: "current",
-        } as unknown as Parameters<typeof tool.execute>[0]
-        const result = await tool.execute(legacyInput, ctx(session.id))
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = { kind: "lattice", runID: "ltr_test", mode: "auto" }
+          })
+          const tool = await NoteWriteTool.init()
+          const schema = z.toJSONSchema(tool.parameters) as { properties?: Record<string, unknown> }
 
-        const note = await NoteStore.get(scope.id, result.metadata.id as string)
-        expect(note.blueprint?.auditAgent).toBeUndefined()
+          expect(schema.properties).not.toHaveProperty("auditAgent")
 
-        const existing = await NoteStore.create({
-          title: "Legacy-configured Blueprint",
-          content: NoteMarkdown.fromMarkdown("Original"),
-          kind: "blueprint",
-          blueprint: { auditAgent: "reviewer" },
-        })
-        await tool.execute(
-          {
-            mode: "replace",
-            id: existing.id,
-            content: "Updated",
+          const legacyInput = {
+            mode: "create",
+            title: "Model-authored Blueprint",
+            content: "Execute the current Step.",
+            kind: "blueprint",
+            auditAgent: "reviewer",
             scope: "current",
-          },
-          ctx(session.id),
-        )
+          } as unknown as Parameters<typeof tool.execute>[0]
+          const result = await tool.execute(legacyInput, ctx(session.id))
 
-        const updated = await NoteStore.get(scope.id, existing.id)
-        expect(updated.blueprint?.auditAgent).toBe("reviewer")
-      },
-    })
-  })
+          const note = await NoteStore.get(scope.id, result.metadata.id as string)
+          expect(note.blueprint?.auditAgent).toBeUndefined()
 
-  test("replace overwrites the latest note content as a stable full-document write", async () => {
-    await using tmp = await tmpdir()
-    const scope = (await Scope.fromDirectory(tmp.path)).scope
+          const existing = await NoteStore.create({
+            title: "Legacy-configured Blueprint",
+            content: NoteMarkdown.fromMarkdown("Original"),
+            kind: "blueprint",
+            blueprint: { auditAgent: "reviewer" },
+          })
+          await tool.execute(
+            {
+              mode: "replace",
+              id: existing.id,
+              content: "Updated",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
 
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const note = await NoteStore.create({
-          title: "Replace target",
-          content: NoteMarkdown.fromMarkdown("old"),
-        })
-        await NoteStore.update(scope.id, note.id, {
-          expectedVersion: note.version,
-          content: NoteMarkdown.fromMarkdown("concurrent update"),
-        })
+          const updated = await NoteStore.get(scope.id, existing.id)
+          expect(updated.blueprint?.auditAgent).toBe("reviewer")
+        },
+      })
+    }))
 
-        const result = await execute({
-          id: note.id,
-          mode: "replace",
-          content: "final content",
-        })
+  test("replace overwrites the latest note content as a stable full-document write", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const scope = (await Scope.fromDirectory(tmp.path)).scope
 
-        const current = await NoteStore.get(scope.id, note.id)
-        expect(result.metadata.conflict).toBeUndefined()
-        expect(result.metadata.action).toBe("replace")
-        expect(markdownText(current.content)).toBe("final content")
-      },
-    })
-  })
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const note = await NoteStore.create({
+            title: "Replace target",
+            content: NoteMarkdown.fromMarkdown("old"),
+          })
+          await NoteStore.update(scope.id, note.id, {
+            expectedVersion: note.version,
+            content: NoteMarkdown.fromMarkdown("concurrent update"),
+          })
+
+          const result = await execute({
+            id: note.id,
+            mode: "replace",
+            content: "final content",
+          })
+
+          const current = await NoteStore.get(scope.id, note.id)
+          expect(result.metadata.conflict).toBeUndefined()
+          expect(result.metadata.action).toBe("replace")
+          expect(markdownText(current.content)).toBe("final content")
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -1,9 +1,10 @@
 import fs from "node:fs/promises"
 import path from "node:path"
-import { AsyncLocalStorage } from "node:async_hooks"
+import { Context } from "../util/context"
 import { Storage } from "./storage"
 import { AtomicFile } from "./atomic-file"
 import { StorageBusyError } from "./errors"
+import { withStorageQueueOptions } from "./queue"
 
 interface Work {
   background: boolean
@@ -11,7 +12,7 @@ interface Work {
   sessionID?: string
 }
 
-const context = new AsyncLocalStorage<Work>()
+const context = Context.create<Work>("upgrade-work")
 const state = Storage.state(() => ({
   paused: false,
   stopping: false,
@@ -54,9 +55,12 @@ async function wait(signal?: AbortSignal) {
 // SQLite still has one writer; WAL pressure must yield to foreground work: https://www.sqlite.org/wal.html
 export namespace UpgradeWork {
   export function run<T>(work: Work, body: () => Promise<T>) {
-    return context.run(work, async () => {
+    return context.provide(work, async () => {
       try {
-        return await body()
+        return await withStorageQueueOptions(
+          { priority: work.background ? "background" : "foreground", signal: work.signal },
+          body,
+        )
       } catch (error) {
         work.signal?.throwIfAborted()
         throw error
@@ -78,7 +82,7 @@ export namespace UpgradeWork {
   }
 
   export async function compress<T>(body: () => Promise<T>) {
-    if (!context.getStore()) return body()
+    if (!context.tryUse()) return body()
     const current = state()
     while (current.compression >= 2) await wait(signal())
     signal()?.throwIfAborted()
@@ -91,7 +95,7 @@ export namespace UpgradeWork {
   }
 
   export function signal() {
-    return context.getStore()?.signal
+    return context.tryUse()?.signal
   }
 
   export function priority(sessionID: string) {
@@ -174,7 +178,7 @@ export namespace UpgradeWork {
   }
 
   export async function checkpoint(bytes = 0) {
-    const work = context.getStore()
+    const work = context.tryUse()
     work?.signal?.throwIfAborted()
     if (!work) return
     const current = state()

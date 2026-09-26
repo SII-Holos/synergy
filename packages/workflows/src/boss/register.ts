@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
 import type { Info as SessionInfo } from "@ericsanchezok/synergy-harness/session/types"
 import { WorkflowPromptRegistry } from "@ericsanchezok/synergy-harness/session/workflow-prompt-registry"
@@ -17,11 +18,15 @@ import { BossProjectTool } from "./tools/boss-project"
  * Boss domain registration (H1 continuation provider + H2 prompt
  * contribution + domain tools). Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerBossDomain(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ContinuationKernel.registerProvider("boss", () => [BossContinuationPolicy])
 

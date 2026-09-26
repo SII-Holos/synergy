@@ -45,3 +45,11 @@ describe("BrowserPolicy download safety", () => {
     expect(BrowserPolicy.isDangerousDownload({ mimeType: "application/pdf", filename: "guide.pdf" })).toBe(false)
   })
 })
+
+test("network browsing works without a workspace and file navigation is rejected", () => {
+  expect(BrowserPolicy.hardCheckNavigation("https://example.com", null).decision).toBe("allow")
+  expect(BrowserPolicy.hardCheckNavigation("file:///etc/passwd", null)).toMatchObject({
+    decision: "deny",
+    reason: "File navigation requires a local workspace",
+  })
+})

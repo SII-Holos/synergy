@@ -1,9 +1,13 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { ParseCodeTool } from "../../src/tools/parse-code"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { computeTag } from "@ericsanchezok/synergy-runtime-local/hashline/tag"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 
 const ctx = {
   sessionID: "test-hashline-parse",
@@ -17,232 +21,252 @@ const ctx = {
 
 describe("tool.parse_code", () => {
   describe("AST search with hashline output", () => {
-    test("groups AST search results by file with hashline headers", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(
-            path.join(dir, "test.ts"),
-            [
-              "export function greet(name: string): string {",
-              '  return "Hello " + name',
-              "}",
-              "",
-              "export function farewell(name: string): string {",
-              '  return "Goodbye " + name',
-              "}",
-              "",
-            ].join("\n"),
-          )
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const tool = await ParseCodeTool.init()
-          const result = await tool.execute(
-            { pattern: "export function $NAME($$$): string { $$$ }", lang: "typescript" },
-            ctx,
-          )
+    test("groups AST search results by file with hashline headers", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(
+              path.join(dir, "test.ts"),
+              [
+                "export function greet(name: string): string {",
+                '  return "Hello " + name',
+                "}",
+                "",
+                "export function farewell(name: string): string {",
+                '  return "Goodbye " + name',
+                "}",
+                "",
+              ].join("\n"),
+            )
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute(
+              { pattern: "export function $NAME($$$): string { $$$ }", lang: "typescript" },
+              ctx,
+            )
 
-          // Has hashline header
-          expect(result.output).toMatch(/\[test\.ts#[0-9A-F]{4}\]/)
-          // Full file snapshot in hashline format
-          expect(result.output).toContain("1:export function greet")
-          expect(result.output).toContain("5:export function farewell")
-          expect(result.metadata.matches).toBeGreaterThanOrEqual(2)
-        },
-      })
-    })
+            // Has hashline header
+            expect(result.output).toMatch(/\[test\.ts#[0-9A-F]{4}\]/)
+            // Full file snapshot in hashline format
+            expect(result.output).toContain("1:export function greet")
+            expect(result.output).toContain("5:export function farewell")
+            expect(result.metadata.matches).toBeGreaterThanOrEqual(2)
+          },
+        })
+      }))
 
-    test("each matched file is snapshotted as a full hashline block", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(
-            path.join(dir, "lib.ts"),
-            ["const x = console.log('hello')", "const y = console.log('world')", ""].join("\n"),
-          )
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const tool = await ParseCodeTool.init()
-          const result = await tool.execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
+    test("each matched file is snapshotted as a full hashline block", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(
+              path.join(dir, "lib.ts"),
+              ["const x = console.log('hello')", "const y = console.log('world')", ""].join("\n"),
+            )
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
 
-          const fileContent = "const x = console.log('hello')\nconst y = console.log('world')\n"
-          expect(result.output).toContain(`[lib.ts#${computeTag(fileContent)}]`)
-          // Lines following header should be the file content without inventing a trailing blank row.
-          expect(result.output).toContain("1:const x")
-          expect(result.output).toContain("2:const y")
-          expect(result.output).not.toContain("3:")
-        },
-      })
-    })
+            const fileContent = "const x = console.log('hello')\nconst y = console.log('world')\n"
+            expect(result.output).toContain(`[lib.ts#${computeTag(fileContent)}]`)
+            // Lines following header should be the file content without inventing a trailing blank row.
+            expect(result.output).toContain("1:const x")
+            expect(result.output).toContain("2:const y")
+            expect(result.output).not.toContain("3:")
+          },
+        })
+      }))
 
-    test("tag is content-derived, not a counter", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(path.join(dir, "simple.ts"), "const x = 1\n")
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const tool = await ParseCodeTool.init()
-          const result = await tool.execute({ pattern: "const $X = $Y", lang: "typescript" }, ctx)
+    test("tag is content-derived, not a counter", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "simple.ts"), "const x = 1\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute({ pattern: "const $X = $Y", lang: "typescript" }, ctx)
 
-          // Tag should be derived from the file content
-          const expectedTag = computeTag("const x = 1\n")
-          expect(result.output).toContain(`[simple.ts#${expectedTag}]`)
-        },
-      })
-    })
+            // Tag should be derived from the file content
+            const expectedTag = computeTag("const x = 1\n")
+            expect(result.output).toContain(`[simple.ts#${expectedTag}]`)
+          },
+        })
+      }))
   })
 
   describe("no matches handling", () => {
-    test("returns guidance when no structural matches are found", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(path.join(dir, "test.ts"), "const x = 1\n")
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const tool = await ParseCodeTool.init()
-          const result = await tool.execute({ pattern: "someNonexistentPattern($$$)", lang: "typescript" }, ctx)
+    test("returns guidance when no structural matches are found", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "test.ts"), "const x = 1\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute({ pattern: "someNonexistentPattern($$$)", lang: "typescript" }, ctx)
 
-          expect(result.metadata.matches).toBe(0)
-          expect(result.output).toContain("No structural matches found")
-          expect(result.output).toContain("If you are searching for a literal or partial fragment, use scan_files")
-        },
-      })
-    })
+            expect(result.metadata.matches).toBe(0)
+            expect(result.output).toContain("No structural matches found")
+            expect(result.output).toContain("If you are searching for a literal or partial fragment, use scan_files")
+          },
+        })
+      }))
 
-    test("guides the agent when the AST pattern is incomplete", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(path.join(dir, "dag.ts"), "export namespace Dag {\n  export const x = 1\n}\n")
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const tool = await ParseCodeTool.init()
-          const result = await tool.execute({ pattern: "export namespace Dag {", lang: "typescript" }, ctx)
+    test("guides the agent when the AST pattern is incomplete", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "dag.ts"), "export namespace Dag {\n  export const x = 1\n}\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute({ pattern: "export namespace Dag {", lang: "typescript" }, ctx)
 
-          expect(result.metadata.matches).toBe(0)
-          expect(result.output).toContain("The AST pattern is not parseable")
-          expect(result.output).toContain("export namespace $NAME { $$$ }")
-          expect(result.output).toContain("scan_files")
-        },
-      })
-    })
+            expect(result.metadata.matches).toBe(0)
+            expect(result.output).toContain("The AST pattern is not parseable")
+            expect(result.output).toContain("export namespace $NAME { $$$ }")
+            expect(result.output).toContain("scan_files")
+          },
+        })
+      }))
   })
 
   describe("multiple files", () => {
-    test("returns separate hashline blocks for different files", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(path.join(dir, "a.ts"), "export function a() { return 1 }\n")
-          await Bun.write(path.join(dir, "b.ts"), "export function b() { return 2 }\n")
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const tool = await ParseCodeTool.init()
-          const result = await tool.execute({ pattern: "export function $NAME($$$) { $$$ }", lang: "typescript" }, ctx)
+    test("returns separate hashline blocks for different files", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "a.ts"), "export function a() { return 1 }\n")
+            await Bun.write(path.join(dir, "b.ts"), "export function b() { return 2 }\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute(
+              { pattern: "export function $NAME($$$) { $$$ }", lang: "typescript" },
+              ctx,
+            )
 
-          expect(result.output).toMatch(/AST matches in \[a\.ts#[0-9A-F]{4}\]: 1:/)
-          expect(result.output).toMatch(/AST matches in \[a\.ts#[0-9A-F]{4}\]: 1:/)
-          expect(result.output).toContain("1:export function a")
-          expect(result.output).toMatch(/AST matches in \[b\.ts#[0-9A-F]{4}\]: 1:/)
-          expect(result.output).toMatch(/AST matches in \[b\.ts#[0-9A-F]{4}\]: 1:/)
-          expect(result.output).toContain("1:export function b")
-        },
-      })
-    })
+            expect(result.output).toMatch(/AST matches in \[a\.ts#[0-9A-F]{4}\]: 1:/)
+            expect(result.output).toMatch(/AST matches in \[a\.ts#[0-9A-F]{4}\]: 1:/)
+            expect(result.output).toContain("1:export function a")
+            expect(result.output).toMatch(/AST matches in \[b\.ts#[0-9A-F]{4}\]: 1:/)
+            expect(result.output).toMatch(/AST matches in \[b\.ts#[0-9A-F]{4}\]: 1:/)
+            expect(result.output).toContain("1:export function b")
+          },
+        })
+      }))
   })
 
   describe("metadata", () => {
-    test("keeps distinct AST ranges while reporting each source line once", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(path.join(dir, "code.ts"), "console.log('first'); console.log('second')\n")
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const result = await (
-            await ParseCodeTool.init()
-          ).execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
-          expect(result.metadata.matches).toBe(2)
-          expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
-          expect(result.metadata.matchLines["code.ts"]).toEqual([1])
-          expect(result.output.split("\n").filter((line) => line.startsWith("1:"))).toHaveLength(1)
-        },
-      })
-    })
+    test("keeps distinct AST ranges while reporting each source line once", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "code.ts"), "console.log('first'); console.log('second')\n")
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const result = await (
+              await ParseCodeTool.init()
+            ).execute({ pattern: "console.log($MSG)", lang: "typescript" }, ctx)
+            expect(result.metadata.matches).toBe(2)
+            expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
+            expect(result.metadata.matchLines["code.ts"]).toEqual([1])
+            expect(result.output.split("\n").filter((line) => line.startsWith("1:"))).toHaveLength(1)
+          },
+        })
+      }))
 
-    test("reports match count and snapshotted files", async () => {
-      await using tmp = await tmpdir({
-        git: true,
-        init: async (dir) => {
-          await Bun.write(
-            path.join(dir, "code.ts"),
-            ["export const a = 1", "export const b = 2", "const c = 3", ""].join("\n"),
-          )
-        },
-      })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const tool = await ParseCodeTool.init()
-          const result = await tool.execute({ pattern: "export const $NAME = $VALUE", lang: "typescript" }, ctx)
+    test("reports match count and snapshotted files", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(
+              path.join(dir, "code.ts"),
+              ["export const a = 1", "export const b = 2", "const c = 3", ""].join("\n"),
+            )
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ParseCodeTool.init()
+            const result = await tool.execute({ pattern: "export const $NAME = $VALUE", lang: "typescript" }, ctx)
 
-          expect(result.metadata.matches).toBe(2)
-          expect(result.metadata.files).toContain("code.ts")
-          expect(result.metadata.matchLines["code.ts"]).toEqual([1, 2])
-          expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
-        },
-      })
-    })
+            expect(result.metadata.matches).toBe(2)
+            expect(result.metadata.files).toContain("code.ts")
+            expect(result.metadata.matchLines["code.ts"]).toEqual([1, 2])
+            expect(result.metadata.matchRanges["code.ts"]).toHaveLength(2)
+          },
+        })
+      }))
   })
 })
 
-test("AST matches include their complete multiline region and bounded surrounding context", async () => {
-  await using tmp = await tmpdir({
-    git: true,
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "code.ts"),
-        "// before\nfunction target() {\n  return 42\n}\n// after\n// hidden\n",
-      )
-    },
-  })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const tool = await ParseCodeTool.init()
-      const result = await tool.execute({ pattern: "function target() { $$$ }", lang: "typescript", context: 1 }, ctx)
-      expect(result.output).toContain("1:// before")
-      expect(result.output).toContain("3:  return 42")
-      expect(result.output).toContain("5:// after")
-      expect(result.output).not.toContain("6:// hidden")
-      const hugeContext = await tool.execute(
-        { pattern: "function target() { $$$ }", lang: "typescript", context: 1_000_000_000 },
-        ctx,
-      )
-      expect(hugeContext.output).toContain("6:// hidden")
-    },
-  })
-})
+test("AST matches include their complete multiline region and bounded surrounding context", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "code.ts"),
+          "// before\nfunction target() {\n  return 42\n}\n// after\n// hidden\n",
+        )
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await ParseCodeTool.init()
+        const result = await tool.execute({ pattern: "function target() { $$$ }", lang: "typescript", context: 1 }, ctx)
+        expect(result.output).toContain("1:// before")
+        expect(result.output).toContain("3:  return 42")
+        expect(result.output).toContain("5:// after")
+        expect(result.output).not.toContain("6:// hidden")
+        const file = path.join(tmp.path, "code.ts")
+        const content = await Bun.file(file).text()
+        expect(() => FileTime.assert(ctx.sessionID, file, content)).not.toThrow()
+        expect(() => FileTime.assert(ctx.sessionID, file, content + "// changed\n")).toThrow(
+          "modified since it was last read",
+        )
+        const hugeContext = await tool.execute(
+          { pattern: "function target() { $$$ }", lang: "typescript", context: 1_000_000_000 },
+          ctx,
+        )
+        expect(hugeContext.output).toContain("6:// hidden")
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

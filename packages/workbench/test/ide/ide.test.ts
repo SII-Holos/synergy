@@ -1,82 +1,45 @@
-import { describe, expect, test, afterEach } from "bun:test"
-import { Ide } from "@ericsanchezok/synergy-workbench/project/ide"
+import { expect, test } from "bun:test"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
+import { Ide } from "../../src/project/ide"
 
-describe("ide", () => {
-  const original = structuredClone(process.env)
-
-  afterEach(() => {
-    Object.keys(process.env).forEach((key) => {
-      delete process.env[key]
+test.each(["Visual Studio Code", "Visual Studio Code - Insiders", "Cursor", "VSCodium", "Windsurf"])(
+  "detects %s from its terminal environment",
+  async (name) => {
+    await using fixture = await runtimeHome()
+    const owner = RuntimeContext.create({
+      ...fixture.host,
+      env: {
+        ...fixture.host.env,
+        TERM_PROGRAM: "vscode",
+        GIT_ASKPASS: `/Applications/${name}.app/Contents/Resources/app/extensions/git/dist/askpass.sh`,
+      },
     })
-    Object.assign(process.env, original)
+    try {
+      expect(owner.run(() => Ide.ide())).toBe(name)
+    } finally {
+      owner.dispose()
+    }
+  },
+)
+
+test.each([
+  ["iTerm2", "/Applications/Visual Studio Code - Insiders.app/askpass.sh", "unknown", false],
+  ["vscode", "/path/to/unknown/askpass.sh", "unknown", false],
+  [undefined, undefined, "vscode-insiders", true],
+  [undefined, undefined, "vscode", true],
+] as const)("resolves terminal %s and caller %s independently", async (terminal, askpass, caller, installed) => {
+  await using fixture = await runtimeHome()
+  const owner = RuntimeContext.create({
+    ...fixture.host,
+    env: { ...fixture.host.env, TERM_PROGRAM: terminal, GIT_ASKPASS: askpass, SYNERGY_CALLER: caller },
   })
-
-  test("should detect Visual Studio Code", () => {
-    process.env["TERM_PROGRAM"] = "vscode"
-    process.env["GIT_ASKPASS"] = "/path/to/Visual Studio Code.app/Contents/Resources/app/extensions/git/dist/askpass.sh"
-
-    expect(Ide.ide()).toBe("Visual Studio Code")
-  })
-
-  test("should detect Visual Studio Code Insiders", () => {
-    process.env["TERM_PROGRAM"] = "vscode"
-    process.env["GIT_ASKPASS"] =
-      "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/extensions/git/dist/askpass.sh"
-
-    expect(Ide.ide()).toBe("Visual Studio Code - Insiders")
-  })
-
-  test("should detect Cursor", () => {
-    process.env["TERM_PROGRAM"] = "vscode"
-    process.env["GIT_ASKPASS"] = "/path/to/Cursor.app/Contents/Resources/app/extensions/git/dist/askpass.sh"
-
-    expect(Ide.ide()).toBe("Cursor")
-  })
-
-  test("should detect VSCodium", () => {
-    process.env["TERM_PROGRAM"] = "vscode"
-    process.env["GIT_ASKPASS"] = "/path/to/VSCodium.app/Contents/Resources/app/extensions/git/dist/askpass.sh"
-
-    expect(Ide.ide()).toBe("VSCodium")
-  })
-
-  test("should detect Windsurf", () => {
-    process.env["TERM_PROGRAM"] = "vscode"
-    process.env["GIT_ASKPASS"] = "/path/to/Windsurf.app/Contents/Resources/app/extensions/git/dist/askpass.sh"
-
-    expect(Ide.ide()).toBe("Windsurf")
-  })
-
-  test("should return unknown when TERM_PROGRAM is not vscode", () => {
-    process.env["TERM_PROGRAM"] = "iTerm2"
-    process.env["GIT_ASKPASS"] =
-      "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/extensions/git/dist/askpass.sh"
-
-    expect(Ide.ide()).toBe("unknown")
-  })
-
-  test("should return unknown when GIT_ASKPASS does not contain IDE name", () => {
-    process.env["TERM_PROGRAM"] = "vscode"
-    process.env["GIT_ASKPASS"] = "/path/to/unknown/askpass.sh"
-
-    expect(Ide.ide()).toBe("unknown")
-  })
-
-  test("should recognize vscode-insiders SYNERGY_CALLER", () => {
-    process.env["SYNERGY_CALLER"] = "vscode-insiders"
-
-    expect(Ide.alreadyInstalled()).toBe(true)
-  })
-
-  test("should recognize vscode SYNERGY_CALLER", () => {
-    process.env["SYNERGY_CALLER"] = "vscode"
-
-    expect(Ide.alreadyInstalled()).toBe(true)
-  })
-
-  test("should return false for unknown SYNERGY_CALLER", () => {
-    process.env["SYNERGY_CALLER"] = "unknown"
-
-    expect(Ide.alreadyInstalled()).toBe(false)
-  })
+  try {
+    owner.run(() => {
+      expect(Ide.ide()).toBe("unknown")
+      expect(Ide.alreadyInstalled()).toBe(installed)
+    })
+  } finally {
+    owner.dispose()
+  }
 })

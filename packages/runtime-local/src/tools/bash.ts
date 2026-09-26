@@ -51,26 +51,30 @@ const parameters = z
   })
   .strict()
 
-export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
-  get description() {
-    return DESCRIPTION.replaceAll("${directory}", ScopeContext.current.directory)
-      .replaceAll("${maxLines}", String(Truncate.MAX_LINES))
-      .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES))
-  },
-  parameters,
-  async execute(params, ctx) {
-    const target = await SynergyLinkExecution.resolveExecutionTarget({
-      targetID: params.targetID,
-      targetIDSupplied: Object.hasOwn(params, "targetID"),
-      linkID: params.linkID,
-      linkIDSupplied: Object.hasOwn(params, "linkID"),
-      tool: "bash",
-      agent: ctx.agent,
-    })
-    if (target.kind === "remote") {
-      return RemoteBashBackend.execute(params, target)
-    }
+export const BashTool = Tool.define<typeof parameters, BashMetadata>(
+  "bash",
+  {
+    get description() {
+      return DESCRIPTION.replaceAll("${directory}", ScopeContext.current.directory)
+        .replaceAll("${maxLines}", String(Truncate.MAX_LINES))
+        .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES))
+    },
+    parameters,
+    async execute(params, ctx) {
+      const target = await SynergyLinkExecution.resolveExecutionTarget({
+        targetID: params.targetID,
+        targetIDSupplied: Object.hasOwn(params, "targetID"),
+        linkID: params.linkID,
+        linkIDSupplied: Object.hasOwn(params, "linkID"),
+        tool: "bash",
+        agent: ctx.agent,
+      })
+      if (target.kind === "remote") {
+        return RemoteBashBackend.execute(params, target)
+      }
 
-    return LocalBashBackend.execute(params, ctx)
+      return LocalBashBackend.execute(params, ctx)
+    },
   },
-})
+  { requiresWorkspace: true },
+)

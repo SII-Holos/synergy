@@ -399,4 +399,3 @@ const tracking = {
 export function registerLibraryMigrations() {
   MigrationRegistry.register("library", migrations, tracking)
 }
-registerLibraryMigrations()

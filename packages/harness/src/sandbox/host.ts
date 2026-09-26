@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { PrepareWrapperOpts, SandboxExecutionWrapper } from "./types"
 
 export namespace SandboxHost {
@@ -6,16 +7,25 @@ export namespace SandboxHost {
     cleanupWrapper(wrapper: SandboxExecutionWrapper): void
   }
 
-  let current: Host | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    current: undefined as Host | undefined,
+  }))
 
-  export function register(host: Host | undefined): void {
-    current = host
+  export function register(host: Host): void {
+    const instanceState = runtimeState()
+
+    if (instanceState.current === host) return
+    RuntimeContext.assertCompositionOpen("Sandbox host")
+    if (instanceState.current) throw new Error("Sandbox host is already registered")
+    instanceState.current = host
   }
 
   export function prepareWrapper(options: PrepareWrapperOpts): SandboxExecutionWrapper {
-    if (!current)
+    const instanceState = runtimeState()
+
+    if (!instanceState.current)
       throw new Error("Sandbox host is not registered; compose a local runtime before executing sandboxed tools")
-    return current.prepareWrapper(options)
+    return instanceState.current.prepareWrapper(options)
   }
 
   /**
@@ -27,7 +37,9 @@ export namespace SandboxHost {
    * host contract so whoever prepared the wrapper can release it.
    */
   export function cleanupWrapper(wrapper: SandboxExecutionWrapper | undefined): void {
-    if (!wrapper || !current) return
-    current.cleanupWrapper(wrapper)
+    const instanceState = runtimeState()
+
+    if (!wrapper || !instanceState.current) return
+    instanceState.current.cleanupWrapper(wrapper)
   }
 }

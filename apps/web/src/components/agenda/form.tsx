@@ -252,25 +252,7 @@ export function AgendaForm(props: {
 
   const canSubmit = createMemo(() => title().trim().length > 0 && !saving())
 
-  const scopes = createMemo(() => {
-    const home = globalSync.data.paths.home
-    const seen = new Set<string>()
-    const items = (globalSync.data.scope ?? []).filter((s) => {
-      if (seen.has(s.id)) return false
-      seen.add(s.id)
-      if (home && s.worktree === home) return false
-      return true
-    })
-    if (home)
-      items.unshift({
-        id: "home",
-        type: "home",
-        worktree: home,
-        directory: home,
-        name: _(A.formScopeHome),
-      } as (typeof items)[0])
-    return items
-  })
+  const scopes = createMemo(() => [{ id: "home", name: _(A.formScopeHome), local: null }, ...globalSync.data.scope])
 
   const currentScopeID = createMemo(() => {
     const dir = props.directory
@@ -316,7 +298,7 @@ export function AgendaForm(props: {
           triggers: [...preserved, ...triggers],
           prompt: promptValue || undefined,
         }
-        await sdk.client.agenda.update({ id: props.item!.id, directory: props.directory, agendaPatchInput: patch })
+        await sdk.client.agenda.update({ id: props.item!.id, scopeID: props.directory, agendaPatchInput: patch })
       } else {
         const input: AgendaCreateInput = {
           title: t,
@@ -326,7 +308,7 @@ export function AgendaForm(props: {
           prompt: promptValue,
           createdBy: "user",
         }
-        await sdk.client.agenda.create({ directory: props.directory, agendaCreateInput: input })
+        await sdk.client.agenda.create({ scopeID: props.directory, agendaCreateInput: input })
       }
       props.onBack()
     } catch (err: any) {
@@ -945,17 +927,17 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
 // ---------------------------------------------------------------------------
 
 function scopePickerLabel(
-  s: { id: string; name?: string; worktree: string },
+  s: { id: string; name?: string; local?: { worktree: string } | null },
   currentScopeID: string,
   _: (d: { id: string; message: string }, values?: Record<string, unknown>) => string,
 ): string {
-  const name = s.name || getFilename(s.worktree) || s.id
+  const name = s.name || getFilename(s.local?.worktree ?? "") || s.id
   if (s.id === currentScopeID) return _(A.formScopeCurrent, { name })
   return name
 }
 
 function ScopePicker(props: {
-  scopes: { id: string; name?: string; worktree: string }[]
+  scopes: { id: string; name?: string; local?: { worktree: string } | null }[]
   currentScopeID: string
   value: string
   onChange: (id: string) => void

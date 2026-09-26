@@ -7,7 +7,8 @@ export interface Migration {
   version?: string
   domain?: string
   scope?: "global" | "scope" | "session" | "derived"
-  startupSafe?(): Promise<boolean>
+  onAccess?: true
+  isApplied?(): Promise<boolean>
   execution?: "startup" | "session" | "after-convergence" | "maintenance"
   upSession?(
     owner: { scopeID: string; sessionID: string },
@@ -22,6 +23,7 @@ export interface RunOptions {
   output?: "silent" | "summary" | "interactive"
   reporter?: MigrationReporter
   maintenance?: boolean
+  signal?: AbortSignal
 }
 
 export interface RunResult {

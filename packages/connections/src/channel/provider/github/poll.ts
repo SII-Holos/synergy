@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { SessionRetry } from "@ericsanchezok/synergy-harness/session/retry"
 import { GitHubChannelAuth, GitHubApiError, type RequestDescriptor } from "./api"
@@ -58,7 +59,10 @@ function isAbort(error: unknown, signal: AbortSignal) {
 
 async function readPollState(accountHash: string, repository: string): Promise<GithubChannelPollState | undefined> {
   const raw = await Storage.read<unknown>(StoragePath.githubChannelPollState(accountHash, repository)).catch(
-    () => undefined,
+    (error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    },
   )
   if (raw === undefined) return undefined
   const parsed = GithubChannelPollState.safeParse(raw)
@@ -92,8 +96,8 @@ export async function pollRepository(input: {
 }): Promise<void> {
   const { owner, repo } = splitRepository(input.repository)
 
-  const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
-  const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
+  const appId = Number(RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_ID)
+  const privateKey = RuntimeContext.current().host.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
   const jwt = GitHubChannelAuth.generateJWT({ appId, privateKey })
   const installation = await GitHubChannelAuth.GitHubClient.send<unknown>(
     GitHubChannelAuth.GitHubClient.resolveInstallation({ owner, repo, jwt: jwt as string }),
@@ -113,7 +117,6 @@ export async function pollRepository(input: {
   const isFirstPoll = state === undefined
   if (!state) {
     state = initializeBaseline(input.repository)
-    await writePollState(input.accountHash, input.repository, state)
   }
 
   const overlapMs = Math.max(input.intervalMs, 5 * 60 * 1_000)
@@ -196,11 +199,10 @@ export async function pollRepository(input: {
     nextState.lastUpdatedAt = state.lastUpdatedAt
     log.warn("github poll truncated; watermark preserved for the next poll", { repository: input.repository })
   }
-  await writePollState(input.accountHash, input.repository, nextState)
-
   for (const event of events) {
     await deliverEvent(input, event)
   }
+  await writePollState(input.accountHash, input.repository, nextState)
 }
 
 function eventIssueNumber(event: GithubChannelEvent): number {

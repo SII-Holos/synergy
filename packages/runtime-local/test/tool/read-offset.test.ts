@@ -3,6 +3,9 @@ import path from "path"
 import { ReadTool } from "@ericsanchezok/synergy-runtime-local/tools/read"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const ctx = {
   sessionID: "test-read-offset",
@@ -28,100 +31,105 @@ function manyLines(count: number): string {
 }
 
 describe("tool.read offset=0 fix", () => {
-  test("offset=0 is not treated as falsy (was || 0 bug)", async () => {
-    await using tmp = await tmpdir({
-      init: async (dir) => {
-        await Bun.write(path.join(dir, "data.txt"), manyLines(150))
-      },
-    })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const read = await ReadTool.init()
+  test("offset=0 is not treated as falsy (was || 0 bug)", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "data.txt"), manyLines(150))
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const read = await ReadTool.init()
 
-        // Explicit offset=0
-        const r0 = await read.execute(
-          {
-            filePath: path.join(tmp.path, "data.txt"),
-            offset: 0,
-            limit: 5,
-          },
-          ctx,
-        )
+          // Explicit offset=0
+          const r0 = await read.execute(
+            {
+              filePath: path.join(tmp.path, "data.txt"),
+              offset: 0,
+              limit: 5,
+            },
+            ctx,
+          )
 
-        // Omitting offset entirely should produce the same first line
-        const rDefault = await read.execute(
-          {
-            filePath: path.join(tmp.path, "data.txt"),
-            limit: 5,
-          },
-          ctx,
-        )
+          // Omitting offset entirely should produce the same first line
+          const rDefault = await read.execute(
+            {
+              filePath: path.join(tmp.path, "data.txt"),
+              limit: 5,
+            },
+            ctx,
+          )
 
-        // Both should start with the first line
-        expect(r0.output).toContain("line0")
-        expect(r0.metadata.offset).toBe(0)
+          // Both should start with the first line
+          expect(r0.output).toContain("line0")
+          expect(r0.metadata.offset).toBe(0)
 
-        // First line in both should be identical
-        expect(r0.metadata.preview).toBe(rDefault.metadata.preview)
-      },
-    })
-  })
+          // First line in both should be identical
+          expect(r0.metadata.preview).toBe(rDefault.metadata.preview)
+        },
+      })
+    }))
 
-  test("offset=1 correctly skips the first line", async () => {
-    await using tmp = await tmpdir({
-      init: async (dir) => {
-        await Bun.write(path.join(dir, "offset.txt"), manyLines(150))
-      },
-    })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const read = await ReadTool.init()
+  test("offset=1 correctly skips the first line", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "offset.txt"), manyLines(150))
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const read = await ReadTool.init()
 
-        const result = await read.execute(
-          {
-            filePath: path.join(tmp.path, "offset.txt"),
-            offset: 1,
-          },
-          ctx,
-        )
+          const result = await read.execute(
+            {
+              filePath: path.join(tmp.path, "offset.txt"),
+              offset: 1,
+            },
+            ctx,
+          )
 
-        expect(result.metadata.offset).toBe(1)
-        // Should contain line1 but not line0
-        expect(result.output).toContain("line1")
-      },
-    })
-  })
+          expect(result.metadata.offset).toBe(1)
+          // Should contain line1 but not line0
+          expect(result.output).toContain("line1")
+        },
+      })
+    }))
 
-  test("offset=0 and offset=omitted produce same offset metadata", async () => {
-    await using tmp = await tmpdir({
-      init: async (dir) => {
-        await Bun.write(path.join(dir, "same.txt"), manyLines(200))
-      },
-    })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const read = await ReadTool.init()
+  test("offset=0 and offset=omitted produce same offset metadata", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "same.txt"), manyLines(200))
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const read = await ReadTool.init()
 
-        const rZero = await read.execute(
-          {
-            filePath: path.join(tmp.path, "same.txt"),
-            offset: 0,
-          },
-          ctx,
-        )
+          const rZero = await read.execute(
+            {
+              filePath: path.join(tmp.path, "same.txt"),
+              offset: 0,
+            },
+            ctx,
+          )
 
-        const rDefault = await read.execute(
-          {
-            filePath: path.join(tmp.path, "same.txt"),
-          },
-          ctx,
-        )
+          const rDefault = await read.execute(
+            {
+              filePath: path.join(tmp.path, "same.txt"),
+            },
+            ctx,
+          )
 
-        expect(rZero.metadata.offset).toBe(rDefault.metadata.offset)
-      },
-    })
-  })
+          expect(rZero.metadata.offset).toBe(rDefault.metadata.offset)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

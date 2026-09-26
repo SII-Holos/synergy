@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { RolloutTool } from "./rollout/tool"
 import Ajv2020 from "ajv/dist/2020"
 import { Global } from "../global"
@@ -72,26 +73,33 @@ export namespace ToolResolver {
     messageID: string
     callID: string | undefined
     toolName: string
-    cwd: string
+    cwd?: string
     scopeID: string
   }
 
-  const activeTraces = new Map<string, ActiveTraceEntry>()
+  const runtimeState = RuntimeContext.state(() => ({
+    activeTraces: new Map<string, ActiveTraceEntry>(),
+    sweepTimer: null as ReturnType<typeof setInterval> | null,
+  }))
   const SWEEP_INTERVAL_MS = 5_000
-  let sweepTimer: ReturnType<typeof setInterval> | null = null
 
   function ensureSweepTimer() {
-    if (sweepTimer) return
-    sweepTimer = setInterval(() => sweepActiveTraces(), SWEEP_INTERVAL_MS)
-    if (typeof sweepTimer === "object" && "unref" in sweepTimer) sweepTimer.unref()
+    const instanceState = runtimeState()
+
+    if (instanceState.sweepTimer) return
+    instanceState.sweepTimer = setInterval(() => sweepActiveTraces(), SWEEP_INTERVAL_MS)
+    if (typeof instanceState.sweepTimer === "object" && "unref" in instanceState.sweepTimer)
+      instanceState.sweepTimer.unref()
   }
 
   export function sweepActiveTraces(now = Date.now()) {
-    if (activeTraces.size === 0) {
+    const instanceState = runtimeState()
+
+    if (instanceState.activeTraces.size === 0) {
       stopSweepTimer()
       return
     }
-    for (const entry of activeTraces.values()) {
+    for (const entry of instanceState.activeTraces.values()) {
       const traceId = entry.traceId
       const idleMs = now - entry.lastActivity
 
@@ -170,10 +178,17 @@ export namespace ToolResolver {
   }
 
   function stopSweepTimer() {
-    if (!sweepTimer) return
-    clearInterval(sweepTimer)
-    sweepTimer = null
+    const instanceState = runtimeState()
+
+    if (!instanceState.sweepTimer) return
+    clearInterval(instanceState.sweepTimer)
+    instanceState.sweepTimer = null
   }
+  export function stop() {
+    stopSweepTimer()
+    runtimeState().activeTraces.clear()
+  }
+
   export interface Input {
     agent: Agent.Info
     model: Provider.Model
@@ -417,12 +432,16 @@ export namespace ToolResolver {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<ToolTrace> {
+    const instanceState = runtimeState()
+
     const startedAt = Date.now()
     let phase = "start"
     let lastActivity = startedAt
     const stalledMs = await stalledToolMs()
     const scopeID = ScopeContext.current.scope.id
-    const cwd = ObservabilityRedaction.cwdScope(ScopeContext.current.directory)
+    const cwd = ScopeContext.current.workspace
+      ? ObservabilityRedaction.cwdScope(ScopeContext.current.workspace.path)
+      : undefined
     const span = ObservabilitySpans.start({
       name: "tool.execution",
       module: "tool",
@@ -487,7 +506,7 @@ export namespace ToolResolver {
       cwd,
       scopeID,
     }
-    activeTraces.set(activeTraceKey, entry)
+    instanceState.activeTraces.set(activeTraceKey, entry)
     ensureSweepTimer()
 
     return {
@@ -551,7 +570,8 @@ export namespace ToolResolver {
         ObservabilitySpans.end(span, { status: "error", error, attributes: data })
       },
       dispose() {
-        activeTraces.delete(activeTraceKey)
+        instanceState.activeTraces.delete(activeTraceKey)
+        if (instanceState.activeTraces.size === 0) stopSweepTimer()
       },
     }
   }
@@ -804,7 +824,7 @@ export namespace ToolResolver {
           tool: toolName,
           args,
           capabilities: envelope.capabilities.map((c) => c.class),
-          workspace: ScopeContext.current.directory,
+          workspace: ScopeContext.current.workspace?.path ?? null,
           policyAction: decision.action,
           redactedEvidence,
           ...(context ?? {}),
@@ -1076,7 +1096,7 @@ export namespace ToolResolver {
         })
         const workspaceInfo = ScopeContext.current.workspace
         return ControlProfileCompiler.resolve(profileId, {
-          workspace: ScopeContext.current.directory,
+          workspace: ScopeContext.current.workspace?.path ?? null,
           workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
         })
       }
@@ -1566,7 +1586,7 @@ export namespace ToolResolver {
                 if (runtimeInput.session) {
                   SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
                 }
-                const workspace = ScopeContext.current.directory
+                const workspace = ScopeContext.current.workspace?.path ?? null
                 const workspaceInfo = ScopeContext.current.workspace
                 const profileId = await Session.resolveEffectiveControlProfile({
                   sessionID: runtimeInput.session?.id,
@@ -1577,18 +1597,14 @@ export namespace ToolResolver {
                 // bypass the guard as documented (issue #1006).
                 ;(ctx.extra as any).controlProfile = profileId
                 const synergyRoot = Global.Path.root
-                const trustedRoots = Scope.Root.executionRoots(
-                  ScopeContext.current.scope,
-                  workspaceInfo,
-                  SkillSourceProfile.allRootPaths(workspace),
-                )
+                const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                 const gate = await EnforcementGate.create(
                   await configureGateOptions({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     profileId,
-                    readRoots: [synergyRoot, ...trustedRoots],
+                    readRoots: [synergyRoot, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)],
                     trustedRoots,
                     synergyRoot,
                     sessionKey: runtimeInput.session?.id,
@@ -1607,7 +1623,12 @@ export namespace ToolResolver {
                 // were contained.
                 const containment =
                   item.id === "bash"
-                    ? prepareShellContainment({ gate, ctx, workspace, command: String(args.command ?? "") })
+                    ? prepareShellContainment({
+                        gate,
+                        ctx,
+                        workspace: ScopeContext.current.directory,
+                        command: String(args.command ?? ""),
+                      })
                     : undefined
                 let envelope: ReturnType<Awaited<ReturnType<typeof EnforcementGate.create>>["evaluate"]>
                 try {
@@ -1685,7 +1706,7 @@ export namespace ToolResolver {
                       const wrapper = SandboxHost.prepareWrapper({
                         command: "/bin/sh",
                         args: ["-c", input.command],
-                        workspace,
+                        workspace: ScopeContext.current.directory,
                         sandboxMode: sandbox.mode,
                         extraReadRoots: [
                           ...new Set([
@@ -1893,7 +1914,7 @@ export namespace ToolResolver {
                   if (runtimeInput.session) {
                     SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${key}`)
                   }
-                  const workspace = ScopeContext.current.directory
+                  const workspace = ScopeContext.current.workspace?.path ?? null
                   const workspaceInfo = ScopeContext.current.workspace
                   const profileId = await Session.resolveEffectiveControlProfile({
                     sessionID: runtimeInput.session?.id,
@@ -1901,11 +1922,7 @@ export namespace ToolResolver {
                   })
                   // Same effective-profile carry as the builtin path (issue #1006).
                   ;(ctx.extra as any).controlProfile = profileId
-                  const trustedRoots = Scope.Root.executionRoots(
-                    ScopeContext.current.scope,
-                    workspaceInfo,
-                    SkillSourceProfile.allRootPaths(workspace),
-                  )
+                  const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                   const gate = await EnforcementGate.create(
                     await configureGateOptions({
                       activeWorkspace: workspace,
@@ -1913,7 +1930,7 @@ export namespace ToolResolver {
                       originalCheckout: (workspaceInfo as any)?.originalCheckout,
                       registeredMcpTools: mcpToolNames,
                       profileId,
-                      readRoots: [Global.Path.root, ...trustedRoots],
+                      readRoots: [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)],
                       synergyRoot: Global.Path.root,
                       trustedRoots,
                       sessionKey: runtimeInput.session?.id,

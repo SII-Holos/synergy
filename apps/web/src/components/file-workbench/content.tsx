@@ -8,10 +8,11 @@ import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { useFile } from "@/context/file"
+import { FileWorkspaceProvider, useFile } from "@/context/file"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
+import { workspaceFileOwner, workspaceFilePath } from "@/context/file/workspace"
 import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
@@ -98,7 +99,7 @@ function MarkdownPreview(props: { path: string; content: string }) {
         if (path) void file.openWorkspaceFile(path)
       }}
     >
-      <Markdown text={props.content} cacheKey={`file-preview:${props.path}`} />
+      <Markdown text={props.content} cacheKey={`file-preview:${file.resourceKey}:${props.path}`} />
     </div>
   )
 }
@@ -135,7 +136,8 @@ function SvgPreview(props: { path: string; content: string }) {
 // dev serves the app from Vite and the server from :4096), fall back to the app
 // origin, which Vite proxies to the server. The version query forces a reload
 // when the file changes on disk (watcher events, edits, focus refresh).
-function HtmlPreview(props: { path: string; version?: { mtime: number; size: number } }) {
+function HtmlPreview(props: { path: string; version?: { mtime: number; size: number; contentVersion?: string } }) {
+  const file = useFile()
   const sdk = useSDK()
   const lingui = useLingui()
   const [loaded, setLoaded] = createSignal(false)
@@ -146,7 +148,7 @@ function HtmlPreview(props: { path: string; version?: { mtime: number; size: num
       props.path,
       {
         scopeID: sdk.scopeID,
-        directory: sdk.directory,
+        ...file.reference(),
       },
       props.version,
     ),
@@ -341,19 +343,50 @@ function FilePdfPreview(props: {
 }
 
 export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
+  const lingui = useLingui()
+  const file = useFile()
+  const owner = createMemo(() => workspaceFileOwner(props.tab) ?? (!props.tab.resourceId ? file.workspace : undefined))
+  const resource = createMemo(() => {
+    const workspace = owner()
+    return workspace && JSON.stringify([workspace.id, workspace.generation, props.tab.resourceId])
+  })
+  return (
+    <Show
+      when={resource()}
+      keyed
+      fallback={
+        <div class="file-workbench-empty">
+          {lingui._({ id: F.workspaceMissing.id, message: F.workspaceMissing.message })}
+        </div>
+      }
+    >
+      {(_resource) => (
+        <FileWorkspaceProvider workspace={owner()!}>
+          <WorkspaceFileContent {...props} />
+        </FileWorkspaceProvider>
+      )}
+    </Show>
+  )
+}
+
+function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const file = useFile()
   const platform = usePlatform()
   const sdk = useSDK()
   const prompt = usePrompt()
   const { fmt } = useLocale()
   const lingui = useLingui()
-  const path = createMemo(() => props.tab.resourceId ?? "")
+  const path = createMemo(() => workspaceFilePath(props.tab.resourceId))
   const isHtml = createMemo(() => /\.html?$/i.test(path()))
   const documentState = createMemo(() => file.get(path()))
   const content = createMemo(() => documentState()?.content)
   const textContent = createMemo(() => {
     const value = content()
-    return value?.kind === "text" ? value : undefined
+    if (value?.kind === "text") return value
+    const draft = file.draft.get(path())
+    return draft
+      ? { content: draft.baseContent, contentVersion: draft.expectedVersion, truncationReason: undefined }
+      : undefined
   })
   const imageContent = createMemo(() => {
     const value = content()
@@ -366,28 +399,32 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   const pdfContent = createMemo(() => file.pdf.get(path()))
   const capability = createMemo(() => {
     const value = content()
-    return classifyFilePreview(path(), value?.kind ?? "binary", value?.mimeType)
+    return classifyFilePreview(path(), file.draft.get(path()) ? "text" : (value?.kind ?? "binary"), value?.mimeType)
   })
   const mode = createMemo(() => {
+    if (file.draft.get(path())) return "source"
     const saved = file.view.mode(path())
     if (capability().dual && saved) return saved
     return capability().defaultMode
   })
   const selectedLines = createMemo(() => file.view.selectedLines(path()))
   const breadcrumb = createMemo(() => path().split("/").filter(Boolean))
-  const [editing, setEditing] = createSignal(false)
-  const [dirty, setDirty] = createSignal(false)
+  const [editing, setEditing] = createSignal(!!file.draft.get(path()))
+  const dirty = createMemo(() => file.draft.dirty(path()))
   const [saving, setSaving] = createSignal(false)
   let sourceApi: FileSourceViewApi | undefined
-  const canEdit = createMemo(() => mode() === "source" && !!textContent() && textContent()?.truncationReason !== "size")
+  const canEdit = createMemo(
+    () => mode() === "source" && !!textContent()?.contentVersion && textContent()?.truncationReason !== "size",
+  )
 
   async function runSave(overwrite = false) {
     if (!sourceApi || saving()) return
     setSaving(true)
     try {
       await file.save(path(), sourceApi.getContent(), { overwrite })
-      setDirty(false)
-      setEditing(false)
+      setEditing(!!file.draft.get(path()))
+      const saved = textContent()
+      if (!file.draft.get(path()) && saved) sourceApi?.applyContent(saved.content)
       showToast({
         type: "success",
         title: lingui._({ id: F.saved.id, message: F.saved.message }),
@@ -426,15 +463,15 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
 
   function startEdit() {
     if (editing()) return
-    setDirty(false)
+    file.draft.begin(path())
     setEditing(true)
   }
 
   function cancelEdit() {
     if (!editing()) return
     const value = textContent()
+    file.draft.discard(path())
     if (value) sourceApi?.applyContent(value.content)
-    setDirty(false)
     setEditing(false)
   }
 
@@ -465,8 +502,21 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
     <div class="file-workbench">
       <div class="file-workbench-toolbar">
         <nav class="file-breadcrumb" aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}>
-          <Show when={breadcrumb().length === 0}>
-            <span class="file-breadcrumb-root">/</span>
+          <Show when={file.workspace?.path}>
+            {(root) => (
+              <button
+                type="button"
+                class="file-breadcrumb-root"
+                title={root()}
+                aria-label={root()}
+                onClick={() => {
+                  file.explorer.setOpen(true)
+                  void file.explorer.reveal("__reveal__")
+                }}
+              >
+                {root().split(/[\\/]/).filter(Boolean).at(-1) ?? root()}
+              </button>
+            )}
           </Show>
           <For each={breadcrumb()}>
             {(part, index) => {
@@ -477,9 +527,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               const current = () => index() === breadcrumb().length - 1
               return (
                 <>
-                  <Show when={index() > 0}>
-                    <span class="file-breadcrumb-separator">/</span>
-                  </Show>
+                  <span class="file-breadcrumb-separator">/</span>
                   <button
                     type="button"
                     classList={{ "file-breadcrumb-current": current() }}
@@ -589,7 +637,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               class="file-open-in-browser"
               onClick={() =>
                 platform.openLink(
-                  buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, directory: sdk.directory }),
+                  buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() }),
                 )
               }
             >
@@ -600,7 +648,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
           <Show when={path()}>
             <a
               class="file-download"
-              href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, directory: sdk.directory })}?download=1`}
+              href={`${buildWorkspaceFileBrowserUrl(sdk.url, path(), { scopeID: sdk.scopeID, ...file.reference() })}?download=1`}
               download={breadcrumb().at(-1)}
               target="_blank"
               rel="noopener noreferrer"
@@ -621,6 +669,16 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
       </div>
       <div class="file-workbench-main">
         <main class="file-viewer">
+          <Show when={file.draft.backupUnavailable()}>
+            <div class="file-state-banner" role="alert">
+              {lingui._({ id: F.draftBackupUnavailable.id, message: F.draftBackupUnavailable.message })}
+            </div>
+          </Show>
+          <Show when={documentState()?.error && file.draft.get(path())}>
+            <div class="file-state-banner" role="status">
+              {documentState()?.error}
+            </div>
+          </Show>
           <Show when={documentState()?.deleted}>
             <div class="file-state-banner">
               <span>{lingui._({ id: F.fileDeleted.id, message: F.fileDeleted.message })}</span>
@@ -645,13 +703,13 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
                 <span>{lingui._({ id: F.chooseFromTree.id, message: F.chooseFromTree.message })}</span>
               </div>
             </Match>
-            <Match when={documentState()?.loading && !content()}>
+            <Match when={documentState()?.loading && !textContent() && !content()}>
               <div class="file-workbench-loading">
                 <Spinner class="size-5" />
                 <span>{lingui._({ id: F.loading.id, message: F.loading.message, values: { path: path() } })}</span>
               </div>
             </Match>
-            <Match when={documentState()?.error && !content()}>
+            <Match when={documentState()?.error && !textContent() && !content()}>
               {(error) => (
                 <div class="file-workbench-state">
                   <FileIcon node={{ path: path(), type: "file" }} class="size-10" />
@@ -669,7 +727,6 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
                   path={path()}
                   content={value().content}
                   editable={editing()}
-                  onDirtyChange={setDirty}
                   onRegister={(api) => {
                     sourceApi = api
                   }}

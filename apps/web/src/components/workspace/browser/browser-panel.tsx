@@ -1,8 +1,9 @@
+import { createBrowserSessionRecovery } from "./browser-session-recovery"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, createResource, createSignal, lazy, Show } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, lazy, Show, onCleanup } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
@@ -104,6 +105,7 @@ function BrowserPanelInner(props: {
   const browser = props.browser
   const sdk = useSDK()
   const platform = usePlatform()
+  const { _ } = useLingui()
   const ownerKey = props.initial.ownerKey
   browser.setSession("page", props.initial.page)
   browser.setSession("seq", props.initial.seq)
@@ -136,6 +138,62 @@ function BrowserPanelInner(props: {
     setHandledNavigationNonce(request.nonce)
     browser.navigate(request.url)
   })
+
+  const [recovering, setRecovering] = createSignal(false)
+  const [recoveryVersion, setRecoveryVersion] = createSignal(0)
+  const route = {
+    path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+    query_directory: sdk.directory,
+    scopeID: sdk.scopeID,
+    mode: "session" as const,
+    sessionID: props.sessionID,
+    presentation: "webrtc" as const,
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+  }
+  const recovery = createBrowserSessionRecovery({
+    ownerKey,
+    pageId: browser.pageId,
+    read: async (signal) => {
+      const response = await sdk.client.browser.session(route, { signal, throwOnError: true })
+      return response.data
+    },
+    resume: async (signal) => {
+      await sdk.client.browser.control(
+        {
+          ...route,
+          browserControlRequest: {
+            protocolVersion: BROWSER_PROTOCOL_VERSION,
+            commandId: createBrowserCommandId(),
+            command: { type: "resume" },
+          },
+        },
+        { signal, throwOnError: true },
+      )
+    },
+    reconnect: () => {
+      ws.reconnect()
+      setRecoveryVersion((value) => value + 1)
+    },
+  })
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+    recovery.dispose()
+  })
+  const retryRemote = async () => {
+    if (recovering()) return
+    setRecovering(true)
+    try {
+      await recovery.run()
+    } catch (error) {
+      if (!disposed) {
+        const normalized = normalizeBrowserError(error, _(B.remoteUnavailable))
+        browser.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
+      }
+    } finally {
+      if (!disposed) setRecovering(false)
+    }
+  }
 
   const retryNative = () => {
     ws.retryNative()
@@ -245,85 +303,83 @@ function BrowserPanelInner(props: {
   }
 
   return (
-    <Show
-      when={browser.session.connectionStatus !== "failed"}
-      fallback={
-        <div class="browser-workspace flex h-full flex-col items-center justify-center gap-3 p-4 text-text-weak">
-          <div class="browser-empty-mark">
-            <Icon name={getSemanticIcon("browser.main")} class="size-4" />
-          </div>
-          <span class="text-14-medium text-text-strong">
+    <BrowserStoreProvider store={browser}>
+      <div class="browser-workspace flex h-full flex-col">
+        <AddressBar
+          activeUrl={() => page()?.url ?? ""}
+          isLoading={() => page()?.isLoading ?? false}
+          hasPage={() => Boolean(page())}
+          onHistory={(direction) => sendPageCommand({ type: "history", direction })}
+          onReload={() => sendPageCommand({ type: "reload" })}
+          onStop={() => sendPageCommand({ type: "stop" })}
+          onNavigate={browser.navigate}
+          onRequestDiagnostics={(action) => void requestDiagnostics(action)}
+        />
+        <Show when={browser.session.connectionStatus === "failed"}>
+          <div role="status" class="flex items-center justify-between gap-2 px-3 py-2 text-text-weak">
             <Trans id={B.disconnected.id} message={B.disconnected.message} />
-          </span>
-          <Button size="small" variant="primary" onClick={() => ws.connect()}>
-            <Trans id={B.retry.id} message={B.retry.message} />
-          </Button>
-        </div>
-      }
-    >
-      <BrowserStoreProvider store={browser}>
-        <div class="browser-workspace flex h-full flex-col">
-          <AddressBar
-            activeUrl={() => page()?.url ?? ""}
-            isLoading={() => page()?.isLoading ?? false}
-            hasPage={() => Boolean(page())}
-            onHistory={(direction) => sendPageCommand({ type: "history", direction })}
-            onReload={() => sendPageCommand({ type: "reload" })}
-            onStop={() => sendPageCommand({ type: "stop" })}
-            onNavigate={browser.navigate}
-            onRequestDiagnostics={(action) => void requestDiagnostics(action)}
-          />
-          <div class="browser-content relative flex-1">
-            <Show
-              when={showDevPanel()}
-              fallback={
-                <Show
-                  when={page()}
-                  fallback={
-                    <div class="browser-empty-state">
-                      <div class="browser-empty-mark">
-                        <Icon name={getSemanticIcon("browser.main")} class="size-4" />
-                      </div>
-                      <div class="browser-empty-title">
-                        <Trans id={B.noPage.id} message={B.noPage.message} />
-                      </div>
-                      <div class="browser-empty-text">
-                        <Trans id={B.nextNavigation.id} message={B.nextNavigation.message} />
-                      </div>
-                      <div class="browser-status-pill">{browser.session.connectionStatus}</div>
-                    </div>
-                  }
-                >
-                  <BrowserSurface
-                    sessionID={props.sessionID}
-                    routeDirectory={props.routeDirectory}
-                    ownerKey={ownerKey}
-                    clientPresentation={props.clientPresentation}
-                    onRetryNative={retryNative}
-                  />
-                </Show>
-              }
+            <Button
+              size="small"
+              disabled={recovering()}
+              onClick={() => (props.clientPresentation === "native" ? retryNative() : void retryRemote())}
             >
-              <DevPanelContent panel={browser.devPanel()!} />
-            </Show>
-            <AgentAssistant />
-            <Show when={showAnnotation()}>
-              {(() => {
-                const target = browser.annotationTarget()!
-                return (
-                  <AnnotationInput
-                    x={target.displayX}
-                    y={target.displayY}
-                    onSubmit={handleAnnotationSubmit}
-                    onCancel={dismissAnnotation}
-                  />
-                )
-              })()}
-            </Show>
+              <Trans id={B.retry.id} message={B.retry.message} />
+            </Button>
           </div>
+        </Show>
+        <div class="browser-content relative flex-1" aria-busy={recovering()}>
+          <Show
+            when={showDevPanel()}
+            fallback={
+              <Show
+                when={page()}
+                fallback={
+                  <div class="browser-empty-state">
+                    <div class="browser-empty-mark">
+                      <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+                    </div>
+                    <div class="browser-empty-title">
+                      <Trans id={B.noPage.id} message={B.noPage.message} />
+                    </div>
+                    <div class="browser-empty-text">
+                      <Trans id={B.nextNavigation.id} message={B.nextNavigation.message} />
+                    </div>
+                    <div class="browser-status-pill">{browser.session.connectionStatus}</div>
+                  </div>
+                }
+              >
+                <BrowserSurface
+                  sessionID={props.sessionID}
+                  routeDirectory={props.routeDirectory}
+                  ownerKey={ownerKey}
+                  clientPresentation={props.clientPresentation}
+                  onRetryNative={retryNative}
+                  onRetryRemote={() => void retryRemote()}
+                  recovering={recovering()}
+                  recoveryVersion={recoveryVersion()}
+                />
+              </Show>
+            }
+          >
+            <DevPanelContent panel={browser.devPanel()!} />
+          </Show>
+          <AgentAssistant />
+          <Show when={showAnnotation()}>
+            {(() => {
+              const target = browser.annotationTarget()!
+              return (
+                <AnnotationInput
+                  x={target.displayX}
+                  y={target.displayY}
+                  onSubmit={handleAnnotationSubmit}
+                  onCancel={dismissAnnotation}
+                />
+              )
+            })()}
+          </Show>
         </div>
-      </BrowserStoreProvider>
-    </Show>
+      </div>
+    </BrowserStoreProvider>
   )
 }
 

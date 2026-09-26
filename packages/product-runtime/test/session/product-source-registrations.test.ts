@@ -21,69 +21,74 @@ import { PermissionPluginSource } from "@ericsanchezok/synergy-harness/permissio
 import { ProviderPluginAuth } from "@ericsanchezok/synergy-harness/provider/plugin-auth-source"
 import { ScopeLibraryStore } from "@ericsanchezok/synergy-harness/scope/library-store"
 import { WorkspaceFileSymbolSource } from "@ericsanchezok/synergy-runtime-local/workspace-file/symbol-source"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 /**
  * S9d port contract: every register function exported for the L4 product
  * manifest mounts its L1 port. The parent session wires these into
  * src/product-registration.ts after both S9 workstreams land.
  */
-describe("S9d source registrations", () => {
-  test("agent plugin source registers and resolves through the port", () => {
-    registerAgentPluginSource()
-    expect(AgentPluginSource.get()).toBeDefined()
-  })
+describe("full Runtime source composition", () => {
+  test("agent plugin source registers and resolves through the port", () =>
+    runtime.run(() => {
+      expect(AgentPluginSource.get()).toBeDefined()
+    }))
 
-  test("agent external source registers adapter loading and discovery", () => {
-    registerAgentExternalSource()
-    expect(AgentExternalSource.get()).toBeDefined()
-  })
+  test("agent external source registers adapter loading and discovery", () =>
+    runtime.run(() => {
+      expect(AgentExternalSource.get()).toBeDefined()
+    }))
 
-  test("note virtual-file source registers note markdown reads", () => {
-    registerNoteVirtualFileSource()
-    const source = ToolNoteSource.get()
-    expect(source).toBeDefined()
-    expect(source!.noteExtension).toBe(".md")
-  })
+  test("note virtual-file source registers note markdown reads", () =>
+    runtime.run(() => {
+      const source = ToolNoteSource.get()
+      expect(source).toBeDefined()
+      expect(source!.noteExtension).toBe(".md")
+    }))
 
-  test("permission plugin source registers the ask-hook trigger", () => {
-    registerPermissionPluginSource()
-    expect(PermissionPluginSource.get()).toBeDefined()
-  })
+  test("permission plugin source registers the ask-hook trigger", () =>
+    runtime.run(() => {
+      expect(PermissionPluginSource.get()).toBeDefined()
+    }))
 
-  test("provider plugin auth source registers hooks and profiles", () => {
-    registerProviderPluginAuth()
-    expect(ProviderPluginAuth.get()).toBeDefined()
-  })
+  test("provider plugin auth source registers hooks and profiles", () =>
+    runtime.run(() => {
+      expect(ProviderPluginAuth.get()).toBeDefined()
+    }))
 
-  test("scope library store registers experience scope accessors", () => {
-    registerScopeLibraryStore()
-    expect(ScopeLibraryStore.get()).toBeDefined()
-  })
+  test("scope library store registers experience scope accessors", () =>
+    runtime.run(() => {
+      expect(ScopeLibraryStore.get()).toBeDefined()
+    }))
 
-  test("tool plugin source registers tool entries and setting conditions", () => {
-    registerToolPluginSource()
-    expect(ToolPluginSource.get()).toBeDefined()
-  })
+  test("tool plugin source registers tool entries and setting conditions", () =>
+    runtime.run(() => {
+      expect(ToolPluginSource.get()).toBeDefined()
+    }))
 
-  test("lsp tool source registers diagnostics access", () => {
-    registerLspToolSource()
-    const source = ToolLspSource.get()
-    expect(source).toBeDefined()
-    expect(typeof source!.diagnostics).toBe("function")
-  })
+  test("lsp tool source registers diagnostics access", () =>
+    runtime.run(() => {
+      const source = ToolLspSource.get()
+      expect(source).toBeDefined()
+      expect(typeof source!.diagnostics).toBe("function")
+    }))
 
-  test("workspace-file symbol source registers client availability", () => {
-    registerWorkspaceFileSymbolSource()
-    expect(WorkspaceFileSymbolSource.get()).toBeDefined()
-  })
+  test("workspace-file symbol source registers client availability", () =>
+    runtime.run(() => {
+      expect(WorkspaceFileSymbolSource.get()).toBeDefined()
+    }))
 
-  test("lsp config catalog registers builtin server ids", () => {
-    registerLspConfigCatalog()
-    expect(ConfigLspCatalog.isKnownServer("typescript")).toBe(true)
-  })
+  test("lsp config catalog registers builtin server ids", () =>
+    runtime.run(() => {
+      expect(ConfigLspCatalog.isKnownServer("typescript")).toBe(true)
+    }))
 
-  test("tool link target source registers target resolution", () => {
-    registerToolLinkTargetSource()
-    expect(ToolLinkTargetSource.get()).toBeDefined()
-  })
+  test("tool link target source registers target resolution", () =>
+    runtime.run(() => {
+      expect(ToolLinkTargetSource.get()).toBeDefined()
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

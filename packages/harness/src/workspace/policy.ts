@@ -1,7 +1,8 @@
+import { ScopeContext } from "../scope/context"
 import path from "path"
 import { realpathSync, lstatSync, readlinkSync } from "fs"
 import { Filesystem } from "../util/filesystem"
-import type { Scope } from "../scope"
+import { Scope } from "../scope"
 import { isPathContained } from "../util/path-contain"
 
 export interface WorkspacePolicyData {
@@ -35,45 +36,27 @@ export class WorkspacePolicy {
   }
 
   static fromSession(session: {
-    workspace?: import("../session/types").Workspace
-    scope?: { directory?: string; id?: string } | Scope
+    workspace: import("../session/types").Workspace | null
+    scope: Scope
   }): WorkspacePolicy {
-    const ws = session.workspace
-    const scope = session.scope
-    if (ws) {
-      return new WorkspacePolicy({
-        activeRoot: ws.path,
-        workspaceType: ws.type,
-        scopeID: ws.scopeID,
-        originalCheckout: (ws as any).originalCheckout,
+    const workspace = session.workspace
+    if (!workspace)
+      throw new Scope.WorkspaceRequiredError({
+        message: "A local workspace is required for this operation.",
+        scopeID: session.scope.id,
       })
-    }
-
-    const scopeDirectory = scope?.directory ?? ""
-    const scopeID = scope?.id ?? ""
     return new WorkspacePolicy({
-      activeRoot: scopeDirectory,
-      workspaceType: "main",
-      scopeID,
+      activeRoot: workspace.path,
+      workspaceType: workspace.type,
+      scopeID: workspace.scopeID,
+      originalCheckout: typeof workspace.originalCheckout === "string" ? workspace.originalCheckout : undefined,
     })
   }
 
-  static fromDefault(
-    scope: { directory: string; id: string },
-    workspace?: import("../session/types").Workspace,
-  ): WorkspacePolicy {
-    if (workspace) {
-      return new WorkspacePolicy({
-        activeRoot: workspace.path,
-        workspaceType: workspace.type,
-        scopeID: workspace.scopeID,
-        originalCheckout: (workspace as any).originalCheckout,
-      })
-    }
-    return new WorkspacePolicy({
-      activeRoot: scope.directory,
-      workspaceType: "main",
-      scopeID: scope.id,
+  static fromDefault(scope: Scope, workspace?: import("../session/types").Workspace | null): WorkspacePolicy {
+    return WorkspacePolicy.fromSession({
+      scope,
+      workspace: workspace === undefined ? ScopeContext.defaultWorkspace(scope) : workspace,
     })
   }
 

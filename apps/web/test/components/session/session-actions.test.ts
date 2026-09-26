@@ -21,7 +21,7 @@ describe("session action visibility", () => {
   })
 
   test("keeps all actions available for open project sessions", () => {
-    expect(sessionActionVisibility({ sessionID: "ses_project", scopeKey: "/repo" })).toEqual({
+    expect(sessionActionVisibility({ sessionID: "ses_project", scopeKey: "project" })).toEqual({
       menu: true,
       rename: true,
       worktree: true,
@@ -50,23 +50,23 @@ describe("session transfer scope request", () => {
     expect(sessionScopeRequest("home")).toEqual({ scopeID: "home" })
   })
 
-  test("addresses non-Home scopes through their directory key", () => {
-    expect(sessionScopeRequest("/repo")).toEqual({ directory: "/repo" })
+  test("addresses project Scopes by ID", () => {
+    expect(sessionScopeRequest("project")).toEqual({ scopeID: "project" })
   })
 })
 
 describe("session scope request for session payloads", () => {
   const homeSession = {
-    scope: { id: "home", type: "home", directory: "/Users/example" },
+    scope: { id: "home" },
   } satisfies Parameters<typeof sessionScopeRequestFor>[0]
 
   test("addresses Home sessions through the home scope ID, not the home directory", () => {
     expect(sessionScopeRequestFor(homeSession)).toEqual({ scopeID: "home" })
   })
 
-  test("addresses project sessions through their directory", () => {
-    expect(sessionScopeRequestFor({ scope: { id: "d_abc", type: "project", directory: "/repo" } })).toEqual({
-      directory: "/repo",
+  test("addresses project sessions through their Scope ID", () => {
+    expect(sessionScopeRequestFor({ scope: { id: "d_abc" } })).toEqual({
+      scopeID: "d_abc",
     } satisfies SessionScopeRequest)
   })
 })

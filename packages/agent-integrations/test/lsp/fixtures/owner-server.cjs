@@ -1,4 +1,5 @@
 let buffer = Buffer.alloc(0)
+require("node:fs").writeFileSync("server.pid", String(process.pid))
 const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 3 } }
 function send(message) {
   const body = JSON.stringify({ jsonrpc: "2.0", ...message })
@@ -19,10 +20,26 @@ function handle(message) {
   const uri = message.params?.textDocument?.uri ?? "file:///fixture"
   const item = { name: "ownerSymbol", kind: 12, uri, range, selectionRange: range }
   let result = null
-  if (message.method === "initialize")
+  if (message.method === "initialize") {
     result = { capabilities: { textDocumentSync: 1, hoverProvider: true, definitionProvider: true } }
-  else if (message.method === "textDocument/hover") result = { contents: "fixture hover" }
-  else if (
+    const delay = Number(process.env.LSP_FIXTURE_INIT_DELAY_MS)
+    if (delay) {
+      require("node:fs").writeFileSync("initializing", "ready")
+      setTimeout(() => send({ id: message.id, result }), delay)
+      return
+    }
+  } else if (message.method === "textDocument/hover") {
+    result = { contents: "fixture hover" }
+    const delay = Number(process.env.LSP_FIXTURE_DELAY_MS)
+    if (delay) {
+      require("node:fs").appendFileSync("query-started", "ready\n")
+      setTimeout(() => {
+        require("node:fs").appendFileSync("query-completed", "replied\n")
+        send({ id: message.id, result })
+      }, delay)
+      return
+    }
+  } else if (
     ["textDocument/definition", "textDocument/references", "textDocument/implementation"].includes(message.method)
   )
     result = [{ uri, range }]

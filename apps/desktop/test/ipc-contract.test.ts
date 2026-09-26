@@ -35,14 +35,14 @@ describe("desktop ipc contract", () => {
   test("accepts valid browser native attach payloads", () => {
     expect(
       parseBrowserNativeAttach({
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         bounds: { x: 0, y: 0, width: 640, height: 480 },
         visible: false,
       }),
     ).toEqual({
-      protocolVersion: 2,
+      protocolVersion: 3,
       ownerKey: "scope:scope:session:session",
       pageId: "page",
       bounds: { x: 0, y: 0, width: 640, height: 480 },
@@ -52,11 +52,11 @@ describe("desktop ipc contract", () => {
 
   test("rejects malformed browser native payloads", () => {
     expect(() =>
-      parseBrowserNativePage({ protocolVersion: 2, ownerKey: "scope:scope:session:session", pageId: "" }),
+      parseBrowserNativePage({ protocolVersion: 3, ownerKey: "scope:scope:session:session", pageId: "" }),
     ).toThrow()
     expect(() =>
       parseBrowserNativeResize({
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         bounds: { width: -1, height: 1, x: 0, y: 0 },
@@ -64,7 +64,7 @@ describe("desktop ipc contract", () => {
     ).toThrow()
     expect(() =>
       parseBrowserNativeAttach({
-        protocolVersion: 2,
+        protocolVersion: 3,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         extra: true,
@@ -76,24 +76,24 @@ describe("desktop ipc contract", () => {
   test("validates native capability and owner-bound ticket requests", () => {
     expect(
       parseBrowserNativePresentationCapability({
-        protocolVersion: 2,
+        protocolVersion: 3,
         serverUrl: "http://127.0.0.1:4096",
       }),
-    ).toEqual({ protocolVersion: 2, serverUrl: "http://127.0.0.1:4096" })
+    ).toEqual({ protocolVersion: 3, serverUrl: "http://127.0.0.1:4096" })
     expect(
       parseBrowserNativePresentationTicket({
-        protocolVersion: 2,
+        protocolVersion: 3,
         serverUrl: "http://127.0.0.1:4096",
         ownerKey: "scope:home:session:test",
       }),
     ).toEqual({
-      protocolVersion: 2,
+      protocolVersion: 3,
       serverUrl: "http://127.0.0.1:4096",
       ownerKey: "scope:home:session:test",
     })
-    expect(() => parseBrowserNativePresentationCapability({ protocolVersion: 2, serverUrl: "not-a-url" })).toThrow()
+    expect(() => parseBrowserNativePresentationCapability({ protocolVersion: 3, serverUrl: "not-a-url" })).toThrow()
     expect(() =>
-      parseBrowserNativePresentationTicket({ protocolVersion: 2, serverUrl: "http://127.0.0.1", ownerKey: "" }),
+      parseBrowserNativePresentationTicket({ protocolVersion: 3, serverUrl: "http://127.0.0.1", ownerKey: "" }),
     ).toThrow()
   })
 

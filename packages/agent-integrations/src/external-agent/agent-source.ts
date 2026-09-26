@@ -21,9 +21,8 @@ import { ExternalAgentDiscovery } from "./discovery"
 export function registerAgentExternalSource() {
   AgentExternalSource.register({
     async loadAdapters() {
-      await import("./adapter/codex")
-      await import("./adapter/claude-code")
-      await import("./adapter/openclaw")
+      const { registerExternalAdapters } = await import("./index")
+      registerExternalAdapters()
     },
     description: (name) => descriptions[name],
     async discover() {

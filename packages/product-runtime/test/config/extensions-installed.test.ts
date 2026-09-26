@@ -1,18 +1,25 @@
 import { expect, test } from "bun:test"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("installed owner configuration validates an early schema reference and preserves secret and reference contracts", async () => {
-  const isolated = await createIsolatedTestEnv()
-  const config = new URL("../../../harness/src/config/config.ts", import.meta.url).pathname
-  const extensions = new URL("../../../harness/src/config/extensions.ts", import.meta.url).pathname
-  const library = new URL("../../../library/src/config-schema.ts", import.meta.url).pathname
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
+test("installed owner configuration validates an early schema reference and preserves secret and reference contracts", () =>
+  runtime.run(async () => {
+    const isolated = await createIsolatedTestEnv()
+    const config = new URL("../../../harness/src/config/config.ts", import.meta.url).pathname
+    const extensions = new URL("../../../harness/src/config/extensions.ts", import.meta.url).pathname
+    const library = new URL("../../../library/src/config-schema.ts", import.meta.url).pathname
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "--eval",
+        `
       import assert from "node:assert/strict"
       import z from "zod"
+      const { RuntimeContext } = await import(${JSON.stringify(new URL("../../../harness/src/lifecycle/context.ts", import.meta.url).pathname)})
+      const home = process.env.SYNERGY_TEST_HOME
+      await RuntimeContext.create({ home, root: home + "/.synergy", env: process.env }).run(async () => {
       const { Config } = await import(${JSON.stringify(config)})
       const { ConfigExtensions } = await import(${JSON.stringify(extensions)})
       const defaults = {}
@@ -57,7 +64,7 @@ test("installed owner configuration validates an early schema reference and pres
       Config.global.reset()
       assert.equal((await Config.globalRaw()).model, "legacy/core")
       assert.deepEqual(JSON.parse(await Bun.file(legacy).text()), legacyData)
-      await import(${JSON.stringify(library)})
+      ;(await import(${JSON.stringify(library)})).registerConfig()
       assert.equal("library" in early.shape, true)
       assert.equal("library" in z.toJSONSchema(early, { unrepresentable: "any" }).properties, true)
       assert.equal("library" in z.toJSONSchema(Config.schema(), { unrepresentable: "any" }).properties, true)
@@ -70,7 +77,7 @@ test("installed owner configuration validates an early schema reference and pres
       const redacted = Config.redactForClient(credentials)
       assert.notEqual(redacted.embedding.apiKey, credentials.embedding.apiKey)
       assert.deepEqual(Config.mergeRedactedSecrets(redacted, credentials), credentials)
-      await import(${JSON.stringify(new URL("../../../product-runtime/src/configuration.ts", import.meta.url).pathname)})
+      ;(await import(${JSON.stringify(new URL("../../../product-runtime/src/configuration.ts", import.meta.url).pathname)})).registerProductConfiguration()
       assert.equal(early.safeParse({ unknownDomain: {} }).success, false)
       assert.equal(Experiment.Runtime.safeParse({ lsp: false }).success, true)
       const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")
@@ -85,13 +92,16 @@ test("installed owner configuration validates an early schema reference and pres
       ConfigExtensions.register("invalid-core-owner", { shape: { model: z.boolean() } })
       assert.throws(() => early.shape, /already owned by the harness/)
 
+      })
     `,
-    ],
-    stdout: "pipe",
-    stderr: "pipe",
-    env: isolated.env,
-  })
-  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-  await isolated.dispose()
-  expect(code, stderr).toBe(0)
-})
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+      env: isolated.env,
+    })
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    await isolated.dispose()
+    expect(code, stderr).toBe(0)
+  }))
+
+afterRuntimeTests(() => runtime.close())

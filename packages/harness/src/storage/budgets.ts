@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityConfig } from "../observability/config"
 
 /**
@@ -49,6 +50,7 @@ export namespace StorageBudgets {
   export interface Timings {
     /** Budget for one ordinary statement. */
     requestDeadlineMs: number
+    ordinaryCeilingMs: number
     /** Budget for one liveness probe. */
     probeTimeoutMs: number
     /** Unanswered probes in a row before the worker is called occupied. */
@@ -67,17 +69,24 @@ export namespace StorageBudgets {
     teardownBudgetMs: number
   }
 
-  let cachedSource: unknown
-  let cachedTimings: Timings | undefined
+  const cache = new WeakMap<object, Timings>()
+
+  export function capture(): () => Timings {
+    const runtime = RuntimeContext.tryCurrent()
+    if (runtime) return runtime.bind(current)
+    const defaults = resolve(ObservabilityConfig.defaults.storage)
+    return () => defaults
+  }
 
   export function current(): Timings {
     // `ObservabilityConfig.current()` hands back one object until it is
     // refreshed, so identity is a valid cache key on this hot path.
     const storage = ObservabilityConfig.current().storage
-    if (cachedSource === storage && cachedTimings) return cachedTimings
-    cachedSource = storage
-    cachedTimings = resolve(storage)
-    return cachedTimings
+    const existing = cache.get(storage)
+    if (existing) return existing
+    const timings = resolve(storage)
+    cache.set(storage, timings)
+    return timings
   }
 
   function resolve(storage: {
@@ -93,7 +102,12 @@ export namespace StorageBudgets {
       // budget: the invariant only protects the worker if it holds for *every*
       // allowed single-statement limit, so a configuration that would let one
       // ordinary statement outlive the ceiling must not take effect either.
-      requestDeadlineMs: Math.min(Math.max(1, storage.requestDeadlineMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
+      requestDeadlineMs: Math.min(
+        Math.max(1, storage.requestDeadlineMs),
+        30_000,
+        Math.floor(hardCeilingMs / CEILING_MARGIN),
+      ),
+      ordinaryCeilingMs: Math.min(60_000, hardCeilingMs),
       probeTimeoutMs: Math.min(Math.max(1, storage.probeTimeoutMs), Math.floor(hardCeilingMs / CEILING_MARGIN)),
       probeAttempts: Math.max(1, storage.probeAttempts),
       hardCeilingMs,

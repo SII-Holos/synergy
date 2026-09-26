@@ -127,7 +127,14 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
   })
 
   function send(message: HostToPlugin) {
-    processHandle.send(message)
+    if (processHandle.exitCode !== null) return false
+    try {
+      processHandle.send(message)
+      return true
+    } catch (error) {
+      pending.rejectAll(error instanceof Error ? error : new Error(String(error)))
+      return false
+    }
   }
 
   send({ type: "activate", input: options.activation })
@@ -136,7 +143,7 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
     send,
     request(message) {
       const tracked = pending.track(message.requestId)
-      send(message)
+      if (!send(message)) pending.reject(message.requestId, new Error("Plugin runtime connection is closed"))
       return tracked
     },
     rejectRequest(requestId, error) {

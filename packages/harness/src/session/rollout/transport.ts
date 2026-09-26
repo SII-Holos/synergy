@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from "node:async_hooks"
+import { Context } from "../../util/context"
 import { RolloutTransportSchema } from "./transport-schema"
 import { record, RolloutRecordingError } from "./error"
 
@@ -11,7 +11,7 @@ export namespace RolloutTransport {
       fetch(globalThis.fetch, input, init),
     { preconnect: globalThis.fetch.preconnect },
   )
-  const context = new AsyncLocalStorage<Sink>()
+  const context = Context.create<Sink>("rollout.transport")
   const responseHeaders = new Set(["x-request-id", "request-id", "x-amzn-requestid", "openai-processing-ms"])
   const requestOptions = new Set([
     "body",
@@ -31,11 +31,11 @@ export namespace RolloutTransport {
   ])
 
   export function provide<T>(sink: Sink, action: () => T): T {
-    return context.run(sink, action)
+    return context.provide(sink, action)
   }
 
   export async function fetch(fetchFn: Fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    const sink = context.getStore()
+    const sink = context.tryUse()
     if (!sink) return fetchFn(input, init)
     const attemptID = crypto.randomUUID()
     const original = new Request(input, init)

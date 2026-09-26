@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import z from "zod"
 import { McpServerConfig } from "@ericsanchezok/synergy-plugin"
 
@@ -10,7 +11,7 @@ import { McpServerConfig } from "@ericsanchezok/synergy-plugin"
  * the same server key in `40-mcp.jsonc` (a full typed entry overrides the
  * builtin; `{ "enabled": false }` disables it).
  *
- * Injection lives in McpSupervisor.initFromConfig, below user config and at
+ * Injection lives in McpSupervisor().initFromConfig, below user config and at
  * the same precedence as plugin-staged servers. Tests and CI disable the
  * catalog with SYNERGY_DISABLE_BUILTIN_MCP so no test ever connects to these
  * endpoints.
@@ -26,6 +27,7 @@ export interface BuiltinMcpServer {
 const RAW_CATALOG: Record<string, unknown> = {
   anysearch: {
     type: "remote",
+    requiresWorkspace: false,
     url: "https://api.anysearch.com/mcp",
     // Static-Bearer / anonymous auth; do not run the OAuth probe.
     oauth: false,
@@ -33,6 +35,7 @@ const RAW_CATALOG: Record<string, unknown> = {
   },
   scholight: {
     type: "remote",
+    requiresWorkspace: false,
     url: "https://scholight.sanchezcloud.net/api/mcp",
     // Static-Bearer / anonymous auth; do not run the OAuth probe.
     oauth: false,
@@ -40,11 +43,15 @@ const RAW_CATALOG: Record<string, unknown> = {
   },
 }
 
-let cached: BuiltinMcpServer[] | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  cached: undefined as BuiltinMcpServer[] | undefined,
+}))
 
 function catalog(): BuiltinMcpServer[] {
-  if (cached) return cached
-  cached = Object.entries(RAW_CATALOG).map(([name, value]) => {
+  const instanceState = runtimeState()
+
+  if (instanceState.cached) return instanceState.cached
+  instanceState.cached = Object.entries(RAW_CATALOG).map(([name, value]) => {
     const parsed = McpServerConfig.safeParse(value)
     if (!parsed.success) {
       throw new Error(
@@ -55,11 +62,11 @@ function catalog(): BuiltinMcpServer[] {
     }
     return { name, config: parsed.data }
   })
-  return cached
+  return instanceState.cached
 }
 
 function envTruthy(key: string): boolean {
-  const value = process.env[key]?.toLowerCase()
+  const value = RuntimeContext.current().host.env[key]?.toLowerCase()
   return value === "true" || value === "1"
 }
 

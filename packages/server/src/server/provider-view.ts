@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { mapValues } from "remeda"
 import z from "zod"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
@@ -95,12 +96,13 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
       const profile = ProviderProfile.resolve(providerID, connection?.profileID ?? provider?.profileID)
       const githubEnvironment =
         providerID === GitHubProvider.PROVIDER_ID &&
-        !!(process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim())
+        !!(RuntimeContext.current().host.env.GH_TOKEN?.trim() || RuntimeContext.current().host.env.GITHUB_TOKEN?.trim())
       const runtimeConnected = Object.prototype.hasOwnProperty.call(connected, providerID)
       if (!runtimeConnected && !githubEnvironment) return [providerID, health]
       const environment =
-        (provider?.env ?? config.provider?.[providerID]?.env)?.some((name) => !!process.env[name]?.trim()) ||
-        githubEnvironment
+        (provider?.env ?? config.provider?.[providerID]?.env)?.some(
+          (name) => !!RuntimeContext.current().host.env[name]?.trim(),
+        ) || githubEnvironment
       return [
         providerID,
         {

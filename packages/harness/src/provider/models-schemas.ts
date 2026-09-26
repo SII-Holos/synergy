@@ -5,6 +5,8 @@ export namespace ModelsDev {
   export const ReasoningOption = z.object({
     type: z.string(),
     values: z.array(z.unknown()).optional(),
+    min: z.number().optional(),
+    max: z.number().optional(),
   })
   export type ReasoningOption = z.infer<typeof ReasoningOption>
 
@@ -55,7 +57,7 @@ export namespace ModelsDev {
     const values = model.reasoning_options.find((option) => option?.type === "effort")?.values
     if (!Array.isArray(values)) return
     const efforts = values.filter((value): value is string => typeof value === "string")
-    return efforts.length > 0 ? efforts : undefined
+    return efforts
   }
 
   export const Provider = z.object({

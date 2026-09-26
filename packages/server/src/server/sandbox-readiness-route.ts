@@ -30,27 +30,28 @@ const SandboxReadinessSchema = z
   })
   .meta({ ref: "SandboxReadiness" })
 
-export const SandboxReadinessRoute = new Hono().get(
-  "/sandbox/readiness",
-  describeRoute({
-    summary: "Get sandbox readiness",
-    description:
-      "Platform-specific sandbox health checks. Returns readiness status with per-check diagnostics for macOS, Linux, and Windows.",
-    operationId: "sandbox.readiness",
-    responses: {
-      200: {
-        description: "Sandbox readiness information",
-        content: {
-          "application/json": {
-            schema: resolver(SandboxReadinessSchema),
+export const SandboxReadinessRoute = () =>
+  new Hono().get(
+    "/sandbox/readiness",
+    describeRoute({
+      summary: "Get sandbox readiness",
+      description:
+        "Platform-specific sandbox health checks. Returns readiness status with per-check diagnostics for macOS, Linux, and Windows.",
+      operationId: "sandbox.readiness",
+      responses: {
+        200: {
+          description: "Sandbox readiness information",
+          content: {
+            "application/json": {
+              schema: resolver(SandboxReadinessSchema),
+            },
           },
         },
       },
+    }),
+    async (c) => {
+      const cfg = await Config.current()
+      const readiness = await getSandboxReadiness(cfg.sandbox)
+      return c.json(readiness)
     },
-  }),
-  async (c) => {
-    const cfg = await Config.current()
-    const readiness = await getSandboxReadiness(cfg.sandbox)
-    return c.json(readiness)
-  },
-)
+  )

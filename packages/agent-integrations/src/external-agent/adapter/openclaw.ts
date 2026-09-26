@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ExternalAgent } from "../bridge"
 
@@ -52,7 +53,9 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
   async start(opts: ExternalAgent.StartOptions): Promise<void> {
     this.cwd = opts.cwd
     this.adapterConfig = opts.config ?? {}
-    this.env = opts.env ? { ...process.env, ...opts.env } : { ...process.env }
+    this.env = opts.env
+      ? { ...RuntimeContext.current().host.env, ...opts.env }
+      : { ...RuntimeContext.current().host.env }
     this.started = true
     log.info("openclaw adapter started", { cwd: opts.cwd })
   }
@@ -289,4 +292,6 @@ interface OpenClawResponse {
 }
 
 // Self-register
-ExternalAgent.register("openclaw", () => new OpenClawAdapter())
+export function registerAdapter() {
+  ExternalAgent.register("openclaw", () => new OpenClawAdapter())
+}

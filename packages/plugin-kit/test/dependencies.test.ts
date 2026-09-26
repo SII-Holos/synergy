@@ -35,11 +35,16 @@ console.log("compiled")
       )
       fs.writeFileSync(source, `export default function Panel() { return <div>ready</div> }\n`)
 
-      const result = await Bun.build({
-        entrypoints: [entry],
-        compile: { outfile: executable },
+      const build = Bun.spawn([process.execPath, "build", "--compile", entry, "--outfile", executable], {
+        stdout: "pipe",
+        stderr: "pipe",
       })
-      expect(result.success).toBe(true)
+      const [buildCode, buildStdout, buildStderr] = await Promise.all([
+        build.exited,
+        new Response(build.stdout).text(),
+        new Response(build.stderr).text(),
+      ])
+      expect(buildCode, `${buildStdout}\n${buildStderr}`).toBe(0)
 
       const child = Bun.spawn([executable, source], { stdout: "pipe", stderr: "pipe" })
       const [exitCode, stdout, stderr] = await Promise.all([

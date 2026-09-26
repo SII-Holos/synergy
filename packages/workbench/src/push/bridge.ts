@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -15,21 +16,32 @@ export namespace PushBridge {
 
   const MAX_BODY_LENGTH = 200
 
-  const inflight = new Set<Promise<unknown>>()
-  let disposeActive: (() => void) | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    inflight: new Set<Promise<unknown>>(),
+    disposeActive: undefined as (() => void) | undefined,
+  }))
 
   /** Await all in-flight fan-outs (deterministic tests, graceful shutdown). */
   export async function flush(): Promise<void> {
-    while (inflight.size > 0) await Promise.allSettled([...inflight])
+    const instanceState = runtimeState()
+
+    while (instanceState.inflight.size > 0) await Promise.allSettled([...instanceState.inflight])
   }
 
   export function init(): () => void {
-    if (disposeActive) return disposeActive
+    const instanceState = runtimeState()
+
+    if (instanceState.disposeActive) return instanceState.disposeActive
 
     const publish = (payload: PushTypes.Payload) => {
+      const instanceState = runtimeState()
+
       const task = PushService.send(payload).catch((error) => log.warn("push send failed", { error }))
-      inflight.add(task)
-      void task.finally(() => inflight.delete(task))
+      instanceState.inflight.add(task)
+      void task.finally(() => {
+        const instanceState = runtimeState()
+        return instanceState.inflight.delete(task)
+      })
     }
 
     const truncate = (body: string): string =>
@@ -38,7 +50,7 @@ export namespace PushBridge {
     // Mirrors the Web app's notification-event.ts href contract: the scope
     // token is "home" for the home scope, otherwise the scope directory.
     const scopeToken = (session: SessionInfo): string =>
-      session.scope.type === "home" ? "home" : (session.scope.directory ?? "home")
+      session.scope.type === "home" ? "home" : (session.scope.local?.directory ?? "home")
 
     const sessionHref = (session: SessionInfo): string => `/${base64Encode(scopeToken(session))}/session/${session.id}`
 
@@ -58,6 +70,8 @@ export namespace PushBridge {
 
     const unsubscribers = [
       Bus.subscribeGlobal(SessionEvent.Completion, (event) => {
+        const instanceState = runtimeState()
+
         const task = (async () => {
           const session = await resolveSession(event.properties.sessionID)
           if (!session || skip(session, "completion")) return
@@ -70,10 +84,15 @@ export namespace PushBridge {
             badge: event.properties.unreadCount,
           })
         })().catch((error) => log.warn("completion push failed", { error }))
-        inflight.add(task)
-        void task.finally(() => inflight.delete(task))
+        instanceState.inflight.add(task)
+        void task.finally(() => {
+          const instanceState = runtimeState()
+          return instanceState.inflight.delete(task)
+        })
       }),
       Bus.subscribeGlobal(SessionEvent.Error, (event) => {
+        const instanceState = runtimeState()
+
         const task = (async () => {
           const sessionID = event.properties.sessionID
           if (!sessionID) {
@@ -81,7 +100,7 @@ export namespace PushBridge {
             // current scope root; unresolved session-scoped errors stay
             // silent instead of leaking raw error text as a global push.
             const scope = ScopeContext.current.scope
-            const directory = scope.type === "home" ? "home" : (scope.directory ?? "home")
+            const directory = scope.type === "home" ? "home" : (scope.local?.directory ?? "home")
             publish({
               title: "Session error",
               body: truncate(typeof event.properties.error === "string" ? event.properties.error : "Session error"),
@@ -102,10 +121,15 @@ export namespace PushBridge {
             category: "error",
           })
         })().catch((error) => log.warn("error push failed", { error }))
-        inflight.add(task)
-        void task.finally(() => inflight.delete(task))
+        instanceState.inflight.add(task)
+        void task.finally(() => {
+          const instanceState = runtimeState()
+          return instanceState.inflight.delete(task)
+        })
       }),
       Bus.subscribeGlobal(Question.Event.Asked, (event) => {
+        const instanceState = runtimeState()
+
         const task = (async () => {
           const session = await resolveSession(event.properties.sessionID)
           if (!session || skip(session, "input")) return
@@ -117,10 +141,15 @@ export namespace PushBridge {
             category: "input",
           })
         })().catch((error) => log.warn("question push failed", { error }))
-        inflight.add(task)
-        void task.finally(() => inflight.delete(task))
+        instanceState.inflight.add(task)
+        void task.finally(() => {
+          const instanceState = runtimeState()
+          return instanceState.inflight.delete(task)
+        })
       }),
       Bus.subscribeGlobal(PermissionNext.Event.Asked, (event) => {
+        const instanceState = runtimeState()
+
         const task = (async () => {
           const session = await resolveSession(event.properties.sessionID)
           if (!session || skip(session, "input")) return
@@ -132,17 +161,22 @@ export namespace PushBridge {
             category: "input",
           })
         })().catch((error) => log.warn("permission push failed", { error }))
-        inflight.add(task)
-        void task.finally(() => inflight.delete(task))
+        instanceState.inflight.add(task)
+        void task.finally(() => {
+          const instanceState = runtimeState()
+          return instanceState.inflight.delete(task)
+        })
       }),
     ]
 
     const dispose = () => {
-      if (disposeActive !== dispose) return
+      const instanceState = runtimeState()
+
+      if (instanceState.disposeActive !== dispose) return
       for (const unsubscribe of unsubscribers) unsubscribe()
-      disposeActive = undefined
+      instanceState.disposeActive = undefined
     }
-    disposeActive = dispose
+    instanceState.disposeActive = dispose
     return dispose
   }
 }

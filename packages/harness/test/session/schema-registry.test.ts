@@ -1,17 +1,31 @@
 import { expect, test } from "bun:test"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("core preserves unknown kinds and nested owner metadata through read update and transcript import", async () => {
-  const isolated = await createIsolatedTestEnv()
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
+test(
+  "core preserves unknown kinds and nested owner metadata through read update and transcript import",
+  () =>
+    runtime.run(async () => {
+      const isolated = await createIsolatedTestEnv()
+      const child = Bun.spawn({
+        cmd: [
+          process.execPath,
+          "--eval",
+          `
       import assert from "node:assert/strict"
+      import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+      import { registerHarness } from "@ericsanchezok/synergy-harness/lifecycle"
+      import path from "node:path"
+      const home = process.env.SYNERGY_HOME || process.env.SYNERGY_TEST_HOME
+      const context = RuntimeContext.create({ home, root: path.join(home, ".synergy"), env: { ...process.env } })
+      await context.run(async () => {
+      registerHarness()
+
       const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
       await using storageHandle = await StorageMaintenance.open({ migrate: false })
-      import z from "zod"
+      const { default: z } = await import("zod")
       const { Scope } = await import("@ericsanchezok/synergy-harness/scope")
       const { ScopeContext } = await import("@ericsanchezok/synergy-harness/scope/context")
       const { Session } = await import("@ericsanchezok/synergy-harness/session")
@@ -56,16 +70,22 @@ test("core preserves unknown kinds and nested owner metadata through read update
       assert.equal("blueprint" in early.out.shape, true)
       assert.doesNotThrow(() => SessionSchemaRegistry.register("restored-owner", contribution))
       assert.throws(() => SessionSchemaRegistry.register("conflict", { shape: { blueprint: z.string() } }), /already owned/)
+      })
+      context.dispose()
     `,
-    ],
-    env: { ...isolated.env, SYNERGY_OBSERVABILITY_INLINE: "1" },
-    stdout: "pipe",
-    stderr: "pipe",
-  })
-  try {
-    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-    expect(code, stderr).toBe(0)
-  } finally {
-    await isolated.dispose()
-  }
-}, 30_000)
+        ],
+        env: { ...isolated.env, SYNERGY_OBSERVABILITY_INLINE: "1" },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      try {
+        const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+        expect(code, stderr).toBe(0)
+      } finally {
+        await isolated.dispose()
+      }
+    }),
+  30_000,
+)
+
+afterRuntimeTests(() => runtime.close())

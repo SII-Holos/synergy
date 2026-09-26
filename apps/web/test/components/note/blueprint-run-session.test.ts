@@ -5,24 +5,14 @@ import {
   blueprintExecutionAgentOptions,
   blueprintExecutionAgentPatch,
   blueprintExecutionControlProfile,
-  blueprintScopeIDForDirectory,
   blueprintSessionWorkspaceSelection,
   canCreateBlueprintWorktree,
   canRunBlueprintInCurrentSession,
 } from "../../../src/components/note/blueprint-run-session"
 
 const scopes = [
-  {
-    id: "scope-main",
-    worktree: "C:/repo/main",
-    sandboxes: ["C:/repo/main/.synergy/worktrees/feature-a"],
-    vcs: "git",
-  },
-  {
-    id: "scope-docs",
-    worktree: "C:/repo/docs",
-    sandboxes: [],
-  },
+  { id: "scope-main", local: { directory: "/repo/main", worktree: "/repo/main", sandboxes: [], vcs: "git" as const } },
+  { id: "scope-docs", local: null },
 ]
 
 const agents: Agent[] = [
@@ -49,8 +39,8 @@ const agents: Agent[] = [
 
 describe("Blueprint run session helpers", () => {
   test("maps run modes to explicit session workspace selections", () => {
-    expect(blueprintSessionWorkspaceSelection("current")).toEqual({ mode: "current" })
-    expect(blueprintSessionWorkspaceSelection("new")).toEqual({ mode: "current" })
+    expect(blueprintSessionWorkspaceSelection("current")).toBeUndefined()
+    expect(blueprintSessionWorkspaceSelection("new")).toBeUndefined()
     expect(blueprintSessionWorkspaceSelection("worktree")).toEqual({ mode: "create" })
   })
 
@@ -85,39 +75,20 @@ describe("Blueprint run session helpers", () => {
     })
   })
 
-  test("matches current sessions by scope instead of raw route directory", () => {
-    expect(blueprintScopeIDForDirectory("C:/repo/main/.synergy/worktrees/feature-a", scopes)).toBe("scope-main")
+  test("runs in an existing session only when its Scope owns the Blueprint", () => {
     expect(
-      canRunBlueprintInCurrentSession({
-        sessionID: "session_123",
-        blueprintDirectory: "C:/repo/main",
-        routeDirectory: "C:/repo/main/.synergy/worktrees/feature-a",
-        scopes,
-      }),
+      canRunBlueprintInCurrentSession({ sessionID: "s", blueprintScopeID: "scope-main", sessionScopeID: "scope-main" }),
     ).toBe(true)
     expect(
-      canRunBlueprintInCurrentSession({
-        sessionID: "session_123",
-        blueprintDirectory: "C:/repo/docs",
-        routeDirectory: "C:/repo/main",
-        scopes,
-      }),
+      canRunBlueprintInCurrentSession({ sessionID: "s", blueprintScopeID: "scope-docs", sessionScopeID: "scope-main" }),
     ).toBe(false)
+    expect(canRunBlueprintInCurrentSession({ blueprintScopeID: "home", sessionScopeID: "home" })).toBe(false)
   })
 
-  test("resolves a directory that is both its own project worktree and another scope's sandbox to the owner", () => {
-    const claimed = [
-      { id: "scope-claimant", worktree: "C:/repo/other", sandboxes: ["C:/repo/claimed"] },
-      { id: "scope-owner", worktree: "C:/repo/claimed", sandboxes: [] },
-    ]
-    expect(blueprintScopeIDForDirectory("C:/repo/claimed", claimed)).toBe("scope-owner")
-    expect(blueprintScopeIDForDirectory("C:/repo/claimed/", claimed)).toBe("scope-owner")
-  })
-
-  test("only enables worktree runs for git project scopes", () => {
-    expect(canCreateBlueprintWorktree({ blueprintDirectory: "home", scopes })).toBe(false)
-    expect(canCreateBlueprintWorktree({ blueprintDirectory: "C:/repo/docs", scopes })).toBe(false)
-    expect(canCreateBlueprintWorktree({ blueprintDirectory: "C:/repo/main", scopes })).toBe(true)
+  test("only enables worktree runs when the Scope has a Git binding", () => {
+    expect(canCreateBlueprintWorktree({ scopeID: "home", scopes })).toBe(false)
+    expect(canCreateBlueprintWorktree({ scopeID: "scope-docs", scopes })).toBe(false)
+    expect(canCreateBlueprintWorktree({ scopeID: "scope-main", scopes })).toBe(true)
   })
 
   test("detects active BlueprintLoop state", () => {

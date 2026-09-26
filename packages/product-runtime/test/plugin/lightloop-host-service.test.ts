@@ -1,6 +1,5 @@
 import { registerPluginLightLoopAdapter } from "@ericsanchezok/synergy-plugin-host/plugin/host-services"
 import { lightLoopPluginAdapter } from "@ericsanchezok/synergy-workflows/light-loop/plugin-adapter"
-registerPluginLightLoopAdapter(lightLoopPluginAdapter)
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import path from "path"
 import { capability, compilePluginManifest, definePlugin } from "@ericsanchezok/synergy-plugin"
@@ -14,6 +13,9 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { LightLoopRuntime } from "@ericsanchezok/synergy-workflows/light-loop/runtime"
 import { LightLoopTerminalStore } from "@ericsanchezok/synergy-workflows/light-loop/terminal-hook"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const originalAgentGet = Agent.get
 const originalPluginOwner = Agent.pluginOwner
@@ -21,13 +23,15 @@ const originalPrepare = Cortex.prepare
 const originalStart = Cortex.start
 const originalCancel = Cortex.cancel
 
-afterEach(() => {
-  ;(Agent.get as any) = originalAgentGet
-  ;(Agent.pluginOwner as any) = originalPluginOwner
-  ;(Cortex.prepare as any) = originalPrepare
-  ;(Cortex.start as any) = originalStart
-  ;(Cortex.cancel as any) = originalCancel
-})
+afterEach(() =>
+  runtime.run(() => {
+    ;(Agent.get as any) = originalAgentGet
+    ;(Agent.pluginOwner as any) = originalPluginOwner
+    ;(Cortex.prepare as any) = originalPrepare
+    ;(Cortex.start as any) = originalStart
+    ;(Cortex.cancel as any) = originalCancel
+  }),
+)
 
 async function runAtomicStartTest(input?: { startError?: Error }) {
   await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
@@ -138,164 +142,173 @@ async function runAtomicStartTest(input?: { startError?: Error }) {
 }
 
 describe("plugin LightLoop Host Service", () => {
-  test("persists the workflow before starting Cortex execution", async () => {
-    const state = await runAtomicStartTest()
+  test("persists the workflow before starting Cortex execution", () =>
+    runtime.run(async () => {
+      const state = await runAtomicStartTest()
 
-    expect(state.error).toBeUndefined()
-    expect(state.result).toMatchObject({ status: "running", instructions: "Finish the implementation" })
-    expect(state.startSnapshots).toHaveLength(1)
-    expect(state.startSnapshots[0]).toMatchObject({
-      kind: "lightloop",
-      status: "running",
-      instructions: "Finish the implementation",
-      pluginOwner: { pluginId: "lightloop-atomic-test", pluginGeneration: "generation-one" },
-    })
-    expect(state.cancelled).toEqual([])
-  })
+      expect(state.error).toBeUndefined()
+      expect(state.result).toMatchObject({ status: "running", instructions: "Finish the implementation" })
+      expect(state.startSnapshots).toHaveLength(1)
+      expect(state.startSnapshots[0]).toMatchObject({
+        kind: "lightloop",
+        status: "running",
+        instructions: "Finish the implementation",
+        pluginOwner: { pluginId: "lightloop-atomic-test", pluginGeneration: "generation-one" },
+      })
+      expect(state.cancelled).toEqual([])
+    }))
 
-  test("cancels and archives the prepared task when Cortex start fails", async () => {
-    const state = await runAtomicStartTest({ startError: new Error("start failed") })
+  test("cancels and archives the prepared task when Cortex start fails", () =>
+    runtime.run(async () => {
+      const state = await runAtomicStartTest({ startError: new Error("start failed") })
 
-    expect(state.error?.message).toBe("start failed")
-    expect(state.startSnapshots[0]?.kind).toBe("lightloop")
-    expect(state.cancelled).toEqual(["ctx_lightloop_atomic"])
-    expect(state.child?.workflow).toBeUndefined()
-    expect(state.child?.time.archived).toBeNumber()
-  })
-  test("exposes start/get/cancel through lightloop.delegate", async () => {
-    const calls: Array<{ method: string; params: unknown }> = []
-    const context = createPluginInvocationContext({
-      requestId: "request-lightloop",
-      runtime: {
-        hostVersion: "test",
-        pluginVersion: "1.2.0",
-        pluginGeneration: "generation-one",
-        protocolVersion: 5,
-      },
-      data: { scopeId: "scope-one", sessionId: "session-one", directory: "/workspace", actor: { type: "ui" } },
-      signal: AbortSignal.any([]),
-      capabilities: new Set(["lightloop.delegate"]),
-      log: { debug() {}, info() {}, warn() {}, error() {} },
-      async invokeHost(method, params) {
-        calls.push({ method, params })
-      },
-    })
+      expect(state.error?.message).toBe("start failed")
+      expect(state.startSnapshots[0]?.kind).toBe("lightloop")
+      expect(state.cancelled).toEqual(["ctx_lightloop_atomic"])
+      expect(state.child?.workflow).toBeUndefined()
+      expect(state.child?.time.archived).toBeNumber()
+    }))
+  test("exposes start/get/cancel through lightloop.delegate", () =>
+    runtime.run(async () => {
+      const calls: Array<{ method: string; params: unknown }> = []
+      const context = createPluginInvocationContext({
+        requestId: "request-lightloop",
+        runtime: {
+          hostVersion: "test",
+          pluginVersion: "1.2.0",
+          pluginGeneration: "generation-one",
+          protocolVersion: 5,
+        },
+        data: { scopeId: "scope-one", sessionId: "session-one", directory: "/workspace", actor: { type: "ui" } },
+        signal: AbortSignal.any([]),
+        capabilities: new Set(["lightloop.delegate"]),
+        log: { debug() {}, info() {}, warn() {}, error() {} },
+        async invokeHost(method, params) {
+          calls.push({ method, params })
+        },
+      })
 
-    const input: LightLoopStartInput = {
-      instructions: "Finish the implementation",
-      correlationId: "corr-1",
-      executionAgent: "agent-exec",
-      reviewAgent: "agent-review",
-      budget: { maxRuntimeMs: 30000, maxIterations: 5 },
-    }
+      const input: LightLoopStartInput = {
+        instructions: "Finish the implementation",
+        correlationId: "corr-1",
+        executionAgent: "agent-exec",
+        reviewAgent: "agent-review",
+        budget: { maxRuntimeMs: 30000, maxIterations: 5 },
+      }
 
-    await context.lightloop!.start(input)
-    expect(calls).toEqual([{ method: "lightloop.start", params: input }])
-  })
+      await context.lightloop!.start(input)
+      expect(calls).toEqual([{ method: "lightloop.start", params: input }])
+    }))
 
-  test("get/cancel delegate to lightloop routes", async () => {
-    const calls: Array<{ method: string; params: unknown }> = []
-    const context = createPluginInvocationContext({
-      requestId: "request-lightloop-getcancel",
-      runtime: {
-        hostVersion: "test",
-        pluginVersion: "1.2.0",
-        pluginGeneration: "generation-one",
-        protocolVersion: 5,
-      },
-      data: { scopeId: "scope-one", sessionId: "session-one", directory: "/workspace", actor: { type: "ui" } },
-      signal: AbortSignal.any([]),
-      capabilities: new Set(["lightloop.delegate"]),
-      log: { debug() {}, info() {}, warn() {}, error() {} },
-      async invokeHost(method, params) {
-        calls.push({ method, params })
-      },
-    })
+  test("get/cancel delegate to lightloop routes", () =>
+    runtime.run(async () => {
+      const calls: Array<{ method: string; params: unknown }> = []
+      const context = createPluginInvocationContext({
+        requestId: "request-lightloop-getcancel",
+        runtime: {
+          hostVersion: "test",
+          pluginVersion: "1.2.0",
+          pluginGeneration: "generation-one",
+          protocolVersion: 5,
+        },
+        data: { scopeId: "scope-one", sessionId: "session-one", directory: "/workspace", actor: { type: "ui" } },
+        signal: AbortSignal.any([]),
+        capabilities: new Set(["lightloop.delegate"]),
+        log: { debug() {}, info() {}, warn() {}, error() {} },
+        async invokeHost(method, params) {
+          calls.push({ method, params })
+        },
+      })
 
-    await context.lightloop!.get("ses-exec-1")
-    expect(calls[0]).toEqual({ method: "lightloop.get", params: { sessionID: "ses-exec-1" } })
+      await context.lightloop!.get("ses-exec-1")
+      expect(calls[0]).toEqual({ method: "lightloop.get", params: { sessionID: "ses-exec-1" } })
 
-    await context.lightloop!.cancel("ses-exec-1")
-    expect(calls[1]).toEqual({ method: "lightloop.cancel", params: { sessionID: "ses-exec-1" } })
-  })
+      await context.lightloop!.cancel("ses-exec-1")
+      expect(calls[1]).toEqual({ method: "lightloop.cancel", params: { sessionID: "ses-exec-1" } })
+    }))
 
-  test("returns terminal snapshots and makes repeated cancellation idempotent", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({})
-        await LightLoopTerminalStore.put(session, {
-          sessionID: session.id,
-          status: "completed",
-          instructions: "Finish the implementation",
-          pluginOwner: {
+  test("returns terminal snapshots and makes repeated cancellation idempotent", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({})
+          await LightLoopTerminalStore.put(session, {
+            sessionID: session.id,
+            status: "completed",
+            instructions: "Finish the implementation",
+            pluginOwner: {
+              pluginId: "test-plugin",
+              pluginGeneration: "generation-one",
+              scopeId: scope.id,
+            },
+            hookDeliveredAt: Date.now(),
+            createdAt: Date.now(),
+          })
+          const input = {
             pluginId: "test-plugin",
             pluginGeneration: "generation-one",
             scopeId: scope.id,
-          },
-          hookDeliveredAt: Date.now(),
-          createdAt: Date.now(),
-        })
-        const input = {
-          pluginId: "test-plugin",
+            sessionID: session.id,
+          }
+
+          expect(await getLightLoop(input)).toEqual({
+            sessionID: session.id,
+            status: "completed",
+            instructions: "Finish the implementation",
+          })
+          expect(
+            await cancelLightLoop({
+              ...input,
+              context: {
+                sessionID: session.id,
+                messageID: "msg_terminal_cancel",
+                agent: "synergy-max",
+              },
+            }),
+          ).toEqual({
+            sessionID: session.id,
+            status: "completed",
+            instructions: "Finish the implementation",
+          })
+        },
+      })
+    }))
+
+  test("lightloop.delegate capability gates context.lightloop exposure", () =>
+    runtime.run(async () => {
+      const context = createPluginInvocationContext({
+        requestId: "request-without-capability",
+        runtime: {
+          hostVersion: "test",
+          pluginVersion: "1.2.0",
           pluginGeneration: "generation-one",
-          scopeId: scope.id,
-          sessionID: session.id,
-        }
+          protocolVersion: 5,
+        },
+        data: { scopeId: "scope-one", directory: "/workspace", actor: { type: "lifecycle" } },
+        signal: AbortSignal.any([]),
+        capabilities: new Set(),
+        log: { debug() {}, info() {}, warn() {}, error() {} },
+        async invokeHost() {},
+      })
+      expect(context.lightloop).toBeUndefined()
+    }))
 
-        expect(await getLightLoop(input)).toEqual({
-          sessionID: session.id,
-          status: "completed",
-          instructions: "Finish the implementation",
-        })
-        expect(
-          await cancelLightLoop({
-            ...input,
-            context: {
-              sessionID: session.id,
-              messageID: "msg_terminal_cancel",
-              agent: "synergy-max",
-            },
-          }),
-        ).toEqual({
-          sessionID: session.id,
-          status: "completed",
-          instructions: "Finish the implementation",
-        })
-      },
-    })
-  })
-
-  test("lightloop.delegate capability gates context.lightloop exposure", async () => {
-    const context = createPluginInvocationContext({
-      requestId: "request-without-capability",
-      runtime: {
-        hostVersion: "test",
-        pluginVersion: "1.2.0",
-        pluginGeneration: "generation-one",
-        protocolVersion: 5,
-      },
-      data: { scopeId: "scope-one", directory: "/workspace", actor: { type: "lifecycle" } },
-      signal: AbortSignal.any([]),
-      capabilities: new Set(),
-      log: { debug() {}, info() {}, warn() {}, error() {} },
-      async invokeHost() {},
-    })
-    expect(context.lightloop).toBeUndefined()
-  })
-
-  test("LightLoopStartInput has no sessionID or taskDescription", () => {
-    const input: LightLoopStartInput = {
-      instructions: "Do work",
-      correlationId: "corr-1",
-      executionAgent: "agent-exec",
-      reviewAgent: "agent-review",
-      budget: { maxRuntimeMs: 10000, maxIterations: 5 },
-    }
-    expect(input.instructions).toBe("Do work")
-    expect("sessionID" in input).toBe(false)
-    expect("taskDescription" in input).toBe(false)
-  })
+  test("LightLoopStartInput has no sessionID or taskDescription", () =>
+    runtime.run(() => {
+      const input: LightLoopStartInput = {
+        instructions: "Do work",
+        correlationId: "corr-1",
+        executionAgent: "agent-exec",
+        reviewAgent: "agent-review",
+        budget: { maxRuntimeMs: 10000, maxIterations: 5 },
+      }
+      expect(input.instructions).toBe("Do work")
+      expect("sessionID" in input).toBe(false)
+      expect("taskDescription" in input).toBe(false)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

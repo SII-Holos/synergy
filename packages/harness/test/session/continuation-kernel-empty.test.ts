@@ -1,18 +1,16 @@
-import { describe, expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
+import { ContinuationKernel } from "../../src/session/continuation-kernel"
+import { Log } from "../../src/util/log"
+import { testRuntime } from "../support/runtime"
 
-describe("empty registry signature (criterion 5)", () => {
-  test("propose() returns undefined and warns when no policies are registered", async () => {
-    const worker = import.meta.dir + "/continuation-kernel-empty-worker.ts"
-    const proc = Bun.spawn([process.execPath, "run", worker], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
-    const exitCode = await proc.exited
-
-    expect(exitCode).toBe(0)
-    expect(stdout).toContain("PROPOSE_RESULT:undefined")
-    expect(stderr).toContain("continuation kernel has no policies registered")
-    expect(stderr).toContain("service=session.continuation-kernel")
-  }, 30_000)
+test("an independently composed runtime warns and has no continuation when no policies are registered", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await Log.init({ print: true })
+    using output = spyOn(process.stderr, "write").mockReturnValue(true)
+    expect(await ContinuationKernel.propose("ses_does_not_exist")).toBeUndefined()
+    expect(output.mock.calls.map(([chunk]) => String(chunk)).join("")).toContain(
+      "continuation kernel has no policies registered",
+    )
+  })
 })

@@ -7,6 +7,14 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const workspace = (id: string) => ["workspace", id]
+  export const workspaceScope = (scopeID: string, id?: string) => ["workspace_scope", scopeID, ...(id ? [id] : [])]
+  export const workspaceLocation = (scopeID: string, hostID: string, locationHash: string) => [
+    "workspace_location",
+    scopeID,
+    hostID,
+    locationHash,
+  ]
   const endpointSessionStorageKey = (endpointKey: string) => encodeURIComponent(endpointKey)
 
   export const metaVersion = () => ["meta", "version"]
@@ -124,6 +132,14 @@ export namespace StoragePath {
   ]
   export const sessionInboxItem = (scopeID: ScopeID, sessionID: SessionID, itemID: string) => [
     ...sessionInboxRoot(scopeID, sessionID),
+    itemID,
+  ]
+  export const sessionInboxRemovedRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "inbox-removed",
+  ]
+  export const sessionInboxRemovedItem = (scopeID: ScopeID, sessionID: SessionID, itemID: string) => [
+    ...sessionInboxRemovedRoot(scopeID, sessionID),
     itemID,
   ]
   export const sessionMessagesRoot = (scopeID: ScopeID, sessionID: SessionID) => [

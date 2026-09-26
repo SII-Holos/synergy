@@ -1,8 +1,10 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Flag } from "../flag/flag"
 import { lazy } from "./lazy"
 import { accessSync, constants } from "fs"
 import path from "path"
-import { spawn, type ChildProcess } from "child_process"
+import { spawn } from "child_process"
+import type { ProcessHandle } from "../process/handle"
 
 const SIGKILL_TIMEOUT_MS = 200
 const TASKKILL_TIMEOUT_MS = 2_000
@@ -56,7 +58,7 @@ export namespace Shell {
     }
   }
 
-  export function releaseOwnedProcessGroup(proc: ChildProcess): void {
+  export function releaseOwnedProcessGroup(proc: ProcessHandle): void {
     if (process.platform === "win32" || !proc.pid) return
     try {
       process.kill(-proc.pid, "SIGTERM")
@@ -64,16 +66,17 @@ export namespace Shell {
   }
 
   export async function killTree(
-    proc: ChildProcess,
+    proc: ProcessHandle,
     opts?: { exited?: () => boolean; allowExitedParent?: boolean; runtime?: KillTreeRuntimeForTest },
   ): Promise<void> {
     try {
-      await killTreeOnce(proc, opts)
+      if (proc.stop) await proc.stop()
+      else await killTreeOnce(proc, opts)
     } catch {}
   }
 
   async function killTreeOnce(
-    proc: ChildProcess,
+    proc: ProcessHandle,
     opts?: { exited?: () => boolean; allowExitedParent?: boolean; runtime?: KillTreeRuntimeForTest },
   ): Promise<void> {
     const pid = proc.pid
@@ -187,7 +190,7 @@ export namespace Shell {
   }
 
   function resolve({ allowBlacklisted = true }: { allowBlacklisted?: boolean } = {}) {
-    const shell = process.env.SHELL
+    const shell = RuntimeContext.current().host.env.SHELL
     if (!shell || !isValid(shell)) return fallback()
     if (!allowBlacklisted && BLACKLIST.has(basename(shell).toLowerCase())) return fallback()
     return shell
@@ -203,7 +206,7 @@ export namespace Shell {
         const bash = path.join(path.dirname(git), "..", "bin", "bash.exe")
         if (Bun.file(bash).size) return bash
       }
-      return process.env.COMSPEC || "cmd.exe"
+      return RuntimeContext.current().host.env.COMSPEC || "cmd.exe"
     }
     if (process.platform === "darwin") {
       const candidates = ["/bin/zsh", "/bin/bash", "/bin/sh"]
@@ -220,7 +223,11 @@ export namespace Shell {
     return "/bin/sh"
   }
 
-  export const preferred = lazy(() => resolve())
+  const choices = RuntimeContext.state(() => ({
+    preferred: lazy(() => resolve()),
+    acceptable: lazy(() => resolve({ allowBlacklisted: false })),
+  }))
 
-  export const acceptable = lazy(() => resolve({ allowBlacklisted: false }))
+  export const preferred = Object.assign(() => choices().preferred(), { reset: () => choices().preferred.reset() })
+  export const acceptable = Object.assign(() => choices().acceptable(), { reset: () => choices().acceptable.reset() })
 }

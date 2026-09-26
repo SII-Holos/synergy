@@ -10,6 +10,9 @@ import {
   saveApproval,
   type PluginApprovalRecord,
 } from "../../src/plugin/consent/approval-store"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function record(pluginId: string): PluginApprovalRecord {
   return {
@@ -35,21 +38,24 @@ async function tempResidue() {
 }
 
 describe("approval store concurrent read-modify-write", () => {
-  test("concurrent saveApproval and removeApproval keep every record without lost updates", async () => {
-    const run = Math.random().toString(36).slice(2)
-    const ids = Array.from({ length: 12 }, (_, index) => `approval-race-${run}-${index}`)
-    const removedId = `approval-race-${run}-removed`
+  test("concurrent saveApproval and removeApproval keep every record without lost updates", () =>
+    runtime.run(async () => {
+      const run = Math.random().toString(36).slice(2)
+      const ids = Array.from({ length: 12 }, (_, index) => `approval-race-${run}-${index}`)
+      const removedId = `approval-race-${run}-removed`
 
-    await saveApproval(record(removedId))
-    await Promise.all([...ids.map((id) => saveApproval(record(id))), removeApproval(removedId)])
+      await saveApproval(record(removedId))
+      await Promise.all([...ids.map((id) => saveApproval(record(id))), removeApproval(removedId)])
 
-    const final = await readApprovals()
-    const present = new Set(final.map((item) => item.pluginId))
-    for (const id of ids) expect(present.has(id)).toBe(true)
-    expect(present.has(removedId)).toBe(false)
+      const final = await readApprovals()
+      const present = new Set(final.map((item) => item.pluginId))
+      for (const id of ids) expect(present.has(id)).toBe(true)
+      expect(present.has(removedId)).toBe(false)
 
-    expect(await Storage.read(["plugin-approvals", "records", ids[0]!])).toMatchObject({ pluginId: ids[0] })
-    expect(await Bun.file(storeFile()).exists()).toBe(false)
-    expect(await tempResidue()).toEqual([])
-  })
+      expect(await Storage.read(["plugin-approvals", "records", ids[0]!])).toMatchObject({ pluginId: ids[0] })
+      expect(await Bun.file(storeFile()).exists()).toBe(false)
+      expect(await tempResidue()).toEqual([])
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

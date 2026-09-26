@@ -41,7 +41,6 @@ export function canLongPressAbandon(input: {
   activity: SessionActivity
   hasBoundWorkflow: boolean
 }): boolean {
-  if (input.hasDraft) return true
   if (input.activity === "working" || input.activity === "paused") return true
   return input.hasBoundWorkflow
 }

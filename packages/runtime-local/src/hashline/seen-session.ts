@@ -1,10 +1,11 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 /**
  * Session-scoped seen-lines store adapter.
- * Wraps SeenStore with ScopedState + Bus SessionEvent.Deleted cleanup.
+ * Wraps SeenStore with WorkspaceState + Bus SessionEvent.Deleted cleanup.
  */
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 
 export interface SeenRange {
@@ -53,13 +54,17 @@ export class SeenStore {
 }
 
 export namespace SessionSeenStore {
-  const state = ScopedState.create(() => new Map<string, SeenStore>())
+  const state = WorkspaceState.create(() => new Map<string, SeenStore>())
 
-  let cleanupSubscribed = false
+  const runtimeState = RuntimeContext.state(() => ({
+    cleanupSubscribed: false,
+  }))
 
   function ensureCleanupSubscription(): void {
-    if (cleanupSubscribed) return
-    cleanupSubscribed = true
+    const instanceState = runtimeState()
+
+    if (instanceState.cleanupSubscribed) return
+    instanceState.cleanupSubscribed = true
     Bus.subscribe(SessionEvent.Deleted, (event) => {
       clear(event.properties.info.id)
     })

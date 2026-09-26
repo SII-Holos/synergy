@@ -181,7 +181,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
 
       const contentLines = splitDisplayLines(content)
       const tag = recordHashlineSnapshot(ctx.sessionID, filePath, content)
-      markFileRead(ctx.sessionID, filePath)
+      markFileRead(ctx.sessionID, filePath, content)
       const conflict = detectConflicts(content)
       const warning = conflictWarning(conflict)
       const selected = selectDisplayLines(contentLines, displayLineNumbers(entry.windows, contentLines.length), budget)

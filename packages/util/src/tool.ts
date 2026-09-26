@@ -128,6 +128,7 @@ export function tool<Args extends z.ZodRawShape>(input: {
   description: string
   exposure?: ToolExposure
   display?: ToolDisplay
+  requiresWorkspace?: boolean
   args: Args
   execute(args: z.infer<z.ZodObject<Args>>, context: ToolContext): Promise<string | ToolResult>
 }) {

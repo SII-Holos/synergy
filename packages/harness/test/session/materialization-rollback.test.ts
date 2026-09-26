@@ -9,10 +9,13 @@ import { Scope } from "../../src/scope"
 import { Identifier } from "../../src/id/id"
 import { SessionUserMessageMaterialization } from "../../src/session/user-message-materialization"
 import { MessageV2 } from "../../src/session/message-v2"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 test.each([false, true])(
   "a rolled-back materialization does not survive in the drain buffer (retry=%s)",
-  async (retry) => {
+  runtime.bind(async (retry) => {
     await using tmp = await tmpdir()
     const root = path.join(tmp.path, ".synergy")
     const prepared = await StorageBootstrap.prepare({ root })
@@ -77,5 +80,7 @@ test.each([false, true])(
     } finally {
       await prepared.store.close()
     }
-  },
+  }),
 )
+
+afterRuntimeTests(() => runtime.close())

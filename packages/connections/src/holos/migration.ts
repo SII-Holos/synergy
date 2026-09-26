@@ -268,4 +268,6 @@ export const migrations: Migration[] = [
   },
 ]
 
-MigrationRegistry.register("holos", migrations)
+export function registerHolosMigrations() {
+  MigrationRegistry.register("holos", migrations)
+}

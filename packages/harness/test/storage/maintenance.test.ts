@@ -65,7 +65,7 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
 test("worker loss emits one failed maintenance event and rejects the pending operation", async () => {
   await using tmp = await tmpdir()
   const driver = await SqliteDriver.open(path.join(tmp.path, "agent.sqlite"))
-  const worker = (driver as unknown as { worker: Bun.Subprocess }).worker
+  const worker = (driver as unknown as { reader: { worker: Bun.Subprocess } }).reader.worker
   const send = worker.send.bind(worker)
   const dispatched = Promise.withResolvers<void>()
   const events: StorageMaintenanceEvent[] = []

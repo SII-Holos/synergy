@@ -1,8 +1,9 @@
-import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js"
+import { createMemo, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { requestErrorMessage } from "@/utils/error"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
@@ -120,21 +121,23 @@ function InboxRow(props: {
 
   return (
     <div class="session-inbox-row" data-mode={props.item.mode} data-failed={failed()} data-interactive={canInteract()}>
-      <Tooltip
+      <Popover
         placement="left"
         class="session-inbox-row-tooltip"
-        value={<InboxDetail item={props.item} i18n={props.i18n} />}
+        triggerAs={(triggerProps) => (
+          <button {...triggerProps} type="button" class="session-inbox-row-main">
+            <div class="session-inbox-row-meta">
+              <span class="session-inbox-row-label">{modeLabel()}</span>
+              <span class="session-inbox-row-status" data-mode={props.item.mode} data-failed={failed()}>
+                {timingLabel()}
+              </span>
+            </div>
+            <div class="session-inbox-row-preview">{preview()}</div>
+          </button>
+        )}
       >
-        <div class="session-inbox-row-main">
-          <div class="session-inbox-row-meta">
-            <span class="session-inbox-row-label">{modeLabel()}</span>
-            <span class="session-inbox-row-status" data-mode={props.item.mode} data-failed={failed()}>
-              {timingLabel()}
-            </span>
-          </div>
-          <div class="session-inbox-row-preview">{preview()}</div>
-        </div>
-      </Tooltip>
+        <InboxDetail item={props.item} i18n={props.i18n} />
+      </Popover>
       <Show when={canInteract()}>
         <div class="session-inbox-actions">
           <Show
@@ -173,8 +176,9 @@ function InboxRow(props: {
             placement="bottom-end"
             gutter={6}
             class="session-inbox-menu-popover"
-            trigger={
+            triggerAs={(triggerProps) => (
               <button
+                {...triggerProps}
                 type="button"
                 class="session-inbox-more"
                 aria-label={_(S.inboxDetailAria)}
@@ -182,7 +186,7 @@ function InboxRow(props: {
               >
                 <Icon name={getSemanticIcon("action.more")} size="small" />
               </button>
-            }
+            )}
           >
             <div class="session-inbox-menu-list">
               <button type="button" class="session-inbox-menu-item" onClick={remove}>
@@ -197,6 +201,47 @@ function InboxRow(props: {
 }
 
 export function SessionInbox(props: SessionInboxProps) {
+  return (
+    <Show when={props.sessionID} keyed>
+      {(sessionID) => <SessionInboxContent {...props} sessionID={sessionID} />}
+    </Show>
+  )
+}
+
+function SessionInboxContent(props: SessionInboxProps) {
+  const sessionID = props.sessionID
+  const client = props.sdk.client
+  const [open, setOpen] = createSignal(false)
+  const [operations, setOperations] = createSignal<
+    Record<string, { kind: "remove" | "restore"; item: SessionInboxItem; pending: boolean; error?: unknown }>
+  >({})
+  const [removed, { refetch }] = createResource(
+    () => open(),
+    async () => (await client.session.inboxRemoved({ sessionID }, { throwOnError: true })).data,
+  )
+  const change = async (item: SessionInboxItem, kind: "remove" | "restore") => {
+    if (operations()[item.id]?.pending) return
+    const previous = operations()[item.id]
+    setOperations((all) => ({ ...all, [item.id]: { kind, item, pending: true } }))
+    try {
+      const records =
+        kind === "restore" || previous?.error
+          ? (await client.session.inboxRemoved({ sessionID }, { throwOnError: true })).data
+          : undefined
+      const isRemoved = records?.some((entry) => entry.id === item.id)
+      if (kind === "restore" && isRemoved !== false) {
+        await client.session.inboxRestore({ sessionID, itemID: item.id }, { throwOnError: true })
+      }
+      if (kind === "remove" && !isRemoved) {
+        await client.session.inboxRemove({ sessionID, itemID: item.id }, { throwOnError: true })
+      }
+      await refetch()
+      await props.sync.session.refresh(sessionID)
+      setOperations((all) => ({ ...all, [item.id]: { kind, item, pending: false } }))
+    } catch (error) {
+      setOperations((all) => ({ ...all, [item.id]: { kind, item, pending: false, error } }))
+    }
+  }
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const dataView = createMemo(() => createSessionDataView(props.sync.data))
@@ -237,7 +282,7 @@ export function SessionInbox(props: SessionInboxProps) {
 
   const guide = async (item: SessionInboxItem) => {
     try {
-      await props.sdk.client.session.inboxGuide({ sessionID: props.sessionID, itemID: item.id })
+      await props.sdk.client.session.inboxGuide({ sessionID, itemID: item.id }, { throwOnError: true })
     } catch (err) {
       showToast({
         type: "error",
@@ -249,7 +294,7 @@ export function SessionInbox(props: SessionInboxProps) {
 
   const retry = async (item: SessionInboxItem) => {
     try {
-      await props.sdk.client.session.inboxRetry({ sessionID: props.sessionID, itemID: item.id })
+      await props.sdk.client.session.inboxRetry({ sessionID, itemID: item.id }, { throwOnError: true })
     } catch (err) {
       showToast({
         type: "error",
@@ -264,7 +309,7 @@ export function SessionInbox(props: SessionInboxProps) {
     if (targets.length === 0) return
     try {
       for (const item of targets) {
-        await props.sdk.client.session.inboxGuide({ sessionID: props.sessionID, itemID: item.id })
+        await props.sdk.client.session.inboxGuide({ sessionID, itemID: item.id }, { throwOnError: true })
       }
     } catch (err) {
       showToast({
@@ -275,36 +320,32 @@ export function SessionInbox(props: SessionInboxProps) {
     }
   }
 
-  const restoreItem = async (item: SessionInboxItem) => {
-    if (!item.message?.parts?.length) return
-    await props.sdk.client.session.input({
-      sessionID: props.sessionID,
-      agent: item.message.agent,
-      model: item.message.model,
-      parts: item.message.parts,
-    })
-  }
-
-  const remove = async (item: SessionInboxItem) => {
-    await props.sdk.client.session.inboxRemove({ sessionID: props.sessionID, itemID: item.id })
-    showToast({
-      type: "info",
-      title: _(S.inboxRemoved),
-      description: _(S.inboxRemovedDesc),
-      actions: [
-        {
-          label: _(S.inboxRestore),
-          onClick: () => {
-            void restoreItem(item).catch(() => {})
-          },
-        },
-      ],
-    })
-  }
+  const remove = (item: SessionInboxItem) => void change(item, "remove")
+  const operationNotice = (item: SessionInboxItem) => (
+    <Show when={operations()[item.id]}>
+      {(operation) => (
+        <div class="session-inbox-operation" role={operation().error ? "alert" : "status"}>
+          <Show when={operation().pending}>{_(S.inboxOperationPending)}</Show>
+          <Show when={operation().error}>
+            <span>{_(operation().kind === "restore" ? S.inboxRestoreFailed : S.inboxRemoveFailed)}</span>
+            <Button variant="secondary" size="small" onClick={() => void change(item, operation().kind)}>
+              {_(operation().kind === "restore" ? S.inboxRetryRestore : S.inboxRetryRemove)}
+            </Button>
+            <details>
+              <summary>{_(S.transitionErrorDetails)}</summary>
+              <pre>{requestErrorMessage(operation().error, _(S.inboxRequestFailed))}</pre>
+            </details>
+          </Show>
+        </div>
+      )}
+    </Show>
+  )
 
   return (
     <div class="session-inbox-anchor">
       <Popover
+        open={open()}
+        onOpenChange={setOpen}
         placement="left-end"
         gutter={8}
         class="session-inbox-popover"
@@ -314,8 +355,9 @@ export function SessionInbox(props: SessionInboxProps) {
             <span class="session-inbox-title-subtitle">{titleDetail()}</span>
           </div>
         }
-        trigger={
+        triggerAs={(triggerProps) => (
           <button
+            {...triggerProps}
             type="button"
             class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full focus:outline-none"
             data-active={count() > 0}
@@ -326,7 +368,7 @@ export function SessionInbox(props: SessionInboxProps) {
               <span class="session-inbox-badge">{Math.min(count(), 9)}</span>
             </Show>
           </button>
-        }
+        )}
       >
         <Switch>
           <Match when={view().status === "loading"}>
@@ -350,19 +392,72 @@ export function SessionInbox(props: SessionInboxProps) {
               </div>
               <For each={items()}>
                 {(item) => (
-                  <InboxRow
-                    item={item}
-                    disabled={props.freezeHint || firstTaskLocked(item)}
-                    onGuide={guide}
-                    onRemove={remove}
-                    onRetry={retry}
-                    i18n={i18n}
-                  />
+                  <div>
+                    <InboxRow
+                      item={item}
+                      disabled={props.freezeHint || firstTaskLocked(item) || operations()[item.id]?.pending}
+                      onGuide={guide}
+                      onRemove={remove}
+                      onRetry={retry}
+                      i18n={i18n}
+                    />
+                    {operationNotice(item)}
+                  </div>
                 )}
               </For>
             </div>
           </Match>
         </Switch>
+        <For
+          each={Object.values(operations()).filter(
+            (operation) =>
+              operation.error &&
+              !items().some((item) => item.id === operation.item.id) &&
+              (removed.error || !removed()?.some((item) => item.id === operation.item.id)),
+          )}
+        >
+          {(operation) => (
+            <div>
+              <span>{operation.item.summary.preview || operation.item.summary.title}</span>
+              {operationNotice(operation.item)}
+            </div>
+          )}
+        </For>
+        <Show when={removed.loading}>
+          <div role="status">{_(S.inboxLoading)}</div>
+        </Show>
+        <Show when={removed.error}>
+          <div role="alert" class="session-inbox-operation">
+            {_(S.inboxRemovedLoadFailed)}
+            <Button size="small" onClick={() => void refetch()}>
+              {_(S.inboxRetry)}
+            </Button>
+          </div>
+        </Show>
+        <Show when={!removed.error && removed()?.length}>
+          <div class="session-inbox-removed-list">
+            <h3>{_(S.inboxRemovedHeading)}</h3>
+            <For each={removed()}>
+              {(item) => (
+                <div class="session-inbox-removed-item">
+                  <details>
+                    <summary>{item.summary.preview || item.summary.title}</summary>
+                    <InboxDetail item={item} i18n={i18n} />
+                  </details>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    disabled={operations()[item.id]?.pending}
+                    onClick={() => void change(item, "restore")}
+                  >
+                    {_(S.inboxRestore)}
+                  </Button>
+                  {operationNotice(item)}
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
       </Popover>
     </div>
   )

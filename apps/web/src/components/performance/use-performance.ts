@@ -32,30 +32,71 @@ function readBrowserSample(): BrowserMetricSample {
   }
 }
 
+type PerformanceSnapshot = {
+  windowMs: number
+  attemptedAt: number
+  summary: PerformanceSummary | null
+  error: string | null
+}
+
 export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
   const sdk = input ?? useGlobalSDK()
-  const [error, setError] = createSignal<string | null>(null)
   const [browserSamples, setBrowserSamples] = createSignal<BrowserMetricSample[]>([])
   const [eventTraces, setEventTraces] = createSignal<PerformanceTraceSpan[]>([])
   const [windowMs, setWindowMs] = createSignal(900_000)
   const [timeline, setTimeline] = createSignal<PerformanceTimeline | null>(null)
+  const [timelineError, setTimelineError] = createSignal<string | null>(null)
+  const [tracesError, setTracesError] = createSignal<string | null>(null)
+  const [timelineLoading, setTimelineLoading] = createSignal(false)
+  const [tracesLoading, setTracesLoading] = createSignal(false)
   const [traceDetail, setTraceDetail] = createSignal<PerformanceTraceDetail | null>(null)
   const [analysis, setAnalysis] = createSignal<PerformanceAnalysis | null>(null)
   const [analysisError, setAnalysisError] = createSignal<string | null>(null)
   const [analysisStarting, setAnalysisStarting] = createSignal(false)
 
-  const [summary, { refetch }] = createResource(windowMs, async (rangeMs): Promise<PerformanceSummary | null> => {
-    try {
-      setError(null)
-      const summaryResult = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
-      void loadTraces(rangeMs)
-      void loadTimeline(rangeMs)
-      return summaryResult.data ?? null
-    } catch (err) {
-      setError(getErrorMessage(err))
-      return null
-    }
-  })
+  let requestVersion = 0
+  let detailVersion = 0
+  const [snapshot, { refetch }] = createResource<PerformanceSnapshot, number>(
+    windowMs,
+    async (rangeMs, { value }): Promise<PerformanceSnapshot> => {
+      const version = ++requestVersion
+      const attemptedAt = Date.now()
+      const previous = value?.windowMs === rangeMs ? value : undefined
+      if (!previous) {
+        detailVersion++
+        setTimeline(null)
+        setEventTraces([])
+        setTimelineError(null)
+        setTracesError(null)
+        setTimelineLoading(false)
+        setTracesLoading(false)
+      }
+      try {
+        const result = await sdk.client.performance.summary({ windowMs: rangeMs }, { throwOnError: true })
+        if (version === requestVersion) {
+          setTimeline(null)
+          setEventTraces([])
+          const details = ++detailVersion
+          void loadTraces(rangeMs, details)
+          void loadTimeline(rangeMs, details)
+        }
+        return { windowMs: rangeMs, attemptedAt, summary: result.data ?? null, error: null }
+      } catch (err) {
+        return {
+          windowMs: rangeMs,
+          attemptedAt,
+          summary: previous?.summary ?? null,
+          error: getErrorMessage(err),
+        }
+      }
+    },
+  )
+  const currentSnapshot = () => {
+    const value = snapshot()
+    return value?.windowMs === windowMs() ? value : undefined
+  }
+  const summary = () => currentSnapshot()?.summary ?? null
+  const error = () => (snapshot.loading ? null : (currentSnapshot()?.error ?? null))
 
   const sampleBrowser = () => {
     setBrowserSamples((items: BrowserMetricSample[]) => [...items, readBrowserSample()].slice(-60))
@@ -64,17 +105,26 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
   let analysisPollTimer: number | undefined
   let analysisPollFailures = 0
 
-  onCleanup(() => window.clearTimeout(analysisPollTimer))
+  onCleanup(() => {
+    requestVersion++
+    detailVersion++
+    window.clearTimeout(analysisPollTimer)
+  })
 
   return {
     summary,
     get loading() {
-      return summary.loading
+      return snapshot.loading
     },
     error,
+    attemptedAt: () => currentSnapshot()?.attemptedAt,
     windowMs,
     setWindowMs,
     timeline,
+    timelineError,
+    tracesError,
+    timelineLoading,
+    tracesLoading,
     traceDetail,
     analysis,
     analysisError,
@@ -93,26 +143,37 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
     return refetch()
   }
 
-  async function loadTimeline(rangeMs = windowMs()) {
-    const now = Date.now()
-    const result = await sdk.client.performance.timeline(
-      { from: new Date(now - rangeMs).toISOString(), metric: CHART_METRICS },
-      { throwOnError: true },
-    )
-
-    setTimeline(result.data ?? null)
+  async function loadTimeline(rangeMs = windowMs(), version = detailVersion) {
+    setTimelineError(null)
+    setTimelineLoading(true)
+    try {
+      const now = Date.now()
+      const result = await sdk.client.performance.timeline(
+        { from: new Date(now - rangeMs).toISOString(), metric: CHART_METRICS },
+        { throwOnError: true },
+      )
+      if (version === detailVersion && rangeMs === windowMs()) setTimeline(result.data ?? null)
+    } catch (err) {
+      if (version === detailVersion && rangeMs === windowMs()) setTimelineError(getErrorMessage(err))
+    } finally {
+      if (version === detailVersion && rangeMs === windowMs()) setTimelineLoading(false)
+    }
   }
 
-  async function loadTraces(rangeMs = windowMs()) {
+  async function loadTraces(rangeMs = windowMs(), version = detailVersion) {
+    setTracesError(null)
+    setTracesLoading(true)
     try {
       const now = Date.now()
       const result = await sdk.client.performance.traces.list(
         { from: new Date(now - rangeMs).toISOString(), limit: 24 },
         { throwOnError: true },
       )
-      setEventTraces(result.data?.items ?? [])
-    } catch {
-      setEventTraces([])
+      if (version === detailVersion && rangeMs === windowMs()) setEventTraces(result.data?.items ?? [])
+    } catch (err) {
+      if (version === detailVersion && rangeMs === windowMs()) setTracesError(getErrorMessage(err))
+    } finally {
+      if (version === detailVersion && rangeMs === windowMs()) setTracesLoading(false)
     }
   }
 

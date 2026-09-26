@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
 import { Log } from "../util/log"
 import {
@@ -23,6 +24,8 @@ import type { MessageV2 } from "./message-v2"
 import { ObservabilitySpans } from "../observability/spans"
 import type { LLMTurnMemory } from "./llm-memory"
 import { SessionRootVariant } from "./root-variant"
+import { ProviderThinking } from "../provider/thinking"
+import type { ModelSelection } from "./model-selection-schema"
 import { SessionPluginHooks } from "./plugin-hooks"
 import { reasoningStreamGuardMiddleware } from "./reasoning-stream-guard"
 import { CODEX_PROVIDER_ID, setReplayPlan, type CodexReplayPlan } from "../provider/codex-compaction"
@@ -165,6 +168,7 @@ export namespace LLM {
   }
 
   export type StreamInput = {
+    modelSelection?: ModelSelection.Request
     user: MessageV2.User
     sessionID: string
     model: Provider.Model
@@ -263,11 +267,10 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
-    const [{ Config }, { withPreambleSection }, { SystemPrompt }, { TimeoutConfig }] = await Promise.all([
+    const [{ Config }, { withPreambleSection }, { SystemPrompt }] = await Promise.all([
       import("../config/config"),
       import("../agent/prompt/preamble"),
       import("./system"),
-      import("../util/timeout-config"),
     ])
     const trigger = SessionPluginHooks.trigger
     const l = log
@@ -324,11 +327,8 @@ export namespace LLM {
     systemTimer.stop()
 
     const optionsTimer = l.time("options.assembly")
-    const [provider, cfg, timeout] = await Promise.all([
-      Provider.getProvider(input.model.providerID),
-      Config.current(),
-      TimeoutConfig.resolve(),
-    ])
+    const [provider, cfg] = await Promise.all([Provider.getProvider(input.model.providerID), Config.current()])
+    const providerTimeouts = await Provider.requestTimeouts(input.model)
     l.debug("prompt layout", {
       ...promptLayoutMetadata({
         model: input.model,
@@ -340,20 +340,26 @@ export namespace LLM {
           input.systemCacheBreakpoint === undefined ? undefined : baseSystemLength + input.systemCacheBreakpoint,
       }),
     })
-    const variant = SessionRootVariant.options({
-      variant: input.user.variant,
-      model: input.model,
-      small: input.small,
-    })
+    const explicitThinking = !input.small && input.user.thinking ? structuredClone(input.user.thinking) : undefined
+    const variant = explicitThinking
+      ? ProviderThinking.options(input.model, explicitThinking)
+      : SessionRootVariant.options({
+          variant: input.user.variant,
+          model: input.model,
+          small: input.small,
+        })
     const base = input.small
       ? ProviderTransform.smallOptions(input.model, provider?.profileID)
       : ProviderTransform.options(input.model, input.sessionID, provider?.options, provider?.profileID)
-    const options: Record<string, unknown> = pipe(
+    const mergedOptions: Record<string, unknown> = pipe(
       base,
       mergeDeep(input.model.options),
       mergeDeep(input.agent.options),
       mergeDeep(variant),
     )
+    const options = explicitThinking
+      ? ProviderThinking.normalize(input.model, explicitThinking, mergedOptions)
+      : mergedOptions
     const thinking = options["thinking"]
     const isAnthropicThinking =
       input.model.api.npm === "@ai-sdk/anthropic" &&
@@ -381,6 +387,22 @@ export namespace LLM {
       },
     )
 
+    if (explicitThinking) {
+      params.options = ProviderThinking.normalize(input.model, explicitThinking, params.options)
+      const thinking = params.options.thinking
+      if (
+        input.model.api.npm === "@ai-sdk/anthropic" &&
+        thinking &&
+        typeof thinking === "object" &&
+        "type" in thinking &&
+        (thinking.type === "enabled" || thinking.type === "adaptive")
+      ) {
+        params.temperature = undefined
+        params.topP = undefined
+        params.topK = undefined
+      }
+    }
+
     l.info("params", {
       params,
     })
@@ -389,9 +411,9 @@ export namespace LLM {
       system,
       baseSystemLength,
       provider: await Provider.workerPlan(provider, {
-        ttfbMs: timeout.providerTtfbMs,
-        idleMs: timeout.providerIdleMs,
-        wallMs: timeout.providerWallMs,
+        ttfbMs: providerTimeouts.providerTtfbMs,
+        idleMs: providerTimeouts.providerIdleMs,
+        wallMs: providerTimeouts.providerWallMs,
       }),
       params,
       telemetryEnabled: cfg.observability?.modelSpans,
@@ -401,7 +423,7 @@ export namespace LLM {
   export function stream(input: StreamInput): Promise<StreamOutput>
   export function stream(input: PreparedStreamInput): Promise<StreamOutput>
   export async function stream(input: StreamInput | PreparedStreamInput): Promise<StreamOutput> {
-    if (process.env.SYNERGY_AGENT_WORKER && !input.prepared) {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER && !input.prepared) {
       throw new Error("Agent worker requires a Control Plane-prepared provider request")
     }
     // Provider-payload safety net: the vault masks registered values in the
@@ -421,7 +443,7 @@ export namespace LLM {
     })
     const langTimer = l.time("provider.getLanguage")
     const prepared = input.prepared ?? (await prepare(input as StreamInput))
-    if (process.env.SYNERGY_AGENT_WORKER === "1") {
+    if (RuntimeContext.current().host.env.SYNERGY_AGENT_WORKER === "1") {
       await Provider.configureWorkerProvider(input.model, prepared.provider)
     }
     const language = await Provider.getLanguage(input.model)
@@ -457,7 +479,7 @@ export namespace LLM {
     // sessionID when no override is set. A codex turn without a plan clears
     // any previous entry for the session; the runner releases it when the
     // turn ends so a long-lived worker never retains per-session artifacts.
-    if (input.model.providerID === CODEX_PROVIDER_ID) {
+    if (prepared.provider.profileID === CODEX_PROVIDER_ID) {
       const resolvedCacheKey =
         typeof params.options?.promptCacheKey === "string" && params.options.promptCacheKey !== ""
           ? params.options.promptCacheKey

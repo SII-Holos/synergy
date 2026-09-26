@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../../lifecycle/context"
 import { z } from "zod"
 import { Storage } from "../../storage/storage"
 import { StoragePath } from "../../storage/path"
@@ -11,7 +12,9 @@ export namespace RolloutPending {
   // writes must not consult the ledger. Listed owners are already listed,
   // and an untrusted ledger stays untrusted until the recovery pass re-arms
   // it, so a crash inside the window cannot leave mutated work unlisted.
-  let suspended = false
+  const runtimeState = RuntimeContext.state(() => ({
+    suspended: false,
+  }))
 
   /**
    * Suspends ledger tracking for the duration of a recovery pass. Recovery
@@ -20,11 +23,15 @@ export namespace RolloutPending {
    * cannot leave mutated work unlisted.
    */
   export function suspendTracking(): void {
-    suspended = true
+    const instanceState = runtimeState()
+
+    instanceState.suspended = true
   }
 
   export function resumeTracking(): void {
-    suspended = false
+    const instanceState = runtimeState()
+
+    instanceState.suspended = false
   }
 
   function key() {
@@ -86,7 +93,9 @@ export namespace RolloutPending {
    * under the lock so neither owner's entry can be lost.
    */
   export async function track(owner: RolloutSchema.Owner): Promise<void> {
-    if (suspended) return
+    const instanceState = runtimeState()
+
+    if (instanceState.suspended) return
     const identity = RolloutSchema.Owner.parse(owner)
     const probe = await load()
     // A migration can write before the first recovery pass. Only recovery

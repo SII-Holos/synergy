@@ -12,6 +12,8 @@ Read and search tools share UTF-8 output accounting across ranges and files. Exp
 
 Search recovery distinguishes a requested result-count limit from the shared byte budget so callers can adjust the binding constraint. AST metadata retains every distinct match range while listing each source line once; overlapping matches do not duplicate displayed rows or editing evidence.
 
+Read evidence retains the content version captured with the snapshot, including AST searches. A later edit compares that version with current bytes; a budget-limited observation does not authorize unseen rows, and a changed file requires fresh evidence. The public tool registrations and test fixtures retain the Workspace ownership and explicit Runtime boundaries.
+
 Anchored edits return final tags and compact previews while preserving the existing UI diff. Previously known unchanged rows and submitted rows that survive formatting remain known across versions. A partial write reports committed sections and the remaining error instead of silently appearing complete. Specialist selection context and the task catalog are retained. Truncation recovery permits targeted inspection without requiring delegation.
 
 The entire edit reply, including diagnostics, warnings, reload results and the recovery footer, fits 50 KiB and 2,000 lines. Commit summaries and tag invalidation precede previews; complete feedback exceeding the budget is retained through the existing tool-output file mechanism. Displayed-line evidence is recorded only after selecting complete preview rows. The same accounting covers no-op feedback, whose diagnostics can also exceed the budget.

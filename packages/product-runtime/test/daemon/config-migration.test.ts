@@ -10,6 +10,9 @@ import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability
 import { resetMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { parse as parseJsonc } from "jsonc-parser"
 import { resolveNetworkOptions } from "@ericsanchezok/synergy-cli/cli/network"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { compositionFixture } from "../support/composition"
+let runtime: Awaited<ReturnType<typeof compositionFixture>>
 
 const originalEnv = { ...process.env }
 const originalArgv = [...process.argv]
@@ -26,28 +29,23 @@ describe("daemon.spec", () => {
   let home: string
 
   beforeEach(async () => {
-    home = path.join(os.tmpdir(), `synergy-daemon-spec-${Math.random().toString(36).slice(2)}`)
-    process.env = { ...originalEnv, SYNERGY_TEST_HOME: home, PATH: "/usr/bin" }
+    runtime = await compositionFixture({ env: { PATH: "/usr/bin" } })
+    home = runtime.host.home
     process.argv = [...originalArgv]
     await fs.mkdir(path.join(home, ".synergy", "config"), { recursive: true })
-    Config.global.reset()
-    resetMigrations()
-    await Storage.removeTree(["meta", "migration"])
   })
 
   afterEach(async () => {
-    await ObservabilityStore.close()
-    process.env = { ...originalEnv }
     process.argv = [...originalArgv]
-    Config.global.reset()
-    await fs.rm(home, { recursive: true, force: true })
+    await runtime.close()
   })
 
-  test("resolveNetwork migrates legacy channel holos config before reading config", async () => {
-    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
-    await Bun.write(
-      target,
-      `{
+  test("resolveNetwork migrates legacy channel holos config before reading config", () =>
+    runtime.run(async () => {
+      const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+      await Bun.write(
+        target,
+        `{
   "channel": {
     "holos": {
       "type": "holos",
@@ -66,28 +64,29 @@ describe("daemon.spec", () => {
     "port": 4321
   }
 }`,
-    )
-    Config.global.reset()
+      )
+      Config.global.reset()
 
-    const network = await DaemonSpec.resolveNetwork()
-    expect(network.hostname).toBe("0.0.0.0")
-    expect(network.port).toBe(4321)
+      const network = await DaemonSpec.resolveNetwork()
+      expect(network.hostname).toBe("0.0.0.0")
+      expect(network.port).toBe(4321)
 
-    const migrated = await readMigratedLegacyConfig(target)
-    expect(migrated.holos).toEqual({
-      enabled: true,
-      apiUrl: "https://www.holosai.io",
-      wsUrl: "wss://www.holosai.io",
-      portalUrl: "https://www.holosai.io",
-    })
-    expect(migrated.channel).toBeUndefined()
-  })
+      const migrated = await readMigratedLegacyConfig(target)
+      expect(migrated.holos).toEqual({
+        enabled: true,
+        apiUrl: "https://www.holosai.io",
+        wsUrl: "wss://www.holosai.io",
+        portalUrl: "https://www.holosai.io",
+      })
+      expect(migrated.channel).toBeUndefined()
+    }))
 
-  test("resolveNetwork removes legacy channel holos config when top-level holos already exists", async () => {
-    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
-    await Bun.write(
-      target,
-      `{
+  test("resolveNetwork removes legacy channel holos config when top-level holos already exists", () =>
+    runtime.run(async () => {
+      const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+      await Bun.write(
+        target,
+        `{
   "channel": {
     "holos": {
       "type": "holos",
@@ -111,99 +110,101 @@ describe("daemon.spec", () => {
     "port": 4321
   }
 }`,
-    )
-    Config.global.reset()
+      )
+      Config.global.reset()
 
-    const network = await DaemonSpec.resolveNetwork()
-    expect(network.port).toBe(4321)
+      const network = await DaemonSpec.resolveNetwork()
+      expect(network.port).toBe(4321)
 
-    const migrated = await readMigratedLegacyConfig(target)
-    expect(migrated.holos).toEqual({
-      enabled: true,
-      apiUrl: "https://api.holosai.io",
-      wsUrl: "wss://api.holosai.io",
-      portalUrl: "https://www.holosai.io",
-    })
-    expect(migrated.channel).toBeUndefined()
-  })
+      const migrated = await readMigratedLegacyConfig(target)
+      expect(migrated.holos).toEqual({
+        enabled: true,
+        apiUrl: "https://api.holosai.io",
+        wsUrl: "wss://api.holosai.io",
+        portalUrl: "https://www.holosai.io",
+      })
+      expect(migrated.channel).toBeUndefined()
+    }))
 
-  test("CLI network options migrate legacy identity config before reading config", async () => {
-    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
-    await Bun.write(
-      target,
-      JSON.stringify({
-        identity: {
-          evolution: {
-            active: {
-              retrieve: false,
+  test("CLI network options migrate legacy identity config before reading config", () =>
+    runtime.run(async () => {
+      const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+      await Bun.write(
+        target,
+        JSON.stringify({
+          identity: {
+            evolution: {
+              active: {
+                retrieve: false,
+              },
+              passive: false,
             },
-            passive: false,
+            autonomy: false,
           },
-          autonomy: false,
+          server: {
+            hostname: "0.0.0.0",
+            port: 4321,
+          },
+        }),
+      )
+      Config.global.reset()
+
+      await expect(Config.global()).rejects.toThrow()
+
+      const network = await resolveNetworkOptions({
+        hostname: "0.0.0.0",
+        port: 0,
+        mdns: false,
+        cors: [],
+      })
+      expect(network.hostname).toBe("0.0.0.0")
+      expect(network.port).toBe(4321)
+
+      const migrated = await readMigratedLegacyConfig(target)
+      expect(migrated.identity).toBeUndefined()
+      expect(migrated.library).toEqual({
+        memory: {
+          enabled: false,
         },
-        server: {
-          hostname: "0.0.0.0",
-          port: 4321,
+        experience: {
+          encode: false,
+          retrieve: false,
         },
-      }),
-    )
-    Config.global.reset()
+        autonomy: false,
+      })
+    }))
 
-    await expect(Config.global()).rejects.toThrow()
+  test("CLI network options remove deprecated Holos friend reply config before reading config", () =>
+    runtime.run(async () => {
+      const target = path.join(home, ".synergy", "config", "synergy.jsonc")
+      await Bun.write(
+        target,
+        JSON.stringify({
+          holos_friend_reply_model: "openai/gpt-4.1-mini",
+          server: {
+            hostname: "0.0.0.0",
+            port: 4321,
+          },
+        }),
+      )
+      Config.global.reset()
 
-    const network = await resolveNetworkOptions({
-      hostname: "0.0.0.0",
-      port: 0,
-      mdns: false,
-      cors: [],
-    })
-    expect(network.hostname).toBe("0.0.0.0")
-    expect(network.port).toBe(4321)
+      await expect(Config.global()).rejects.toThrow()
 
-    const migrated = await readMigratedLegacyConfig(target)
-    expect(migrated.identity).toBeUndefined()
-    expect(migrated.library).toEqual({
-      memory: {
-        enabled: false,
-      },
-      experience: {
-        encode: false,
-        retrieve: false,
-      },
-      autonomy: false,
-    })
-  })
+      const network = await resolveNetworkOptions({
+        hostname: "0.0.0.0",
+        port: 0,
+        mdns: false,
+        cors: [],
+      })
+      expect(network.hostname).toBe("0.0.0.0")
+      expect(network.port).toBe(4321)
 
-  test("CLI network options remove deprecated Holos friend reply config before reading config", async () => {
-    const target = path.join(home, ".synergy", "config", "synergy.jsonc")
-    await Bun.write(
-      target,
-      JSON.stringify({
-        holos_friend_reply_model: "openai/gpt-4.1-mini",
-        server: {
-          hostname: "0.0.0.0",
-          port: 4321,
-        },
-      }),
-    )
-    Config.global.reset()
-
-    await expect(Config.global()).rejects.toThrow()
-
-    const network = await resolveNetworkOptions({
-      hostname: "0.0.0.0",
-      port: 0,
-      mdns: false,
-      cors: [],
-    })
-    expect(network.hostname).toBe("0.0.0.0")
-    expect(network.port).toBe(4321)
-
-    const migrated = await readMigratedLegacyConfig(target)
-    expect(migrated.holos_friend_reply_model).toBeUndefined()
-    expect(migrated.server).toEqual({
-      hostname: "0.0.0.0",
-      port: 4321,
-    })
-  })
+      const migrated = await readMigratedLegacyConfig(target)
+      expect(migrated.holos_friend_reply_model).toBeUndefined()
+      expect(migrated.server).toEqual({
+        hostname: "0.0.0.0",
+        port: 4321,
+      })
+    }))
 })

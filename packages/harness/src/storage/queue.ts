@@ -42,96 +42,172 @@ function recordQueueWait(waitedMs: number) {
   if (scope) scope.waitedMs += waitedMs
 }
 
-/**
- * Serializes work on one underlying resource.
- *
- * The queue names itself in every rejection and reports its own wait, depth and
- * hold because several instances share the same wording. Without an identity a
- * storage stall cannot be attributed to the queue that produced it, and without
- * these metrics neither the wait that reached the deadline nor the caller that
- * caused it leaves any trace.
- */
+export interface StorageQueueOptions {
+  deadline?: number
+  signal?: AbortSignal
+  priority?: "foreground" | "background"
+  onWait?(waiting: boolean): void
+}
+
+const admission = new AsyncLocalStorage<StorageQueueOptions>()
+
+export function withStorageQueueOptions<T>(options: StorageQueueOptions, body: () => T): T {
+  const parent = admission.getStore()
+  return admission.run(
+    {
+      ...parent,
+      ...options,
+      deadline: Math.min(parent?.deadline ?? Infinity, options.deadline ?? Infinity),
+      signal:
+        parent?.signal && options.signal
+          ? AbortSignal.any([parent.signal, options.signal])
+          : (options.signal ?? parent?.signal),
+    },
+    body,
+  )
+}
+
+type Waiting = {
+  priority: "foreground" | "background"
+  execute(): void
+  reject(error: unknown): void
+}
+
 export class StorageQueue {
-  private tail = Promise.resolve()
-  private pending = 0
+  private readonly waiting: Waiting[] = []
+  private active = false
   private closed = false
+  private drained?: ReturnType<typeof Promise.withResolvers<void>>
 
   constructor(private readonly name: string) {}
 
-  async run<T>(body: () => Promise<T>): Promise<T> {
-    if (this.closed) throw new StorageClosedError()
-    if (this.pending >= MAX_PENDING) throw new StorageBusyError(`Authoritative storage queue is full (${this.name})`)
-    this.pending++
-    // Depth is recorded once contention exists; a depth of one is every
-    // uncontended request and would dominate the series without describing a
-    // queue. Actual queueing is exactly what the caller of this branch sees.
-    if (this.pending > 1)
-      ObservabilityMetrics.record({
-        name: "storage.queue.depth",
-        value: this.pending,
-        unit: "count",
-        module: "storage",
-        labels: { queue: this.name },
-      })
-    // A suspended host advances the wall clock without letting the queue make
-    // progress, so the wait budget is measured monotonically. `setTimeout`
-    // still does the scheduling; only the decision is monotonic.
+  run<T>(body: () => Promise<T>, options: StorageQueueOptions = {}): Promise<T> {
+    if (this.closed) return Promise.reject(new StorageClosedError())
+    if (this.waiting.length + Number(this.active) >= MAX_PENDING)
+      return Promise.reject(new StorageBusyError(`Authoritative storage queue is full (${this.name})`))
+    const inherited = admission.getStore()
+    const onWait = options.onWait ?? inherited?.onWait
+    const signal =
+      options.signal && inherited?.signal
+        ? AbortSignal.any([options.signal, inherited.signal])
+        : (options.signal ?? inherited?.signal)
+    if (signal?.aborted) return Promise.reject(signal.reason)
     const enqueuedAt = performance.now()
-    const deadline = enqueuedAt + ADMISSION_DEADLINE_MS
-    const previous = this.tail
-    const next = Promise.withResolvers<void>()
-    this.tail = next.promise
-    try {
-      await previous
-      const waitedMs = performance.now() - enqueuedAt
-      recordQueueWait(waitedMs)
-      // A wait that reaches the deadline is the event that rejects a caller, so
-      // it is never left to sampling; ordinary waits are sampled to keep the
-      // series cheap on a hot path.
-      if (waitedMs >= SLOW_WAIT_MS)
+    const deadline = Math.min(
+      enqueuedAt + ADMISSION_DEADLINE_MS,
+      options.deadline ?? Infinity,
+      inherited?.deadline ?? Infinity,
+    )
+    const priority = options.priority ?? inherited?.priority ?? "foreground"
+    const expired = () => new StorageBusyError(`Authoritative storage admission deadline exceeded (${this.name})`)
+    if (enqueuedAt >= deadline) return Promise.reject(expired())
+
+    return new Promise<T>((resolve, reject) => {
+      const waiting = this.active
+      if (waiting) onWait?.(true)
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const clean = () => {
+        if (timer) clearTimeout(timer)
+        signal?.removeEventListener("abort", cancel)
+        if (waiting) onWait?.(false)
+      }
+      const waited = () => {
+        const waitedMs = performance.now() - enqueuedAt
+        recordQueueWait(waitedMs)
         ObservabilityMetrics.record({
           name: "storage.queue.wait",
           value: waitedMs,
           unit: "ms",
           module: "storage",
-          labels: { queue: this.name, slow: true },
+          labels: { queue: this.name, ...(waitedMs >= SLOW_WAIT_MS ? { slow: true } : {}) },
+          ...(waitedMs >= SLOW_WAIT_MS ? {} : { sampleRate: WAIT_SAMPLE_RATE }),
         })
-      else
+      }
+      const entry: Waiting = {
+        priority,
+        // Dispatch may come from another Runtime's completing holder.
+        execute: AsyncLocalStorage.bind(() => {
+          clean()
+          waited()
+          if (this.closed || signal?.aborted || performance.now() >= deadline) {
+            reject(this.closed ? new StorageClosedError() : signal?.aborted ? signal.reason : expired())
+            this.release()
+            return
+          }
+          const startedAt = performance.now()
+          void (async () => {
+            try {
+              resolve(await admission.run({ deadline, signal, priority, onWait }, body))
+            } catch (error) {
+              reject(error)
+            } finally {
+              const heldMs = performance.now() - startedAt
+              if (heldMs >= SLOW_HOLD_MS)
+                ObservabilityMetrics.record({
+                  name: "storage.queue.hold",
+                  value: heldMs,
+                  unit: "ms",
+                  module: "storage",
+                  labels: { queue: this.name },
+                })
+              this.release()
+            }
+          })()
+        }),
+        reject: AsyncLocalStorage.bind((error: unknown) => {
+          const index = this.waiting.indexOf(entry)
+          if (index === -1) return
+          this.waiting.splice(index, 1)
+          clean()
+          waited()
+          reject(error)
+        }),
+      }
+      const cancel = () => entry.reject(signal?.reason)
+      const expire = () => {
+        const remaining = deadline - performance.now()
+        if (remaining > 0) {
+          timer = setTimeout(expire, remaining)
+          return
+        }
+        entry.reject(expired())
+      }
+      this.waiting.push(entry)
+      const depth = this.waiting.length + Number(this.active)
+      if (depth > 1)
         ObservabilityMetrics.record({
-          name: "storage.queue.wait",
-          value: waitedMs,
-          unit: "ms",
+          name: "storage.queue.depth",
+          value: depth,
+          unit: "count",
           module: "storage",
           labels: { queue: this.name },
-          sampleRate: WAIT_SAMPLE_RATE,
         })
-      if (performance.now() > deadline)
-        throw new StorageBusyError(`Authoritative storage admission deadline exceeded (${this.name})`)
-      // The holder was invisible by construction before this: the wait budget is
-      // checked once before the body runs, so a long-holding caller was never
-      // measured and a stalled queue could not name what was holding it.
-      const startedAt = performance.now()
-      try {
-        return await body()
-      } finally {
-        const heldMs = performance.now() - startedAt
-        if (heldMs >= SLOW_HOLD_MS)
-          ObservabilityMetrics.record({
-            name: "storage.queue.hold",
-            value: heldMs,
-            unit: "ms",
-            module: "storage",
-            labels: { queue: this.name },
-          })
-      }
-    } finally {
-      this.pending--
-      next.resolve()
-    }
+      signal?.addEventListener("abort", cancel, { once: true })
+      timer = setTimeout(expire, Math.max(1, deadline - performance.now()))
+      this.dispatch()
+    })
   }
 
-  async close() {
+  private dispatch() {
+    if (this.active || this.closed) return
+    const foreground = this.waiting.findIndex((entry) => entry.priority === "foreground")
+    const [next] = this.waiting.splice(Math.max(0, foreground), 1)
+    if (!next) return
+    this.active = true
+    next.execute()
+  }
+
+  private release() {
+    this.active = false
+    this.dispatch()
+    if (!this.active && !this.waiting.length) this.drained?.resolve()
+  }
+
+  close(): Promise<void> {
     this.closed = true
-    await this.tail
+    for (const entry of [...this.waiting]) entry.reject(new StorageClosedError())
+    if (!this.active) return Promise.resolve()
+    this.drained ??= Promise.withResolvers<void>()
+    return this.drained.promise
   }
 }

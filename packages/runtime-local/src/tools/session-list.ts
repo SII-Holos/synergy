@@ -51,8 +51,8 @@ const QueryLimit = 10000
 
 function formatScopeLabel(scope: Scope): string {
   if (scope.type === "home") return `Home [${scope.id}]`
-  const name = scope.name ?? path.basename(scope.directory) ?? scope.id
-  return `${name} [${scope.id}] — ${scope.directory}`
+  const name = scope.name ?? (scope.local ? path.basename(scope.local.directory) : scope.id)
+  return `${name} [${scope.id}]${scope.local ? ` — ${scope.local.directory}` : ""}`
 }
 
 function formatSessionEntry(session: Session.Info, extra?: string): string {

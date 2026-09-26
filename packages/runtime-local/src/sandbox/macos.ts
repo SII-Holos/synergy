@@ -128,16 +128,16 @@ export namespace MacBackend {
         approvedUnixSockets: [],
         ...(opts.dataDenyRoots ? { dataDenyRoots: opts.dataDenyRoots } : {}),
       })
-      const sbplContent = MacOSPolicy.compileProfile(policyProfile)
-      const params = MacOSPolicy.generateParams(policyProfile)
-      const tempPath = writeTempString(sbplContent)
+      const compiled = MacOSPolicy.compileExecution(policyProfile)
+      const tempPath = writeTempString(compiled.profile)
 
-      const dArgs = Object.entries(params).flatMap(([key, value]) => ["-D", `${key}=${value}`])
+      const dArgs = Object.entries(compiled.params).flatMap(([key, value]) => ["-D", `${key}=${value}`])
 
       return {
         command: "sandbox-exec",
         args: ["-f", tempPath, ...dArgs, command, ...args],
         sandboxed: true,
+        writeFootprint: compiled.writeFootprint,
         tempPath,
       }
     }
@@ -173,6 +173,7 @@ export namespace MacBackend {
       command: "sandbox-exec",
       args: ["-f", tempPath, command, ...args],
       sandboxed: true,
+      writeFootprint: { kind: "host" },
       tempPath,
     }
   }

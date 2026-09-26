@@ -2,6 +2,7 @@ import { createResource, createSignal, onCleanup } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./stats-i18n"
+import { requestErrorMessage } from "@/utils/error"
 
 type StatsSnapshot = import("@ericsanchezok/synergy-sdk").StatsSnapshot
 
@@ -35,12 +36,12 @@ export function useStats() {
   const [data, { mutate }] = createResource(async (): Promise<StatsSnapshot | null> => {
     try {
       setError(null)
-      const res = await sdk.client.global.stats.get(undefined, { signal: controller.signal })
+      const res = await sdk.client.global.stats.get(undefined, { signal: controller.signal, throwOnError: true })
       if (!res.data && !controller.signal.aborted) void sync()
       return res.data ?? null
     } catch (err) {
       if (controller.signal.aborted) return null
-      const msg = err instanceof Error && err.message ? err.message : String(err)
+      const msg = requestErrorMessage(err, i18n._(S.loadFetchError.id))
       setError(msg || i18n._(S.loadFetchError.id))
       return null
     }
@@ -84,6 +85,7 @@ export function useStats() {
             mutate(() => payload.snapshot)
             setError(null)
           }
+          if (!payload.snapshot) setSyncError(i18n._(S.syncFailed.id))
           setProgress({ phase: "snapshot", current: 1, total: 1, message: i18n._(S.syncDone.id) })
           finish()
           return

@@ -6,6 +6,11 @@ import { ProviderProfile } from "../../src/provider/profile"
 import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime({
+  env: { SYNERGY_TEST_ENV_TOKEN: "invalid", SYNERGY_TEST_MAPPED_ENV_TOKEN: "invalid" },
+})
 
 const PROVIDERS = [
   "test-refresh",
@@ -31,625 +36,648 @@ async function reset() {
   }
 }
 
-beforeEach(reset)
-afterEach(reset)
+beforeEach(() => runtime.run(reset))
+afterEach(() => runtime.run(reset))
 
-test("error classification reads a bounded prefix and preserves the caller response", async () => {
-  let pulls = 0
-  let classifiedBody: unknown = "unset"
-  const response = new Response(
-    new ReadableStream<Uint8Array>({
-      pull(controller) {
-        pulls++
-        controller.enqueue(new Uint8Array(16 * 1024).fill(120))
-        if (pulls === 100) controller.close()
+test("error classification reads a bounded prefix and preserves the caller response", () =>
+  runtime.run(async () => {
+    let pulls = 0
+    let classifiedBody: unknown = "unset"
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          pulls++
+          controller.enqueue(new Uint8Array(16 * 1024).fill(120))
+          if (pulls === 100) controller.close()
+        },
+      }),
+      { status: 400 },
+    )
+    const result = await ProviderAuthRecovery.execute({
+      providerID: "test-status",
+      manageStoredCredential: false,
+      request: async () => response,
+      classify: ({ body }) => {
+        classifiedBody = body
+        return undefined
       },
-    }),
-    { status: 400 },
-  )
-  const result = await ProviderAuthRecovery.execute({
-    providerID: "test-status",
-    manageStoredCredential: false,
-    request: async () => response,
-    classify: ({ body }) => {
-      classifiedBody = body
-      return undefined
-    },
-  })
-  expect(classifiedBody).toBeUndefined()
-  expect(pulls).toBeLessThan(10)
-  expect(result.bodyUsed).toBe(false)
-  await result.body?.cancel()
-})
+    })
+    expect(classifiedBody).toBeUndefined()
+    expect(pulls).toBeLessThan(10)
+    expect(result.bodyUsed).toBe(false)
+    await result.body?.cancel()
+  }))
 
-test("concurrent credential rejection performs one refresh and each request retries once", async () => {
-  await Auth.set("test-refresh", { type: "oauth", access: "old", refresh: "refresh", expires: 9999999999 })
-  let refreshes = 0
-  let requests = 0
+test("concurrent credential rejection performs one refresh and each request retries once", () =>
+  runtime.run(async () => {
+    await Auth.set("test-refresh", { type: "oauth", access: "old", refresh: "refresh", expires: 9999999999 })
+    let refreshes = 0
+    let requests = 0
 
-  const execute = () =>
-    ProviderAuthRecovery.execute({
-      providerID: "test-refresh",
+    const execute = () =>
+      ProviderAuthRecovery.execute({
+        providerID: "test-refresh",
+        request: async () => {
+          requests++
+          const auth = await Auth.get("test-refresh")
+          return new Response(null, { status: auth?.type === "oauth" && auth.access === "new" ? 200 : 401 })
+        },
+        refresh: async (auth) => {
+          refreshes++
+          await Promise.resolve()
+          return auth.type === "oauth" ? { ...auth, access: "new" } : undefined
+        },
+      })
+
+    const responses = await Promise.all([execute(), execute()])
+    expect(responses.map((response) => response.status)).toEqual([200, 200])
+    expect(refreshes).toBe(1)
+    expect(requests).toBe(4)
+  }))
+
+test("a rejected primary API key switches to a backup within the single retry budget", () =>
+  runtime.run(async () => {
+    await Auth.set("test-backup", { type: "api", key: "primary" })
+    await Auth.addToPool("test-backup", "backup", { type: "api", key: "backup" })
+    const keys: string[] = []
+
+    const response = await ProviderAuthRecovery.execute({
+      providerID: "test-backup",
       request: async () => {
-        requests++
-        const auth = await Auth.get("test-refresh")
-        return new Response(null, { status: auth?.type === "oauth" && auth.access === "new" ? 200 : 401 })
-      },
-      refresh: async (auth) => {
-        refreshes++
-        await Promise.resolve()
-        return auth.type === "oauth" ? { ...auth, access: "new" } : undefined
+        const auth = await Auth.get("test-backup")
+        const key = auth?.type === "api" ? auth.key : ""
+        keys.push(key)
+        return new Response(null, { status: key === "backup" ? 200 : 401 })
       },
     })
 
-  const responses = await Promise.all([execute(), execute()])
-  expect(responses.map((response) => response.status)).toEqual([200, 200])
-  expect(refreshes).toBe(1)
-  expect(requests).toBe(4)
-})
+    expect(response.status).toBe(200)
+    expect(keys).toEqual(["primary", "backup"])
+    expect((await Auth.select("test-backup"))?.credentialID).toBe("backup")
+    expect(ProviderAuthHealth.fromEntry("test-backup", (await Auth.entries())["test-backup"]).status).toBe("connected")
+  }))
 
-test("a rejected primary API key switches to a backup within the single retry budget", async () => {
-  await Auth.set("test-backup", { type: "api", key: "primary" })
-  await Auth.addToPool("test-backup", "backup", { type: "api", key: "backup" })
-  const keys: string[] = []
+test("a request-local rejection cannot mark the newly selected backup dead", () =>
+  runtime.run(async () => {
+    await Auth.set("test-thrown-backup", { type: "api", key: "primary" })
+    await Auth.addToPool("test-thrown-backup", "backup", { type: "api", key: "backup" })
+    const seen: string[] = []
 
-  const response = await ProviderAuthRecovery.execute({
-    providerID: "test-backup",
-    request: async () => {
-      const auth = await Auth.get("test-backup")
-      const key = auth?.type === "api" ? auth.key : ""
-      keys.push(key)
-      return new Response(null, { status: key === "backup" ? 200 : 401 })
-    },
-  })
+    const response = await ProviderAuthRecovery.execute({
+      providerID: "test-thrown-backup",
+      request: async () => {
+        const selected = await Auth.select("test-thrown-backup")
+        const key = selected?.auth.type === "api" ? selected.auth.key : ""
+        seen.push(key)
+        if (selected?.credentialID === "test-thrown-backup") {
+          await Auth.markDead("test-thrown-backup", "refresh_rejected", {
+            credentialID: selected.credentialID,
+          })
+          throw { data: { code: "refresh_rejected", reloginRequired: true } }
+        }
+        return new Response(null, { status: 200 })
+      },
+    })
 
-  expect(response.status).toBe(200)
-  expect(keys).toEqual(["primary", "backup"])
-  expect((await Auth.select("test-backup"))?.credentialID).toBe("backup")
-  expect(ProviderAuthHealth.fromEntry("test-backup", (await Auth.entries())["test-backup"]).status).toBe("connected")
-})
+    expect(response.status).toBe(200)
+    expect(seen).toEqual(["primary", "backup"])
+    expect((await Auth.select("test-thrown-backup"))?.credentialID).toBe("backup")
+  }))
 
-test("a request-local rejection cannot mark the newly selected backup dead", async () => {
-  await Auth.set("test-thrown-backup", { type: "api", key: "primary" })
-  await Auth.addToPool("test-thrown-backup", "backup", { type: "api", key: "backup" })
-  const seen: string[] = []
+test("a lone API key cools down on a first rejection and is invalidated only after repeated rejections", () =>
+  runtime.run(async () => {
+    await Auth.set("test-api-confirm", { type: "api", key: "transient" })
+    let requests = 0
 
-  const response = await ProviderAuthRecovery.execute({
-    providerID: "test-thrown-backup",
-    request: async () => {
-      const selected = await Auth.select("test-thrown-backup")
-      const key = selected?.auth.type === "api" ? selected.auth.key : ""
-      seen.push(key)
-      if (selected?.credentialID === "test-thrown-backup") {
-        await Auth.markDead("test-thrown-backup", "refresh_rejected", {
-          credentialID: selected.credentialID,
-        })
-        throw { data: { code: "refresh_rejected", reloginRequired: true } }
-      }
-      return new Response(null, { status: 200 })
-    },
-  })
+    const recovered = await ProviderAuthRecovery.execute({
+      providerID: "test-api-confirm",
+      request: async () => new Response(null, { status: ++requests === 1 ? 401 : 200 }),
+    })
 
-  expect(response.status).toBe(200)
-  expect(seen).toEqual(["primary", "backup"])
-  expect((await Auth.select("test-thrown-backup"))?.credentialID).toBe("backup")
-})
+    expect(recovered.status).toBe(200)
+    expect(requests).toBe(2)
+    expect(await Auth.get("test-api-confirm")).toMatchObject({ type: "api", key: "transient" })
+    expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+      "connected",
+    )
 
-test("a lone API key cools down on a first rejection and is invalidated only after repeated rejections", async () => {
-  await Auth.set("test-api-confirm", { type: "api", key: "transient" })
-  let requests = 0
-
-  const recovered = await ProviderAuthRecovery.execute({
-    providerID: "test-api-confirm",
-    request: async () => new Response(null, { status: ++requests === 1 ? 401 : 200 }),
-  })
-
-  expect(recovered.status).toBe(200)
-  expect(requests).toBe(2)
-  expect(await Auth.get("test-api-confirm")).toMatchObject({ type: "api", key: "transient" })
-  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
-    "connected",
-  )
-
-  await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
-  const before = Math.floor(Date.now() / 1000)
-  const rejected = await ProviderAuthRecovery.execute({
-    providerID: "test-api-confirm",
-    request: async () => new Response(null, { status: 401 }),
-  })
-
-  expect(rejected.status).toBe(401)
-  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
-  expect(entry).toMatchObject({ status: "exhausted", failureCode: "credential_rejected" })
-  expect(entry.rejectedAt).toBeGreaterThanOrEqual(before)
-  expect(entry.cooldownUntil).toBeGreaterThanOrEqual(before + Auth.RejectionPolicy.cooldownSeconds)
-  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"])).toMatchObject({
-    status: "exhausted",
-    canDisconnect: false,
-  })
-})
-
-test("a first-rejection cooldown honors the strict retry hint ceiling", async () => {
-  await Auth.set("test-exhausted", { type: "api", key: "hinted" })
-  const before = Math.floor(Date.now() / 1000)
-  await ProviderAuthRecovery.execute({
-    providerID: "test-exhausted",
-    request: async () => new Response(null, { status: 401, headers: { "retry-after": "1200" } }),
-  })
-  const entry = (await Auth.entries())["test-exhausted"].pool![0]
-  expect(entry.status).toBe("exhausted")
-  expect(entry.cooldownUntil).toBeGreaterThanOrEqual(before + Auth.RejectionPolicy.cooldownSeconds)
-  expect(entry.cooldownUntil).toBeLessThanOrEqual(before + Auth.RejectionPolicy.maxCooldownSeconds)
-})
-
-test("a rejection after the cooldown elapses within the window escalates to dead", async () => {
-  await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
-  const stale = Math.floor(Date.now() / 1000) - 120
-  await Auth.markRejected("test-api-confirm", {
-    failureCode: "credential_rejected",
-    cooldownUntil: stale,
-    rejectedAt: stale,
-  })
-
-  await expect(
-    ProviderAuthRecovery.execute({
+    await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
+    const before = Math.floor(Date.now() / 1000)
+    const rejected = await ProviderAuthRecovery.execute({
       providerID: "test-api-confirm",
       request: async () => new Response(null, { status: 401 }),
-    }),
-  ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+    })
 
-  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
-  expect(entry).toMatchObject({ status: "dead", failureCode: "credential_rejected" })
-  expect(entry.rejectedAt).toBeUndefined()
-  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"])).toMatchObject({
-    status: "action_required",
-    recovery: "reconnect",
-    canDisconnect: true,
-  })
-})
+    expect(rejected.status).toBe(401)
+    const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+    expect(entry).toMatchObject({ status: "exhausted", failureCode: "credential_rejected" })
+    expect(entry.rejectedAt).toBeGreaterThanOrEqual(before)
+    expect(entry.cooldownUntil).toBeGreaterThanOrEqual(before + Auth.RejectionPolicy.cooldownSeconds)
+    expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"])).toMatchObject({
+      status: "exhausted",
+      canDisconnect: false,
+    })
+  }))
 
-test("a rejection outside the escalation window restarts the cooldown without killing the credential", async () => {
-  await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
-  const old = Math.floor(Date.now() / 1000) - (Auth.RejectionPolicy.escalationWindowSeconds + 120)
-  await Auth.markRejected("test-api-confirm", {
-    failureCode: "credential_rejected",
-    cooldownUntil: Math.floor(Date.now() / 1000) - 1,
-    rejectedAt: old,
-  })
+test("a first-rejection cooldown honors the strict retry hint ceiling", () =>
+  runtime.run(async () => {
+    await Auth.set("test-exhausted", { type: "api", key: "hinted" })
+    const before = Math.floor(Date.now() / 1000)
+    await ProviderAuthRecovery.execute({
+      providerID: "test-exhausted",
+      request: async () => new Response(null, { status: 401, headers: { "retry-after": "1200" } }),
+    })
+    const entry = (await Auth.entries())["test-exhausted"].pool![0]
+    expect(entry.status).toBe("exhausted")
+    expect(entry.cooldownUntil).toBeGreaterThanOrEqual(before + Auth.RejectionPolicy.cooldownSeconds)
+    expect(entry.cooldownUntil).toBeLessThanOrEqual(before + Auth.RejectionPolicy.maxCooldownSeconds)
+  }))
 
-  const response = await ProviderAuthRecovery.execute({
-    providerID: "test-api-confirm",
-    request: async () => new Response(null, { status: 401 }),
-  })
+test("a rejection after the cooldown elapses within the window escalates to dead", () =>
+  runtime.run(async () => {
+    await Auth.set("test-api-confirm", { type: "api", key: "rejected" })
+    const stale = Math.floor(Date.now() / 1000) - 120
+    await Auth.markRejected("test-api-confirm", {
+      failureCode: "credential_rejected",
+      cooldownUntil: stale,
+      rejectedAt: stale,
+    })
 
-  expect(response.status).toBe(401)
-  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
-  expect(entry.status).toBe("exhausted")
-  expect(entry.rejectedAt).toBeGreaterThan(old)
-})
-
-test("a successful request reactivates a cooling credential and clears the rejection anchor", async () => {
-  await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
-  const stale = Math.floor(Date.now() / 1000) - 120
-  await Auth.markRejected("test-api-confirm", {
-    failureCode: "credential_rejected",
-    cooldownUntil: stale,
-    rejectedAt: stale,
-  })
-
-  const response = await ProviderAuthRecovery.execute({
-    providerID: "test-api-confirm",
-    request: async () => new Response(null, { status: 200 }),
-  })
-
-  expect(response.status).toBe(200)
-  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
-  expect(entry).toMatchObject({ status: "active" })
-  expect(entry.rejectedAt).toBeUndefined()
-  expect(entry.cooldownUntil).toBeUndefined()
-  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
-    "connected",
-  )
-})
-
-test("a burst of concurrent first rejections stays a bounded cooldown", async () => {
-  await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
-
-  const responses = await Promise.all(
-    Array.from({ length: 4 }, () =>
+    await expect(
       ProviderAuthRecovery.execute({
         providerID: "test-api-confirm",
         request: async () => new Response(null, { status: 401 }),
       }),
-    ),
-  )
-
-  expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401])
-  const entry = (await Auth.entries())["test-api-confirm"].pool![0]
-  expect(entry.status).toBe("exhausted")
-  expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
-    "exhausted",
-  )
-})
-
-test("a lone API key confirmation retry preserves request headers and body", async () => {
-  await Auth.set("test-api-confirm", { type: "api", key: "valid" })
-  const bodies: string[] = []
-  const authorizations: string[] = []
-  let requests = 0
-  const transport = ProviderAuthRecovery.wrapFetch("test-api-confirm", async (input, init) => {
-    const request = input instanceof Request ? input : new Request(input, init)
-    bodies.push(await request.text())
-    authorizations.push(new Headers(init?.headers ?? request.headers).get("authorization") ?? "")
-    return new Response(null, { status: ++requests === 1 ? 401 : 200 })
-  })
-
-  const response = await transport(
-    new Request("https://provider.test/v1/messages", {
-      method: "POST",
-      headers: { Authorization: "Bearer stale" },
-      body: JSON.stringify({ prompt: "hello" }),
-    }),
-  )
-
-  expect(response.status).toBe(200)
-  expect(bodies).toEqual(['{"prompt":"hello"}', '{"prompt":"hello"}'])
-  expect(authorizations).toEqual(["Bearer valid", "Bearer valid"])
-})
-
-test("generic SDK transport rewrites common API-key headers when selecting a backup", async () => {
-  await Auth.set("test-wrapped-api", { type: "api", key: "primary" })
-  await Auth.addToPool("test-wrapped-api", "backup", { type: "api", key: "backup" })
-  const seen: string[] = []
-  const transport = ProviderAuthRecovery.wrapFetch("test-wrapped-api", async (_input, init) => {
-    const authorization = new Headers(init?.headers).get("authorization") ?? ""
-    seen.push(authorization)
-    return new Response(null, { status: authorization === "Bearer backup" ? 200 : 401 })
-  })
-
-  const response = await transport("https://provider.test/v1/messages", {
-    headers: { Authorization: "Bearer primary" },
-  })
-  expect(response.status).toBe(200)
-  expect(seen).toEqual(["Bearer primary", "Bearer backup"])
-})
-
-test("generic SDK transport preserves an effective inline API key", async () => {
-  await Auth.set("test-inline-api", { type: "api", key: "stored" })
-  const seen: string[] = []
-  const transport = ProviderAuthRecovery.wrapFetch(
-    "test-inline-api",
-    async (_input, init) => {
-      seen.push(new Headers(init?.headers).get("authorization") ?? "")
-      return new Response(null, { status: 401 })
-    },
-    undefined,
-    { effectiveAPIKey: "inline" },
-  )
-
-  const response = await transport("https://provider.test/v1/messages", {
-    headers: { Authorization: "Bearer inline" },
-  })
-
-  expect(response.status).toBe(401)
-  expect(seen).toEqual(["Bearer inline"])
-  expect(await Auth.get("test-inline-api")).toMatchObject({ type: "api", key: "stored" })
-})
-
-test("403, server failures, and network exceptions do not invalidate credentials without classification", async () => {
-  await Auth.set("test-status", { type: "api", key: "valid-until-proven-otherwise" })
-
-  for (const status of [403, 500, 503]) {
-    const response = await ProviderAuthRecovery.execute({
-      providerID: "test-status",
-      request: async () => new Response(null, { status }),
-    })
-    expect(response.status).toBe(status)
-    expect(await Auth.get("test-status")).toMatchObject({ type: "api" })
-  }
-
-  await expect(
-    ProviderAuthRecovery.execute({
-      providerID: "test-status",
-      request: async () => {
-        throw new TypeError("fetch failed")
-      },
-    }),
-  ).rejects.toThrow("fetch failed")
-  expect(await Auth.get("test-status")).toMatchObject({ type: "api" })
-})
-
-test("rate limits mark credentials exhausted with retry metadata and never refresh", async () => {
-  await Auth.set("test-exhausted", { type: "oauth", access: "access", refresh: "refresh", expires: 9999999999 })
-  let refreshes = 0
-  const reset = Math.floor(Date.now() / 1000) + 600
-  const response = await ProviderAuthRecovery.execute({
-    providerID: "test-exhausted",
-    request: async () =>
-      new Response(null, {
-        status: 429,
-        headers: { "retry-after": "120", "x-ratelimit-reset": String(reset) },
-      }),
-    refresh: async () => {
-      refreshes++
-      return undefined
-    },
-  })
-
-  expect(response.status).toBe(429)
-  expect(refreshes).toBe(0)
-  expect(ProviderAuthHealth.fromEntry("test-exhausted", (await Auth.entries())["test-exhausted"])).toMatchObject({
-    status: "exhausted",
-    canDisconnect: false,
-    resetAt: reset,
-  })
-})
-
-test("environment credential rejection is process-local and requests an environment update", async () => {
-  ProviderProfile.register({
-    id: "test-env",
-    name: "Test environment provider",
-    origin: "plugin",
-    env: ["SYNERGY_TEST_ENV_TOKEN"],
-    classifyError: ({ status }) =>
-      status === 401 ? { code: "test_env_rejected", retryable: false, reloginRequired: true } : undefined,
-  })
-  process.env.SYNERGY_TEST_ENV_TOKEN = "invalid"
-  try {
-    await expect(
-      ProviderAuthRecovery.execute({
-        providerID: "test-env",
-        request: async () => new Response(null, { status: 401 }),
-      }),
     ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
 
-    expect((await Auth.entries())["test-env"]).toBeUndefined()
-    expect(ProviderAuthHealth.fromEntry("test-env", undefined)).toMatchObject({
+    const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+    expect(entry).toMatchObject({ status: "dead", failureCode: "credential_rejected" })
+    expect(entry.rejectedAt).toBeUndefined()
+    expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"])).toMatchObject({
       status: "action_required",
-      recovery: "update_environment",
+      recovery: "reconnect",
+      canDisconnect: true,
+    })
+  }))
+
+test("a rejection outside the escalation window restarts the cooldown without killing the credential", () =>
+  runtime.run(async () => {
+    await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
+    const old = Math.floor(Date.now() / 1000) - (Auth.RejectionPolicy.escalationWindowSeconds + 120)
+    await Auth.markRejected("test-api-confirm", {
+      failureCode: "credential_rejected",
+      cooldownUntil: Math.floor(Date.now() / 1000) - 1,
+      rejectedAt: old,
     })
 
-    const recovered = await ProviderAuthRecovery.execute({
-      providerID: "test-env",
+    const response = await ProviderAuthRecovery.execute({
+      providerID: "test-api-confirm",
+      request: async () => new Response(null, { status: 401 }),
+    })
+
+    expect(response.status).toBe(401)
+    const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+    expect(entry.status).toBe("exhausted")
+    expect(entry.rejectedAt).toBeGreaterThan(old)
+  }))
+
+test("a successful request reactivates a cooling credential and clears the rejection anchor", () =>
+  runtime.run(async () => {
+    await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
+    const stale = Math.floor(Date.now() / 1000) - 120
+    await Auth.markRejected("test-api-confirm", {
+      failureCode: "credential_rejected",
+      cooldownUntil: stale,
+      rejectedAt: stale,
+    })
+
+    const response = await ProviderAuthRecovery.execute({
+      providerID: "test-api-confirm",
       request: async () => new Response(null, { status: 200 }),
     })
-    expect(recovered.status).toBe(200)
-    expect(ProviderAuthHealth.fromEntry("test-env", undefined)).toMatchObject({
-      status: "connected",
-      source: "env",
-    })
-    expect((await Auth.entries())["test-env"]).toBeUndefined()
-  } finally {
-    delete process.env.SYNERGY_TEST_ENV_TOKEN
-  }
-})
 
-test("mapped multi-name environment credentials retain environment recovery", async () => {
-  ProviderProfile.register({
-    id: "test-env",
-    name: "Test environment provider",
-    origin: "plugin",
-    env: ["SYNERGY_TEST_ENV_TOKEN"],
-    classifyError: ({ status }) =>
-      status === 401 ? { code: "test_env_rejected", retryable: false, reloginRequired: true } : undefined,
-  })
-  process.env.SYNERGY_TEST_MAPPED_ENV_TOKEN = "invalid"
-  try {
-    const transport = ProviderAuthRecovery.wrapFetch(
-      "test-env-mapped",
-      async () => new Response(null, { status: 401 }),
-      "test-env",
-      {
-        effectiveAPIKey: "invalid",
-        environment: ["SYNERGY_TEST_MISSING_ENV_TOKEN", "SYNERGY_TEST_MAPPED_ENV_TOKEN"],
-      },
+    expect(response.status).toBe(200)
+    const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+    expect(entry).toMatchObject({ status: "active" })
+    expect(entry.rejectedAt).toBeUndefined()
+    expect(entry.cooldownUntil).toBeUndefined()
+    expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+      "connected",
+    )
+  }))
+
+test("a burst of concurrent first rejections stays a bounded cooldown", () =>
+  runtime.run(async () => {
+    await Auth.set("test-api-confirm", { type: "api", key: "flaky" })
+
+    const responses = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        ProviderAuthRecovery.execute({
+          providerID: "test-api-confirm",
+          request: async () => new Response(null, { status: 401 }),
+        }),
+      ),
     )
 
-    await expect(
-      transport("https://provider.test/v1/messages", {
-        headers: { Authorization: "Bearer invalid" },
-      }),
-    ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+    expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401])
+    const entry = (await Auth.entries())["test-api-confirm"].pool![0]
+    expect(entry.status).toBe("exhausted")
+    expect(ProviderAuthHealth.fromEntry("test-api-confirm", (await Auth.entries())["test-api-confirm"]).status).toBe(
+      "exhausted",
+    )
+  }))
 
-    expect(ProviderAuthHealth.fromEntry("test-env-mapped", undefined)).toMatchObject({
-      status: "action_required",
-      recovery: "update_environment",
-      source: "env",
+test("a lone API key confirmation retry preserves request headers and body", () =>
+  runtime.run(async () => {
+    await Auth.set("test-api-confirm", { type: "api", key: "valid" })
+    const bodies: string[] = []
+    const authorizations: string[] = []
+    let requests = 0
+    const transport = ProviderAuthRecovery.wrapFetch("test-api-confirm", async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init)
+      bodies.push(await request.text())
+      authorizations.push(new Headers(init?.headers ?? request.headers).get("authorization") ?? "")
+      return new Response(null, { status: ++requests === 1 ? 401 : 200 })
     })
-  } finally {
-    delete process.env.SYNERGY_TEST_MAPPED_ENV_TOKEN
-  }
-})
 
-test("a request that cannot start without credentials remains not configured", async () => {
-  const missing = Object.assign(new Error("No credentials configured"), {
-    data: {
-      code: "test_auth_missing",
-      reloginRequired: true,
-    },
-  })
+    const response = await transport(
+      new Request("https://provider.test/v1/messages", {
+        method: "POST",
+        headers: { Authorization: "Bearer stale" },
+        body: JSON.stringify({ prompt: "hello" }),
+      }),
+    )
 
-  await expect(
-    ProviderAuthRecovery.execute({
-      providerID: "test-missing",
-      request: async () => {
-        throw missing
+    expect(response.status).toBe(200)
+    expect(bodies).toEqual(['{"prompt":"hello"}', '{"prompt":"hello"}'])
+    expect(authorizations).toEqual(["Bearer valid", "Bearer valid"])
+  }))
+
+test("generic SDK transport rewrites common API-key headers when selecting a backup", () =>
+  runtime.run(async () => {
+    await Auth.set("test-wrapped-api", { type: "api", key: "primary" })
+    await Auth.addToPool("test-wrapped-api", "backup", { type: "api", key: "backup" })
+    const seen: string[] = []
+    const transport = ProviderAuthRecovery.wrapFetch("test-wrapped-api", async (_input, init) => {
+      const authorization = new Headers(init?.headers).get("authorization") ?? ""
+      seen.push(authorization)
+      return new Response(null, { status: authorization === "Bearer backup" ? 200 : 401 })
+    })
+
+    const response = await transport("https://provider.test/v1/messages", {
+      headers: { Authorization: "Bearer primary" },
+    })
+    expect(response.status).toBe(200)
+    expect(seen).toEqual(["Bearer primary", "Bearer backup"])
+  }))
+
+test("generic SDK transport preserves an effective inline API key", () =>
+  runtime.run(async () => {
+    await Auth.set("test-inline-api", { type: "api", key: "stored" })
+    const seen: string[] = []
+    const transport = ProviderAuthRecovery.wrapFetch(
+      "test-inline-api",
+      async (_input, init) => {
+        seen.push(new Headers(init?.headers).get("authorization") ?? "")
+        return new Response(null, { status: 401 })
       },
-    }),
-  ).rejects.toBe(missing)
-  expect(ProviderAuthHealth.fromEntry("test-missing", undefined)).toEqual({
-    providerID: "test-missing",
-    status: "not_configured",
-    canDisconnect: false,
-  })
-})
+      undefined,
+      { effectiveAPIKey: "inline" },
+    )
 
-test("a rejected request cannot restore runtime health after its stored credential is removed", async () => {
-  await Auth.set("test-status", { type: "api", key: "removed-during-request" })
-  let rejectRequest!: () => void
-  const requestStarted = new Promise<void>((resolve) => {
-    rejectRequest = resolve
-  })
-  let finishRequest!: () => void
-  const requestFinished = new Promise<void>((resolve) => {
-    finishRequest = resolve
-  })
+    const response = await transport("https://provider.test/v1/messages", {
+      headers: { Authorization: "Bearer inline" },
+    })
 
-  const pending = ProviderAuthRecovery.execute({
-    providerID: "test-status",
-    request: async () => {
-      rejectRequest()
-      await requestFinished
-      return new Response(null, { status: 401 })
-    },
-    throwOnActionRequired: false,
-  })
-  await requestStarted
-  await Auth.remove("test-status")
-  finishRequest()
+    expect(response.status).toBe(401)
+    expect(seen).toEqual(["Bearer inline"])
+    expect(await Auth.get("test-inline-api")).toMatchObject({ type: "api", key: "stored" })
+  }))
 
-  expect((await pending).status).toBe(401)
-  expect(ProviderAuthHealth.fromEntry("test-status", undefined)).toEqual({
-    providerID: "test-status",
-    status: "not_configured",
-    canDisconnect: false,
-  })
-})
+test("403, server failures, and network exceptions do not invalidate credentials without classification", () =>
+  runtime.run(async () => {
+    await Auth.set("test-status", { type: "api", key: "valid-until-proven-otherwise" })
 
-test("plugin classifier and refresh hooks run, while an unclassified plugin 401 remains untouched", async () => {
-  let classified = 0
-  let refreshed = 0
-  ProviderProfile.register({
-    id: "test-plugin-with-hooks",
-    name: "Test plugin",
-    origin: "plugin",
-    classifyError: ({ status }) => {
-      classified++
-      return status === 401 ? { code: "plugin_token_rejected", retryable: false, reloginRequired: true } : undefined
-    },
-    refreshAuth: async ({ auth }) => {
-      refreshed++
-      return auth?.type === "oauth" ? { ...auth, access: "plugin-new" } : undefined
-    },
-  })
-  await Auth.set("test-plugin-with-hooks", {
-    type: "oauth",
-    access: "plugin-old",
-    refresh: "plugin-refresh",
-    expires: 9999999999,
-  })
+    for (const status of [403, 500, 503]) {
+      const response = await ProviderAuthRecovery.execute({
+        providerID: "test-status",
+        request: async () => new Response(null, { status }),
+      })
+      expect(response.status).toBe(status)
+      expect(await Auth.get("test-status")).toMatchObject({ type: "api" })
+    }
 
-  const recovered = await ProviderAuthRecovery.execute({
-    providerID: "test-plugin-with-hooks",
-    request: async () => {
-      const auth = await Auth.get("test-plugin-with-hooks")
-      return new Response(null, { status: auth?.type === "oauth" && auth.access === "plugin-new" ? 200 : 401 })
-    },
-  })
-  expect(recovered.status).toBe(200)
-  expect(classified).toBe(1)
-  expect(refreshed).toBe(1)
+    await expect(
+      ProviderAuthRecovery.execute({
+        providerID: "test-status",
+        request: async () => {
+          throw new TypeError("fetch failed")
+        },
+      }),
+    ).rejects.toThrow("fetch failed")
+    expect(await Auth.get("test-status")).toMatchObject({ type: "api" })
+  }))
 
-  ProviderProfile.register({
-    id: "test-plugin-without-classifier",
-    name: "Unclassified plugin",
-    origin: "plugin",
-  })
-  await Auth.set("test-plugin-without-classifier", { type: "api", key: "plugin-key" })
-  const untouched = await ProviderAuthRecovery.execute({
-    providerID: "test-plugin-without-classifier",
-    request: async () => new Response(null, { status: 401 }),
-  })
-  expect(untouched.status).toBe(401)
-  expect(await Auth.get("test-plugin-without-classifier")).toMatchObject({ type: "api", key: "plugin-key" })
-})
+test("rate limits mark credentials exhausted with retry metadata and never refresh", () =>
+  runtime.run(async () => {
+    await Auth.set("test-exhausted", { type: "oauth", access: "access", refresh: "refresh", expires: 9999999999 })
+    let refreshes = 0
+    const reset = Math.floor(Date.now() / 1000) + 600
+    const response = await ProviderAuthRecovery.execute({
+      providerID: "test-exhausted",
+      request: async () =>
+        new Response(null, {
+          status: 429,
+          headers: { "retry-after": "120", "x-ratelimit-reset": String(reset) },
+        }),
+      refresh: async () => {
+        refreshes++
+        return undefined
+      },
+    })
 
-test("canonical profile recovery hooks operate on the concrete account connection", async () => {
-  const profileID = `test-profile-${Math.random().toString(36).slice(2)}`
-  const connectionID = `${profileID}-secondary`
-  let refreshedProviderID: string | undefined
-  ProviderProfile.register({
-    id: profileID,
-    name: "Test account profile",
-    origin: "plugin",
-    classifyError: ({ status }) =>
-      status === 401 ? { code: "profile_token_rejected", retryable: false, reloginRequired: true } : undefined,
-    refreshAuth: async ({ providerID, auth }) => {
-      refreshedProviderID = providerID
-      return auth?.type === "oauth" ? { ...auth, access: "secondary-new" } : undefined
-    },
-  })
-  await Auth.set(connectionID, {
-    type: "oauth",
-    access: "secondary-old",
-    refresh: "secondary-refresh",
-    expires: 9999999999,
-  })
+    expect(response.status).toBe(429)
+    expect(refreshes).toBe(0)
+    expect(ProviderAuthHealth.fromEntry("test-exhausted", (await Auth.entries())["test-exhausted"])).toMatchObject({
+      status: "exhausted",
+      canDisconnect: false,
+      resetAt: reset,
+    })
+  }))
 
-  try {
-    const recovered = await ProviderAuthRecovery.execute({
-      providerID: connectionID,
-      profileID,
+test("environment credential rejection is process-local and requests an environment update", () =>
+  runtime.run(async () => {
+    ProviderProfile.register({
+      id: "test-env",
+      name: "Test environment provider",
+      origin: "plugin",
+      env: ["SYNERGY_TEST_ENV_TOKEN"],
+      classifyError: ({ status }) =>
+        status === 401 ? { code: "test_env_rejected", retryable: false, reloginRequired: true } : undefined,
+    })
+    {
+      await expect(
+        ProviderAuthRecovery.execute({
+          providerID: "test-env",
+          request: async () => new Response(null, { status: 401 }),
+        }),
+      ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+
+      expect((await Auth.entries())["test-env"]).toBeUndefined()
+      expect(ProviderAuthHealth.fromEntry("test-env", undefined)).toMatchObject({
+        status: "action_required",
+        recovery: "update_environment",
+      })
+
+      const recovered = await ProviderAuthRecovery.execute({
+        providerID: "test-env",
+        request: async () => new Response(null, { status: 200 }),
+      })
+      expect(recovered.status).toBe(200)
+      expect(ProviderAuthHealth.fromEntry("test-env", undefined)).toMatchObject({
+        status: "connected",
+        source: "env",
+      })
+      expect((await Auth.entries())["test-env"]).toBeUndefined()
+    }
+  }))
+
+test("mapped multi-name environment credentials retain environment recovery", () =>
+  runtime.run(async () => {
+    ProviderProfile.register({
+      id: "test-env",
+      name: "Test environment provider",
+      origin: "plugin",
+      env: ["SYNERGY_TEST_ENV_TOKEN"],
+      classifyError: ({ status }) =>
+        status === 401 ? { code: "test_env_rejected", retryable: false, reloginRequired: true } : undefined,
+    })
+    {
+      const transport = ProviderAuthRecovery.wrapFetch(
+        "test-env-mapped",
+        async () => new Response(null, { status: 401 }),
+        "test-env",
+        {
+          effectiveAPIKey: "invalid",
+          environment: ["SYNERGY_TEST_MISSING_ENV_TOKEN", "SYNERGY_TEST_MAPPED_ENV_TOKEN"],
+        },
+      )
+
+      await expect(
+        transport("https://provider.test/v1/messages", {
+          headers: { Authorization: "Bearer invalid" },
+        }),
+      ).rejects.toMatchObject({ name: "ProviderAuthenticationRequiredError" })
+
+      expect(ProviderAuthHealth.fromEntry("test-env-mapped", undefined)).toMatchObject({
+        status: "action_required",
+        recovery: "update_environment",
+        source: "env",
+      })
+    }
+  }))
+
+test("a request that cannot start without credentials remains not configured", () =>
+  runtime.run(async () => {
+    const missing = Object.assign(new Error("No credentials configured"), {
+      data: {
+        code: "test_auth_missing",
+        reloginRequired: true,
+      },
+    })
+
+    await expect(
+      ProviderAuthRecovery.execute({
+        providerID: "test-missing",
+        request: async () => {
+          throw missing
+        },
+      }),
+    ).rejects.toBe(missing)
+    expect(ProviderAuthHealth.fromEntry("test-missing", undefined)).toEqual({
+      providerID: "test-missing",
+      status: "not_configured",
+      canDisconnect: false,
+    })
+  }))
+
+test("a rejected request cannot restore runtime health after its stored credential is removed", () =>
+  runtime.run(async () => {
+    await Auth.set("test-status", { type: "api", key: "removed-during-request" })
+    let rejectRequest!: () => void
+    const requestStarted = new Promise<void>((resolve) => {
+      rejectRequest = resolve
+    })
+    let finishRequest!: () => void
+    const requestFinished = new Promise<void>((resolve) => {
+      finishRequest = resolve
+    })
+
+    const pending = ProviderAuthRecovery.execute({
+      providerID: "test-status",
       request: async () => {
-        const auth = await Auth.get(connectionID)
-        return new Response(null, { status: auth?.type === "oauth" && auth.access === "secondary-new" ? 200 : 401 })
+        rejectRequest()
+        await requestFinished
+        return new Response(null, { status: 401 })
+      },
+      throwOnActionRequired: false,
+    })
+    await requestStarted
+    await Auth.remove("test-status")
+    finishRequest()
+
+    expect((await pending).status).toBe(401)
+    expect(ProviderAuthHealth.fromEntry("test-status", undefined)).toEqual({
+      providerID: "test-status",
+      status: "not_configured",
+      canDisconnect: false,
+    })
+  }))
+
+test("plugin classifier and refresh hooks run, while an unclassified plugin 401 remains untouched", () =>
+  runtime.run(async () => {
+    let classified = 0
+    let refreshed = 0
+    ProviderProfile.register({
+      id: "test-plugin-with-hooks",
+      name: "Test plugin",
+      origin: "plugin",
+      classifyError: ({ status }) => {
+        classified++
+        return status === 401 ? { code: "plugin_token_rejected", retryable: false, reloginRequired: true } : undefined
+      },
+      refreshAuth: async ({ auth }) => {
+        refreshed++
+        return auth?.type === "oauth" ? { ...auth, access: "plugin-new" } : undefined
+      },
+    })
+    await Auth.set("test-plugin-with-hooks", {
+      type: "oauth",
+      access: "plugin-old",
+      refresh: "plugin-refresh",
+      expires: 9999999999,
+    })
+
+    const recovered = await ProviderAuthRecovery.execute({
+      providerID: "test-plugin-with-hooks",
+      request: async () => {
+        const auth = await Auth.get("test-plugin-with-hooks")
+        return new Response(null, { status: auth?.type === "oauth" && auth.access === "plugin-new" ? 200 : 401 })
       },
     })
     expect(recovered.status).toBe(200)
-    expect(refreshedProviderID).toBe(connectionID)
-    expect(await Auth.get(profileID)).toBeUndefined()
-    expect(await Auth.get(connectionID)).toMatchObject({ type: "oauth", access: "secondary-new" })
-  } finally {
-    await Auth.remove(connectionID)
-  }
-})
+    expect(classified).toBe(1)
+    expect(refreshed).toBe(1)
 
-test("health events contain only public state and ignore connected token rotation", async () => {
-  await using tmp = await tmpdir({ git: true })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const events: unknown[] = []
-      const unsubscribe = Bus.subscribe(ProviderAuthHealth.Event.Updated, (event) => events.push(event.properties))
-      try {
-        await Auth.set("test-refresh", { type: "api", key: "secret-primary" }, { source: "api" })
-        events.length = 0
+    ProviderProfile.register({
+      id: "test-plugin-without-classifier",
+      name: "Unclassified plugin",
+      origin: "plugin",
+    })
+    await Auth.set("test-plugin-without-classifier", { type: "api", key: "plugin-key" })
+    const untouched = await ProviderAuthRecovery.execute({
+      providerID: "test-plugin-without-classifier",
+      request: async () => new Response(null, { status: 401 }),
+    })
+    expect(untouched.status).toBe(401)
+    expect(await Auth.get("test-plugin-without-classifier")).toMatchObject({ type: "api", key: "plugin-key" })
+  }))
 
-        await Auth.replaceSelectedCredential("test-refresh", { type: "api", key: "secret-rotated" }, { source: "api" })
-        expect(events).toEqual([])
+test("canonical profile recovery hooks operate on the concrete account connection", () =>
+  runtime.run(async () => {
+    const profileID = `test-profile-${Math.random().toString(36).slice(2)}`
+    const connectionID = `${profileID}-secondary`
+    let refreshedProviderID: string | undefined
+    ProviderProfile.register({
+      id: profileID,
+      name: "Test account profile",
+      origin: "plugin",
+      classifyError: ({ status }) =>
+        status === 401 ? { code: "profile_token_rejected", retryable: false, reloginRequired: true } : undefined,
+      refreshAuth: async ({ providerID, auth }) => {
+        refreshedProviderID = providerID
+        return auth?.type === "oauth" ? { ...auth, access: "secondary-new" } : undefined
+      },
+    })
+    await Auth.set(connectionID, {
+      type: "oauth",
+      access: "secondary-old",
+      refresh: "secondary-refresh",
+      expires: 9999999999,
+    })
 
-        await Auth.markDead("test-refresh", "credential_rejected")
-        expect(events).toHaveLength(1)
-        expect(events[0]).toEqual({
-          health: {
-            providerID: "test-refresh",
-            status: "action_required",
-            recovery: "reconnect",
-            authKind: "api_key",
-            source: "api",
-            canDisconnect: true,
-            updatedAt: expect.any(Number),
-            failureCode: "credential_rejected",
-          },
-        })
-        expect(JSON.stringify(events)).not.toContain("secret-primary")
-        expect(JSON.stringify(events)).not.toContain("secret-rotated")
-      } finally {
-        unsubscribe()
-      }
-    },
-  })
-})
+    try {
+      const recovered = await ProviderAuthRecovery.execute({
+        providerID: connectionID,
+        profileID,
+        request: async () => {
+          const auth = await Auth.get(connectionID)
+          return new Response(null, { status: auth?.type === "oauth" && auth.access === "secondary-new" ? 200 : 401 })
+        },
+      })
+      expect(recovered.status).toBe(200)
+      expect(refreshedProviderID).toBe(connectionID)
+      expect(await Auth.get(profileID)).toBeUndefined()
+      expect(await Auth.get(connectionID)).toMatchObject({ type: "oauth", access: "secondary-new" })
+    } finally {
+      await Auth.remove(connectionID)
+    }
+  }))
 
-test("credential cooling uses the same strict retry hints as request recovery", async () => {
-  await Auth.set("test-exhausted", { type: "api", key: "test-key" })
-  const before = Math.floor(Date.now() / 1000)
-  await ProviderAuthRecovery.execute({
-    providerID: "test-exhausted",
-    request: async () =>
-      new Response(null, { status: 429, headers: { "retry-after": "120", "retry-after-ms": "1500" } }),
-  })
-  const health = ProviderAuthHealth.fromEntry("test-exhausted", (await Auth.entries())["test-exhausted"])
-  expect(health.cooldownUntil).toBeGreaterThanOrEqual(before + 2)
-  expect(health.cooldownUntil).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 2)
-})
+test("health events contain only public state and ignore connected token rotation", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const events: unknown[] = []
+        const unsubscribe = Bus.subscribe(ProviderAuthHealth.Event.Updated, (event) => events.push(event.properties))
+        try {
+          await Auth.set("test-refresh", { type: "api", key: "secret-primary" }, { source: "api" })
+          events.length = 0
+
+          await Auth.replaceSelectedCredential(
+            "test-refresh",
+            { type: "api", key: "secret-rotated" },
+            { source: "api" },
+          )
+          expect(events).toEqual([])
+
+          await Auth.markDead("test-refresh", "credential_rejected")
+          expect(events).toHaveLength(1)
+          expect(events[0]).toEqual({
+            health: {
+              providerID: "test-refresh",
+              status: "action_required",
+              recovery: "reconnect",
+              authKind: "api_key",
+              source: "api",
+              canDisconnect: true,
+              updatedAt: expect.any(Number),
+              failureCode: "credential_rejected",
+            },
+          })
+          expect(JSON.stringify(events)).not.toContain("secret-primary")
+          expect(JSON.stringify(events)).not.toContain("secret-rotated")
+        } finally {
+          unsubscribe()
+        }
+      },
+    })
+  }))
+
+test("credential cooling uses the same strict retry hints as request recovery", () =>
+  runtime.run(async () => {
+    await Auth.set("test-exhausted", { type: "api", key: "test-key" })
+    const before = Math.floor(Date.now() / 1000)
+    await ProviderAuthRecovery.execute({
+      providerID: "test-exhausted",
+      request: async () =>
+        new Response(null, { status: 429, headers: { "retry-after": "120", "retry-after-ms": "1500" } }),
+    })
+    const health = ProviderAuthHealth.fromEntry("test-exhausted", (await Auth.entries())["test-exhausted"])
+    expect(health.cooldownUntil).toBeGreaterThanOrEqual(before + 2)
+    expect(health.cooldownUntil).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 2)
+  }))
+
+afterRuntimeTests(() => runtime.close())

@@ -6,6 +6,12 @@ import {
   runtimeStartupLine,
 } from "../src/runtime-startup"
 
+test("migration progress preserves advancing counts before a total is known", () => {
+  const progress = { phase: "migration", step: 2, current: 256, total: 0 } as const
+  expect(RuntimeStartupProgress.parse(progress)).toEqual(progress)
+  expect(RuntimeStartupProgress.safeParse({ ...progress, total: 255 }).success).toBe(false)
+})
+
 test("maintenance records carry bounded lifecycle facts without arbitrary payloads", () => {
   const begin = { phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 690_000 } as const
   for (const value of [

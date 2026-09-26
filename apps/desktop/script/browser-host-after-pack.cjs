@@ -3,7 +3,7 @@ const path = require("node:path")
 const asar = require("@electron/asar")
 
 function assertBrowserHostClosure(archive) {
-  const allowed = new Set(["/package.json", "/dist", "/dist/browser-host-main.js"])
+  const allowed = new Set(["/package.json", "/dist", "/dist/browser-host-main.js", "/dist/browser-page-preload.cjs"])
   const entries = asar.listPackage(archive).map((entry) => entry.replace(/\\/g, "/"))
   for (const entry of entries) {
     if (!allowed.has(entry)) throw new Error(`Unexpected Browser Host archive entry: ${entry}`)

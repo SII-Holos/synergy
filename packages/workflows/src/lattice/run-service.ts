@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "../blueprint"
 import { isActiveLoopStatus } from "../blueprint/loop-store"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -33,17 +34,25 @@ export namespace LatticeRunService {
 
   type DirectReason = "enable" | "resume" | "action" | "note_change"
 
-  let reconcileDirectFn: ((scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>) | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    reconcileDirectFn: undefined as
+      | ((scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>)
+      | undefined,
+  }))
 
   /** LatticeController owns reconciliation; it registers its forwarder at module
    * load so this service never imports the controller back. */
   export function setReconcileDirect(fn: (scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>) {
-    reconcileDirectFn = fn
+    const instanceState = runtimeState()
+
+    instanceState.reconcileDirectFn = fn
   }
 
   async function reconcileDirect(scopeID: string, sessionID: string, reason: DirectReason): Promise<void> {
-    if (!reconcileDirectFn) throw new Error("Lattice reconcileDirect forwarder is not registered")
-    await reconcileDirectFn(scopeID, sessionID, reason)
+    const instanceState = runtimeState()
+
+    if (!instanceState.reconcileDirectFn) throw new Error("Lattice reconcileDirect forwarder is not registered")
+    await instanceState.reconcileDirectFn(scopeID, sessionID, reason)
   }
 
   async function currentScopeSession(sessionID: string): Promise<Session.Info> {

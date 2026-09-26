@@ -11,7 +11,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `agenda_cancel` | `orchestration.agenda` | Cancel an agenda item. The item will no longer fire, but its configuration and execution history are preserved. Use agenda_list to find the item ID. To temporarily pause without cancelling, use agenda |
 | `agenda_list` | `orchestration.agenda` | List agenda items visible from the current scope — both watches (one-time) and scheduled tasks (recurring). Use `scope` to filter: "current" (project only), "global" (global only), "all" (both, defaul |
 | `agenda_logs` | `orchestration.agenda` | View execution history for an agenda item. Shows recent runs with status, duration, and timing. Each run includes a session ID — use session_read(target=sessionID) to see what the agent did. Use agend |
-| `agenda_schedule` | `orchestration.agenda` | Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session  |
+| `agenda_schedule` | `orchestration.agenda` | Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Recurring schedules reuse their sepa |
 | `agenda_trigger` | `orchestration.agenda` | Manually trigger an agenda item to execute immediately, regardless of its configured schedule. If the item is pending or paused, it will be activated first. This does NOT change the item's regular sch |
 | `agenda_update` | `orchestration.agenda` | Update an existing agenda item. Only provided fields are changed — omitted fields remain unchanged. Use agenda_list to find the item ID first. Common actions: - Pause: agenda_update(id="agd_xxx", stat |
 | `agenda_watch` | `orchestration.agenda` | Set a one-time wake-up in THIS session. When the watch fires, you receive the prompt as a message and continue with full conversation history. The watch auto-completes after firing. Pass exactly one o |
@@ -153,14 +153,14 @@ View execution history for an agenda item. Shows recent runs with status, durati
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | string | yes | Agenda item ID to get logs for |
-| `offset` | z.coerce.number |  | Number of logs to skip |
-| `limit` | z.coerce.number |  | Maximum number of logs to return |
+| `offset` | number |  | Number of logs to skip |
+| `limit` | number |  | Maximum number of logs to return |
 
 ## agenda_schedule
 
 Kind: `orchestration.agenda`
 
-Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Each execution gets a fresh session with no access to this conversation; the prompt must be a complete, self-contained brief. Triggers: - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron - `{type:"every", interval:"30m"}` — recurring at a fixed interval - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn. - `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential — creation is rejected with connection steps when none resolves; do not substitute a generic `every` interval that shell-checks GitHub. For "wait until a GitHub resource reaches a state" requests, the github trigger IS the right schedule — prefer it over a generic `every` interval plus manual shell checks. By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery. Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile. **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only. **Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion. Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
+Create a recurring task that runs in its own separate session, isolated from this conversation. Only use for strictly periodic schedules — cron or fixed intervals. Recurring schedules reuse their separate execution session; the prompt must be a complete, self-contained brief. The schedule captures this Session’s selected Workspace when created. Changing this conversation’s Workspace later does not move the schedule. Triggers: - `{type:"cron", expr:"0 9 * * *", tz:"Asia/Shanghai"}` — recurring cron - `{type:"every", interval:"30m"}` — recurring at a fixed interval - `{type:"session", sessionID:"ses_xxx", event:"turn.end"}` — fires once when the target session ends a turn. Optional filters: `agent`, `finish`. Set `once:false` to keep firing on every matching turn. - `{type:"github", resource:"pr"|"issue"|"workflow"|"check", repository:"owner/repo", number?, ref?, interval?, states?}` — fires when the watched GitHub resource changes state, polled on an interval (default 5m). `number` targets one PR/issue or workflow run id; `ref` targets a branch/tag/commit for workflow/check watches; `states` filters transitions (e.g. ["merged"], ["failure"]). Requires a connected GitHub credential — creation is rejected with connection steps when none resolves; do not substitute a generic `every` interval that shell-checks GitHub. For "wait until a GitHub resource reaches a state" requests, the github trigger IS the right schedule — prefer it over a generic `every` interval plus manual shell checks. By default, results are delivered back to this session and wake you (wake=true). Set silent=true to suppress delivery. Set controlProfile to "full_access", "autonomous", or "guarded" when the scheduled session needs an explicit permission profile. **If you need adaptive timing** — shorter checks when things look uncertain, longer intervals when stable — use recursive `agenda_watch` instead. `agenda_schedule` is for rigid, predictable schedules only. **Never use `agenda_schedule` or `agenda_watch` to wait for subagents dispatched via `task()`.** Subagents auto-notify you on completion. Use agenda_list to see scheduled tasks. Use agenda_cancel(id) to stop a recurring task.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -857,7 +857,7 @@ Hybrid workspace search that combines fuzzy file path matching, literal file-con
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `query` | string | yes | Fuzzy filename, directory name, module name, path fragment, code symbol, or exact literal content snippet to search for |
-| `limit` | z.coerce | yes |  |
+| `limit` | number |  | Maximum total merged results across path, content, and symbol matches; defaults to 50 |
 | `include` | string |  | Optional comma-separated glob patterns to include for path and content search |
 | `exclude` | string |  | Optional comma-separated glob patterns to exclude from path and content search |
 
@@ -1111,8 +1111,8 @@ List notes in the current scope. By default shows only active notes. Use the `ar
 | `archived` | "active" \| "archived" \| "all" |  | Filter by archive status: 'active' (default), 'archived', or 'all'. |
 | `since` | string |  | Only include notes updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
 | `before` | string |  | Only include notes updated before this date (ISO 8601). |
-| `offset` | z.coerce.number |  | Number of notes to skip. |
-| `limit` | z.coerce.number |  | Maximum number of notes to return (max 100). |
+| `offset` | number |  | Number of notes to skip. |
+| `limit` | number |  | Maximum number of notes to return (max 100). |
 
 ## note_read
 
@@ -1123,8 +1123,8 @@ Read the full content of one or more notes by ID. Blueprint documents are notes 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `ids` | array | yes | List of note IDs to read (max 10) |
-| `offset` | z.coerce.number |  | Line or block offset to start reading from (0-based) |
-| `limit` | z.coerce.number |  | Maximum number of lines or blocks to return per note (max 2000) |
+| `offset` | number |  | Line or block offset to start reading from (0-based) |
+| `limit` | number |  | Maximum number of lines or blocks to return per note (max 2000) |
 | `format` | "markdown" \| "blocks" \| "json" |  | Output format. 'markdown': content as markdown (default). 'blocks': editable block anchors for note_edit. 'json': structured note data. |
 | `detail` | "summary" \| "json" |  | Detail level for blocks/json output. Use 'json' when exact node JSON is needed for edits. |
 | `includeHashes` | boolean |  | Include docHash and block hashes for note_edit safety checks. |
@@ -1280,8 +1280,8 @@ Reads text and document content from the local filesystem. You can access any te
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `filePath` | string | yes | The path to the file to read |
-| `offset` | z.coerce.number |  | The line number to start reading from (0-based) |
-| `limit` | z.coerce.number |  | The maximum number of lines to read (defaults to 2000) |
+| `offset` | number |  | The line number to start reading from (0-based) |
+| `limit` | number |  | The maximum number of lines to read (defaults to 2000) |
 
 ## render
 
@@ -1392,8 +1392,8 @@ List available Synergy scopes (projects + home) so you can choose a valid `scope
 | --- | --- | --- | --- |
 | `query` | string |  | Optional case-insensitive filter matched against scope id, name, and directory. |
 | `includeHome` | boolean |  | Whether to include the home scope. Defaults to true. |
-| `limit` | z.coerce.number |  | Maximum number of scopes to return (max 100). |
-| `offset` | z.coerce.number |  | Number of scopes to skip for pagination. |
+| `limit` | number |  | Maximum number of scopes to return (max 100). |
+| `offset` | number |  | Number of scopes to skip for pagination. |
 
 ## search_tools
 
@@ -1404,7 +1404,7 @@ Discover non-resident tool capabilities that are not currently visible to the mo
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `query` | string | yes | Capability, tool, group, or task to search for. |
-| `limit` | z.coerce.number |  | Maximum number of matches to return. |
+| `limit` | number |  | Maximum number of matches to return. |
 
 ## session_control
 
@@ -1446,8 +1446,8 @@ List sessions by scope. Returns session metadata, scope info, and the latest mes
 | --- | --- | --- | --- |
 | `scope` | "project" \| "home" \| "feishu" | yes | 'project' = ordinary sessions across all projects or one project selected by scopeID, 'home' = all top-level sessions in the Home Scope, including channel sessions, 'feishu' = Feishu/Lark channel sessions across Home and project Scopes. |
 | `scopeID` | string |  | When scope is 'project', filter to one project using an id from scope_list. Omit to list ordinary sessions across all projects. |
-| `limit` | z.coerce.number |  | Maximum number of items to return. |
-| `offset` | z.coerce.number |  | Number of items to skip. |
+| `limit` | number |  | Maximum number of items to return. |
+| `offset` | number |  | Number of items to skip. |
 | `since` | string |  | Only include sessions updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'). |
 | `before` | string |  | Only include sessions updated before this date (ISO 8601). |
 
@@ -1460,8 +1460,8 @@ Read messages from a session. Returns session metadata and a paginated list of m
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `target` | string | yes | Session to read. A session ID (ses_xxx). |
-| `limit` | z.coerce.number |  | Number of messages to return. |
-| `offset` | z.coerce.number |  | Number of messages to skip (0 = most recent). |
+| `limit` | number |  | Number of messages to return. |
+| `offset` | number |  | Number of messages to skip (0 = most recent). |
 | `around` | string |  | Message ID to center the view around. When provided, returns messages surrounding this message instead of using offset. Useful after session_search to read context around a match. |
 
 ## session_search
@@ -1480,7 +1480,7 @@ Search across session message content using regex patterns. Searches messages in
 | `content` | "text" \| "tool" \| "all" |  | Which message content to search: 'text' (default, message text parts only), 'tool' (text plus tool-call inputs and completed tool outputs, excerpt-level), or 'all' (text, tool payloads, and attachment filenames/URLs, excerpt-level). |
 | `since` | string |  | Only include content updated/created on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00'), interpreted by timeField. |
 | `before` | string |  | Only include content before this date (ISO 8601), interpreted by timeField. |
-| `limit` | z.coerce.number |  | Maximum number of matches to return across all sessions. |
+| `limit` | number |  | Maximum number of matches to return across all sessions. |
 
 ## session_send
 
@@ -1595,8 +1595,8 @@ Read a file through the anchored coding harness. Use this instead of `read` when
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `filePath` | string | yes | The absolute path to the file to view and prepare for anchored editing |
-| `offset` | z.coerce | yes |  |
-| `limit` | z.coerce | yes |  |
+| `offset` | number |  | The 0-based line offset to display; use this to inspect unseen ranges before revise_file |
+| `limit` | number |  | The number of lines to display; use ranges or another view_file call for hidden regions |
 | `ranges` | array |  | Optional non-contiguous ranges to display from the same file |
 
 ## view_image

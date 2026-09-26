@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
 import fs from "fs"
 
@@ -30,11 +31,14 @@ export namespace GitHealth {
   // ---------------------------------------------------------------------------
   // Cache — per-directory with 5-minute TTL
   // ---------------------------------------------------------------------------
-  const _cache = new Map<string, CacheEntry>()
-  const _refreshing = new Map<string, Promise<Issue[]>>()
-  const _aliases = new Map<string, string>()
-  let _lastDir: string | undefined
-  let _generation = 0
+  const runtimeState = RuntimeContext.state(() => ({
+    _cache: new Map<string, CacheEntry>(),
+    _refreshing: new Map<string, Promise<Issue[]>>(),
+    _aliases: new Map<string, string>(),
+    _lastDir: undefined as string | undefined,
+    _generation: 0,
+  }))
+
   const CACHE_TTL_MS = 5 * 60 * 1000
   const GIT_COMMAND_TIMEOUT_MS = 2_000
   const SCAN_TIMEOUT_MS = 3_000
@@ -50,8 +54,10 @@ export namespace GitHealth {
   }
 
   function cacheKey(cwd: string): string {
+    const instanceState = runtimeState()
+
     const dir = normalizeDir(cwd)
-    return _aliases.get(dir) ?? dir
+    return instanceState._aliases.get(dir) ?? dir
   }
 
   function remainingMs(deadline: number): number {
@@ -88,6 +94,8 @@ export namespace GitHealth {
   }
 
   async function resolveRepo(cwd: string): Promise<RepoInfo | undefined> {
+    const instanceState = runtimeState()
+
     const dir = normalizeDir(cwd)
     const inside = await gitText(dir, ["rev-parse", "--is-inside-work-tree"])
     if (inside?.trim() !== "true") return undefined
@@ -101,7 +109,7 @@ export namespace GitHealth {
     if (!root || !gitDir) return undefined
 
     const resolvedRoot = normalizeDir(root)
-    _aliases.set(dir, resolvedRoot)
+    instanceState._aliases.set(dir, resolvedRoot)
     return {
       root: resolvedRoot,
       gitDir: path.isAbsolute(gitDir) ? gitDir : path.resolve(dir, gitDir),
@@ -425,39 +433,47 @@ export namespace GitHealth {
   }
 
   export function refresh(cwd?: string): Promise<Issue[]> {
+    const instanceState = runtimeState()
+
     const inputDir = normalizeDir(cwd ?? process.cwd())
     const key = cacheKey(inputDir)
-    const existing = _refreshing.get(key) ?? _refreshing.get(inputDir)
+    const existing = instanceState._refreshing.get(key) ?? instanceState._refreshing.get(inputDir)
     if (existing) return existing
 
-    const generation = _generation
+    const generation = instanceState._generation
     let promise!: Promise<Issue[]>
     promise = scan(inputDir)
       .then((result) => {
-        _aliases.set(inputDir, result.dir)
-        if (generation === _generation) {
-          _cache.set(result.dir, { issues: result.issues, ts: Date.now() })
-          _lastDir = result.dir
+        const instanceState = runtimeState()
+
+        instanceState._aliases.set(inputDir, result.dir)
+        if (generation === instanceState._generation) {
+          instanceState._cache.set(result.dir, { issues: result.issues, ts: Date.now() })
+          instanceState._lastDir = result.dir
         }
         return result.issues
       })
       .catch(() => [])
       .finally(() => {
-        if (_refreshing.get(key) === promise) _refreshing.delete(key)
-        if (_refreshing.get(inputDir) === promise) _refreshing.delete(inputDir)
+        const instanceState = runtimeState()
+
+        if (instanceState._refreshing.get(key) === promise) instanceState._refreshing.delete(key)
+        if (instanceState._refreshing.get(inputDir) === promise) instanceState._refreshing.delete(inputDir)
       })
 
-    _refreshing.set(key, promise)
-    if (key !== inputDir) _refreshing.set(inputDir, promise)
+    instanceState._refreshing.set(key, promise)
+    if (key !== inputDir) instanceState._refreshing.set(inputDir, promise)
     return promise
   }
 
   export async function check(cwd?: string): Promise<Issue[]> {
+    const instanceState = runtimeState()
+
     const dir = normalizeDir(cwd ?? process.cwd())
     const key = cacheKey(dir)
-    const cached = _cache.get(key)
+    const cached = instanceState._cache.get(key)
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-      _lastDir = key
+      instanceState._lastDir = key
       return cached.issues
     }
     return refresh(dir)
@@ -468,40 +484,46 @@ export namespace GitHealth {
   }
 
   export function injectCached(cwd?: string): string | undefined {
+    const instanceState = runtimeState()
+
     const dir = normalizeDir(cwd ?? process.cwd())
     const key = cacheKey(dir)
-    const cached = _cache.get(key)
+    const cached = instanceState._cache.get(key)
     if (!cached || Date.now() - cached.ts >= CACHE_TTL_MS) {
       refresh(dir).catch(() => {})
     }
     if (!cached) return undefined
-    _lastDir = key
+    instanceState._lastDir = key
     return render(cached.issues)
   }
 
   export function lastReport(): Issue[] | undefined {
-    if (!_lastDir) return undefined
-    const cached = _cache.get(_lastDir)
+    const instanceState = runtimeState()
+
+    if (!instanceState._lastDir) return undefined
+    const cached = instanceState._cache.get(instanceState._lastDir)
     return cached?.issues.length ? cached.issues : undefined
   }
 
   export function invalidate(cwd?: string): void {
+    const instanceState = runtimeState()
+
     if (cwd === undefined) {
-      _generation++
-      _refreshing.clear()
-      _cache.clear()
-      _aliases.clear()
-      _lastDir = undefined
+      instanceState._generation++
+      instanceState._refreshing.clear()
+      instanceState._cache.clear()
+      instanceState._aliases.clear()
+      instanceState._lastDir = undefined
       return
     }
 
     const dir = normalizeDir(cwd)
     const key = cacheKey(dir)
-    _cache.delete(dir)
-    _cache.delete(key)
-    _aliases.delete(dir)
-    _refreshing.delete(dir)
-    _refreshing.delete(key)
-    if (_lastDir === dir || _lastDir === key) _lastDir = undefined
+    instanceState._cache.delete(dir)
+    instanceState._cache.delete(key)
+    instanceState._aliases.delete(dir)
+    instanceState._refreshing.delete(dir)
+    instanceState._refreshing.delete(key)
+    if (instanceState._lastDir === dir || instanceState._lastDir === key) instanceState._lastDir = undefined
   }
 }

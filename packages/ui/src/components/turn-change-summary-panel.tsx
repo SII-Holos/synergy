@@ -6,9 +6,11 @@ import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
+import { reviewFileKey } from "./session-review-model"
 import { TURN_CHANGE_DESC } from "./tool-title-descriptors"
 import {
   turnChangeSummaryHiddenCount,
+  turnChangeSummaryFiles,
   turnChangeSummaryTitle,
   turnChangeSummaryToggleLabel,
   turnChangeSummaryVisibleDiffs,
@@ -20,6 +22,7 @@ export type { TurnChangeSummaryDiff } from "./turn-change-summary-panel-model"
 export type TurnChangeSummaryPanelProps = {
   diffs: TurnChangeSummaryDiff[]
   state?: Exclude<TurnDiffPanelState, "hidden">
+  incomplete?: boolean
   animateReady?: boolean
   previewLimit?: number
   onReviewRequested: () => void
@@ -31,13 +34,18 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
   const [store, setStore] = createStore({ expanded: false })
   const state = () => props.state ?? "ready"
   const previewLimit = () => props.previewLimit ?? 3
-  const hiddenCount = createMemo(() => turnChangeSummaryHiddenCount(props.diffs, previewLimit()))
+  const files = createMemo(() => turnChangeSummaryFiles(props.diffs))
+  const hiddenCount = createMemo(() => turnChangeSummaryHiddenCount(files(), previewLimit()))
   const visibleDiffs = createMemo(() =>
-    turnChangeSummaryVisibleDiffs(props.diffs, { expanded: store.expanded, previewLimit: previewLimit() }),
+    turnChangeSummaryVisibleDiffs(files(), { expanded: store.expanded, previewLimit: previewLimit() }),
   )
-  const title = createMemo(() => turnChangeSummaryTitle(props.diffs.length, i18n()))
+  const title = createMemo(() => turnChangeSummaryTitle(files().length, i18n()))
   const statusText = createMemo(() =>
-    state() === "pending" ? _(TURN_CHANGE_DESC.calculating) : _(TURN_CHANGE_DESC.calculationFailed),
+    state() === "pending"
+      ? _(TURN_CHANGE_DESC.calculating)
+      : props.incomplete
+        ? _(TURN_CHANGE_DESC.recordingIncomplete)
+        : _(TURN_CHANGE_DESC.calculationFailed),
   )
   const label = createMemo(() => (state() === "ready" ? title() : statusText()))
   const toggleLabel = createMemo(() =>
@@ -54,7 +62,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
       aria-live={state() === "error" ? "polite" : undefined}
     >
       <Show
-        when={state() === "ready"}
+        when={state() === "ready" || (props.incomplete && files().length > 0)}
         fallback={
           <div data-slot="turn-change-summary-header">
             <div data-slot="turn-change-summary-title-group">
@@ -75,6 +83,9 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             </span>
             <div data-slot="turn-change-summary-title-copy">
               <div data-slot="turn-change-summary-title">{title()}</div>
+              <Show when={props.incomplete}>
+                <div role="status">{statusText()}</div>
+              </Show>
               <DiffChanges changes={props.diffs} />
             </div>
           </div>
@@ -85,7 +96,11 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
         <div data-slot="turn-change-summary-list">
           <For each={visibleDiffs()}>
             {(diff) => (
-              <button type="button" data-slot="turn-change-summary-row" onClick={() => props.onFileSelected(diff.file)}>
+              <button
+                type="button"
+                data-slot="turn-change-summary-row"
+                onClick={() => props.onFileSelected(reviewFileKey(diff))}
+              >
                 <span data-slot="turn-change-summary-file-info">
                   <FileIcon node={{ path: diff.file, type: "file" }} data-slot="turn-change-summary-file-icon" />
                   <span data-slot="turn-change-summary-file-path">

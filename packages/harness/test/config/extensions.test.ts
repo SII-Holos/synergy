@@ -1,17 +1,24 @@
 import { expect, test } from "bun:test"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("core config preserves absent domains and an early schema reference validates later registration", async () => {
-  const isolated = await createIsolatedTestEnv()
-  const config = new URL("../../src/config/config.ts", import.meta.url).pathname
-  const extensions = new URL("../../src/config/extensions.ts", import.meta.url).pathname
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
+test("core config preserves absent domains and an early schema reference validates later registration", () =>
+  runtime.run(async () => {
+    const isolated = await createIsolatedTestEnv()
+    const config = new URL("../../src/config/config.ts", import.meta.url).pathname
+    const extensions = new URL("../../src/config/extensions.ts", import.meta.url).pathname
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "--eval",
+        `
       import assert from "node:assert/strict"
       import z from "zod"
+      const { RuntimeContext } = await import(${JSON.stringify(new URL("../../src/lifecycle/context.ts", import.meta.url).pathname)})
+      const home = process.env.SYNERGY_TEST_HOME
+      await RuntimeContext.create({ home, root: home + "/.synergy", env: process.env }).run(async () => {
       const { Config } = await import(${JSON.stringify(config)})
       const { ConfigExtensions } = await import(${JSON.stringify(extensions)})
       const defaults = {}
@@ -67,26 +74,31 @@ test("core config preserves absent domains and an early schema reference validat
       assert.equal(early.safeParse({ research: { repetitions: "invalid" } }).success, false)
       ConfigExtensions.register("invalid-core-owner", { shape: { model: z.boolean() } })
       assert.throws(() => early.shape, /already owned by the harness/)
+      })
     `,
-    ],
-    stdout: "pipe",
-    stderr: "pipe",
-    env: isolated.env,
-  })
-  const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-  await isolated.dispose()
-  expect(code, stderr).toBe(0)
-})
+      ],
+      stdout: "pipe",
+      stderr: "pipe",
+      env: isolated.env,
+    })
+    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+    await isolated.dispose()
+    expect(code, stderr).toBe(0)
+  }))
 
-test("config composition locks before mutation and permits the same contribution again", async () => {
-  const isolated = await createIsolatedTestEnv()
-  const child = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--eval",
-      `
+test("config composition locks before mutation and permits the same contribution again", () =>
+  runtime.run(async () => {
+    const isolated = await createIsolatedTestEnv()
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        "--eval",
+        `
       import assert from "node:assert/strict"
       import z from "zod"
+      const { RuntimeContext } = await import(${JSON.stringify(new URL("../../src/lifecycle/context.ts", import.meta.url).pathname)})
+      const home = process.env.SYNERGY_TEST_HOME
+      await RuntimeContext.create({ home, root: home + "/.synergy", env: process.env }).run(async () => {
       const { Config } = await import("@ericsanchezok/synergy-harness/config/config")
       const { ConfigExtensions } = await import("@ericsanchezok/synergy-harness/config/extensions")
       const { ConfigDomain } = await import("@ericsanchezok/synergy-harness/config/domain")
@@ -95,22 +107,25 @@ test("config composition locks before mutation and permits the same contribution
       ConfigExtensions.lock()
       assert.doesNotThrow(() => ConfigExtensions.register("research", contribution))
       assert.throws(() => ConfigExtensions.register("late", { shape: { late: z.string() } }), /before opening the runtime/)
-      assert.throws(() => ConfigExtensions.register("research", { shape: {} }), /before opening the runtime/)
+      assert.throws(() => ConfigExtensions.register("research", { shape: {} }), /already registered/)
       assert.throws(() => ConfigExtensions.completeRegistration(), /before opening the runtime/)
       assert.throws(() => ConfigDomain.register({ id: "late", filename: "200-late.jsonc", ownedKeys: ["late"] }), /before opening the runtime/)
-      assert.equal(ConfigDomain.byId.has("late"), false)
+      assert.equal(ConfigDomain.byId().has("late"), false)
       assert.equal("late" in Config.Info.shape, false)
       assert.equal("research" in Config.Info.shape, true)
+      })
     `,
-    ],
-    env: isolated.env,
-    stdout: "pipe",
-    stderr: "pipe",
-  })
-  try {
-    const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
-    expect(code, stderr).toBe(0)
-  } finally {
-    await isolated.dispose()
-  }
-})
+      ],
+      env: isolated.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    try {
+      const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+      expect(code, stderr).toBe(0)
+    } finally {
+      await isolated.dispose()
+    }
+  }))
+
+afterRuntimeTests(() => runtime.close())

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
@@ -19,7 +20,9 @@ const log = Log.create({ service: "channel.outbound" })
 
 const INTERNAL_CHANNEL_TYPES = new Set(["app"])
 
-const foregroundSessions = new Set<string>()
+const runtimeState = RuntimeContext.state(() => ({
+  foregroundSessions: new Set<string>(),
+}))
 
 export namespace ChannelOutbound {
   const state = ScopedState.create(
@@ -39,16 +42,22 @@ export namespace ChannelOutbound {
    * queued or recovered replies still reach the bridge.
    */
   export function beginForeground(sessionID: string, rootID: string): void {
-    foregroundSessions.add(`${sessionID}:${rootID}`)
+    const instanceState = runtimeState()
+
+    instanceState.foregroundSessions.add(`${sessionID}:${rootID}`)
   }
 
   export function endForeground(sessionID: string, rootID: string): void {
-    foregroundSessions.delete(`${sessionID}:${rootID}`)
+    const instanceState = runtimeState()
+
+    instanceState.foregroundSessions.delete(`${sessionID}:${rootID}`)
   }
 
   export function isForeground(sessionID: string, rootID: string | undefined): boolean {
+    const instanceState = runtimeState()
+
     if (!rootID) return false
-    return foregroundSessions.has(`${sessionID}:${rootID}`)
+    return instanceState.foregroundSessions.has(`${sessionID}:${rootID}`)
   }
 
   export function init(input: { getProvider: (type: string) => Provider | undefined }): () => void {

@@ -244,7 +244,7 @@ async function extractArchive(archivePath: string, options: { stage?: boolean } 
 
 async function resolveLocalSpec(spec: string, options: ResolvePluginSpecOptions): Promise<ResolvedPluginSpec> {
   const rawPath = pathFromFileSpec(spec)
-  const absolute = path.isAbsolute(rawPath) ? rawPath : path.resolve(options.cwd ?? process.cwd(), rawPath)
+  const absolute = path.isAbsolute(rawPath) ? rawPath : path.resolve(options.cwd ?? Global.Path.config, rawPath)
   const archive = isArchivePath(absolute)
   let pluginDir = archive
     ? await extractArchive(absolute, { stage: options.stageLocalArchive })

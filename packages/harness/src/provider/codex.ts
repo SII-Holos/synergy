@@ -1,9 +1,9 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Auth } from "./api-key"
 import { Global } from "../global"
 import { Log } from "../util/log"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import fs from "fs/promises"
-import os from "os"
 import path from "path"
 import z from "zod"
 import type { ModelsDev } from "./models-schemas"
@@ -83,11 +83,15 @@ export namespace CodexProvider {
   }
 
   export function codexHome(input?: { codexHome?: string }) {
-    return input?.codexHome || process.env.CODEX_HOME || path.join(os.homedir(), ".codex")
+    return (
+      input?.codexHome ||
+      RuntimeContext.current().host.env.CODEX_HOME ||
+      path.join(RuntimeContext.current().host.home, ".codex")
+    )
   }
 
   function baseURL() {
-    return (process.env.SYNERGY_CODEX_BASE_URL || BASE_URL).trim().replace(/\/+$/, "")
+    return (RuntimeContext.current().host.env.SYNERGY_CODEX_BASE_URL || BASE_URL).trim().replace(/\/+$/, "")
   }
 
   export function runtimeBaseURL() {

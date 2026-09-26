@@ -6,6 +6,9 @@ import { BossService } from "../../src/boss/boss"
 import { buildBossContext, buildWorkerContext, renderBossTree } from "../../src/boss/boss-prompt"
 import { WorkflowSessionService } from "../../src/session/workflow"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -17,54 +20,61 @@ function escapeRegExp(value: string): string {
 }
 
 describe("Boss Mode prompt builders", () => {
-  test("boss context instructs delegation, monitoring, and human decisions", async () => {
-    await withScope(async () => {
-      const boss = await Session.create({})
-      await WorkflowSessionService.enableBoss(boss.id)
-      const text = buildBossContext(await Session.get(boss.id))
-      expect(text).toContain("<boss-context>")
-      expect(text).toContain("boss_spawn")
-      expect(text).toContain("boss_assign")
-      expect(text).toContain("boss_status")
-      expect(text).toContain("boss_cancel")
-      expect(text).toContain("boss_report")
-      expect(text).toContain("Answer simple requests directly when they do not need a worker")
-      expect(text).toContain("ask the human")
-    })
-  })
-
-  test("worker context names the role, the root, and boss_report", async () => {
-    await withScope(async () => {
-      const boss = await Session.create({})
-      await WorkflowSessionService.enableBoss(boss.id)
-      const worker = await BossService.spawn(boss.id, { role: "code" })
-      const text = buildWorkerContext(await Session.get(worker.id))
-      expect(text).toContain("<boss-worker-context>")
-      expect(text).toContain("code specialist worker")
-      expect(text).toContain(`rooted at session ${boss.id}`)
-      expect(text).toContain("boss_report")
-      expect(text).toContain('"blocked"')
-      expect(text).toContain("You do not contact the human directly")
-    })
-  })
-
-  test("renderBossTree renders status, role, sessionID, and task", async () => {
-    await withScope(async () => {
-      const boss = await Session.create({})
-      await WorkflowSessionService.enableBoss(boss.id)
-      const worker = await BossService.spawn(boss.id, { role: "code" })
-      await BossService.assign(boss.id, {
-        sessionID: worker.id,
-        taskID: "task-1",
-        task: "Implement the widget",
+  test("boss context instructs delegation, monitoring, and human decisions", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const boss = await Session.create({})
+        await WorkflowSessionService.enableBoss(boss.id)
+        const text = buildBossContext(await Session.get(boss.id))
+        expect(text).toContain("<boss-context>")
+        expect(text).toContain("boss_spawn")
+        expect(text).toContain("boss_assign")
+        expect(text).toContain("boss_status")
+        expect(text).toContain("boss_cancel")
+        expect(text).toContain("boss_report")
+        expect(text).toContain("Answer simple requests directly when they do not need a worker")
+        expect(text).toContain("ask the human")
       })
-      const tree = await BossService.status(boss.id)
-      const text = renderBossTree(tree)
-      expect(text).toContain(`- [idle] ${boss.title} (boss, ${boss.id})`)
-      expect(text).toMatch(
-        new RegExp(`- \\[(running|idle|queued)\\] ${escapeRegExp(worker.title)} \\(worker\\(code\\), ${worker.id}\\)`),
-      )
-      expect(text).toContain("task: task-1 — Implement the widget")
-    })
-  })
+    }))
+
+  test("worker context names the role, the root, and boss_report", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const boss = await Session.create({})
+        await WorkflowSessionService.enableBoss(boss.id)
+        const worker = await BossService.spawn(boss.id, { role: "code" })
+        const text = buildWorkerContext(await Session.get(worker.id))
+        expect(text).toContain("<boss-worker-context>")
+        expect(text).toContain("code specialist worker")
+        expect(text).toContain(`rooted at session ${boss.id}`)
+        expect(text).toContain("boss_report")
+        expect(text).toContain('"blocked"')
+        expect(text).toContain("You do not contact the human directly")
+      })
+    }))
+
+  test("renderBossTree renders status, role, sessionID, and task", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const boss = await Session.create({})
+        await WorkflowSessionService.enableBoss(boss.id)
+        const worker = await BossService.spawn(boss.id, { role: "code" })
+        await BossService.assign(boss.id, {
+          sessionID: worker.id,
+          taskID: "task-1",
+          task: "Implement the widget",
+        })
+        const tree = await BossService.status(boss.id)
+        const text = renderBossTree(tree)
+        expect(text).toContain(`- [idle] ${boss.title} (boss, ${boss.id})`)
+        expect(text).toMatch(
+          new RegExp(
+            `- \\[(running|idle|queued)\\] ${escapeRegExp(worker.title)} \\(worker\\(code\\), ${worker.id}\\)`,
+          ),
+        )
+        expect(text).toContain("task: task-1 — Implement the widget")
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

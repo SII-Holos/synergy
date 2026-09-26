@@ -12,7 +12,8 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 const pageTitle = { id: "settings.models.page.title", message: "Models" }
 const pageDescription = {
   id: "settings.models.page.description",
-  message: "Choose specialist role models and decide which connected models appear in quick switcher.",
+  message:
+    "Choose defaults for new sessions and specialist roles. Project settings can provide a different model catalog.",
 }
 const rolesTitle = { id: "settings.models.roles.title", message: "Model roles" }
 const rolesDescription = {

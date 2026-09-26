@@ -18,12 +18,12 @@ The server sends envelopes containing:
 
 ```ts
 {
-  directory: string
+  scopeID: string | null
   payload: Event
 }
 ```
 
-`directory` routes the event to the home, project, or global emitter. A session executing in a worktree still emits to the directory of its owning Scope, not to a second store for the worktree path.
+`scopeID` routes the event to its owning Scope; `null` identifies Runtime-wide events and `home` is the Home Scope. A session executing in a worktree keeps its owning Scope ID. Connection identity separates events and persisted client state from different Runtime endpoints.
 
 The connection:
 
@@ -54,7 +54,7 @@ The sync layer has:
 - per-session buckets for diffs, todo, DAG, inbox, and Plan Blueprint offers;
 - per-Scope collections for sessions, agents, commands, config, MCP, LSP, VCS, and Agenda.
 
-**Session runtime indexes are global.** Session status and the pending permission and question requests live in the global store keyed by session ID, and the visible Cortex task list in the same store keyed by task ID (it is process-wide, not Scope-scoped), rather than in a per-Scope store, because surfaces that render many sessions at once (sidebar rows, the mobile drawer, the Kanban board, the status bar) read them across every Scope while a Scope store is released as soon as its last retention lease ends. A status may now be `paused`, carrying the reason, an optional description, and `since`; whether a session is working is decided by the shared classifier in `apps/web/src/utils/session-status.ts`, where `paused` is explicitly **not** working. The index holds only non-idle statuses: an `idle` event deletes the key, while a `paused` status is a real non-idle status and stays in the index. `GET /global/session/status` (`global.session.statuses`) is the cross-Scope snapshot, and it merges each Scope's recoverable statuses — the only way a status reaches a client without an event, because no producer publishes the derived status on the event bus. Its operationId deliberately does not read `global.session.status`: the SDK generator groups methods by the first two operationId segments and ignores a leading `global`, so that name collides with the scoped `session.status` and the generator silently drops or retargets the scoped method. The global indexes follow the same post-stamp discipline as the Scope buckets through one `GlobalRuntimeWriteTracker`: only keys with an event write after the response stamp override the snapshot, and a `session.updated` carrying `info.working` fills a status the index has no entry for, while a real status event always wins.
+**Session runtime indexes are global.** Session status and the pending permission and question requests live in the global store keyed by session ID, and the visible Cortex task list in the same store keyed by task ID (it is Runtime-wide, not Scope-scoped), rather than in a per-Scope store, because surfaces that render many sessions at once (sidebar rows, the mobile drawer, the Kanban board, the status bar) read them across every Scope while a Scope store is released as soon as its last retention lease ends. A status may now be `paused`, carrying the reason, an optional description, and `since`; whether a session is working is decided by the shared classifier in `apps/web/src/utils/session-status.ts`, where `paused` is explicitly **not** working. The index holds only non-idle statuses: an `idle` event deletes the key, while a `paused` status is a real non-idle status and stays in the index. `GET /global/session/status` (`global.session.statuses`) is the cross-Scope snapshot, and it merges each Scope's recoverable statuses — the only way a status reaches a client without an event, because no producer publishes the derived status on the event bus. Its operationId deliberately does not read `global.session.status`: the SDK generator groups methods by the first two operationId segments and ignores a leading `global`, so that name collides with the scoped `session.status` and the generator silently drops or retargets the scoped method. The global indexes follow the same post-stamp discipline as the Scope buckets through one `GlobalRuntimeWriteTracker`: only keys with an event write after the response stamp override the snapshot, and a `session.updated` carrying `info.working` fills a status the index has no entry for, while a real status event always wins.
 
 **Session identity is projected, not stored.** A row's identity — Blueprint binding and phase, workspace type, workflow kind and activity, parent, category — travels on the navigation entry (`SessionNavEntry`), which is paginated, persisted, and refreshed by `session.updated`. That projection is what keeps a row's glyph intact while its Scope store is gone.
 
@@ -63,7 +63,7 @@ The sync layer has:
 - **Turn-level diffs** are stored in `message[n].summary.diffs` on the user message and reach the frontend through the existing `message.updated` state event. No new event, store bucket, or route was needed — the normal message reconcile path carries them.
 - **Session-level diffs** live in the `session_diff` bucket and aggregate all turn diffs for the Review workbench panel. They are loaded on demand through `sync.session.diff()` and never fetched implicitly.
 
-Global bootstrap starts the health check and the global config/path/Scope/provider/auth requests concurrently. Scope bootstrap limits concurrent instance requests to two. Each instance uses the generated `scope.bootstrap()` snapshot to load required provider, agent, config, and Scope identity plus optional path, command, session status/list, MCP, Cortex, Agenda, and project LSP/VCS state. The snapshot is reconciled in one Solid batch before the store becomes `partial`; permissions and questions keep their independent owner routes, and the store becomes `complete` after those requests settle. The server stamps the response sequence before reading snapshot fields, so a same-epoch response whose seq trails an event already applied was read before that event happened. Events stay authoritative only for the keys they wrote after the stamp: the write trackers record the last sequenced event write per key — the per-Scope tracker for the session list plus archive tombstones, and the global tracker for session status, permissions, questions, and Cortex tasks plus whole-bucket Cortex replacements — and snapshot application overlays only those post-stamp keys onto the snapshot — every other key converges to the snapshot, including its deletions, so state left stale by a missed event (an idle that never arrived) cannot survive a fail-open resync while a live busy status (which drives the sidebar running icon) is preserved. The per-Scope store registry is reactive: consumers that first observed no store for a directory re-run when it is created or evicted.
+Global bootstrap starts the health check and the global config/path/Scope/provider/auth requests concurrently. Scope bootstrap limits concurrent instance requests to two. Each instance uses the generated `scope.bootstrap()` snapshot to load required provider, agent, config, and Scope identity plus optional path, command, session status/list, MCP, Cortex, Agenda, and project LSP/VCS state. The snapshot is reconciled in one Solid batch before the store becomes `partial`; permissions and questions keep their independent owner routes, and the store becomes `complete` after those requests settle. The server stamps the response sequence before reading snapshot fields, so a same-epoch response whose seq trails an event already applied was read before that event happened. Events stay authoritative only for the keys they wrote after the stamp: the write trackers record the last sequenced event write per key — the per-Scope tracker for the session list plus archive tombstones, and the global tracker for session status, permissions, questions, and Cortex tasks plus whole-bucket Cortex replacements — and snapshot application overlays only those post-stamp keys onto the snapshot — every other key converges to the snapshot, including its deletions, so state left stale by a missed event (an idle that never arrived) cannot survive a fail-open resync while a live busy status (which drives the sidebar running icon) is preserved. The per-Scope store registry is reactive: consumers that first observed no store for a Scope ID re-run when it is created or evicted.
 
 ## Reconcile, Do Not Replace
 
@@ -75,6 +75,8 @@ This is an invariant for event handlers and refetches:
 - reconcile an existing session, message, part, permission, question, Agenda item, or other entity;
 - use `produce()` only for insertion, removal, a narrow leaf mutation, or coordinated bucket deletion;
 - do not replace a whole object merely because one event carries a complete serialized value.
+
+Reconciliation applies only to the same entity identity. A single-entity projection such as `latestContextMessage` may share its object with the message window. When its message ID changes, replace the projection pointer through `produce()`; reconciling at that object root mutates the previous transcript entity, including its ID. Same-ID updates continue to reconcile in place.
 
 Preserving unchanged identities keeps memos and components that read unrelated leaves from invalidating on every timestamp, status, or streaming update.
 
@@ -130,6 +132,8 @@ Every no-cursor latest page apply seeds the projection, including normal session
 
 Latest-page loading treats a freshness rejection as a superseded attempt, not a successful empty apply. The session message loader retries with new request tokens, pausing between attempts with a doubling backoff (100 ms up to 400 ms, at most four attempts), and reports the bucket ready only after an apply succeeds. A first view with no previously successful snapshot restarts the whole attempt window once after an 800 ms pause before surfacing failure, so a session streaming while the user switches to it still loads instead of stranding a blank transcript behind the retry button. Exhausted supersession remains a visible load error while preserving any previously successful snapshot.
 
+Kanban applies the same accepted latest-page plan atomically: messages, parts, window metadata, and latest Context projection. Readiness uses the real message-window snapshot marker, including for an empty page. Updating messages alone cannot establish a loaded window. Loader tests use a real Solid store so missing metadata cannot be hidden by an independent test flag.
+
 Each asynchronous latest-page request also captures a per-session projection revision. A newer latest-page request or a persisted `message.updated`/`message.removed` event advances that revision. After resource freshness accepts a page, the projection revision independently prevents an older response from overwriting newer event-driven Context usage. Complete persisted `message.updated` events reduce the projection inside the accepted event write even while history mode suppresses insertion into `messages`. Removing the projected message invalidates the key without a per-event request; the next authoritative latest page restores it.
 
 ### History transitions
@@ -159,7 +163,7 @@ While pinned at the bottom of a latest-mode conversation, the session page keeps
 
 ## Initial and Explicit Loads
 
-The generated SDK owns internal HTTP calls. Scope-specific clients carry home `scopeID` or project directory context.
+The generated SDK owns internal HTTP calls. Scope-specific clients carry a canonical `scopeID`. Directory hints are used only for explicit discovery.
 
 Rollback feedback suppression reads the server-owned `session.rollbackAck` from the synchronized session record. When the rollback dialog is presented, the client immediately records a page-local pending key to prevent duplicate effects while `session.rollbackAck()` and the resulting `session.updated` event complete. The pending key is only a round-trip barrier: it is not persisted in browser storage, and a new rollback ID remains eligible even if an older key or acknowledgment exists.
 
@@ -403,14 +407,14 @@ Session lists, inbox, todo, and other non-message state are not evicted by this 
 Composer model selection has strict one-way layering:
 
 1. user draft selection
-2. session default: explicit server `modelOverride`, otherwise last root message model
+2. durable server model/thinking selection, otherwise last root message
 3. global/application fallback
 
-Lower layers never write into higher layers. Selecting a model explicitly persists `modelOverride`; merely resolving a fallback does not mutate the session default or current draft.
+Lower layers never write into higher layers. Existing-session model and thinking changes use `session.setModelSelection`, with a per-session serialized mutation queue and expected revision. Accepted responses provide the baseline for the next edit without waiting for an event; pending generations prevent an older response or failure from replacing newer intent. Save failures retain an explicit retry action. Reload and other clients read the canonical session state.
 
 Agent and workflow selections follow the same principle: server session fields are durable defaults, while unsent composer intent remains local until the user performs an action that explicitly persists it.
 
-Variant display resolves the explicit or historical session variant first, then the agent default and configured model-role default. Existing sessions keep this resolution unready while their model or message history is unavailable, so the composer neither exposes a configured fallback nor submits a normal model request until history can distinguish an inherited variant from no explicit variant. An explicit session draft, including an explicit clear, remains authoritative without waiting for history. Only the session variant is submitted; displaying a configured fallback never writes it into message history.
+Settings and the session toolbar use the same thinking choice component. Default means provider default, Off requires a supported disable option, and concrete variants come from the model catalog for that Scope. Settings edits initialize future sessions; session choices do not write global settings. The new-session draft remains local until creation, when its effective choice is saved before submission. Existing-session submissions omit model/thinking copies so they cannot overwrite a newer saved selection. The toolbar distinguishes saving, next-request pending, restricted tool-turn pending and failed saves.
 
 ## Composer Interaction State
 
@@ -420,7 +424,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 
 ## Invariants
 
-- One global event WebSocket multiplexes events by owning Scope directory.
+- One global event WebSocket multiplexes events by owning Scope ID.
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery. Live gaps replay from the retained pre-gap watermark and do not apply the triggering event before recovery.
 - SyncProvider holds a Scope lease and registers message-loader disposal before returning. The last lease moves the Scope into the inactive LRU; overlapping transition owners and visible Kanban panes share it. Departing board panes cancel their requests before releasing their Scope lease. At most eight unleased Scopes remain in LRU order, including recently viewed Scopes, so opening a global panel preserves sidebar status and warm message windows. Bootstrap, resync, replay, and session-list responses apply only to their original live store instance. Scope eviction clears queued bootstrap work, replay tracking, refresh timers, message-LRU membership, and all begun context projections. Timer and projection cleanup use exact Scope identity. See the [transition lifecycle decision](../decisions/implemented/bug-fix/2026-09-07-transition-lifecycle-retention.md).
@@ -458,14 +462,26 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, comple
 
 Tool review tabs persist session/message/part identity and a selected path. The mounted panel loads that message through the Scope-aware generated SDK and aborts obsolete requests. It does not persist tool payloads in layout state or create a session-wide eager fetch. File links use the existing workspace-file loading and eviction owner. String interning has bounded admission maps as well as a bounded retained-value map; promotion removes the admission reference. Rendering and cache capacities follow the [bounded tool rendering decision](../decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 
-Library navigation and search controls remain outside content Suspense boundaries. Usage reads return the last computed snapshot without refreshing history; an explicit sync streams incremental refresh progress, and concurrent refreshes share a job. A new-session handoff keeps observing canonical message arrival after its deadline, so an error state can converge when materialization eventually finishes. Adjacent sessions are not automatically prefetched during route transitions; explicit hover prefetch remains available.
+Library navigation and search controls remain outside content Suspense boundaries. Usage reads return the last computed snapshot without refreshing history; an explicit sync streams incremental refresh progress, and concurrent refreshes share a job. A new-session handoff polls `session.inputStatus` serially and consumes coalescible `session.input.progress` events while waiting for its canonical message. Elapsed time changes explanatory copy, never success or failure. Network loss remains reconnecting; authoritative parked or paused input exposes retry, and cancellation exposes dismissal. Switching sessions or retry attempts aborts the old observer and ignores late responses. Adjacent sessions are not automatically prefetched during route transitions; explicit hover prefetch remains available.
 
 ## Historical upgrade status
 
 The status bar polls the generated `storage.upgradeStatus` method while historical owners remain unresolved. This progress snapshot is independent of session event watermarks and never triggers per-event data reloads. New work remains available; selecting old history waits for that owner’s migration and recovery. The separate paginated upgrade catalog exposes unresolved identities without rescanning legacy files.
 
+## Persisted client identity
+
+Persisted project selection, drafts and other Scope state use the owning connection and stable Scope ID. Home has no directory. A nullable local binding disables filesystem surfaces without preventing history, managed attachments or conversation state. Legacy directory references are resolved against the connection’s Scope catalog at the persistence boundary; an exact match wins, a unique alias may resolve, and ambiguous or missing paths stay unresolved. They cannot become Home or select an arbitrary project. Cross-connection drag payloads are rejected before applying their Scope or session IDs.
+
 ## Historical preparation
 
 The Session route gates message loading on the generated storage preparation API. Its component-owned controller polls only while pending/preparing, backs off while hidden and ignores disposed navigation responses. It does not synthesize message events or replace Scope watermarks. Returning to the workspace leaves durable preparation running. The status bar distinguishes historical convergence from independent backup completion and exposes background pause/resume; quarantined data remains blocked for repair.
 
+An active preparation attempt reports preparing and omits the previous attempt's error so polling continues through a background retry. Once the attempt settles, readiness or the persisted failure becomes visible. Quarantine remains blocked even when an attempt is still draining.
+
 Navigation clears a completion notice only after the owner reports ready. Concurrent clears share an in-flight guard through optimistic rollback so a rejected write cannot feed back into the reactive effect as an unbounded retry. Readiness replies from a previous server cannot mutate the current server or its navigation state.
+
+## Workspace file contexts
+
+File state is separate from Scope session and event state. File requests, event filters, cached documents, directory trees, explorer preferences, editor models and preview links are keyed by server, Scope, Workspace ID and binding generation. Session selection uses its canonical Workspace projection; a null or unavailable session binding never falls back to the Scope directory.
+
+File tabs retain their opening Workspace descriptor and encode its identity into the resource ID. An old generation remains explicit and can fail on the server after a rebind. Legacy tabs without an owner require reopening from the intended Workspace. File contexts snapshot the descriptor before asynchronous work, discard results after disposal, and retain at most sixteen inactive/current contexts plus contexts held by mounted file panels. Scope disposal aborts outstanding file work and releases editor models.

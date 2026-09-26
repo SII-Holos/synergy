@@ -31,7 +31,7 @@ export function isWorkbenchPanelLaunchable(entry: WorkbenchPanelEntry) {
   return entry.launchable !== false
 }
 
-export type WorkbenchEscapeAction = "none" | "close-menu" | "close-surface"
+export type WorkbenchEscapeAction = "none" | "close-surface"
 
 export function resolveWorkbenchEscapeAction(input: {
   key: string
@@ -39,10 +39,11 @@ export function resolveWorkbenchEscapeAction(input: {
   menuOpen: boolean
   dialogActive: boolean
   editableFocus?: boolean
+  focusWithin?: boolean
 }): WorkbenchEscapeAction {
   if (input.key !== "Escape" || !input.opened || input.dialogActive) return "none"
-  if (input.editableFocus) return "none"
-  return input.menuOpen ? "close-menu" : "close-surface"
+  if (input.editableFocus || input.menuOpen || !input.focusWithin) return "none"
+  return "close-surface"
 }
 
 interface WorkbenchEscapeTarget {
@@ -232,44 +233,6 @@ export function closeOtherWorkbenchPanelTabs(
 
   const anchor = tabs.findIndex((tab) => tab.id === (active ?? keepTabId))
   return { tabs: next, active: next[anchor - 1]?.id ?? next[anchor]?.id ?? next[0]?.id }
-}
-
-/**
- * Cross-instance registry of workbench-surface escape-sensitive menus.
- *
- * The side and bottom workbench surfaces each mount a capture-phase document
- * keydown listener for Escape. A listener cannot stop the other surface's
- * listener with stopPropagation (same node, same phase), so an Escape meant
- * to dismiss a context menu on one surface also collapsed the other open
- * surface. Every mounted surface registers a handle here; the keydown
- * handler then consults the registry so all instances agree on whether any
- * menu is open before falling through to close-surface.
- */
-export interface WorkbenchEscapeMenuHandle {
-  isAnyMenuOpen(): boolean
-  closeMenus(): void
-}
-
-const escapeMenuHandles = new Set<WorkbenchEscapeMenuHandle>()
-
-export function registerWorkbenchEscapeMenu(handle: WorkbenchEscapeMenuHandle): () => void {
-  escapeMenuHandles.add(handle)
-  return () => {
-    escapeMenuHandles.delete(handle)
-  }
-}
-
-export function anyWorkbenchEscapeMenuOpen(): boolean {
-  for (const handle of escapeMenuHandles) {
-    if (handle.isAnyMenuOpen()) return true
-  }
-  return false
-}
-
-export function closeAllWorkbenchEscapeMenus(): void {
-  for (const handle of escapeMenuHandles) {
-    handle.closeMenus()
-  }
 }
 
 export function workbenchPanelMountKey(tab?: WorkbenchPanelTab) {

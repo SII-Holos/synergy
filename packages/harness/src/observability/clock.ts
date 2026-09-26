@@ -1,4 +1,7 @@
-let monotonicCounter = 0
+import { RuntimeContext } from "../lifecycle/context"
+const runtimeState = RuntimeContext.state(() => ({
+  monotonicCounter: 0,
+}))
 const processStartMs = Date.now()
 
 export namespace ObservabilityClock {
@@ -11,7 +14,9 @@ export namespace ObservabilityClock {
   }
 
   export function id(prefix: string) {
-    return `${prefix}_${processStartMs.toString(36)}_${(monotonicCounter++).toString(36)}`
+    const instanceState = runtimeState()
+
+    return `${prefix}_${processStartMs.toString(36)}_${(instanceState.monotonicCounter++).toString(36)}`
   }
 
   export function start() {

@@ -7,27 +7,14 @@ export interface ScopeUpdateInput {
 
 export interface ScopeUpdateRequest {
   path_scopeID: string
-  directory: string
   name?: string
   sandboxes?: string[]
 }
 
-/**
- * Build the scope.update request for a project being edited. The stable
- * scopeID is preferred when present; the worktree path is used as the path
- * fallback. `directory` is always carried so the server can resolve and
- * persist projects that are not yet registered (e.g. a freshly opened
- * directory) and self-heal scopeID drift: the handler prefers an existing
- * scopeID and falls back to ?directory= only when the ID is unknown.
- */
-export function scopeUpdateRequest(
-  scope: Pick<LocalScope, "id" | "worktree">,
-  input: ScopeUpdateInput,
-): ScopeUpdateRequest {
+export function scopeUpdateRequest(scope: Pick<LocalScope, "id">, input: ScopeUpdateInput): ScopeUpdateRequest {
   const name = input.name?.trim()
   return {
-    path_scopeID: scope.id ?? scope.worktree,
-    directory: scope.worktree,
+    path_scopeID: scope.id,
     ...(name ? { name } : {}),
     ...(input.sandboxes !== undefined ? { sandboxes: input.sandboxes } : {}),
   }

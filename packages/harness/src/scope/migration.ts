@@ -98,7 +98,7 @@ export const migrations: Migration[] = [
 
       // 4. Create the reclaimed scope record
       const reclaimedDir = path.join(Global.Path.home, ".synergy", "reclaimed")
-      const reclaimedScope: Scope.Project = {
+      const reclaimedScope = {
         type: "project",
         id: RECLAIMED_SCOPE_ID,
         directory: reclaimedDir,
@@ -150,9 +150,9 @@ export const migrations: Migration[] = [
 
         // Update session info's scope field so runtime code resolves the correct storage paths
         const infoPath = StoragePath.sessionInfo(reclaimedSID, Identifier.asSessionID(sessionID))
-        const info = await Storage.read<SessionInfo>(infoPath).catch(() => undefined)
+        const info = await Storage.read<{ scope?: Record<string, unknown> }>(infoPath).catch(() => undefined)
         if (info && info.scope) {
-          const oldScope = info.scope as Scope.Project
+          const oldScope = info.scope
           info.scope = {
             ...reclaimedScope,
             // Preserve name/icon from original scope if available
@@ -281,8 +281,24 @@ export const migrations: Migration[] = [
       if (archived.length > 0) log.info("archived ephemeral test-artifact scopes", { count: archived.length })
     },
   },
+  {
+    scope: "global",
+    id: "20260921-scope-local-binding",
+    description: "Separate stable Scope identity from nullable local resources without moving history",
+    async up(progress) {
+      const ids = await Storage.scan(StoragePath.scopeRoot())
+      for (const [index, id] of ids.entries()) {
+        const key = StoragePath.scope(Identifier.asScopeID(id))
+        const value = await Storage.read<Record<string, unknown>>(key)
+        await Storage.write(key, normalizeLocalScope(value))
+        progress(index + 1, ids.length)
+      }
+    },
+  },
 ]
-MigrationRegistry.register("scope", migrations)
+export function registerScopeMigrations() {
+  MigrationRegistry.register("scope", migrations)
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value)
@@ -556,4 +572,24 @@ async function moveDir(from: string, to: string) {
 
 async function removeOrphanProjectRecord(scopeID: string) {
   await Storage.remove(StoragePath.scope(Identifier.asScopeID(scopeID))).catch(() => {})
+}
+
+export function normalizeLocalScope(value: Record<string, unknown>): Record<string, unknown> {
+  const { directory, worktree, vcs, sandboxes, ...metadata } = value
+  if (value.type === "home" || value.id === "home") return { ...metadata, id: "home", type: "home", local: null }
+  const source = isRecord(value.local) ? value.local : value
+  const validPath = (value: unknown): value is string => typeof value === "string" && path.isAbsolute(value)
+  const local =
+    value.local === null
+      ? null
+      : validPath(source.directory) && validPath(source.worktree)
+        ? {
+            ...(source === value ? {} : source),
+            directory: source.directory,
+            worktree: source.worktree,
+            ...(source.vcs === "git" ? { vcs: "git" } : {}),
+            sandboxes: Array.isArray(source.sandboxes) ? source.sandboxes.filter(validPath) : [],
+          }
+        : null
+  return { ...metadata, type: "project", local, time: metadata.time ?? { created: 0, updated: 0 } }
 }

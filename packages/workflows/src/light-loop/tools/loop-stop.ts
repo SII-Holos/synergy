@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Session } from "@ericsanchezok/synergy-harness/session"
@@ -16,10 +17,14 @@ export type LightLoopAgendaAssertClear = (input: {
   operation: "Light Loop review"
 }) => Promise<void>
 
-let agendaAssertClear: LightLoopAgendaAssertClear | undefined
+const runtimeState = RuntimeContext.state(() => ({
+  agendaAssertClear: undefined as LightLoopAgendaAssertClear | undefined,
+}))
 
 export function setLightLoopAgendaAssertClear(fn: LightLoopAgendaAssertClear): void {
-  agendaAssertClear = fn
+  const instanceState = runtimeState()
+
+  instanceState.agendaAssertClear = fn
 }
 
 const parameters = z.object({
@@ -36,6 +41,8 @@ export const LoopStopTool = Tool.define("loop_stop", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
+    const instanceState = runtimeState()
+
     const session = await Session.get(ctx.sessionID)
     if (session.workflow?.kind !== "lightloop") {
       throw new Error("No active Light Loop workflow on this session")
@@ -58,10 +65,10 @@ export const LoopStopTool = Tool.define("loop_stop", {
         },
       }
     }
-    if (!agendaAssertClear) {
+    if (!instanceState.agendaAssertClear) {
       throw new Error("LightLoop stop guard is not wired (load src/product-registration)")
     }
-    await agendaAssertClear({
+    await instanceState.agendaAssertClear({
       sessionID: ctx.sessionID,
       scopeID: ScopeContext.current.scope.id,
       operation: "Light Loop review",

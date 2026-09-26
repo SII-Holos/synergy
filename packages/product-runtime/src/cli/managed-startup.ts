@@ -1,17 +1,8 @@
-import {
-  runtimeStartupLine,
-  type StorageStartupProgress,
-  type StorageMaintenanceEvent,
-} from "@ericsanchezok/synergy-util/runtime-startup"
-import type { MigrationReporter } from "@ericsanchezok/synergy-harness/migration/types"
-
-export function createManagedMaintenanceReporter(
-  write: (line: string) => void = (line) => {
-    process.stdout.write(line)
-  },
-) {
-  return (event: StorageMaintenanceEvent) => write(runtimeStartupLine(event))
-}
+import { runtimeStartupLine, type StorageStartupProgress } from "@ericsanchezok/synergy-util/runtime-startup"
+export {
+  createManagedMaintenanceReporter,
+  createManagedMigrationReporter,
+} from "@ericsanchezok/synergy-cli/cli/maintenance-progress"
 
 export function createManagedRecoveryReporter(
   write: (line: string) => void = (line) => {
@@ -31,26 +22,6 @@ export function createManagedRecoveryReporter(
       write(runtimeStartupLine({ phase: "recovery", current }))
     },
     completed() {
-      write(runtimeStartupLine({ phase: "starting" }))
-    },
-  }
-}
-
-export function createManagedMigrationReporter(
-  write: (line: string) => void = (line) => {
-    process.stdout.write(line)
-  },
-): MigrationReporter {
-  let step = 0
-  return {
-    started() {
-      write(runtimeStartupLine({ phase: "migration", step: ++step, current: 0, total: 0 }))
-    },
-    progress({ current, total }) {
-      if (!Number.isSafeInteger(current) || !Number.isSafeInteger(total) || current < 0 || total < current) return
-      write(runtimeStartupLine({ phase: "migration", step, current, total }))
-    },
-    summary() {
       write(runtimeStartupLine({ phase: "starting" }))
     },
   }

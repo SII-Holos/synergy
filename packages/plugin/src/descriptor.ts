@@ -238,6 +238,7 @@ function compileContribution(
       return {
         ...base,
         kind: "tool",
+        ...(contribution.requiresWorkspace === undefined ? {} : { requiresWorkspace: contribution.requiresWorkspace }),
         description: contribution.description,
         input: schemaToJsonSchema(contribution.input),
         ...(contribution.exposure ? { exposure: contribution.exposure } : {}),

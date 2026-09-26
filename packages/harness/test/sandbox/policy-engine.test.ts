@@ -1,8 +1,12 @@
+import { RuntimeContext } from "../../src/lifecycle/context"
 import { describe, expect, test } from "bun:test"
 import * as os from "node:os"
 import * as path from "node:path"
 import { CREDENTIAL_PATHS, READ_DENY_PATHS, readDenyHomeDirs } from "../../src/sandbox/policy"
 import { buildPermissionProfile } from "../../src/sandbox/policy-engine"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // ---------------------------------------------------------------------------
 // sandbox/policy-engine.test.ts
@@ -32,121 +36,116 @@ function profile(overrides: Partial<Parameters<typeof buildPermissionProfile>[0]
 }
 
 describe("READ_DENY_PATHS", () => {
-  test("keeps the plugin credential root and adds cargo registry tokens", () => {
-    const home = os.homedir()
-    expect(READ_DENY_PATHS(home)).toContain(path.join(home, ".synergy", "data", "plugin"))
-    expect(READ_DENY_PATHS(home)).toContain(path.join(home, ".cargo", "credentials.toml"))
-    expect(READ_DENY_PATHS(home)).toContain(path.join(home, ".cargo", "credentials"))
-  })
+  test("keeps the plugin credential root and adds cargo registry tokens", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      expect(READ_DENY_PATHS(home)).toContain(path.join(home, ".synergy", "data", "plugin"))
+      expect(READ_DENY_PATHS(home)).toContain(path.join(home, ".cargo", "credentials.toml"))
+      expect(READ_DENY_PATHS(home)).toContain(path.join(home, ".cargo", "credentials"))
+    }))
 
-  test("points the Firefox deny at the macOS Application Support profile root", () => {
-    const home = os.homedir()
-    expect(READ_DENY_PATHS(home)).toContain(path.join(home, "Library", "Application Support", "Firefox"))
-    expect(READ_DENY_PATHS(home)).not.toContain(path.join(home, "Library", "Firefox"))
-  })
+  test("points the Firefox deny at the macOS Application Support profile root", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      expect(READ_DENY_PATHS(home)).toContain(path.join(home, "Library", "Application Support", "Firefox"))
+      expect(READ_DENY_PATHS(home)).not.toContain(path.join(home, "Library", "Firefox"))
+    }))
 
-  test("exempts kube and docker config stores from read denial but not write protection", () => {
-    const home = os.homedir()
-    expect(READ_DENY_PATHS(home)).not.toContain(path.join(home, ".kube"))
-    expect(READ_DENY_PATHS(home)).not.toContain(path.join(home, ".docker", "config.json"))
-    expect(CREDENTIAL_PATHS(home)).toContain(path.join(home, ".kube"))
-    expect(CREDENTIAL_PATHS(home)).toContain(path.join(home, ".docker", "config.json"))
-  })
+  test("exempts kube and docker config stores from read denial but not write protection", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      expect(READ_DENY_PATHS(home)).not.toContain(path.join(home, ".kube"))
+      expect(READ_DENY_PATHS(home)).not.toContain(path.join(home, ".docker", "config.json"))
+      expect(CREDENTIAL_PATHS(home)).toContain(path.join(home, ".kube"))
+      expect(CREDENTIAL_PATHS(home)).toContain(path.join(home, ".docker", "config.json"))
+    }))
 })
 
 describe("readDenyHomeDirs", () => {
-  test("derives from the OS home plus SYNERGY_HOME when set", () => {
-    const savedHome = process.env.SYNERGY_HOME
-    process.env.SYNERGY_HOME = "/tmp/alt-synergy-home"
-    try {
-      const dirs = readDenyHomeDirs()
-      expect(dirs).toContain("/tmp/alt-synergy-home")
-      expect(dirs).toContain(os.homedir())
-    } finally {
-      if (savedHome === undefined) delete process.env.SYNERGY_HOME
-      else process.env.SYNERGY_HOME = savedHome
-    }
-  })
-
-  test("collapses to the OS home when no runtime home env is set", () => {
-    const savedHome = process.env.SYNERGY_HOME
-    const savedTestHome = process.env.SYNERGY_TEST_HOME
-    delete process.env.SYNERGY_HOME
-    delete process.env.SYNERGY_TEST_HOME
-    try {
-      expect(readDenyHomeDirs()).toEqual([os.homedir()])
-    } finally {
-      if (savedHome !== undefined) process.env.SYNERGY_HOME = savedHome
-      if (savedTestHome !== undefined) process.env.SYNERGY_TEST_HOME = savedTestHome
-    }
-  })
+  test("protects both the OS home and the explicit Runtime home", () =>
+    runtime.run(() => {
+      expect(readDenyHomeDirs()).toEqual(expect.arrayContaining([os.homedir(), runtime.host.home]))
+    }))
+  test("deduplicates a Runtime home that equals the OS home", () =>
+    runtime.run(() => {
+      const context = RuntimeContext.create({ ...runtime.host, home: os.homedir() })
+      try {
+        context.run(() => expect(readDenyHomeDirs()).toEqual([os.homedir()]))
+      } finally {
+        context.dispose()
+      }
+    }))
 })
 
 describe("buildPermissionProfile read deny scope", () => {
-  test("keeps the ancestor deny for a workspace nested in a credential directory", () => {
-    const home = os.homedir()
-    const p = profile({ workspace: path.join(home, ".ssh", "proj"), executionCwd: path.join(home, ".ssh", "proj") })
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
-  })
+  test("keeps the ancestor deny for a workspace nested in a credential directory", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      const p = profile({ workspace: path.join(home, ".ssh", "proj"), executionCwd: path.join(home, ".ssh", "proj") })
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
+    }))
 
-  test("drops a deny equal to the workspace", () => {
-    const home = os.homedir()
-    const p = profile({ workspace: path.join(home, ".ssh"), executionCwd: path.join(home, ".ssh") })
-    expect(p.fileSystem.readDenyPaths).not.toContain(path.join(home, ".ssh"))
-  })
+  test("drops a deny equal to the workspace", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      const p = profile({ workspace: path.join(home, ".ssh"), executionCwd: path.join(home, ".ssh") })
+      expect(p.fileSystem.readDenyPaths).not.toContain(path.join(home, ".ssh"))
+    }))
 
-  test("keeps a deny inside the workspace", () => {
-    const p = profile({ dataDenyRoots: ["/srv/project/secrets"] })
-    expect(p.fileSystem.readDenyPaths).toContain("/srv/project/secrets")
-  })
+  test("keeps a deny inside the workspace", () =>
+    runtime.run(() => {
+      const p = profile({ dataDenyRoots: ["/srv/project/secrets"] })
+      expect(p.fileSystem.readDenyPaths).toContain("/srv/project/secrets")
+    }))
 
-  test("keeps every credential deny when the workspace is the OS home", () => {
-    const home = os.homedir()
-    // A Scope directory rooted at $HOME must not be grounds to drop the
-    // credential denies: the workspace is the writable root here, so a
-    // dropped deny would leave the whole home readable.
-    const p = profile({ workspace: home, executionCwd: home, approvedWritePaths: [home] })
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".aws"))
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".netrc"))
-  })
+  test("keeps every credential deny when the workspace is the OS home", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      // A Scope directory rooted at $HOME must not be grounds to drop the
+      // credential denies: the workspace is the writable root here, so a
+      // dropped deny would leave the whole home readable.
+      const p = profile({ workspace: home, executionCwd: home, approvedWritePaths: [home] })
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".aws"))
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".netrc"))
+    }))
 
-  test("keeps every credential deny when a trusted root is the OS home", () => {
-    const home = os.homedir()
-    // Additional project folders reach the profile as approvedWritePaths;
-    // one of them being $HOME must not prune the credential denies either.
-    const p = profile({ approvedWritePaths: ["/srv/other", home] })
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".aws"))
-  })
+  test("keeps every credential deny when a trusted root is the OS home", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      // Additional project folders reach the profile as approvedWritePaths;
+      // one of them being $HOME must not prune the credential denies either.
+      const p = profile({ approvedWritePaths: ["/srv/other", home] })
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".aws"))
+    }))
 
-  test("keeps the credential deny when the workspace is the Synergy runtime home", () => {
-    const home = os.homedir()
-    const p = profile({ workspace: path.join(home, ".synergy"), executionCwd: path.join(home, ".synergy") })
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
-    expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".synergy", "data", "auth"))
-  })
+  test("keeps the credential deny when the workspace is the Synergy runtime home", () =>
+    runtime.run(() => {
+      const home = os.homedir()
+      const p = profile({ workspace: path.join(home, ".synergy"), executionCwd: path.join(home, ".synergy") })
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".ssh"))
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(home, ".synergy", "data", "auth"))
+    }))
 
-  test("merges explicit non-default dataDenyRoots into the read denies", () => {
-    const p = profile({ dataDenyRoots: ["/srv/private-data"] })
-    expect(p.fileSystem.readDenyPaths).toContain("/srv/private-data")
-  })
+  test("merges explicit non-default dataDenyRoots into the read denies", () =>
+    runtime.run(() => {
+      const p = profile({ dataDenyRoots: ["/srv/private-data"] })
+      expect(p.fileSystem.readDenyPaths).toContain("/srv/private-data")
+    }))
 
-  test("does not deny the whole OS home when dataDenyRoots carries the default", () => {
-    const p = profile({ dataDenyRoots: [os.homedir()] })
-    expect(p.fileSystem.readDenyPaths).not.toContain(os.homedir())
-  })
+  test("does not deny the whole OS home when dataDenyRoots carries the default", () =>
+    runtime.run(() => {
+      const p = profile({ dataDenyRoots: [os.homedir()] })
+      expect(p.fileSystem.readDenyPaths).not.toContain(os.homedir())
+    }))
 
-  test("derives denies from the Synergy runtime home when it differs", () => {
-    const savedHome = process.env.SYNERGY_HOME
-    process.env.SYNERGY_HOME = "/tmp/alt-synergy-home"
-    try {
+  test("derives credential denies from the explicit Runtime home", () =>
+    runtime.run(() => {
       const p = profile()
-      expect(p.fileSystem.readDenyPaths).toContain(path.join("/tmp/alt-synergy-home", ".synergy", "data", "auth"))
-      expect(p.fileSystem.readDenyPaths).toContain(path.join("/tmp/alt-synergy-home", ".synergy", "data", "plugin"))
-    } finally {
-      if (savedHome === undefined) delete process.env.SYNERGY_HOME
-      else process.env.SYNERGY_HOME = savedHome
-    }
-  })
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(runtime.host.home, ".synergy", "data", "auth"))
+      expect(p.fileSystem.readDenyPaths).toContain(path.join(runtime.host.home, ".synergy", "data", "plugin"))
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

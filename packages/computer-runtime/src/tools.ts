@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import {
@@ -30,7 +31,7 @@ async function execute(ctx: Tool.Context, command: ComputerCommand): Promise<Too
     .update(JSON.stringify([ctx.sessionID, semantics.rootID]))
     .digest("hex")
   ctx.abort.throwIfAborted()
-  const result = await computerBroker.execute(owner, command, ctx.abort)
+  const result = await computerBroker().execute(owner, command, ctx.abort)
   const attachments = await Promise.all(
     result.images.map(async (image, index): Promise<MessageV2.AttachmentPart> => {
       const filename = `computer-${Date.now()}-${index}.${image.mimeType === "image/png" ? "png" : "jpg"}`
@@ -86,9 +87,13 @@ export const ComputerActionTool = Tool.define("computer_action", {
   parameters: z.object({ input: ComputerActionSchema }).strict(),
   execute: ({ input }, ctx) => execute(ctx, { type: "action", input }),
 })
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 export function registerComputerTools() {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
   ToolRegistry.registerToolProvider("computer", () => [ComputerAppsTool, ComputerObserveTool, ComputerActionTool])
 }

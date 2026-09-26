@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -52,103 +55,109 @@ async function seedBothRetiredMarkers(scopeID: string) {
 }
 
 describe("retired waiting state upgrade", () => {
-  test("one latch results when both retired markers describe the same stop", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const scopeID = ScopeContext.current.scope.id
-        const { key } = await seedBothRetiredMarkers(scopeID)
+  test("one latch results when both retired markers describe the same stop", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const scopeID = ScopeContext.current.scope.id
+          const { key } = await seedBothRetiredMarkers(scopeID)
 
-        await runMigration(PAUSE_LATCH_ID)
-        await runMigration(WAITING_PHASE_ID)
+          await runMigration(PAUSE_LATCH_ID)
+          await runMigration(WAITING_PHASE_ID)
 
-        const info = await Storage.read<Record<string, unknown>>(key)
-        // The phase is carried forward, or the record fails `safeParse` and the
-        // session is dropped from the navigation projection entirely.
-        expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
-        // The retired flag is gone rather than rewritten.
-        expect(info?.pendingReply).toBeUndefined()
-        // Exactly one latch, and the cause recorded first wins: the flag
-        // migration runs first and its reason is the accurate one — the runtime
-        // stopped with a reply owed.
-        expect(info?.paused).toMatchObject({ reason: "interrupted" })
-      },
-    })
-  })
+          const info = await Storage.read<Record<string, unknown>>(key)
+          // The phase is carried forward, or the record fails `safeParse` and the
+          // session is dropped from the navigation projection entirely.
+          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
+          // The retired flag is gone rather than rewritten.
+          expect(info?.pendingReply).toBeUndefined()
+          // Exactly one latch, and the cause recorded first wins: the flag
+          // migration runs first and its reason is the accurate one — the runtime
+          // stopped with a reply owed.
+          expect(info?.paused).toMatchObject({ reason: "interrupted" })
+        },
+      })
+    }))
 
-  test("running the upgrade twice leaves the store byte-identical", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const scopeID = ScopeContext.current.scope.id
-        const { key } = await seedBothRetiredMarkers(scopeID)
+  test("running the upgrade twice leaves the store byte-identical", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const scopeID = ScopeContext.current.scope.id
+          const { key } = await seedBothRetiredMarkers(scopeID)
 
-        await runMigration(PAUSE_LATCH_ID)
-        await runMigration(WAITING_PHASE_ID)
-        const upgraded = await Storage.read<Record<string, unknown>>(key)
+          await runMigration(PAUSE_LATCH_ID)
+          await runMigration(WAITING_PHASE_ID)
+          const upgraded = await Storage.read<Record<string, unknown>>(key)
 
-        await runMigration(PAUSE_LATCH_ID)
-        await runMigration(WAITING_PHASE_ID)
+          await runMigration(PAUSE_LATCH_ID)
+          await runMigration(WAITING_PHASE_ID)
 
-        // Nothing is left to convert, so a resumed or repeated bootstrap must
-        // not churn `since` or rewrite a record it already carried forward.
-        expect(await Storage.read<Record<string, unknown>>(key)).toEqual(upgraded)
-      },
-    })
-  })
+          // Nothing is left to convert, so a resumed or repeated bootstrap must
+          // not churn `since` or rewrite a record it already carried forward.
+          expect(await Storage.read<Record<string, unknown>>(key)).toEqual(upgraded)
+        },
+      })
+    }))
 
-  test("a waiting phase on its own still carries the loop-held stop onto the latch", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const scopeID = ScopeContext.current.scope.id
-        const session = await Session.create({ title: "Held, no reply owed" })
-        const key = storedKey(scopeID, session.id)
-        const stored = await Storage.read<Record<string, unknown>>(key)
-        await Storage.write(key, {
-          ...stored,
-          blueprint: { loopID: "bll_held", loopRole: "execution", phase: "waiting" },
-        })
+  test("a waiting phase on its own still carries the loop-held stop onto the latch", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const scopeID = ScopeContext.current.scope.id
+          const session = await Session.create({ title: "Held, no reply owed" })
+          const key = storedKey(scopeID, session.id)
+          const stored = await Storage.read<Record<string, unknown>>(key)
+          await Storage.write(key, {
+            ...stored,
+            blueprint: { loopID: "bll_held", loopRole: "execution", phase: "waiting" },
+          })
 
-        await runMigration(WAITING_PHASE_ID)
+          await runMigration(WAITING_PHASE_ID)
 
-        const info = await Storage.read<Record<string, unknown>>(key)
-        expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
-        expect(info?.paused).toMatchObject({
-          reason: "workflow",
-          description: "Stopped by BlueprintLoop; continue or abandon",
-        })
-      },
-    })
-  })
+          const info = await Storage.read<Record<string, unknown>>(key)
+          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
+          expect(info?.paused).toMatchObject({
+            reason: "workflow",
+            description: "Stopped by BlueprintLoop; continue or abandon",
+          })
+        },
+      })
+    }))
 
-  test("a latch the session already owns is never rewritten by the upgrade", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const scopeID = ScopeContext.current.scope.id
-        const session = await Session.create({ title: "Already stopped by the user" })
-        const key = storedKey(scopeID, session.id)
-        const stored = await Storage.read<Record<string, unknown>>(key)
-        const ownLatch = { reason: "aborted", description: "Turn stopped mid-work", since: 1234 }
-        await Storage.write(key, {
-          ...stored,
-          paused: ownLatch,
-          blueprint: { loopID: "bll_held", loopRole: "execution", phase: "waiting" },
-        })
+  test("a latch the session already owns is never rewritten by the upgrade", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const scopeID = ScopeContext.current.scope.id
+          const session = await Session.create({ title: "Already stopped by the user" })
+          const key = storedKey(scopeID, session.id)
+          const stored = await Storage.read<Record<string, unknown>>(key)
+          const ownLatch = { reason: "aborted", description: "Turn stopped mid-work", since: 1234 }
+          await Storage.write(key, {
+            ...stored,
+            paused: ownLatch,
+            blueprint: { loopID: "bll_held", loopRole: "execution", phase: "waiting" },
+          })
 
-        await runMigration(WAITING_PHASE_ID)
+          await runMigration(WAITING_PHASE_ID)
 
-        const info = await Storage.read<Record<string, unknown>>(key)
-        expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
-        // First pause wins: the user's own stop, including its `since`, survives
-        // the upgrade that only exists to carry the record forward.
-        expect(info?.paused).toEqual(ownLatch)
-      },
-    })
-  })
+          const info = await Storage.read<Record<string, unknown>>(key)
+          expect((info?.blueprint as { phase?: string } | undefined)?.phase).toBe("running")
+          // First pause wins: the user's own stop, including its `since`, survives
+          // the upgrade that only exists to carry the record forward.
+          expect(info?.paused).toEqual(ownLatch)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

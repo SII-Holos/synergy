@@ -1,4 +1,4 @@
-import type { ChildProcess } from "node:child_process"
+import type { ProcessHandle } from "./handle"
 
 export namespace ChildProcessClose {
   export const DEFAULT_DRAIN_GRACE_MS = 1_000
@@ -10,7 +10,7 @@ export namespace ChildProcessClose {
   }
 
   export function wait(
-    child: ChildProcess,
+    child: ProcessHandle,
     options: {
       drainGraceMs?: number
       isBackpressured?: () => boolean

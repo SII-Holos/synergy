@@ -2,7 +2,9 @@
 
 ## Session Contract
 
-A session is the durable unit of work in Synergy. It belongs to one Scope, binds an execution workspace, stores its message history and operational state, and can be resumed by any client connected to the same runtime.
+A session is the durable unit of work in Synergy. It belongs to one Scope, persists an explicit nullable execution workspace, stores its message history and operational state, and can be resumed by any client connected to the same runtime.
+
+Session metadata batch reads resolve distinct Workspace references through one catalog batch, whose SQL statements are bounded by the storage reader. Projection preserves input order, missing records and Scope ownership checks. The resolved catalog is local to that read, so subsequent reads observe rebinding without a persistent cache. See the [batch hydration decision](../decisions/implemented/bug-fix/2026-09-25-batch-session-workspace-hydration.md).
 
 Session state includes, when applicable:
 
@@ -21,6 +23,8 @@ Session storage and transcript imports use `Session.PersistedInfo`, which valida
 Session mutations use one `Storage.transaction()` for canonical session info and the session, page, child, navigation and endpoint indexes. Nested `Storage.update()` and index writes join that transaction. Activity updates, completion acknowledgements and last-exchange updates therefore commit their state and projections together.
 
 Page and navigation indexes are shared by sessions in a Scope, while child indexes are shared by siblings under one parent. Their read-modify-write operations participate in the same SQL business transaction. Completion notice operations also use a per-session queue outside that transaction to preserve operation order without waiting on another SQL writer from inside the current transaction.
+
+Navigation reconstruction reads canonical metadata through `SessionRecords` before applying the current Session schema. Owner-local on-access upgrades, their receipts and the rebuilt navigation commit in the same transaction. Reconstruction preserves conversation timestamps and unknown owner metadata without hydrating messages or rollout evidence. A versioned derived migration repairs previously persisted incomplete indexes; its deferred-owner path upgrades and publishes only the admitted Session.
 
 Event publication inside a transaction records a durable pending notification with the state change. Dispatch and cache effects run after commit. The storage and recovery behavior is defined in [Agent storage](agent-storage.md).
 
@@ -58,7 +62,7 @@ Session metadata is not the message transcript. Each has its own storage and eve
 
 ### Global identity and endpoint lookup
 
-`sessionID` is globally stable. `Session.get(sessionID)` resolves the logical key `["session_index", sessionID]` to the owning Scope and then reads `["sessions", scopeID, sessionID, "info"]` through the storage Handle; callers do not form a composite `(scopeID, sessionID)` identity.
+`sessionID` is stable within its owning Runtime storage. Independent Runtime instances may contain identical session IDs without sharing state. `Session.get(sessionID)` resolves the logical key `["session_index", sessionID]` to the owning Scope and then reads `["sessions", scopeID, sessionID, "info"]` through the storage Handle; callers do not form a composite `(scopeID, sessionID)` identity.
 
 Channel endpoint lookup is a secondary global index from endpoint key to candidate `sessionID` values. The endpoint facade requires the provider's resolved Scope and verifies that the active Session belongs to it. A mismatch fails without moving, reusing, or creating a second Session in another Scope. Endpoint creation and archive share one hashed lock, so one endpoint has at most one active Session while retaining archived history.
 
@@ -75,7 +79,7 @@ Synergy records two different relationships:
 
 A fork is not a child task. It copies the source session's effective history and records `forkedFrom`; it does not use `parentID` to imitate delegation.
 
-Child sessions inherit the parent workspace and interaction context by default. Their effective control profile is resolved through the parent chain rather than copied as an independent root profile.
+Child sessions inherit the parent Scope, nullable workspace and interaction context by default, even when creation runs under another ambient Scope. Their effective control profile is resolved through the parent chain rather than copied as an independent root profile.
 
 ## One Active Loop
 
@@ -95,6 +99,18 @@ This single-writer rule supports:
 
 The durable session can outlive its in-memory runtime. Runtime state is reconstructed from persisted messages, the `paused` latch, workflow records, BlueprintLoop state, and recovery metadata after restart. A restart never resumes work: every session that ended abnormally is recorded as paused and waits for an explicit Continue or Abandon.
 
+## Durable input recovery
+
+A client-supplied message ID identifies one input. Concurrent retries share a deterministic Inbox item, and materialization receipts and terminal runs prevent reinsertion after completion or cancellation. Explicit Inbox retry clears its failure and the session pause under the session control lock; task retry does not reopen an unrelated old root. A newly queued task advances past historical roots without execution evidence and terminal roots before resolving configuration, so an unavailable historical model cannot own the new task.
+
+`GET /session/{sessionID}/input/{messageID}/status` projects the durable Inbox item, canonical message and Rollout run in one storage snapshot. States are `accepted`, `preparing`, `queued_storage`, `materializing`, `running`, `retrying`, `completed`, `cancelled` and `failed`. Scheduling and queue detail is bounded Runtime-local telemetry published through the coalescible `session.input.progress` event; it is not another durable message state machine. Exhausted scheduling retries park the saved task. A paused saved input requires explicit retry and reports `SessionPaused`; time spent waiting alone never declares failure. A begun run stays running through detached settlement until its durable terminal state is recorded.
+
+### Inbox removal and restoration
+
+User removal moves the complete stored Inbox item into a session-owned recovery record in the same transaction as its queue removal. Internal consumption and cancellation keep their existing hard-removal paths. The removed-items API exposes only the ordinary public item projection. Restoration requeues the canonical stored item with its original mode, message ID, input and execution configuration; it cannot reconstruct an item from presentation data. A retained restoration receipt prevents a repeated restore request from resurrecting consumed input. Completed or cancelled runs cannot be restored. Restore schedules ordinary queue processing without clearing a pause or rearming a failed item; Continue and Retry remain explicit controls.
+
+Recovery records belong to the Session and are deleted with it. Whole-Home transfer preserves them; transcript exports and session forks exclude queue/recovery state. Existing installations require no rewrite because the collection is additive and absent means empty.
+
 ## Task Roots
 
 A session processes a serial sequence of tasks. One root user message `R` owns each task.
@@ -111,25 +127,25 @@ Skill slash-command fallback preserves that same root. When a Skill template has
 
 `SessionProgress.needsModelCall(messages, R.id)` asks whether the latest user message belonging to `R` has a later terminal assistant reply belonging to the same root. Terminal assistant finishes exclude `tool-calls` and `unknown`, which keep the model/tool loop active.
 
-### Root variant lifecycle
+### Model and thinking selection
 
-Each task root user message stores an optional `variant` string that selects a reasoning or effort variant for the model call. The variant is resolved once when the root message is created (input acceptance or inbox materialization) and then persisted. Active roots do not re-resolve after config reload.
+Session `modelSelection` stores a revision, an atomic model/thinking choice, per-model thinking preferences, the last request snapshot and an optional pending reason. Thinking is explicitly `provider-default`, `off` or a named `variant`. The HTTP `session.setModelSelection` operation validates against the session's Scope and uses an expected revision to reject stale edits. Updates publish through the established `session.updated` event; `modelOverride` remains a compatibility projection for older callers.
 
-Resolution priority (first non-empty wins):
+A new root without a saved session choice resolves its initial variant in this order:
 
-1. explicit `variant` from the input payload
-2. `agent.defaultVariant` from the resolved agent definition
-3. `config.role_variant[modelRole]` from the Models domain configuration
+1. explicit thinking selection or legacy `variant` from the input payload
+2. supported `agent.defaultVariant` from the resolved agent definition
+3. supported `config.role_variant[modelRole]` from the Models domain configuration
 
-Only task roots (`isRoot = true`) receive a resolved variant. Steer and context messages never expose or materialize a variant. A queued inbox item may retain its internal variant snapshot so promotion back to task mode does not lose intent, while non-task public projections unset the field.
+Only task roots receive initial thinking metadata. Steer and context messages never expose or materialize variant or thinking fields. A queued inbox item can retain its internal choice for promotion back to task mode. Ordinary Web submissions reuse the saved selection instead of submitting a potentially stale model/variant copy.
 
-`LLM.prepare()` consumes the persisted `variant` from the root user message. When the variant is absent, no variant options are applied and the provider uses its default behavior.
+Every model request captures a complete selection before model-dependent preparation. The transient user envelope carries the captured model and thinking; historical roots remain unchanged. The assistant message and rollout request record the captured revision and choice. Changes arriving after capture remain pending for the next request. A restricted Anthropic tool-turn transition remains pending until a new root. Existing streams and completed tools are not restarted.
 
-A persisted variant that is absent from the current enabled model catalog raises `ProviderModelVariantUnavailableError` at `SessionRootVariant.options()` — the runtime does not silently fall back to another variant or unset the field.
+Switching to a previously used model restores its session preference; first use selects provider-default. Default bypasses agent and role defaults and removes reasoning overrides after ordinary parameter hooks. Off is only offered for a concrete supported disable mapping or an explicit configured variant. Invalid explicit choices raise structured errors without silently selecting another level.
 
-`SessionRootVariant.resolve()` validates an explicit candidate variant against the model's declared `variants`. When the model declares variants, an unknown explicit candidate surfaces the same error before persistence so the caller can correct the request. An agent or role default that the selected model does not declare is omitted, letting that provider use its own default rather than persisting an invalid root variant. A model that declares no variants leaves a newly resolved root variant unset.
+New selections reject unavailable models, unsupported external-agent controls and active-task attachments the target model cannot consume. Cross-model history keeps assistant text and tool results while omitting another model's reasoning blocks. Compression and sessionless calls retain their own model options; a parent selection does not modify child-session preferences.
 
-Legacy task roots that were persisted without a variant are filled by migration `20260726-session-root-variant` when the agent/config defaults can be resolved. Session import applies the same canonicalization to missing imported root variants while preserving explicit values.
+Migration `20260923-session-model-selection` initializes existing sessions from the explicit model override and stored root choices, including per-model preferences. Import uses the same legacy conversion when the export lacks a selection. Browser-only null sentinels are not promoted into provider-default commands. See the [decision record](../decisions/implemented/feature/2026-09-23-live-model-thinking-selection.md).
 
 ## Canonical Message Semantics
 
@@ -294,7 +310,7 @@ The Side Workspace Context panel reads this field from normal message synchroniz
 
 ## Turn Diffs
 
-Each user message may carry computed file-change diffs from the turn's snapshot/patch parts. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
+Each user message may carry computed file-change diffs from the turn's patch parts. New patches capture an immutable before/after tree for each actual write operation, after physical admission and before its release. Model-step start and finish parts carry accounting without filesystem attribution. Native processes retain exclusion until both their tree and evidence finalization finish, including after the tool returns or its Task ends. Explicit shared Workspaces keep their original binding in each record. Legacy step snapshots remain readable as historical evidence. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
 
 ### Diff state machine
 
@@ -304,14 +320,16 @@ Each user message may carry computed file-change diffs from the turn's snapshot/
 | --------- | ------------------------------------------------------------------------------------------------------------------------- |
 | `pending` | Diff is being computed; includes the server-owned expiry marker `deadlineAt` (epoch ms) for timeout and restart recovery. |
 | `ready`   | Diffs computed successfully.                                                                                              |
-| `error`   | Diff computation failed; carries a safe error `code` (`timeout`, `git_failure`, or `unknown`).                            |
+| `error`   | Diff computation failed; carries a safe error `code` (`timeout`, `git_failure`, `incomplete`, or `unknown`).              |
 
 The non-blocking summary `LoopJob` derives turn diffs in this order:
 
 1. fresh-merge `diffState: { status: "pending", deadlineAt }` on the user message before `computeDiff()` so the frontend sees the pending state immediately;
-2. call `computeDiff()` using the snapshot range from every assistant revision belonging to the root turn;
+2. call `computeDiff()` using each recorded write operation from every assistant revision belonging to the root turn; exact operation pairs never span intervening writes by another owner;
 3. on success, write `{ diffs, diffState: { status: "ready" } }` atomically;
 4. on failure, write `{ diffState: { status: "error", code } }`; on a per-run timeout, apply `error/timeout` only if the diff is still `pending`, preserving an already-`ready` settlement while later enrichment or session aggregation finishes.
+
+An interrupted or failed operation capture remains explicitly incomplete, retains available diffs and cannot authorize file restoration. Background completion queues a diff-only refresh without title/body model calls. It uses the same per-session ordering, yields live execution capacity while waiting, and refreshes mutable pending parts before applying a captured root-turn view. Native process completion is published after its evidence is finalized, so completion consumers do not observe an unfinished archive.
 
 Title generation may continue after either outcome. Body generation runs only when diff settlement succeeded with a non-empty diff set. Diff errors persist safe error codes only and do not block the session or later queued turns. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary after its deadline; the frontend renders the server settlement state and never compares `deadlineAt` with the client clock.
 
@@ -331,7 +349,7 @@ diffState?: {
   status: "ready"
 } | {
   status: "error"
-  code: "timeout" | "git_failure" | "unknown"
+  code: "timeout" | "git_failure" | "incomplete" | "unknown"
 }
 ```
 
@@ -366,7 +384,7 @@ Typical mappings:
 - passive information intended for the next natural model call uses `context`;
 - assistant-role cross-session delivery materializes immediately against the latest root.
 
-Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. After that durable write, acceptance makes a best-effort attempt to advance the session's navigation activity so an existing session returns to the top of recent lists before asynchronous execution starts; a navigation update failure is logged without rejecting the persisted input. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
+Ordinary `session.input` acceptance persists an inbox item before scheduling execution. A paused session with an existing root receives a visible `steer` item on that root, so its first resumed model call includes the new direction. Other ordinary input receives a `task` item. User pause, resume/input admission and abandon serialize per session; resumption waits for the stopped owner to settle, persists the input, reopens the paused rollout and only then clears the latch. Input on an unpaused session does not reopen its previous cancelled rollout; a fresh task owns a new run. The pre-wake repair terminalizes a cancelled root that is no longer paused, so an unfinished tool-call reply cannot block the new task. When resuming a paused task, the queued response includes `runID` separately from `item.messageID`: steering belongs to the original run, and CLI result polling and cancellation use that run identity. A new task instead uses its accepted message ID as the run identity. After that durable write, acceptance makes a best-effort attempt to advance the session's navigation activity so an existing session returns to the top of recent lists before asynchronous execution starts; a navigation update failure is logged without rejecting the persisted input. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
 
 The loop peeks the next task without deleting it, materializes its pre-allocated message ID as a root, and commits the inbox item only after that root write succeeds. A failure before materialization therefore leaves the task available for explicit retry or restart recovery. A read taken during startup always sees either the pending inbox item, the materialized root, or both; consumers deduplicate the overlap by message ID.
 
@@ -442,28 +460,30 @@ The derived `paused` status carries a `reason`, an optional human-readable `desc
 
 The pause latch is written only by `SessionLifecycle.pause` (`packages/harness/src/session/lifecycle.ts`), which is therefore the one place that decides whether a session may stop mid-work. Three rules make it trustworthy. First pause wins, so a later reason for the same stoppage cannot churn `since` or lose the original cause, which lets repair paths call it unconditionally. Archived sessions are skipped, because archiving already removes a session from every surface. A session the latch does not apply to is skipped by the shared `latchable` predicate: an `unattended` interaction is driven by a domain that reconciles its own work, and a session carrying `cortex` delegation is a machine session in everything but that field. The same predicate is read by `SessionLifecycle.blocksDrive`, so the writer and the drive gate cannot disagree about which sessions the latch covers. Because no status is inferred from a workflow record, no persisted record can pin a session in a state that no control can clear.
 
-Startup reconciliation is `SessionInvoke.reconcilePausedSessions`, registered as the `session-pause-reconcile` startup step. It isolates failures per session, so an unreadable history is reported as a warning while recovery continues for other sessions and one corrupt record cannot prevent the global runtime from starting. It writes the latch and never drives: a process restart is evidence that a turn was interrupted, not evidence about what the user wants next. `SessionLifecycle.listUnfinishedSessions` asks for direct evidence of an unfinished turn — runnable queued work, or a latest reply-required root with no terminal assistant — rather than for a flag a previous process happened to write, so a session whose marker was never persisted is still caught, and an already-paused session is skipped because the latch already records the same fact.
+Writing the pause latch records execution state, not conversation activity. It preserves both canonical `time.updated` and navigation `lastActivityAt`, including the first pause discovered during Runtime or lazy Scope startup. The changed state still publishes through `session.updated`; `paused.since` records when the pause was recognized. Rebuilding navigation from canonical session metadata retains the same recency. Explicit Continue, Abandon and new input retain their ordinary activity updates.
+
+Startup reconciliation is `SessionInvoke.reconcilePausedSessions`, registered as the `session-pause-reconcile` startup step. It isolates failures per session, so an unreadable history is reported as a warning while recovery continues for other sessions and one corrupt record cannot prevent the global runtime from starting. It writes the latch and never drives: a process restart is evidence that a turn was interrupted, not evidence about what the user wants next. `SessionLifecycle.listUnfinishedSessions` asks for direct evidence of an unfinished turn — runnable queued work, or a latest reply-required root with no terminal assistant — rather than for a flag a previous process happened to write, so a session whose marker was never persisted is still caught, and already-paused sessions remain candidates for orphaned-tool settlement. Reconciliation settles interrupted parts without terminalizing the breakpoint and preserves the original pause reason and timestamp.
 
 Startup no longer discovers runnable `task` inbox items and requests work, and it never materializes inbox items. Queued work that survived a restart is visible as a paused session awaiting the user, and Continue consumes it through the ordinary drive: peek, root materialization, and commit remain the ordinary loop's responsibility.
 
 ### Abort status synchronization
 
-When a running session is stopped, `SessionAbort.abort` signals the owning controller and sets the phase to `stopping` but does not publish events or repair durable state. The abort HTTP route cancels descendant Cortex work and calls the shared `SessionInvoke.repairAbortState` path, which settles the interrupted turn's tool parts and latches a pause; the frontend presents local stopping feedback immediately while that request settles. A user stop leaves the session paused and awaiting an explicit Continue or Abandon, so the work is not restarted behind the user's back. `SessionAbort.Result` reports `outcome`, `repaired`, `paused`, and `abandoned`, so a caller can tell a real stop from a no-op on an idle session.
+When a running interactive session is stopped, `SessionAbort.abort` persists the pause before signalling the owning controller, sets the phase to `stopping`, cancels descendant Cortex work and calls the shared `SessionInvoke.repairAbortState` path to settle interrupted tool parts; the frontend presents local stopping feedback immediately while that request settles. A user stop leaves the session paused and awaiting an explicit Continue or Abandon, so the work is not restarted behind the user's back. `SessionAbort.Result` reports `outcome`, `repaired`, `paused`, and `abandoned`, so a caller can tell a real stop from a no-op on an idle session.
 
 The same rule holds while the turn is still running. A stop that leaves the session resumable aborts the runtime with a `PausedTurnAbort` reason, and the two writers that would otherwise terminalize the interrupted turn — the processor's error flattening and its post-unwind finalization, plus the `completeAssistantWithError` funnel that can win when the abort lands during turn preparation — read that intent from the abort signal they are already unwinding, so the intent is atomic with the stop rather than a flag a concurrent repair has to race. A release carrying this pause reason cannot schedule queued work while abort repair is still pending. An internal cancellation, an abandon, and a stop on a session the latch cannot hold carry no such reason and still settle the turn honestly.
 
-`repairAbortState` republishes the resolved status through `SessionManager.publishStatusOnly()`, so a latch change reaches live clients. The published status is exactly what `SessionWorking.resolve()` resolves — `paused` with its reason for a latched session, otherwise `busy`, `retry`, or `idle` — instead of an unconditional idle. `internalCancel` is the single opt-out from latching: a cancellation a domain performs on work it owns (Lattice, Light Loop, Cortex, Boss) settles the turn without writing a pause the user never requested. `terminalize` and `abandonWorkflow` are what Abandon passes so the transcript gets an honest end and the bound workflow is cancelled. Abandon clears the pause before publishing the final resolved status and returns `paused: false`; its cancellation fences the release wake.
+`repairAbortState` republishes the resolved status through `SessionManager.publishStatusOnly()`, so a latch change reaches live clients. The published status is exactly what `SessionWorking.resolve()` resolves — `paused` with its reason for a latched session, otherwise `busy`, `retry`, or `idle` — instead of an unconditional idle. `internalCancel` is the single opt-out from latching: a cancellation a domain performs on work it owns (Lattice, Light Loop, Cortex, Boss) settles the turn without writing a pause the user never requested. `terminalize` and `abandonWorkflow` are what Abandon passes so the transcript gets an honest end and the bound workflow is cancelled. Abandon fences and removes all previously queued inbox work, waits for its live execution owner to exit, cancels the removed tasks' rollout records, terminalizes the breakpoint, and invokes the bound workflow's domain cancellation. Cancellation hooks also complete before the pause is cleared. Later input survives the fence. Only successful settlement clears the pause and returns `paused: false`; a failed cancellation returns `SessionAbandonError` (HTTP 409) and remains paused for explicit retry. The `paused` result always reports the persisted state, including a pre-existing pause.
 
 This separation exists because `SessionEvent.Idle` has side-effect consumers — `ContinuationKernel` for automatic loop wakeups — that must not fire for repair-only status corrections. Lifecycle idle (`SessionEvent.Idle`) remains owned exclusively by `SessionManager.release()`, which publishes both `SessionEvent.Status` and `SessionEvent.Idle` when the runtime loop voluntarily yields ownership. Completion notifications are driven by the independent `SessionEvent.Completion` event emitted after each root task produces a terminal reply; they do not depend on `SessionEvent.Idle`.
 
 ## Invariants
 
-- A session belongs to one Scope and has one current workspace.
+- A session belongs to one Scope and has one explicit workspace binding or `null`.
 - At most one active loop lease owns a session, including while it is starting or stopping.
 - Agent workers never own Session/Message persistence or canonical event sequencing.
 - Internal execution phases refine an owned loop without replacing the public busy/retry/idle status contract.
 - One root user message owns each task and all assistant messages in that task.
-- Root variant is resolved once at persistence and does not drift after config reload; steer and context messages never carry a variant.
+- Root thinking metadata remains historical; each request captures the saved session model selection before preparation. Steer and context messages never carry a thinking choice.
 - `rootID`, `visible`, `includeInContext`, and `origin` remain orthogonal.
 - `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` are the canonical legacy boundaries.
 - Transcript chronology comes from the canonical ordered message array; raw message ID comparison is not a temporal boundary.
@@ -488,3 +508,7 @@ Run cancellation drains its execution owner, detached jobs, and native processes
 The continuation repair migration persists a rollout recovery intent before reopening incorrectly completed work. Startup routes that intent through the normal drive/wake path even when the inbox is empty. The intent survives failed wake attempts and is cleared once the root is answered, cancelled, failed, or superseded. This targeted repair does not enable automatic resume for ordinary interrupted sessions or add messages to the transcript.
 
 Recording-error cancellation carries the source root ID. The active loop lease binds its current root before model or tool work; an error from an older root cannot cancel a replacement root, including another root processed under the same lease. An unbound starting lease is not ownership evidence for an old task. Explicit user cancellation retains its session-wide semantics.
+
+Workspace-free sessions can use enabled model, network and managed-data capabilities. Local execution requires a valid persisted workspace; submission rejects an unavailable or archived binding before persisting input. Retained tool handles enforce that requirement again regardless of control profile. Missing projects retain readable history and never acquire the host working directory implicitly. See [Runtime and Scope](runtime-and-scope.md#session-workspace).
+
+The version-3 summary cursor preserves individual operation identities and endpoints. Its owning migration upgrades version-2 ranges without changing canonical history, metadata or archived state; obsolete derived cursors rebuild from canonical parts. Snapshot retention and transfer include both endpoints. Review keeps repeated changes to the same path independently expandable, while the compact turn summary groups their file counts and preserves Workspace identity.

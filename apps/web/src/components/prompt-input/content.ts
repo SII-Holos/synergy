@@ -40,7 +40,7 @@ export function createPromptPartID(): string {
 }
 
 export function formatSessionReference(attachment: SessionAttachmentPart): string {
-  return `<session-ref id="${attachment.sessionId}" directory="${attachment.directory}" title="${attachment.title || "Untitled"}" />`
+  return `<session-ref id="${attachment.sessionId}" scope-id="${attachment.scopeID}" title="${attachment.title || "Untitled"}" />`
 }
 
 export function formatNoteContent(attachment: NoteAttachmentPart): string {
@@ -90,7 +90,7 @@ export function formatSessionPreview(input: {
     totalLength += block.length
   }
 
-  let result = `<session-ref id="${attachment.sessionId}" directory="${attachment.directory}" title="${title}">\n`
+  let result = `<session-ref id="${attachment.sessionId}" scope-id="${attachment.scopeID}" title="${title}">\n`
   if (previewBlocks.length > 0) {
     result += `\n${previewBlocks.join("\n\n")}\n`
   } else {

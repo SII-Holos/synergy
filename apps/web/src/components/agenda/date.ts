@@ -13,7 +13,9 @@ export function startOfWeek(ts: number): number {
 }
 
 export function addDays(ts: number, days: number): number {
-  return ts + days * MS_PER_DAY
+  const date = new Date(ts)
+  date.setDate(date.getDate() + days)
+  return date.getTime()
 }
 
 export function addMonths(ts: number, months: number): number {

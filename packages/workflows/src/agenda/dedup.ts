@@ -97,12 +97,15 @@ export namespace AgendaDedup {
     title: string,
     triggers: AgendaTypes.Trigger[],
     global: boolean = false,
+    workspaceID: string | null,
   ): Promise<Conflict[]> {
     const items = await AgendaStore.listForScope(scopeID)
     const active = items.filter((item) => item.status === "active" || item.status === "pending")
 
     // Skip self-comparison when the same scope creates both scoped and global items
-    const relevant = active.filter((item) => !global || item.global)
+    const relevant = active.filter(
+      (item) => (!global || item.global) && item.origin.scope.id === scopeID && item.origin.workspaceID === workspaceID,
+    )
 
     const conflicts: Conflict[] = []
 

@@ -11,6 +11,9 @@ import {
   buildRuntimeBossContext,
 } from "@ericsanchezok/synergy-workflows/boss/boss-prompt"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -19,90 +22,100 @@ async function withScope<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("boss identity prompt", () => {
-  test("BOSS_DISCIPLINE_BLOCK contains the collaboration discipline sections", () => {
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("<boss-identity>")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("Dispatch discipline")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("Layered reporting discipline")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("Memory discipline")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("Feishu source headers")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("lark-cli history reading")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("boss_project")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("session_send")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("session_read")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("memory_write")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("chat-messages-list")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("messages-search")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("chat-search")
-    expect(BOSS_DISCIPLINE_BLOCK).toContain("im:message:readonly")
-  })
+  test("BOSS_DISCIPLINE_BLOCK contains the collaboration discipline sections", () =>
+    runtime.run(() => {
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("<boss-identity>")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("Dispatch discipline")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("Layered reporting discipline")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("Memory discipline")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("Feishu source headers")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("lark-cli history reading")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("boss_project")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("session_send")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("session_read")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("memory_write")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("chat-messages-list")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("messages-search")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("chat-search")
+      expect(BOSS_DISCIPLINE_BLOCK).toContain("im:message:readonly")
+    }))
 
-  test("buildRuntimeBossContext injects persona + discipline + instructions", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.enableBoss(session.id)
-      const context = buildRuntimeBossContext(session, {
-        identityText: "我是同事小飞",
-        instructions: "只汇报摘要",
+  test("buildRuntimeBossContext injects persona + discipline + instructions", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.enableBoss(session.id)
+        const context = buildRuntimeBossContext(session, {
+          identityText: "我是同事小飞",
+          instructions: "只汇报摘要",
+        })
+        expect(context).toContain("<boss-context>")
+        expect(context).toContain(BOSS_DISCIPLINE_BLOCK)
+        expect(context).toContain("<boss-persona>")
+        expect(context).toContain("我是同事小飞")
+        expect(context).toContain("只汇报摘要")
       })
-      expect(context).toContain("<boss-context>")
-      expect(context).toContain(BOSS_DISCIPLINE_BLOCK)
-      expect(context).toContain("<boss-persona>")
-      expect(context).toContain("我是同事小飞")
-      expect(context).toContain("只汇报摘要")
-    })
-  })
+    }))
 
-  test("buildRuntimeBossContext without identity still injects discipline and the default persona", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.enableBoss(session.id)
-      const context = buildRuntimeBossContext(session, {})
-      expect(context).toContain("<boss-context>")
-      expect(context).toContain(BOSS_DISCIPLINE_BLOCK)
-      expect(context).toContain("<boss-persona>")
-      expect(context).toContain(DEFAULT_IDENTITY_TEXT)
-    })
-  })
+  test("buildRuntimeBossContext without identity still injects discipline and the default persona", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.enableBoss(session.id)
+        const context = buildRuntimeBossContext(session, {})
+        expect(context).toContain("<boss-context>")
+        expect(context).toContain(BOSS_DISCIPLINE_BLOCK)
+        expect(context).toContain("<boss-persona>")
+        expect(context).toContain(DEFAULT_IDENTITY_TEXT)
+      })
+    }))
 
-  test("buildRuntimeBossContext with a custom identity overrides the default persona", async () => {
-    await withScope(async () => {
-      const session = await Session.create({})
-      await WorkflowSessionService.enableBoss(session.id)
-      const context = buildRuntimeBossContext(session, { identityText: "我是同事小飞" })
-      expect(context).toContain("<boss-persona>")
-      expect(context).toContain("我是同事小飞")
-      expect(context).not.toContain(DEFAULT_IDENTITY_TEXT)
-    })
-  })
+  test("buildRuntimeBossContext with a custom identity overrides the default persona", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const session = await Session.create({})
+        await WorkflowSessionService.enableBoss(session.id)
+        const context = buildRuntimeBossContext(session, { identityText: "我是同事小飞" })
+        expect(context).toContain("<boss-persona>")
+        expect(context).toContain("我是同事小飞")
+        expect(context).not.toContain(DEFAULT_IDENTITY_TEXT)
+      })
+    }))
 
-  test("buildBossContext keeps the legacy base text (worker-tree semantics preserved)", () => {
-    const text = buildBossContext({ id: "ses_x", title: "t", version: "1" } as Session.Info)
-    expect(text).toContain("<boss-context>")
-    expect(text).toContain("boss_spawn")
-    expect(text).toContain("boss_assign")
-    expect(text).toContain("boss_report")
-  })
+  test("buildBossContext keeps the legacy base text (worker-tree semantics preserved)", () =>
+    runtime.run(() => {
+      const text = buildBossContext({ id: "ses_x", title: "t", version: "1" } as Session.Info)
+      expect(text).toContain("<boss-context>")
+      expect(text).toContain("boss_spawn")
+      expect(text).toContain("boss_assign")
+      expect(text).toContain("boss_report")
+    }))
 })
 
 describe("boss delivery hint", () => {
-  test("delivery hint always instructs explicit channel_push with the reply target", () => {
-    const hint = buildBossDeliveryHint({ chatId: "oc_abc", replyToMessageId: "om_123" })
-    expect(hint).toContain("<boss-delivery>")
-    expect(hint).toContain("不会自动投递回渠道")
-    expect(hint).toContain("必须调用 channel_push")
-    expect(hint).toContain("oc_abc")
-    expect(hint).toContain("om_123")
-  })
+  test("delivery hint always instructs explicit channel_push with the reply target", () =>
+    runtime.run(() => {
+      const hint = buildBossDeliveryHint({ chatId: "oc_abc", replyToMessageId: "om_123" })
+      expect(hint).toContain("<boss-delivery>")
+      expect(hint).toContain("不会自动投递回渠道")
+      expect(hint).toContain("必须调用 channel_push")
+      expect(hint).toContain("oc_abc")
+      expect(hint).toContain("om_123")
+    }))
 
-  test("delivery hint carries a bare message target when only replyToMessageId is known", () => {
-    const hint = buildBossDeliveryHint({ replyToMessageId: "om_123" })
-    expect(hint).toContain("当前回执目标消息: om_123")
-  })
+  test("delivery hint carries a bare message target when only replyToMessageId is known", () =>
+    runtime.run(() => {
+      const hint = buildBossDeliveryHint({ replyToMessageId: "om_123" })
+      expect(hint).toContain("当前回执目标消息: om_123")
+    }))
 
-  test("undefined delivery falls back to explicit hint without a target", () => {
-    const hint = buildBossDeliveryHint(undefined)
-    expect(hint).toContain("<boss-delivery>")
-    expect(hint).toContain("不会自动投递回渠道")
-    expect(hint).toContain("channel_push")
-  })
+  test("undefined delivery falls back to explicit hint without a target", () =>
+    runtime.run(() => {
+      const hint = buildBossDeliveryHint(undefined)
+      expect(hint).toContain("<boss-delivery>")
+      expect(hint).toContain("不会自动投递回渠道")
+      expect(hint).toContain("channel_push")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

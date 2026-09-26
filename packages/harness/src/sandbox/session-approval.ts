@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 /**
  * Session-scoped sandbox path approvals.
  *
@@ -19,14 +20,18 @@ export namespace SandboxSessionApproval {
   export type PathAccess = "read" | "write"
 
   const UNSCOPED = "__unscoped__"
-  const approvals = new Map<string, Map<string, PathAccess>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    approvals: new Map<string, Map<string, PathAccess>>(),
+  }))
 
   function state(sessionID?: string): Map<string, PathAccess> {
+    const instanceState = runtimeState()
+
     const key = sessionID ?? UNSCOPED
-    let existing = approvals.get(key)
+    let existing = instanceState.approvals.get(key)
     if (!existing) {
       existing = new Map()
-      approvals.set(key, existing)
+      instanceState.approvals.set(key, existing)
     }
     return existing
   }
@@ -54,10 +59,12 @@ export namespace SandboxSessionApproval {
   }
 
   export function clear(sessionID?: string): void {
+    const instanceState = runtimeState()
+
     if (sessionID) {
-      approvals.delete(sessionID)
+      instanceState.approvals.delete(sessionID)
       return
     }
-    approvals.clear()
+    instanceState.approvals.clear()
   }
 }

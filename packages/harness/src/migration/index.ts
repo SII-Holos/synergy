@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
@@ -8,21 +9,16 @@ import { progressBar, stageWrite, disableWrap, enableWrap, PROGRESS_INTERVAL } f
 import { Installation } from "../global/installation"
 import { SessionCompat } from "../session/compat-import"
 import { setActiveMigrationContext } from "./context"
-// Side-effect imports: register harness-core domain migrations in
-// MigrationRegistry. Product-domain migrations register through the L4
-// product manifest (src/product-registration.ts) loaded by real entry points.
-import "../config/migration"
-import "../scope/migration"
-import "../session/migration"
-import "../observability/migration"
-import "../storage/migration"
+import { UpgradeWork } from "../storage/upgrade-work"
 import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
 
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"
 
 const log = Log.create({ service: "migration" })
 
-const states = new WeakMap<object, { running?: Promise<MigrationSummary>; summary?: MigrationSummary }>()
+const runtimeState = RuntimeContext.state(() => ({
+  states: new WeakMap<object, { running?: Promise<MigrationSummary>; summary?: MigrationSummary }>(),
+}))
 const cohortRoot = ["compat_import", "cohorts"]
 type Cohort = { domain: string; id: string; residentComplete: boolean }
 
@@ -155,11 +151,13 @@ async function migrateRegisteredLegacyTrackingData(): Promise<void> {
 }
 
 export async function ensureMigrations(options?: RunOptions): Promise<MigrationSummary> {
+  const instanceState = runtimeState()
+
   const store = Storage.current().store
-  let state = states.get(store)
+  let state = instanceState.states.get(store)
   if (!state) {
     state = {}
-    states.set(store, state)
+    instanceState.states.set(store, state)
   }
   if (state.summary) {
     options?.reporter?.summary(state.summary)
@@ -178,11 +176,17 @@ export async function ensureMigrations(options?: RunOptions): Promise<MigrationS
 }
 
 export function resetMigrations(): void {
-  if (Storage.available()) states.delete(Storage.current().store)
+  const instanceState = runtimeState()
+
+  if (Storage.available()) instanceState.states.delete(Storage.current().store)
 }
 
 export function runMigrations(options?: RunOptions): Promise<MigrationSummary> {
-  return Storage.withMigrationRecords(() => runMigrationsWithAccess(options))
+  return Storage.withMigrationRecords(() =>
+    UpgradeWork.run({ background: false, signal: options?.signal ?? UpgradeWork.signal() }, () =>
+      runMigrationsWithAccess(options),
+    ),
+  )
 }
 
 async function runMigrationsWithAccess(options?: RunOptions): Promise<MigrationSummary> {
@@ -279,6 +283,7 @@ async function runMigrationsInternal(
       }
     }
     for (const { domain, migration } of MigrationPlan.ordered(collectByDomain())) {
+      UpgradeWork.signal()?.throwIfAborted()
       const logData = logs.get(domain)
       if (!logData || migration.id in logData) continue
       for (const dependency of migration.dependsOn ?? []) {
@@ -289,11 +294,22 @@ async function runMigrationsInternal(
             `Migration ${domain}/${migration.id} has unfinished dependency ${owner}/${id}; run its domain first`,
           )
       }
+      if (migration.execution === "maintenance") {
+        const applied = await migration.isApplied?.()
+        if (!options.maintenance || applied) {
+          if (applied) {
+            if (dryRun) summary.dryRun++
+            else {
+              logData[migration.id] = Date.now()
+              await saveLogForDomain(domain, logData)
+              summary.completed++
+            }
+          } else summary.deferred = (summary.deferred ?? 0) + 1
+          continue
+        }
+      }
       const counts = await SessionCompat.stats()
-      if (
-        (migration.execution === "maintenance" && !options.maintenance && !(await migration.startupSafe?.())) ||
-        (migration.execution === "after-convergence" && counts.pending + counts.partial + counts.quarantined > 0)
-      ) {
+      if (migration.execution === "after-convergence" && counts.pending + counts.partial + counts.quarantined > 0) {
         summary.deferred = (summary.deferred ?? 0) + 1
         continue
       }
@@ -306,6 +322,12 @@ async function runMigrationsInternal(
       }
 
       try {
+        if (migration.onAccess) {
+          if (!migration.upSession) throw new Error(`On-access migration ${domain}/${migration.id} requires upSession`)
+          await mergeDomainLog(domain, { [migration.id]: Date.now() })
+          summary.completed++
+          continue
+        }
         const cohortKey = [...cohortRoot, domain, migration.id]
         const deferred =
           options.deferSessions &&
@@ -343,7 +365,12 @@ async function runMigrationsInternal(
           reporter?.progress?.({ domain, migration, current, total, dryRun })
           if (output === "interactive") {
             const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0
-            const counts = total > 0 ? `${Math.floor(ratio * 100)}% (${current}/${total})` : "Preparing"
+            const counts =
+              total > 0
+                ? `${Math.floor(ratio * 100)}% (${current}/${total})`
+                : current > 0
+                  ? `${current} processed`
+                  : "Preparing"
             stageWrite(`  ${progressBar(ratio)} ${counts} [${domain}] ${migration.description}`, true)
           }
         }
@@ -525,4 +552,32 @@ export async function getMigrationStatus(
   }
 
   return result
+}
+
+export async function upgradeSessionRecords(owners: Array<{ scopeID: string; sessionID: string }>) {
+  const migrations = [...collectByDomain()].flatMap(([domain, entries]) =>
+    orderMigrations(entries)
+      .filter((entry) => entry.onAccess)
+      .map((migration) => ({ domain, migration })),
+  )
+  if (!migrations.length || !owners.length) return
+  const targets = owners.flatMap((owner) =>
+    migrations.map(({ domain, migration }) => ({
+      owner,
+      migration,
+      key: ["sessions", owner.scopeID, owner.sessionID, "migrations", domain, migration.id],
+    })),
+  )
+  const completed = await Storage.readMany(targets.map((target) => target.key))
+  const pending = targets.filter((_, index) => completed[index] === undefined)
+  if (!pending.length) return
+  await Storage.transaction(async () => {
+    const current = await Storage.readMany(pending.map((target) => target.key))
+    for (const [index, target] of pending.entries()) {
+      if (current[index] !== undefined) continue
+      if (!(await Storage.readMany([["sessions", target.owner.scopeID, target.owner.sessionID, "info"]]))[0]) continue
+      await target.migration.upSession!(target.owner, () => {})
+      await Storage.write(target.key, { completed: Date.now() })
+    }
+  })
 }

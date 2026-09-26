@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks"
+import { Context } from "../util/context"
 import type {
   StorageMaintenanceEvent,
   StorageMaintenanceOperation,
@@ -6,10 +7,10 @@ import type {
 } from "@ericsanchezok/synergy-util/runtime-startup"
 
 type Observation = { sequence: number; record(event: StorageMaintenanceEvent): void }
-const observation = new AsyncLocalStorage<Observation>()
+const observation = Context.create<Observation>("storage-maintenance")
 
 export function beginStorageMaintenance(operation: StorageMaintenanceOperation, timeoutMs: number) {
-  const current = observation.getStore()
+  const current = observation.tryUse()
   if (!current) return
   const id = ++current.sequence
   const startedAt = performance.now()
@@ -43,7 +44,7 @@ export async function observeStorageMaintenance<T>(
   let closed = false
   let overflow: Error | undefined
   const pending = observation
-    .run(
+    .provide(
       {
         sequence: 0,
         record(event) {

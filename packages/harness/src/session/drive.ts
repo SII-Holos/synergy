@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { Log } from "../util/log"
 import { ContinuationKernel } from "./continuation-kernel"
 import { SessionInbox } from "./inbox"
@@ -6,7 +7,9 @@ import { SessionManager } from "./manager"
 
 export namespace SessionDrive {
   const log = Log.create({ service: "session.drive" })
-  const inflight = new Map<string, Promise<boolean>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    inflight: new Map<string, Promise<boolean>>(),
+  }))
 
   export interface RequestOptions {
     waitForProcessing?: boolean
@@ -27,7 +30,9 @@ export namespace SessionDrive {
   }
 
   export async function request(sessionID: string, reason: string, options?: RequestOptions): Promise<boolean> {
-    const previous = inflight.get(sessionID)
+    const instanceState = runtimeState()
+
+    const previous = instanceState.inflight.get(sessionID)
     const arbitration = previous
       ? previous.then(
           () => arbitrate(sessionID, reason, options?.force === true),
@@ -35,9 +40,9 @@ export namespace SessionDrive {
         )
       : arbitrate(sessionID, reason, options?.force === true)
     const tracked = arbitration.finally(() => {
-      if (inflight.get(sessionID) === tracked) inflight.delete(sessionID)
+      if (instanceState.inflight.get(sessionID) === tracked) instanceState.inflight.delete(sessionID)
     })
-    inflight.set(sessionID, tracked)
+    instanceState.inflight.set(sessionID, tracked)
 
     const handled = await tracked
     if (!handled || SessionManager.isRunning(sessionID)) return handled
@@ -50,7 +55,9 @@ export namespace SessionDrive {
   }
 
   export function reset(): void {
-    inflight.clear()
+    const instanceState = runtimeState()
+
+    instanceState.inflight.clear()
   }
 
   /**

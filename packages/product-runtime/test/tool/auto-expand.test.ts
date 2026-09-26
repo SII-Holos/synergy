@@ -2,7 +2,6 @@ import { afterAll, describe, expect, mock, test } from "bun:test"
 import z from "zod"
 // ToolMcpSource must be mounted: the resolver reads MCP entries through the
 // L1 port (adapters are late-bound to the mocked MCP.toolEntries).
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import { MCP } from "@ericsanchezok/synergy-agent-integrations/mcp"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -14,14 +13,19 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ToolScheduler } from "@ericsanchezok/synergy-harness/test/support/internals"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-afterAll(async () => {
-  // These tests dispatch through the module-level ToolScheduler singleton.
-  // Leave it admitting work for sibling files sharing the same shard process:
-  // stop() clears any scheduler created here, configure() re-opens admission.
-  await ToolScheduler.stop()
-  ToolScheduler.configure()
-})
+afterAll(() =>
+  runtime.run(async () => {
+    // These tests dispatch through the module-level ToolScheduler singleton.
+    // Leave it admitting work for sibling files sharing the same shard process:
+    // stop() clears any scheduler created here, configure() re-opens admission.
+    await ToolScheduler.stop()
+    ToolScheduler.configure()
+  }),
+)
 
 const model = {
   id: "test-model",
@@ -92,202 +96,13 @@ function freshID(prefix: string): string {
 }
 
 describe("ToolResolver auto-expand eligibility", () => {
-  test("deferred group tools are auto-expandable when authorized", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_group"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(true)
-        expect(resolved.definitions.some((def) => def.id === id)).toBe(false)
-      },
-    })
-  })
-
-  test("search-mode tools are auto-expandable when authorized", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_search"), {
-          mode: "search",
-          title: "Auto Search",
-          keywords: ["auto"],
-        })
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(true)
-      },
-    })
-  })
-
-  test("permission-denied tools are never auto-expandable", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_denied"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const denyAgent = {
-          ...allowAllAgent,
-          permission: PermissionNext.fromConfig({ "*": "allow", [id]: "deny" }),
-        }
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: denyAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(false)
-      },
-    })
-  })
-
-  test("userTools-disabled tools are never auto-expandable", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_user_disabled"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          userTools: { [id]: false },
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(false)
-      },
-    })
-  })
-
-  test("agents denied expand_tools are never auto-expandable", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_no_expand"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const denyExpandAgent = {
-          ...allowAllAgent,
-          permission: PermissionNext.fromConfig({ "*": "allow", expand_tools: "deny" }),
-        }
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: denyExpandAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(false)
-      },
-    })
-  })
-
-  test("Plan does not suppress auto-expansion for deferred tools", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_plan"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        await Session.update(session.id, (draft) => {
-          draft.workflow = { kind: "plan" }
-        })
-        const planSession = await Session.get(session.id)
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session: planSession,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(true)
-        expect(resolved.definitions.some((def) => def.id === id)).toBe(false)
-        expect(
-          (
-            await ToolResolver.availability({
-              agent: allowAllAgent,
-              model,
-              sessionID: session.id,
-              session: planSession,
-              includeMCP: false,
-            })
-          ).diagnostics.get(id)?.message,
-        ).toContain("Use search_tools or expand_tools")
-      },
-    })
-  })
-
-  test("internal ephemeral tools are never auto-expandable", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = freshID("auto_internal")
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          ephemeralTools: [
-            {
-              id,
-              description: "Internal helper",
-              inputSchema: { type: "object", properties: {}, additionalProperties: false },
-              async execute() {
-                return { title: id, output: "unexpected", metadata: {} }
-              },
-            },
-          ],
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(false)
-      },
-    })
-  })
-
-  test("deferred MCP server group tools are auto-expandable by default", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const originalToolEntries = MCP.toolEntries
-    const serverName = "auto-mcp"
-    const toolIDs = Array.from({ length: 3 }, (_, index) => ToolExposure.mcpToolID(serverName, `tool_${index}`))
-    ;(MCP as any).toolEntries = async () =>
-      toolIDs.map((id, index) => ({
-        id,
-        serverName,
-        toolName: `tool_${index}`,
-        tool: { description: "MCP auto tool" },
-      }))
-    try {
+  test("deferred group tools are auto-expandable when authorized", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
+          const id = await registerTool(freshID("auto_group"), { mode: "group", group: "auto-test" })
           const session = await Session.create({})
           const resolved = await ToolResolver.resolveWithAvailability({
             agent: allowAllAgent,
@@ -295,131 +110,332 @@ describe("ToolResolver auto-expand eligibility", () => {
             sessionID: session.id,
             session,
             processor: runtimeProcessor(),
-            includeMCP: true,
+            includeMCP: false,
           })
-          expect(resolved.autoExpandable.has(toolIDs[0])).toBe(true)
+          expect(resolved.autoExpandable.has(id)).toBe(true)
+          expect(resolved.definitions.some((def) => def.id === id)).toBe(false)
         },
       })
-    } finally {
-      ;(MCP as any).toolEntries = originalToolEntries
-    }
-  })
+    }))
+
+  test("search-mode tools are auto-expandable when authorized", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_search"), {
+            mode: "search",
+            title: "Auto Search",
+            keywords: ["auto"],
+          })
+          const session = await Session.create({})
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+            processor: runtimeProcessor(),
+            includeMCP: false,
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(true)
+        },
+      })
+    }))
+
+  test("permission-denied tools are never auto-expandable", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_denied"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const denyAgent = {
+            ...allowAllAgent,
+            permission: PermissionNext.fromConfig({ "*": "allow", [id]: "deny" }),
+          }
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: denyAgent,
+            model,
+            sessionID: session.id,
+            session,
+            processor: runtimeProcessor(),
+            includeMCP: false,
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(false)
+        },
+      })
+    }))
+
+  test("userTools-disabled tools are never auto-expandable", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_user_disabled"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+            processor: runtimeProcessor(),
+            userTools: { [id]: false },
+            includeMCP: false,
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(false)
+        },
+      })
+    }))
+
+  test("agents denied expand_tools are never auto-expandable", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_no_expand"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const denyExpandAgent = {
+            ...allowAllAgent,
+            permission: PermissionNext.fromConfig({ "*": "allow", expand_tools: "deny" }),
+          }
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: denyExpandAgent,
+            model,
+            sessionID: session.id,
+            session,
+            processor: runtimeProcessor(),
+            includeMCP: false,
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(false)
+        },
+      })
+    }))
+
+  test("Plan does not suppress auto-expansion for deferred tools", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_plan"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.workflow = { kind: "plan" }
+          })
+          const planSession = await Session.get(session.id)
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session: planSession,
+            processor: runtimeProcessor(),
+            includeMCP: false,
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(true)
+          expect(resolved.definitions.some((def) => def.id === id)).toBe(false)
+          expect(
+            (
+              await ToolResolver.availability({
+                agent: allowAllAgent,
+                model,
+                sessionID: session.id,
+                session: planSession,
+                includeMCP: false,
+              })
+            ).diagnostics.get(id)?.message,
+          ).toContain("Use search_tools or expand_tools")
+        },
+      })
+    }))
+
+  test("internal ephemeral tools are never auto-expandable", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = freshID("auto_internal")
+          const session = await Session.create({})
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+            processor: runtimeProcessor(),
+            ephemeralTools: [
+              {
+                id,
+                description: "Internal helper",
+                inputSchema: { type: "object", properties: {}, additionalProperties: false },
+                async execute() {
+                  return { title: id, output: "unexpected", metadata: {} }
+                },
+              },
+            ],
+            includeMCP: false,
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(false)
+        },
+      })
+    }))
+
+  test("deferred MCP server group tools are auto-expandable by default", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const originalToolEntries = MCP.toolEntries
+      const serverName = "auto-mcp"
+      const toolIDs = Array.from({ length: 3 }, (_, index) => ToolExposure.mcpToolID(serverName, `tool_${index}`))
+      ;(MCP as any).toolEntries = async () =>
+        toolIDs.map((id, index) => ({
+          id,
+          serverName,
+          toolName: `tool_${index}`,
+          tool: { description: "MCP auto tool" },
+        }))
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            const resolved = await ToolResolver.resolveWithAvailability({
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              processor: runtimeProcessor(),
+              includeMCP: true,
+            })
+            expect(resolved.autoExpandable.has(toolIDs[0])).toBe(true)
+          },
+        })
+      } finally {
+        ;(MCP as any).toolEntries = originalToolEntries
+      }
+    }))
 })
 
 describe("ToolResolver auto-expand resolution", () => {
-  test("runtimeToolFor is undefined while hidden and resolves the real tool after expansion", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_resolve"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const input = {
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          includeMCP: false,
-        }
-        expect(await ToolResolver.runtimeToolFor({ ...input, processor: runtimeProcessor() }, id)).toBeUndefined()
+  test("runtimeToolFor is undefined while hidden and resolves the real tool after expansion", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_resolve"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const input = {
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+            includeMCP: false,
+          }
+          expect(await ToolResolver.runtimeToolFor({ ...input, processor: runtimeProcessor() }, id)).toBeUndefined()
 
-        await Session.update(session.id, (draft) => {
-          draft.toolState = { expandedGroups: ["auto-test"] }
-        })
-        const fresh = await Session.get(session.id)
-        const resolved = await ToolResolver.runtimeToolFor(
-          { ...input, session: fresh, processor: runtimeProcessor() },
-          id,
-        )
-        expect(resolved).toBeDefined()
-        expect(resolved!.executor).toBe("control_plane")
-        const result = await (resolved!.tool as any).execute({ value: 1 }, { toolCallId: "call_auto_resolve" })
-        expect(result.output).toBe(`ran:${id}`)
-      },
-    })
-  })
+          await Session.update(session.id, (draft) => {
+            draft.toolState = { expandedGroups: ["auto-test"] }
+          })
+          const fresh = await Session.get(session.id)
+          const resolved = await ToolResolver.runtimeToolFor(
+            { ...input, session: fresh, processor: runtimeProcessor() },
+            id,
+          )
+          expect(resolved).toBeDefined()
+          expect(resolved!.executor).toBe("control_plane")
+          const result = await (resolved!.tool as any).execute({ value: 1 }, { toolCallId: "call_auto_resolve" })
+          expect(result.output).toBe(`ran:${id}`)
+        },
+      })
+    }))
 
-  test("autoExpandTool persists the expansion and returns the real runtime tool", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_persist"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const expanded = await ToolResolver.autoExpandTool(
-          {
+  test("autoExpandTool persists the expansion and returns the real runtime tool", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_persist"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const expanded = await ToolResolver.autoExpandTool(
+            {
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              processor: runtimeProcessor(),
+              includeMCP: false,
+            },
+            id,
+          )
+          expect(expanded).toBeDefined()
+          expect(expanded!.group).toBe("auto-test")
+          const fresh = await Session.get(session.id)
+          expect(fresh.toolState?.expandedGroups).toContain("auto-test")
+          const result = await (expanded!.tool as any).execute({ value: 1 }, { toolCallId: "call_auto_persist" })
+          expect(result.output).toBe(`ran:${id}`)
+        },
+      })
+    }))
+
+  test("autoExpandTool returns undefined for an unknown tool", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const expanded = await ToolResolver.autoExpandTool(
+            {
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              processor: runtimeProcessor(),
+              includeMCP: false,
+            },
+            "never_registered_tool",
+          )
+          expect(expanded).toBeUndefined()
+          expect((await Session.get(session.id)).toolState).toBeUndefined()
+        },
+      })
+    }))
+  test("concurrent auto-expands of different groups keep both in toolState", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const idA = freshID("auto_concurrent_a")
+          const idB = freshID("auto_concurrent_b")
+          await registerTool(idA, { mode: "group", group: "auto-concurrent-a" })
+          await registerTool(idB, { mode: "group", group: "auto-concurrent-b" })
+          const session = await Session.create({})
+          const input = {
             agent: allowAllAgent,
             model,
             sessionID: session.id,
             session,
             processor: runtimeProcessor(),
             includeMCP: false,
-          },
-          id,
-        )
-        expect(expanded).toBeDefined()
-        expect(expanded!.group).toBe("auto-test")
-        const fresh = await Session.get(session.id)
-        expect(fresh.toolState?.expandedGroups).toContain("auto-test")
-        const result = await (expanded!.tool as any).execute({ value: 1 }, { toolCallId: "call_auto_persist" })
-        expect(result.output).toBe(`ran:${id}`)
-      },
-    })
-  })
+          }
 
-  test("autoExpandTool returns undefined for an unknown tool", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const expanded = await ToolResolver.autoExpandTool(
-          {
-            agent: allowAllAgent,
-            model,
-            sessionID: session.id,
-            session,
-            processor: runtimeProcessor(),
-            includeMCP: false,
-          },
-          "never_registered_tool",
-        )
-        expect(expanded).toBeUndefined()
-        expect((await Session.get(session.id)).toolState).toBeUndefined()
-      },
-    })
-  })
-  test("concurrent auto-expands of different groups keep both in toolState", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const idA = freshID("auto_concurrent_a")
-        const idB = freshID("auto_concurrent_b")
-        await registerTool(idA, { mode: "group", group: "auto-concurrent-a" })
-        await registerTool(idB, { mode: "group", group: "auto-concurrent-b" })
-        const session = await Session.create({})
-        const input = {
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        }
-
-        const [a, b] = await Promise.all([
-          ToolResolver.autoExpandTool({ ...input }, idA),
-          ToolResolver.autoExpandTool({ ...input }, idB),
-        ])
-        expect(a).toBeDefined()
-        expect(b).toBeDefined()
-        const fresh = await Session.get(session.id)
-        expect(fresh.toolState?.expandedGroups).toContain("auto-concurrent-a")
-        expect(fresh.toolState?.expandedGroups).toContain("auto-concurrent-b")
-      },
-    })
-  })
+          const [a, b] = await Promise.all([
+            ToolResolver.autoExpandTool({ ...input }, idA),
+            ToolResolver.autoExpandTool({ ...input }, idB),
+          ])
+          expect(a).toBeDefined()
+          expect(b).toBeDefined()
+          const fresh = await Session.get(session.id)
+          expect(fresh.toolState?.expandedGroups).toContain("auto-concurrent-a")
+          expect(fresh.toolState?.expandedGroups).toContain("auto-concurrent-b")
+        },
+      })
+    }))
 })
 
 type TurnResult = {
@@ -572,280 +588,161 @@ async function runAutoExpandTurn(input: {
 }
 
 describe("SessionProcessor auto-expand interception", () => {
-  test("executes a deferred group tool call in the same turn and persists the expansion", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const executionCount = { value: 0 }
-        const id = await registerTool(freshID("auto_turn"), { mode: "group", group: "auto-test" }, () => {
-          executionCount.value++
-        })
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(true)
-
-        const { parts, events } = await runAutoExpandTurn({
-          sessionID: session.id,
-          messageID: "msg_auto_turn",
-          toolName: id,
-          callID: "call_auto_turn",
-          args: { value: 42 },
-          executionTools: resolved.executionTools,
-          executorKinds: resolved.executorKinds,
-          autoExpandable: resolved.autoExpandable,
-          resolverInput: {
+  test("executes a deferred group tool call in the same turn and persists the expansion", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const executionCount = { value: 0 }
+          const id = await registerTool(freshID("auto_turn"), { mode: "group", group: "auto-test" }, () => {
+            executionCount.value++
+          })
+          const session = await Session.create({})
+          const resolved = await ToolResolver.resolveWithAvailability({
             agent: allowAllAgent,
             model,
             sessionID: session.id,
             session,
+            processor: runtimeProcessor(),
             includeMCP: false,
-          },
-        })
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(true)
 
-        const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_turn")
-        expect(part).toBeDefined()
-        expect(part!.state.status).toBe("completed")
-        expect(part!.state.output).toBe(`ran:${id}`)
-        expect(part!.state.metadata?.autoExpanded).toBe(true)
-        expect(executionCount.value).toBe(1)
+          const { parts, events } = await runAutoExpandTurn({
+            sessionID: session.id,
+            messageID: "msg_auto_turn",
+            toolName: id,
+            callID: "call_auto_turn",
+            args: { value: 42 },
+            executionTools: resolved.executionTools,
+            executorKinds: resolved.executorKinds,
+            autoExpandable: resolved.autoExpandable,
+            resolverInput: {
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              includeMCP: false,
+            },
+          })
 
-        const fresh = await Session.get(session.id)
-        expect(fresh.toolState?.expandedGroups).toContain("auto-test")
+          const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_turn")
+          expect(part).toBeDefined()
+          expect(part!.state.status).toBe("completed")
+          expect(part!.state.output).toBe(`ran:${id}`)
+          expect(part!.state.metadata?.autoExpanded).toBe(true)
+          expect(executionCount.value).toBe(1)
 
-        const event = events.find((item) => item.type === "tool.auto_expanded")
-        expect(event).toBeDefined()
-        expect(event!.tool).toBe(id)
-        expect(event!.callID).toBe("call_auto_turn")
-        expect(event!.data).toMatchObject({ group: "auto-test" })
-      },
-    })
-  })
+          const fresh = await Session.get(session.id)
+          expect(fresh.toolState?.expandedGroups).toContain("auto-test")
 
-  test("keeps the part running through a tool-error event and still completes the call", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_error"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
+          const event = events.find((item) => item.type === "tool.auto_expanded")
+          expect(event).toBeDefined()
+          expect(event!.tool).toBe(id)
+          expect(event!.callID).toBe("call_auto_turn")
+          expect(event!.data).toMatchObject({ group: "auto-test" })
+        },
+      })
+    }))
 
-        const { parts, events } = await runAutoExpandTurn({
-          sessionID: session.id,
-          messageID: "msg_auto_error",
-          toolName: id,
-          callID: "call_auto_error",
-          args: { value: 1 },
-          executionTools: resolved.executionTools,
-          executorKinds: resolved.executorKinds,
-          autoExpandable: resolved.autoExpandable,
-          resolverInput: {
+  test("keeps the part running through a tool-error event and still completes the call", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_error"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const resolved = await ToolResolver.resolveWithAvailability({
             agent: allowAllAgent,
             model,
             sessionID: session.id,
             session,
+            processor: runtimeProcessor(),
             includeMCP: false,
-          },
-          emitToolError: true,
-        })
+          })
 
-        const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_error")
-        expect(part).toBeDefined()
-        expect(part!.state.status).toBe("completed")
-        expect(part!.state.output).toBe(`ran:${id}`)
-        expect(events.some((item) => item.type === "tool.auto_expanded")).toBe(true)
-      },
-    })
-  })
+          const { parts, events } = await runAutoExpandTurn({
+            sessionID: session.id,
+            messageID: "msg_auto_error",
+            toolName: id,
+            callID: "call_auto_error",
+            args: { value: 1 },
+            executionTools: resolved.executionTools,
+            executorKinds: resolved.executorKinds,
+            autoExpandable: resolved.autoExpandable,
+            resolverInput: {
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              includeMCP: false,
+            },
+            emitToolError: true,
+          })
 
-  test("permission-denied tool calls keep the diagnostic failure and never expand", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_denied_turn"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const denyAgent = {
-          ...allowAllAgent,
-          permission: PermissionNext.fromConfig({ "*": "allow", [id]: "deny" }),
-        }
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: denyAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-        expect(resolved.autoExpandable.has(id)).toBe(false)
+          const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_error")
+          expect(part).toBeDefined()
+          expect(part!.state.status).toBe("completed")
+          expect(part!.state.output).toBe(`ran:${id}`)
+          expect(events.some((item) => item.type === "tool.auto_expanded")).toBe(true)
+        },
+      })
+    }))
 
-        const { parts } = await runAutoExpandTurn({
-          sessionID: session.id,
-          messageID: "msg_auto_denied",
-          toolName: id,
-          callID: "call_auto_denied",
-          args: { value: 1 },
-          executionTools: resolved.executionTools,
-          executorKinds: resolved.executorKinds,
-          autoExpandable: resolved.autoExpandable,
-          resolverInput: {
+  test("permission-denied tool calls keep the diagnostic failure and never expand", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_denied_turn"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const denyAgent = {
+            ...allowAllAgent,
+            permission: PermissionNext.fromConfig({ "*": "allow", [id]: "deny" }),
+          }
+          const resolved = await ToolResolver.resolveWithAvailability({
             agent: denyAgent,
             model,
             sessionID: session.id,
             session,
+            processor: runtimeProcessor(),
             includeMCP: false,
-          },
-          emitToolError: true,
-        })
+          })
+          expect(resolved.autoExpandable.has(id)).toBe(false)
 
-        const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_denied")
-        expect(part).toBeDefined()
-        expect(part!.state.status).toBe("error")
-        expect((await Session.get(session.id)).toolState).toBeUndefined()
-      },
-    })
-  })
-
-  test("unknown tools keep the existing unknown_tool diagnostic behavior", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-
-        const { parts } = await runAutoExpandTurn({
-          sessionID: session.id,
-          messageID: "msg_auto_unknown",
-          toolName: "hallucinated_tool",
-          callID: "call_auto_unknown",
-          args: {},
-          executionTools: resolved.executionTools,
-          executorKinds: resolved.executorKinds,
-          autoExpandable: resolved.autoExpandable,
-          resolverInput: {
-            agent: allowAllAgent,
-            model,
+          const { parts } = await runAutoExpandTurn({
             sessionID: session.id,
-            session,
-            includeMCP: false,
-          },
-          emitToolError: true,
-        })
-
-        const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_unknown")
-        expect(part).toBeDefined()
-        expect(part!.state.status).toBe("error")
-        expect(part!.state.error).toContain("unavailable tool")
-        expect((await Session.get(session.id)).toolState).toBeUndefined()
-      },
-    })
-  })
-  test("does not leak processor-internal fields into the AgentTurn stream input", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const id = await registerTool(freshID("auto_no_leak"), { mode: "group", group: "auto-test" })
-        const session = await Session.create({})
-        const resolved = await ToolResolver.resolveWithAvailability({
-          agent: allowAllAgent,
-          model,
-          sessionID: session.id,
-          session,
-          processor: runtimeProcessor(),
-          includeMCP: false,
-        })
-
-        const { parts, events, streamInput } = await runAutoExpandTurn({
-          sessionID: session.id,
-          messageID: "msg_auto_no_leak",
-          toolName: id,
-          callID: "call_auto_no_leak",
-          args: { value: 1 },
-          executionTools: resolved.executionTools,
-          executorKinds: resolved.executorKinds,
-          autoExpandable: resolved.autoExpandable,
-          resolverInput: {
-            agent: allowAllAgent,
-            model,
-            sessionID: session.id,
-            session,
-            includeMCP: false,
-          },
-        })
-
-        // The worker protocol envelope schema is strict; processor-internal
-        // fields must never be forwarded to AgentTurn.stream or the worker
-        // serialization would reject the whole turn.
-        expect(streamInput).toBeDefined()
-        expect("autoExpandable" in streamInput!).toBe(false)
-        expect("resolverInput" in streamInput!).toBe(false)
-        expect("executionTools" in streamInput!).toBe(false)
-        expect("executorKinds" in streamInput!).toBe(false)
-
-        const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_no_leak")
-        expect(part).toBeDefined()
-        expect(part!.state.status).toBe("completed")
-        expect(events.some((item) => item.type === "tool.auto_expanded")).toBe(true)
-      },
-    })
-  })
-  test("auto-expanded MCP tools validate model arguments before dispatch", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const originalToolEntries = MCP.toolEntries
-    const serverName = "auto-validate-mcp"
-    const toolIDs = Array.from({ length: 3 }, (_, index) => ToolExposure.mcpToolID(serverName, `tool_${index}`))
-    const executeCalls = { value: 0 }
-    ;(MCP as any).toolEntries = async () =>
-      toolIDs.map((id, index) => ({
-        id,
-        serverName,
-        toolName: `tool_${index}`,
-        inputSchema: {
-          type: "object",
-          properties: { value: { type: "number" } },
-          additionalProperties: false,
-        },
-        tool: {
-          description: "MCP validate tool",
-          inputSchema: {
-            type: "json-schema",
-            schema: {
-              type: "object",
-              properties: { value: { type: "number" } },
-              additionalProperties: false,
+            messageID: "msg_auto_denied",
+            toolName: id,
+            callID: "call_auto_denied",
+            args: { value: 1 },
+            executionTools: resolved.executionTools,
+            executorKinds: resolved.executorKinds,
+            autoExpandable: resolved.autoExpandable,
+            resolverInput: {
+              agent: denyAgent,
+              model,
+              sessionID: session.id,
+              session,
+              includeMCP: false,
             },
-          },
-          execute: async () => {
-            executeCalls.value++
-            return { content: [{ type: "text", text: "ok" }] }
-          },
+            emitToolError: true,
+          })
+
+          const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_denied")
+          expect(part).toBeDefined()
+          expect(part!.state.status).toBe("error")
+          expect((await Session.get(session.id)).toolState).toBeUndefined()
         },
-      }))
-    try {
+      })
+    }))
+
+  test("unknown tools keep the existing unknown_tool diagnostic behavior", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
@@ -856,16 +753,15 @@ describe("SessionProcessor auto-expand interception", () => {
             sessionID: session.id,
             session,
             processor: runtimeProcessor(),
-            includeMCP: true,
+            includeMCP: false,
           })
-          expect(resolved.autoExpandable.has(toolIDs[0])).toBe(true)
 
-          const { parts, events } = await runAutoExpandTurn({
+          const { parts } = await runAutoExpandTurn({
             sessionID: session.id,
-            messageID: "msg_auto_validate",
-            toolName: toolIDs[0],
-            callID: "call_auto_validate",
-            args: { value: "not-a-number" },
+            messageID: "msg_auto_unknown",
+            toolName: "hallucinated_tool",
+            callID: "call_auto_unknown",
+            args: {},
             executionTools: resolved.executionTools,
             executorKinds: resolved.executorKinds,
             autoExpandable: resolved.autoExpandable,
@@ -874,22 +770,150 @@ describe("SessionProcessor auto-expand interception", () => {
               model,
               sessionID: session.id,
               session,
-              includeMCP: true,
+              includeMCP: false,
+            },
+            emitToolError: true,
+          })
+
+          const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_unknown")
+          expect(part).toBeDefined()
+          expect(part!.state.status).toBe("error")
+          expect(part!.state.error).toContain("unavailable tool")
+          expect((await Session.get(session.id)).toolState).toBeUndefined()
+        },
+      })
+    }))
+  test("does not leak processor-internal fields into the AgentTurn stream input", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const id = await registerTool(freshID("auto_no_leak"), { mode: "group", group: "auto-test" })
+          const session = await Session.create({})
+          const resolved = await ToolResolver.resolveWithAvailability({
+            agent: allowAllAgent,
+            model,
+            sessionID: session.id,
+            session,
+            processor: runtimeProcessor(),
+            includeMCP: false,
+          })
+
+          const { parts, events, streamInput } = await runAutoExpandTurn({
+            sessionID: session.id,
+            messageID: "msg_auto_no_leak",
+            toolName: id,
+            callID: "call_auto_no_leak",
+            args: { value: 1 },
+            executionTools: resolved.executionTools,
+            executorKinds: resolved.executorKinds,
+            autoExpandable: resolved.autoExpandable,
+            resolverInput: {
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              includeMCP: false,
             },
           })
 
-          const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_validate")
+          // The worker protocol envelope schema is strict; processor-internal
+          // fields must never be forwarded to AgentTurn.stream or the worker
+          // serialization would reject the whole turn.
+          expect(streamInput).toBeDefined()
+          expect("autoExpandable" in streamInput!).toBe(false)
+          expect("resolverInput" in streamInput!).toBe(false)
+          expect("executionTools" in streamInput!).toBe(false)
+          expect("executorKinds" in streamInput!).toBe(false)
+
+          const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_no_leak")
           expect(part).toBeDefined()
-          expect(part!.state.status).toBe("error")
-          expect(part!.state.error).toContain("invalid arguments")
-          expect(executeCalls.value).toBe(0)
+          expect(part!.state.status).toBe("completed")
           expect(events.some((item) => item.type === "tool.auto_expanded")).toBe(true)
-          const fresh = await Session.get(session.id)
-          expect(fresh.toolState?.expandedGroups).toContain(`mcp:${serverName}`)
         },
       })
-    } finally {
-      ;(MCP as any).toolEntries = originalToolEntries
-    }
-  })
+    }))
+  test("auto-expanded MCP tools validate model arguments before dispatch", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const originalToolEntries = MCP.toolEntries
+      const serverName = "auto-validate-mcp"
+      const toolIDs = Array.from({ length: 3 }, (_, index) => ToolExposure.mcpToolID(serverName, `tool_${index}`))
+      const executeCalls = { value: 0 }
+      ;(MCP as any).toolEntries = async () =>
+        toolIDs.map((id, index) => ({
+          id,
+          serverName,
+          toolName: `tool_${index}`,
+          inputSchema: {
+            type: "object",
+            properties: { value: { type: "number" } },
+            additionalProperties: false,
+          },
+          tool: {
+            description: "MCP validate tool",
+            inputSchema: {
+              type: "json-schema",
+              schema: {
+                type: "object",
+                properties: { value: { type: "number" } },
+                additionalProperties: false,
+              },
+            },
+            execute: async () => {
+              executeCalls.value++
+              return { content: [{ type: "text", text: "ok" }] }
+            },
+          },
+        }))
+      try {
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            const resolved = await ToolResolver.resolveWithAvailability({
+              agent: allowAllAgent,
+              model,
+              sessionID: session.id,
+              session,
+              processor: runtimeProcessor(),
+              includeMCP: true,
+            })
+            expect(resolved.autoExpandable.has(toolIDs[0])).toBe(true)
+
+            const { parts, events } = await runAutoExpandTurn({
+              sessionID: session.id,
+              messageID: "msg_auto_validate",
+              toolName: toolIDs[0],
+              callID: "call_auto_validate",
+              args: { value: "not-a-number" },
+              executionTools: resolved.executionTools,
+              executorKinds: resolved.executorKinds,
+              autoExpandable: resolved.autoExpandable,
+              resolverInput: {
+                agent: allowAllAgent,
+                model,
+                sessionID: session.id,
+                session,
+                includeMCP: true,
+              },
+            })
+
+            const part = parts.find((item) => item.type === "tool" && item.callID === "call_auto_validate")
+            expect(part).toBeDefined()
+            expect(part!.state.status).toBe("error")
+            expect(part!.state.error).toContain("invalid arguments")
+            expect(executeCalls.value).toBe(0)
+            expect(events.some((item) => item.type === "tool.auto_expanded")).toBe(true)
+            const fresh = await Session.get(session.id)
+            expect(fresh.toolState?.expandedGroups).toContain(`mcp:${serverName}`)
+          },
+        })
+      } finally {
+        ;(MCP as any).toolEntries = originalToolEntries
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

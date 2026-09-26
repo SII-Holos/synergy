@@ -28,3 +28,5 @@ Playwright DOM-test fixtures that boot a Vite dev server must be hermetic agains
 ## Consequences
 
 `open-in-browser.dom.test.ts` passes in the Coverage job and locally without a plugin build, and the fixture reports real module-graph errors in `beforeAll` instead of timing out. The `testing-guide` skill now carries the hermetic-Vite-fixture checklist so future Playwright DOM tests get the mitigations up front instead of rediscovering them per file. The cost is a small per-fixture configuration block (alias + optimizeDeps + cacheDir + warmup) that each new DOM suite must include or consciously waive.
+
+Compiled Chromium and Electron execution does not contribute source hits to Bun coverage. Exact-file exemptions identify the behavioral fixture and instrumentation boundary; directly importable logic such as Composer typing autofocus remains measured in Bun. Workspace-location and request-recovery wrappers have explicit browser tests in addition to their domain logic suites.

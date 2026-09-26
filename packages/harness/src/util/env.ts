@@ -1,18 +1,18 @@
 import { ScopeContext } from "../scope/context"
+import { RuntimeContext } from "../lifecycle/context"
 import { ScopedState } from "../scope/scoped-state"
 
 export namespace Env {
   const state = ScopedState.create(() => {
-    return process.env as Record<string, string | undefined>
+    return { ...RuntimeContext.current().host.env }
   })
 
   export function get(key: string) {
-    const env = state()
-    return env[key]
+    return ScopeContext.tryScope() ? state()[key] : RuntimeContext.current().host.env[key]
   }
 
   export function all() {
-    return state()
+    return ScopeContext.tryScope() ? state() : { ...RuntimeContext.current().host.env }
   }
 
   export function set(key: string, value: string) {

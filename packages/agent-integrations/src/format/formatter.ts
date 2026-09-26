@@ -1,4 +1,4 @@
-import { readableStreamToText } from "bun"
+import { FormatterProcess } from "./process"
 import { BunProc } from "@ericsanchezok/synergy-harness/util/bun"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
@@ -9,7 +9,7 @@ export interface Info {
   command: string[]
   environment?: Record<string, string>
   extensions: string[]
-  enabled(): Promise<boolean>
+  enabled(signal?: AbortSignal): Promise<boolean>
 }
 
 export const gofmt: Info = {
@@ -215,17 +215,13 @@ export const rlang: Info = {
   name: "air",
   command: ["air", "format", "$FILE"],
   extensions: [".R"],
-  async enabled() {
+  async enabled(signal) {
     const airPath = Bun.which("air")
     if (airPath == null) return false
 
     try {
-      const proc = Bun.spawn(["air", "--help"], {
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-      await proc.exited
-      const output = await readableStreamToText(proc.stdout)
+      const result = await FormatterProcess.run({ command: ["air", "--help"], signal })
+      const output = result?.stdout ?? ""
 
       // Check for "Air: An R language server and formatter"
       const firstLine = output.split("\n")[0]
@@ -242,12 +238,11 @@ export const uvformat: Info = {
   name: "uv format",
   command: ["uv", "format", "--", "$FILE"],
   extensions: [".py", ".pyi"],
-  async enabled() {
+  async enabled(signal) {
     if (await ruff.enabled()) return false
     if (Bun.which("uv") !== null) {
-      const proc = Bun.spawn(["uv", "format", "--help"], { stderr: "pipe", stdout: "pipe" })
-      const code = await proc.exited
-      return code === 0
+      const result = await FormatterProcess.run({ command: ["uv", "format", "--help"], signal })
+      return result?.exitCode === 0
     }
     return false
   },

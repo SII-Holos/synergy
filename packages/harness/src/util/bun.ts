@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import z from "zod"
 import { Global } from "../global"
 import { Log } from "./log"
@@ -6,7 +7,6 @@ import { existsSync } from "fs"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { readableStreamToText } from "bun"
 import { createRequire } from "module"
-import os from "os"
 import { Lock } from "./lock"
 import { PluginSpec } from "./plugin-spec"
 
@@ -23,9 +23,10 @@ export namespace BunProc {
       stdout: "pipe",
       stderr: "pipe",
       env: {
-        ...process.env,
+        ...RuntimeContext.current().host.env,
         ...options?.env,
         BUN_BE_BUN: "1",
+        BUN_INSTALL_CACHE_DIR: path.join(Global.Path.cache, "bun-install"),
       },
     })
     const code = await result.exited
@@ -116,10 +117,10 @@ export namespace BunProc {
       return { entryPath: resolveEntry(cached, pkg, isNonRegistry), cached: true }
 
     const proxied = !!(
-      process.env.HTTP_PROXY ||
-      process.env.HTTPS_PROXY ||
-      process.env.http_proxy ||
-      process.env.https_proxy
+      RuntimeContext.current().host.env.HTTP_PROXY ||
+      RuntimeContext.current().host.env.HTTPS_PROXY ||
+      RuntimeContext.current().host.env.http_proxy ||
+      RuntimeContext.current().host.env.https_proxy
     )
 
     // For non-registry protocols, appending @version is invalid — install
@@ -230,7 +231,7 @@ export namespace BunProc {
         // Best-effort: if bun pm cache rm fails (e.g. no cache exists yet),
         // fall back to manually removing likely stale entries.
         const { readdirSync, rmSync: rm } = require("fs")
-        const bunCacheDir = path.join(os.homedir(), ".bun", "install", "cache")
+        const bunCacheDir = path.join(Global.Path.cache, "bun-install")
         if (existsSync(bunCacheDir)) {
           for (const entry of readdirSync(bunCacheDir)) {
             const isGitCache = entry.endsWith(".git")

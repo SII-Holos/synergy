@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
 
@@ -25,20 +26,28 @@ export namespace SessionContextContributions {
     onAssistantComplete?(message: MessageV2.Assistant): void | Promise<void>
     timeoutMs?: number
   }
-  const providers = new Map<string, Provider>()
+  const runtimeState = RuntimeContext.state(() => ({
+    providers: new Map<string, Provider>(),
+  }))
   const log = Log.create({ service: "session.context-contributions" })
 
   export function register(id: string, provider: Provider): () => void {
-    providers.set(id, provider)
+    const instanceState = runtimeState()
+
+    RuntimeContext.assertCompositionOpen("session context")
+    if (instanceState.providers.has(id)) throw new Error(`Session context ${id} is already registered`)
+    instanceState.providers.set(id, provider)
     return () => {
-      if (providers.get(id) === provider) providers.delete(id)
+      if (instanceState.providers.get(id) === provider) instanceState.providers.delete(id)
     }
   }
 
   export async function collect(input: Input): Promise<Collected | undefined> {
+    const instanceState = runtimeState()
+
     input.signal.throwIfAborted()
     const results = await Promise.all(
-      [...providers].map(async ([id, provider]) => {
+      [...instanceState.providers].map(async ([id, provider]) => {
         if (provider.enabled && !(await provider.enabled(input))) return
         input.signal.throwIfAborted()
         const timeout = new AbortController()
@@ -71,12 +80,17 @@ export namespace SessionContextContributions {
   }
 
   export function committed(sessionID: string, result: Collected): void {
-    for (const source of result.sources) providers.get(source.id)?.committed?.(sessionID, source.injection)
+    const instanceState = runtimeState()
+
+    for (const source of result.sources)
+      instanceState.providers.get(source.id)?.committed?.(sessionID, source.injection)
   }
 
   export async function onAssistantComplete(message: MessageV2.Assistant): Promise<void> {
+    const instanceState = runtimeState()
+
     const results = await Promise.allSettled(
-      [...providers.values()].map(async (provider) => provider.onAssistantComplete?.(message)),
+      [...instanceState.providers.values()].map(async (provider) => provider.onAssistantComplete?.(message)),
     )
     const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     if (errors.length === 1) throw errors[0]

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Info as SessionInfo } from "./types"
 
 /**
@@ -32,22 +33,36 @@ export namespace WorkflowKindRegistry {
     disable?(sessionID: string): Promise<void>
   }
 
-  const descriptors = new Map<string, Descriptor>()
+  const runtimeState = RuntimeContext.state(() => ({
+    descriptors: new Map<string, Descriptor>(),
+  }))
 
   export function register(descriptor: Descriptor): void {
-    descriptors.set(descriptor.id, descriptor)
+    const instanceState = runtimeState()
+
+    const existing = instanceState.descriptors.get(descriptor.id)
+    if (existing === descriptor) return
+    RuntimeContext.assertCompositionOpen("workflow kind")
+    if (existing) throw new Error(`Workflow kind ${descriptor.id} is already registered`)
+    instanceState.descriptors.set(descriptor.id, descriptor)
   }
 
   export function get(id: string): Descriptor | undefined {
-    return descriptors.get(id)
+    const instanceState = runtimeState()
+
+    return instanceState.descriptors.get(id)
   }
 
   export function ids(): string[] {
-    return [...descriptors.keys()].sort()
+    const instanceState = runtimeState()
+
+    return [...instanceState.descriptors.keys()].sort()
   }
 
   export function reset(): void {
-    descriptors.clear()
+    const instanceState = runtimeState()
+
+    instanceState.descriptors.clear()
   }
 
   /** Effective kind id of a persisted workflow projection: extension

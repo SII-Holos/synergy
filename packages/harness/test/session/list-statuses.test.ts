@@ -5,6 +5,9 @@ import { ScopeContext } from "../../src/scope/context"
 import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { SessionLifecycle } from "../../src/session/lifecycle"
 
 async function createIncompleteAssistant(sessionID: string) {
@@ -45,82 +48,86 @@ async function createPausedSession(title: string) {
 }
 
 describe("SessionManager.listStatuses without a scope", () => {
-  test("merges recoverable statuses from every scope and keeps runtime status precedence", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const project = await tmp.scope()
+  test("merges recoverable statuses from every scope and keeps runtime status precedence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const project = await tmp.scope()
 
-    let pausedID = ""
-    let pausedSince = 0
-    let runningID = ""
+      let pausedID = ""
+      let pausedSince = 0
+      let runningID = ""
 
-    await ScopeContext.provide({
-      scope: project,
-      fn: async () => {
-        const paused = await createPausedSession("Paused")
-        pausedID = paused.session.id
-        pausedSince = paused.paused.since
-        // A latch alone is not a discriminating fixture for merge precedence,
-        // because only the scan reports it. Giving this session a live runtime
-        // status too means the same session is visible to both sources, so only
-        // a runtime-first merge keeps the busy state.
-        const running = await createPausedSession("Running")
-        runningID = running.session.id
-        SessionManager.setStatus(runningID, { type: "busy", description: "working" })
-      },
-    })
-
-    try {
       await ScopeContext.provide({
-        scope: Scope.home(),
+        scope: project,
         fn: async () => {
-          const global = await SessionManager.listStatuses()
-          expect(global[pausedID]).toEqual({ type: "paused", reason: "aborted", since: pausedSince })
-          expect(global[runningID]).toEqual({ type: "busy", description: "working" })
-
-          const otherScope = await SessionManager.listStatuses(project.id)
-          expect(otherScope[pausedID]).toEqual({ type: "paused", reason: "aborted", since: pausedSince })
-          expect(otherScope[runningID]).toEqual({ type: "busy", description: "working" })
+          const paused = await createPausedSession("Paused")
+          pausedID = paused.session.id
+          pausedSince = paused.paused.since
+          // A latch alone is not a discriminating fixture for merge precedence,
+          // because only the scan reports it. Giving this session a live runtime
+          // status too means the same session is visible to both sources, so only
+          // a runtime-first merge keeps the busy state.
+          const running = await createPausedSession("Running")
+          runningID = running.session.id
+          SessionManager.setStatus(runningID, { type: "busy", description: "working" })
         },
       })
-    } finally {
-      SessionManager.unregisterRuntime(pausedID)
-      SessionManager.unregisterRuntime(runningID)
-      await Session.remove(pausedID)
-      await Session.remove(runningID)
-    }
-  })
 
-  test("still scopes the result when a scope is requested", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const project = await tmp.scope()
+      try {
+        await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            const global = await SessionManager.listStatuses()
+            expect(global[pausedID]).toEqual({ type: "paused", reason: "aborted", since: pausedSince })
+            expect(global[runningID]).toEqual({ type: "busy", description: "working" })
 
-    let sessionID = ""
-    let pausedSince = 0
+            const otherScope = await SessionManager.listStatuses(project.id)
+            expect(otherScope[pausedID]).toEqual({ type: "paused", reason: "aborted", since: pausedSince })
+            expect(otherScope[runningID]).toEqual({ type: "busy", description: "working" })
+          },
+        })
+      } finally {
+        SessionManager.unregisterRuntime(pausedID)
+        SessionManager.unregisterRuntime(runningID)
+        await Session.remove(pausedID)
+        await Session.remove(runningID)
+      }
+    }))
 
-    await ScopeContext.provide({
-      scope: project,
-      fn: async () => {
-        const paused = await createPausedSession("Project only")
-        sessionID = paused.session.id
-        pausedSince = paused.paused.since
-      },
-    })
+  test("still scopes the result when a scope is requested", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const project = await tmp.scope()
 
-    try {
+      let sessionID = ""
+      let pausedSince = 0
+
       await ScopeContext.provide({
-        scope: Scope.home(),
+        scope: project,
         fn: async () => {
-          expect((await SessionManager.listStatuses("home"))[sessionID]).toBeUndefined()
-          expect((await SessionManager.listStatuses())[sessionID]).toEqual({
-            type: "paused",
-            reason: "aborted",
-            since: pausedSince,
-          })
+          const paused = await createPausedSession("Project only")
+          sessionID = paused.session.id
+          pausedSince = paused.paused.since
         },
       })
-    } finally {
-      SessionManager.unregisterRuntime(sessionID)
-      await Session.remove(sessionID)
-    }
-  })
+
+      try {
+        await ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            expect((await SessionManager.listStatuses("home"))[sessionID]).toBeUndefined()
+            expect((await SessionManager.listStatuses())[sessionID]).toEqual({
+              type: "paused",
+              reason: "aborted",
+              since: pausedSince,
+            })
+          },
+        })
+      } finally {
+        SessionManager.unregisterRuntime(sessionID)
+        await Session.remove(sessionID)
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

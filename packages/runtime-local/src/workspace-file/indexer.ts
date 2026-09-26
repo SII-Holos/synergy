@@ -1,5 +1,5 @@
 import path from "path"
-import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Ripgrep } from "../file/ripgrep"
 import { WorkspaceFileService } from "./service"
@@ -78,7 +78,7 @@ async function scan(input?: {
 }
 
 export namespace WorkspaceFileIndexer {
-  const state = ScopedState.create<Entry>(() => ({
+  const state = WorkspaceState.create<Entry>(() => ({
     files: [],
     dirs: [],
     truncated: false,

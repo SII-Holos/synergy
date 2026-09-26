@@ -196,11 +196,7 @@ export async function startBlueprint(input: {
     // Step 2: Create a dedicated hidden execution Session WITHOUT starting execution
     const scope = ScopeContext.current.scope
     const parent = await Session.get(ctx.parentSessionID).catch(() => undefined)
-    const workspace = parent?.workspace ?? {
-      type: "main" as const,
-      path: scope.directory,
-      scopeID: scope.id,
-    }
+    const workspace = parent ? parent.workspace : ScopeContext.defaultWorkspace(scope)
     const execSession = await Session.create({
       scope,
       parentID: ctx.parentSessionID,

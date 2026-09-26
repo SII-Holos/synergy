@@ -1,10 +1,12 @@
 # 多 Harness × 多模型本地评测
 
-配置 v2 分离 harness、model、task 和 repeat；结果 v4 分离执行、原生 reward、判题状态、清理、归档和计量覆盖。Synergy、Codex CLI、OpenCode、Pi、DeepSeek Harness 保留各自的提示词、工具、循环与压缩策略。评测层负责冻结输入、安装、受限网络、请求账本、独立判题和统计报告。
+配置 v2 分离 harness、model、task 和 repeat；结果 v5 分离执行、原生 reward、判题状态、清理、归档和计量覆盖。Synergy、Codex CLI、OpenCode、Pi、DeepSeek Harness 保留各自的提示词、工具、循环与压缩策略。评测层负责冻结输入、安装、受限网络、请求账本、独立判题和统计报告。
 
 ## 开始实验
 
 需要 POSIX 宿主（Linux、macOS 或 WSL）、Python 3.12、uv、Docker Linux containers 和源码声明的 Bun 版本。首次准备下载不可变输入和依赖，后续复用缓存。编辑 [A/B 配置](configs/ab.yaml) 的独立模型端点、协议、模型名和凭据环境变量引用。
+
+当前 DeepSeek `0.1.5-rc.1` 的准备配方固定同版 Web bundle，避免宽松依赖范围选中缺少已发布子包的 `rc.3`。覆盖项和解析后的 lock 都进入产物身份；其他显式版本不继承此例外。升级该版本时重新验收并移除例外，见[依赖固定决策](../docs/decisions/implemented/bug-fix/2026-09-22-pin-deepseek-native-web-bundle.md)。
 
 ```bash
 bun bench list
@@ -67,6 +69,8 @@ Chat Completions profile 支持严格布尔值 `enable_thinking`；使用服务�
 启用思考的模型 profile 必须同时声明 `reasoning_effort`；思考档位是实验条件，不是实现细节。[GLM-5.3](https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3) 始终思考、只接受 `thinking.type: enabled`，并通过 `reasoning_effort` 暴露 `low`、`high`、`max` 三档且以 `max` 为服务商默认值，因此省略该参数等于静默选用最深档位。预设把档位写进模型键名（`glm53flash-max`）并显式设值，使该条件同时体现在 variant 名（`synergy-max-full__glm53flash-max`）、冻结的 `plan.json` 和账本保留的有效请求参数中。更低的档位是各自独立、各有证据的条件，不能用来重新解释已完成的运行。该规则由[预设契约](test/test_experiment_presets.py)强制，取舍见[档位决策](../docs/decisions/implemented/architecture/2026-09-20-benchmark-explicit-reasoning-tier.md)。
 
 各辅助模型角色指向当前 cell 的模型，账本核对实际 model 字段。Synergy 的 core、core-library、full 是不同条件；full 失败不得自动改跑 core。源码变体冻结 Git tracked 与非 ignored untracked 内容、删除项、权限和内部 symlink；拒绝外部 symlink 与 submodule。执行只读取冻结副本，不运行可变 checkout。
+
+默认 DeepSeek Harness 的预发布版本同时固定依赖解析的发布时间范围，避免顶层版本不变却解析到后续不完整的依赖发布。这个条件写入原生产物身份与 receipt；选择其他显式版本时不继承默认版本的时间范围。修改范围需要重新准备并验证原生矩阵，已冻结实验保持原产物。依据见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。
 
 历史基线 `v3.0.22` 必须使用明确的 release revision，按 `synergy-session-v1` 执行原生单体 CLI，只接受 `full`，不支持实验覆盖。归档保留原生 Home 和事件，工作进程继承 transport redirect，独立观察器在包装进程中记录已派发的请求，并与网关核对。原生进程退出后只在清理期限内完成观察；任务取消或超时立即中断，未知用量保持未知。不会生成该版本没有的 rollout/run 记录。其他历史布局须先审计再支持，取舍见[历史 release 评测](../docs/decisions/implemented/architecture/2026-09-21-benchmark-session-export-release.md)。
 
@@ -184,15 +188,17 @@ token 来自服务商 usage，缓存属于 input、reasoning 属于 output；已
 
 `concurrency: auto | 正整数` 是唯一并发入口，支持 48；所有正式项共享队列，同题两侧可以同时执行。自动模式根据待执行项和实时资源补位。解题初始工作集按 1 GiB、0.25 CPU（小于该额度的原生硬限制取较小值），另加现有 128 MiB、0.2 CPU 开销；容器保留原生硬限制。每秒通过本地 Docker Engine API 采样工作集与 CPU；内存租约取初始额度与阶段观测峰值的 1.25 倍中较大者，CPU 按实测需求更新。首个有效采样前逐项放行，缺失或过期采样暂停新增，未知用量不能当作空闲。
 
-每次派发检查宿主、Docker、cgroup 可用内存、磁盘压力和 Docker 地址池剩余子网，默认固定预留 2 GiB 和 2 CPU；CPU 连续饱和三秒时暂停新增，恢复后补位。冻结资源上界限制总租约，实时可用量控制实际准入；资源变空闲后可以超过启动时的并发水平。冻结顺序定义优先级，支持有界轻任务补位；并发 1 严格顺序执行。调度原因、真实容器启动顺序、阶段排队保存在 `scheduling.json`。资源与缓存锁排队不消耗准备或判题时限。
+每次派发分别检查宿主/cgroup 可用内存与 Docker 调度预算，默认固定预留 2 GiB 和 2 CPU；CPU 连续饱和三秒或磁盘不足时暂停新增，恢复后补位。每个调度器共享一次 daemon 容器采样：已归属项目计入租约与实际工作集的较大值，其他容器计入实际工作集，避免重复收费。Docker 总内存减去预留是调度上界，不代表虚拟机空闲内存；不把宿主已用内存扣到虚拟机配额上。未知或超过十秒的采样阻止新增。冻结顺序定义优先级，支持有界轻任务补位；并发 1 严格顺序执行。调度原因、真实容器启动顺序、阶段排队保存在 `scheduling.json`。资源与缓存锁排队不消耗准备或判题时限。
 
-准备、解题、判题、封存分别管理资源。独立 verifier 在解题容器移除后优先申请租约；同容器判题原位切换，不申请重复额度。容器确认移除才释放额度；封存及报告不占整题资源。桥接网络按实际 Docker 地址池、已占用网络和宿主路由计量：普通环境需要一个子网，带独立出口代理的环境需要两个；不足时等待释放，读取失败时暂停新增，不修改 daemon 配置或清理其他网络。构建并发为 2，按缓存身份加锁，等锁时不持有解题额度；实际构建预留 2 CPU、4 GiB。采样完整日志追加到 `resource-samples.jsonl`，摘要保留最新样本和观测峰值。机器持续无可用资源且没有活动项时有界失败，保留未派发项；不停止活跃项来腾出容量。
+准备、解题、判题、封存分别管理资源。独立 verifier 在解题容器移除后优先申请租约；同容器判题原位切换，不申请重复额度。所属容器、网络和卷确认移除才释放额度；封存及报告不占整题资源。镜像准备完成后，取得阶段额度并使用 `docker compose create --no-build --pull never` 实际创建网络及未启动容器，再执行原生 `up`。Compose 保留原题的网络驱动、IPAM、隔离与出口代理定义；无需推算宿主路由或子网数量。明确的地址池耗尽只在清理并核验本项目部分资源、释放额度后排队；其他创建错误直接保留失败。debug 保留现场，不自动清理或重试。构建并发为 2，按缓存身份加锁，等锁时不持有解题额度；实际构建预留 2 CPU、4 GiB。采样完整日志追加到 `resource-samples.jsonl`，摘要保留最新样本和观测峰值。机器持续无可用资源且没有活动项时有界失败，保留未派发项；不停止活跃项来腾出容量。
+
+共享租约使用 v2 记录精确 Compose 项目；旧版本不能当作空闲或自动转换，需要由原 evaluator 结束或清理原实验。失去 owner 的租约仅在确认其所属资源全部消失后释放；残留资源阻止新增且有界报告压力。实验结果格式不变，历史 evaluator 和证据保持封存。取舍与验证见[Docker 实际准入](../docs/decisions/implemented/architecture/2026-09-27-benchmark-docker-resource-admission.md)。
 
 暖任务镜像按原题内容、原生声明、安装步骤和平台复用。冻结镜像缺失或 ID 改变会报错；正式任务按需构建或复用镜像。正常清理只删除本次容器、网络和卷，避免 Pier 的 `--rmi all` 删除共享镜像。缓存发布校验内容、按键合并构建并原子发布。活动构建/运行与回收互斥，冻结 run 持有产物引用；只回收明确属于 benchmark 的无引用对象，不自动认领共享镜像。
 
-任务与推理代理镜像的身份包含解析后的缓存根目录摘要。同一缓存的不同路径别名共享镜像，独立缓存使用不同标签及归属记录。迁移缓存目录后应冻结新实验；旧实验继续使用原位置及记录的 evaluator。此隔离不改变任务或代理镜像的构建步骤。
+任务与推理代理镜像的身份包含解析后的缓存根目录摘要。同一缓存的不同路径别名共享镜像，独立缓存使用不同标签及归属记录。迁移缓存目录后应冻结新实验；旧实验继续使用原位置及记录的 evaluator。此隔离不改变任务或代理镜像的构建步骤，理由见[镜像缓存归属决策](../docs/decisions/implemented/testing/2026-09-21-benchmark-cache-image-namespaces.md)。
 
-维护边界：`config.py` 与 `harnesses.py` 拥有矩阵和原生映射；`gateway.py` / `bridge.py` / `usage.py` 拥有协议及计量；`trial.py` / `environment.py` 拥有固定 Pier 生命周期扩展；`cache.py` / `resources.py` / `scheduling.py` / `monitor.py` 拥有准备和资源；`evidence.py` / `results.py` / `report.py` 拥有结果和统计。上游来源与修改边界保留在 [Pier NOTICE](third_party/pier/NOTICE)。
+维护边界：`config.py` 与 `harnesses.py` 拥有矩阵和原生映射；`gateway.py` / `bridge.py` / `usage.py` 拥有协议及计量；`trial.py` / `environment.py` 拥有固定 Pier 生命周期扩展；`cache.py` / `resources.py` / `scheduling.py` / `docker_resources.py` / `monitor.py` 拥有准备和资源；`evidence.py` / `results.py` / `report.py` 拥有结果和统计。上游来源与修改边界保留在 [Pier NOTICE](third_party/pier/NOTICE)。
 
 ```bash
 uv run --locked --project benchmark pytest benchmark/test
@@ -244,3 +250,5 @@ CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence
 轨迹分析的输出目录必须与输入证据树互不包含，不能选输入目录、其子目录或祖先目录。缺失响应或未识别的非 SSE 响应标记为 `stream_framing: unknown`，正文与工具流指标保持未知；`stream_invalid_lines` 单独计数解析失败，原始响应字节仍来自 wire 记录。
 
 缺失终态证据或 native attempt 对应的 wire 记录时，用途分组与总体摘要的 `total_tokens` 都保持未知，已观察到的 token 下界仍保留；用途未知的缺口不能据此断言其他用途已完整。
+
+CI 的任务选择与诊断入口见 [CI 验证](../docs/operations/ci.md)。正常生命周期和故障恢复分别执行，共享只读准备产物，写入环境各自隔离。`SYNERGY_BENCH_TIMINGS=/隔离目录/timing.jsonl` 记录 prepare、verify、preflight、publish、cleanup 的耗时；`stages.json`、`export.json` 与 JUnit 分别保留场景执行、导出和用例耗时。完整性验证每次读取全部记录字节，在单次操作内复用同一 inventory 派生摘要。修改 evaluator 后必须冻结新实验，不能用新 evaluator 继续历史运行。

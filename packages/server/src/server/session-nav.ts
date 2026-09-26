@@ -1,6 +1,7 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionNav, NavCategory, SessionNavResponse } from "@ericsanchezok/synergy-harness/session/nav"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 
@@ -10,6 +11,7 @@ const SessionNavQuery = z
   .object({
     scopeID: z.string().optional(),
     category: NavCategory.optional(),
+    tag: Session.TagQuery.optional(),
     parentOnly: booleanQuery.optional(),
     includeArchived: booleanQuery.optional().default(false),
     limit: z.coerce.number().int().min(1).max(200).optional().default(20),
@@ -25,34 +27,36 @@ const SessionNavQuery = z
     return { ...v, parentOnly, cursor }
   })
 
-export const SessionNavRoute = new Hono().get(
-  "/index",
-  describeRoute({
-    summary: "List session navigation entries",
-    description: "Get paginated session navigation entries for the current scope with filtering and cursor support.",
-    operationId: "session.index",
-    responses: {
-      200: {
-        description: "Paginated session navigation entries",
-        content: {
-          "application/json": {
-            schema: resolver(SessionNavResponse),
+export const SessionNavRoute = () =>
+  new Hono().get(
+    "/index",
+    describeRoute({
+      summary: "List session navigation entries",
+      description: "Get paginated session navigation entries for the current scope with filtering and cursor support.",
+      operationId: "session.index",
+      responses: {
+        200: {
+          description: "Paginated session navigation entries",
+          content: {
+            "application/json": {
+              schema: resolver(SessionNavResponse),
+            },
           },
         },
       },
+    }),
+    validator("query", SessionNavQuery),
+    async (c) => {
+      const query = c.req.valid("query")
+      const targetScopeID = query.scopeID ?? ScopeContext.current.scope.id
+      const result = await SessionNav.queryScope(targetScopeID, {
+        parentOnly: query.parentOnly,
+        category: query.category,
+        tag: query.tag,
+        includeArchived: query.includeArchived,
+        cursor: query.cursor,
+        limit: query.limit,
+      })
+      return c.json(result)
     },
-  }),
-  validator("query", SessionNavQuery),
-  async (c) => {
-    const query = c.req.valid("query")
-    const targetScopeID = query.scopeID ?? ScopeContext.current.scope.id
-    const result = await SessionNav.queryScope(targetScopeID, {
-      parentOnly: query.parentOnly,
-      category: query.category,
-      includeArchived: query.includeArchived,
-      cursor: query.cursor,
-      limit: query.limit,
-    })
-    return c.json(result)
-  },
-)
+  )

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "fs/promises"
 import path from "path"
 import { Hono } from "hono"
@@ -44,129 +45,136 @@ export interface ServerUpdateWorkerControls {
   installMethod(): Promise<Installation.Method>
 }
 
-let workerControls: ServerUpdateWorkerControls = {
-  spawn(command) {
-    const subprocess = Bun.spawn(command, {
-      detached: true,
-      stdout: "ignore",
-      stderr: "ignore",
-      stdin: "ignore",
-    })
-    ;(subprocess as any).unref?.()
-  },
-  latestVersion: fetchLatestVersion,
-  installMethod: Installation.method,
-}
-
-export const UpdateRoute = new Hono()
-  .get(
-    "/status",
-    describeRoute({
-      summary: "Get server update status",
-      description: "Report whether this Synergy server can be updated from the Web client.",
-      operationId: "global.update.status",
-      responses: {
-        200: {
-          description: "Server update status",
-          content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
-        },
-      },
-    }),
-    async (c) => c.json(await statusForRequest(c.req.url, c.req.header("host"), false)),
-  )
-  .post(
-    "/check",
-    describeRoute({
-      summary: "Check for server updates",
-      description: "Check npm for the latest Synergy server package version. Localhost-only.",
-      operationId: "global.update.check",
-      responses: {
-        200: {
-          description: "Server update status",
-          content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
-        },
-        403: {
-          description: "Forbidden",
-          content: { "application/json": { schema: resolver(ServerUpdateForbiddenError) } },
-        },
-      },
-    }),
-    async (c) => {
-      if (!isLocalhost(c.req.url, c.req.header("host"))) {
-        return c.json({ message: "Server update checks are restricted to localhost" }, 403)
-      }
-      return c.json(await statusForRequest(c.req.url, c.req.header("host"), true))
-    },
-  )
-  .post(
-    "/start",
-    describeRoute({
-      summary: "Start server update",
-      description: "Start a detached updater worker for a managed Synergy daemon. Localhost-only.",
-      operationId: "global.update.start",
-      responses: {
-        200: {
-          description: "Server update status",
-          content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
-        },
-        400: {
-          description: "Server update unavailable",
-          content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
-        },
-        403: {
-          description: "Forbidden",
-          content: { "application/json": { schema: resolver(ServerUpdateForbiddenError) } },
-        },
-      },
-    }),
-    validator("json", ServerUpdateStartInput),
-    async (c) => {
-      if (!isLocalhost(c.req.url, c.req.header("host"))) {
-        return c.json({ message: "Server updates are restricted to localhost" }, 403)
-      }
-      const manifest = await managedManifest()
-      if (!manifest) return c.json(notManagedStatus(), 400)
-      const persisted = await readPersistedStatus().catch(() => null)
-      if (persisted && isActivePhase(persisted.phase)) return c.json(persisted)
-      const body = c.req.valid("json")
-      const latestVersion = body?.version ?? (await workerControls.latestVersion())
-      if (!SAFE_VERSION_PATTERN.test(latestVersion)) {
-        const error = `Invalid Synergy version: ${latestVersion}`
-        return c.json(
-          {
-            ...managedStatus("error", latestVersion, error, null),
-            message: error,
-          },
-          400,
-        )
-      }
-      if (!isNewerVersion(latestVersion, Installation.VERSION)) {
-        return c.json({
-          ...managedStatus("idle", latestVersion, null, 100),
-          updateAvailable: false,
-          message: `Synergy ${Installation.VERSION} is current.`,
-        })
-      }
-      const started = await startWorker(manifest, latestVersion)
-      if (!started.ok) {
-        return c.json(
-          {
-            ...managedStatus("error", latestVersion, started.error, null),
-            message: started.error,
-          },
-          400,
-        )
-      }
-      return c.json({
-        ...managedStatus("updating", latestVersion, null),
-        progress: 5,
-        updateAvailable: true,
-        message: `Updating Synergy service to ${latestVersion}.`,
+const runtimeState = RuntimeContext.state(() => ({
+  workerControls: {
+    spawn(command) {
+      const subprocess = Bun.spawn(command, {
+        detached: true,
+        stdout: "ignore",
+        stderr: "ignore",
+        stdin: "ignore",
       })
+      ;(subprocess as any).unref?.()
     },
-  )
+    latestVersion: fetchLatestVersion,
+    installMethod: Installation.method,
+  } as ServerUpdateWorkerControls,
+}))
+
+export const UpdateRoute = () =>
+  new Hono()
+    .get(
+      "/status",
+      describeRoute({
+        summary: "Get server update status",
+        description: "Report whether this Synergy server can be updated from the Web client.",
+        operationId: "global.update.status",
+        responses: {
+          200: {
+            description: "Server update status",
+            content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
+          },
+        },
+      }),
+      async (c) => c.json(await statusForRequest(c.req.url, c.req.header("host"), false)),
+    )
+    .post(
+      "/check",
+      describeRoute({
+        summary: "Check for server updates",
+        description: "Check npm for the latest Synergy server package version. Localhost-only.",
+        operationId: "global.update.check",
+        responses: {
+          200: {
+            description: "Server update status",
+            content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
+          },
+          403: {
+            description: "Forbidden",
+            content: { "application/json": { schema: resolver(ServerUpdateForbiddenError) } },
+          },
+        },
+      }),
+      async (c) => {
+        if (!isLocalhost(c.req.url, c.req.header("host"))) {
+          return c.json({ message: "Server update checks are restricted to localhost" }, 403)
+        }
+        return c.json(await statusForRequest(c.req.url, c.req.header("host"), true))
+      },
+    )
+    .post(
+      "/start",
+      describeRoute({
+        summary: "Start server update",
+        description: "Start a detached updater worker for a managed Synergy daemon. Localhost-only.",
+        operationId: "global.update.start",
+        responses: {
+          200: {
+            description: "Server update status",
+            content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
+          },
+          400: {
+            description: "Server update unavailable",
+            content: { "application/json": { schema: resolver(ServerUpdateStatus) } },
+          },
+          403: {
+            description: "Forbidden",
+            content: { "application/json": { schema: resolver(ServerUpdateForbiddenError) } },
+          },
+        },
+      }),
+      validator("json", ServerUpdateStartInput),
+      async (c) => {
+        const instanceState = runtimeState()
+
+        if (!isLocalhost(c.req.url, c.req.header("host"))) {
+          return c.json({ message: "Server updates are restricted to localhost" }, 403)
+        }
+        const manifest = await managedManifest()
+        if (!manifest) return c.json(notManagedStatus(), 400)
+        const persisted = await readPersistedStatus().catch(() => null)
+        if (persisted && isActivePhase(persisted.phase)) return c.json(persisted)
+        const body = c.req.valid("json")
+        const latestVersion = body?.version ?? (await instanceState.workerControls.latestVersion())
+        if (!SAFE_VERSION_PATTERN.test(latestVersion)) {
+          const error = `Invalid Synergy version: ${latestVersion}`
+          return c.json(
+            {
+              ...managedStatus("error", latestVersion, error, null),
+              message: error,
+            },
+            400,
+          )
+        }
+        if (!isNewerVersion(latestVersion, Installation.VERSION)) {
+          return c.json({
+            ...managedStatus("idle", latestVersion, null, 100),
+            updateAvailable: false,
+            message: `Synergy ${Installation.VERSION} is current.`,
+          })
+        }
+        const started = await startWorker(manifest, latestVersion)
+        if (!started.ok) {
+          return c.json(
+            {
+              ...managedStatus("error", latestVersion, started.error, null),
+              message: started.error,
+            },
+            400,
+          )
+        }
+        return c.json({
+          ...managedStatus("updating", latestVersion, null),
+          progress: 5,
+          updateAvailable: true,
+          message: `Updating Synergy service to ${latestVersion}.`,
+        })
+      },
+    )
 
 async function statusForRequest(url: string, host: string | undefined, check: boolean): Promise<ServerUpdateStatus> {
+  const instanceState = runtimeState()
+
   if (!isLocalhost(url, host)) return remoteStatus()
   const manifest = await managedManifest()
   if (!manifest) return notManagedStatus()
@@ -175,9 +183,9 @@ async function statusForRequest(url: string, host: string | undefined, check: bo
   if (persisted && !check && persisted.phase !== "idle") return persisted
   if (!check) return managedStatus("idle", null, null)
   try {
-    const latest = await workerControls.latestVersion()
+    const latest = await instanceState.workerControls.latestVersion()
     const updateAvailable = isNewerVersion(latest, Installation.VERSION)
-    const installMethod = await workerControls.installMethod()
+    const installMethod = await instanceState.workerControls.installMethod()
     const unsupportedInstallMethod = updateAvailable && !updateInstallCommand(installMethod, latest)
     if (unsupportedInstallMethod) {
       const error =
@@ -201,7 +209,7 @@ async function statusForRequest(url: string, host: string | undefined, check: bo
 }
 
 async function managedManifest() {
-  if (process.env.SYNERGY_DAEMON !== "1") return null
+  if (RuntimeContext.current().host.env.SYNERGY_DAEMON !== "1") return null
   return await DaemonState.readManifest().catch(() => null)
 }
 
@@ -261,6 +269,8 @@ async function startWorker(
   manifest: DaemonState.Manifest,
   version: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const instanceState = runtimeState()
+
   await DaemonState.ensureDirs()
   const workerPath = workerScriptPath()
   const statePath = updateStatePath()
@@ -269,7 +279,7 @@ async function startWorker(
   if (!controlCommand) {
     return { ok: false, error: "Managed service command cannot be safely updated from Web." }
   }
-  const installMethod = await workerControls.installMethod()
+  const installMethod = await instanceState.workerControls.installMethod()
   const installCommand = updateInstallCommand(installMethod, version)
   if (!installCommand) {
     return {
@@ -288,7 +298,7 @@ async function startWorker(
   await fs.writeFile(workerPath, renderWorkerScript({ controlCommand, installCommand, version, statePath, logPath }), {
     mode: 0o755,
   })
-  workerControls.spawn(process.platform === "win32" ? ["cmd.exe", "/c", workerPath] : ["sh", workerPath])
+  instanceState.workerControls.spawn(process.platform === "win32" ? ["cmd.exe", "/c", workerPath] : ["sh", workerPath])
   return { ok: true }
 }
 
@@ -460,7 +470,9 @@ function parseVersion(value: string) {
 }
 
 export function setServerUpdateWorkerControlsForTest(controls?: Partial<ServerUpdateWorkerControls>) {
-  workerControls = {
+  const instanceState = runtimeState()
+
+  instanceState.workerControls = {
     spawn(command) {
       const subprocess = Bun.spawn(command, {
         detached: true,

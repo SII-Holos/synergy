@@ -11,6 +11,9 @@ import { pluginRuntimeManager } from "../../src/plugin/runtime"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { sha256File } from "@ericsanchezok/synergy-harness/util/crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function writeNoHookPlugin(root: string) {
   const pluginDir = path.join(root, "no-terminal-hook-plugin")
@@ -95,79 +98,86 @@ export default {
 }
 
 describe.serial("plugin-owned LightLoop terminal hook delivery", () => {
-  test("acknowledges only matching successful handlers and forwards execution identity", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const fixture = await writeHookPlugin(tmp.path)
-    const noHook = await writeNoHookPlugin(tmp.path)
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await approve(fixture.manifest)
-        await approve(noHook.manifest)
-        await Config.update({
-          plugin: [pathToFileURL(fixture.pluginDir).href, pathToFileURL(noHook.pluginDir).href],
-        } as Config.Info)
-        await resetAllPluginState()
+  test(
+    "acknowledges only matching successful handlers and forwards execution identity",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const fixture = await writeHookPlugin(tmp.path)
+        const noHook = await writeNoHookPlugin(tmp.path)
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            await approve(fixture.manifest)
+            await approve(noHook.manifest)
+            await Config.update({
+              plugin: [pathToFileURL(fixture.pluginDir).href, pathToFileURL(noHook.pluginDir).href],
+            } as Config.Info)
+            await resetAllPluginState()
 
-        try {
-          const mismatch = await Plugin.deliverHookForPlugin(
-            fixture.manifest.id,
-            "stale-generation",
-            "lightloop.after",
-            { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
-          )
-          expect(mismatch).toEqual({
-            status: "plugin_mismatch",
-            handlerCount: 0,
-            error: "Plugin terminal-hook-plugin generation stale-generation is not active",
-          })
-          expect(await Bun.file(fixture.resultPath).exists()).toBe(false)
+            try {
+              const mismatch = await Plugin.deliverHookForPlugin(
+                fixture.manifest.id,
+                "stale-generation",
+                "lightloop.after",
+                { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
+              )
+              expect(mismatch).toEqual({
+                status: "plugin_mismatch",
+                handlerCount: 0,
+                error: "Plugin terminal-hook-plugin generation stale-generation is not active",
+              })
+              expect(await Bun.file(fixture.resultPath).exists()).toBe(false)
 
-          const missingHandler = await Plugin.deliverHookForPlugin(
-            noHook.manifest.id,
-            noHook.manifest.artifacts.generation,
-            "lightloop.after",
-            { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
-          )
-          expect(missingHandler).toEqual({
-            status: "no_handler",
-            handlerCount: 0,
-            error: "Plugin no-terminal-hook-plugin has no handler for lightloop.after",
-          })
+              const missingHandler = await Plugin.deliverHookForPlugin(
+                noHook.manifest.id,
+                noHook.manifest.artifacts.generation,
+                "lightloop.after",
+                { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
+              )
+              expect(missingHandler).toEqual({
+                status: "no_handler",
+                handlerCount: 0,
+                error: "Plugin no-terminal-hook-plugin has no handler for lightloop.after",
+              })
 
-          await Bun.write(fixture.failPath, "fail")
-          const failed = await Plugin.deliverHookForPlugin(
-            fixture.manifest.id,
-            fixture.manifest.artifacts.generation,
-            "lightloop.after",
-            { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
-          )
-          expect(failed).toMatchObject({
-            status: "failed",
-            handlerCount: 1,
-            succeededHandlerCount: 0,
-          })
-          if (failed.status === "failed") expect(failed.error).toContain("plugin state write failed")
-          expect(await Bun.file(fixture.resultPath).exists()).toBe(false)
+              await Bun.write(fixture.failPath, "fail")
+              const failed = await Plugin.deliverHookForPlugin(
+                fixture.manifest.id,
+                fixture.manifest.artifacts.generation,
+                "lightloop.after",
+                { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
+              )
+              expect(failed).toMatchObject({
+                status: "failed",
+                handlerCount: 1,
+                succeededHandlerCount: 0,
+              })
+              if (failed.status === "failed") expect(failed.error).toContain("plugin state write failed")
+              expect(await Bun.file(fixture.resultPath).exists()).toBe(false)
 
-          await fs.rm(fixture.failPath)
-          const delivered = await Plugin.deliverHookForPlugin(
-            fixture.manifest.id,
-            fixture.manifest.artifacts.generation,
-            "lightloop.after",
-            { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
-          )
-          expect(delivered).toEqual({ status: "delivered", handlerCount: 1 })
-          expect(await Bun.file(fixture.resultPath).json()).toEqual({
-            input: { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
-            sessionId: "ses_execution",
-            pluginGeneration: "owner-generation",
-          })
-        } finally {
-          await pluginRuntimeManager.stop(fixture.manifest.id, 0)
-          await resetAllPluginState()
-        }
-      },
-    })
-  }, 15_000)
+              await fs.rm(fixture.failPath)
+              const delivered = await Plugin.deliverHookForPlugin(
+                fixture.manifest.id,
+                fixture.manifest.artifacts.generation,
+                "lightloop.after",
+                { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
+              )
+              expect(delivered).toEqual({ status: "delivered", handlerCount: 1 })
+              expect(await Bun.file(fixture.resultPath).json()).toEqual({
+                input: { loop: { sessionID: "ses_execution", status: "completed", instructions: "Finish" } },
+                sessionId: "ses_execution",
+                pluginGeneration: "owner-generation",
+              })
+            } finally {
+              await pluginRuntimeManager().stop(fixture.manifest.id, 0)
+              await resetAllPluginState()
+            }
+          },
+        })
+      }),
+    15_000,
+  )
 })
+
+afterRuntimeTests(() => runtime.close())

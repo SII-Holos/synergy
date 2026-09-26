@@ -5,6 +5,8 @@ import {
   type Part,
   type Config,
   type Scope,
+  type WorkspaceInfo,
+  type Path,
   type FileDiff,
   type Todo,
   type ProviderListResponse,
@@ -21,6 +23,7 @@ import {
   type ScopeBootstrapResponse,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
+import { projectWorkspaceBinding } from "./workspace-catalog"
 import { createScopeRetention } from "./scope-retention"
 import { resolveWorkspaceTransition } from "./workspace-transition"
 import { internMessage, internMessages, internPart, internParts, internProviderList } from "./string-intern"
@@ -122,14 +125,6 @@ type GlobalPaths = {
   log: string
 }
 
-type ScopedPath = {
-  state: string
-  config: string
-  worktree: string
-  directory: string
-  home: string
-}
-
 type State = {
   status: "loading" | "partial" | "complete"
   agent: Agent[]
@@ -137,7 +132,8 @@ type State = {
   scopeID: string
   provider: ProviderListResponse
   config: Config
-  path: ScopedPath
+  path: Path
+  workspaces: WorkspaceInfo[]
   session: Session[]
   session_diff: {
     [sessionID: string]: FileDiff[]
@@ -376,13 +372,13 @@ function createGlobalSync() {
   function createScopedClient(scopeKey: string) {
     return createSynergyClient({
       baseUrl: globalSDK.url,
-      ...(isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }),
+      scopeID: scopeKey,
       throwOnError: true,
     })
   }
 
   function scopeRequest(scopeKey: string) {
-    return isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+    return { scopeID: scopeKey }
   }
 
   function scopeReconnectVersion(scopeKey: string) {
@@ -519,10 +515,11 @@ function createGlobalSync() {
           modelCatalog: {},
         },
         config: {},
-        path: { state: "", config: "", worktree: "", directory: "", home: "" },
+        path: { state: "", config: "", worktree: null, directory: null, workspace: null, home: "" },
         status: "loading" as const,
         agent: [],
         command: [],
+        workspaces: [],
         session: [],
         session_diff: {},
         todo: {},
@@ -573,6 +570,16 @@ function createGlobalSync() {
     }
     if (message === null) {
       setStore("latestContextMessage", sessionID, null)
+      return
+    }
+    if (store.latestContextMessage[sessionID]?.id !== message.id) {
+      // The projection can share a transcript entity. Root reconcile mutates
+      // that entity even when its id changes; replace the pointer instead.
+      setStore(
+        produce((draft) => {
+          draft.latestContextMessage[sessionID] = message
+        }),
+      )
       return
     }
     setStore("latestContextMessage", sessionID, reconcile(message))
@@ -908,6 +915,27 @@ function createGlobalSync() {
     return taskID
   }
 
+  function refreshWorkspaceProjections(store: State, setStore: SetStoreFunction<State>) {
+    for (let index = 0; index < store.session.length; index++) {
+      const session = store.session[index]!
+      if (!session.workspaceID) continue
+      const projected = projectWorkspaceBinding(
+        session.workspace,
+        store.workspaces.find((record) => record.id === session.workspaceID),
+        { workspaceID: session.workspaceID, scopeID: session.scope.id },
+      )
+      if (projected !== session.workspace) setStore("session", index, "workspace", reconcile(projected))
+    }
+    const workspace = store.path.workspace
+    if (workspace) {
+      const projected = projectWorkspaceBinding(
+        workspace,
+        store.workspaces.find((record) => record.id === workspace.id),
+      )
+      if (projected !== workspace) setStore("path", "workspace", reconcile(projected))
+    }
+  }
+
   function applyScopeBootstrapSnapshot(
     scopeKey: string,
     store: State,
@@ -932,6 +960,13 @@ function createGlobalSync() {
       setStore("agent", reconcile(data.agent, { key: "name" }))
       setStore("config", reconcile(data.config))
       if (data.path) setStore("path", reconcile(data.path))
+      if (data.workspaces)
+        setStore(
+          "workspaces",
+          reconcile(tracker?.mergeWorkspaces(version, data.workspaces, store.workspaces) ?? data.workspaces, {
+            key: "id",
+          }),
+        )
       if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
       if (data.sessionStatus) {
         // Seed the global index and converge it. A session that was already
@@ -965,6 +1000,7 @@ function createGlobalSync() {
           mergedSessions ? Math.max(data.sessions!.total, mergedSessions.length) : data.sessions!.total,
         )
       }
+      refreshWorkspaceProjections(store, setStore)
       if (data.mcp) setStore("mcp", reconcile(data.mcp))
       // `Cortex.listVisible()` is process-global, so the bootstrap response
       // carries the whole visible task set and is authoritative for the global
@@ -1501,8 +1537,31 @@ function createGlobalSync() {
         scheduleBootstrap(scopeKey)
         break
       }
+      case "workspace.updated": {
+        const record = event.properties as WorkspaceInfo
+        if (store.scopeID && store.scopeID !== record.scopeID) break
+        const index = store.workspaces.findIndex((item) => item.id === record.id)
+        if (index >= 0 && store.workspaces[index]!.revision > record.revision) break
+        if (stamp) scopeWriteTracker(scopeKey).workspaceWrite(stamp, record.id)
+        batch(() => {
+          if (index >= 0) setStore("workspaces", index, reconcile(record))
+          else setStore("workspaces", store.workspaces.length, record)
+          refreshWorkspaceProjections(store, setStore)
+        })
+        break
+      }
       case "session.updated": {
-        const info = event.properties.info as Session
+        const incoming = event.properties.info as Session
+        const info = incoming.workspaceID
+          ? {
+              ...incoming,
+              workspace: projectWorkspaceBinding(
+                incoming.workspace,
+                store.workspaces.find((record) => record.id === incoming.workspaceID),
+                { workspaceID: incoming.workspaceID, scopeID: incoming.scope.id },
+              ),
+            }
+          : incoming
         const touchedCortex = reconcileCortexFromSession(info)
         if (stamp) {
           scopeWriteTracker(scopeKey).sessionWrite(stamp, info.id, !info.time.archived)
@@ -2129,9 +2188,10 @@ function createGlobalSync() {
       ),
       retry(() =>
         globalSDK.client.scope.list().then(async (result) => {
+          globalSDK.prepareScopeState(result.data ?? [])
           const scopes = (result.data ?? [])
             .filter((scope) => !!scope?.id)
-            .filter((scope) => !!scope.worktree && !isEphemeralTestWorktree(scope.worktree))
+            .filter((scope) => !scope.local || !isEphemeralTestWorktree(scope.local.worktree))
             .filter((scope) => !scope.time?.archived)
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
@@ -2236,6 +2296,13 @@ function createGlobalSync() {
     refreshConfig,
     refreshAllConfigs,
     refreshTargeted,
+    refreshScopes: async () => {
+      const response = await globalSDK.client.scope.list()
+      if (!disposed && response.data) {
+        globalSDK.prepareScopeState(response.data)
+        setGlobalStore("scope", reconcile(response.data))
+      }
+    },
     refreshProviders: () => refreshTargeted(["provider"]),
     scope: {
       loadSessions,

@@ -22,6 +22,84 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.mark.parametrize("topology", ["ordinary", "none", "restricted"])
+async def test_admission_preserves_native_network_topology_and_removes_only_owned_resources(tmp_path, topology):
+    import uuid
+
+    from pier.models.task.config import EnvironmentConfig
+    from pier.models.trial.paths import TrialPaths
+
+    from synergy_bench.docker_resources import DockerStats
+    from synergy_bench.environment import CachedDockerEnvironment
+    from synergy_bench.prepare import command
+    from synergy_bench.resources import Capacity, ResourcePool
+    from synergy_bench.scheduling import PhaseResources, current_resources
+
+    info = json.loads(command(["docker", "info", "--format", "{{json .}}"], timeout=30))
+    project = "sb-admission-" + uuid.uuid4().hex[:12]
+    (tmp_path / "Dockerfile").write_text("FROM ubuntu:24.04\n")
+    if topology == "restricted":
+        (tmp_path / "docker-compose.yaml").write_text(
+            json.dumps(
+                {
+                    "services": {
+                        "main": {"networks": ["internal"]},
+                        "egress": {
+                            "image": "ubuntu:24.04",
+                            "command": ["sleep", "infinity"],
+                            "networks": ["internal", "default"],
+                        },
+                    },
+                    "networks": {"internal": {"internal": True}, "default": {}},
+                }
+            )
+        )
+    paths = TrialPaths(trial_dir=tmp_path / "trial")
+    for path in [paths.agent_dir, paths.verifier_dir, paths.artifacts_dir]:
+        path.mkdir(parents=True)
+    env = CachedDockerEnvironment(
+        environment_dir=tmp_path,
+        environment_name=project,
+        session_id=project,
+        trial_paths=paths,
+        task_env_config=EnvironmentConfig(docker_image="ubuntu:24.04", allow_internet=topology != "none"),
+        benchmark_cache=str(tmp_path / "cache"),
+        benchmark_platform="linux/arm64" if info["Architecture"] == "aarch64" else "linux/amd64",
+    )
+    env._use_prebuilt = True
+    env._mounts_compose_path = env._write_mounts_compose_file()
+    sampler = DockerStats()
+    pool = ResourcePool(Capacity(info["NCPU"], info["MemTotal"]), 1, sampler=sampler, pressure_timeout_seconds=15)
+    phases = PhaseResources(pool, tmp_path)
+    token = current_resources.set(phases)
+    try:
+        await env._run_docker_compose_command(["up", "--detach", "--wait", "--force-recreate"])
+        identities = command(
+            ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project}"]
+        ).splitlines()
+        containers = json.loads(command(["docker", "inspect", *identities]))
+        services = {row["Config"]["Labels"]["com.docker.compose.service"]: row for row in containers}
+        main = services["main"]["NetworkSettings"]["Networks"]
+        if topology == "none":
+            assert services["main"]["HostConfig"]["NetworkMode"] == "none"
+        else:
+            assert len(main) == 1
+            network = json.loads(command(["docker", "network", "inspect", next(iter(main.values()))["NetworkID"]]))[0]
+            assert network["Internal"] is (topology == "restricted")
+            if topology == "restricted":
+                assert len(services["egress"]["NetworkSettings"]["Networks"]) == 2
+        snapshot = await DockerStats().snapshot()
+        assert snapshot.healthy
+        assert len([row for row in snapshot.containers if row["project"] == project]) == len(services)
+    finally:
+        try:
+            await env._run_docker_compose_command(["down", "--volumes", "--remove-orphans"])
+            assert not await env._project_resources_remain()
+            assert pool.active == 0
+        finally:
+            current_resources.reset(token)
+
+
 @pytest.fixture(scope="module")
 def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     tmp_path = tmp_path_factory.mktemp("docker-benchmark")

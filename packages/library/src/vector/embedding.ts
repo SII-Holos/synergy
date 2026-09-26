@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ProviderPricing } from "@ericsanchezok/synergy-harness/provider/pricing"
 import os from "os"
 import path from "path"
@@ -164,12 +165,18 @@ export namespace Embedding {
     baseURL: string
   }
 
-  let loadState: LocalLoadState = { phase: "unloaded" }
-  let runtimeControls: LocalRuntimeControls = defaultRuntimeControls()
-  let loadGeneration = 0
-  const localRuntime = new LocalEmbeddingRuntime(loadLocalExtractor, (error) => {
-    log.warn("failed to dispose local embedding model", { error })
-  })
+  const runtimeState = RuntimeContext.state(() => ({
+    loadState: { phase: "unloaded" } as LocalLoadState,
+    runtimeControls: defaultRuntimeControls() as LocalRuntimeControls,
+    loadGeneration: 0,
+  }))
+
+  const localRuntime = RuntimeContext.state(
+    () =>
+      new LocalEmbeddingRuntime(loadLocalExtractor, (error) => {
+        log.warn("failed to dispose local embedding model", { error })
+      }),
+  )
 
   function defaultRuntimeControls(): LocalRuntimeControls {
     return {
@@ -230,20 +237,22 @@ export namespace Embedding {
   }
 
   async function inspectLocalAsset(source: LocalSource, remoteHost: string, cacheDir: string) {
-    const runtime = await runtimeControls.loadRuntime()
+    const runtime = await runtimeState().runtimeControls.loadRuntime()
     runtime.configure({ remoteHost, cacheDir })
     const cached = await runtime.isCached(LOCAL_TASK, LOCAL_MODEL, { dtype: "q8" })
     return { runtime, cached }
   }
 
   async function loadLocalExtractor(): Promise<LocalExtractor> {
-    const retrying = loadState.phase === "unloaded" && Boolean(loadState.error)
-    const generation = ++loadGeneration
+    const instanceState = runtimeState()
+
+    const retrying = instanceState.loadState.phase === "unloaded" && Boolean(instanceState.loadState.error)
+    const generation = ++instanceState.loadGeneration
     const loading: Extract<LocalLoadState, { phase: "loading" }> = {
       phase: "loading",
       asset: "missing",
     }
-    loadState = loading
+    instanceState.loadState = loading
 
     let source: LocalSource
     let remoteHost: string
@@ -256,8 +265,8 @@ export namespace Embedding {
       loading.remoteHost = remoteHost
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause))
-      if (loadGeneration === generation) {
-        loadState = {
+      if (instanceState.loadGeneration === generation) {
+        instanceState.loadState = {
           phase: "unloaded",
           asset: "failed",
           error: { code: "invalid_source", message: error.message },
@@ -335,8 +344,8 @@ export namespace Embedding {
         }
       }
 
-      if (loadGeneration === generation) {
-        loadState = {
+      if (instanceState.loadGeneration === generation) {
+        instanceState.loadState = {
           phase: "ready",
           source,
           remoteHost,
@@ -346,8 +355,8 @@ export namespace Embedding {
       return extractor
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause))
-      if (loadGeneration === generation) {
-        loadState = {
+      if (instanceState.loadGeneration === generation) {
+        instanceState.loadState = {
           phase: "unloaded",
           source: originalSource,
           remoteHost: originalRemoteHost,
@@ -360,10 +369,10 @@ export namespace Embedding {
   }
 
   async function getLocalExtractor(): Promise<LocalExtractor> {
-    if (localRuntime.error) {
-      localRuntime.clearError()
+    if (localRuntime().error) {
+      localRuntime().clearError()
     }
-    return localRuntime.get()
+    return localRuntime().get()
   }
 
   export const Info = z
@@ -437,6 +446,8 @@ export namespace Embedding {
   }
 
   export async function status(): Promise<LocalStatus | RemoteStatus> {
+    const instanceState = runtimeState()
+
     const config = await readConfig()
     const ec = config.embedding
     if (ec?.apiKey) {
@@ -447,18 +458,18 @@ export namespace Embedding {
       }
     }
 
-    if (loadState.phase === "ready") {
+    if (instanceState.loadState.phase === "ready") {
       return {
         mode: "local",
         model: LOCAL_MODEL,
-        source: loadState.source,
+        source: instanceState.loadState.source,
         asset: "cached",
         runtime: "ready",
-        progress: loadState.progress,
+        progress: instanceState.loadState.progress,
       }
     }
-    if (loadState.phase === "loading") {
-      let source = loadState.source
+    if (instanceState.loadState.phase === "loading") {
+      let source = instanceState.loadState.source
       if (!source) {
         try {
           source = resolveLocalSource(config).source
@@ -478,9 +489,9 @@ export namespace Embedding {
         mode: "local",
         model: LOCAL_MODEL,
         source,
-        asset: loadState.asset,
+        asset: instanceState.loadState.asset,
         runtime: "loading",
-        progress: loadState.progress,
+        progress: instanceState.loadState.progress,
       }
     }
 
@@ -502,31 +513,44 @@ export namespace Embedding {
       }
     }
 
-    if (loadState.error && loadState.source === source && loadState.remoteHost === remoteHost) {
+    if (
+      instanceState.loadState.error &&
+      instanceState.loadState.source === source &&
+      instanceState.loadState.remoteHost === remoteHost
+    ) {
       return {
         mode: "local",
         model: LOCAL_MODEL,
         source,
         asset: "failed",
         runtime: "unloaded",
-        progress: loadState.progress,
-        error: loadState.error,
+        progress: instanceState.loadState.progress,
+        error: instanceState.loadState.error,
       }
     }
-    if (loadState.asset && loadState.source === source && loadState.remoteHost === remoteHost) {
+    if (
+      instanceState.loadState.asset &&
+      instanceState.loadState.source === source &&
+      instanceState.loadState.remoteHost === remoteHost
+    ) {
       return {
         mode: "local",
         model: LOCAL_MODEL,
         source,
-        asset: loadState.asset,
+        asset: instanceState.loadState.asset,
         runtime: "unloaded",
-        progress: loadState.progress,
+        progress: instanceState.loadState.progress,
       }
     }
 
     try {
       const inspected = await inspectLocalAsset(source, remoteHost, cacheDir)
-      loadState = { phase: "unloaded", source, remoteHost, asset: inspected.cached ? "cached" : "missing" }
+      instanceState.loadState = {
+        phase: "unloaded",
+        source,
+        remoteHost,
+        asset: inspected.cached ? "cached" : "missing",
+      }
       return {
         mode: "local",
         model: LOCAL_MODEL,
@@ -536,7 +560,7 @@ export namespace Embedding {
       }
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause))
-      loadState = {
+      instanceState.loadState = {
         phase: "unloaded",
         source,
         remoteHost,
@@ -549,7 +573,7 @@ export namespace Embedding {
         source,
         asset: "failed",
         runtime: "unloaded",
-        error: loadState.error,
+        error: instanceState.loadState.error,
       }
     }
   }
@@ -565,21 +589,27 @@ export namespace Embedding {
   }
 
   export async function dispose(): Promise<void> {
-    loadGeneration++
-    loadState = { phase: "unloaded" }
-    await localRuntime.dispose()
+    const instanceState = runtimeState()
+
+    instanceState.loadGeneration++
+    instanceState.loadState = { phase: "unloaded" }
+    await localRuntime().dispose()
   }
 
   export function setLocalRuntimeControlsForTest(controls?: Partial<LocalRuntimeControls>) {
-    runtimeControls = { ...defaultRuntimeControls(), ...controls }
+    const instanceState = runtimeState()
+
+    instanceState.runtimeControls = { ...defaultRuntimeControls(), ...controls }
   }
 
   /** Test-only: restore default runtime controls and drop any cached local runtime state. */
   export async function resetForTest(): Promise<void> {
-    runtimeControls = defaultRuntimeControls()
-    loadState = { phase: "unloaded" }
-    loadGeneration++
-    await localRuntime.dispose()
+    const instanceState = runtimeState()
+
+    instanceState.runtimeControls = defaultRuntimeControls()
+    instanceState.loadState = { phase: "unloaded" }
+    instanceState.loadGeneration++
+    await localRuntime().dispose()
   }
 
   async function resolveModel() {

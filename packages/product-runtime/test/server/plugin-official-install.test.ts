@@ -14,8 +14,11 @@ import { PluginMarketplaceRegistry } from "@ericsanchezok/synergy-plugin-host/pl
 import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { readApprovals } from "@ericsanchezok/synergy-plugin-host/plugin/consent/approval-store"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-Log.init({ print: false })
+runtime.run(() => Log.init({ print: false }))
 
 const PLUGIN_ID = "official-test-plugin"
 const PLUGIN_VERSION = "1.0.0"
@@ -124,81 +127,86 @@ async function withOfficialRegistry<T>(
 }
 
 describe("official registry install verification", () => {
-  test("accepts an artifact whose manifest display name differs from the registry id", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const artifact = await buildSignedArtifact("Official Test Plugin")
-    try {
-      await withOfficialRegistry(artifact, async () => {
-        const verified = await PluginMarketplaceRegistry.verifyOfficialArtifact(PLUGIN_ID, PLUGIN_VERSION)
-        expect(verified.manifest.id).toBe(PLUGIN_ID)
-        expect(verified.manifest.name).toBe("Official Test Plugin")
-      })
-    } finally {
-      fs.rmSync(artifact.dir, { recursive: true, force: true })
-    }
-  })
+  test("accepts an artifact whose manifest display name differs from the registry id", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const artifact = await buildSignedArtifact("Official Test Plugin")
+      try {
+        await withOfficialRegistry(artifact, async () => {
+          const verified = await PluginMarketplaceRegistry.verifyOfficialArtifact(PLUGIN_ID, PLUGIN_VERSION)
+          expect(verified.manifest.id).toBe(PLUGIN_ID)
+          expect(verified.manifest.name).toBe("Official Test Plugin")
+        })
+      } finally {
+        fs.rmSync(artifact.dir, { recursive: true, force: true })
+      }
+    }))
 
-  test("registry install returns 422 with the verification message instead of a 500", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const artifact = await buildSignedArtifact("Official Test Plugin")
-    try {
-      await withOfficialRegistry(artifact, async () => {
-        const app = Server.App()
-        const res = await app.request("/api/plugins/registry/install", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: PLUGIN_ID, version: "9.9.9", source: "official" }),
+  test("registry install returns 422 with the verification message instead of a 500", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const artifact = await buildSignedArtifact("Official Test Plugin")
+      try {
+        await withOfficialRegistry(artifact, async () => {
+          const app = Server.App()
+          const res = await app.request("/api/plugins/registry/install", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: PLUGIN_ID, version: "9.9.9", source: "official" }),
+          })
+          expect(res.status).toBe(422)
+          const body = await res.json()
+          expect(body.code).toBe("plugin_artifact_verification_failed")
+          expect(body.message).toBe(`Official registry version not found: ${PLUGIN_ID}@9.9.9`)
         })
-        expect(res.status).toBe(422)
-        const body = await res.json()
-        expect(body.code).toBe("plugin_artifact_verification_failed")
-        expect(body.message).toBe(`Official registry version not found: ${PLUGIN_ID}@9.9.9`)
-      })
-    } finally {
-      fs.rmSync(artifact.dir, { recursive: true, force: true })
-    }
-  })
+      } finally {
+        fs.rmSync(artifact.dir, { recursive: true, force: true })
+      }
+    }))
 
-  test("installs an official signed artifact in one step", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const artifact = await buildSignedArtifact("Official Test Plugin")
-    try {
-      await withOfficialRegistry(artifact, async () => {
-        const app = Server.App()
-        const installRes = await app.request("/api/plugins/registry/install", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: PLUGIN_ID, version: PLUGIN_VERSION, source: "official" }),
+  test("installs an official signed artifact in one step", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const artifact = await buildSignedArtifact("Official Test Plugin")
+      try {
+        await withOfficialRegistry(artifact, async () => {
+          const app = Server.App()
+          const installRes = await app.request("/api/plugins/registry/install", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: PLUGIN_ID, version: PLUGIN_VERSION, source: "official" }),
+          })
+          expect(installRes.status).toBe(200)
+          const installBody = (await installRes.json()) as {
+            id: string
+            loaded: boolean
+            health: string
+            installation: { kind: string; registry?: string; spec?: string }
+            manifest: PluginManifestType
+          }
+          expect(installBody.id).toBe(PLUGIN_ID)
+          expect(installBody.loaded).toBe(true)
+          expect(installBody.health).toBe("loaded")
+          expect(installBody.installation).toEqual({
+            kind: "registry",
+            registry: "official",
+            spec: expect.any(String),
+          })
+          expect(installBody.manifest.version).toBe(PLUGIN_VERSION)
+          expect(await readApprovals()).toContainEqual(
+            expect.objectContaining({
+              schemaVersion: 2,
+              pluginId: PLUGIN_ID,
+              source: "official",
+              signer: artifact.entry.versions[0]!.signature.signer,
+              approvedBy: "policy",
+            }),
+          )
         })
-        expect(installRes.status).toBe(200)
-        const installBody = (await installRes.json()) as {
-          id: string
-          loaded: boolean
-          health: string
-          installation: { kind: string; registry?: string; spec?: string }
-          manifest: PluginManifestType
-        }
-        expect(installBody.id).toBe(PLUGIN_ID)
-        expect(installBody.loaded).toBe(true)
-        expect(installBody.health).toBe("loaded")
-        expect(installBody.installation).toEqual({
-          kind: "registry",
-          registry: "official",
-          spec: expect.any(String),
-        })
-        expect(installBody.manifest.version).toBe(PLUGIN_VERSION)
-        expect(await readApprovals()).toContainEqual(
-          expect.objectContaining({
-            schemaVersion: 2,
-            pluginId: PLUGIN_ID,
-            source: "official",
-            signer: artifact.entry.versions[0]!.signature.signer,
-            approvedBy: "policy",
-          }),
-        )
-      })
-    } finally {
-      fs.rmSync(artifact.dir, { recursive: true, force: true })
-    }
-  })
+      } finally {
+        fs.rmSync(artifact.dir, { recursive: true, force: true })
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

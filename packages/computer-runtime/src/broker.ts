@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import {
   COMPUTER_PROTOCOL_VERSION,
@@ -122,6 +123,9 @@ export class ComputerBroker {
   }
 }
 
-export const computerBroker = new ComputerBroker(
-  process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET ?? randomBytes(32).toString("hex"),
+export const computerBroker = RuntimeContext.state(
+  () =>
+    new ComputerBroker(
+      RuntimeContext.current().host.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET ?? randomBytes(32).toString("hex"),
+    ),
 )

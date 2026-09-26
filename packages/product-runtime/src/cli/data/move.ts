@@ -82,6 +82,7 @@ export async function executeMove(opts: MoveOptions) {
     prompts.outro("Nothing to move")
     return
   }
+  await DataTransfer.validateHomes([sourceRoot, targetPath])
 
   // Check disk space
   const diskOk = await checkDiskSpace(homePath, totalSize)
@@ -208,105 +209,110 @@ export async function executeMove(opts: MoveOptions) {
     // If target has no library.db, the file copy will handle it
   }
 
-  // Step 6: Execute move
-  UI.empty()
-  const errors: string[] = []
-  let libraryMerged = false
+  return DataTransfer.withFiles([sourceRoot, targetPath], async () => {
+    // Step 6: Execute move
+    UI.empty()
+    const errors: string[] = []
+    let libraryMerged = false
 
-  for (const cat of selectedCategories) {
-    for (const subdir of cat.subdirs) {
-      const src = path.join(sourceRoot, subdir)
-      const dst = path.join(targetPath, subdir)
+    const copyOrder = selectedCategories.toSorted(
+      (a, b) => Number(a.subdirs.includes("data")) - Number(b.subdirs.includes("data")),
+    )
+    for (const cat of copyOrder) {
+      for (const subdir of cat.subdirs) {
+        const src = path.join(sourceRoot, subdir)
+        const dst = path.join(targetPath, subdir)
 
-      if (!(await dirExists(src))) continue
+        if (!(await dirExists(src))) continue
 
-      // Special handling for library.db inside data/
-      if (subdir === "data" && libraryStrategy !== "skip") {
-        const targetLibraryExists = await dirExists(targetLibrary)
+        // Special handling for library.db inside data/
+        if (subdir === "data" && libraryStrategy !== "skip") {
+          const targetLibraryExists = await dirExists(targetLibrary)
 
-        if (targetLibraryExists && selectedKeys.has("core")) {
-          // Merge library via SQL, then copy the rest of data/ skipping library
-          const librarySpinner = prompts.spinner()
-          librarySpinner.start("Merging library.db...")
+          if (targetLibraryExists && selectedKeys.has("core")) {
+            // Merge library via SQL, then copy the rest of data/ skipping library
+            const librarySpinner = prompts.spinner()
+            librarySpinner.start("Merging library.db...")
 
-          try {
-            const result = await mergeLibraryDB(sourceLibrary, targetLibrary, libraryStrategy)
-            librarySpinner.stop(
-              `Merged library: ${result.memoriesMerged} memories, ${result.experiencesMerged} experiences${result.vecDropped ? " (vectors handled per strategy)" : ""}`,
-            )
-            libraryMerged = true
-          } catch (e) {
-            librarySpinner.stop("Failed to merge library.db", 1)
-            errors.push(`library.db: ${e instanceof Error ? e.message : String(e)}`)
+            try {
+              const result = await mergeLibraryDB(sourceLibrary, targetLibrary, libraryStrategy)
+              librarySpinner.stop(
+                `Merged library: ${result.memoriesMerged} memories, ${result.experiencesMerged} experiences${result.vecDropped ? " (vectors handled per strategy)" : ""}`,
+              )
+              libraryMerged = true
+            } catch (e) {
+              librarySpinner.stop("Failed to merge library.db", 1)
+              errors.push(`library.db: ${e instanceof Error ? e.message : String(e)}`)
+            }
           }
         }
+
+        const catSize = catStats.get(cat.key)?.size ?? 0
+        const spinner = prompts.spinner()
+        spinner.start(`Moving ${subdir}/ (${formatSize(catSize)})...`)
+
+        try {
+          const result =
+            subdir === "data"
+              ? await DataTransfer.merge(sourceRoot, targetPath, { trusted: true })
+              : await copyDirSkipExisting(
+                  src,
+                  dst,
+                  (p) => {
+                    const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
+                    spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
+                  },
+                  undefined,
+                  undefined,
+                  archiveExclusions(subdir),
+                )
+          const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
+          spinner.stop(`Moved ${subdir}/${skippedNote}`)
+        } catch (e) {
+          spinner.stop(`Failed to move ${subdir}/`, 1)
+          errors.push(`${subdir}: ${e instanceof Error ? e.message : String(e)}`)
+        }
       }
+    }
 
-      const catSize = catStats.get(cat.key)?.size ?? 0
-      const spinner = prompts.spinner()
-      spinner.start(`Moving ${subdir}/ (${formatSize(catSize)})...`)
+    // Step 7: Write marker
+    if (errors.length === 0) {
+      const markerPath = path.join(targetPath, ".synergy-home")
+      await Bun.write(markerPath, `# Created by 'synergy data move' on ${new Date().toISOString()}\n`)
+    }
 
+    // Step 8: Remove original if requested
+    if (errors.length === 0 && opts.removeOriginal) {
+      const rmSpinner = prompts.spinner()
+      rmSpinner.start("Removing original data...")
       try {
-        const result =
-          subdir === "data"
-            ? await DataTransfer.merge(sourceRoot, targetPath, { trusted: true })
-            : await copyDirSkipExisting(
-                src,
-                dst,
-                (p) => {
-                  const pct = Math.round(((p.copied + p.skipped) / p.total) * 100)
-                  spinner.message(`Moving ${subdir}/ ${pct}% — ${shortenPath(p.currentFile)}`)
-                },
-                undefined,
-                undefined,
-                archiveExclusions(subdir),
-              )
-        const skippedNote = result.skipped > 0 ? ` (${result.skipped} existing files kept)` : ""
-        spinner.stop(`Moved ${subdir}/${skippedNote}`)
+        await fs.rm(sourceRoot, { recursive: true, force: true })
+        rmSpinner.stop("Original data removed")
       } catch (e) {
-        spinner.stop(`Failed to move ${subdir}/`, 1)
-        errors.push(`${subdir}: ${e instanceof Error ? e.message : String(e)}`)
+        rmSpinner.stop("Failed to remove original data", 1)
+        prompts.log.warn("Remove manually after verification: " + shortenPath(sourceRoot))
       }
     }
-  }
 
-  // Step 7: Write marker
-  if (errors.length === 0) {
-    const markerPath = path.join(targetPath, ".synergy-home")
-    await Bun.write(markerPath, `# Created by 'synergy data move' on ${new Date().toISOString()}\n`)
-  }
-
-  // Step 8: Remove original if requested
-  if (errors.length === 0 && opts.removeOriginal) {
-    const rmSpinner = prompts.spinner()
-    rmSpinner.start("Removing original data...")
-    try {
-      await fs.rm(sourceRoot, { recursive: true, force: true })
-      rmSpinner.stop("Original data removed")
-    } catch (e) {
-      rmSpinner.stop("Failed to remove original data", 1)
-      prompts.log.warn("Remove manually after verification: " + shortenPath(sourceRoot))
+    // Report
+    UI.empty()
+    if (errors.length > 0) {
+      process.exitCode = 1
+      prompts.log.warn("Move completed with errors:")
+      for (const err of errors) prompts.log.error(`  ${err}`)
+      prompts.log.info("Original data preserved at " + shortenPath(sourceRoot))
+    } else {
+      prompts.log.success("Data moved to " + shortenPath(targetPath))
     }
-  }
 
-  // Report
-  UI.empty()
-  if (errors.length > 0) {
-    process.exitCode = 1
-    prompts.log.warn("Move completed with errors:")
-    for (const err of errors) prompts.log.error(`  ${err}`)
-    prompts.log.info("Original data preserved at " + shortenPath(sourceRoot))
-  } else {
-    prompts.log.success("Data moved to " + shortenPath(targetPath))
-  }
+    if (!opts.removeOriginal || errors.length > 0) {
+      prompts.log.info(`Original data preserved at ${shortenPath(sourceRoot)}`)
+    }
+    prompts.log.info(`Run \`synergy data set-home ${shortenPath(homePath)}\` to switch to the new location`)
+    prompts.log.info("Restart any running synergy servers to use the new location")
 
-  if (!opts.removeOriginal || errors.length > 0) {
-    prompts.log.info(`Original data preserved at ${shortenPath(sourceRoot)}`)
-  }
-  prompts.log.info(`Run \`synergy data set-home ${shortenPath(homePath)}\` to switch to the new location`)
-  prompts.log.info("Restart any running synergy servers to use the new location")
-
-  prompts.outro("Done")
+    prompts.outro("Done")
+  })
 }
 
 async function scanDir(dir: string): Promise<{ size: number }> {

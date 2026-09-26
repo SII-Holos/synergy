@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { AuthHook } from "./auth-types"
 import type { ProviderProfile } from "./profile"
 
@@ -33,13 +34,22 @@ export namespace ProviderPluginAuth {
     authProviderProfiles(): Promise<AuthProviderProfileEntry[]>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("provider/plugin-auth-source")
+    if (instanceState.source && value) throw new Error("provider/plugin-auth-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

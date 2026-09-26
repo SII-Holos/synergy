@@ -40,7 +40,7 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Durable by default** — Keep recoverable sessions attached to an explicit home or project Scope, with complete history even when older model context is compacted.
 - **One runtime, every surface** — Use the same sessions and state from the Web workbench, Desktop app, CLI, server API, and SDK.
 - **First-class agent coordination** — Delegate to specialist subagents, plan durable Blueprints, run independently reviewed BlueprintLoops, keep focused work moving with Light Loop, or orchestrate a tree of persistent specialist workers with Boss Mode.
-- **Files and Browser stay in context** — Work across project files and a session-owned Browser page without moving the task into a separate tool or disposable environment.
+- **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside a session-owned Browser page without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
 - **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins, Channels, and remote Synergy Link targets while keeping local ownership of projects and data.
 
@@ -156,7 +156,7 @@ For headless tasks, versioned experiment settings, durable execution evidence an
 
 Synergy is a Bun monorepo using TypeScript ESM modules. The pinned package manager is declared in [`package.json`](package.json).
 
-Prepare a source checkout:
+Install Rust with Cargo for the native PTY library, then prepare a source checkout:
 
 ```bash
 bun dev prepare
@@ -179,7 +179,7 @@ Default local preflight:
 bun run quality:quick
 ```
 
-For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. See the [package map](docs/reference/packages.md) for build and installation checks.
+For programmatic experiments, `packages/harness` exposes the execution and lifecycle APIs, and `packages/runtime-local` supplies local tools, native execution and provider SDKs. `packages/cli` keeps the same `synergy` command with an injected runtime; the complete product composes optional capabilities in `packages/product-runtime`. Hosts can compose independent Runtime instances in one process with explicit home, environment and storage ownership. Home sessions work without a local workspace. See [Runtime and Scope](docs/architecture/runtime-and-scope.md) and the [package map](docs/reference/packages.md) for lifecycle and installation contracts.
 
 Local performance experiments use the [benchmark workspace](benchmark/README.md): independent harness/model matrices, frozen inputs, native rollout evidence and paired reports. Task solving, reference execution and verification each have a fixed three-hour budget. Run `bun bench run benchmark/configs/local24-boyue.yaml` after configuring its model endpoint and credential reference. Formal tasks start directly in unattended sessions. Adaptive working-set reservations keep independent cells running within live resource limits; reports retain per-task failures and unknown usage. The local-24 preset uses GLM 5.3 Flash with explicit low reasoning.
 
@@ -188,7 +188,7 @@ Core runtime tests run from `packages/harness`:
 ```bash
 cd packages/harness
 bun test
-bun run test:ci # CI-equivalent sequential shards
+bun run test:ci # Isolated batches; CI adds coverage in the same execution
 ```
 
 Frontend package suites run through their standard scripts and are included in `bun run quality`:
@@ -205,6 +205,8 @@ bun test --cwd apps/web test/testing/browser-crypto-contract.test.ts
 bun run --cwd apps/web build
 bun apps/web/script/private-http-smoke.ts
 ```
+
+CI planning, bounded execution and diagnostics are documented in [CI verification](docs/operations/ci.md).
 
 Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
 
@@ -260,4 +262,4 @@ Contributions, bug reports, and feature ideas are welcome. Read [CONTRIBUTING.md
 
 Synergy is open source under the [MIT License](LICENSE).
 
-Agent records use transactional SQLite by default, with an explicit PostgreSQL option. Binary evidence uses checksummed packs. Existing Home data upgrades through resumable migration. Eligible upgrades admit new work while history prepares in the background. Open old conversations on demand, or pause background preparation from the status bar. Preserve frozen originals and protected snapshot paths until the independent recovery backup is complete. See [Agent storage](docs/architecture/agent-storage.md) and [storage operations](docs/reference/storage-and-paths.md).
+Agent records use transactional SQLite by default, with an explicit PostgreSQL option. Binary evidence uses checksummed packs. Existing Home data upgrades through resumable migration. Optional whole-database optimization runs in an explicit maintenance window; committed data opens without waiting for space reclamation. Desktop offers retry, maintenance continuation and startup diagnostics when launch fails. Eligible upgrades admit new work while history prepares in the background. Open old conversations on demand, or pause background preparation from the status bar. Preserve frozen originals and protected snapshot paths until the independent recovery backup is complete. See [Agent storage](docs/architecture/agent-storage.md) and [storage operations](docs/reference/storage-and-paths.md).

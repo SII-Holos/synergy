@@ -32,10 +32,11 @@ export namespace BrowserPolicy {
 
   export const normalizeBrowserURL = normalizeBrowserURLInput
 
-  export function hardCheckNavigation(url: string, workspace: string): PolicyResult {
+  export function hardCheckNavigation(url: string, workspace: string | null): PolicyResult {
     const parsed = parseURL(url)
     if (!parsed) return deny(`Invalid URL: ${url}`)
-    if (parsed.protocol === "file:") return evaluateFileURL(parsed, workspace)
+    if (parsed.protocol === "file:")
+      return workspace ? evaluateFileURL(parsed, workspace) : deny("File navigation requires a local workspace")
     if (parsed.protocol === "about:") {
       return parsed.href === "about:blank" ? allow("Blank page", true) : deny("Only about:blank is allowed")
     }

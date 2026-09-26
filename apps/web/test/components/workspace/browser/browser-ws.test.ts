@@ -161,7 +161,7 @@ describe("browserControlCommandFromMessage", () => {
 describe("Browser session bootstrap", () => {
   const state = {
     type: "session.state" as const,
-    protocolVersion: 2 as const,
+    protocolVersion: 3 as const,
     ownerKey: "owner-1",
     status: "active" as const,
     page: { id: "page-1", url: "https://example.com", title: "", isLoading: false, lastActiveAt: null },

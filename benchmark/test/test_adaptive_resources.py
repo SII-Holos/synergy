@@ -19,7 +19,7 @@ def test_sustained_cpu_pressure_and_recovery_use_independent_samples(tmp_path, m
         resources.psutil, "virtual_memory", lambda: SimpleNamespace(total=64 * 1024**3, available=10 * 1024**3)
     )
     monkeypatch.setattr(resources, "host_limits", lambda cpus, total, available: (cpus, total, available))
-    check = resources.HostPressure(tmp_path, Resources(min_free_disk_gib=0), 64 * 1024**3)
+    check = resources.HostPressure(tmp_path, Resources(min_free_disk_gib=0))
     request = Request(1, 1024**3)
     assert not check(request)
     for second in range(1, 6):
@@ -144,9 +144,9 @@ async def test_phase_leases_keep_unresolved_resources_and_release_before_separat
     assert next(iter(stages.leases.values()))[1].stage == "verifier"
     await stages.finish(resources_removed=True)
     assert pool.active == 0
-    assert [event["event"] for event in stages.events if event["event"] in {"started", "released"}] == [
-        "started",
+    assert [event["event"] for event in stages.events if event["event"] in {"admitted", "released"}] == [
+        "admitted",
         "released",
-        "started",
+        "admitted",
         "released",
     ]

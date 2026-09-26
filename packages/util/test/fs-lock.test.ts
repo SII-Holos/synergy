@@ -3,7 +3,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { processStartIdentity } from "../src/process-identity"
-import { fileLockPath, withFileLock } from "../src/fs-lock"
+import { FileLockTimeoutError, fileLockPath, withFileLock } from "../src/fs-lock"
 
 const ownIdentity = await processStartIdentity(process.pid)
 const identityAvailable = ownIdentity !== undefined
@@ -17,6 +17,57 @@ async function delay(milliseconds: number): Promise<void> {
 }
 
 describe("withFileLock", () => {
+  test("cancels a contended acquisition without running work or displacing its owner", async () => {
+    const directory = await createLockDirectory()
+    const controller = new AbortController()
+    const reason = new Error("cancel file lock wait")
+    let ran = false
+    try {
+      await withFileLock({ directory, key: "shared" }, async () => {
+        const filename = fileLockPath(directory, "shared")
+        const owner = await fs.readFile(filename, "utf8")
+        const pending = withFileLock(
+          { directory, key: "shared", signal: controller.signal, timeoutMs: 10_000 },
+          async () => {
+            ran = true
+          },
+        )
+        const result = pending.then(
+          () => undefined,
+          (error: unknown) => error,
+        )
+        await delay(20)
+        controller.abort(reason)
+        expect(await result).toBe(reason)
+        expect(ran).toBe(false)
+        expect(await fs.readFile(filename, "utf8")).toBe(owner)
+      })
+      await withFileLock({ directory, key: "shared" }, async () => {
+        ran = true
+      })
+      expect(ran).toBe(true)
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true })
+    }
+  })
+
+  test("does not run work for an already cancelled acquisition", async () => {
+    const directory = await createLockDirectory()
+    const reason = new Error("already cancelled")
+    let ran = false
+    try {
+      await expect(
+        withFileLock({ directory, key: "shared", signal: AbortSignal.abort(reason) }, async () => {
+          ran = true
+        }),
+      ).rejects.toBe(reason)
+      expect(ran).toBe(false)
+      await withFileLock({ directory, key: "shared" }, async () => {})
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true })
+    }
+  })
+
   test("serializes concurrent work for the same key", async () => {
     const directory = await createLockDirectory()
     let active = 0
@@ -131,6 +182,22 @@ describe("withFileLock", () => {
       "Timed out acquiring file lock for shared",
     )
     await expect(fs.readFile(filename, "utf8")).resolves.toContain(`"pid":${process.pid}`)
+  })
+
+  test("exposes the timeout type and lock key while preserving a custom message", async () => {
+    const directory = await createLockDirectory()
+    try {
+      await withFileLock({ directory, key: "shared" }, async () => {
+        const result = await withFileLock(
+          { directory, key: "shared", timeoutMs: 25, timeoutMessage: "custom lock timeout" },
+          async () => {},
+        ).catch((error: unknown) => error)
+        expect(result).toBeInstanceOf(FileLockTimeoutError)
+        expect(result).toMatchObject({ key: "shared", message: "custom lock timeout" })
+      })
+    } finally {
+      await fs.rm(directory, { recursive: true, force: true })
+    }
   })
 
   test("release keeps a lock whose payload was replaced after acquisition", async () => {

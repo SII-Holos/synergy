@@ -97,7 +97,7 @@ describe("Browser WebRTC host", () => {
     const handlers = electronMockState.ipcMainListeners.get(inputChannel)!
     const rtcContents = windows[1]!.webContents
 
-    const valid = { type: "input.mouse", action: "move", protocolVersion: 2, pageId: "page-1", x: 10, y: 12 }
+    const valid = { type: "input.mouse", action: "move", protocolVersion: 3, pageId: "page-1", x: 10, y: 12 }
     const handler = handlers.at(-1)!
     handler({ sender: rtcContents }, valid)
     handler({ sender: rtcContents }, { ...valid, pageId: "other-page" })

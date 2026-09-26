@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { Identifier } from "../../src/id/id"
@@ -28,88 +31,97 @@ function cortexDelegation() {
 }
 
 describe("SessionWorkflowHold", () => {
-  test("produces a workflow latch for a bound session that carries no pause", () => {
-    const latch = SessionWorkflowHold.latchFor({ time: { created: 1 } })
+  test("produces a workflow latch for a bound session that carries no pause", () =>
+    runtime.run(() => {
+      const latch = SessionWorkflowHold.latchFor({ time: { created: 1 } })
 
-    expect(latch?.reason).toBe("workflow")
-    expect(latch?.description).toBe(SessionWorkflowHold.DESCRIPTION)
-    expect(typeof latch?.since).toBe("number")
-  })
+      expect(latch?.reason).toBe("workflow")
+      expect(latch?.description).toBe(SessionWorkflowHold.DESCRIPTION)
+      expect(typeof latch?.since).toBe("number")
+    }))
 
-  test("first pause wins, so a session another path already stopped is left alone", () => {
-    const latch = SessionWorkflowHold.latchFor({
-      time: { created: 1 },
-      paused: { reason: "aborted", since: 5 },
-    })
+  test("first pause wins, so a session another path already stopped is left alone", () =>
+    runtime.run(() => {
+      const latch = SessionWorkflowHold.latchFor({
+        time: { created: 1 },
+        paused: { reason: "aborted", since: 5 },
+      })
 
-    expect(latch).toBeUndefined()
-  })
+      expect(latch).toBeUndefined()
+    }))
 
-  test("refuses every record the latch does not apply to", () => {
-    expect(SessionWorkflowHold.latchFor(undefined)).toBeUndefined()
-    // No `time` at all is unreachable state rather than a stoppable session.
-    expect(SessionWorkflowHold.latchFor({})).toBeUndefined()
-    expect(SessionWorkflowHold.latchFor({ time: { created: 1, archived: 2 } })).toBeUndefined()
-    expect(SessionWorkflowHold.latchFor({ time: { created: 1 }, interaction: { mode: "unattended" } })).toBeUndefined()
-    expect(SessionWorkflowHold.latchFor({ time: { created: 1 }, cortex: cortexDelegation() })).toBeUndefined()
-  })
+  test("refuses every record the latch does not apply to", () =>
+    runtime.run(() => {
+      expect(SessionWorkflowHold.latchFor(undefined)).toBeUndefined()
+      // No `time` at all is unreachable state rather than a stoppable session.
+      expect(SessionWorkflowHold.latchFor({})).toBeUndefined()
+      expect(SessionWorkflowHold.latchFor({ time: { created: 1, archived: 2 } })).toBeUndefined()
+      expect(
+        SessionWorkflowHold.latchFor({ time: { created: 1 }, interaction: { mode: "unattended" } }),
+      ).toBeUndefined()
+      expect(SessionWorkflowHold.latchFor({ time: { created: 1 }, cortex: cortexDelegation() })).toBeUndefined()
+    }))
 
-  test("latches a resident session and does not churn an existing pause", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const scopeID = ScopeContext.current.scope.id
-        const session = await Session.create({ title: "Held by a workflow" })
+  test("latches a resident session and does not churn an existing pause", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const scopeID = ScopeContext.current.scope.id
+          const session = await Session.create({ title: "Held by a workflow" })
 
-        expect(await SessionWorkflowHold.latch(scopeID, session.id)).toBe(true)
-        const info = await storedInfo(scopeID, session.id)
-        expect(info?.paused).toMatchObject({
-          reason: "workflow",
-          description: SessionWorkflowHold.DESCRIPTION,
-        })
+          expect(await SessionWorkflowHold.latch(scopeID, session.id)).toBe(true)
+          const info = await storedInfo(scopeID, session.id)
+          expect(info?.paused).toMatchObject({
+            reason: "workflow",
+            description: SessionWorkflowHold.DESCRIPTION,
+          })
 
-        // Re-running the upgrade finds the session already stopped, so it must
-        // report no change rather than rewrite `since`.
-        expect(await SessionWorkflowHold.latch(scopeID, session.id)).toBe(false)
-        expect(await storedInfo(scopeID, session.id)).toEqual(info)
-      },
-    })
-  })
-
-  test("matches SessionLifecycle.pause on every session the latch excludes", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const scopeID = ScopeContext.current.scope.id
-
-        // `workflow-hold.ts` mirrors `SessionLifecycle.latchable` because a
-        // migration cannot use the writer. The two rules are one rule owned in
-        // two places, so this pairs them: if either side gains or loses an
-        // exclusion, these assertions fail together rather than drifting.
-        const archived = await Session.create({ title: "Archived" })
-        await Session.update(archived.id, (draft) => {
-          draft.time.archived = Date.now()
-        })
-        const unattended = await Session.create({
-          title: "Machine session",
-          interaction: SessionInteraction.unattended("channel:test"),
-        })
-        const cortex = await Session.create({ title: "Delegated", cortex: cortexDelegation() })
-
-        for (const session of [archived, unattended, cortex]) {
+          // Re-running the upgrade finds the session already stopped, so it must
+          // report no change rather than rewrite `since`.
           expect(await SessionWorkflowHold.latch(scopeID, session.id)).toBe(false)
-          expect((await storedInfo(scopeID, session.id))?.paused).toBeUndefined()
-          expect(await SessionLifecycle.pause({ sessionID: session.id, reason: "workflow" })).toBe(false)
-          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-        }
+          expect(await storedInfo(scopeID, session.id)).toEqual(info)
+        },
+      })
+    }))
 
-        // The converse keeps the pairing from passing vacuously: an ordinary
-        // interactive session is latchable through both rules.
-        const ordinary = await Session.create({ title: "Interactive" })
-        expect(await SessionWorkflowHold.latch(scopeID, ordinary.id)).toBe(true)
-      },
-    })
-  })
+  test("matches SessionLifecycle.pause on every session the latch excludes", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const scopeID = ScopeContext.current.scope.id
+
+          // `workflow-hold.ts` mirrors `SessionLifecycle.latchable` because a
+          // migration cannot use the writer. The two rules are one rule owned in
+          // two places, so this pairs them: if either side gains or loses an
+          // exclusion, these assertions fail together rather than drifting.
+          const archived = await Session.create({ title: "Archived" })
+          await Session.update(archived.id, (draft) => {
+            draft.time.archived = Date.now()
+          })
+          const unattended = await Session.create({
+            title: "Machine session",
+            interaction: SessionInteraction.unattended("channel:test"),
+          })
+          const cortex = await Session.create({ title: "Delegated", cortex: cortexDelegation() })
+
+          for (const session of [archived, unattended, cortex]) {
+            expect(await SessionWorkflowHold.latch(scopeID, session.id)).toBe(false)
+            expect((await storedInfo(scopeID, session.id))?.paused).toBeUndefined()
+            expect(await SessionLifecycle.pause({ sessionID: session.id, reason: "workflow" })).toBe(false)
+            expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+          }
+
+          // The converse keeps the pairing from passing vacuously: an ordinary
+          // interactive session is latchable through both rules.
+          const ordinary = await Session.create({ title: "Interactive" })
+          expect(await SessionWorkflowHold.latch(scopeID, ordinary.id)).toBe(true)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

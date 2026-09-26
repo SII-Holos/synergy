@@ -114,6 +114,12 @@
     flex-shrink: 0;
   }
 
+  [data-slot="session-review-operation"] {
+    color: var(--text-base);
+    margin-inline-start: 8px;
+    white-space: nowrap;
+  }
+
   [data-slot="session-review-view-button"] {
     display: flex;
     align-items: center;

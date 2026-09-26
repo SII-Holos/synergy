@@ -13,6 +13,9 @@ import {
 import { MacBackend } from "../../src/sandbox/macos"
 import { MacOSPolicy } from "../../src/sandbox/macos-policy"
 import { LinuxBackend } from "../../src/sandbox/linux"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const WORKSPACE = "/Users/test/synergy-control-profile"
 
@@ -30,74 +33,61 @@ function profile(overrides: Partial<Parameters<typeof buildPermissionProfile>[0]
 }
 
 describe("sandbox network parity (PR #1308 follow-up)", () => {
-  test("approvedNetwork=true compiles to full network mode", () => {
-    expect(profile({ approvedNetwork: true }).network.mode).toBe("full")
-  })
+  test("approvedNetwork=true compiles to full network mode", () =>
+    runtime.run(() => {
+      expect(profile({ approvedNetwork: true }).network.mode).toBe("full")
+    }))
 
-  test("approvedNetwork=false compiles to restricted network mode", () => {
-    expect(profile({ approvedNetwork: false }).network.mode).toBe("restricted")
-  })
+  test("approvedNetwork=false compiles to restricted network mode", () =>
+    runtime.run(() => {
+      expect(profile({ approvedNetwork: false }).network.mode).toBe("restricted")
+    }))
 
-  test("macOS deny-default wrapper allows network* only when networkMode is full", () => {
-    const full = MacBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "macos",
-      networkMode: "full",
-    })
-    const restricted = MacBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "macos",
-      networkMode: "restricted",
-    })
-    expect(full.sandboxed).toBe(true)
-    expect(restricted.sandboxed).toBe(true)
-    const fullProfile = fs.readFileSync(full.tempPath!, "utf8")
-    const restrictedProfile = fs.readFileSync(restricted.tempPath!, "utf8")
-    expect(fullProfile).toContain("(allow network*)")
-    expect(restrictedProfile).not.toContain("(allow network*)")
-    MacBackend.cleanupTemp(full.tempPath!)
-    MacBackend.cleanupTemp(restricted.tempPath!)
-  })
+  test("macOS deny-default wrapper allows network* only when networkMode is full", () =>
+    runtime.run(() => {
+      const full = MacBackend.prepare({
+        command: "/bin/sh",
+        args: ["-c", "true"],
+        workspace: WORKSPACE,
+        sandboxMode: "workspace_write",
+        forcePlatform: "macos",
+        networkMode: "full",
+      })
+      const restricted = MacBackend.prepare({
+        command: "/bin/sh",
+        args: ["-c", "true"],
+        workspace: WORKSPACE,
+        sandboxMode: "workspace_write",
+        forcePlatform: "macos",
+        networkMode: "restricted",
+      })
+      expect(full.sandboxed).toBe(true)
+      expect(restricted.sandboxed).toBe(true)
+      const fullProfile = fs.readFileSync(full.tempPath!, "utf8")
+      const restrictedProfile = fs.readFileSync(restricted.tempPath!, "utf8")
+      expect(fullProfile).toContain("(allow network*)")
+      expect(restrictedProfile).not.toContain("(allow network*)")
+      MacBackend.cleanupTemp(full.tempPath!)
+      MacBackend.cleanupTemp(restricted.tempPath!)
+    }))
 
-  test("macOS deny-default defaults to restricted when networkMode is absent", () => {
-    const wrapper = MacBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "macos",
-    })
-    const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
-    expect(sbpl).not.toContain("(allow network*)")
-    MacBackend.cleanupTemp(wrapper.tempPath!)
-  })
+  test("macOS deny-default defaults to restricted when networkMode is absent", () =>
+    runtime.run(() => {
+      const wrapper = MacBackend.prepare({
+        command: "/bin/sh",
+        args: ["-c", "true"],
+        workspace: WORKSPACE,
+        sandboxMode: "workspace_write",
+        forcePlatform: "macos",
+      })
+      const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
+      expect(sbpl).not.toContain("(allow network*)")
+      MacBackend.cleanupTemp(wrapper.tempPath!)
+    }))
 
-  test("linux helper profile threads networkMode", () => {
-    const wrapper = LinuxBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "linux",
-      forceHelperPath: "/bin/true",
-      forceHelperVerified: true,
-      networkMode: "full",
-    })
-    expect(wrapper.sandboxed).toBe(true)
-    const helperProfile = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
-    expect(helperProfile.network.mode).toBe("full")
-    fs.unlinkSync(wrapper.tempPath!)
-  })
-
-  test("linux helper profile reaches network config paths under every network mode", () => {
-    const prepareFor = (networkMode: "full" | "restricted") =>
-      LinuxBackend.prepare({
+  test("linux helper profile threads networkMode", () =>
+    runtime.run(() => {
+      const wrapper = LinuxBackend.prepare({
         command: "/bin/sh",
         args: ["-c", "true"],
         workspace: WORKSPACE,
@@ -105,134 +95,163 @@ describe("sandbox network parity (PR #1308 follow-up)", () => {
         forcePlatform: "linux",
         forceHelperPath: "/bin/true",
         forceHelperVerified: true,
-        networkMode,
+        networkMode: "full",
       })
-    const full = prepareFor("full")
-    const restricted = prepareFor("restricted")
-    expect(full.sandboxed).toBe(true)
-    expect(restricted.sandboxed).toBe(true)
-    const fullProfile = JSON.parse(fs.readFileSync(full.tempPath!, "utf8"))
-    const restrictedProfile = JSON.parse(fs.readFileSync(restricted.tempPath!, "utf8"))
+      expect(wrapper.sandboxed).toBe(true)
+      const helperProfile = JSON.parse(fs.readFileSync(wrapper.tempPath!, "utf8"))
+      expect(helperProfile.network.mode).toBe("full")
+      fs.unlinkSync(wrapper.tempPath!)
+    }))
 
-    // Reads are global under the deny-list model, so /etc/resolv.conf and the
-    // CA stores are reachable in every network mode rather than needing a
-    // per-mode bind. Network mode still selects the namespace/unshare policy.
-    expect(fullProfile.fileSystem.readableRoots).toEqual(["/"])
-    expect(restrictedProfile.fileSystem.readableRoots).toEqual(["/"])
-    expect(fullProfile.network.mode).toBe("full")
-    expect(restrictedProfile.network.mode).toBe("restricted")
-    fs.unlinkSync(full.tempPath!)
-    fs.unlinkSync(restricted.tempPath!)
-  })
+  test("linux helper profile reaches network config paths under every network mode", () =>
+    runtime.run(() => {
+      const prepareFor = (networkMode: "full" | "restricted") =>
+        LinuxBackend.prepare({
+          command: "/bin/sh",
+          args: ["-c", "true"],
+          workspace: WORKSPACE,
+          sandboxMode: "workspace_write",
+          forcePlatform: "linux",
+          forceHelperPath: "/bin/true",
+          forceHelperVerified: true,
+          networkMode,
+        })
+      const full = prepareFor("full")
+      const restricted = prepareFor("restricted")
+      expect(full.sandboxed).toBe(true)
+      expect(restricted.sandboxed).toBe(true)
+      const fullProfile = JSON.parse(fs.readFileSync(full.tempPath!, "utf8"))
+      const restrictedProfile = JSON.parse(fs.readFileSync(restricted.tempPath!, "utf8"))
+
+      // Reads are global under the deny-list model, so /etc/resolv.conf and the
+      // CA stores are reachable in every network mode rather than needing a
+      // per-mode bind. Network mode still selects the namespace/unshare policy.
+      expect(fullProfile.fileSystem.readableRoots).toEqual(["/"])
+      expect(restrictedProfile.fileSystem.readableRoots).toEqual(["/"])
+      expect(fullProfile.network.mode).toBe("full")
+      expect(restrictedProfile.network.mode).toBe("restricted")
+      fs.unlinkSync(full.tempPath!)
+      fs.unlinkSync(restricted.tempPath!)
+    }))
 })
 
 describe("sandbox git write parity (PR #1308 follow-up)", () => {
-  test("readOnlySubpaths protects .git hooks/config, not the whole .git directory", () => {
-    const p = profile()
-    expect(p.fileSystem.readOnlySubpaths).toContain(`${WORKSPACE}/.git/hooks`)
-    expect(p.fileSystem.readOnlySubpaths).toContain(`${WORKSPACE}/.git/config`)
-    expect(p.fileSystem.readOnlySubpaths).not.toContain(`${WORKSPACE}/.git`)
-  })
+  test("readOnlySubpaths protects .git hooks/config, not the whole .git directory", () =>
+    runtime.run(() => {
+      const p = profile()
+      expect(p.fileSystem.readOnlySubpaths).toContain(`${WORKSPACE}/.git/hooks`)
+      expect(p.fileSystem.readOnlySubpaths).toContain(`${WORKSPACE}/.git/config`)
+      expect(p.fileSystem.readOnlySubpaths).not.toContain(`${WORKSPACE}/.git`)
+    }))
 
-  test("protectedMetadataNames keeps .agents/.codex blanket denies and drops the .git blanket", () => {
-    const names = profile().fileSystem.protectedMetadataNames
-    expect(names).toContain(".agents")
-    expect(names).toContain(".codex")
-    expect(names).not.toContain(".git")
-  })
+  test("protectedMetadataNames keeps .agents/.codex blanket denies and drops the .git blanket", () =>
+    runtime.run(() => {
+      const names = profile().fileSystem.protectedMetadataNames
+      expect(names).toContain(".agents")
+      expect(names).toContain(".codex")
+      expect(names).not.toContain(".git")
+    }))
 
-  test("gitProtectedSubpaths expands per writable root", () => {
-    expect(gitProtectedSubpaths("/ws")).toEqual(["/ws/.git/hooks", "/ws/.git/config"])
-  })
+  test("gitProtectedSubpaths expands per writable root", () =>
+    runtime.run(() => {
+      expect(gitProtectedSubpaths("/ws")).toEqual(["/ws/.git/hooks", "/ws/.git/config"])
+    }))
 
-  test("extra writable roots get the same hooks/config expansion", () => {
-    const extra = "/Users/test/other-project"
-    const p = profile({ approvedWritePaths: [extra] })
-    expect(p.fileSystem.readOnlySubpaths).toContain(`${extra}/.git/hooks`)
-    expect(p.fileSystem.readOnlySubpaths).toContain(`${extra}/.git/config`)
-    expect(p.fileSystem.readOnlySubpaths).not.toContain(`${extra}/.git`)
-  })
+  test("extra writable roots get the same hooks/config expansion", () =>
+    runtime.run(() => {
+      const extra = "/Users/test/other-project"
+      const p = profile({ approvedWritePaths: [extra] })
+      expect(p.fileSystem.readOnlySubpaths).toContain(`${extra}/.git/hooks`)
+      expect(p.fileSystem.readOnlySubpaths).toContain(`${extra}/.git/config`)
+      expect(p.fileSystem.readOnlySubpaths).not.toContain(`${extra}/.git`)
+    }))
 })
 
 describe("sandbox read-root parity (PR #1308 follow-up)", () => {
-  test("macOS platform read roots cover developer toolchains", () => {
-    const roots = macosPlatformReadRoots()
-    expect(roots).toContain("/opt/homebrew")
-    expect(roots).toContain("/usr/local")
-    expect(roots).toContain("/etc")
-    expect(roots).toContain("/Library/Developer/CommandLineTools")
-    // macOS /bin/sh is a universal-binary selector that opens /var/select/sh
-    // to pick its bash variant; deny-default profiles must read it or every
-    // wrapped command logs "Error opening /private/var/select/sh".
-    expect(roots).toContain("/var/select")
-    expect(roots).toContain("/private/var/select")
-    expect(roots).not.toContain("/tmp")
-    expect(roots).not.toContain("/private/tmp")
-  })
+  test("macOS platform read roots cover developer toolchains", () =>
+    runtime.run(() => {
+      const roots = macosPlatformReadRoots()
+      expect(roots).toContain("/opt/homebrew")
+      expect(roots).toContain("/usr/local")
+      expect(roots).toContain("/etc")
+      expect(roots).toContain("/Library/Developer/CommandLineTools")
+      // macOS /bin/sh is a universal-binary selector that opens /var/select/sh
+      // to pick its bash variant; deny-default profiles must read it or every
+      // wrapped command logs "Error opening /private/var/select/sh".
+      expect(roots).toContain("/var/select")
+      expect(roots).toContain("/private/var/select")
+      expect(roots).not.toContain("/tmp")
+      expect(roots).not.toContain("/private/tmp")
+    }))
 
-  test("deny-default profile grants reads globally instead of enumerating PATH_READ roots", () => {
-    const wrapper = MacBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "macos",
-    })
-    try {
-      const dArgs = wrapper.args.filter((arg) => /^PATH_READ_\d+=/.test(arg))
-      expect(dArgs).toHaveLength(0)
-      const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
-      // The /bin/sh selector path and every other host path are covered by
-      // the global read allow — the read model is a deny list, not an
-      // enumeration of runtime read roots.
-      expect(sbpl).toContain("(allow file-read*)")
-    } finally {
-      MacBackend.cleanupTemp(wrapper.tempPath!)
-    }
-  })
-
-  test("deny-default profile denies reads only for credential and sensitive data paths", () => {
-    if (process.platform !== "darwin") return
-    const wrapper = MacBackend.prepare({
-      command: "/bin/sh",
-      args: ["-c", "true"],
-      workspace: WORKSPACE,
-      sandboxMode: "workspace_write",
-      forcePlatform: "macos",
-    })
-    const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
-    MacBackend.cleanupTemp(wrapper.tempPath!)
-    // macOS firmlinks the home to its /private/... spelling, so a compiled rule
-    // may carry either form; the protected relative location is the invariant.
-    const homes = readDenyHomeDirs().flatMap((home) => {
-      const canonical = home.replace(/\/+$/, "")
-      let resolved: string
+  test("deny-default profile grants reads globally instead of enumerating PATH_READ roots", () =>
+    runtime.run(() => {
+      const wrapper = MacBackend.prepare({
+        command: "/bin/sh",
+        args: ["-c", "true"],
+        workspace: WORKSPACE,
+        sandboxMode: "workspace_write",
+        forcePlatform: "macos",
+      })
       try {
-        resolved = fs.realpathSync(canonical)
-      } catch {
-        resolved = canonical
+        const dArgs = wrapper.args.filter((arg) => /^PATH_READ_\d+=/.test(arg))
+        expect(dArgs).toHaveLength(0)
+        const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
+        // The /bin/sh selector path and every other host path are covered by
+        // the global read allow — the read model is a deny list, not an
+        // enumeration of runtime read roots.
+        expect(sbpl).toContain("(allow file-read*)")
+      } finally {
+        MacBackend.cleanupTemp(wrapper.tempPath!)
       }
-      return [canonical, resolved]
-    })
-    const expected = new Set(
-      readDenyHomeDirs().flatMap((home) =>
-        READ_DENY_PATHS(home).map((p) => p.slice(home.replace(/\/+$/, "").length + 1)),
-      ),
-    )
-    const denyLines = sbpl.split("\n").filter((line) => line.startsWith("(deny file-read*"))
-    expect(denyLines.length).toBeGreaterThan(0)
-    for (const line of denyLines) {
-      const match = line.match(/\(subpath "([^"]+)"\)/)
-      expect(match).not.toBeNull()
-      const home = homes.find((h) => match![1].startsWith(h + "/"))
-      expect(home).toBeDefined()
-      expect(expected.has(match![1].slice(home!.length + 1))).toBe(true)
-    }
-  })
+    }))
 
-  test("defaultRuntimeReadRoots stays stable for non-darwin platforms", () => {
-    const before = defaultRuntimeReadRoots("/home/user")
-    expect(before).toContain("/usr/lib")
-    expect(before).not.toContain("/opt/homebrew")
-  })
+  test("deny-default profile denies reads only for credential and sensitive data paths", () =>
+    runtime.run(() => {
+      if (process.platform !== "darwin") return
+      const wrapper = MacBackend.prepare({
+        command: "/bin/sh",
+        args: ["-c", "true"],
+        workspace: WORKSPACE,
+        sandboxMode: "workspace_write",
+        forcePlatform: "macos",
+      })
+      const sbpl = fs.readFileSync(wrapper.tempPath!, "utf8")
+      MacBackend.cleanupTemp(wrapper.tempPath!)
+      // macOS firmlinks the home to its /private/... spelling, so a compiled rule
+      // may carry either form; the protected relative location is the invariant.
+      const homes = readDenyHomeDirs().flatMap((home) => {
+        const canonical = home.replace(/\/+$/, "")
+        let resolved: string
+        try {
+          resolved = fs.realpathSync(canonical)
+        } catch {
+          resolved = canonical
+        }
+        return [canonical, resolved]
+      })
+      const expected = new Set(
+        readDenyHomeDirs().flatMap((home) =>
+          READ_DENY_PATHS(home).map((p) => p.slice(home.replace(/\/+$/, "").length + 1)),
+        ),
+      )
+      const denyLines = sbpl.split("\n").filter((line) => line.startsWith("(deny file-read*"))
+      expect(denyLines.length).toBeGreaterThan(0)
+      for (const line of denyLines) {
+        const match = line.match(/\(subpath "([^"]+)"\)/)
+        expect(match).not.toBeNull()
+        const home = homes.find((h) => match![1].startsWith(h + "/"))
+        expect(home).toBeDefined()
+        expect(expected.has(match![1].slice(home!.length + 1))).toBe(true)
+      }
+    }))
+
+  test("defaultRuntimeReadRoots stays stable for non-darwin platforms", () =>
+    runtime.run(() => {
+      const before = defaultRuntimeReadRoots("/home/user")
+      expect(before).toContain("/usr/lib")
+      expect(before).not.toContain("/opt/homebrew")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -7,6 +7,9 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionDrive } from "@ericsanchezok/synergy-harness/session/drive"
 import { ChannelConversationAcceptance } from "../../src/channel/conversation-acceptance"
 import { ChannelBusyHandoff } from "../../src/channel/busy-handoff"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 /**
  * The provider-lane acceptance contract: a same-scope lane awaits only durable
@@ -19,433 +22,446 @@ import { ChannelBusyHandoff } from "../../src/channel/busy-handoff"
  * calls, without requiring a live provider connection or LLM.
  */
 describe("Channel conversation acceptance lane", () => {
-  test("first acceptance resolves while its execution remains pending", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const execution = Promise.withResolvers<void>()
-        const acceptance = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_first",
-          parts: [{ type: "text", text: "first" }],
-          metadata: { channelReply: true },
-          execute: () => execution.promise,
-        })
+  test("first acceptance resolves while its execution remains pending", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const execution = Promise.withResolvers<void>()
+          const acceptance = await ChannelConversationAcceptance.accept({
+            sessionID: session.id,
+            deliveryKey: "channel:feishu:acct:msg_first",
+            parts: [{ type: "text", text: "first" }],
+            metadata: { channelReply: true },
+            execute: () => execution.promise,
+          })
 
-        expect(acceptance.accepted).toBe(true)
-        if (!acceptance.accepted) throw new Error("expected acceptance")
-        // The execution is separate and still pending.
-        expect(await Promise.race([acceptance.execution.then(() => "done"), Promise.resolve("pending")])).toBe(
-          "pending",
-        )
-        const accepted = await SessionInbox.list(session.id)
-        expect(accepted).toHaveLength(1)
-        expect(accepted[0]?.deliveryKey).toBe("channel:feishu:acct:msg_first")
+          expect(acceptance.accepted).toBe(true)
+          if (!acceptance.accepted) throw new Error("expected acceptance")
+          // The execution is separate and still pending.
+          expect(await Promise.race([acceptance.execution.then(() => "done"), Promise.resolve("pending")])).toBe(
+            "pending",
+          )
+          const accepted = await SessionInbox.list(session.id)
+          expect(accepted).toHaveLength(1)
+          expect(accepted[0]?.deliveryKey).toBe("channel:feishu:acct:msg_first")
 
-        let replayExecuted = false
-        const replay = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_first",
-          parts: [{ type: "text", text: "first" }],
-          metadata: { channelReply: true },
-          execute: async () => {
-            replayExecuted = true
-          },
-        })
-        expect(replay.accepted).toBe(true)
-        expect(replayExecuted).toBe(false)
-        expect(await SessionInbox.list(session.id)).toHaveLength(1)
+          let replayExecuted = false
+          const replay = await ChannelConversationAcceptance.accept({
+            sessionID: session.id,
+            deliveryKey: "channel:feishu:acct:msg_first",
+            parts: [{ type: "text", text: "first" }],
+            metadata: { channelReply: true },
+            execute: async () => {
+              replayExecuted = true
+            },
+          })
+          expect(replay.accepted).toBe(true)
+          expect(replayExecuted).toBe(false)
+          expect(await SessionInbox.list(session.id)).toHaveLength(1)
 
-        execution.resolve()
-        await acceptance.execution
-      },
-    })
-  })
+          execution.resolve()
+          await acceptance.execution
+        },
+      })
+    }))
 
-  test("busy session acceptance durably queues one inbox task without running the handler", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const lease = SessionManager.acquire(session.id)
-        expect(lease).toBeDefined()
-        if (!lease) throw new Error("expected lease")
+  test("busy session acceptance durably queues one inbox task without running the handler", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+          if (!lease) throw new Error("expected lease")
 
-        try {
+          try {
+            let executed = false
+            const acceptance = await ChannelConversationAcceptance.accept({
+              sessionID: session.id,
+              deliveryKey: "channel:feishu:acct:msg_busy",
+              parts: [{ type: "text", text: "busy" }],
+              metadata: { channelReply: true },
+              execute: async () => {
+                executed = true
+              },
+            })
+            expect(acceptance.accepted).toBe(true)
+            if (!acceptance.accepted) throw new Error("expected acceptance")
+            expect(executed).toBe(false)
+
+            const items = await SessionInbox.list(session.id)
+            expect(items).toHaveLength(1)
+            expect(items[0]?.deliveryKey).toBe("channel:feishu:acct:msg_busy")
+            await acceptance.execution
+          } finally {
+            await SessionManager.release(lease, { requestNextWork: false })
+          }
+        },
+      })
+    }))
+
+  test("same-session second acceptance is durably queued while the first execution remains pending", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const gate = Promise.withResolvers<void>()
+          const first = await ChannelConversationAcceptance.accept({
+            sessionID: session.id,
+            deliveryKey: "channel:feishu:acct:msg_a",
+            parts: [{ type: "text", text: "a" }],
+            metadata: { channelReply: true },
+            execute: () => gate.promise,
+          })
+          expect(first.accepted).toBe(true)
+          expect(SessionManager.isRunning(session.id)).toBe(true)
+
+          let secondExecuted = false
+          const second = await ChannelConversationAcceptance.accept({
+            sessionID: session.id,
+            deliveryKey: "channel:feishu:acct:msg_b",
+            parts: [{ type: "text", text: "b" }],
+            metadata: { channelReply: true },
+            execute: async () => {
+              secondExecuted = true
+            },
+          })
+          expect(second.accepted).toBe(true)
+          expect(secondExecuted).toBe(false)
+
+          const items = await SessionInbox.list(session.id)
+          expect(items.map((item) => item.deliveryKey)).toEqual([
+            "channel:feishu:acct:msg_a",
+            "channel:feishu:acct:msg_b",
+          ])
+
+          gate.resolve()
+          if (first.accepted) await first.execution
+        },
+      })
+    }))
+
+  test("does not run a newer direct execution ahead of an existing queued task", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await SessionInbox.deliverUnique({
+            sessionID: session.id,
+            deliveryKey: "channel:feishu:acct:msg_queued_first",
+            mode: "task",
+            message: {
+              role: "user",
+              parts: [{ type: "text", text: "queued first" }],
+            },
+          })
+
           let executed = false
           const acceptance = await ChannelConversationAcceptance.accept({
             sessionID: session.id,
-            deliveryKey: "channel:feishu:acct:msg_busy",
-            parts: [{ type: "text", text: "busy" }],
+            deliveryKey: "channel:feishu:acct:msg_newer",
+            parts: [{ type: "text", text: "newer" }],
             metadata: { channelReply: true },
             execute: async () => {
               executed = true
             },
           })
+
           expect(acceptance.accepted).toBe(true)
-          if (!acceptance.accepted) throw new Error("expected acceptance")
           expect(executed).toBe(false)
+          expect((await SessionInbox.list(session.id)).map((item) => item.deliveryKey)).toEqual([
+            "channel:feishu:acct:msg_queued_first",
+            "channel:feishu:acct:msg_newer",
+          ])
+        },
+      })
+    }))
 
-          const items = await SessionInbox.list(session.id)
-          expect(items).toHaveLength(1)
-          expect(items[0]?.deliveryKey).toBe("channel:feishu:acct:msg_busy")
-          await acceptance.execution
-        } finally {
-          await SessionManager.release(lease, { requestNextWork: false })
-        }
-      },
-    })
-  })
-
-  test("same-session second acceptance is durably queued while the first execution remains pending", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const gate = Promise.withResolvers<void>()
-        const first = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_a",
-          parts: [{ type: "text", text: "a" }],
-          metadata: { channelReply: true },
-          execute: () => gate.promise,
-        })
-        expect(first.accepted).toBe(true)
-        expect(SessionManager.isRunning(session.id)).toBe(true)
-
-        let secondExecuted = false
-        const second = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_b",
-          parts: [{ type: "text", text: "b" }],
-          metadata: { channelReply: true },
-          execute: async () => {
-            secondExecuted = true
-          },
-        })
-        expect(second.accepted).toBe(true)
-        expect(secondExecuted).toBe(false)
-
-        const items = await SessionInbox.list(session.id)
-        expect(items.map((item) => item.deliveryKey)).toEqual([
-          "channel:feishu:acct:msg_a",
-          "channel:feishu:acct:msg_b",
-        ])
-
-        gate.resolve()
-        if (first.accepted) await first.execution
-      },
-    })
-  })
-
-  test("does not run a newer direct execution ahead of an existing queued task", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        await SessionInbox.deliverUnique({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_queued_first",
-          mode: "task",
-          message: {
-            role: "user",
-            parts: [{ type: "text", text: "queued first" }],
-          },
-        })
-
-        let executed = false
-        const acceptance = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_newer",
-          parts: [{ type: "text", text: "newer" }],
-          metadata: { channelReply: true },
-          execute: async () => {
-            executed = true
-          },
-        })
-
-        expect(acceptance.accepted).toBe(true)
-        expect(executed).toBe(false)
-        expect((await SessionInbox.list(session.id)).map((item) => item.deliveryKey)).toEqual([
-          "channel:feishu:acct:msg_queued_first",
-          "channel:feishu:acct:msg_newer",
-        ])
-      },
-    })
-  })
-
-  test("replaying a materialized direct delivery does not execute again", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const deliveryKey = "channel:feishu:acct:msg_direct_replay"
-        await SessionInbox.deliverUnique({
-          sessionID: session.id,
-          deliveryKey,
-          mode: "task",
-          message: {
-            role: "user",
-            parts: [{ type: "text", text: "already handled" }],
-          },
-        })
-        const item = (await SessionInbox.list(session.id))[0]
-        await SessionInbox.materializeItem(item)
-        await SessionInbox.commitReady(session.id, [item.id])
-
-        let executed = false
-        const replay = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey,
-          parts: [{ type: "text", text: "already handled" }],
-          metadata: { channelReply: true },
-          execute: async () => {
-            executed = true
-          },
-        })
-
-        expect(replay.accepted).toBe(true)
-        expect(executed).toBe(false)
-        expect(SessionManager.isRunning(session.id)).toBe(false)
-        expect(await SessionInbox.list(session.id)).toHaveLength(0)
-      },
-    })
-  })
-
-  test("replaying the same delivery key does not create a duplicate inbox item", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const lease = SessionManager.acquire(session.id)
-        expect(lease).toBeDefined()
-        if (!lease) throw new Error("expected lease")
-
-        try {
-          const first = await ChannelConversationAcceptance.accept({
+  test("replaying a materialized direct delivery does not execute again", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const deliveryKey = "channel:feishu:acct:msg_direct_replay"
+          await SessionInbox.deliverUnique({
             sessionID: session.id,
-            deliveryKey: "channel:feishu:acct:msg_same",
-            parts: [{ type: "text", text: "same" }],
-            metadata: { channelReply: true },
-            execute: async () => {},
+            deliveryKey,
+            mode: "task",
+            message: {
+              role: "user",
+              parts: [{ type: "text", text: "already handled" }],
+            },
           })
-          expect(first.accepted).toBe(true)
+          const item = (await SessionInbox.list(session.id))[0]
+          await SessionInbox.materializeItem(item)
+          await SessionInbox.commitReady(session.id, [item.id])
 
+          let executed = false
           const replay = await ChannelConversationAcceptance.accept({
             sessionID: session.id,
-            deliveryKey: "channel:feishu:acct:msg_same",
-            parts: [{ type: "text", text: "same" }],
+            deliveryKey,
+            parts: [{ type: "text", text: "already handled" }],
+            metadata: { channelReply: true },
+            execute: async () => {
+              executed = true
+            },
+          })
+
+          expect(replay.accepted).toBe(true)
+          expect(executed).toBe(false)
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+          expect(await SessionInbox.list(session.id)).toHaveLength(0)
+        },
+      })
+    }))
+
+  test("replaying the same delivery key does not create a duplicate inbox item", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+          if (!lease) throw new Error("expected lease")
+
+          try {
+            const first = await ChannelConversationAcceptance.accept({
+              sessionID: session.id,
+              deliveryKey: "channel:feishu:acct:msg_same",
+              parts: [{ type: "text", text: "same" }],
+              metadata: { channelReply: true },
+              execute: async () => {},
+            })
+            expect(first.accepted).toBe(true)
+
+            const replay = await ChannelConversationAcceptance.accept({
+              sessionID: session.id,
+              deliveryKey: "channel:feishu:acct:msg_same",
+              parts: [{ type: "text", text: "same" }],
+              metadata: { channelReply: true },
+              execute: async () => {},
+            })
+            expect(replay.accepted).toBe(true)
+            expect(await SessionInbox.list(session.id)).toHaveLength(1)
+          } finally {
+            await SessionManager.release(lease, { requestNextWork: false })
+          }
+        },
+      })
+    }))
+
+  test("different keys accept in parallel", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const first = await Session.create({})
+          const second = await Session.create({})
+          const gate = Promise.withResolvers<void>()
+
+          const firstAcceptance = ChannelConversationAcceptance.accept({
+            sessionID: first.id,
+            deliveryKey: "channel:feishu:acct:msg_1",
+            parts: [{ type: "text", text: "one" }],
+            metadata: { channelReply: true },
+            execute: () => gate.promise,
+          })
+          const secondAcceptance = ChannelConversationAcceptance.accept({
+            sessionID: second.id,
+            deliveryKey: "channel:feishu:acct:msg_2",
+            parts: [{ type: "text", text: "two" }],
             metadata: { channelReply: true },
             execute: async () => {},
           })
-          expect(replay.accepted).toBe(true)
-          expect(await SessionInbox.list(session.id)).toHaveLength(1)
-        } finally {
-          await SessionManager.release(lease, { requestNextWork: false })
-        }
-      },
-    })
-  })
 
-  test("different keys accept in parallel", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const first = await Session.create({})
-        const second = await Session.create({})
-        const gate = Promise.withResolvers<void>()
+          // Both acceptances resolve independently; neither waits for the other's execution.
+          const [a, b] = await Promise.all([firstAcceptance, secondAcceptance])
+          expect(a.accepted).toBe(true)
+          expect(b.accepted).toBe(true)
 
-        const firstAcceptance = ChannelConversationAcceptance.accept({
-          sessionID: first.id,
-          deliveryKey: "channel:feishu:acct:msg_1",
-          parts: [{ type: "text", text: "one" }],
-          metadata: { channelReply: true },
-          execute: () => gate.promise,
-        })
-        const secondAcceptance = ChannelConversationAcceptance.accept({
-          sessionID: second.id,
-          deliveryKey: "channel:feishu:acct:msg_2",
-          parts: [{ type: "text", text: "two" }],
-          metadata: { channelReply: true },
-          execute: async () => {},
-        })
+          gate.resolve()
+          if (a.accepted) await a.execution
+          if (b.accepted) await b.execution
+        },
+      })
+    }))
 
-        // Both acceptances resolve independently; neither waits for the other's execution.
-        const [a, b] = await Promise.all([firstAcceptance, secondAcceptance])
-        expect(a.accepted).toBe(true)
-        expect(b.accepted).toBe(true)
-
-        gate.resolve()
-        if (a.accepted) await a.execution
-        if (b.accepted) await b.execution
-      },
-    })
-  })
-
-  test("execution rejection is observed, not unhandled", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const failure = new Error("execution boom")
-        const gate = Promise.withResolvers<void>()
-        const acceptance = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_reject",
-          parts: [{ type: "text", text: "reject" }],
-          metadata: { channelReply: true },
-          execute: () => gate.promise,
-        })
-        expect(acceptance.accepted).toBe(true)
-        if (!acceptance.accepted) throw new Error("expected acceptance")
-        // A later rejection of the tracked execution surfaces to its observer.
-        gate.reject(failure)
-        await expect(acceptance.execution).rejects.toBe(failure)
-      },
-    })
-  })
-
-  test("pre-invoke execution failure is reported by the accepted execution", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const failure = new Error("streaming unavailable")
-        const acceptance = await ChannelConversationAcceptance.accept({
-          sessionID: session.id,
-          deliveryKey: "channel:feishu:acct:msg_sync_fail",
-          parts: [{ type: "text", text: "sync fail" }],
-          metadata: { channelReply: true },
-          execute: async () => {
-            throw failure
-          },
-        })
-        expect(acceptance.accepted).toBe(true)
-        if (!acceptance.accepted) throw new Error("expected acceptance")
-        await expect(acceptance.execution).rejects.toBe(failure)
-        expect(SessionManager.isRunning(session.id)).toBe(false)
-      },
-    })
-  })
-
-  test("release after a completed execution drives a steer item delivered mid-run", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const { SessionInvoke } = await import("@ericsanchezok/synergy-harness/session/invoke")
-        const originalLoop = SessionInvoke.loop
-        const wakes: string[] = []
-        const wake = Promise.withResolvers<string>()
-        let sessionID = ""
-        let otherSessionID = ""
-        ;(SessionInvoke.loop as any) = mock(async (wokenSessionID: string) => {
-          await SessionInbox.drainReady(wokenSessionID)
-          if (wokenSessionID !== sessionID) return
-          wakes.push(wokenSessionID)
-          wake.resolve(wokenSessionID)
-        })
-
-        try {
+  test("execution rejection is observed, not unhandled", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
           const session = await Session.create({})
-          sessionID = session.id
-          const rootID = "msg_acceptance_root"
-          await Session.updateMessage({
-            id: rootID,
-            role: "user",
-            sessionID,
-            time: { created: Date.now() },
-            agent: "synergy",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            isRoot: true,
-            rootID,
-          } as any)
-          await Session.updatePart({
-            id: "prt_acceptance_root",
-            messageID: rootID,
-            sessionID,
-            type: "text",
-            text: "root",
-          })
-
-          const other = await Session.create({})
-          otherSessionID = other.id
-          await SessionInbox.deliverUnique({
-            sessionID: otherSessionID,
-            deliveryKey: "channel:other-session",
-            mode: "task",
-            message: { role: "user", parts: [{ type: "text", text: "Other session work" }] },
-          })
-          await SessionManager.wake(otherSessionID)
-
+          const failure = new Error("execution boom")
+          const gate = Promise.withResolvers<void>()
           const acceptance = await ChannelConversationAcceptance.accept({
-            sessionID,
-            deliveryKey: "channel:feishu:acct:msg_midrun",
-            parts: [{ type: "text", text: "main" }],
+            sessionID: session.id,
+            deliveryKey: "channel:feishu:acct:msg_reject",
+            parts: [{ type: "text", text: "reject" }],
+            metadata: { channelReply: true },
+            execute: () => gate.promise,
+          })
+          expect(acceptance.accepted).toBe(true)
+          if (!acceptance.accepted) throw new Error("expected acceptance")
+          // A later rejection of the tracked execution surfaces to its observer.
+          gate.reject(failure)
+          await expect(acceptance.execution).rejects.toBe(failure)
+        },
+      })
+    }))
+
+  test("pre-invoke execution failure is reported by the accepted execution", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const failure = new Error("streaming unavailable")
+          const acceptance = await ChannelConversationAcceptance.accept({
+            sessionID: session.id,
+            deliveryKey: "channel:feishu:acct:msg_sync_fail",
+            parts: [{ type: "text", text: "sync fail" }],
             metadata: { channelReply: true },
             execute: async () => {
-              // A cortex completion notification lands while the turn runs;
-              // its drive request is dropped because the session is busy.
-              await SessionInbox.deliverUnique({
-                sessionID,
-                deliveryKey: "cortex:taskNotification:ctx_midrun",
-                mode: "steer",
-                message: {
-                  role: "user",
-                  metadata: { source: "cortex" },
-                  parts: [{ type: "text", text: "Cortex task completed" }],
-                },
-              })
+              throw failure
             },
           })
           expect(acceptance.accepted).toBe(true)
           if (!acceptance.accepted) throw new Error("expected acceptance")
-          await acceptance.execution
+          await expect(acceptance.execution).rejects.toBe(failure)
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+        },
+      })
+    }))
 
-          // The steer item must not stay stranded after the lease release.
-          expect(
-            await Promise.race([
-              wake.promise,
-              Bun.sleep(5_000).then(() => {
-                throw new Error("Completed execution release did not drive the mid-run steer item")
-              }),
-            ]),
-          ).toBe(sessionID)
-          expect(wakes).toEqual([sessionID])
-          expect(await SessionInbox.list(sessionID)).toHaveLength(0)
-        } finally {
-          ;(SessionInvoke.loop as any) = originalLoop
-          if (sessionID) SessionManager.unregisterRuntime(sessionID)
-          if (otherSessionID) SessionManager.unregisterRuntime(otherSessionID)
-          SessionDrive.reset()
-        }
-      },
-    })
-  })
+  test("release after a completed execution drives a steer item delivered mid-run", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { SessionInvoke } = await import("@ericsanchezok/synergy-harness/session/invoke")
+          const originalLoop = SessionInvoke.loop
+          const wakes: string[] = []
+          const wake = Promise.withResolvers<string>()
+          let sessionID = ""
+          let otherSessionID = ""
+          ;(SessionInvoke.loop as any) = mock(async (wokenSessionID: string) => {
+            await SessionInbox.drainReady(wokenSessionID)
+            if (wokenSessionID !== sessionID) return
+            wakes.push(wokenSessionID)
+            wake.resolve(wokenSessionID)
+          })
 
-  test("delivery key is stable and unique across messages", async () => {
-    const a = ChannelBusyHandoff.deliveryKeyForMessage({
-      channelType: "feishu",
-      accountId: "acct",
-      messageId: "m1",
-    })
-    const b = ChannelBusyHandoff.deliveryKeyForMessage({
-      channelType: "feishu",
-      accountId: "acct",
-      messageId: "m2",
-    })
-    expect(a).toBe("channel:feishu:acct:m1")
-    expect(b).toBe("channel:feishu:acct:m2")
-    expect(a).not.toBe(b)
-  })
+          try {
+            const session = await Session.create({})
+            sessionID = session.id
+            const rootID = "msg_acceptance_root"
+            await Session.updateMessage({
+              id: rootID,
+              role: "user",
+              sessionID,
+              time: { created: Date.now() },
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              isRoot: true,
+              rootID,
+            } as any)
+            await Session.updatePart({
+              id: "prt_acceptance_root",
+              messageID: rootID,
+              sessionID,
+              type: "text",
+              text: "root",
+            })
+
+            const other = await Session.create({})
+            otherSessionID = other.id
+            await SessionInbox.deliverUnique({
+              sessionID: otherSessionID,
+              deliveryKey: "channel:other-session",
+              mode: "task",
+              message: { role: "user", parts: [{ type: "text", text: "Other session work" }] },
+            })
+            await SessionManager.wake(otherSessionID)
+
+            const acceptance = await ChannelConversationAcceptance.accept({
+              sessionID,
+              deliveryKey: "channel:feishu:acct:msg_midrun",
+              parts: [{ type: "text", text: "main" }],
+              metadata: { channelReply: true },
+              execute: async () => {
+                // A cortex completion notification lands while the turn runs;
+                // its drive request is dropped because the session is busy.
+                await SessionInbox.deliverUnique({
+                  sessionID,
+                  deliveryKey: "cortex:taskNotification:ctx_midrun",
+                  mode: "steer",
+                  message: {
+                    role: "user",
+                    metadata: { source: "cortex" },
+                    parts: [{ type: "text", text: "Cortex task completed" }],
+                  },
+                })
+              },
+            })
+            expect(acceptance.accepted).toBe(true)
+            if (!acceptance.accepted) throw new Error("expected acceptance")
+            await acceptance.execution
+
+            // The steer item must not stay stranded after the lease release.
+            expect(
+              await Promise.race([
+                wake.promise,
+                Bun.sleep(5_000).then(() => {
+                  throw new Error("Completed execution release did not drive the mid-run steer item")
+                }),
+              ]),
+            ).toBe(sessionID)
+            expect(wakes).toEqual([sessionID])
+            expect(await SessionInbox.list(sessionID)).toHaveLength(0)
+          } finally {
+            ;(SessionInvoke.loop as any) = originalLoop
+            if (sessionID) SessionManager.unregisterRuntime(sessionID)
+            if (otherSessionID) SessionManager.unregisterRuntime(otherSessionID)
+            SessionDrive.reset()
+          }
+        },
+      })
+    }))
+
+  test("delivery key is stable and unique across messages", () =>
+    runtime.run(async () => {
+      const a = ChannelBusyHandoff.deliveryKeyForMessage({
+        channelType: "feishu",
+        accountId: "acct",
+        messageId: "m1",
+      })
+      const b = ChannelBusyHandoff.deliveryKeyForMessage({
+        channelType: "feishu",
+        accountId: "acct",
+        messageId: "m2",
+      })
+      expect(a).toBe("channel:feishu:acct:m1")
+      expect(b).toBe("channel:feishu:acct:m2")
+      expect(a).not.toBe(b)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

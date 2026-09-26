@@ -5,21 +5,39 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 # Test Synergy Behavior
 
+## Avoid concurrent artifact mutation
+
+Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
+
 ## Define the Invariant First
 
 1. State the observable contract and the failure that would violate it.
 2. For a bug or new behavior, write the smallest failing test before the implementation. Skip a new test only for a pure refactor whose existing tests already cover unchanged behavior.
 3. Assert public results, state transitions, emitted contracts, permissions, or recovery behavior. Avoid source-text assertions, private call counts, and snapshots of irrelevant structure.
 
+Seed large SQLite fixtures inside a transaction so per-row durability flushes do not dominate correctness test deadlines. Preserve the dataset size and the migration, restart, and failure boundaries exercised by the test.
+
+Compare directory snapshots as sorted paths or sets when asserting unchanged files; filesystem enumeration order is not a product invariant.
+
 Prepare durable fixtures before starting a short runtime deadline; for Cortex timeout tests, enqueue follow-ups between `Cortex.prepare` and `Cortex.start` rather than racing their writes against the timer.
 
-Load large SQLite fixtures in one transaction before exercising runtime behavior. Per-row autocommit can exhaust a correctness test deadline during setup. Preserve the schema, pragmas and data volume, and validate the original failing case without raising its deadline.
+For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify that metadata writes do not serialize a read-only turn.
+
+For retirement changes, overlap cleanup in independent repositories and include commands whose write footprint is broader than the retired directory. Verify that broader ownership is reserved before directory exclusion, that nested writes cannot wait on their own lifecycle claim, and that undeclared expansion fails before queuing. Capture ownership state for an unexplained timeout; a green rerun alone does not identify its cause.
+
+For process-backed write evidence, test the interval after native exit but before archive completion: an overlapping writer must remain excluded, disjoint roots must proceed, and finalizer failure or Runtime death must not leave a completed process permanently occupied.
+
+Windows shell regressions must explicitly select `cmd` when testing its quoting contract; the runner's default can resolve to another interpreter. Cover a quoted executable with multiple quoted arguments, and report early command exit before waiting for a descendant readiness marker.
+
+For admission wrapped in execution-capacity waits, inject cancellation and a thrown resume error after the Host returns a lease. Verify cleanup for independently retained file pins as well as task-owned claims; a successful acquire does not imply the surrounding wait returns successfully.
 
 For non-blocking and ordering contracts, hold the downstream operation behind an explicit promise and assert the upstream result while it remains pending. When asserting that an inbox item remains queued after an operation that schedules a wake, hold a real SessionManager loop lease on the worker; clean up its queued work before releasing the lease so a delayed wake cannot escape the fixture. For cross-process lock tests, hold the first owner behind an explicit parent release message and retain readiness as a promise; do not poll for a transient exact log snapshot. Release the owner only after the contender reports actual acquisition contention, not merely startup or intent to call the lock API. Drain child stderr and register process cleanup before awaiting startup. Use a generous test-framework timeout only to detect deadlocks, release the barrier in cleanup, and avoid wall-clock performance thresholds in instrumented correctness suites. Do not wrap correctness-only completion signals in shorter `Promise.race` timers: filesystem and worktree startup contention can exceed those incidental budgets on CI.
 
 When a public operation returns a typed in-progress outcome at its foreground budget, correctness tests must await its documented completion path before asserting durable results. Exercise that outcome with an explicit held-operation fixture; do not raise the product deadline or swallow unrelated failures.
 
 ## Choose the Lowest Useful Level
+
+For byte-bounded queues, hold a worker busy and admit several individually valid requests across scheduling lanes. Verify aggregate rejection and exact byte release on dispatch, queued cancellation, startup failure, and shutdown; a single oversized request does not exercise aggregate admission.
 
 - pure function/schema: inline data and direct calls
 - tool/domain behavior: real implementation plus isolated temp directory and Scope context
@@ -34,6 +52,8 @@ Inspect two nearby tests and `packages/harness/test/support/preload.ts` before i
 
 Importing an App `src/components/**` module directly from `bun:test` needs its module-load side effects satisfied first: `mock.module("@/locales/en/messages.po?lingui", () => ({ messages: {} }))` for the catalog, because the `.po?lingui` module is not Bun-loadable, and a stub for anything reaching `@ericsanchezok/synergy-ui/icon`, whose `lucide-solid` `Dynamic` chain throws "Client-only API called on the server side". Prefer extracting the logic under test into a plain module (a classifier, a resolver, a projection) and testing that directly; reach for the mocks only when the component's own wiring is the subject.
 
+The Web runner's `browserOnly` list selects module conditions, not process isolation. Suites that replace shared router, server, SDK or theme modules must also appear in `isolated`, so their mocks cannot affect lazy imports in sibling suites. Check both lists when a suite passes alone but fails with missing exports in a CI batch.
+
 Place every test under the owning package's `test/` directory, mirroring the relevant source domain when that helps navigation. Place repository-level script and policy tests under the root `test/` directory. Never cascade `*.test.*` or `*.spec.*` files beside implementation files in `src/`, `script/`, or another source directory. Run `bun run test-layout:check` when adding or moving tests.
 
 For localized UI behavior, use a real Lingui `I18nProvider` with minimal English and Simplified Chinese messages. Assert visible text and accessibility labels after a reactive locale change; do not mock translation calls to return IDs because that hides missing catalogs and stale module-load translations. Keep plugin-author, user, LLM, path, identifier, and raw-error pass-through in the same boundary test as translated host chrome.
@@ -42,7 +62,7 @@ For localized UI behavior, use a real Lingui `I18nProvider` with minimal English
 
 Per-session recovery tests must migrate only their owned session fixture. Exercise the global migration runner separately with a dedicated home; a process-wide migration scan can encounter intentionally incomplete records from unrelated suites or earlier shards.
 
-Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Restore environment variables and singleton state in cleanup hooks. A module-level replacement of a process global — `globalThis.fetch` above all — is visible to every sibling file in the same shard process: capture the original before installing the replacement and restore it in `afterAll`, because a per-test `finally` that re-reads `globalThis.fetch` restores the replacement, not the original. Honor abort signals and dispose processes, Browser pages, servers, and timers.
+Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Create an explicit package Runtime fixture and run test bodies and relevant hooks inside `runtime.run()`. Set environment overrides before opening; changing `process.env` after startup does not change a captured Host. Close the fixture before deleting its home. Keep registration in its composition, never at module evaluation. Do not enter `describe()` through an asynchronous Runtime context; Bun collects callbacks before running them. For parameterized tests capture a ready module fixture with `bind`, or enter a per-test fixture when the callback runs. A module-level replacement of a process global — `globalThis.fetch` above all — is visible to every sibling file in the same shard process: capture the original before installing the replacement and restore it in `afterAll`, because a per-test `finally` that re-reads `globalThis.fetch` restores the replacement, not the original. Honor abort signals and dispose processes, Browser pages, servers, and timers.
 
 Cancellation tests must cover the interval after execution ownership releases but before asynchronous ledger reconciliation finishes, preserving interrupted call evidence and the terminal cancellation result.
 
@@ -58,7 +78,15 @@ Provider/model tests use the package preload configured in `bunfig.toml`; `packa
 
 Core binary builds also default to that pinned fixture. Test build behavior through `script/release/shared/build/models-catalog.ts`: the selected catalog must satisfy the runtime schema and contain non-empty OpenAI, Anthropic, and Google providers before compilation. Ordinary local builds may use `MODELS_DEV_API_JSON` as an explicit override; release builds must force the repository-pinned snapshot so network and build-machine cache state cannot alter the artifact.
 
-Tests that exercise the cold-cache path — where no disk or memory cache exists — must spawn a fresh Bun subprocess with a clean isolated home directory. The Bun preloader populates process-global state for the test harness, so the existing process always has a warm cache. A cold-cache test strips `SYNERGY_TEST_HOME` and `MODELS_DEV_API_JSON` from the child environment, sets `SYNERGY_HOME` to a fresh temp directory, and asserts against the child process output.
+For embedded Runtime lifecycle changes, repeat real open/task/close cycles in one process and verify resource release as well as port reuse. Native HTTP handlers can retain their creation context after the server stops; release handler references outside the Runtime after requests and sockets drain. Check per-instance database maintenance timers at closure. Use a focused reachability regression for a demonstrated retention defect; RSS alone includes allocator caches and cannot prove ownership release.
+
+Cold-cache tests construct a fresh Runtime and an unseeded isolated home. Module imports and the test preloader do not populate another instance’s caches. Use a subprocess when process startup, native callbacks, signals, installed artifacts or worker protocols are the contract. Never remove the positive test-home isolation marker.
+
+Compile standalone Bun artifacts in a fresh `bun build --compile` subprocess, drain both output streams, and assert its exit code before exercising the executable. In-process compilation after plugin builds can reuse invalid compiler state on Linux; retain the artifact behavior assertions and run the combined suites under coverage. See the [standalone compilation decision](../../../docs/decisions/implemented/testing/2026-09-23-isolate-standalone-plugin-kit-compilation.md).
+
+Exercise opt-in and platform-specific entrypoints with the same explicit ownership. A developer's PATH can hide an unowned executable lookup, and an undefined build-time digest can hide import-time Home access. Test isolated PATH/Home lookup and compiled constants without an active Runtime. Coverage failure summaries must retain the owning test file for unnamed setup/teardown failures so CI truncation does not discard their identity.
+
+Linux OS-sandbox probes that replace `/tmp` need an explicit fixture Home outside that mount. Use a unique directory in the owning package's ignored `.artifacts`, close its Runtime before removal, and clean it on opening failure. Keep ordinary fixtures under the shared test root. Preserve positive command-start and host-baseline assertions so a hidden working directory cannot pass as a successful denial.
 
 Full runtime fixtures that exercise model execution must serve both chat and embedding protocols when Library is enabled; a fresh home must not silently turn an execution test into a Hugging Face model-download test. Keep Library retrieval/encoding enabled and assert the normal execution evidence; validate real embedding assets separately.
 
@@ -73,6 +101,10 @@ Recovery migrations must also exercise startup with no newly queued task, failed
 For startup maintenance, pair real SQLite lifecycle tests (opening DDL, VACUUM/checkpoints, verification and failed DDL) with a fake monotonic clock at the Desktop consumer. Cover overlapping operations, duplicate/stale events, phase changes during maintenance, completion returning to the underlying deadline, and failure/worker loss. Assert observers run in the caller context even after transaction retries. Exercise split stdout/stderr and reused log files through a real managed child, then validate indeterminate elapsed time and long error details in Electron. Never let small fixtures or pre-recorded progress alone certify producer-to-consumer coverage.
 
 ## Local Performance Experiments
+
+For startup-to-conversation acceptance, test fresh, historical and large homes through durable input admission, canonical publication and model completion on the same fixture. Include multi-turn recall, duplicate admission, retry after pause, terminal historical roots and repeated Runtime restarts. Record the fixture's node, record, owner and artifact distributions; a large unrelated namespace proves cleanup scaling but does not establish retention owner-enumeration capacity. Keep machine-dependent timing thresholds in local reports, with correctness and recovery invariants in CI.
+
+Budget live model calls at the provider boundary before forwarding them, counting auxiliary tasks and retries as well as user turns. Preserve interrupted attempts and explicitly record configuration variants. A soak report must identify the source revision and process restart boundaries; source edits do not reload an already-running parent's modules.
 
 Benchmark adapters must pass the environment's `agent_process_env` to the agent invocation so restricted-network tasks retain the evaluator's inference egress. Test both proxy-enabled and ordinary environments while keeping provider credentials in temporary private files. Validate streamed requests through the proxy and recording path: a direct provider probe, an internet-enabled task, or a successful proxy HEAD request does not establish that the actual model transport works.
 
@@ -128,7 +160,7 @@ Extraction must leave tracked PO catalogs unchanged, strict compilation must rej
 
 Run the narrow failing test during iteration, then the affected package/domain suite, then `quality:quick`. Run the full suite when the change crosses shared abstractions, persistence, generated contracts, package publication, or release boundaries, or when the user requests it.
 
-`bun run test:ci` is the CI-equivalent core suite. It runs four shards sequentially in fresh Bun processes to bound process-global state and fixture accumulation without introducing cross-shard port or environment races. Set `SYNERGY_TEST_JUNIT_DIR` to emit one JUnit report per shard.
+`bun run test:ci` runs the complete core inventory in fresh sequential batches. `test:coverage` uses the same executor with instrumentation; CI executes that inventory once and requires JUnit, lcov and timing evidence for every selected batch. See [CI verification](../../../docs/operations/ci.md) for `ci:plan`, `ci:run`, `ci:verify`, shadow admission and diagnostic selectors. Keep the four Harness file-hash groups and special isolated files stable; each process owns its Home, fixture root, database and Link Home. Bind ports dynamically in fixtures; distinct runners provide host isolation.
 
 Coverage has a floor. `bun run coverage:check` enforces per-package line/function thresholds (the only metrics Bun 1.3.14 exposes in lcov) with an auditable exemption list in `script/coverage-exempt.json`. The rules:
 
@@ -138,6 +170,7 @@ Coverage has a floor. `bun run coverage:check` enforces per-package line/functio
 - Every exemption entry carries a `reason`; entries that match nothing, overlap, or cover more than 25% of a package fail validation.
 - Bun 1.3.14 supports no ignore comments (`istanbul ignore`, `v8 ignore`, and `c8 ignore` are all inert), so whole-file exemption is the only exclusion mechanism. Do not add ignore comments expecting them to work.
 - A source file never loaded by any test counts as 0% and fails the package — add a real test that loads it rather than exempting blindly.
+- Subprocess behavior tests do not automatically contribute child coverage to the parent report. Pair real IPC acceptance with direct behavioral tests of worker-safe helpers in the instrumented process; keep both ownership and coverage evidence.
 - Runtime-owning CLI tests must start with only the shared isolation preload, because the harness preload installs a Handle that maintenance must reject. Register these suites in the shared batch planner; preserve the original package's coverage report directory when selecting the fresh composition.
 - For Solid wrappers exercised through a Vite-compiled DOM fixture, verify whether Bun attributes coverage to the emitted bundle instead of the TSX source. An exact-file exemption must identify the behavioral suite and this instrumentation boundary; keep directly testable logic measured separately.
 
@@ -150,6 +183,8 @@ Use [Development reference](../../../docs/reference/development.md) and [Open-so
 3. Distinguish a product regression from a brittle expectation. Change the test only when the intended public contract is wrong or was asserted at the wrong level.
 4. Do not skip, weaken, or quarantine a relevant test merely to make the gate green.
 
+Directory-identity changes require a real OverlayFS copy-up check as well as ordinary temporary-directory tests. A newly created temporary directory already lives in the upper layer and cannot reproduce first-write metadata changes in an image's lower-layer directory. Keep catalog and coordinator identity checks on the same native primitive.
+
 ## Handoff
 
 Report the invariant, test location, red/green evidence, commands run, pass/fail counts, unrun gates, platform limitations, and any remaining nondeterminism.
@@ -158,6 +193,42 @@ The root `coverage:check` command builds the public Plugin package through the d
 
 Coverage is attributed to source owners after all commands in a complete root gate succeed. The gate deletes old canonical and shard reports before each command; failed or missing reports cannot contribute cross-package hits. Keep owner thresholds and exact-file exemption reasons when relocating code. Use `bun script/coverage-check.ts --package packages/<owner>` for a fresh local check; `--existing` is diagnostic only, keeps measurements package-local, and cannot certify command success or freshness. Never report a passing `test:coverage` command alone as a threshold pass.
 
-CI workspace test concurrency must account for each package spawning native workers and browser/build processes. After splitting packages, explicitly bound Turbo task concurrency on shared runners and retain the full suite graph. Failure diagnostics must reserve output space for both stream summaries; print failed coverage commands before the uncovered-line listing. Native watcher readiness probes must finish pending writes and observe their deletion before testing a neighboring file creation, so fixture events cannot be mistaken for a rename. Every new CI job must install its own executable and build prerequisites; runners do not share Chromium or workspace dist output. Keep coverage execution shards separate from complete-manifest threshold aggregation, and test that missing reports and partial aggregate requests fail. Preserve required check names through a fan-in that rejects failed, cancelled and skipped dependencies.
+CI workspace test concurrency must account for each package spawning native workers and browser/build processes. Run independent package suites serially on each shared runner because unconfined native write claims cross Runtime homes; preserve dedicated concurrency tests inside suites and parallelism between isolated runners. Retain the full suite graph. Failure diagnostics must reserve output space for both stream summaries; print failed coverage commands before the uncovered-line listing and retain bounded assertion differences across blank separators. Native watcher readiness probes must finish pending writes and observe their deletion before testing a neighboring file creation, so fixture events cannot be mistaken for a rename. Every new CI job must install its own executable and build prerequisites; runners do not share Chromium or workspace dist output. Separate suite execution from plan-bound threshold aggregation. Test that missing partitions, stale SHA/run/digest, repeated files, missing reports and failed jobs reject admission. Never credit an unselected or historical lcov report. Preserve required check names through a fan-in that rejects failed, cancelled and skipped dependencies.
 
 For pause/abandon transitions, hold descendant cancellation behind a promise and release the real session lease before repair finishes. Assert that queued work is not scheduled, concurrent pause writers retain one reason, and the final status event and API response agree with canonical state after abandonment.
+
+For composer hold gestures, exercise the native pointer-down, partial/full hold, pointer-up and click sequence. Cover release while the request disables the button (no native click), then a new pointer or keyboard activation after completion. Assert draft preservation and request counts, not only a timer callback. For paused input, capture the first resumed provider request and assert the original root plus the new user direction. Verify accepted-input run identity independently from the new message identity, including CLI polling and cancellation. Pair pause/resume tests with fresh input after terminal run cancellation; the old cancelled root must not reopen or block the new task.
+
+When integrating new tests after Runtime ownership changes, adapt every newly introduced fixture and subprocess entrypoint, including migration fixtures that open storage before registration is sealed. Register execution contributions in the fixture composition; vary the contribution's test-controlled outcome instead of replacing sealed registrations. Storage-engine tests without a product Runtime must use deterministic engine defaults, while native callbacks for an owned engine retain its creator's configuration.
+
+For file writes, exercise exact-byte conflicts after restoring the original mtime, approval-time changes, cancelled waiters, real concurrent processes, parent symlink replacement, hard links and BOM/line-ending preservation. A timestamp-only assertion cannot validate overwrite safety. Browser fixture servers use ephemeral ports and explicit startup budgets so unrelated local instances and dependency warmup do not determine the result.
+
+For Workspace upgrades, migrate a directory while it is absent, create a different directory at the same path, and verify that native access still requires explicit rebinding. Re-registering the location must not silently authorize the old identity. After rebinding, test both stale generations and another physical directory replacement.
+
+Workspace coordination tests must cover two Runtime instances, overlapping and disjoint physical roots, root expansion, cancellation during admission and capacity resumption, stale lease release, and a live native process surviving its logical task. Exercise real Session and Cortex paths with one execution slot and parallel tools: a waiting child must not monopolize capacity, and one waiting tool must not release capacity still used by its active sibling. Assert physical claims independently of tool or turn completion. Drive active Workspace changes through `SessionManager.run`, not a manually acquired loop lease: only the former owns the native task context. Cover concurrent operations, stale generations, persistence failure, lost old directories, process survival and unresolved child/fork references.
+
+For multi-stage operations that reuse a cancellation signal, test a real `AbortSignal.timeout` across completed child processes, native lock admission and cleanup. Attaching and removing listeners between stages must not disable the caller's deadline; keep an operation-wide cancellation bridge when required by the supported runtime.
+
+Platform-only native implementations must contribute coverage from their actual OS runner. The macOS and Windows Workspace tasks use `script/native-workspace-coverage.ts` to inject an isolated home before spawning Bun and produce fresh JUnit and LCOV reports. Capture both in the task result with its plan/SHA/run/attempt identity, normalize Windows paths, and keep the aggregate dependent on both platform jobs and the complete Runtime Local coverage baseline; do not lower package thresholds or classify executable native parents as unmeasurable.
+
+Each package test command must prepare the native assets its own tests execute. A sibling package's build is not a prerequisite in an independent coverage shard. For native launch failures, verify that a subsequent real writer is admitted after missing assets or cancellation before supervisor ownership; checking only the launch error cannot detect a leaked lease.
+
+For snapshot capture, verify exact bytes under text, ident and encoding attributes, same-size changes with restored timestamps, nested/global ignore precedence, file/directory transitions and literal symlinks. Exercise deep Workspace, object-store, index and transfer paths together on Windows; a successful Git initialization alone does not cover native reads or retained object access.
+
+For native file previews, mutate size after metadata resolution and verify bounded failure, then read through an internal symbolic link whose target is longer than the link text. On Windows, copy file links, dangling directory links and junctions without changing their native type; compare preserved mode bits to the filesystem's actual mode rather than a POSIX-only fixture value.
+
+For worktree cancellation, exercise an activated checkout hook and a native command on each supported OS. Verify full process drainage before admitting another writer, rollback of the owned unpublished directory, and retention after foreign lock replacement or a new commit. Pre-cancelled calls alone do not cover post-activation cancellation.
+
+Native integration suites on the same host share write coordination even when fixture directories differ: unconfined processes can block an unrelated exclusive rebind. Retry only the expected busy result within a finite test budget when contention is incidental. Assert LSP connected status during an active query, and validate protocol replies plus native exit before a competing write; the caller promise may settle later while its use claims drain. Run repetitions in fresh Bun processes because the preload disposes its fixture root after a run.
+
+For deferred work that captures Workspace identity, test origin selection changes, an explicit no-directory selection, persistent execution selection, missing or imported bindings, and the owning upgrade. Native file-watch tests must start without an open Session, survive rebinding and restart, and reject events from another Scope, Workspace or generation. Global item storage is separate from its file-event owner.
+
+Cross-process filesystem coordination must remain shared when the processes have different temporary-directory environments. Exercise a held native claim with distinct `TMPDIR`, `TMP` and `TEMP`, verify exclusion, then verify admission after release; different fixture Homes alone cannot establish this property.
+
+For large in-memory stream/archive loops, measure the first subsequent I/O as well as the loop itself. Bound work between event-loop turns; deferred runtime cleanup can otherwise be misattributed to storage or fixture removal. Keep byte-integrity and responsiveness regressions alongside the owning archive tests.
+
+Build reuse must cover the transitive workspace inputs and outputs of the recipe, including build-time dependencies. Compile the committed SDK with `--compile-only` during CI preparation; regenerating source while preparing a cache breaks its input identity. Keep native tests that require prepared outputs out of the pure contract task inventory.
+
+Compute cross-run cache keys on the producer with its actual compiler and runner image. Validate cross-job reuse against source and runtime ABI compatibility; hosted image rollouts can assign different image versions within one workflow. Exercise that transfer while retaining byte, mode and inventory rejection tests.
+
+Declare executable prerequisites on catalog tasks and derive browser-suite setup from workspace Playwright dependencies. Test a browser package selected alone, since another task in a full batch can hide a missing installation. Stage verified source sandbox helpers at the canonical Cargo output path so each isolated Runtime can discover and install them into its own Home; retain the ephemeral runner's standard helper installation for installed-helper end-to-end probes. Route every package coverage entry through the shared executor and verify that it produces JUnit, lcov and complete batch timing inventories, not only a successful test exit code. Preserve previously unbatched suites with `SYNERGY_BATCH_SHARDS=1`; compare measured coverage before changing process groupings, since Bun's merged reports are not fully equivalent to one process.

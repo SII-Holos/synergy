@@ -1,5 +1,7 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Agent } from "../agent/agent"
 import { Tool } from "./tool"
+import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Config } from "../config/config"
@@ -44,7 +46,7 @@ export namespace ToolRegistry {
       custom.push(fromRuntimePlugin(entry))
     }
 
-    return { custom }
+    return { custom, findCache: new Map<string, { id: string } & Awaited<ReturnType<Tool.Info["init"]>>>() }
   })
 
   function isDirectory(dir: string) {
@@ -57,7 +59,6 @@ export namespace ToolRegistry {
 
   export async function reload() {
     log.info("reloading tool registry state")
-    findCache.clear()
     await state.resetAll()
     log.info("tool registry state reloaded")
   }
@@ -65,6 +66,7 @@ export namespace ToolRegistry {
   function fromPlugin(id: string, def: ToolDefinition, exposure?: ToolExposure.Info, display?: ToolDisplay): Tool.Info {
     return {
       id,
+      requiresWorkspace: def.requiresWorkspace ?? true,
       exposure,
       display: display ?? (def as ToolDefinition & { display?: ToolDisplay }).display,
       source: { type: "local" },
@@ -72,12 +74,13 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
+          assertWorkspace(def.requiresWorkspace ?? true)
           const pluginCtx = {
             sessionID: ctx.sessionID,
             messageID: ctx.messageID,
             agent: ctx.agent,
             abort: ctx.abort,
-            directory: ScopeContext.current.directory,
+            directory: ScopeContext.current.workspace?.path,
             ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
@@ -87,6 +90,14 @@ export namespace ToolRegistry {
         },
       }),
     }
+  }
+
+  function assertWorkspace(required: boolean) {
+    if (required && !ScopeContext.current.workspace)
+      throw new Scope.WorkspaceRequiredError({
+        message: "This plugin tool requires a local workspace.",
+        scopeID: ScopeContext.current.scope.id,
+      })
   }
 
   function manifestParameters(schema: Record<string, unknown>): z.ZodType {
@@ -106,6 +117,7 @@ export namespace ToolRegistry {
   }
 
   async function enabled(tool: Tool.Info): Promise<boolean> {
+    if (tool.requiresWorkspace && !ScopeContext.current.workspace) return false
     if (!tool.enabledWhen) return true
     if (tool.source?.type !== "plugin") return false
     return conditionEnabled(tool.source.pluginId, tool.enabledWhen)
@@ -114,6 +126,7 @@ export namespace ToolRegistry {
   function fromRuntimePlugin(entry: ToolPluginSource.Entry): Tool.Info {
     return {
       id: entry.fullId,
+      requiresWorkspace: entry.requiresWorkspace ?? true,
       exposure: entry.exposure,
       display: entry.display,
       source: {
@@ -129,6 +142,7 @@ export namespace ToolRegistry {
         parameters: manifestParameters(entry.inputSchema),
         description: entry.description,
         execute: async (args, ctx) => {
+          assertWorkspace(entry.requiresWorkspace ?? true)
           if (entry.enabledWhen && !(await conditionEnabled(entry.pluginId, entry.enabledWhen))) {
             throw Object.assign(new Error(`Plugin tool ${entry.fullId} is disabled by plugin settings.`), {
               code: "CONTRIBUTION_DISABLED",
@@ -142,7 +156,7 @@ export namespace ToolRegistry {
             callID: ctx.callID,
             userMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
             scopeId: ScopeContext.current.scope.id,
-            directory: ScopeContext.current.directory,
+            directory: ScopeContext.current.workspace?.path,
           })
           await ctx.captureResult?.(raw)
           return normalizePluginResult(raw, initCtx?.agent)
@@ -180,21 +194,32 @@ export namespace ToolRegistry {
     }
   }
 
-  const toolProviders = new Map<string, ToolProvider>()
+  const runtimeState = RuntimeContext.state(() => ({
+    toolProviders: new Map<string, ToolProvider>(),
+  }))
   export type ToolProvider = () => Tool.Info[] | Promise<Tool.Info[]>
 
   /** Product domains register tool providers under a stable source id;
    * `all()` drains them alongside the static builtin list. */
   export function registerToolProvider(sourceID: string, provider: ToolProvider): void {
-    toolProviders.set(sourceID, provider)
+    const instanceState = runtimeState()
+
+    const existing = instanceState.toolProviders.get(sourceID)
+    if (existing === provider) return
+    RuntimeContext.assertCompositionOpen(`tool provider ${sourceID}`)
+    if (existing) throw new Error(`Tool provider ${sourceID} is already registered`)
+    instanceState.toolProviders.set(sourceID, provider)
   }
 
   export function toolProviderIDs(): string[] {
-    return [...toolProviders.keys()].sort()
+    const instanceState = runtimeState()
+
+    return [...instanceState.toolProviders.keys()].sort()
   }
 
   export async function register(tool: Tool.Info) {
-    const { custom } = await state()
+    const { custom, findCache } = await state()
+    findCache.delete(tool.id)
     const idx = custom.findIndex((t) => t.id === tool.id)
     if (idx >= 0) {
       custom.splice(idx, 1, tool)
@@ -204,12 +229,14 @@ export namespace ToolRegistry {
   }
 
   async function all(): Promise<Tool.Info[]> {
+    const instanceState = runtimeState()
+
     const custom = await state().then((x) => x.custom)
     await Config.current()
 
     const builtin: Tool.Info[] = [SearchToolsTool, ExpandToolsTool]
 
-    const provided = (await Promise.all([...toolProviders.values()].map((provider) => provider()))).flat()
+    const provided = (await Promise.all([...instanceState.toolProviders.values()].map((provider) => provider()))).flat()
     return [...builtin, ...provided, ...custom]
   }
 
@@ -220,13 +247,12 @@ export namespace ToolRegistry {
     )
   }
 
-  const findCache = new Map<string, { id: string; description: string; parameters: any; execute: Function }>()
-
   export async function find(id: string) {
     const tools = await all()
     const tool = tools.find((t) => t.id === id)
     if (!tool) return undefined
     if (!(await enabled(tool))) return undefined
+    const { findCache } = await state()
     const cached = findCache.get(id)
     if (cached) return cached
     const def = await tool.init()

@@ -4,6 +4,9 @@ import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserEvent } from "../src/event"
 import { BrowserHostPage } from "../src/host-page"
 import type { BrowserOwner } from "../src/owner"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "./support/runtime"
+const runtime = await testRuntime()
 
 const owner: BrowserOwner.Info = {
   mode: "session",
@@ -70,106 +73,115 @@ const page = {
 let host: HostSocket
 let browserPage: BrowserHostPage
 
-beforeEach(async () => {
-  BrowserBroker.resetForTest()
-  BrowserEvent.resetForTest()
-  host = new HostSocket()
-  BrowserBroker.attach(host, {
-    type: "host.register",
-    protocolVersion: BROWSER_PROTOCOL_VERSION,
-    hostId: "host-page-test",
-    token: BrowserBroker.secret(),
-    capabilities: { native: true, webrtc: false },
-  })
-  BrowserBroker.prepare(owner, "home", "native")
-  browserPage = await BrowserHostPage.create({
-    owner,
-    id: page.id,
-    url: page.url,
-    presentation: "native",
-    routeDirectory: "home",
-    events: {},
-  })
-})
+beforeEach(() =>
+  runtime.run(async () => {
+    BrowserBroker.resetForTest()
+    BrowserEvent.resetForTest()
+    host = new HostSocket()
+    BrowserBroker.attach(host, {
+      type: "host.register",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      hostId: "host-page-test",
+      token: BrowserBroker.secret(),
+      capabilities: { native: true, webrtc: false },
+    })
+    BrowserBroker.prepare(owner, "home", "native")
+    browserPage = await BrowserHostPage.create({
+      owner,
+      id: page.id,
+      url: page.url,
+      presentation: "native",
+      routeDirectory: "home",
+      events: {},
+    })
+  }),
+)
 
-afterEach(async () => {
-  await browserPage?.close().catch(() => undefined)
-  await Promise.resolve()
-  BrowserBroker.resetForTest()
-  BrowserEvent.resetForTest()
-})
+afterEach(() =>
+  runtime.run(async () => {
+    await browserPage?.close().catch(() => undefined)
+    await Promise.resolve()
+    BrowserBroker.resetForTest()
+    BrowserEvent.resetForTest()
+  }),
+)
 
 describe("BrowserHostPage recovery gate", () => {
-  test("fails side effects during restart while allowing resume through to the Host", async () => {
-    BrowserBroker.handle(host, {
-      type: "page.event",
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      ownerKey: "scope:scope-host-page:session:session-host-page",
-      pageId: page.id,
-      event: { type: "host.status", pageId: page.id, status: "restarting" },
-    })
+  test("fails side effects during restart while allowing resume through to the Host", () =>
+    runtime.run(async () => {
+      BrowserBroker.handle(host, {
+        type: "page.event",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "scope:scope-host-page:session:session-host-page",
+        pageId: page.id,
+        event: { type: "host.status", pageId: page.id, status: "restarting" },
+      })
 
-    await expect(browserPage.execute({ type: "reload", source: "agent" })).rejects.toMatchObject({
-      code: "browser_native_restarting",
-      retryable: true,
-      pageId: page.id,
-      message: expect.stringContaining("browser_navigation with action resume"),
-    })
+      await expect(browserPage.execute({ type: "reload", source: "agent" })).rejects.toMatchObject({
+        code: "browser_native_restarting",
+        retryable: true,
+        pageId: page.id,
+        message: expect.stringContaining("browser_navigation with action resume"),
+      })
 
-    const commandsBeforeResume = host.sent.filter((message) => message.type === "page.command").length
-    await expect(browserPage.execute({ type: "resume" })).resolves.toMatchObject({
-      type: "page",
-      page: { id: page.id },
-    })
-    expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeResume + 1)
-  })
+      const commandsBeforeResume = host.sent.filter((message) => message.type === "page.command").length
+      await expect(browserPage.execute({ type: "resume" })).resolves.toMatchObject({
+        type: "page",
+        page: { id: page.id },
+      })
+      expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeResume + 1)
+    }))
 
-  test("allows observations and close in failed state but blocks mutating commands", async () => {
-    BrowserBroker.handle(host, {
-      type: "page.event",
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      ownerKey: "scope:scope-host-page:session:session-host-page",
-      pageId: page.id,
-      event: { type: "host.status", pageId: page.id, status: "failed" },
-    })
+  test("allows observations and close in failed state but blocks mutating commands", () =>
+    runtime.run(async () => {
+      BrowserBroker.handle(host, {
+        type: "page.event",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "scope:scope-host-page:session:session-host-page",
+        pageId: page.id,
+        event: { type: "host.status", pageId: page.id, status: "failed" },
+      })
 
-    await expect(browserPage.execute({ type: "reload", source: "agent" })).rejects.toMatchObject({
-      code: "browser_native_recovery_failed",
-      retryable: true,
-      message: expect.stringContaining("native Browser Retry control"),
-    })
-    const commandsBeforeSnapshot = host.sent.filter((message) => message.type === "page.command").length
-    await expect(browserPage.execute({ type: "snapshot" })).resolves.toEqual({ type: "void" })
-    expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeSnapshot + 1)
-    const commandsBeforeClose = host.sent.filter((message) => message.type === "page.command").length
-    await expect(browserPage.execute({ type: "close" })).resolves.toEqual({ type: "void" })
-    expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeClose + 1)
-  })
+      await expect(browserPage.execute({ type: "reload", source: "agent" })).rejects.toMatchObject({
+        code: "browser_native_recovery_failed",
+        retryable: true,
+        message: expect.stringContaining("native Browser Retry control"),
+      })
+      const commandsBeforeSnapshot = host.sent.filter((message) => message.type === "page.command").length
+      await expect(browserPage.execute({ type: "snapshot" })).resolves.toEqual({ type: "void" })
+      expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeSnapshot + 1)
+      const commandsBeforeClose = host.sent.filter((message) => message.type === "page.command").length
+      await expect(browserPage.execute({ type: "close" })).resolves.toEqual({ type: "void" })
+      expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeClose + 1)
+    }))
 
-  test("clears the recovery gate when the Host reports ready after a restart", async () => {
-    BrowserBroker.handle(host, {
-      type: "page.event",
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      ownerKey: "scope:scope-host-page:session:session-host-page",
-      pageId: page.id,
-      event: { type: "host.status", pageId: page.id, status: "restarting" },
-    })
+  test("clears the recovery gate when the Host reports ready after a restart", () =>
+    runtime.run(async () => {
+      BrowserBroker.handle(host, {
+        type: "page.event",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "scope:scope-host-page:session:session-host-page",
+        pageId: page.id,
+        event: { type: "host.status", pageId: page.id, status: "restarting" },
+      })
 
-    await expect(browserPage.execute({ type: "reload", source: "agent" })).rejects.toMatchObject({
-      code: "browser_native_restarting",
-      retryable: true,
-    })
+      await expect(browserPage.execute({ type: "reload", source: "agent" })).rejects.toMatchObject({
+        code: "browser_native_restarting",
+        retryable: true,
+      })
 
-    BrowserBroker.handle(host, {
-      type: "page.event",
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      ownerKey: "scope:scope-host-page:session:session-host-page",
-      pageId: page.id,
-      event: { type: "host.status", pageId: page.id, status: "ready" },
-    })
+      BrowserBroker.handle(host, {
+        type: "page.event",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey: "scope:scope-host-page:session:session-host-page",
+        pageId: page.id,
+        event: { type: "host.status", pageId: page.id, status: "ready" },
+      })
 
-    const commandsBeforeReload = host.sent.filter((message) => message.type === "page.command").length
-    await expect(browserPage.execute({ type: "reload", source: "agent" })).resolves.toEqual({ type: "void" })
-    expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeReload + 1)
-  })
+      const commandsBeforeReload = host.sent.filter((message) => message.type === "page.command").length
+      await expect(browserPage.execute({ type: "reload", source: "agent" })).resolves.toEqual({ type: "void" })
+      expect(host.sent.filter((message) => message.type === "page.command")).toHaveLength(commandsBeforeReload + 1)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

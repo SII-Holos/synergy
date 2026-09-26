@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { LoopJob } from "../../src/session/loop-job"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function context(sessionID: string, abort?: AbortSignal): LoopJob.Context {
   const lastUser = {
@@ -31,60 +34,64 @@ async function waitFor(predicate: () => boolean, timeoutMs = 2000) {
 }
 
 describe("LoopJob active background count", () => {
-  test("counts detached runs that outlive their turn and drops them once settled", async () => {
-    const baseline = LoopJob.activeBackgroundCount()
-    const started = Promise.withResolvers<void>()
-    const release = Promise.withResolvers<void>()
-    const type = `test_active_count_${crypto.randomUUID()}`
-    LoopJob.register({
-      type,
-      phase: "post",
-      blocking: false,
-      detached: true,
-      collect: () => [],
-      capture: () => ({ type }),
-      async execute() {
-        started.resolve()
-        await release.promise
-        return "pass"
-      },
-    })
+  test("counts detached runs that outlive their turn and drops them once settled", () =>
+    runtime.run(async () => {
+      const baseline = LoopJob.activeBackgroundCount()
+      const started = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const type = `test_active_count_${crypto.randomUUID()}`
+      LoopJob.register({
+        type,
+        phase: "post",
+        blocking: false,
+        detached: true,
+        collect: () => [],
+        capture: () => ({ type }),
+        async execute() {
+          started.resolve()
+          await release.promise
+          return "pass"
+        },
+      })
 
-    const sessionID = `ses_active_count_${crypto.randomUUID()}`
-    expect(LoopJob.scheduleDetached({ type, sessionID, rootID: "root_1" })).toBe(true)
-    await started.promise
-    await waitFor(() => LoopJob.activeBackgroundCount() === baseline + 1)
+      const sessionID = `ses_active_count_${crypto.randomUUID()}`
+      expect(LoopJob.scheduleDetached({ type, sessionID, rootID: "root_1" })).toBe(true)
+      await started.promise
+      await waitFor(() => LoopJob.activeBackgroundCount() === baseline + 1)
 
-    release.resolve()
-    await LoopJob.settleDetached(sessionID)
-    await waitFor(() => LoopJob.activeBackgroundCount() === baseline)
-  })
+      release.resolve()
+      await LoopJob.settleDetached(sessionID)
+      await waitFor(() => LoopJob.activeBackgroundCount() === baseline)
+    }))
 
-  test("counts lease-bound runs scheduled through execute", async () => {
-    const baseline = LoopJob.activeBackgroundCount()
-    const started = Promise.withResolvers<void>()
-    const release = Promise.withResolvers<void>()
-    const type = `test_active_count_bound_${crypto.randomUUID()}`
-    LoopJob.register({
-      type,
-      phase: "post",
-      blocking: false,
-      collect: () => [{ type }],
-      capture: () => ({ type }),
-      async execute() {
-        started.resolve()
-        await release.promise
-        return "pass"
-      },
-    })
+  test("counts lease-bound runs scheduled through execute", () =>
+    runtime.run(async () => {
+      const baseline = LoopJob.activeBackgroundCount()
+      const started = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const type = `test_active_count_bound_${crypto.randomUUID()}`
+      LoopJob.register({
+        type,
+        phase: "post",
+        blocking: false,
+        collect: () => [{ type }],
+        capture: () => ({ type }),
+        async execute() {
+          started.resolve()
+          await release.promise
+          return "pass"
+        },
+      })
 
-    const sessionID = `ses_active_count_bound_${crypto.randomUUID()}`
-    await LoopJob.execute([{ type }], context(sessionID))
-    await started.promise
-    await waitFor(() => LoopJob.activeBackgroundCount() === baseline + 1)
+      const sessionID = `ses_active_count_bound_${crypto.randomUUID()}`
+      await LoopJob.execute([{ type }], context(sessionID))
+      await started.promise
+      await waitFor(() => LoopJob.activeBackgroundCount() === baseline + 1)
 
-    release.resolve()
-    await LoopJob.drain(sessionID)
-    await waitFor(() => LoopJob.activeBackgroundCount() === baseline)
-  })
+      release.resolve()
+      await LoopJob.drain(sessionID)
+      await waitFor(() => LoopJob.activeBackgroundCount() === baseline)
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

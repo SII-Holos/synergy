@@ -310,7 +310,7 @@ export function ImportPanel(props: {
                 options={
                   projects().length === 0
                     ? [{ value: "", label: _(noProjectLabel) }]
-                    : projects().map((item) => ({ value: item.id, label: getScopeLabel(item, item.directory) }))
+                    : projects().map((item) => ({ value: item.id, label: getScopeLabel(item, item.local?.directory) }))
                 }
                 onChange={(value) => {
                   setProjectID(value)

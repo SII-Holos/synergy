@@ -7,6 +7,7 @@ import math
 import os
 import re
 import shutil
+import subprocess
 import time
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -15,11 +16,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import aiohttp
 import psutil
 
 from .cache import cache_lock
 from .config import Resources
-from .network_resources import DEFAULT_POOLS, inspect_network_capacity
+from .docker_resources import DockerSnapshot, DockerStats
 from .prepare import command
 from .storage import atomic_json, read_json
 
@@ -28,10 +30,9 @@ from .storage import atomic_json, read_json
 class Request:
     cpus: float
     memory_bytes: int
-    networks: int = 0
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.cpus) or self.cpus <= 0 or self.memory_bytes <= 0 or self.networks < 0:
+        if not math.isfinite(self.cpus) or self.cpus <= 0 or self.memory_bytes <= 0:
             raise ValueError("Resource requests must be positive")
 
 
@@ -49,12 +50,13 @@ class Waiting:
 
 
 class ResourceLease:
-    def __init__(self, pool: ResourcePool, key: str, request: Request, adaptive: bool) -> None:
+    def __init__(self, pool: ResourcePool, key: str, request: Request, adaptive: bool, project: str | None) -> None:
         self.pool = pool
         self.key = key
         self.initial = request
         self.request = request
         self.adaptive = adaptive
+        self.project = project
         self.sampled_at: float | None = None
         self.peak_memory = 0
         self.last_memory = 0
@@ -75,7 +77,6 @@ class ResourceLease:
                 updated = Request(
                     max(self.initial.cpus, cpus * 1.25),
                     max(self.initial.memory_bytes, math.ceil(self.peak_memory * 1.25)),
-                    self.initial.networks,
                 )
                 self.pool._cpus += updated.cpus - self.request.cpus
                 self.pool._memory += updated.memory_bytes - self.request.memory_bytes
@@ -103,28 +104,41 @@ class SharedResources:
 
     def _rows(self) -> list[dict[str, Any]]:
         rows = []
+        owners = 0
         for file in (self.directory / "leases").glob("*.json"):
             fd = os.open(file, os.O_RDWR | os.O_NOFOLLOW)
             try:
                 row = read_json(file)
+                if row.get("version") != 2:
+                    raise ResourcePressureError("Unknown resource lease version; finish or clean its original run")
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except BlockingIOError:
+                    owners += 1
                     rows.append(row)
                     continue
                 prefix = row.get("scope")
-                if (
-                    prefix
+                project = row.get("project")
+                remains = (
+                    any(
+                        command(
+                            ["docker", *args, "--filter", f"label=com.docker.compose.project={project}"], timeout=15
+                        )
+                        for args in (["ps", "-aq"], ["network", "ls", "-q"], ["volume", "ls", "-q"])
+                    )
+                    if project
+                    else prefix
                     and re.fullmatch(r"sb-[a-f0-9]{8}-", prefix)
-                    and command(["docker", "ps", "-q", "--filter", "name=^" + prefix], timeout=30)
-                ):
+                    and command(["docker", "ps", "-aq", "--filter", "name=^" + prefix], timeout=30)
+                )
+                if remains:
                     rows.append(row)
                 else:
                     file.unlink()
             finally:
                 os.close(fd)
-        self.active = len(rows)
-        self.healthy = all(
+        self.active = owners
+        self.healthy = owners == len(rows) and all(
             not row.get("adaptive") or (row.get("sampled_at") is not None and time.time() - row["sampled_at"] < 10)
             for row in rows
         )
@@ -135,6 +149,8 @@ class SharedResources:
             fd = self.held[lease.key]
             value = {
                 **asdict(lease.request),
+                "version": 2,
+                "project": lease.project,
                 "scope": self.scope,
                 "pid": os.getpid(),
                 "adaptive": lease.adaptive,
@@ -146,24 +162,46 @@ class SharedResources:
             os.write(fd, json.dumps(value).encode())
             os.fsync(fd)
 
-    def available(self, capacity: Capacity) -> Capacity:
+    def available(self, capacity: Capacity, snapshot: DockerSnapshot | None = None) -> Capacity:
         with cache_lock(self.directory / "budget", timeout=5):
             rows = self._rows()
             return Capacity(
                 capacity.cpus - sum(row["cpus"] for row in rows),
-                capacity.memory_bytes - sum(row["memory_bytes"] for row in rows),
+                capacity.memory_bytes
+                - (snapshot.memory_with_reservations(rows) if snapshot else sum(row["memory_bytes"] for row in rows)),
             )
 
-    def acquire(self, key: str, request: Request, capacity: Capacity) -> bool:
+    def acquire(
+        self,
+        key: str,
+        request: Request,
+        capacity: Capacity,
+        project: str | None,
+        snapshot: DockerSnapshot | None = None,
+    ) -> bool:
         with cache_lock(self.directory / "budget", timeout=5):
             rows = self._rows()
             if (
-                sum(row["cpus"] for row in rows) + request.cpus > capacity.cpus
-                or sum(row["memory_bytes"] for row in rows) + request.memory_bytes > capacity.memory_bytes
+                not self.healthy
+                or (snapshot is not None and not snapshot.healthy)
+                or sum(row["cpus"] for row in rows) + request.cpus > capacity.cpus
+                or (snapshot.memory_with_reservations(rows) if snapshot else sum(row["memory_bytes"] for row in rows))
+                + request.memory_bytes
+                > capacity.memory_bytes
             ):
                 return False
             file = self.directory / "leases" / (key + ".json")
-            atomic_json(file, {**asdict(request), "scope": self.scope, "pid": os.getpid(), "started_at": time.time()})
+            atomic_json(
+                file,
+                {
+                    **asdict(request),
+                    "version": 2,
+                    "project": project,
+                    "scope": self.scope,
+                    "pid": os.getpid(),
+                    "started_at": time.time(),
+                },
+            )
             fd = os.open(file, os.O_RDWR | os.O_NOFOLLOW)
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             self.held[key] = fd
@@ -204,9 +242,11 @@ def inspect_host(root: Path, settings: Resources) -> dict[str, Any]:
     cpus = float(docker["NCPU"])
     memory = int(docker["MemTotal"])
     host_memory = psutil.virtual_memory()
-    cpus, memory, available = host_limits(cpus, memory, host_memory.available)
+    host_cpus, host_total, available = host_limits(
+        float(psutil.cpu_count() or 1), host_memory.total, host_memory.available
+    )
     reserved = int(settings.reserve_memory_gib * 1024**3)
-    capacity = usable_capacity(cpus, available, settings.reserve_cpus, reserved)
+    capacity = usable_capacity(min(cpus, host_cpus), min(memory, available), settings.reserve_cpus, reserved)
     directory = root.resolve()
     while not directory.exists():
         directory = directory.parent
@@ -217,9 +257,8 @@ def inspect_host(root: Path, settings: Resources) -> dict[str, Any]:
             "cpus": docker["NCPU"],
             "memory_bytes": docker["MemTotal"],
             "architecture": docker.get("Architecture"),
-            "address_pools": docker.get("DefaultAddressPools") or DEFAULT_POOLS,
         },
-        "limits": {"cpus": cpus, "memory_bytes": memory, "available_memory_bytes": available},
+        "limits": {"cpus": host_cpus, "memory_bytes": host_total, "available_memory_bytes": available},
         "capacity": asdict(capacity),
         "ceiling": asdict(usable_capacity(cpus, memory, settings.reserve_cpus, reserved)),
         "disk": {"free_bytes": disk.free, "total_bytes": disk.total},
@@ -243,10 +282,13 @@ class ResourcePool:
         pressure_timeout_seconds: float = 600,
         shared_directory: Path | None = None,
         scope: str | None = None,
+        sampler: DockerStats | None = None,
     ) -> None:
         if capacity.cpus <= 0 or capacity.memory_bytes <= 0 or concurrency < 1:
             raise ValueError("Insufficient scheduler capacity")
         self.admission = admission or (lambda request: True)
+        self.sampler = sampler or getattr(self.admission, "sampler", None)
+        self._snapshot: DockerSnapshot | None = None
         self.pressure_timeout_seconds = pressure_timeout_seconds
         self.shared = SharedResources(shared_directory, scope) if shared_directory is not None else None
         self._available = capacity
@@ -284,9 +326,20 @@ class ResourcePool:
             return False
         return next((row for row in ordered if self.fits(row.request)), None) is token
 
-    def admit(self, token: Waiting, shared_key: str) -> bool:
+    def admit(self, token: Waiting, shared_key: str, project: str | None) -> bool:
+        if self.sampler and (self._snapshot is None or not self._snapshot.healthy):
+            self.wait_reason = "docker_sample_unavailable"
+            return False
         if self.shared:
-            self._available = self.shared.available(self.capacity)
+            self._available = self.shared.available(self.capacity, self._snapshot)
+        elif self._snapshot:
+            self._available = Capacity(
+                self.capacity.cpus - self._cpus,
+                self.capacity.memory_bytes
+                - self._snapshot.memory_with_reservations(
+                    [{**asdict(lease.request), "project": lease.project} for lease in self._leases.values()]
+                ),
+            )
         if not self.eligible(token):
             self.wait_reason = (
                 "resource_sample_unavailable"
@@ -303,7 +356,7 @@ class ResourcePool:
         if not self.admission(token.request):
             self.wait_reason = getattr(self.admission, "reason", "host_pressure")
             return False
-        if self.shared and not self.shared.acquire(shared_key, token.request, self.capacity):
+        if self.shared and not self.shared.acquire(shared_key, token.request, self.capacity, project, self._snapshot):
             self.wait_reason = "shared_resource_budget"
             return False
         return True
@@ -316,17 +369,52 @@ class ResourcePool:
         adaptive: bool = False,
         priority: int = 0,
         on_wait: Callable[[str], None] | None = None,
+        project: str | None = None,
     ) -> AsyncIterator[ResourceLease]:
         self.validate(request)
         token = Waiting(request, priority=priority)
         shared_key = uuid.uuid4().hex
-        lease = ResourceLease(self, shared_key, request, adaptive)
+        lease = ResourceLease(self, shared_key, request, adaptive, project)
         async with self._condition:
             self._queue.append(token)
-            idle_pressure_since = time.monotonic()
-            last_reason = None
-            try:
-                while not self.admit(token, shared_key):
+        idle_pressure_since = time.monotonic()
+        last_reason = None
+        try:
+            while True:
+                if self.sampler:
+                    try:
+                        self._snapshot = await self.sampler.snapshot()
+                    except (
+                        OSError,
+                        ValueError,
+                        KeyError,
+                        TypeError,
+                        RuntimeError,
+                        TimeoutError,
+                        subprocess.SubprocessError,
+                        aiohttp.ClientError,
+                    ):
+                        self._snapshot = None
+                async with self._condition:
+                    if self.admit(token, shared_key, project):
+                        head = max(self._queue, key=lambda row: row.priority)
+                        if head is not token:
+                            head.bypasses += 1
+                        self.active += 1
+                        self._cpus += request.cpus
+                        self._memory += request.memory_bytes
+                        self._leases[shared_key] = lease
+                        if self.shared:
+                            try:
+                                self.shared.update(lease)
+                            except BaseException:
+                                self.active -= 1
+                                self._cpus -= request.cpus
+                                self._memory -= request.memory_bytes
+                                self._leases.pop(shared_key)
+                                self.shared.release(shared_key)
+                                raise
+                        break
                     if on_wait and last_reason != self.wait_reason:
                         on_wait(self.wait_reason)
                         last_reason = self.wait_reason
@@ -341,24 +429,8 @@ class ResourcePool:
                             await self._condition.wait()
                     except TimeoutError:
                         pass
-                head = max(self._queue, key=lambda row: row.priority)
-                if head is not token:
-                    head.bypasses += 1
-                self.active += 1
-                self._cpus += request.cpus
-                self._memory += request.memory_bytes
-                self._leases[shared_key] = lease
-                if self.shared:
-                    try:
-                        self.shared.update(lease)
-                    except BaseException:
-                        self.active -= 1
-                        self._cpus -= request.cpus
-                        self._memory -= request.memory_bytes
-                        self._leases.pop(shared_key)
-                        self.shared.release(shared_key)
-                        raise
-            finally:
+        finally:
+            async with self._condition:
                 self._queue.remove(token)
                 self._condition.notify_all()
         try:
@@ -402,13 +474,10 @@ def parse_bytes(value: str) -> int | None:
 
 
 class HostPressure:
-    def __init__(
-        self, root: Path, settings: Resources, docker_memory: int, address_pools: list[dict[str, Any]] | None = None
-    ) -> None:
+    def __init__(self, root: Path, settings: Resources) -> None:
         self.root = root
         self.settings = settings
-        self.docker_memory = docker_memory
-        self.address_pools = address_pools
+        self.sampler = DockerStats()
         self.previous: tuple[float, float, float] | None = None
         self.saturated_since: float | None = None
         self.cpu_ready = False
@@ -431,7 +500,6 @@ class HostPressure:
                     )
             memory = psutil.virtual_memory()
             available = host_limits(float(psutil.cpu_count() or 1), memory.total, memory.available)[2]
-            available = min(available, max(0, self.docker_memory - (memory.total - memory.available)))
             if not self.cpu_ready:
                 self.reason = "host_sample_unavailable"
             elif available < self.settings.reserve_memory_gib * 1024**3 + request.memory_bytes:
@@ -441,16 +509,6 @@ class HostPressure:
             elif self.saturated_since is not None and now - self.saturated_since >= 3:
                 self.reason = "cpu_saturated"
             else:
-                if request.networks:
-                    available_networks = (
-                        inspect_network_capacity(self.address_pools) if self.address_pools is not None else None
-                    )
-                    if available_networks is None:
-                        self.reason = "network_sample_unavailable"
-                        return False
-                    if available_networks < request.networks:
-                        self.reason = "network_address_pressure"
-                        return False
                 self.reason = "ready"
                 return True
         except (OSError, ValueError, KeyError, TypeError, psutil.Error):
@@ -465,8 +523,6 @@ def admission_for(root: Path, plan: dict[str, Any]) -> Callable[[Request], bool]
     return HostPressure(
         root,
         Resources.model_validate(settings),
-        int(plan["host"]["limits"]["memory_bytes"]),
-        plan["host"]["docker"]["address_pools"],
     )
 
 
@@ -523,35 +579,39 @@ async def build_slot(cache: Path, *, wait_seconds: float | None, limit: int = 2)
 def build_reservation(cache: Path, *, timeout: float, settings: Resources | None = None) -> Iterator[None]:
     settings = settings or Resources()
     host = inspect_host(cache, settings)
-    capacity = Capacity(**host["capacity"])
+    capacity = Capacity(**host["ceiling"])
     request = Request(2, 4 * 1024**3)
-    ResourcePool(capacity, 1).validate(request)
-    shared = SharedResources(cache / "resources", "build")
+    pool = ResourcePool(
+        capacity,
+        1,
+        admission=HostPressure(cache, settings),
+        pressure_timeout_seconds=timeout,
+        shared_directory=cache / "resources",
+        scope="build",
+    )
+    pool.validate(request)
     slots = BuildSlots(cache / "build-slots", limit=settings.build_concurrency)
-    key = uuid.uuid4().hex
     started = time.monotonic()
-    acquired = False
     try:
         while not slots.acquire():
             if time.monotonic() - started >= timeout:
                 raise TimeoutError("Build slot admission timed out")
             time.sleep(0.1)
-        while not (acquired := shared.acquire(key, request, capacity)):
-            if time.monotonic() - started >= timeout:
-                raise TimeoutError("Build resource admission timed out")
-            time.sleep(0.2)
-        yield
+        pool.pressure_timeout_seconds = max(0.01, timeout - (time.monotonic() - started))
+        with asyncio.Runner() as runner:
+            manager = pool.reserve(request)
+            runner.run(manager.__aenter__())
+            try:
+                yield
+            finally:
+                runner.run(manager.__aexit__(None, None, None))
     finally:
-        try:
-            if acquired:
-                shared.release(key)
-        finally:
-            slots.release()
+        slots.release()
 
 
 def with_runtime_overhead(native: Request) -> Request:
-    return Request(native.cpus + 0.2, native.memory_bytes + 128 * 1024**2, native.networks)
+    return Request(native.cpus + 0.2, native.memory_bytes + 128 * 1024**2)
 
 
 def working_set_request(native: Request) -> Request:
-    return with_runtime_overhead(Request(min(native.cpus, 0.25), min(native.memory_bytes, 1024**3), native.networks))
+    return with_runtime_overhead(Request(min(native.cpus, 0.25), min(native.memory_bytes, 1024**3)))

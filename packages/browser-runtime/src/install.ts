@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import path from "path"
 import os from "os"
 import fs from "fs/promises"
@@ -46,8 +47,11 @@ const HostManifest = z
   .strict()
 
 export type BrowserHostManifest = z.infer<typeof HostManifest>
-const hostInstalls = new Map<string, Promise<string>>()
-const chromiumInstalls = new Map<string, Promise<ChromiumInstallReport>>()
+const runtimeState = RuntimeContext.state(() => ({
+  hostInstalls: new Map<string, Promise<string>>(),
+  chromiumInstalls: new Map<string, Promise<ChromiumInstallReport>>(),
+}))
+
 const MANIFEST_DOWNLOAD_TIMEOUT_MS = 30_000
 const ARTIFACT_DOWNLOAD_TIMEOUT_MS = 10 * 60_000
 
@@ -187,11 +191,16 @@ export namespace BrowserInstall {
       force?: boolean
     } = {},
   ): Promise<ChromiumInstallReport> {
+    const instanceState = runtimeState()
+
     const destination = options.destination ?? chromiumDir()
-    const active = chromiumInstalls.get(destination)
+    const active = instanceState.chromiumInstalls.get(destination)
     if (active) return active
-    const install = installChromiumOnce({ ...options, destination }).finally(() => chromiumInstalls.delete(destination))
-    chromiumInstalls.set(destination, install)
+    const install = installChromiumOnce({ ...options, destination }).finally(() => {
+      const instanceState = runtimeState()
+      return instanceState.chromiumInstalls.delete(destination)
+    })
+    instanceState.chromiumInstalls.set(destination, install)
     return install
   }
 
@@ -325,6 +334,8 @@ export namespace BrowserInstall {
       manifestBaseUrl?: string
     } = {},
   ): Promise<string> {
+    const instanceState = runtimeState()
+
     const existing = path.join(hostDir(), "executable")
     try {
       const marker = await fs.lstat(existing)
@@ -335,10 +346,13 @@ export namespace BrowserInstall {
       if (isPathContained(hostDir(), real) && executable.isFile() && !executable.isSymbolicLink()) return real
     } catch {}
     const key = hostDir()
-    const active = hostInstalls.get(key)
+    const active = instanceState.hostInstalls.get(key)
     if (active) return active
-    const install = installHost(options).finally(() => hostInstalls.delete(key))
-    hostInstalls.set(key, install)
+    const install = installHost(options).finally(() => {
+      const instanceState = runtimeState()
+      return instanceState.hostInstalls.delete(key)
+    })
+    instanceState.hostInstalls.set(key, install)
     return install
   }
 

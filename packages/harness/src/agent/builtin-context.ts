@@ -124,7 +124,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     agenda_logs: "allow",
     external_directory: {
       "*": "ask",
-      [Truncate.DIR]: "allow",
+      [Truncate.directory()]: "allow",
     },
   })
 

@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { SettingCondition as PluginSettingCondition } from "@ericsanchezok/synergy-util/setting-condition"
 type PluginJsonSchema = Record<string, unknown>
 import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool"
@@ -19,10 +20,11 @@ export namespace ToolPluginSource {
     callID?: string
     userMessageID?: string
     scopeId: string
-    directory: string
+    directory?: string
   }
 
   export interface Entry {
+    requiresWorkspace?: boolean
     fullId: string
     pluginId: string
     toolId: string
@@ -40,13 +42,22 @@ export namespace ToolPluginSource {
     conditionEnabled(pluginId: string, condition: PluginSettingCondition): Promise<boolean>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source | undefined): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("tool/plugin-source")
+    if (instanceState.source && value) throw new Error("tool/plugin-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

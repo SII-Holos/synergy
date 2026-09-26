@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Info } from "./types"
 /**
  * S9c source inversion (Blueprint): product domains contribute advisory
@@ -16,13 +17,19 @@ export namespace SessionEnvContributor {
     envHints(session?: EnvSession): Promise<string[]>
   }
 
-  const contributors = new Map<string, Contributor>()
+  const runtimeState = RuntimeContext.state(() => ({
+    contributors: new Map<string, Contributor>(),
+  }))
 
   export function register(contributor: Contributor): void {
-    contributors.set(contributor.id, contributor)
+    const instanceState = runtimeState()
+
+    instanceState.contributors.set(contributor.id, contributor)
   }
 
   export function list(): Contributor[] {
-    return [...contributors.values()]
+    const instanceState = runtimeState()
+
+    return [...instanceState.contributors.values()]
   }
 }

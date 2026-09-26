@@ -13,7 +13,9 @@ import { LLM } from "@ericsanchezok/synergy-harness/test/internal/session/llm"
 import { PromptBudgeter } from "@ericsanchezok/synergy-harness/test/internal/session/prompt-budgeter"
 import { sha256File } from "@ericsanchezok/synergy-harness/util/crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import "@ericsanchezok/synergy-product-runtime/product-registration"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function model(): Provider.Model {
   return {
@@ -101,80 +103,92 @@ async function approve(manifest: PluginManifestType) {
 }
 
 describe.serial("process plugin system transform hook", () => {
-  test("receives complete budget metadata and applies the returned system", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const fixture = await writeTransformPlugin(tmp.path)
+  test(
+    "receives complete budget metadata and applies the returned system",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const fixture = await writeTransformPlugin(tmp.path)
 
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await approve(fixture.manifest)
-        await Config.update({ plugin: [pathToFileURL(fixture.pluginDir).href] } as Config.Info)
-        await resetAllPluginState()
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            await approve(fixture.manifest)
+            await Config.update({ plugin: [pathToFileURL(fixture.pluginDir).href] } as Config.Info)
+            await resetAllPluginState()
 
-        try {
-          const plan = await PromptBudgeter.buildPlan({
-            sessionID: "ses_transform",
-            agent: "synergy",
-            messageID: "msg_transform",
-            model: model(),
-            system: ["base system"],
-            messages: [],
-            toolDefinitions: [],
-          })
+            try {
+              const plan = await PromptBudgeter.buildPlan({
+                sessionID: "ses_transform",
+                agent: "synergy",
+                messageID: "msg_transform",
+                model: model(),
+                system: ["base system"],
+                messages: [],
+                toolDefinitions: [],
+              })
 
-          expect(plan.system).toEqual(["base system", "plugin marker"])
-          expect(await Bun.file(fixture.inputPath).json()).toEqual({
-            phase: "budget",
-            sessionID: "ses_transform",
-            agent: "synergy",
-            model: { providerID: "test-provider", modelID: "test-model" },
-            messageID: "msg_transform",
-            system: ["base system"],
-          })
-        } finally {
-          await pluginRuntimeManager.stop(fixture.manifest.id, 0)
-          await resetAllPluginState()
-        }
-      },
-    })
-  }, 15_000)
+              expect(plan.system).toEqual(["base system", "plugin marker"])
+              expect(await Bun.file(fixture.inputPath).json()).toEqual({
+                phase: "budget",
+                sessionID: "ses_transform",
+                agent: "synergy",
+                model: { providerID: "test-provider", modelID: "test-model" },
+                messageID: "msg_transform",
+                system: ["base system"],
+              })
+            } finally {
+              await pluginRuntimeManager().stop(fixture.manifest.id, 0)
+              await resetAllPluginState()
+            }
+          },
+        })
+      }),
+    15_000,
+  )
 
-  test("prepares final plugin hooks before an Agent turn crosses the worker boundary", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const fixture = await writeTransformPlugin(tmp.path)
+  test(
+    "prepares final plugin hooks before an Agent turn crosses the worker boundary",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const fixture = await writeTransformPlugin(tmp.path)
 
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        await approve(fixture.manifest)
-        await Config.update({ plugin: [pathToFileURL(fixture.pluginDir).href] } as Config.Info)
-        await resetAllPluginState()
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            await approve(fixture.manifest)
+            await Config.update({ plugin: [pathToFileURL(fixture.pluginDir).href] } as Config.Info)
+            await resetAllPluginState()
 
-        try {
-          const prepared = await LLM.prepare({
-            user: { id: "msg_final" },
-            sessionID: "ses_final",
-            model: model(),
-            agent: { name: "synergy", prompt: "agent prompt" },
-            system: ["base system"],
-            messages: [],
-            abort: new AbortController().signal,
-            tools: {},
-          } as unknown as LLM.StreamInput)
+            try {
+              const prepared = await LLM.prepare({
+                user: { id: "msg_final" },
+                sessionID: "ses_final",
+                model: model(),
+                agent: { name: "synergy", prompt: "agent prompt" },
+                system: ["base system"],
+                messages: [],
+                abort: new AbortController().signal,
+                tools: {},
+              } as unknown as LLM.StreamInput)
 
-          expect(prepared.system.at(-1)).toBe("plugin marker")
-          expect(prepared.params.options).toBeDefined()
-          expect(await Bun.file(fixture.inputPath).json()).toMatchObject({
-            phase: "final",
-            sessionID: "ses_final",
-            messageID: "msg_final",
-          })
-        } finally {
-          await pluginRuntimeManager.stop(fixture.manifest.id, 0)
-          await resetAllPluginState()
-        }
-      },
-    })
-  }, 15_000)
+              expect(prepared.system.at(-1)).toBe("plugin marker")
+              expect(prepared.params.options).toBeDefined()
+              expect(await Bun.file(fixture.inputPath).json()).toMatchObject({
+                phase: "final",
+                sessionID: "ses_final",
+                messageID: "msg_final",
+              })
+            } finally {
+              await pluginRuntimeManager().stop(fixture.manifest.id, 0)
+              await resetAllPluginState()
+            }
+          },
+        })
+      }),
+    15_000,
+  )
 })
+
+afterRuntimeTests(() => runtime.close())

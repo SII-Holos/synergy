@@ -1,3 +1,4 @@
+import { createDraftSessionIndex } from "../../../src/context/prompt/draft-index"
 import { createEffect, createSignal, onCleanup, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { render } from "solid-js/web"
@@ -108,10 +109,10 @@ function Editor() {
       >
         Restore
       </button>
-      <button id="a" onClick={() => navigate("/scope/session/a")}>
+      <button id="a" onClick={() => navigate("/c2NvcGU/session/a")}>
         A
       </button>
-      <button id="b" onClick={() => navigate("/scope/session/b")}>
+      <button id="b" onClick={() => navigate("/c2NvcGU/session/b")}>
         B
       </button>
       <button id="mount" onClick={() => setMounted(!mounted())}>
@@ -159,11 +160,15 @@ render(
     <Router>
       <Route
         path="/:dir/session/:id"
-        component={() => (
-          <PromptProvider>
-            <Editor />
-          </PromptProvider>
-        )}
+        component={() => {
+          const drafts = createDraftSessionIndex("http://prompt-fixture")
+          onCleanup(drafts.dispose)
+          return (
+            <PromptProvider connection="http://prompt-fixture" drafts={drafts}>
+              <Editor />
+            </PromptProvider>
+          )
+        }}
       />
     </Router>
   ),

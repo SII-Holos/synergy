@@ -6,6 +6,9 @@ import { NoteEditTool } from "@ericsanchezok/synergy-note/tools/note-edit"
 import { NoteWriteTool } from "@ericsanchezok/synergy-note/tools/note-write"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function ctx(sessionID: string): Tool.Context {
   return {
@@ -52,234 +55,240 @@ function anchoredReplace(
 }
 
 describe("note Blueprint write policy", () => {
-  test("blocks Blueprint creation outside Plan or Lattice while allowing ordinary notes", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await createSession()
-        const write = await NoteWriteTool.init()
+  test("blocks Blueprint creation outside Plan or Lattice while allowing ordinary notes", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createSession()
+          const write = await NoteWriteTool.init()
 
-        const blocked = await write.execute(
-          {
-            mode: "create",
-            title: "Accidental Blueprint",
-            content: "deliverable",
+          const blocked = await write.execute(
+            {
+              mode: "create",
+              title: "Accidental Blueprint",
+              content: "deliverable",
+              kind: "blueprint",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+
+          expect(blocked.metadata.reason).toBe("non_plan_blueprint_write")
+          expect(blocked.output).toContain("not in Plan or Lattice")
+          expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(0)
+
+          const implicitByDescription = await write.execute(
+            {
+              mode: "create",
+              title: "Implicit Blueprint",
+              content: "deliverable",
+              description: "Executable plan",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(implicitByDescription.metadata.reason).toBe("non_plan_blueprint_write")
+
+          const created = await write.execute(
+            {
+              mode: "create",
+              title: "Ordinary Deliverable",
+              content: "deliverable",
+              kind: "note",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+
+          expect(created.metadata.kind).toBe("note")
+          const noteID = created.metadata.id as string
+
+          const updated = await write.execute(
+            {
+              mode: "replace",
+              id: noteID,
+              content: "updated deliverable",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(updated.metadata.kind).toBe("note")
+
+          const edit = await NoteEditTool.init()
+          const editable = await NoteStore.get(ScopeContext.current.scope.id, noteID)
+          const edited = await edit.execute(anchoredReplace(editable, "edited deliverable"), ctx(session.id))
+          expect(edited.output).toContain("Note edited successfully")
+
+          const convertBlocked = await write.execute(
+            {
+              mode: "replace",
+              id: noteID,
+              content: "converted deliverable",
+              kind: "blueprint",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(convertBlocked.metadata.reason).toBe("non_plan_blueprint_write")
+
+          const implicitConvertBlocked = await write.execute(
+            {
+              mode: "replace",
+              id: noteID,
+              content: "converted deliverable",
+              description: "Executable plan",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(implicitConvertBlocked.metadata.reason).toBe("non_plan_blueprint_write")
+
+          expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(1)
+          const stored = await NoteStore.get(ScopeContext.current.scope.id, noteID)
+          expect(stored.kind).toBe("note")
+          expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("edited deliverable")
+        },
+      })
+    }))
+
+  test("blocks updating and editing existing Blueprints outside Plan or Lattice", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createSession()
+          const blueprint = await NoteStore.create({
+            title: "Existing Blueprint",
+            content: NoteMarkdown.fromMarkdown("Original"),
             kind: "blueprint",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
+            blueprint: { description: "Test Blueprint" },
+          })
+          const write = await NoteWriteTool.init()
+          const edit = await NoteEditTool.init()
 
-        expect(blocked.metadata.reason).toBe("non_plan_blueprint_write")
-        expect(blocked.output).toContain("not in Plan or Lattice")
-        expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(0)
+          const writeBlocked = await write.execute(
+            {
+              mode: "replace",
+              id: blueprint.id,
+              content: "Updated",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(writeBlocked.metadata.reason).toBe("non_plan_blueprint_write")
+          expect(writeBlocked.output).toContain("Blueprint notes are read-only")
 
-        const implicitByDescription = await write.execute(
-          {
-            mode: "create",
-            title: "Implicit Blueprint",
-            content: "deliverable",
-            description: "Executable plan",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(implicitByDescription.metadata.reason).toBe("non_plan_blueprint_write")
+          const appendBlocked = await write.execute(
+            {
+              mode: "append",
+              id: blueprint.id,
+              content: "Appended",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(appendBlocked.metadata.reason).toBe("non_plan_blueprint_write")
 
-        const created = await write.execute(
-          {
-            mode: "create",
-            title: "Ordinary Deliverable",
-            content: "deliverable",
-            kind: "note",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
+          const editBlocked = await edit.execute(anchoredReplace(blueprint, "Edited"), ctx(session.id))
+          expect(editBlocked.metadata.reason).toBe("non_plan_blueprint_write")
 
-        expect(created.metadata.kind).toBe("note")
-        const noteID = created.metadata.id as string
+          const stored = await NoteStore.get(ScopeContext.current.scope.id, blueprint.id)
+          expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("Original")
+        },
+      })
+    }))
 
-        const updated = await write.execute(
-          {
-            mode: "replace",
-            id: noteID,
-            content: "updated deliverable",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(updated.metadata.kind).toBe("note")
+  test("allows Blueprint creation and edits in Plan", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createSession({ workflow: "plan" })
+          const write = await NoteWriteTool.init()
+          const edit = await NoteEditTool.init()
 
-        const edit = await NoteEditTool.init()
-        const editable = await NoteStore.get(ScopeContext.current.scope.id, noteID)
-        const edited = await edit.execute(anchoredReplace(editable, "edited deliverable"), ctx(session.id))
-        expect(edited.output).toContain("Note edited successfully")
+          const created = await write.execute(
+            {
+              mode: "create",
+              title: "Plan Blueprint",
+              content: "Initial",
+              kind: "blueprint",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(created.metadata.kind).toBe("blueprint")
 
-        const convertBlocked = await write.execute(
-          {
-            mode: "replace",
-            id: noteID,
-            content: "converted deliverable",
-            kind: "blueprint",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(convertBlocked.metadata.reason).toBe("non_plan_blueprint_write")
+          const id = created.metadata.id as string
+          await NoteStore.update(ScopeContext.current.scope.id, id, {
+            blueprint: { runCount: 2 },
+          })
+          const replaced = await write.execute(
+            {
+              mode: "replace",
+              id,
+              content: "Replaced",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(replaced.output).toContain("Blueprint updated successfully")
+          expect(replaced.metadata.kind).toBe("blueprint")
+          expect(replaced.metadata.runCount).toBe(2)
 
-        const implicitConvertBlocked = await write.execute(
-          {
-            mode: "replace",
-            id: noteID,
-            content: "converted deliverable",
-            description: "Executable plan",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(implicitConvertBlocked.metadata.reason).toBe("non_plan_blueprint_write")
+          const edited = await edit.execute(
+            anchoredReplace(await NoteStore.get(ScopeContext.current.scope.id, id), "Edited"),
+            ctx(session.id),
+          )
+          expect(edited.output).toContain("Note edited successfully")
 
-        expect(await NoteStore.list(ScopeContext.current.scope.id)).toHaveLength(1)
-        const stored = await NoteStore.get(ScopeContext.current.scope.id, noteID)
-        expect(stored.kind).toBe("note")
-        expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("edited deliverable")
-      },
-    })
-  })
+          const stored = await NoteStore.get(ScopeContext.current.scope.id, id)
+          expect(stored.kind).toBe("blueprint")
+          expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("Edited")
 
-  test("blocks updating and editing existing Blueprints outside Plan or Lattice", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await createSession()
-        const blueprint = await NoteStore.create({
-          title: "Existing Blueprint",
-          content: NoteMarkdown.fromMarkdown("Original"),
-          kind: "blueprint",
-          blueprint: { description: "Test Blueprint" },
-        })
-        const write = await NoteWriteTool.init()
-        const edit = await NoteEditTool.init()
+          const appended = await write.execute(
+            {
+              mode: "append",
+              id,
+              content: "Appended",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
+          expect(appended.metadata.kind).toBe("blueprint")
+          expect(appended.metadata.runCount).toBe(2)
+        },
+      })
+    }))
 
-        const writeBlocked = await write.execute(
-          {
-            mode: "replace",
-            id: blueprint.id,
-            content: "Updated",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(writeBlocked.metadata.reason).toBe("non_plan_blueprint_write")
-        expect(writeBlocked.output).toContain("Blueprint notes are read-only")
+  test("allows Blueprint creation and edits in Lattice", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await createSession({ workflow: "lattice" })
+          const write = await NoteWriteTool.init()
 
-        const appendBlocked = await write.execute(
-          {
-            mode: "append",
-            id: blueprint.id,
-            content: "Appended",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(appendBlocked.metadata.reason).toBe("non_plan_blueprint_write")
+          const created = await write.execute(
+            {
+              mode: "create",
+              title: "Lattice Blueprint",
+              content: "Initial",
+              kind: "blueprint",
+              scope: "current",
+            },
+            ctx(session.id),
+          )
 
-        const editBlocked = await edit.execute(anchoredReplace(blueprint, "Edited"), ctx(session.id))
-        expect(editBlocked.metadata.reason).toBe("non_plan_blueprint_write")
-
-        const stored = await NoteStore.get(ScopeContext.current.scope.id, blueprint.id)
-        expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("Original")
-      },
-    })
-  })
-
-  test("allows Blueprint creation and edits in Plan", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await createSession({ workflow: "plan" })
-        const write = await NoteWriteTool.init()
-        const edit = await NoteEditTool.init()
-
-        const created = await write.execute(
-          {
-            mode: "create",
-            title: "Plan Blueprint",
-            content: "Initial",
-            kind: "blueprint",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(created.metadata.kind).toBe("blueprint")
-
-        const id = created.metadata.id as string
-        await NoteStore.update(ScopeContext.current.scope.id, id, {
-          blueprint: { runCount: 2 },
-        })
-        const replaced = await write.execute(
-          {
-            mode: "replace",
-            id,
-            content: "Replaced",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(replaced.output).toContain("Blueprint updated successfully")
-        expect(replaced.metadata.kind).toBe("blueprint")
-        expect(replaced.metadata.runCount).toBe(2)
-
-        const edited = await edit.execute(
-          anchoredReplace(await NoteStore.get(ScopeContext.current.scope.id, id), "Edited"),
-          ctx(session.id),
-        )
-        expect(edited.output).toContain("Note edited successfully")
-
-        const stored = await NoteStore.get(ScopeContext.current.scope.id, id)
-        expect(stored.kind).toBe("blueprint")
-        expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("Edited")
-
-        const appended = await write.execute(
-          {
-            mode: "append",
-            id,
-            content: "Appended",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-        expect(appended.metadata.kind).toBe("blueprint")
-        expect(appended.metadata.runCount).toBe(2)
-      },
-    })
-  })
-
-  test("allows Blueprint creation and edits in Lattice", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await createSession({ workflow: "lattice" })
-        const write = await NoteWriteTool.init()
-
-        const created = await write.execute(
-          {
-            mode: "create",
-            title: "Lattice Blueprint",
-            content: "Initial",
-            kind: "blueprint",
-            scope: "current",
-          },
-          ctx(session.id),
-        )
-
-        expect(created.metadata.kind).toBe("blueprint")
-      },
-    })
-  })
+          expect(created.metadata.kind).toBe("blueprint")
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

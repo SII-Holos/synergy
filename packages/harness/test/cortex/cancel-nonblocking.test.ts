@@ -4,6 +4,9 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function reset() {
   Cortex.reset()
@@ -11,15 +14,15 @@ function reset() {
 }
 
 describe("Cortex non-blocking cancel", () => {
-  beforeEach(reset)
-  afterEach(reset)
+  beforeEach(() => runtime.run(reset))
+  afterEach(() => runtime.run(reset))
 
   test.each([
     { operation: "cancel", count: 1 },
     { operation: "cancelAll", count: 2 },
   ] as const)(
     "$operation returns while descendant processors remain pending",
-    async ({ operation, count }) => {
+    runtime.bind(async ({ operation, count }) => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -92,7 +95,9 @@ describe("Cortex non-blocking cancel", () => {
           }
         },
       })
-    },
+    }),
     20_000,
   )
 })
+
+afterRuntimeTests(() => runtime.close())

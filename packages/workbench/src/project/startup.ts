@@ -9,18 +9,20 @@ import { startWorktreeJanitor, stopWorktreeJanitor } from "./worktree-janitor"
 export function registerProjectStartup() {
   ScopeStartup.register({
     name: "vcs-init",
-    before: ["command-watcher"],
+    owner: "workspace",
     phase: "surface",
     after: ["file-watcher"],
-    init: () => void Vcs.init(),
+    init: () => Vcs.init().then(() => {}),
   })
   // The janitor only schedules itself here; its first scan is deferred with an
   // unref'd timer so neither startup latency nor process lifetime depends on it.
   ScopeStartup.register({
     name: "worktree-janitor",
     phase: "surface",
-    after: ["vcs-init"],
-    init: (scope) => startWorktreeJanitor(scope),
+    after: ["command-watcher"],
+    init: (scope) => {
+      if (scope.type === "project") startWorktreeJanitor(scope)
+    },
     dispose: (scopeID) => stopWorktreeJanitor(scopeID),
   })
 }

@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["bun"],
+    "typeRoots": ["../../packages/testing/node_modules/@types"]
+  },
+  "include": ["../ci.ts", "./*.ts"]
+}

@@ -1,26 +1,35 @@
-const activeTimers = new Map<string, Timer>()
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+const runtimeState = RuntimeContext.state(() => ({
+  activeTimers: new Map<string, Timer>(),
+}))
 
 function timerKey(scopeID: string, loopID: string): string {
   return `blueprint_deadline:${scopeID}:${loopID}`
 }
 
 export function hasDeadlineTimer(scopeID: string, loopID: string): boolean {
-  return activeTimers.has(timerKey(scopeID, loopID))
+  const instanceState = runtimeState()
+
+  return instanceState.activeTimers.has(timerKey(scopeID, loopID))
 }
 
 export function clearTimer(scopeID: string, loopID: string): void {
-  const existing = activeTimers.get(timerKey(scopeID, loopID))
+  const instanceState = runtimeState()
+
+  const existing = instanceState.activeTimers.get(timerKey(scopeID, loopID))
   if (existing) {
     clearTimeout(existing)
-    activeTimers.delete(timerKey(scopeID, loopID))
+    instanceState.activeTimers.delete(timerKey(scopeID, loopID))
   }
 }
 
 export function setDeadlineTimer(scopeID: string, loopID: string, maxRuntimeMs: number, onExpire: () => void): void {
+  const instanceState = runtimeState()
+
   clearTimer(scopeID, loopID)
   const timer = setTimeout(onExpire, maxRuntimeMs)
   timer.unref()
-  activeTimers.set(timerKey(scopeID, loopID), timer)
+  instanceState.activeTimers.set(timerKey(scopeID, loopID), timer)
 }
 
 export function cancelDeadline(scopeID: string, loopID: string): void {

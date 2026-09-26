@@ -4,49 +4,56 @@ import { tmpdir } from "../support/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Config } from "../../src/config/config"
 import { Agent as AgentSvc } from "../../src/agent/agent"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
-test("agent color parsed from project config", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          agent: {
-            build: { color: "#FFA500" },
-          },
-        }),
-      )
-    },
-  })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const cfg = await Config.current()
-      expect(cfg.agent?.["build"]?.color).toBe("#FFA500")
-    },
-  })
-})
+test("agent color parsed from project config", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            $schema: "file:///test/config.schema.json",
+            agent: {
+              build: { color: "#FFA500" },
+            },
+          }),
+        )
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const cfg = await Config.current()
+        expect(cfg.agent?.["build"]?.color).toBe("#FFA500")
+      },
+    })
+  }))
 
-test("Agent.get includes color from config", async () => {
-  await using tmp = await tmpdir({
-    init: async (dir) => {
-      await Bun.write(
-        path.join(dir, "synergy.json"),
-        JSON.stringify({
-          $schema: "file:///test/config.schema.json",
-          agent: {
-            explore: { color: "#A855F7" },
-          },
-        }),
-      )
-    },
-  })
-  await ScopeContext.provide({
-    scope: await tmp.scope(),
-    fn: async () => {
-      const explore = await AgentSvc.get("explore")
-      expect(explore?.color).toBe("#A855F7")
-    },
-  })
-})
+test("Agent.get includes color from config", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "synergy.json"),
+          JSON.stringify({
+            $schema: "file:///test/config.schema.json",
+            agent: {
+              explore: { color: "#A855F7" },
+            },
+          }),
+        )
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const explore = await AgentSvc.get("explore")
+        expect(explore?.color).toBe("#A855F7")
+      },
+    })
+  }))
+
+afterRuntimeTests(() => runtime.close())

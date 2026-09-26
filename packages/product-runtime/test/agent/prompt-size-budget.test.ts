@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import "../../src/product-registration"
 import { AgentBuiltins } from "@ericsanchezok/synergy-harness/agent/builtins"
 import { describe, expect, test } from "bun:test"
@@ -45,31 +48,37 @@ function productionAgentInfos() {
 }
 
 describe("static prompt and tool context size budgets", () => {
-  test("rendered primary prompts stay within budget with the production agent catalog", () => {
-    const infos = productionAgentInfos()
-    expect(infos.length).toBeGreaterThanOrEqual(50)
-    expect(Buffer.byteLength(buildSynergyPrompt(infos), "utf8")).toBeLessThanOrEqual(46_000)
-    expect(Buffer.byteLength(buildSynergyMaxPrompt(infos), "utf8")).toBeLessThanOrEqual(28_500)
-  })
+  test("rendered primary prompts stay within budget with the production agent catalog", () =>
+    runtime.run(() => {
+      const infos = productionAgentInfos()
+      expect(infos.length).toBeGreaterThanOrEqual(50)
+      expect(Buffer.byteLength(buildSynergyPrompt(infos), "utf8")).toBeLessThanOrEqual(46_000)
+      expect(Buffer.byteLength(buildSynergyMaxPrompt(infos), "utf8")).toBeLessThanOrEqual(28_500)
+    }))
 
-  test("synergy base prompt source stays within budget", () => {
-    expect(Bun.file(path.join(PROMPT_DIR, "synergy/base.txt")).size).toBeLessThanOrEqual(40_000)
-  })
+  test("synergy base prompt source stays within budget", () =>
+    runtime.run(() => {
+      expect(Bun.file(path.join(PROMPT_DIR, "synergy/base.txt")).size).toBeLessThanOrEqual(40_000)
+    }))
 
-  test("slimmed tool descriptions stay within budget", () => {
-    expect(sourceBytes("bash.txt")).toBeLessThanOrEqual(7_000)
-    expect(sourceBytes("revise-file.txt")).toBeLessThanOrEqual(5_000)
-    expect(sourceBytes("dagwrite.txt")).toBeLessThanOrEqual(3_250)
-    expect(sourceBytes("process.txt")).toBeLessThanOrEqual(5_050)
-    expect(Bun.file(path.join(PROMPT_DIR, "../../cortex/tools/task.txt")).size).toBeLessThanOrEqual(3_950)
-  })
+  test("slimmed tool descriptions stay within budget", () =>
+    runtime.run(() => {
+      expect(sourceBytes("bash.txt")).toBeLessThanOrEqual(7_000)
+      expect(sourceBytes("revise-file.txt")).toBeLessThanOrEqual(5_000)
+      expect(sourceBytes("dagwrite.txt")).toBeLessThanOrEqual(3_250)
+      expect(sourceBytes("process.txt")).toBeLessThanOrEqual(5_050)
+      expect(Bun.file(path.join(PROMPT_DIR, "../../cortex/tools/task.txt")).size).toBeLessThanOrEqual(3_950)
+    }))
 
-  test("skill descriptions truncate to a single bounded line", () => {
-    const long = "First line with " + "very ".repeat(60) + "long tail\nsecond line detail"
-    const truncated = truncateSkillDescription(long)
-    expect(truncated.length).toBeLessThanOrEqual(104)
-    expect(truncated).not.toContain("\n")
-    expect(truncated.endsWith("…")).toBe(true)
-    expect(truncateSkillDescription("short description")).toBe("short description")
-  })
+  test("skill descriptions truncate to a single bounded line", () =>
+    runtime.run(() => {
+      const long = "First line with " + "very ".repeat(60) + "long tail\nsecond line detail"
+      const truncated = truncateSkillDescription(long)
+      expect(truncated.length).toBeLessThanOrEqual(104)
+      expect(truncated).not.toContain("\n")
+      expect(truncated.endsWith("…")).toBe(true)
+      expect(truncateSkillDescription("short description")).toBe("short description")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

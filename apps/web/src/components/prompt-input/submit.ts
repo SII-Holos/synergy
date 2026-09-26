@@ -1,3 +1,4 @@
+import { resolveSessionReference } from "@/utils/session-reference"
 import { type Accessor, Setter } from "solid-js"
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
@@ -7,6 +8,7 @@ import { base64Encode, base64EncodeStandard } from "@ericsanchezok/synergy-util/
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
+import { thinkingSelection } from "@/context/prompt/model-selection"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
@@ -347,7 +349,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
 
-      const selectedVariant = local.model.variant.current()
+      sessions = sessions.map((part) => resolveSessionReference(part, globalSync.data.scope))
+      const selectedVariant = local.model.variant.displayed()
       const selectedModel = {
         modelID: currentModel.id,
         providerID: currentModel.provider.id,
@@ -425,30 +428,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage }),
         )
       }
-      let sessionScopeKey = currentScopeKey
-      let sessionCreateScopeKey = currentScopeKey
-
-      const resolveSessionClient = (scopeKey: string) => {
-        sessionScopeKey = scopeKey
-        if (scopeKey !== currentScopeKey) {
-          globalSync.ensureScopeState(scopeKey)
-          return createSynergyClient({
-            baseUrl: sdk.url,
-            fetch: platform.fetch,
-            directory: scopeKey,
-            throwOnError: true,
-          })
-        }
-        return sdk.client
-      }
-      let client = resolveSessionClient(
-        isNewSession && !sdk.isHome
-          ? (input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey)
-          : currentScopeKey,
-      )
-      if (isNewSession && !sdk.isHome) {
-        sessionCreateScopeKey = input.props.newSessionCanonicalDirectory ?? projectDirectory ?? currentScopeKey
-      }
+      const sessionScopeKey = currentScopeKey
+      const client = sdk.client
 
       let createdSessionForSubmit = false
       const persistCreatedSessionFailure = (sessionID: string, title: string, message: string) => {
@@ -480,7 +461,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         session = await client.session
           .create({
             controlProfile: input.selectedControlProfile(),
-            workspace: { mode: "current" },
+            workspace: worktreeWorkspaceSelection ? undefined : workspaceSelection,
           })
           .then((x) => x.data ?? undefined)
           .catch((err) => {
@@ -494,10 +475,23 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (session === null) return
         if (session) {
           createdSessionForSubmit = true
-          client = resolveSessionClient(sessionCreateScopeKey)
           local.handoffNewSessionIntent(session.id)
-          if (selectedVariant) {
-            local.model.variant.setForSession(session.id, selectedVariant, selectedModel, sessionScopeKey)
+          try {
+            const saved = await client.session.setModelSelection(
+              {
+                sessionID: session.id,
+                sessionModelSelectionInput: {
+                  model: selectedModel,
+                  thinking: thinkingSelection(selectedVariant),
+                  expectedRevision: 0,
+                },
+              },
+              { throwOnError: true },
+            )
+            if (saved.data) session = saved.data
+          } catch (error) {
+            failCreatedSessionSetup(session.id, i18n._(PI.submitFailedStart), errorMessage(error))
+            return
           }
           input.props.onNewSessionWorkspaceSelectionReset?.()
           publishNewSessionTransition(
@@ -512,7 +506,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             try {
               if (worktreeWorkspaceSelection.mode === "create") {
                 const result = await client.worktree.create({
-                  directory: sessionCreateScopeKey,
+                  scopeID: sessionScopeKey,
                   worktreeCreateInput: {
                     sessionID: session.id,
                     bind: true,
@@ -522,7 +516,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
                 if (setupFailure) throw new Error(setupFailure)
               } else {
                 await client.worktree.enter({
-                  directory: sessionCreateScopeKey,
+                  scopeID: sessionScopeKey,
                   sessionID: session.id,
                   worktreeEnterInput: { target: worktreeWorkspaceSelection.target },
                 })
@@ -828,16 +822,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
 
-      const toAbsolutePath = (path: string) =>
-        path.startsWith("/")
-          ? path
-          : ((sync.data.path.directory || projectDirectory || globalSync.data.paths.home) + "/" + path).replace(
-              "//",
-              "/",
-            )
+      const toAbsolutePath = (path: string) => {
+        const workspace = activeSession.workspace?.path
+        if (!workspace) throw new Error("File references require a session workspace")
+        return path.startsWith("/") ? path : `${workspace}/${path}`.replace("//", "/")
+      }
 
       const getSessionPreviewData = async (attachment: SessionAttachmentPart) => {
-        const [childStore] = globalSync.ensureScopeState(attachment.directory)
+        if (!attachment.scopeID) throw new Error("Session reference has not been migrated")
+        const [childStore] = globalSync.ensureScopeState(attachment.scopeID)
         const cachedMessages = childStore.message[attachment.sessionId]
         if (cachedMessages !== undefined) {
           return {
@@ -847,7 +840,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
 
         const response = await client.session.messages({
-          directory: attachment.directory,
+          scopeID: attachment.scopeID,
           sessionID: attachment.sessionId,
           limit: SESSION_PREVIEW_MAX_MESSAGES,
         })
@@ -885,7 +878,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           metadata: {
             kind: "session",
             sessionId: attachment.sessionId,
-            directory: attachment.directory,
+            scopeID: attachment.scopeID,
             title: attachment.title || "Untitled",
             updatedAt: attachment.updatedAt,
           },
@@ -968,7 +961,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         },
       }))
 
-      const queueing = input.working()
+      const queueing = input.working() || !!activeSession.paused
       const messageID = queueing ? undefined : Identifier.ascending("message")
       const textPart = {
         id: Identifier.ascending("part"),
@@ -1137,10 +1130,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .input({
           sessionID: activeSession.id,
           agent,
-          model,
           ...(messageID ? { messageID } : {}),
           parts: requestParts,
-          variant,
           metadata: {
             promptDraft: draftSnapshot,
             ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),

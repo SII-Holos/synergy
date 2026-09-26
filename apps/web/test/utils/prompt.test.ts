@@ -29,7 +29,7 @@ const session = {
   type: "session" as const,
   id: "session-1",
   sessionId: "ses_1",
-  directory: "/repo",
+  scopeID: "scope-repo",
   title: "Prior session",
   updatedAt: 123,
 }
@@ -147,7 +147,15 @@ describe("prompt draft restore", () => {
 
     expect(restored.prompt).toEqual([
       { type: "text", content: "", start: 0, end: 0 },
-      { type: "session", id: "session-part", sessionId: "ses_2", directory: "/repo", title: "Session", updatedAt: 456 },
+      {
+        type: "session",
+        id: "session-part",
+        sessionId: "ses_2",
+        scopeID: null,
+        legacyDirectory: "/repo",
+        title: "Session",
+        updatedAt: 456,
+      },
     ])
   })
 

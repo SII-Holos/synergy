@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ObservabilityEvents } from "../observability/events"
 import { ObservabilityIssues } from "../observability/issues"
 import { ObservabilityStore } from "../observability/store"
@@ -8,8 +9,10 @@ import { SessionMemoryPressure } from "./memory-pressure"
 export namespace SessionMemoryIncident {
   const DEDUPE_MS = 5_000
   const SPAN_WINDOW_MS = 5 * 60_000
-  let lastCapturedAt = 0
-  let capturePending: Promise<ReturnType<typeof build>> | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    lastCapturedAt: 0,
+    capturePending: undefined as Promise<ReturnType<typeof build>> | undefined,
+  }))
 
   interface ResourceView {
     time: number
@@ -106,19 +109,21 @@ export namespace SessionMemoryIncident {
   }
 
   export async function capture(input: { error: unknown; sessionID?: string; messageID?: string; now?: number }) {
+    const instanceState = runtimeState()
+
     if (!isOutOfMemory(input.error)) return undefined
     const now = input.now ?? Date.now()
-    if (lastCapturedAt > 0 && now - lastCapturedAt < DEDUPE_MS) return undefined
-    if (capturePending) return capturePending
+    if (instanceState.lastCapturedAt > 0 && now - instanceState.lastCapturedAt < DEDUPE_MS) return undefined
+    if (instanceState.capturePending) return instanceState.capturePending
 
     const pending = captureOnce(input, now)
-    capturePending = pending
+    instanceState.capturePending = pending
     try {
       const incident = await pending
-      lastCapturedAt = now
+      instanceState.lastCapturedAt = now
       return incident
     } finally {
-      if (capturePending === pending) capturePending = undefined
+      if (instanceState.capturePending === pending) instanceState.capturePending = undefined
     }
   }
 
@@ -128,7 +133,7 @@ export namespace SessionMemoryIncident {
   ): Promise<ReturnType<typeof build>> {
     // Avoid maybeCollect/GC here: allocation failure is the worst time to allocate more.
     const current = SessionMemoryPressure.currentSnapshot()
-    const thresholds = SessionMemoryPressure.resolveThresholds(process.env, current)
+    const thresholds = SessionMemoryPressure.resolveThresholds(RuntimeContext.current().host.env, current)
     const pressure = SessionMemoryPressure.pressureLevel(current, thresholds)
     const gc = {
       decision: SessionMemoryPressure.decide({
@@ -227,7 +232,9 @@ export namespace SessionMemoryIncident {
   }
 
   export function resetForTest() {
-    lastCapturedAt = 0
-    capturePending = undefined
+    const instanceState = runtimeState()
+
+    instanceState.lastCapturedAt = 0
+    instanceState.capturePending = undefined
   }
 }

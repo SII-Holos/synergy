@@ -25,6 +25,7 @@ await plugin({
 })
 const i18n = setupI18n({ locale: "en", messages: { en: {} } })
 mock.module("@lingui/solid", () => ({ useLingui: () => ({ _: i18n._.bind(i18n) }) }))
+mock.module("../../../../src/context/platform", () => ({ usePlatform: () => ({}) }))
 const calls: Array<{ action: string; apply: boolean }> = []
 const notices: Array<{ type: string; title: string }> = []
 let pending: { onConfirm(): Promise<void> } | undefined
@@ -64,6 +65,12 @@ mock.module("../../../../src/context/global-sdk", () => ({
     client: {
       scope: { list: async () => ({ data: [{ id: "scope_fixture", name: "Research workspace" }] }) },
       storage: {
+        maintenanceStatus: async () => ({
+          data: {
+            format: { current: 3, target: 3, maintenanceRequired: false },
+            reclaim: { pending: false, paused: false, running: false, releasedPages: 0 },
+          },
+        }),
         snapshot: {
           usage: async () => ({ data: [usage] }),
           clean: async (input: { storageSnapshotCleanInput: { apply: boolean } }) =>

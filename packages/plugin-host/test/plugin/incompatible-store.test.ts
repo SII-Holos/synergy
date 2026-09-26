@@ -4,47 +4,55 @@ import fs from "fs/promises"
 import path from "path"
 import { IncompatiblePluginStore } from "../../src/plugin/incompatible-store"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 describe("incompatible plugin records", () => {
-  beforeEach(() => Storage.remove(["plugin-incompatible"]))
-  test("round-trips records and removes all records owned by a plugin", async () => {
-    await using tmp = await tmpdir()
-    const data = path.join(tmp.path, "data")
-    const records = [
-      { pluginId: "focus", spec: "file:///focus-old.tgz", reason: "reinstallRequired" as const },
-      { pluginId: "focus", spec: "file:///focus-older.tgz", reason: "reinstallRequired" as const },
-      { pluginId: "other", spec: "file:///other.tgz", reason: "reinstallRequired" as const },
-    ]
+  beforeEach(() => runtime.run(() => Storage.remove(["plugin-incompatible"])))
+  test("round-trips records and removes all records owned by a plugin", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const data = path.join(tmp.path, "data")
+      const records = [
+        { pluginId: "focus", spec: "file:///focus-old.tgz", reason: "reinstallRequired" as const },
+        { pluginId: "focus", spec: "file:///focus-older.tgz", reason: "reinstallRequired" as const },
+        { pluginId: "other", spec: "file:///other.tgz", reason: "reinstallRequired" as const },
+      ]
 
-    await IncompatiblePluginStore.write(records)
-    expect(await IncompatiblePluginStore.read()).toEqual(records)
-    expect(IncompatiblePluginStore.withoutPlugin(records, "focus")).toEqual([records[2]])
-    expect(IncompatiblePluginStore.withoutPlugin(records, "unknown", ["file:///other.tgz"])).toEqual([
-      records[0],
-      records[1],
-    ])
-  })
+      await IncompatiblePluginStore.write(records)
+      expect(await IncompatiblePluginStore.read()).toEqual(records)
+      expect(IncompatiblePluginStore.withoutPlugin(records, "focus")).toEqual([records[2]])
+      expect(IncompatiblePluginStore.withoutPlugin(records, "unknown", ["file:///other.tgz"])).toEqual([
+        records[0],
+        records[1],
+      ])
+    }))
 
-  test("returns an empty catalog only when the file is missing and rejects corrupt data", async () => {
-    await using tmp = await tmpdir()
-    const data = path.join(tmp.path, "data")
-    expect(await IncompatiblePluginStore.read()).toEqual([])
-    await Storage.write(["plugin-incompatible"], { invalid: true })
-    await expect(IncompatiblePluginStore.read()).rejects.toThrow()
-  })
+  test("returns an empty catalog only when the file is missing and rejects corrupt data", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const data = path.join(tmp.path, "data")
+      expect(await IncompatiblePluginStore.read()).toEqual([])
+      await Storage.write(["plugin-incompatible"], { invalid: true })
+      await expect(IncompatiblePluginStore.read()).rejects.toThrow()
+    }))
 
-  test("concurrent writes land exactly one complete batch without temp residue", async () => {
-    await using tmp = await tmpdir()
-    const data = path.join(tmp.path, "data")
-    const batches = Array.from({ length: 8 }, (_, index) => [
-      { pluginId: `race-${index}`, reason: "reinstallRequired" as const },
-    ])
+  test("concurrent writes land exactly one complete batch without temp residue", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      const data = path.join(tmp.path, "data")
+      const batches = Array.from({ length: 8 }, (_, index) => [
+        { pluginId: `race-${index}`, reason: "reinstallRequired" as const },
+      ])
 
-    await Promise.all(batches.map((batch) => IncompatiblePluginStore.write(batch)))
+      await Promise.all(batches.map((batch) => IncompatiblePluginStore.write(batch)))
 
-    const final = await IncompatiblePluginStore.read()
-    expect(final).toHaveLength(1)
-    expect(batches.some((batch) => batch[0]!.pluginId === final[0]?.pluginId)).toBe(true)
-    expect(await Storage.list(["plugin-incompatible"])).toEqual([])
-  })
+      const final = await IncompatiblePluginStore.read()
+      expect(final).toHaveLength(1)
+      expect(batches.some((batch) => batch[0]!.pluginId === final[0]?.pluginId)).toBe(true)
+      expect(await Storage.list(["plugin-incompatible"])).toEqual([])
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

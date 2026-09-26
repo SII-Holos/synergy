@@ -11,75 +11,83 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionProcessor } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { SessionMemoryIncident } from "@ericsanchezok/synergy-harness/test/internal/session/memory-incident"
 import { TimeoutConfig } from "@ericsanchezok/synergy-harness/util/timeout-config"
-import { cleanupObservabilityHomes, resetObservabilityHome } from "../../../harness/test/observability/fixture"
+import { clearObservabilityState, resetObservabilityState } from "../../../harness/test/observability/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 describe("SessionProcessor observability", () => {
-  beforeEach(() => {
-    resetObservabilityHome("synergy-session-observability-")
-    SessionMemoryIncident.resetForTest()
-  })
-  afterEach(() => cleanupObservabilityHomes())
+  beforeEach(() =>
+    runtime.run(() => {
+      resetObservabilityState()
+      SessionMemoryIncident.resetForTest()
+    }),
+  )
+  afterEach(() => runtime.run(() => clearObservabilityState()))
 
-  test("records LLM first token, chunk gap, and output throughput metrics", async () => {
-    await runStreamScenario(async function* () {
-      yield { type: "start" }
-      yield { type: "text-start", id: "txt_1" }
-      yield { type: "text-delta", id: "txt_1", text: "hello" }
-      await new Promise((resolve) => setTimeout(resolve, 2))
-      yield { type: "text-delta", id: "txt_1", text: " world" }
-      yield { type: "text-end", id: "txt_1" }
-      yield { type: "finish" }
-    })
-    ObservabilityStore.flush()
-
-    const names = new Set(ObservabilityStore.queryMetrics({ since: 0, module: "llm" }).map((row) => row.name))
-    expect(names).toContain("llm.stream.first_token")
-    expect(names).toContain("llm.stream.output_chars")
-    expect(names).toContain("llm.stream.chunk_gap")
-    expect(names).toContain("llm.stream.output_chars_per_second")
-
-    const gap = ObservabilityStore.queryMetrics({ since: 0, names: ["llm.stream.chunk_gap"] })[0]
-    expect(gap.value).toBeGreaterThanOrEqual(0)
-    expect(JSON.parse(gap.labels_json).kind).toBe("text")
-  })
-
-  test("inherits the owning turn trace for LLM spans, events, and metrics", async () => {
-    await runStreamScenario(
-      async function* () {
+  test("records LLM first token, chunk gap, and output throughput metrics", () =>
+    runtime.run(async () => {
+      await runStreamScenario(async function* () {
         yield { type: "start" }
-        yield { type: "text-start", id: "txt_trace" }
-        yield { type: "text-delta", id: "txt_trace", text: "linked" }
-        yield { type: "text-end", id: "txt_trace" }
+        yield { type: "text-start", id: "txt_1" }
+        yield { type: "text-delta", id: "txt_1", text: "hello" }
+        await new Promise((resolve) => setTimeout(resolve, 2))
+        yield { type: "text-delta", id: "txt_1", text: " world" }
+        yield { type: "text-end", id: "txt_1" }
         yield { type: "finish" }
-      },
-      { traceId: "trace_parent_turn", spanId: "span_parent_turn" },
-    )
-    ObservabilityStore.flush()
+      })
+      ObservabilityStore.flush()
 
-    const events = ObservabilityStore.queryEvents({ traceId: "trace_parent_turn", limit: 20 })
-    expect(events.some((event) => event.type === "session.turn.start")).toBe(true)
-    expect(events.some((event) => event.type === "session.turn.end")).toBe(true)
-    const llmSpan = ObservabilityStore.querySpans({ traceId: "trace_parent_turn" }).find(
-      (span) => span.name === "llm.request",
-    )
-    expect(llmSpan).toMatchObject({ parent_span_id: "span_parent_turn", status: "ok" })
-    const metrics = ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_parent_turn" })
-    expect(metrics.some((metric) => metric.name === "llm.stream.output_chars")).toBe(true)
-  })
+      const names = new Set(ObservabilityStore.queryMetrics({ since: 0, module: "llm" }).map((row) => row.name))
+      expect(names).toContain("llm.stream.first_token")
+      expect(names).toContain("llm.stream.output_chars")
+      expect(names).toContain("llm.stream.chunk_gap")
+      expect(names).toContain("llm.stream.output_chars_per_second")
 
-  test("automatically records a bounded incident when provider streaming exhausts allocation", async () => {
-    await runStreamScenario(async function* () {
-      yield await Promise.reject(new RangeError("Out of memory"))
-    })
-    ObservabilityStore.flush()
+      const gap = ObservabilityStore.queryMetrics({ since: 0, names: ["llm.stream.chunk_gap"] })[0]
+      expect(gap.value).toBeGreaterThanOrEqual(0)
+      expect(JSON.parse(gap.labels_json).kind).toBe("text")
+    }))
 
-    expect(ObservabilityStore.queryEvents({ type: "process.memory.oom_incident" })).toHaveLength(1)
-    expect(
-      ObservabilityStore.queryIssues({ status: "open", module: "process" }).filter(
-        (issue) => issue.code === "PERF_PROCESS_OUT_OF_MEMORY",
-      ),
-    ).toHaveLength(1)
-  })
+  test("inherits the owning turn trace for LLM spans, events, and metrics", () =>
+    runtime.run(async () => {
+      await runStreamScenario(
+        async function* () {
+          yield { type: "start" }
+          yield { type: "text-start", id: "txt_trace" }
+          yield { type: "text-delta", id: "txt_trace", text: "linked" }
+          yield { type: "text-end", id: "txt_trace" }
+          yield { type: "finish" }
+        },
+        { traceId: "trace_parent_turn", spanId: "span_parent_turn" },
+      )
+      ObservabilityStore.flush()
+
+      const events = ObservabilityStore.queryEvents({ traceId: "trace_parent_turn", limit: 20 })
+      expect(events.some((event) => event.type === "session.turn.start")).toBe(true)
+      expect(events.some((event) => event.type === "session.turn.end")).toBe(true)
+      const llmSpan = ObservabilityStore.querySpans({ traceId: "trace_parent_turn" }).find(
+        (span) => span.name === "llm.request",
+      )
+      expect(llmSpan).toMatchObject({ parent_span_id: "span_parent_turn", status: "ok" })
+      const metrics = ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_parent_turn" })
+      expect(metrics.some((metric) => metric.name === "llm.stream.output_chars")).toBe(true)
+    }))
+
+  test("automatically records a bounded incident when provider streaming exhausts allocation", () =>
+    runtime.run(async () => {
+      await runStreamScenario(async function* () {
+        yield await Promise.reject(new RangeError("Out of memory"))
+      })
+      ObservabilityStore.flush()
+
+      expect(ObservabilityStore.queryEvents({ type: "process.memory.oom_incident" })).toHaveLength(1)
+      expect(
+        ObservabilityStore.queryIssues({ status: "open", module: "process" }).filter(
+          (issue) => issue.code === "PERF_PROCESS_OUT_OF_MEMORY",
+        ),
+      ).toHaveLength(1)
+    }))
 })
 
 async function runStreamScenario(
@@ -158,3 +166,5 @@ async function runStreamScenario(
     ;(Bus.publish as any) = originalBusPublish
   }
 }
+
+afterRuntimeTests(() => runtime.close())

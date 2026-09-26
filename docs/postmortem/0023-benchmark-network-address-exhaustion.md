@@ -26,10 +26,10 @@ The deterministic 48-cell test verified uniqueness and compute leases. The real 
 
 ## Guardrails added
 
-- [Network admission](../../benchmark/src/synergy_bench/network_resources.py) counts whole available subnets from Docker's configured or documented default local pools, excluding existing networks and host routes. Unknown samples pause admission.
-- [Environment resource requests](../../benchmark/src/synergy_bench/environment.py) declare one or two network allocations before container startup. First-sample admission keeps the next cell behind actual allocation by the preceding cell.
-- [Resource regressions](../../benchmark/test/test_network_resources.py) cover pool exhaustion, release, route overlap, unknown inspection and 48 unique cells queueing behind a two-network budget.
-- The [development Skill](../../.synergy/skill/develop-benchmark/SKILL.md) requires network-capacity coverage alongside CPU and memory, and separates terminal-cell counts from observed scores.
+- The initial remediation estimated available subnets from Docker pools, existing networks and host routes. Its tests covered exhaustion, release, overlap and unknown inspection, but the host-route assumption did not describe Docker Desktop's network namespace. The [subsequent admission decision](../decisions/implemented/architecture/2026-09-27-benchmark-docker-resource-admission.md) records why that estimator was replaced.
+- [Environment admission](../../benchmark/src/synergy_bench/environment.py) uses native Compose create to reserve actual networks before starting containers. Recognized address-pool exhaustion queues only after project-scoped cleanup is verified and the provisional lease is released.
+- [Admission regressions](../../benchmark/test/test_docker_admission.py) cover partial creation, unknown failures, cancellation and debug retention. [Free Docker controls](../../benchmark/test/test_docker.py) verify ordinary, disabled and internal/egress topology and owned-resource cleanup.
+- The [development Skill](../../.synergy/skill/develop-benchmark/SKILL.md) requires actual network admission and shared resource-budget coverage, and separates terminal-cell counts from observed scores.
 
 ## Lessons
 

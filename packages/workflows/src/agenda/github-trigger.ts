@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { GithubWatchPolicy } from "./github-watch-policy"
 import { AgendaSessionWakeup } from "./session-wakeup"
 import { AgendaStore } from "./store"
@@ -68,15 +69,19 @@ export namespace AgendaGithubTrigger {
     dispatch: Promise<void>
   }
 
-  const entries = new Map<string, Entry[]>()
-  let handler: Handler | null = null
-  let started = false
+  const runtimeState = RuntimeContext.state(() => ({
+    entries: new Map<string, Entry[]>(),
+    handler: null as Handler | null,
+    started: false,
+  }))
 
   export function start(onFire: Handler, items: AgendaTypes.Item[]): void {
-    handler = onFire
+    const instanceState = runtimeState()
+
+    instanceState.handler = onFire
     // Arm before registering: register() only schedules while started, and
     // items restored from storage at startup must begin polling immediately.
-    started = true
+    instanceState.started = true
     for (const item of items) {
       register(item.id, item.origin.scope.id, item.triggers, { hasRun: item.state.runCount > 0 })
     }
@@ -84,12 +89,14 @@ export namespace AgendaGithubTrigger {
   }
 
   export function stop(): void {
-    for (const list of entries.values()) {
+    const instanceState = runtimeState()
+
+    for (const list of instanceState.entries.values()) {
       for (const entry of list) cancelTimer(entry)
     }
-    entries.clear()
-    started = false
-    handler = null
+    instanceState.entries.clear()
+    instanceState.started = false
+    instanceState.handler = null
   }
 
   export function register(
@@ -98,6 +105,8 @@ export namespace AgendaGithubTrigger {
     triggers: AgendaTypes.Trigger[],
     opts: { hasRun?: boolean } = {},
   ): void {
+    const instanceState = runtimeState()
+
     unregister(itemID)
     const created: Entry[] = []
     for (const trigger of triggers) {
@@ -122,37 +131,45 @@ export namespace AgendaGithubTrigger {
       })
     }
     if (created.length > 0) {
-      entries.set(itemID, created)
+      instanceState.entries.set(itemID, created)
       log.info("github trigger registered", {
         itemID,
         entries: created.length,
         resource: created[0]?.resource,
         repository: created[0]?.repository,
-        started,
+        started: instanceState.started,
       })
-      if (started) for (const entry of created) schedule(entry, 0)
+      if (instanceState.started) for (const entry of created) schedule(entry, 0)
     }
   }
 
   export function unregister(itemID: string): void {
-    const list = entries.get(itemID)
+    const instanceState = runtimeState()
+
+    const list = instanceState.entries.get(itemID)
     if (!list) return
     for (const entry of list) cancelTimer(entry)
-    entries.delete(itemID)
+    instanceState.entries.delete(itemID)
   }
 
   export function active(): { items: number; entries: number } {
-    return { items: entries.size, entries: countEntries() }
+    const instanceState = runtimeState()
+
+    return { items: instanceState.entries.size, entries: countEntries() }
   }
 
   /** Test/inspection hook: the live poll entries registered for an item. */
   export function entriesFor(itemID: string): Entry[] {
-    return entries.get(itemID) ?? []
+    const instanceState = runtimeState()
+
+    return instanceState.entries.get(itemID) ?? []
   }
 
   function countEntries(): number {
+    const instanceState = runtimeState()
+
     let n = 0
-    for (const list of entries.values()) n += list.length
+    for (const list of instanceState.entries.values()) n += list.length
     return n
   }
 
@@ -173,6 +190,8 @@ export namespace AgendaGithubTrigger {
   }
 
   export async function poll(entry: Entry) {
+    const instanceState = runtimeState()
+
     entry.timer = undefined
     let configuredDefaultMs: number | undefined
     let abandoned = false
@@ -225,7 +244,7 @@ export namespace AgendaGithubTrigger {
     } finally {
       // Never reschedule a detached entry: unregister()/stop() may have run
       // while the poll request was in flight.
-      if (!abandoned && started && entries.get(entry.itemID)?.includes(entry)) {
+      if (!abandoned && instanceState.started && instanceState.entries.get(entry.itemID)?.includes(entry)) {
         const intervalMs = entry.intervalMs ?? configuredDefaultMs ?? DEFAULT_INTERVAL_MS
         schedule(entry, Math.max(MIN_INTERVAL_MS, intervalMs))
       }
@@ -238,16 +257,20 @@ export namespace AgendaGithubTrigger {
    * session stays stopped forever.
    */
   async function pauseEntry(entry: Entry, reason: string): Promise<void> {
+    const instanceState = runtimeState()
+
     try {
       const transition = await Storage.transaction(async () => {
-        if (!entries.get(entry.itemID)?.includes(entry)) return
+        const instanceState = runtimeState()
+
+        if (!instanceState.entries.get(entry.itemID)?.includes(entry)) return
         const before = await AgendaStore.get(entry.scopeID, entry.itemID)
-        if (before.status !== "active" || !entries.get(entry.itemID)?.includes(entry)) return
+        if (before.status !== "active" || !instanceState.entries.get(entry.itemID)?.includes(entry)) return
         const after = await AgendaStore.update(entry.scopeID, entry.itemID, { status: "paused" })
         return { before, after }
       })
       if (!transition) return
-      if (entries.get(entry.itemID)?.includes(entry)) unregister(entry.itemID)
+      if (instanceState.entries.get(entry.itemID)?.includes(entry)) unregister(entry.itemID)
       await AgendaSessionWakeup.resumeIfReleased(transition)
     } catch (err) {
       log.error("failed to pause github trigger", {
@@ -264,7 +287,9 @@ export namespace AgendaGithubTrigger {
   }
 
   function fire(entry: Entry, snapshot: ResourceSnapshot, previous: string | undefined): Promise<void> {
-    if (!handler) return Promise.resolve()
+    const instanceState = runtimeState()
+
+    if (!instanceState.handler) return Promise.resolve()
     const signal: AgendaTypes.FiredSignal = {
       type: "github",
       source: entry.itemID,
@@ -283,7 +308,7 @@ export namespace AgendaGithubTrigger {
       },
       timestamp: Date.now(),
     }
-    return handler(signal, entry.scopeID).catch((err) => {
+    return instanceState.handler(signal, entry.scopeID).catch((err) => {
       log.error("github trigger handler failed", {
         itemID: entry.itemID,
         error: err instanceof Error ? err : new Error(String(err)),

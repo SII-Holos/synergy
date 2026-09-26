@@ -288,8 +288,7 @@ export function isBundledBwrapAvailable(): boolean {
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
   ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
     ? {
-        [path.join(Global.Path.home, ".synergy", "sandbox-helper", "synergy-sandbox-linux")]:
-          SYNERGY_SANDBOX_HELPER_SHA256,
+        "synergy-sandbox-linux": SYNERGY_SANDBOX_HELPER_SHA256,
       }
     : {}),
 }
@@ -484,6 +483,10 @@ function prepareInlineBwrap(opts: PrepareLinuxWrapperOpts): SandboxExecutionWrap
     command: "bwrap",
     args: [...bwrapArgs, command, ...args],
     sandboxed: true,
+    writeFootprint: {
+      kind: "roots",
+      roots: [...(sandboxMode === "read_only" ? [] : [workspace, ...(extraWritableRoots ?? [])]), tmpDir],
+    },
   }
 }
 
@@ -688,6 +691,7 @@ export namespace LinuxBackend {
       command: helperExecPath,
       args: ["--sandbox-policy-cwd", opts.workspace, "--permission-profile", profilePath, "--", command, ...args],
       sandboxed: true,
+      writeFootprint: { kind: "roots", roots: [...writableRoots, joinPathLike(workspace, ".synergy", "tmp")] },
       tempPath: profilePath,
     }
   }

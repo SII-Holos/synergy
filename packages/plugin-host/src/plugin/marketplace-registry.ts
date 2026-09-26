@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import {
   PluginArtifact,
   PluginManifest,
@@ -433,8 +434,8 @@ export namespace PluginMarketplaceRegistry {
     const hasExplicitEnabled =
       current.pluginMarketplace && Object.prototype.hasOwnProperty.call(current.pluginMarketplace, "enabled")
     if (
-      process.env.SYNERGY_TEST_HOME &&
-      process.env.SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET !== "1" &&
+      RuntimeContext.current().host.env.SYNERGY_TEST_HOME &&
+      RuntimeContext.current().host.env.SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET !== "1" &&
       !hasExplicitEnabled
     ) {
       return { ...config, enabled: false }
@@ -477,15 +478,21 @@ export namespace PluginMarketplaceRegistry {
     return new URL(entry, registryUrl).href
   }
 
-  const pendingRefreshes = new Map<string, Promise<z.infer<typeof RemoteRegistry>>>()
-  const pendingForcedRefreshes = new Map<string, Promise<{ refreshedAt: string | null }>>()
+  const runtimeState = RuntimeContext.state(() => ({
+    pendingRefreshes: new Map<string, Promise<z.infer<typeof RemoteRegistry>>>(),
+    pendingForcedRefreshes: new Map<string, Promise<{ refreshedAt: string | null }>>(),
+  }))
 
   async function backgroundRefreshRegistry(config: Awaited<ReturnType<typeof currentConfig>>) {
+    const instanceState = runtimeState()
+
     const cachedPath = registryCachePath(config.registryUrl)
     const key = cachedPath
-    const existing = pendingRefreshes.get(key)
+    const existing = instanceState.pendingRefreshes.get(key)
     if (existing) return existing
     const promise = (async () => {
+      const instanceState = runtimeState()
+
       try {
         const registry = await fetchJson(config.registryUrl, RemoteRegistry, config.requestTimeoutMs)
         await writeJsonFile(cachedPath, registry)
@@ -493,10 +500,10 @@ export namespace PluginMarketplaceRegistry {
       } catch {
         return null as unknown as z.infer<typeof RemoteRegistry>
       } finally {
-        pendingRefreshes.delete(key)
+        instanceState.pendingRefreshes.delete(key)
       }
     })()
-    pendingRefreshes.set(key, promise)
+    instanceState.pendingRefreshes.set(key, promise)
     return promise
   }
 
@@ -541,13 +548,17 @@ export namespace PluginMarketplaceRegistry {
   export async function refreshNow(
     inputConfig?: Awaited<ReturnType<typeof currentConfig>>,
   ): Promise<{ refreshedAt: string | null }> {
+    const instanceState = runtimeState()
+
     const config = inputConfig ?? (await currentConfig())
     if (!config.enabled) return { refreshedAt: null }
     const cachedPath = registryCachePath(config.registryUrl)
     const key = cachedPath
-    const existing = pendingForcedRefreshes.get(key)
+    const existing = instanceState.pendingForcedRefreshes.get(key)
     if (existing) return existing
     const promise = (async () => {
+      const instanceState = runtimeState()
+
       try {
         const registry = await fetchJson(config.registryUrl, RemoteRegistry, config.requestTimeoutMs)
         await writeJsonFile(cachedPath, registry)
@@ -556,10 +567,10 @@ export namespace PluginMarketplaceRegistry {
         await fs.mkdir(entriesRoot, { recursive: true })
         return { refreshedAt: new Date().toISOString() }
       } finally {
-        pendingForcedRefreshes.delete(key)
+        instanceState.pendingForcedRefreshes.delete(key)
       }
     })()
-    pendingForcedRefreshes.set(key, promise)
+    instanceState.pendingForcedRefreshes.set(key, promise)
     return promise
   }
 

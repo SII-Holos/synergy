@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ExternalAgent } from "../bridge"
 
@@ -57,7 +58,9 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
   async start(opts: ExternalAgent.StartOptions): Promise<void> {
     this.cwd = opts.cwd
     this.adapterConfig = opts.config ?? {}
-    this.env = opts.env ? { ...process.env, ...opts.env } : { ...process.env }
+    this.env = opts.env
+      ? { ...RuntimeContext.current().host.env, ...opts.env }
+      : { ...RuntimeContext.current().host.env }
     this.started = true
     log.info("claude-code adapter started", { cwd: opts.cwd })
   }
@@ -440,4 +443,6 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
 }
 
 // Self-register
-ExternalAgent.register("claude-code", () => new ClaudeCodeAdapter())
+export function registerAdapter() {
+  ExternalAgent.register("claude-code", () => new ClaudeCodeAdapter())
+}

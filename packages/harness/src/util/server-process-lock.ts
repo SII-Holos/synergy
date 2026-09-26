@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import nodePath from "node:path"
 import fs from "fs/promises"
 import { DaemonPaths } from "./daemon-paths"
@@ -65,7 +66,7 @@ export namespace ServerProcessLock {
       processStartIdentity: identity,
       command: process.argv.slice(),
       cwd: process.cwd(),
-      mode: mode ?? (process.env.SYNERGY_DAEMON === "1" ? "daemon" : "server"),
+      mode: mode ?? (RuntimeContext.current().host.env.SYNERGY_DAEMON === "1" ? "daemon" : "server"),
     }
 
     for (;;) {

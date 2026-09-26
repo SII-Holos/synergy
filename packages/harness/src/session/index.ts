@@ -1,3 +1,10 @@
+import { Workspace } from "./workspace-schema"
+import { WorkspaceBinding } from "../workspace/binding"
+import { WorkspaceCatalog } from "../workspace/catalog"
+import { SessionRecords } from "./records"
+import { ModelSelection } from "./model-selection-schema"
+import { WorkspaceAccess } from "../workspace/access"
+import { RuntimeContext } from "../lifecycle/context"
 import type { StoreTransaction } from "../storage/transactional-store"
 import { StorageIntegrityError } from "../storage/errors"
 import { SessionStaging } from "./staging"
@@ -8,7 +15,7 @@ import { SnapshotRecords } from "./snapshot-records"
 import { Decimal } from "decimal.js"
 import { RolloutArtifact } from "./rollout/artifact"
 import { record, RolloutRecordingError } from "./rollout/error"
-import z from "zod"
+import { z } from "zod"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Identifier } from "../id/id"
 import { Installation } from "../global/installation"
@@ -30,6 +37,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { PartWriteBuffer } from "./part-write-buffer"
+import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
 import { Config } from "../config/config"
 import { ControlProfileCompiler } from "../control-profile/compiler"
@@ -43,9 +51,12 @@ import { SessionMessageCache } from "./message-cache"
 import { SessionEvent } from "./event"
 import {
   Info as InfoSchema,
+  normalizeSessionTags,
   PersistedInfo as PersistedInfoSchema,
   RollbackAck as RollbackAckSchema,
   StatusInfo as StatusInfoSchema,
+  TagQuery as TagQuerySchema,
+  Tags as TagsSchema,
 } from "./types"
 import type {
   Info as InfoType,
@@ -61,13 +72,25 @@ import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
 import { SessionSchemaRegistry } from "./schema-registry"
 import { SessionMutation } from "./mutation"
-import { SessionProjectHealth } from "./project-health"
+import { SessionWorkspaceRuntime } from "./workspace-runtime"
 import { SessionSearchIndex } from "./search-index"
 
 export namespace Session {
+  export const ModelSelectionInput = ModelSelection.Input
+  export async function setModelSelection(sessionID: string, input: ModelSelection.Input) {
+    const { SessionModelSelection } = await import("./model-selection")
+    return SessionModelSelection.set(sessionID, input)
+  }
+
+  export async function resetModelSelection(sessionID: string) {
+    const { SessionModelSelection } = await import("./model-selection")
+    return SessionModelSelection.reset(sessionID)
+  }
   export const Info = InfoSchema
   export const PersistedInfo = PersistedInfoSchema
   export const StatusInfo = StatusInfoSchema
+  export const TagQuery = TagQuerySchema
+  export const Tags = TagsSchema
   export const RollbackAck = RollbackAckSchema
   export type RollbackAck = RollbackAckType
 
@@ -109,13 +132,14 @@ export namespace Session {
   const { asScopeID, asSessionID, asMessageID, asPartID } = Identifier
 
   const FORK_PREPARE_CONCURRENCY = 8
+  const LIST_ENRICH_CONCURRENCY = 32
 
   export function toIndex(session: Info) {
     const scope = session.scope as Scope
     return {
       sessionID: session.id,
       scopeID: scope.id,
-      directory: scope.directory,
+      directory: scope.local?.directory,
       parentID: session.parentID,
       endpoint: session.endpoint,
       endpointKey: session.endpoint ? SessionEndpoint.toKey(session.endpoint) : undefined,
@@ -158,10 +182,13 @@ export namespace Session {
         const batch = await tx.query<Info>({ kind: "session", scopeID, after, limit: 128 })
         if (!batch.length) break
         for (const record of batch) {
-          const session = {
-            ...record.value,
-            endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
-          }
+          const session = await SessionRecords.hydrate(
+            {
+              ...record.value,
+              endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
+            },
+            tx,
+          )
           const index = toIndex(session)
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
@@ -251,8 +278,14 @@ export namespace Session {
 
   export const WorkspaceSelection = z
     .discriminatedUnion("mode", [
+      z.object({ mode: z.literal("none") }),
       z.object({
         mode: z.literal("current"),
+      }),
+      z.object({
+        mode: z.literal("workspace"),
+        workspaceID: z.string().min(1),
+        workspaceGeneration: z.number().int().positive(),
       }),
       z.object({
         mode: z.literal("existing"),
@@ -395,6 +428,7 @@ export namespace Session {
       scopeID: scope.id,
       scopeType,
       title: session.title,
+      tags: session.tags,
       category,
       lastActivityAt: session.time.updated,
       createdAt: session.time.created,
@@ -436,6 +470,7 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    session = await SessionRecords.hydrate(session)
     const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
       SessionWorking.resolve(session.id),
@@ -460,7 +495,10 @@ export namespace Session {
   // Dedup redundant session.updated publishes: a diff limited to time.updated
   // (or a byte-identical payload) is throttled to a heartbeat, while any real
   // field change publishes immediately (issue #319, defense in depth).
-  const lastPublish = new Map<string, { key: string; at: number }>()
+  const runtimeState = RuntimeContext.state(() => ({
+    lastPublish: new Map<string, { key: string; at: number }>(),
+    rollbackInvalidationPending: new Set<string>(),
+  }))
   const PUBLISH_DEDUP_THROTTLE_MS = 1000
 
   async function publishInfo(
@@ -469,10 +507,12 @@ export namespace Session {
     navEntry?: SessionNavEntry,
     options?: { force?: boolean },
   ) {
+    const instanceState = runtimeState()
+
     const info = await withRuntimeInfo(session)
     const key = publishCompareKey(info)
     const now = Date.now()
-    const prev = lastPublish.get(session.id)
+    const prev = instanceState.lastPublish.get(session.id)
     if (
       options?.force !== true &&
       !decideSessionPublish({
@@ -486,8 +526,8 @@ export namespace Session {
       return
     }
     const remember = () => {
-      if (info.time.archived) lastPublish.delete(session.id)
-      else lastPublish.set(session.id, { key, at: now })
+      if (info.time.archived) instanceState.lastPublish.delete(session.id)
+      else instanceState.lastPublish.set(session.id, { key, at: now })
     }
     if (Storage.inTransaction()) Storage.afterCommit(remember)
     else remember()
@@ -509,21 +549,39 @@ export namespace Session {
       interaction?: SessionInteraction.Info
       cortex?: CortexDelegationInfoType
       workflow?: Info["workflow"]
-      workspace?: import("./types").Workspace
+      workspace?: import("./types").Workspace | null
+      workspaceID?: string | null
       forkedFrom?: Info["forkedFrom"]
       completionNotice?: {
         silent?: boolean
       }
     },
   ) {
-    const scope = input?.scope ?? ScopeContext.current.scope
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
-    const workspace: import("./types").Workspace = input?.workspace ??
-      parent?.workspace ?? {
-        type: "main" as const,
-        path: scope.directory,
-        scopeID: scope.id,
-      }
+    const scope = input?.scope ?? parent?.scope ?? ScopeContext.current.scope
+    const workspaceID =
+      input?.workspaceID !== undefined
+        ? input.workspaceID
+        : input?.workspace === undefined && parent?.scope.id === scope.id
+          ? parent.workspaceID
+          : undefined
+    const workspace =
+      workspaceID !== undefined
+        ? workspaceID === null
+          ? null
+          : WorkspaceCatalog.projection(await WorkspaceCatalog.get(workspaceID, scope.id))
+        : await WorkspaceBinding.adopt(
+            input?.workspace !== undefined
+              ? input.workspace
+              : parent?.scope.id === scope.id
+                ? parent.workspace
+                : ScopeContext.defaultWorkspace(scope),
+            scope.id,
+          )
+    if (workspace) {
+      Workspace.parse(workspace)
+      if (workspace.scopeID !== scope.id) throw new Error("Workspace belongs to a different Scope")
+    }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
     const controlProfile = input?.parentID ? undefined : input?.controlProfile
     const completionNotice = {
@@ -547,6 +605,7 @@ export namespace Session {
     const result: Info = {
       ...SessionSchemaRegistry.creationFields(input),
       id: Identifier.descending("session", input?.id),
+      tags: normalizeSessionTags(input?.tags),
       version: Installation.VERSION,
       scope,
       parentID: input?.parentID,
@@ -563,6 +622,7 @@ export namespace Session {
       cortex: input?.cortex,
       workflow: input?.workflow,
       workspace,
+      workspaceID: workspace?.id ?? workspaceID ?? null,
       completionNotice,
       time: {
         created: createdAt,
@@ -576,7 +636,7 @@ export namespace Session {
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
       await Storage.write(
         StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(result.id)),
-        withoutRuntimeInfo(result),
+        SessionRecords.serialize(result),
       )
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await writeEndpointIndex(result)
@@ -600,10 +660,29 @@ export namespace Session {
     sessionID: string,
     selection?: WorkspaceSelection,
   ): Promise<Info & { working?: WorkingInfoType }> {
-    if (!selection || selection.mode === "current") return get(sessionID)
+    const session = await get(sessionID)
+    if (
+      !selection ||
+      (selection.mode === "current" && (session.workspace || session.workspaceID || !session.scope.local))
+    )
+      return session
+    if (selection.mode === "workspace") {
+      SessionManager.assertIdle(sessionID)
+      const workspace = await WorkspaceBinding.validate(
+        selection.workspaceID,
+        session.scope.id,
+        selection.workspaceGeneration,
+      )
+      return updateWorkspace(sessionID, workspace, { requireIdle: true })
+    }
+    if (selection.mode === "none" || selection.mode === "current") {
+      SessionManager.assertIdle(sessionID)
+      const workspace = selection.mode === "none" ? null : ScopeContext.defaultWorkspace(session.scope)
+      return updateWorkspace(sessionID, workspace, { requireIdle: true })
+    }
 
     if (selection.mode === "create") {
-      await SessionProjectHealth.createWorktree({
+      await SessionWorkspaceRuntime.get().createWorktree({
         sessionID,
         name: selection.name,
         baseRef: selection.baseRef ?? "current",
@@ -612,7 +691,7 @@ export namespace Session {
       })
       return get(sessionID)
     }
-    await SessionProjectHealth.enterWorktree({
+    await SessionWorkspaceRuntime.get().enterWorktree({
       sessionID,
       target: selection.target,
       force: selection.force ?? false,
@@ -665,6 +744,7 @@ export namespace Session {
         id: sessionID,
         scope: source.scope as Scope,
         workspace: source.workspace,
+        workspaceID: source.workspaceID,
         title: input.title,
         controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
         forkedFrom: {
@@ -683,7 +763,6 @@ export namespace Session {
           scopeID: source.scope.id,
           sourceSessionID: source.id,
           targetSessionID: sessionID,
-          workspace: source.workspace?.path ?? ScopeContext.current.directory,
           hashes: selected.flatMap((msg) => msg.parts.flatMap(SnapshotRecords.partRoots)),
         })
         const messageMap = new Map(selected.map((msg) => [msg.info.id, Identifier.ascending("message")]))
@@ -723,7 +802,7 @@ export namespace Session {
               : undefined
           return preparePart(
             {
-              ...part,
+              ...SnapshotEvidence.interrupt(part),
               ...(artifact ? { artifact } : {}),
               ...(state ? { state } : {}),
               id,
@@ -736,6 +815,19 @@ export namespace Session {
         for (const [index, part] of parts.entries()) prepared[jobs[index].messageIndex].parts.push(part)
         session = await Storage.transaction(async () => {
           const created = await create(createInput)
+          const modelSelection = forkPoint
+            ? ModelSelection.legacy(
+                undefined,
+                selected.flatMap((message) =>
+                  message.info.role === "user" && message.info.isRoot ? [message.info] : [],
+                ),
+              )
+            : source.modelSelection
+          if (modelSelection)
+            await update(created.id, (draft) => {
+              draft.modelSelection = { ...modelSelection, lastUsed: undefined, pendingReason: "next-request" }
+              draft.modelOverride = modelSelection.selected.model
+            })
           for (const message of prepared) {
             await updateMessage(message.info)
             for (const part of message.parts) await updatePart(part)
@@ -759,18 +851,58 @@ export namespace Session {
     })
   })
 
+  export async function assertWorkspaceAvailable(sessionID: string) {
+    const session = await get(sessionID)
+    const { workspace } = session
+    if (session.workspaceID) {
+      await WorkspaceBinding.validate(session.workspaceID, session.scope.id, workspace?.generation)
+      return
+    }
+    if (workspace) throw new Error("Session has no canonical Workspace reference")
+  }
+
   export async function updateWorkspace(
     sessionID: string,
-    workspace: import("./types").Workspace,
-    options?: { preserveActivityAt?: boolean },
+    workspace: import("./types").Workspace | null,
+    options?: { requireIdle?: boolean; preserveActivityAt?: boolean },
   ): Promise<Info> {
-    return updateInternal(
-      sessionID,
-      (draft) => {
-        draft.workspace = workspace
-      },
-      options,
-    )
+    return SessionWorkspaceRuntime.withBinding(sessionID, async () => {
+      const session = await SessionManager.requireSession(sessionID)
+      const owns = WorkspaceAccess.owns(sessionID)
+      if (!owns) SessionManager.assertIdle(sessionID)
+      workspace = workspace?.id
+        ? await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
+        : await WorkspaceBinding.adopt(workspace, session.scope.id)
+      const commit = async () => {
+        if (workspace?.id) await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
+        if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+        if (workspace && owns) {
+          const { WorkspaceRuntime } = await import("../workspace/runtime")
+          await ScopeContext.provide({
+            scope: session.scope,
+            workspace,
+            fn: () => WorkspaceRuntime.ensure(session.scope, workspace!),
+          })
+        }
+        await SessionWorkspaceRuntime.beforeTransition(session, workspace)
+        return updateInternal(
+          sessionID,
+          (draft) => {
+            if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+            if (workspace) {
+              Workspace.parse(workspace)
+              if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
+            }
+            draft.workspace = workspace
+            draft.workspaceID = workspace?.id ?? null
+          },
+          { ...options, workspaceChange: true },
+        )
+      }
+      return owns
+        ? WorkspaceAccess.transition(sessionID, workspace, commit)
+        : WorkspaceAccess.task({ workspace }, commit)
+    })
   }
 
   export async function updateControlProfile(
@@ -830,7 +962,7 @@ export namespace Session {
       const session = await SessionManager.requireSession(currentID)
       const scope = session.scope as Scope
       const info =
-        (await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))) ?? session
+        (await SessionRecords.read(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))) ?? session
       if (info.controlProfile) return { controlProfile: info.controlProfile, root: info }
       if (!info.parentID) return { root: info }
       currentID = info.parentID
@@ -896,7 +1028,7 @@ export namespace Session {
   export const get = fn(Identifier.schema("session"), async (id) => {
     const session = await SessionManager.requireSession(id)
     const scope = session.scope as Scope
-    const read = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
+    const read = await SessionRecords.read(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
     const info = read as Info
     return withClientInfo(info)
   })
@@ -941,7 +1073,7 @@ export namespace Session {
       }
 
       let changed = false
-      const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+      const result = await SessionRecords.update(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
         if (draft.rollbackAck?.rollbackID === rollbackID) return
         draft.rollbackAck = { rollbackID, acknowledgedAt: Date.now() }
         changed = true
@@ -976,7 +1108,7 @@ export namespace Session {
         const sessionID = asSessionID(id)
 
         let actualAcknowledgedCount = 0
-        const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+        const result = await SessionRecords.update(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
           const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
           const next = Math.max(0, current - acknowledgedCount)
           actualAcknowledgedCount = current - next
@@ -1046,7 +1178,7 @@ export namespace Session {
   async function updateInternal(
     id: string,
     editor: (session: Info) => void,
-    options?: { preserveActivityAt?: boolean; forcePublish?: boolean },
+    options?: { preserveActivityAt?: boolean; forcePublish?: boolean; workspaceChange?: boolean },
   ) {
     await SessionCompat.requireImported(id)
     return Storage.transaction(async () => {
@@ -1055,13 +1187,21 @@ export namespace Session {
       const scopeID = asScopeID(scope.id)
       const sessionID = asSessionID(id)
 
-      let before: Info | undefined
-      const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
-        before = structuredClone(draft)
-        editor(draft)
-        if (!options?.preserveActivityAt) draft.time.updated = Date.now()
-      })
-      if (!before) throw new Error(`Session ${id} was not available before mutation`)
+      const before = structuredClone(session)
+      const result = structuredClone(session)
+      editor(result)
+      if (
+        !options?.workspaceChange &&
+        (result.workspaceID !== before.workspaceID ||
+          JSON.stringify(result.workspace) !== JSON.stringify(before.workspace))
+      )
+        throw new Error("Use Session.updateWorkspace to change a Session's Workspace binding")
+      if (result.workspace) {
+        result.workspace = await WorkspaceBinding.adopt(result.workspace, scope.id)
+        result.workspaceID = result.workspace?.id ?? null
+      }
+      if (!options?.preserveActivityAt) result.time.updated = Date.now()
+      await Storage.write(StoragePath.sessionInfo(scopeID, sessionID), SessionRecords.serialize(result))
 
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
@@ -1075,8 +1215,7 @@ export namespace Session {
       // in-flight turn (the runtime still owns it) or one that stopped and is
       // waiting for the user. Ordered writes to a running session's title must
       // not churn the sidebar ordering, and a paused session's activity
-      // timestamp is the moment it stopped, not the moment its latch was last
-      // re-described.
+      // timestamp must not advance when its latch is re-described.
       const unfinished = SessionManager.isRunning(id) || (!!before.paused && !!result.paused)
       const shouldPreserveActivityAt = options?.preserveActivityAt ?? unfinished
       const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
@@ -1092,16 +1231,25 @@ export namespace Session {
         await writeEndpointIndex(result)
       }
 
-      if (!before.time.archived && result.time.archived) {
-        Storage.afterCommit(() => SessionProjectHealth.detachWorktreeSession(result.id))
+      if (
+        (!before.time.archived && result.time.archived) ||
+        before.workspace?.path !== result.workspace?.path ||
+        before.workspace?.type !== result.workspace?.type
+      ) {
+        const previous = before
+        Storage.afterCommit(() => SessionWorkspaceRuntime.releaseSession(previous))
       }
       await publishInfo(SessionEvent.Updated, result, navEntry, { force: options?.forcePublish })
       return withRuntimeInfo(result)
     })
   }
 
-  export async function update(id: string, editor: (session: Info) => void) {
-    return updateInternal(id, editor)
+  export async function update(
+    id: string,
+    editor: (session: Info) => void,
+    options?: { preserveActivityAt?: boolean },
+  ) {
+    return updateInternal(id, editor, options)
   }
 
   export async function recordActivity(id: string) {
@@ -1152,7 +1300,7 @@ export namespace Session {
   async function readListInfos(scopeID: string, ids: string[]) {
     const sid = asScopeID(scopeID)
     const keys = ids.map((id) => StoragePath.sessionInfo(sid, asSessionID(id)))
-    const sessions = await Storage.readMany<Info>(keys)
+    const sessions = await SessionRecords.readMany(keys)
     for (const [index, id] of ids.entries()) {
       const info = await SessionCompat.pendingInfo(scopeID, id)
       if (info) sessions[index] = info
@@ -1168,12 +1316,22 @@ export namespace Session {
     before?: number
     pinned?: boolean
     parentOnly?: boolean
+    tag?: string
   }): Promise<ListResult> {
     const scopeID = asScopeID(ScopeContext.current.scope.id)
     const index = await readPageIndex(scopeID)
     let entries = index.entries.filter((e) => !e.archived)
 
     if (options?.parentOnly !== false) entries = entries.filter((e) => !e.parentID)
+    if (options?.tag !== undefined) {
+      const tag = normalizeSessionTags([options.tag])[0]
+      if (!tag) return { data: [], total: 0 }
+      const sessions = await readListInfos(
+        scopeID,
+        entries.map((entry) => entry.id),
+      )
+      entries = entries.filter((_, sessionIndex) => sessions[sessionIndex]?.tags?.includes(tag))
+    }
     if (options?.pinned) entries = entries.filter((e) => e.pinned > 0)
     if (options?.since) entries = entries.filter((e) => e.updated >= options.since!)
     if (options?.before) entries = entries.filter((e) => e.updated < options.before!)
@@ -1190,7 +1348,7 @@ export namespace Session {
       const total = matched.length
       const offset = options?.offset ?? 0
       const limit = options?.limit ?? total
-      const data = await Promise.all(matched.slice(offset, offset + limit).map((s) => withClientInfo(s)))
+      const data = await workMap(LIST_ENRICH_CONCURRENCY, matched.slice(offset, offset + limit), withClientInfo)
       return { data, total }
     }
 
@@ -1205,8 +1363,10 @@ export namespace Session {
       scopeID,
       slice.map((e) => e.id),
     )
-    const data = await Promise.all(
-      sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withClientInfo(s)),
+    const data = await workMap(
+      LIST_ENRICH_CONCURRENCY,
+      sessions.filter((s): s is Info => s != null && !!s.scope),
+      withClientInfo,
     )
 
     return { data, total }
@@ -1216,7 +1376,7 @@ export namespace Session {
     const scopeID = asScopeID(ScopeContext.current.scope.id)
     const ids = await Storage.scan(StoragePath.sessionsRoot(scopeID))
     const keys = ids.map((id) => StoragePath.sessionInfo(scopeID, asSessionID(id)))
-    const sessions = await Storage.readMany<Info>(keys)
+    const sessions = await SessionRecords.readMany(keys)
     for (const session of sessions) {
       if (session && session.scope) yield session as Info
     }
@@ -1259,11 +1419,11 @@ export namespace Session {
     const nextCursor = hasMore && last ? { lastActivityAt: last.updated, id: last.id } : null
 
     const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
-    const sessions = await Storage.readMany<Info>(keys)
-    const items = await Promise.all(
-      sessions
-        .filter((session): session is Info => session != null && !!session.scope)
-        .map((session) => withClientInfo(session)),
+    const sessions = await SessionRecords.readMany(keys)
+    const items = await workMap(
+      LIST_ENRICH_CONCURRENCY,
+      sessions.filter((session): session is Info => session != null && !!session.scope),
+      withClientInfo,
     )
 
     return { items, nextCursor, total }
@@ -1329,7 +1489,7 @@ export namespace Session {
       await removeTree(sessionID)
     })
     for (const session of removed) {
-      await SessionProjectHealth.detachWorktreeSession(session.id)
+      await SessionWorkspaceRuntime.releaseSession(session)
       await SnapshotLifecycle.completeDelete(session.scope.id, session.id)
     }
   })
@@ -1357,7 +1517,7 @@ export namespace Session {
       // since the caller (processor) already performs a proper Session.update().
 
       const infoPath = StoragePath.sessionInfo(scopeID, asSessionID(sessionID))
-      await Storage.update<Info>(infoPath, (draft) => {
+      await SessionRecords.update(infoPath, (draft) => {
         draft.lastExchange = lastExchange
       })
     })
@@ -1366,16 +1526,17 @@ export namespace Session {
   // A root user message written after a rollback invalidates redo, but that
   // derived state lives in the persisted session projection. Publish the flip
   // once so the frontend stops prefix-hiding the replacement branch.
-  const rollbackInvalidationPending = new Set<string>()
 
   async function publishRollbackInvalidation(canonical: MessageV2.Info, history: Info["history"]) {
+    const instanceState = runtimeState()
+
     if (canonical.role !== "user") return
     if ((canonical as MessageV2.User).isRoot === false) return
     const rollback = history?.rollback
     if (!rollback?.canUnrollback) return
     if (canonical.time.created <= rollback.created) return
-    if (rollbackInvalidationPending.has(canonical.sessionID)) return
-    rollbackInvalidationPending.add(canonical.sessionID)
+    if (instanceState.rollbackInvalidationPending.has(canonical.sessionID)) return
+    instanceState.rollbackInvalidationPending.add(canonical.sessionID)
     try {
       await update(canonical.sessionID, (draft) => {
         if (draft.history?.rollback?.id !== rollback.id) return
@@ -1384,7 +1545,7 @@ export namespace Session {
     } catch (error) {
       log.warn("failed to publish rollback invalidation", { sessionID: canonical.sessionID, error })
     } finally {
-      rollbackInvalidationPending.delete(canonical.sessionID)
+      instanceState.rollbackInvalidationPending.delete(canonical.sessionID)
     }
   }
 
@@ -1911,4 +2072,6 @@ export namespace Session {
   }
 }
 
-MessageV2.installSessionResolver((sessionID) => SessionManager.requireSession(sessionID))
+export function registerSessionResolver() {
+  MessageV2.installSessionResolver((sessionID) => SessionManager.requireSession(sessionID))
+}

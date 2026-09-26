@@ -208,6 +208,10 @@ import type {
   GlobalGitInitResponses,
   GlobalHealthErrors,
   GlobalHealthResponses,
+  GlobalMaintenancePrepareErrors,
+  GlobalMaintenancePrepareResponses,
+  GlobalMaintenanceReleaseErrors,
+  GlobalMaintenanceReleaseResponses,
   GlobalNavAcknowledgeCompletionsErrors,
   GlobalNavAcknowledgeCompletionsResponses,
   GlobalNavPinnedErrors,
@@ -625,9 +629,13 @@ import type {
   SessionInboxErrors,
   SessionInboxGuideErrors,
   SessionInboxGuideResponses,
+  SessionInboxRemovedErrors,
+  SessionInboxRemovedResponses,
   SessionInboxRemoveErrors,
   SessionInboxRemoveResponses,
   SessionInboxResponses,
+  SessionInboxRestoreErrors,
+  SessionInboxRestoreResponses,
   SessionInboxRetryErrors,
   SessionInboxRetryResponses,
   SessionIndexErrors,
@@ -636,6 +644,8 @@ import type {
   SessionInitResponses,
   SessionInputErrors,
   SessionInputResponses,
+  SessionInputStatusErrors,
+  SessionInputStatusResponses,
   SessionListErrors,
   SessionListResponses,
   SessionMessageErrors,
@@ -644,6 +654,7 @@ import type {
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
+  SessionModelSelectionInput,
   SessionPromptAsyncErrors,
   SessionPromptAsyncResponses,
   SessionPromptErrors,
@@ -657,12 +668,19 @@ import type {
   SessionRunResponses,
   SessionRunResultErrors,
   SessionRunResultResponses,
+  SessionSelectWorkspaceErrors,
+  SessionSelectWorkspaceResponses,
+  SessionSetModelSelectionErrors,
+  SessionSetModelSelectionResponses,
   SessionShellErrors,
   SessionShellResponses,
   SessionStatusErrors,
   SessionStatusResponses,
   SessionSummarizeErrors,
   SessionSummarizeResponses,
+  SessionTagQuery,
+  SessionTags,
+  SessionThinkingSelection,
   SessionTodoErrors,
   SessionTodoResponses,
   SessionUnrollbackErrors,
@@ -687,8 +705,13 @@ import type {
   SkillRemoveResponses,
   StorageControlUpgradeErrors,
   StorageControlUpgradeResponses,
+  StorageMaintenanceStatusErrors,
+  StorageMaintenanceStatusResponses,
   StoragePrepareSessionErrors,
   StoragePrepareSessionResponses,
+  StorageReclaimControlErrors,
+  StorageReclaimControlInput,
+  StorageReclaimControlResponses,
   StorageRetrySessionErrors,
   StorageRetrySessionResponses,
   StorageSnapshotCleanErrors,
@@ -738,12 +761,24 @@ import type {
   WorkflowSessionUpdateLightloopErrors,
   WorkflowSessionUpdateLightloopResponses,
   WorkflowSetInput,
+  WorkspaceFileCopyInput,
+  WorkspaceFileCreateDirectoryInput,
+  WorkspaceFileDeleteInput,
+  WorkspaceFileMoveInput,
   WorkspaceFilesChildrenErrors,
   WorkspaceFilesChildrenResponses,
   WorkspaceFilesContentErrors,
   WorkspaceFilesContentResponses,
+  WorkspaceFilesCopyErrors,
+  WorkspaceFilesCopyResponses,
+  WorkspaceFilesCreateDirectoryErrors,
+  WorkspaceFilesCreateDirectoryResponses,
+  WorkspaceFilesMoveErrors,
+  WorkspaceFilesMoveResponses,
   WorkspaceFilesReadErrors,
   WorkspaceFilesReadResponses,
+  WorkspaceFilesRemoveErrors,
+  WorkspaceFilesRemoveResponses,
   WorkspaceFilesSearchErrors,
   WorkspaceFilesSearchResponses,
   WorkspaceFilesStatErrors,
@@ -753,6 +788,14 @@ import type {
   WorkspaceFilesWriteErrors,
   WorkspaceFilesWriteResponses,
   WorkspaceFileWriteFileInput,
+  WorkspaceListErrors,
+  WorkspaceListResponses,
+  WorkspaceRebindErrors,
+  WorkspaceRebindResponses,
+  WorkspaceRegisterErrors,
+  WorkspaceRegisterResponses,
+  WorkspaceSetSharingErrors,
+  WorkspaceSetSharingResponses,
   WorktreeCreateErrors,
   WorktreeCreateInput,
   WorktreeCreateResponses,
@@ -1466,9 +1509,11 @@ export class Files extends HeyApiClient {
    * List direct children for a workspace directory with lazy-loading friendly pagination.
    */
   public children<ThrowOnError extends boolean = false>(
-    parameters?: {
+    parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path?: string
       limit?: number
       cursor?: string
@@ -1484,6 +1529,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursor" },
@@ -1513,6 +1560,8 @@ export class Files extends HeyApiClient {
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path: string
       range?: string
       offset?: number
@@ -1529,6 +1578,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
             { in: "query", key: "range" },
             { in: "query", key: "offset" },
@@ -1555,6 +1606,8 @@ export class Files extends HeyApiClient {
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1566,6 +1619,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
           ],
         },
@@ -1587,6 +1642,8 @@ export class Files extends HeyApiClient {
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       query: string
       kind?: "files" | "content" | "symbol"
       limit?: number
@@ -1603,6 +1660,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "query" },
             { in: "query", key: "kind" },
             { in: "query", key: "limit" },
@@ -1630,9 +1689,11 @@ export class Files extends HeyApiClient {
    * Return git-backed file status for the current workspace.
    */
   public status<ThrowOnError extends boolean = false>(
-    parameters?: {
+    parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1643,6 +1704,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
           ],
         },
       ],
@@ -1661,12 +1724,14 @@ export class Files extends HeyApiClient {
   /**
    * Read workspace file bytes
    *
-   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{path} instead.
+   * Stream the raw bytes of a PDF inside the workspace for visual preview. Non-PDF files, oversized files, and paths escaping the workspace are rejected. For opening HTML in a new browser tab with working relative resources, use GET /workspace/files/raw/{scope}/{workspaceID}/{workspaceGeneration}/{path} instead.
    */
   public content<ThrowOnError extends boolean = false>(
     parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1678,6 +1743,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { in: "query", key: "path" },
           ],
         },
@@ -1697,12 +1764,14 @@ export class Files extends HeyApiClient {
   /**
    * Write workspace file
    *
-   * Write content to an existing workspace file with optional optimistic concurrency control.
+   * Create or replace a workspace file using a content-version precondition and atomic local replacement.
    */
   public write<ThrowOnError extends boolean = false>(
-    parameters?: {
+    parameters: {
       directory?: string
       scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
       workspaceFileWriteFileInput?: WorkspaceFileWriteFileInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1714,6 +1783,8 @@ export class Files extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
             { key: "workspaceFileWriteFileInput", map: "body" },
           ],
         },
@@ -1731,6 +1802,170 @@ export class Files extends HeyApiClient {
         },
       },
     )
+  }
+
+  /**
+   * Create a Workspace directory
+   */
+  public createDirectory<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileCreateDirectoryInput?: WorkspaceFileCreateDirectoryInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileCreateDirectoryInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceFilesCreateDirectoryResponses,
+      WorkspaceFilesCreateDirectoryErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/files/directory",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Copy a Workspace file or directory without replacing the destination
+   */
+  public copy<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileCopyInput?: WorkspaceFileCopyInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileCopyInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceFilesCopyResponses, WorkspaceFilesCopyErrors, ThrowOnError>({
+      url: "/workspace/files/copy",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Move a Workspace file or directory without replacing the destination
+   */
+  public move<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileMoveInput?: WorkspaceFileMoveInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileMoveInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceFilesMoveResponses, WorkspaceFilesMoveErrors, ThrowOnError>({
+      url: "/workspace/files/move",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Permanently remove a Workspace file or directory
+   */
+  public remove<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      workspaceID: string
+      workspaceGeneration: number
+      workspaceFileDeleteInput?: WorkspaceFileDeleteInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "workspaceID" },
+            { in: "query", key: "workspaceGeneration" },
+            { key: "workspaceFileDeleteInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceFilesRemoveResponses,
+      WorkspaceFilesRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/files/delete",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
   }
 }
 
@@ -2049,6 +2284,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       category?: "project" | "home" | "channel" | "background" | "github"
+      tag?: SessionTagQuery
       parentOnly?: "true" | "false"
       includeArchived?: "true" | "false"
       limit?: number
@@ -2065,6 +2301,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "query", key: "category" },
+            { in: "query", key: "tag" },
             { in: "query", key: "parentOnly" },
             { in: "query", key: "includeArchived" },
             { in: "query", key: "limit" },
@@ -2198,6 +2435,7 @@ export class Session extends HeyApiClient {
       since?: number
       before?: number
       pinned?: boolean
+      tag?: SessionTagQuery
       parentOnly?: boolean
     },
     options?: Options<never, ThrowOnError>,
@@ -2215,6 +2453,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "since" },
             { in: "query", key: "before" },
             { in: "query", key: "pinned" },
+            { in: "query", key: "tag" },
             { in: "query", key: "parentOnly" },
           ],
         },
@@ -2238,6 +2477,7 @@ export class Session extends HeyApiClient {
       scopeID?: string
       parentID?: string
       title?: string
+      tags?: SessionTags
       id?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
       workspace?: SessionWorkspaceSelection
@@ -2256,6 +2496,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "body", key: "parentID" },
             { in: "body", key: "title" },
+            { in: "body", key: "tags" },
             { in: "body", key: "id" },
             { in: "body", key: "controlProfile" },
             { in: "body", key: "workspace" },
@@ -2381,6 +2622,7 @@ export class Session extends HeyApiClient {
       directory?: string
       scopeID?: string
       title?: string
+      tags?: SessionTags
       pinned?: number
       controlProfile?: "guarded" | "autonomous" | "full_access"
       resolvePendingPermissions?: boolean
@@ -2406,6 +2648,7 @@ export class Session extends HeyApiClient {
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
             { in: "body", key: "title" },
+            { in: "body", key: "tags" },
             { in: "body", key: "pinned" },
             { in: "body", key: "controlProfile" },
             { in: "body", key: "resolvePendingPermissions" },
@@ -2531,6 +2774,90 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/dag",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Set session model and thinking
+   *
+   * Save an atomic model selection for the next eligible model request. Does not interrupt in-flight work.
+   */
+  public setModelSelection<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionModelSelectionInput?: SessionModelSelectionInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionModelSelectionInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      SessionSetModelSelectionResponses,
+      SessionSetModelSelectionErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/model-selection",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Select the Workspace for an idle session
+   */
+  public selectWorkspace<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionWorkspaceSelection?: SessionWorkspaceSelection
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionWorkspaceSelection", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionSelectWorkspaceResponses,
+      SessionSelectWorkspaceErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/workspace",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -2670,7 +2997,7 @@ export class Session extends HeyApiClient {
   /**
    * Abandon a stopped session
    *
-   * Give up on a session that stopped mid-work. Stops anything running, terminalizes the interrupted turn so the transcript reports an honest end, cancels the workflow bound to the session, and clears the pause latch so the session rests instead of staying paused. Idempotent: a repeat call reports what it changed rather than failing.
+   * Stop and settle current execution, cancel its bound workflow and previously queued inputs, then clear the pause. Failure keeps the session paused. History, files and unsent drafts are preserved. Idempotent: a repeat call reports what it changed rather than failing.
    */
   public abandon<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2764,9 +3091,111 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * List removed inbox items
+   *
+   * List recoverable removed items without exposing private execution inputs.
+   */
+  public inboxRemoved<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionInboxRemovedResponses, SessionInboxRemovedErrors, ThrowOnError>({
+      url: "/session/{sessionID}/inbox/removed",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Restore a removed inbox item
+   *
+   * Restore the original input, mode and execution configuration once. Repeated requests do not enqueue another input.
+   */
+  public inboxRestore<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      itemID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "itemID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionInboxRestoreResponses, SessionInboxRestoreErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/inbox/{itemID}/restore",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
+   * Get durable input progress
+   *
+   * Project input admission, materialization and execution state from the session's durable records.
+   */
+  public inputStatus<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionInputStatusResponses, SessionInputStatusErrors, ThrowOnError>({
+      url: "/session/{sessionID}/input/{messageID}/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Submit session input
    *
-   * Persist user input in the session inbox before scheduling it. Ordinary input returns the durable queued item; idle no-reply input starts directly.
+   * Persist input before scheduling it. Input on a paused session with an existing task steers that task before its next model call and resumes it; other ordinary input queues a new task. Idle no-reply input starts directly.
    */
   public input<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2792,6 +3221,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: SessionThinkingSelection
       parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -2814,6 +3244,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -3043,6 +3474,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: SessionThinkingSelection
       parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -3065,6 +3497,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -3213,6 +3646,7 @@ export class Session extends HeyApiClient {
       }
       system?: string
       variant?: string
+      thinking?: SessionThinkingSelection
       parts?: Array<TextPartInput | AttachmentPartInput>
     },
     options?: Options<never, ThrowOnError>,
@@ -3235,6 +3669,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "tools" },
             { in: "body", key: "system" },
             { in: "body", key: "variant" },
+            { in: "body", key: "thinking" },
             { in: "body", key: "parts" },
           ],
         },
@@ -3827,6 +4262,7 @@ export class Nav extends HeyApiClient {
       includeArchived?: boolean
       category?: "project" | "home" | "channel" | "background" | "github"
       channelType?: string
+      tag?: SessionTagQuery
       search?: string
       limit?: number
       cursorLastActivityAt?: number
@@ -3843,6 +4279,7 @@ export class Nav extends HeyApiClient {
             { in: "query", key: "includeArchived" },
             { in: "query", key: "category" },
             { in: "query", key: "channelType" },
+            { in: "query", key: "tag" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursorLastActivityAt" },
@@ -3925,6 +4362,45 @@ export class Global extends HeyApiClient {
     return (options?.client ?? this.client).get<GlobalActivityResponses, GlobalActivityErrors, ThrowOnError>({
       url: "/global/activity",
       ...options,
+    })
+  }
+
+  /**
+   * Reserve an idle runtime for offline maintenance
+   *
+   * Atomically refuse active or pending work and close new mutations and session execution for 30 seconds. The desktop stops its owned server within this lease before opening storage exclusively.
+   */
+  public maintenancePrepare<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<
+      GlobalMaintenancePrepareResponses,
+      GlobalMaintenancePrepareErrors,
+      ThrowOnError
+    >({ url: "/global/maintenance/prepare", ...options })
+  }
+
+  /**
+   * Release maintenance admission
+   */
+  public maintenanceRelease<ThrowOnError extends boolean = false>(
+    parameters?: {
+      token?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "body", key: "token" }] }])
+    return (options?.client ?? this.client).post<
+      GlobalMaintenanceReleaseResponses,
+      GlobalMaintenanceReleaseErrors,
+      ThrowOnError
+    >({
+      url: "/global/maintenance/release",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -4529,6 +5005,43 @@ export class Snapshot extends HeyApiClient {
 }
 
 export class Storage extends HeyApiClient {
+  /**
+   * Get storage format and reclamation status
+   */
+  public maintenanceStatus<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<
+      StorageMaintenanceStatusResponses,
+      StorageMaintenanceStatusErrors,
+      ThrowOnError
+    >({ url: "/global/storage/maintenance", ...options })
+  }
+
+  /**
+   * Pause or resume background storage reclamation
+   */
+  public reclaimControl<ThrowOnError extends boolean = false>(
+    parameters?: {
+      storageReclaimControlInput?: StorageReclaimControlInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "storageReclaimControlInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      StorageReclaimControlResponses,
+      StorageReclaimControlErrors,
+      ThrowOnError
+    >({
+      url: "/global/storage/reclaim/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Get historical data upgrade progress
    *
@@ -6331,6 +6844,7 @@ export class Pty extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
+      sessionID?: string
       command?: string
       args?: Array<string>
       cwd?: string
@@ -6348,6 +6862,7 @@ export class Pty extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "sessionID" },
             { in: "body", key: "command" },
             { in: "body", key: "args" },
             { in: "body", key: "cwd" },
@@ -6668,15 +7183,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6718,15 +7233,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -6775,15 +7290,15 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
       directory?: string
       scopeID?: string
@@ -7033,15 +7548,15 @@ export class Config extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
-        | "plugins"
+        | "skills"
+        | "worktree"
+        | "mcp"
+        | "library"
         | "channels"
         | "holos"
         | "email"
         | "github"
-        | "library"
-        | "mcp"
-        | "skills"
-        | "worktree"
+        | "plugins"
         | "voice"
         | Array<
             | "general"
@@ -7052,15 +7567,15 @@ export class Config extends HeyApiClient {
             | "permissions"
             | "runtime"
             | "storage"
-            | "plugins"
+            | "skills"
+            | "worktree"
+            | "mcp"
+            | "library"
             | "channels"
             | "holos"
             | "email"
             | "github"
-            | "library"
-            | "mcp"
-            | "skills"
-            | "worktree"
+            | "plugins"
             | "voice"
           >
       includeSecrets?: string
@@ -9211,6 +9726,149 @@ export class Skill extends HeyApiClient {
 }
 
 export class Workspace extends HeyApiClient {
+  /**
+   * List Workspaces in a Scope
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceListResponses, WorkspaceListErrors, ThrowOnError>({
+      url: "/workspace",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Register an existing local directory as a Workspace
+   */
+  public register<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      path?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceRegisterResponses, WorkspaceRegisterErrors, ThrowOnError>({
+      url: "/workspace",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Set explicitly shared writable Workspaces
+   */
+  public setSharing<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision?: number
+      workspaceIDs?: Array<string>
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "workspaceIDs" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceSetSharingResponses, WorkspaceSetSharingErrors, ThrowOnError>(
+      {
+        url: "/workspace/{workspaceID}/sharing",
+        ...options,
+        ...params,
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+          ...params.headers,
+        },
+      },
+    )
+  }
+
+  /**
+   * Rebind a Workspace to an existing local directory
+   */
+  public rebind<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision?: number
+      path?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "path" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceRebindResponses, WorkspaceRebindErrors, ThrowOnError>({
+      url: "/workspace/{workspaceID}/rebind",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   files = new Files({ client: this.client })
 }
 

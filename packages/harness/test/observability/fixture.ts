@@ -1,45 +1,23 @@
-import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
-import { mkdirSync, mkdtempSync, rmSync } from "fs"
-import { tmpdir } from "os"
-import path from "path"
+import { mkdirSync, rmSync } from "node:fs"
+import path from "node:path"
+import { Global } from "../../src/global"
+import { RuntimeContext } from "../../src/lifecycle/context"
 import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityResources } from "../../src/observability/resources"
 
-const homes: string[] = []
-const originalHome = process.env.SYNERGY_TEST_HOME
-const originalInline = process.env.SYNERGY_OBSERVABILITY_INLINE
-
-export function resetObservabilityHome(prefix = "synergy-observability-") {
-  initializeSqliteEngine()
-  const home = mkdtempSync(path.join(tmpdir(), prefix))
-  homes.push(home)
-  process.env.SYNERGY_TEST_HOME = home
-  // Existing observability/performance tests exercise the store contract, not
-  // the worker transport; pin them to the inline write path so behavior is
-  // unchanged. Worker-mode coverage lives in telemetry-worker.test.ts and
-  // store-worker-mode.test.ts.
-  process.env.SYNERGY_OBSERVABILITY_INLINE = "1"
-  mkdirSync(path.join(home, ".synergy", "config", "synergy.d"), { recursive: true })
-  mkdirSync(path.join(home, ".synergy", "state"), { recursive: true })
-  mkdirSync(path.join(home, ".synergy", "log"), { recursive: true })
-  ObservabilityResources.stop()
-  ObservabilityStore.close()
+export function resetObservabilityState() {
+  clearObservabilityState()
+  mkdirSync(path.join(Global.Path.state, "observability"), { recursive: true })
   ObservabilityConfig.refresh()
-  return home
+  return RuntimeContext.current().host.home
 }
 
-export function cleanupObservabilityHomes() {
+export function clearObservabilityState() {
+  if (RuntimeContext.current().host.env.SYNERGY_OBSERVABILITY_INLINE !== "1")
+    throw new Error("This fixture requires inline telemetry; worker tests must await their own shutdown")
   ObservabilityResources.stop()
   ObservabilityStore.close()
-  // Sibling tests refresh the shared config (e.g. disabled.test.ts pins
-  // enabled:false) without restoring it; reset the cache so a later file in
-  // the same worker re-evaluates the default and does not silently drop every
-  // event it expects to observe.
+  rmSync(path.join(Global.Path.state, "observability"), { recursive: true, force: true })
   ObservabilityConfig.refresh()
-  if (originalHome === undefined) delete process.env.SYNERGY_TEST_HOME
-  else process.env.SYNERGY_TEST_HOME = originalHome
-  if (originalInline === undefined) delete process.env.SYNERGY_OBSERVABILITY_INLINE
-  else process.env.SYNERGY_OBSERVABILITY_INLINE = originalInline
-  for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true })
 }

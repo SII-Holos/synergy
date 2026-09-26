@@ -7,6 +7,9 @@ import type {
   SynergyLinkSession,
 } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkExecution } from "@ericsanchezok/synergy-runtime-local/tools/synergy-link-execution"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 function fakeClient(): SynergyLinkClient.ExecutionClient {
   return {
@@ -32,341 +35,356 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-afterEach(() => {
-  SynergyLinkExecution.setClient(null)
-})
+afterEach(() =>
+  runtime.run(() => {
+    SynergyLinkExecution.setClient(null)
+  }),
+)
 
 describe("Synergy Link execution state", () => {
-  test("keeps sessions for different target agents on the same link", () => {
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_shared",
-      targetID: "target_first",
-      targetAgentID: "agent_first",
-      sourceAgent: "build",
-      sessionID: "session_first",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_shared",
-      targetID: "target_second",
-      targetAgentID: "agent_second",
-      sourceAgent: "review",
-      sessionID: "session_second",
-      status: "opened",
-      openedAt: 2,
-      lastUsedAt: 2,
-    })
-
-    expect(
-      SynergyLinkExecution.getSession("link_shared", {
+  test("keeps sessions for different target agents on the same link", () =>
+    runtime.run(() => {
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_shared",
         targetID: "target_first",
         targetAgentID: "agent_first",
         sourceAgent: "build",
-      })?.sessionID,
-    ).toBe("session_first")
-    expect(
-      SynergyLinkExecution.getSession("link_shared", {
+        sessionID: "session_first",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_shared",
         targetID: "target_second",
         targetAgentID: "agent_second",
         sourceAgent: "review",
-      })?.sessionID,
-    ).toBe("session_second")
-    expect(SynergyLinkExecution.allSessions()).toHaveLength(2)
-  })
+        sessionID: "session_second",
+        status: "opened",
+        openedAt: 2,
+        lastUsedAt: 2,
+      })
 
-  test("matches a registered target to a bootstrap session with the same transport agent", () => {
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_bootstrap",
-      targetAgentID: "agent_bootstrap",
-      sourceAgent: "build",
-      sessionID: "session_bootstrap",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
+      expect(
+        SynergyLinkExecution.getSession("link_shared", {
+          targetID: "target_first",
+          targetAgentID: "agent_first",
+          sourceAgent: "build",
+        })?.sessionID,
+      ).toBe("session_first")
+      expect(
+        SynergyLinkExecution.getSession("link_shared", {
+          targetID: "target_second",
+          targetAgentID: "agent_second",
+          sourceAgent: "review",
+        })?.sessionID,
+      ).toBe("session_second")
+      expect(SynergyLinkExecution.allSessions()).toHaveLength(2)
+    }))
 
-    expect(
-      SynergyLinkExecution.getSession("link_bootstrap", {
-        targetID: "target_registered_later",
+  test("matches a registered target to a bootstrap session with the same transport agent", () =>
+    runtime.run(() => {
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_bootstrap",
         targetAgentID: "agent_bootstrap",
-      })?.sessionID,
-    ).toBe("session_bootstrap")
-  })
+        sourceAgent: "build",
+        sessionID: "session_bootstrap",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
 
-  test("does not resolve a raw session owned by another local agent", async () => {
-    SynergyLinkExecution.setClient(fakeClient())
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_private",
-      targetAgentID: "agent_remote",
-      sourceAgent: "build",
-      sessionID: "session_private",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
+      expect(
+        SynergyLinkExecution.getSession("link_bootstrap", {
+          targetID: "target_registered_later",
+          targetAgentID: "agent_bootstrap",
+        })?.sessionID,
+      ).toBe("session_bootstrap")
+    }))
 
-    await expect(
-      SynergyLinkExecution.resolveExecutionTarget({
+  test("does not resolve a raw session owned by another local agent", () =>
+    runtime.run(async () => {
+      SynergyLinkExecution.setClient(fakeClient())
+      SynergyLinkExecution.upsertSession({
         linkID: "link_private",
-        linkIDSupplied: true,
-        targetIDSupplied: false,
-        tool: "bash",
-        agent: "review",
-      }),
-    ).rejects.toBeInstanceOf(SynergyLinkExecution.NoSessionError)
-  })
+        targetAgentID: "agent_remote",
+        sourceAgent: "build",
+        sessionID: "session_private",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
 
-  test("disposes the previous client and clears sessions when transport changes", () => {
-    let disposed = 0
-    const previous = Object.assign(fakeClient(), {
-      dispose() {
-        disposed++
-      },
-    })
-    SynergyLinkExecution.setClient(previous)
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_reconnect",
-      targetAgentID: "agent_remote",
-      sourceAgent: "build",
-      sessionID: "session_reconnect",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
+      await expect(
+        SynergyLinkExecution.resolveExecutionTarget({
+          linkID: "link_private",
+          linkIDSupplied: true,
+          targetIDSupplied: false,
+          tool: "bash",
+          agent: "review",
+        }),
+      ).rejects.toBeInstanceOf(SynergyLinkExecution.NoSessionError)
+    }))
 
-    SynergyLinkExecution.setClient(fakeClient())
+  test("disposes the previous client and clears sessions when transport changes", () =>
+    runtime.run(() => {
+      let disposed = 0
+      const previous = Object.assign(fakeClient(), {
+        dispose() {
+          disposed++
+        },
+      })
+      SynergyLinkExecution.setClient(previous)
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_reconnect",
+        targetAgentID: "agent_remote",
+        sourceAgent: "build",
+        sessionID: "session_reconnect",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
 
-    expect(disposed).toBe(1)
-    expect(SynergyLinkExecution.allSessions()).toEqual([])
-  })
+      SynergyLinkExecution.setClient(fakeClient())
+
+      expect(disposed).toBe(1)
+      expect(SynergyLinkExecution.allSessions()).toEqual([])
+    }))
 })
 
 describe("Synergy Link verified session cache", () => {
-  test("heartbeat-verifies a cached session before remote execution", async () => {
-    const actions: Array<{ action: string; sessionID?: string }> = []
-    SynergyLinkExecution.setClient({
-      ...fakeClient(),
-      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
-        actions.push({
-          action: payload.action,
-          sessionID: "sessionID" in payload ? payload.sessionID : undefined,
-        })
-        return {
-          title: "Session alive",
-          metadata: { action: payload.action, status: "alive", sessionID: "session_verify", backend: "remote" },
-          output: "alive",
-        }
-      },
-    })
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_verify",
-      targetAgentID: "agent_verify",
-      sourceAgent: "build",
-      sessionID: "session_verify",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
+  test("heartbeat-verifies a cached session before remote execution", () =>
+    runtime.run(async () => {
+      const actions: Array<{ action: string; sessionID?: string }> = []
+      SynergyLinkExecution.setClient({
+        ...fakeClient(),
+        executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+          actions.push({
+            action: payload.action,
+            sessionID: "sessionID" in payload ? payload.sessionID : undefined,
+          })
+          return {
+            title: "Session alive",
+            metadata: { action: payload.action, status: "alive", sessionID: "session_verify", backend: "remote" },
+            output: "alive",
+          }
+        },
+      })
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_verify",
+        targetAgentID: "agent_verify",
+        sourceAgent: "build",
+        sessionID: "session_verify",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
 
-    const target = await SynergyLinkExecution.resolveExecutionTarget({
-      linkID: "link_verify",
-      linkIDSupplied: true,
-      targetIDSupplied: false,
-      tool: "bash",
-      agent: "build",
-    })
+      const target = await SynergyLinkExecution.resolveExecutionTarget({
+        linkID: "link_verify",
+        linkIDSupplied: true,
+        targetIDSupplied: false,
+        tool: "bash",
+        agent: "build",
+      })
 
-    expect(target.kind).toBe("remote")
-    expect(actions).toEqual([{ action: "heartbeat", sessionID: "session_verify" }])
-    const session = SynergyLinkExecution.getSession("link_verify")
-    expect(session?.lastAttemptAt).toBeGreaterThan(0)
-    expect(session?.lastVerifiedAt).toBeGreaterThan(0)
-  })
+      expect(target.kind).toBe("remote")
+      expect(actions).toEqual([{ action: "heartbeat", sessionID: "session_verify" }])
+      const session = SynergyLinkExecution.getSession("link_verify")
+      expect(session?.lastAttemptAt).toBeGreaterThan(0)
+      expect(session?.lastVerifiedAt).toBeGreaterThan(0)
+    }))
 
-  test("clears a session the host reports as invalid before remote execution", async () => {
-    let sessionCalls = 0
-    SynergyLinkExecution.setClient({
-      ...fakeClient(),
-      executeSession: async (): Promise<SynergyLinkSession.Result> => {
-        sessionCalls++
-        throw new SynergyLinkRemoteError("session_invalid", "Session is not active.")
-      },
-    })
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_invalid",
-      targetAgentID: "agent_invalid",
-      sourceAgent: "build",
-      sessionID: "session_invalid",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
-
-    await expect(
-      SynergyLinkExecution.resolveExecutionTarget({
+  test("clears a session the host reports as invalid before remote execution", () =>
+    runtime.run(async () => {
+      let sessionCalls = 0
+      SynergyLinkExecution.setClient({
+        ...fakeClient(),
+        executeSession: async (): Promise<SynergyLinkSession.Result> => {
+          sessionCalls++
+          throw new SynergyLinkRemoteError("session_invalid", "Session is not active.")
+        },
+      })
+      SynergyLinkExecution.upsertSession({
         linkID: "link_invalid",
-        linkIDSupplied: true,
-        targetIDSupplied: false,
-        tool: "bash",
-        agent: "build",
-      }),
-    ).rejects.toBeInstanceOf(SynergyLinkExecution.NoSessionError)
-    expect(sessionCalls).toBe(1)
-    expect(SynergyLinkExecution.getSession("link_invalid")).toBeUndefined()
-  })
+        targetAgentID: "agent_invalid",
+        sourceAgent: "build",
+        sessionID: "session_invalid",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
 
-  test("does not clear a replacement session for a stale invalid heartbeat response", async () => {
-    const heartbeat = deferred<SynergyLinkSession.Result>()
-    let heartbeatStarted!: () => void
-    const started = new Promise<void>((resolve) => {
-      heartbeatStarted = resolve
-    })
-    SynergyLinkExecution.setClient({
-      ...fakeClient(),
-      executeSession: async (): Promise<SynergyLinkSession.Result> => {
-        heartbeatStarted()
-        return heartbeat.promise
-      },
-    })
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_invalid_replaced",
-      targetAgentID: "agent_invalid_replaced",
-      sourceAgent: "build",
-      sessionID: "session_stale",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
+      await expect(
+        SynergyLinkExecution.resolveExecutionTarget({
+          linkID: "link_invalid",
+          linkIDSupplied: true,
+          targetIDSupplied: false,
+          tool: "bash",
+          agent: "build",
+        }),
+      ).rejects.toBeInstanceOf(SynergyLinkExecution.NoSessionError)
+      expect(sessionCalls).toBe(1)
+      expect(SynergyLinkExecution.getSession("link_invalid")).toBeUndefined()
+    }))
 
-    const verification = SynergyLinkExecution.verifySession("link_invalid_replaced", {
-      targetAgentID: "agent_invalid_replaced",
-      sourceAgent: "build",
-    })
-    await started
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_invalid_replaced",
-      targetAgentID: "agent_invalid_replaced",
-      sourceAgent: "build",
-      sessionID: "session_replacement",
-      status: "opened",
-      openedAt: 2,
-      lastUsedAt: 2,
-    })
-    heartbeat.reject(new SynergyLinkRemoteError("session_invalid", "Session is not active."))
+  test("does not clear a replacement session for a stale invalid heartbeat response", () =>
+    runtime.run(async () => {
+      const heartbeat = deferred<SynergyLinkSession.Result>()
+      let heartbeatStarted!: () => void
+      const started = new Promise<void>((resolve) => {
+        heartbeatStarted = resolve
+      })
+      SynergyLinkExecution.setClient({
+        ...fakeClient(),
+        executeSession: async (): Promise<SynergyLinkSession.Result> => {
+          heartbeatStarted()
+          return heartbeat.promise
+        },
+      })
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_invalid_replaced",
+        targetAgentID: "agent_invalid_replaced",
+        sourceAgent: "build",
+        sessionID: "session_stale",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
 
-    expect(await verification).toEqual({ kind: "missing" })
-    expect(SynergyLinkExecution.getSession("link_invalid_replaced")?.sessionID).toBe("session_replacement")
-  })
+      const verification = SynergyLinkExecution.verifySession("link_invalid_replaced", {
+        targetAgentID: "agent_invalid_replaced",
+        sourceAgent: "build",
+      })
+      await started
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_invalid_replaced",
+        targetAgentID: "agent_invalid_replaced",
+        sourceAgent: "build",
+        sessionID: "session_replacement",
+        status: "opened",
+        openedAt: 2,
+        lastUsedAt: 2,
+      })
+      heartbeat.reject(new SynergyLinkRemoteError("session_invalid", "Session is not active."))
 
-  test("does not clear a replacement session for a stale closed heartbeat response", async () => {
-    const heartbeat = deferred<SynergyLinkSession.Result>()
-    let heartbeatStarted!: () => void
-    const started = new Promise<void>((resolve) => {
-      heartbeatStarted = resolve
-    })
-    SynergyLinkExecution.setClient({
-      ...fakeClient(),
-      executeSession: async (): Promise<SynergyLinkSession.Result> => {
-        heartbeatStarted()
-        return heartbeat.promise
-      },
-    })
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_closed_replaced",
-      targetAgentID: "agent_closed_replaced",
-      sourceAgent: "build",
-      sessionID: "session_stale",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-    })
+      expect(await verification).toEqual({ kind: "missing" })
+      expect(SynergyLinkExecution.getSession("link_invalid_replaced")?.sessionID).toBe("session_replacement")
+    }))
 
-    const verification = SynergyLinkExecution.verifySession("link_closed_replaced", {
-      targetAgentID: "agent_closed_replaced",
-      sourceAgent: "build",
-    })
-    await started
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_closed_replaced",
-      targetAgentID: "agent_closed_replaced",
-      sourceAgent: "build",
-      sessionID: "session_replacement",
-      status: "opened",
-      openedAt: 2,
-      lastUsedAt: 2,
-    })
-    heartbeat.resolve({
-      title: "Session closed",
-      metadata: { action: "heartbeat", status: "closed", sessionID: "session_stale", backend: "remote" },
-      output: "closed",
-    })
+  test("does not clear a replacement session for a stale closed heartbeat response", () =>
+    runtime.run(async () => {
+      const heartbeat = deferred<SynergyLinkSession.Result>()
+      let heartbeatStarted!: () => void
+      const started = new Promise<void>((resolve) => {
+        heartbeatStarted = resolve
+      })
+      SynergyLinkExecution.setClient({
+        ...fakeClient(),
+        executeSession: async (): Promise<SynergyLinkSession.Result> => {
+          heartbeatStarted()
+          return heartbeat.promise
+        },
+      })
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_closed_replaced",
+        targetAgentID: "agent_closed_replaced",
+        sourceAgent: "build",
+        sessionID: "session_stale",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+      })
 
-    expect(await verification).toEqual({ kind: "missing" })
-    expect(SynergyLinkExecution.getSession("link_closed_replaced")?.sessionID).toBe("session_replacement")
-  })
+      const verification = SynergyLinkExecution.verifySession("link_closed_replaced", {
+        targetAgentID: "agent_closed_replaced",
+        sourceAgent: "build",
+      })
+      await started
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_closed_replaced",
+        targetAgentID: "agent_closed_replaced",
+        sourceAgent: "build",
+        sessionID: "session_replacement",
+        status: "opened",
+        openedAt: 2,
+        lastUsedAt: 2,
+      })
+      heartbeat.resolve({
+        title: "Session closed",
+        metadata: { action: "heartbeat", status: "closed", sessionID: "session_stale", backend: "remote" },
+        output: "closed",
+      })
 
-  test("reports unverified on verification timeout without refreshing lastVerifiedAt", async () => {
-    const lastVerifiedAt = 1_000
-    SynergyLinkExecution.setClient({
-      ...fakeClient(),
-      executeSession: async (): Promise<SynergyLinkSession.Result> => {
-        throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
-      },
-    })
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_timeout",
-      targetAgentID: "agent_timeout",
-      sourceAgent: "build",
-      sessionID: "session_timeout",
-      status: "opened",
-      openedAt: 1,
-      lastUsedAt: 1,
-      lastVerifiedAt,
-    })
+      expect(await verification).toEqual({ kind: "missing" })
+      expect(SynergyLinkExecution.getSession("link_closed_replaced")?.sessionID).toBe("session_replacement")
+    }))
 
-    await expect(
-      SynergyLinkExecution.resolveExecutionTarget({
+  test("reports unverified on verification timeout without refreshing lastVerifiedAt", () =>
+    runtime.run(async () => {
+      const lastVerifiedAt = 1_000
+      SynergyLinkExecution.setClient({
+        ...fakeClient(),
+        executeSession: async (): Promise<SynergyLinkSession.Result> => {
+          throw new SynergyLinkRemoteError("transport_error", "Timed out waiting for Synergy Link response.")
+        },
+      })
+      SynergyLinkExecution.upsertSession({
         linkID: "link_timeout",
-        linkIDSupplied: true,
-        targetIDSupplied: false,
-        tool: "bash",
-        agent: "build",
-      }),
-    ).rejects.toBeInstanceOf(SynergyLinkExecution.UnverifiedSessionError)
-    const session = SynergyLinkExecution.getSession("link_timeout")
-    expect(session?.lastVerifiedAt).toBe(lastVerifiedAt)
-    expect(session?.lastAttemptAt).toBeGreaterThan(lastVerifiedAt)
-  })
+        targetAgentID: "agent_timeout",
+        sourceAgent: "build",
+        sessionID: "session_timeout",
+        status: "opened",
+        openedAt: 1,
+        lastUsedAt: 1,
+        lastVerifiedAt,
+      })
 
-  test("does not clear a replacement session for a stale invalid response", () => {
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_replaced",
-      targetAgentID: "agent_replaced",
-      sourceAgent: "build",
-      sessionID: "session_replacement",
-      status: "opened",
-      openedAt: 2,
-      lastUsedAt: 2,
-    })
+      await expect(
+        SynergyLinkExecution.resolveExecutionTarget({
+          linkID: "link_timeout",
+          linkIDSupplied: true,
+          targetIDSupplied: false,
+          tool: "bash",
+          agent: "build",
+        }),
+      ).rejects.toBeInstanceOf(SynergyLinkExecution.UnverifiedSessionError)
+      const session = SynergyLinkExecution.getSession("link_timeout")
+      expect(session?.lastVerifiedAt).toBe(lastVerifiedAt)
+      expect(session?.lastAttemptAt).toBeGreaterThan(lastVerifiedAt)
+    }))
 
-    const cleared = SynergyLinkExecution.clearSessionOnInvalidError(
-      "link_replaced",
-      "session_stale",
-      { targetAgentID: "agent_replaced", sourceAgent: "build" },
-      new SynergyLinkRemoteError("session_invalid", "Session is not active."),
-    )
+  test("does not clear a replacement session for a stale invalid response", () =>
+    runtime.run(() => {
+      SynergyLinkExecution.upsertSession({
+        linkID: "link_replaced",
+        targetAgentID: "agent_replaced",
+        sourceAgent: "build",
+        sessionID: "session_replacement",
+        status: "opened",
+        openedAt: 2,
+        lastUsedAt: 2,
+      })
 
-    expect(cleared).toBe(false)
-    expect(SynergyLinkExecution.getSession("link_replaced")?.sessionID).toBe("session_replacement")
-  })
+      const cleared = SynergyLinkExecution.clearSessionOnInvalidError(
+        "link_replaced",
+        "session_stale",
+        { targetAgentID: "agent_replaced", sourceAgent: "build" },
+        new SynergyLinkRemoteError("session_invalid", "Session is not active."),
+      )
 
-  test("verifySession reports missing without a cached session", async () => {
-    SynergyLinkExecution.setClient(fakeClient())
-    const verification = await SynergyLinkExecution.verifySession("link_none", {
-      targetAgentID: "agent_none",
-    })
-    expect(verification.kind).toBe("missing")
-  })
+      expect(cleared).toBe(false)
+      expect(SynergyLinkExecution.getSession("link_replaced")?.sessionID).toBe("session_replacement")
+    }))
+
+  test("verifySession reports missing without a cached session", () =>
+    runtime.run(async () => {
+      SynergyLinkExecution.setClient(fakeClient())
+      const verification = await SynergyLinkExecution.verifySession("link_none", {
+        targetAgentID: "agent_none",
+      })
+      expect(verification.kind).toBe("missing")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

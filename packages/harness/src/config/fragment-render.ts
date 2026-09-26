@@ -1,4 +1,5 @@
-import os from "node:os"
+import { RuntimeContext } from "../lifecycle/context"
+import { Env } from "../util/env"
 import path from "node:path"
 import { applyEdits, modify, parse as parseJsonc, type ParseError } from "jsonc-parser"
 import type * as Schema from "./schema"
@@ -45,13 +46,13 @@ function containsReference(value: string): boolean {
  * to an empty string.
  */
 async function resolveReferenceText(text: string, configFilepath: string): Promise<string> {
-  let resolved = text.replace(ENV_REFERENCE_PATTERN, (_, varName: string) => process.env[varName] ?? "")
+  let resolved = text.replace(ENV_REFERENCE_PATTERN, (_, varName: string) => Env.get(varName) ?? "")
   const matches = resolved.match(FILE_REFERENCE_PATTERN)
   if (!matches) return resolved
   const configDir = path.dirname(configFilepath)
   for (const match of matches) {
     let filePath = match.replace(/^\{file:/, "").replace(/\}$/, "")
-    if (filePath.startsWith("~/")) filePath = path.join(os.homedir(), filePath.slice(2))
+    if (filePath.startsWith("~/")) filePath = path.join(RuntimeContext.current().host.home, filePath.slice(2))
     const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
     let fileContent: string
     try {

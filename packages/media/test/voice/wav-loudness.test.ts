@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { isPcm16Wav, peakNormalizeWavPcm16, wavDataRange } from "../../src/voice/wav-loudness"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 /** Build a minimal mono 16-bit PCM RIFF/WAVE byte buffer. */
 function buildWav(samples: number[]): Uint8Array {
@@ -29,57 +32,65 @@ function buildWav(samples: number[]): Uint8Array {
 }
 
 describe("wav-loudness peak normalization", () => {
-  test("recognizes canonical PCM16 WAVE data", () => {
-    const wav = buildWav([1000, -2000, 3000])
-    expect(isPcm16Wav(wav)).toBe(true)
-    expect(wavDataRange(wav)).toEqual({ dataOffset: 44, dataLength: 6 })
-  })
+  test("recognizes canonical PCM16 WAVE data", () =>
+    runtime.run(() => {
+      const wav = buildWav([1000, -2000, 3000])
+      expect(isPcm16Wav(wav)).toBe(true)
+      expect(wavDataRange(wav)).toEqual({ dataOffset: 44, dataLength: 6 })
+    }))
 
-  test("rejects non-RIFF, non-WAVE, and truncated payloads", () => {
-    expect(isPcm16Wav(new Uint8Array([1, 2, 3]))).toBe(false)
-    const noRiff = buildWav([1, 2, 3])
-    noRiff[0] = 88
-    expect(isPcm16Wav(noRiff)).toBe(false)
-    const noWave = buildWav([1, 2, 3])
-    noWave[8] = 88
-    expect(isPcm16Wav(noWave)).toBe(false)
-  })
+  test("rejects non-RIFF, non-WAVE, and truncated payloads", () =>
+    runtime.run(() => {
+      expect(isPcm16Wav(new Uint8Array([1, 2, 3]))).toBe(false)
+      const noRiff = buildWav([1, 2, 3])
+      noRiff[0] = 88
+      expect(isPcm16Wav(noRiff)).toBe(false)
+      const noWave = buildWav([1, 2, 3])
+      noWave[8] = 88
+      expect(isPcm16Wav(noWave)).toBe(false)
+    }))
 
-  test("amplifies a quiet clip to the target peak (-1 dBFS)", () => {
-    // Peak 3277 ≈ -20 dBFS. Normalization should lift it to ≈ 29286 (-1 dBFS).
-    const quiet = buildWav([-3277, 3277, 0, -1000, 500])
-    const normalized = peakNormalizeWavPcm16(quiet)
-    expect(isPcm16Wav(normalized)).toBe(true)
+  test("amplifies a quiet clip to the target peak (-1 dBFS)", () =>
+    runtime.run(() => {
+      // Peak 3277 ≈ -20 dBFS. Normalization should lift it to ≈ 29286 (-1 dBFS).
+      const quiet = buildWav([-3277, 3277, 0, -1000, 500])
+      const normalized = peakNormalizeWavPcm16(quiet)
+      expect(isPcm16Wav(normalized)).toBe(true)
 
-    const view = new DataView(normalized.buffer, normalized.byteOffset, normalized.byteLength)
-    let peak = 0
-    for (let i = 0; i < 5; i++) {
-      const value = Math.abs(view.getInt16(44 + i * 2, true))
-      if (value > peak) peak = value
-    }
-    // target: 10^(-1/20) * 32768 ≈ 29286, within rounding of a scaled sample.
-    expect(peak).toBeGreaterThan(28000)
-    expect(peak).toBeLessThanOrEqual(29286)
-  })
-  test("leaves clips at or above the target peak untouched (no attenuation)", () => {
-    const loud = buildWav([-29300, 29300, 0, 10000])
-    const result = peakNormalizeWavPcm16(loud)
-    expect(result).toBe(loud)
-  })
+      const view = new DataView(normalized.buffer, normalized.byteOffset, normalized.byteLength)
+      let peak = 0
+      for (let i = 0; i < 5; i++) {
+        const value = Math.abs(view.getInt16(44 + i * 2, true))
+        if (value > peak) peak = value
+      }
+      // target: 10^(-1/20) * 32768 ≈ 29286, within rounding of a scaled sample.
+      expect(peak).toBeGreaterThan(28000)
+      expect(peak).toBeLessThanOrEqual(29286)
+    }))
+  test("leaves clips at or above the target peak untouched (no attenuation)", () =>
+    runtime.run(() => {
+      const loud = buildWav([-29300, 29300, 0, 10000])
+      const result = peakNormalizeWavPcm16(loud)
+      expect(result).toBe(loud)
+    }))
 
-  test("silent clips and non-PCM16 payloads pass through unchanged", () => {
-    const silent = buildWav([0, 0, 0, 0])
-    expect(peakNormalizeWavPcm16(silent)).toBe(silent)
+  test("silent clips and non-PCM16 payloads pass through unchanged", () =>
+    runtime.run(() => {
+      const silent = buildWav([0, 0, 0, 0])
+      expect(peakNormalizeWavPcm16(silent)).toBe(silent)
 
-    const notWav = new Uint8Array([9, 9, 9])
-    expect(peakNormalizeWavPcm16(notWav)).toBe(notWav)
-  })
+      const notWav = new Uint8Array([9, 9, 9])
+      expect(peakNormalizeWavPcm16(notWav)).toBe(notWav)
+    }))
 
-  test("preserves waveform shape (positive samples stay positive)", () => {
-    const quiet = buildWav([1000, -2000, 3000, -4000, 5000])
-    const normalized = peakNormalizeWavPcm16(quiet)
-    const view = new DataView(normalized.buffer, normalized.byteOffset, normalized.byteLength)
-    const signs = [0, 1, 2, 3, 4].map((i) => Math.sign(view.getInt16(44 + i * 2, true)))
-    expect(signs).toEqual([1, -1, 1, -1, 1])
-  })
+  test("preserves waveform shape (positive samples stay positive)", () =>
+    runtime.run(() => {
+      const quiet = buildWav([1000, -2000, 3000, -4000, 5000])
+      const normalized = peakNormalizeWavPcm16(quiet)
+      const view = new DataView(normalized.buffer, normalized.byteOffset, normalized.byteLength)
+      const signs = [0, 1, 2, 3, 4].map((i) => Math.sign(view.getInt16(44 + i * 2, true)))
+      expect(signs).toEqual([1, -1, 1, -1, 1])
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

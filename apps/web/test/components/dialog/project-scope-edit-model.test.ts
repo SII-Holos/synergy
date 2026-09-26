@@ -4,35 +4,26 @@ import type { LocalScope } from "@/context/layout"
 
 function scope(overrides: Partial<LocalScope> = {}): LocalScope {
   return {
-    worktree: "/repo",
+    id: "abc123",
+    local: { directory: "/repo", worktree: "/repo", sandboxes: [] },
     expanded: false,
     ...overrides,
   } as LocalScope
 }
 
 describe("scopeUpdateRequest", () => {
-  test("uses the stable scopeID when present and always carries directory", () => {
+  test("updates the identified Scope independently of its local directory", () => {
     const request = scopeUpdateRequest(scope({ id: "abc123" }), { name: "renamed", sandboxes: ["/repo/docs"] })
     expect(request).toEqual({
       path_scopeID: "abc123",
-      directory: "/repo",
       name: "renamed",
-      sandboxes: ["/repo/docs"],
-    })
-  })
-
-  test("falls back to the worktree path as scopeID when the stable ID is missing", () => {
-    const request = scopeUpdateRequest(scope({ id: undefined }), { sandboxes: ["/repo/docs"] })
-    expect(request).toEqual({
-      path_scopeID: "/repo",
-      directory: "/repo",
       sandboxes: ["/repo/docs"],
     })
   })
 
   test("omits an empty name and undefined sandboxes", () => {
     const request = scopeUpdateRequest(scope({ id: "abc123" }), { name: "   ", sandboxes: undefined })
-    expect(request).toEqual({ path_scopeID: "abc123", directory: "/repo" })
+    expect(request).toEqual({ path_scopeID: "abc123" })
   })
 })
 

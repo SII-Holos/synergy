@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { Permission } from "."
 
 /**
@@ -11,13 +12,22 @@ export namespace PermissionPluginSource {
     triggerAsk(info: Permission.Info, initial: { status: string }): Promise<{ status: string }>
   }
 
-  let source: Source | undefined
+  const runtimeState = RuntimeContext.state(() => ({
+    source: undefined as Source | undefined,
+  }))
 
   export function register(value: Source): void {
-    source = value
+    const instanceState = runtimeState()
+
+    if (instanceState.source === value) return
+    RuntimeContext.assertCompositionOpen("permission/plugin-source")
+    if (instanceState.source && value) throw new Error("permission/plugin-source is already registered")
+    instanceState.source = value
   }
 
   export function get(): Source | undefined {
-    return source
+    const instanceState = runtimeState()
+
+    return instanceState.source
   }
 }

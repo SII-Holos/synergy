@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import { ToolRegistry } from "../tool/registry"
 import { TaskTool } from "./tools/task"
 import { TaskListTool } from "./tools/task-list"
@@ -7,11 +8,15 @@ import { TaskCancelTool } from "./tools/task-cancel"
 /**
  * Cortex domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerCortexTools(): void {
-  if (registered) return
-  registered = true
+  const instanceState = runtimeState()
+
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ToolRegistry.registerToolProvider("cortex", () => [TaskTool, TaskListTool, TaskOutputTool, TaskCancelTool])
 }

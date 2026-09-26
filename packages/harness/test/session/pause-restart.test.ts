@@ -1,3 +1,6 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../support/fixture"
 import { Identifier } from "../../src/id/id"
@@ -7,6 +10,13 @@ import { SessionDrive } from "../../src/session/drive"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionLifecycle } from "../../src/session/lifecycle"
 import { SessionManager } from "../../src/session/manager"
+import { SessionHistory } from "../../src/session/history"
+import { SessionInbox } from "../../src/session/inbox"
+import { SessionNav } from "../../src/session/nav"
+import { SessionEvent } from "../../src/session/event"
+import { Bus } from "../../src/bus"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import { resolve as resolveWorking, toStatus } from "../../src/session/working"
 
 /** A reply-required root with no terminal assistant: the persisted shape of a
@@ -38,91 +48,210 @@ async function createInterruptedTurn(sessionID: string, rootMessageID: string) {
 }
 
 describe("a paused session is visible and inert without a live runtime", () => {
-  test("startup reconciliation records the latch and drives nothing", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Interrupted by a dead process" })
-        await createInterruptedTurn(session.id, Identifier.ascending("message"))
+  test.each(["turn", "inbox"] as const)("recovery preserves historical activity for unfinished %s", (unfinished) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const historical = await Session.create({ title: "Historical unfinished session" })
+          if (unfinished === "turn") {
+            await createInterruptedTurn(historical.id, Identifier.ascending("message"))
+            const assistant = (await SessionHistory.modelMessages({ sessionID: historical.id })).at(-1)!.info
+            if (assistant.role !== "assistant") throw new Error("Expected an assistant")
+            await Session.updateMessage({
+              ...assistant,
+              finish: "tool-calls",
+              time: { created: 1_000, completed: 2_000 },
+            })
+          } else {
+            await SessionInbox.enqueueUser({
+              sessionID: historical.id,
+              parts: [{ type: "text", text: "Saved input" }],
+            })
+          }
+          await Storage.update<Session.Info>(
+            StoragePath.sessionInfo(Identifier.asScopeID(historical.scope.id), Identifier.asSessionID(historical.id)),
+            (draft) => {
+              draft.time.created = 1_000
+              draft.time.updated = 2_000
+            },
+          )
+          const recent = await Session.create({ title: "Recent session" })
+          await Storage.update<Session.Info>(
+            StoragePath.sessionInfo(Identifier.asScopeID(recent.scope.id), Identifier.asSessionID(recent.id)),
+            (draft) => {
+              draft.time.created = 3_000
+              draft.time.updated = 3_000
+            },
+          )
+          const before = await SessionNav.buildNavIndex(historical.scope.id)
+          const activity = before.entries.map(({ id, lastActivityAt }) => ({ id, lastActivityAt }))
+          const messages = await SessionHistory.modelMessages({ sessionID: historical.id })
+          const inbox = await SessionInbox.list(historical.id)
+          const events: Array<{ info: Session.Info; navEntry?: { lastActivityAt: number } }> = []
+          const unsubscribe = Bus.subscribe(SessionEvent.Updated, (event) => {
+            if (event.properties.info.id === historical.id) events.push(event.properties)
+          })
+          try {
+            for (let pass = 0; pass < 2; pass++) {
+              await SessionInvoke.reconcilePausedSessions(historical.scope.id)
+              const info = await Session.get(historical.id)
+              expect(info.paused?.reason).toBe("interrupted")
+              expect(info.paused!.since).toBeGreaterThan(3_000)
+              expect(info.time.updated).toBe(2_000)
+              const nav = await SessionNav.readNavIndex(historical.scope.id)
+              expect(nav.entries.map(({ id, lastActivityAt }) => ({ id, lastActivityAt }))).toEqual(activity)
+              const rebuilt = await SessionNav.buildNavIndex(historical.scope.id)
+              expect(rebuilt.entries.map(({ id, lastActivityAt }) => ({ id, lastActivityAt }))).toEqual(activity)
+              expect(SessionManager.isRunning(historical.id)).toBe(false)
+            }
+            expect(events).toHaveLength(1)
+            expect(events[0].info.paused?.reason).toBe("interrupted")
+            expect(events[0].info.time.updated).toBe(2_000)
+            expect(events[0].navEntry?.lastActivityAt).toBe(2_000)
+            expect(await SessionHistory.modelMessages({ sessionID: historical.id })).toEqual(messages)
+            expect(await SessionInbox.list(historical.id)).toEqual(inbox)
 
-        // The real startup entry, not a re-implementation of it: this is what a
-        // restart runs.
-        await SessionInvoke.reconcilePausedSessions(scope.id)
+            await SessionLifecycle.clear(historical.id)
+            const resumed = await SessionNav.readNavIndex(historical.scope.id)
+            expect(resumed.entries[0].id).toBe(historical.id)
+            expect(resumed.entries[0].lastActivityAt).toBeGreaterThan(3_000)
+          } finally {
+            unsubscribe()
+          }
+        },
+      })
+    }),
+  )
 
-        const latch = await SessionLifecycle.snapshot(session.id)
-        expect(latch?.reason).toBe("interrupted")
-        // The whole point of deleting automatic recovery: startup records the
-        // state and stops there. Nothing was resumed on the user's behalf.
-        expect(SessionManager.isRunning(session.id)).toBe(false)
-      },
-    })
-  })
-
-  test("the pause survives with no runtime registered and refuses to be driven", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Restart survivor" })
-        await createInterruptedTurn(session.id, Identifier.ascending("message"))
-        await SessionInvoke.reconcilePausedSessions(scope.id)
-
-        // After a restart there is no loop driving this session, which is the
-        // state under test. An idle runtime object may exist while the session
-        // is open, so ownership — not the object's presence — is the signal.
-        // The status must still resolve from the persisted latch, or the user
-        // would see an idle session with work stopped inside it and no control
-        // to resume.
-        expect(SessionManager.isRunning(session.id)).toBe(false)
-
-        const working = await resolveWorking(session.id)
-        expect(working?.status).toBe("paused")
-        if (working?.status === "paused") expect(working.reason).toBe("interrupted")
-
-        // The cross-scope recovery scan reads storage rather than runtimes, so
-        // this is the path by which every other client learns about the pause.
-        const statuses = await SessionManager.listStatuses(scope.id)
-        expect(statuses[session.id]?.type).toBe("paused")
-        expect(toStatus(working!).type).toBe("paused")
-
-        // An automatic wake must not restart the work the user has not asked to
-        // resume — even though the turn is genuinely unfinished.
-        try {
-          expect(await SessionDrive.request(session.id, "restart-probe")).toBe(false)
-        } finally {
-          SessionDrive.reset()
-        }
-        expect(SessionManager.isRunning(session.id)).toBe(false)
-      },
-    })
-  })
-
-  test("continue resumes the interrupted turn, and abandon ends it", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        const session = await Session.create({ title: "Explicit exits" })
-        await createInterruptedTurn(session.id, Identifier.ascending("message"))
-
-        await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
-        expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
-
-        // Abandon is the terminal exit: it clears the latch and leaves a
-        // terminal message, so the session no longer claims unfinished work.
-        const state = await SessionInvoke.repairAbortState(session.id, {
-          terminalize: true,
-          pauseReason: "aborted",
+  test.each([false, true])(
+    "startup settles orphaned tools without terminalizing the breakpoint (paused=%s)",
+    (paused) =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            await createInterruptedTurn(session.id, Identifier.ascending("message"))
+            const assistant = (await SessionHistory.modelMessages({ sessionID: session.id })).at(-1)!
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              sessionID: session.id,
+              messageID: assistant.info.id,
+              type: "tool",
+              callID: "interrupted-tool",
+              tool: "bash",
+              state: { status: "running", input: { command: "sleep 120" }, time: { start: Date.now() } },
+            })
+            if (paused) await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+            const original = await SessionLifecycle.snapshot(session.id)
+            await SessionInvoke.reconcilePausedSessions(session.scope.id)
+            const messages = await SessionHistory.modelMessages({ sessionID: session.id })
+            const repaired = messages.find((message) => message.info.id === assistant.info.id)!
+            expect(repaired.parts.find((part) => part.type === "tool")?.state.status).toBe("error")
+            if (repaired.info.role !== "assistant") throw new Error("Expected an assistant breakpoint")
+            expect(repaired.info.time.completed).toBeUndefined()
+            expect(SessionManager.isRunning(session.id)).toBe(false)
+            const latch = await SessionLifecycle.snapshot(session.id)
+            if (original) expect(latch).toEqual(original)
+            await SessionInvoke.reconcilePausedSessions(session.scope.id)
+            expect(await SessionLifecycle.snapshot(session.id)).toEqual(latch)
+          },
         })
-        expect(state.abandoned || state.repaired).toBe(true)
-        await SessionLifecycle.clear(session.id)
-        expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
-        expect(await SessionLifecycle.listUnfinishedSessions(scope.id)).not.toContain(session.id)
-      },
-    })
-  })
+      }),
+  )
+  test("startup reconciliation records the latch and drives nothing", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Interrupted by a dead process" })
+          await createInterruptedTurn(session.id, Identifier.ascending("message"))
+
+          // The real startup entry, not a re-implementation of it: this is what a
+          // restart runs.
+          await SessionInvoke.reconcilePausedSessions(scope.id)
+
+          const latch = await SessionLifecycle.snapshot(session.id)
+          expect(latch?.reason).toBe("interrupted")
+          // The whole point of deleting automatic recovery: startup records the
+          // state and stops there. Nothing was resumed on the user's behalf.
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+        },
+      })
+    }))
+
+  test("the pause survives with no runtime registered and refuses to be driven", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Restart survivor" })
+          await createInterruptedTurn(session.id, Identifier.ascending("message"))
+          await SessionInvoke.reconcilePausedSessions(scope.id)
+
+          // After a restart there is no loop driving this session, which is the
+          // state under test. An idle runtime object may exist while the session
+          // is open, so ownership — not the object's presence — is the signal.
+          // The status must still resolve from the persisted latch, or the user
+          // would see an idle session with work stopped inside it and no control
+          // to resume.
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+
+          const working = await resolveWorking(session.id)
+          expect(working?.status).toBe("paused")
+          if (working?.status === "paused") expect(working.reason).toBe("interrupted")
+
+          // The cross-scope recovery scan reads storage rather than runtimes, so
+          // this is the path by which every other client learns about the pause.
+          const statuses = await SessionManager.listStatuses(scope.id)
+          expect(statuses[session.id]?.type).toBe("paused")
+          expect(toStatus(working!).type).toBe("paused")
+
+          // An automatic wake must not restart the work the user has not asked to
+          // resume — even though the turn is genuinely unfinished.
+          try {
+            expect(await SessionDrive.request(session.id, "restart-probe")).toBe(false)
+          } finally {
+            SessionDrive.reset()
+          }
+          expect(SessionManager.isRunning(session.id)).toBe(false)
+        },
+      })
+    }))
+
+  test("continue resumes the interrupted turn, and abandon ends it", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Explicit exits" })
+          await createInterruptedTurn(session.id, Identifier.ascending("message"))
+
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" })
+          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
+
+          // Abandon is the terminal exit: it clears the latch and leaves a
+          // terminal message, so the session no longer claims unfinished work.
+          const state = await SessionInvoke.repairAbortState(session.id, {
+            terminalize: true,
+            pauseReason: "aborted",
+          })
+          expect(state.abandoned || state.repaired).toBe(true)
+          await SessionLifecycle.clear(session.id)
+          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+          expect(await SessionLifecycle.listUnfinishedSessions(scope.id)).not.toContain(session.id)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

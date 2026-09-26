@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
+
 const { EnforcementGate } = await import("../../src/enforcement/gate")
 const { SmartAllow } = await import("../../src/permission/smart-allow")
 
@@ -15,461 +19,483 @@ const { SmartAllow } = await import("../../src/permission/smart-allow")
 // 1. Unknown MCP tools
 // ------------------------------------------------------------------
 describe("EnforcementGate MCP opaque strategy", () => {
-  test("unknown MCP tool defaults to ask", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
+  test("unknown MCP tool defaults to ask", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
 
-    const envelope = gate.evaluate("mcp__unknown_server__unknown_tool", {
-      serverName: "unknown_server",
-      toolName: "unknown_tool",
-    })
+      const envelope = gate.evaluate("mcp__unknown_server__unknown_tool", {
+        serverName: "unknown_server",
+        toolName: "unknown_tool",
+      })
 
-    // Unknown MCP tools must default to "ask", not "allow"
-    expect(envelope.decision).toBe("ask")
-  })
+      // Unknown MCP tools must default to "ask", not "allow"
+      expect(envelope.decision).toBe("ask")
+    }))
 
-  test("unknown MCP tool produces mcp_invoke capability with nonBypassable", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
+  test("unknown MCP tool produces mcp_invoke capability with nonBypassable", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
 
-    const result = gate.classify("mcp__github__list_repos", {})
+      const result = gate.classify("mcp__github__list_repos", {})
 
-    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
-    expect(mcpCap).toBeDefined()
-    // MCP invoke is an externalIO operation — always nonBypassable
-    expect(mcpCap.nonBypassable).toBe(true)
-  })
+      const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
+      expect(mcpCap).toBeDefined()
+      // MCP invoke is an externalIO operation — always nonBypassable
+      expect(mcpCap.nonBypassable).toBe(true)
+    }))
 
-  test("MCP tool with unknown server name is classified as opaque", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
+  test("MCP tool with unknown server name is classified as opaque", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
 
-    const result = gate.classify("mcp__completely_fake_server__do_something", {})
+      const result = gate.classify("mcp__completely_fake_server__do_something", {})
 
-    const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
-    expect(mcpCap).toBeDefined()
-    expect(mcpCap.opaque).toBe(true)
-  })
+      const mcpCap = result.capabilities.find((c: any) => c.class === "mcp_invoke")!
+      expect(mcpCap).toBeDefined()
+      expect(mcpCap.opaque).toBe(true)
+    }))
 
-  test("guarded profile asks for unknown MCP tools", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
+  test("guarded profile asks for unknown MCP tools", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
 
-    const envelope = gate.evaluate("mcp__any_service__do_work", {
-      serverName: "any_service",
-      toolName: "do_work",
-    })
+      const envelope = gate.evaluate("mcp__any_service__do_work", {
+        serverName: "any_service",
+        toolName: "do_work",
+      })
 
-    // Guarded profile must ask for opaque MCP externalIO.
-    expect(envelope.decision).toBe("ask")
-  })
+      // Guarded profile must ask for opaque MCP externalIO.
+      expect(envelope.decision).toBe("ask")
+    }))
 
-  test("guarded profile asks for MCP tool invocations", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
+  test("guarded profile asks for MCP tool invocations", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
 
-    const envelope = gate.evaluate("mcp__github__list_repos", {
-      serverName: "github",
-      toolName: "list_repos",
-    })
+      const envelope = gate.evaluate("mcp__github__list_repos", {
+        serverName: "github",
+        toolName: "list_repos",
+      })
 
-    expect(envelope.decision).toBe("ask")
-  })
+      expect(envelope.decision).toBe("ask")
+    }))
 })
 
 // ------------------------------------------------------------------
 // 2. Unknown plugin tools
 // ------------------------------------------------------------------
 describe("EnforcementGate plugin opaque strategy", () => {
-  test("unknown plugin tool defaults to ask", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
+  test("unknown plugin tool defaults to ask", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
 
-    const envelope = gate.evaluate("plugin__unknown_plugin__unknown_action", {
-      pluginName: "unknown_plugin",
-      actionName: "unknown_action",
-    })
+      const envelope = gate.evaluate("plugin__unknown_plugin__unknown_action", {
+        pluginName: "unknown_plugin",
+        actionName: "unknown_action",
+      })
 
-    // Unknown plugin tools must default to "ask", not "allow"
-    expect(envelope.decision).toBe("ask")
-  })
+      // Unknown plugin tools must default to "ask", not "allow"
+      expect(envelope.decision).toBe("ask")
+    }))
 
-  test("unknown plugin tool produces protected_op capability with nonBypassable", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
+  test("unknown plugin tool produces protected_op capability with nonBypassable", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
 
-    const result = gate.classify("plugin__my_plugin__do_export", {})
+      const result = gate.classify("plugin__my_plugin__do_export", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "protected_op")!
-    expect(pluginCap).toBeDefined()
-    expect(pluginCap.nonBypassable).toBe(true)
-  })
+      const pluginCap = result.capabilities.find((c: any) => c.class === "protected_op")!
+      expect(pluginCap).toBeDefined()
+      expect(pluginCap.nonBypassable).toBe(true)
+    }))
 
-  test("local custom tools are protected opaque operations", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
+  test("local custom tools are protected opaque operations", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
 
-    const result = gate.classify("local__custom__run", {})
+      const result = gate.classify("local__custom__run", {})
 
-    const cap = result.capabilities.find((item: any) => item.class === "protected_op")!
-    expect(cap).toBeDefined()
-    expect(cap.nonBypassable).toBe(true)
-    expect(cap.opaque).toBe(true)
-    expect(cap.reason).toBe("local custom tool")
-  })
+      const cap = result.capabilities.find((item: any) => item.class === "protected_op")!
+      expect(cap).toBeDefined()
+      expect(cap.nonBypassable).toBe(true)
+      expect(cap.opaque).toBe(true)
+      expect(cap.reason).toBe("local custom tool")
+    }))
 
-  test("plugin tool with unknown plugin name is classified as opaque", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
+  test("plugin tool with unknown plugin name is classified as opaque", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
 
-    const result = gate.classify("plugin__no_such_plugin__run_task", {})
+      const result = gate.classify("plugin__no_such_plugin__run_task", {})
 
-    const pluginCap = result.capabilities.find((c: any) => c.class === "protected_op")!
-    expect(pluginCap).toBeDefined()
-    expect(pluginCap.opaque).toBe(true)
-  })
+      const pluginCap = result.capabilities.find((c: any) => c.class === "protected_op")!
+      expect(pluginCap).toBeDefined()
+      expect(pluginCap.opaque).toBe(true)
+    }))
 
-  test("guarded profile asks for unknown plugin tools", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-    })
+  test("guarded profile asks for unknown plugin tools", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+      })
 
-    const envelope = gate.evaluate("plugin__remote_plugin__fetch", {
-      pluginName: "remote_plugin",
-      actionName: "fetch",
-    })
+      const envelope = gate.evaluate("plugin__remote_plugin__fetch", {
+        pluginName: "remote_plugin",
+        actionName: "fetch",
+      })
 
-    // Guarded profile must ask for opaque plugin externalIO.
-    expect(envelope.decision).toBe("ask")
-  })
+      // Guarded profile must ask for opaque plugin externalIO.
+      expect(envelope.decision).toBe("ask")
+    }))
 
-  test("known plugin tools decompose manifest capabilities into gate capabilities", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      pluginToolCapabilities: {
-        plugin__data_export__publish: {
-          capabilities: ["file_read", "file_write", "network_request", "shell"],
+  test("known plugin tools decompose manifest capabilities into gate capabilities", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        pluginToolCapabilities: {
+          plugin__data_export__publish: {
+            capabilities: ["file_read", "file_write", "network_request", "shell"],
+          },
         },
-      },
-    })
+      })
 
-    const result = gate.classify("plugin__data_export__publish", {})
-    const classes = result.capabilities.map((cap: any) => cap.class)
+      const result = gate.classify("plugin__data_export__publish", {})
+      const classes = result.capabilities.map((cap: any) => cap.class)
 
-    expect(classes).toContain("file_read")
-    expect(classes).toContain("file_write")
-    expect(classes).toContain("network_request")
-    expect(classes).toContain("shell")
-    expect(new Set(classes)).toEqual(new Set(["file_read", "file_write", "network_request", "shell"]))
-  })
+      expect(classes).toContain("file_read")
+      expect(classes).toContain("file_write")
+      expect(classes).toContain("network_request")
+      expect(classes).toContain("shell")
+      expect(new Set(classes)).toEqual(new Set(["file_read", "file_write", "network_request", "shell"]))
+    }))
 
-  test("plugin approval records are keyed by canonical plugin id and mark unapproved sub-capabilities", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      pluginToolCapabilities: {
-        plugin__data_export__publish: {
-          capabilities: ["file_read", "file_write", "network_request"],
+  test("plugin approval records are keyed by canonical plugin id and mark unapproved sub-capabilities", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        pluginToolCapabilities: {
+          plugin__data_export__publish: {
+            capabilities: ["file_read", "file_write", "network_request"],
+          },
         },
-      },
-      pluginApprovals: {
-        data_export: {
-          schemaVersion: 2,
-          pluginId: "data_export",
-          source: "npm",
-          grant: { capabilities: [], contributionRequirements: [] },
-          grantHash: "permissions",
-          approvedAt: 1700000000000,
-          approvedBy: "user",
-          trustTier: "declarative",
-          approvedCapabilities: ["file_read"],
+        pluginApprovals: {
+          data_export: {
+            schemaVersion: 2,
+            pluginId: "data_export",
+            source: "npm",
+            grant: { capabilities: [], contributionRequirements: [] },
+            grantHash: "permissions",
+            approvedAt: 1700000000000,
+            approvedBy: "user",
+            trustTier: "declarative",
+            approvedCapabilities: ["file_read"],
+          },
         },
-      },
-    })
+      })
 
-    const result = gate.classify("plugin__data_export__publish", {})
+      const result = gate.classify("plugin__data_export__publish", {})
 
-    expect(result.capabilities.find((cap: any) => cap.class === "file_read")?.approved).toBe(true)
-    expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.approved).toBe(false)
-    expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.reason).toBe("unapproved")
-    expect(result.capabilities.find((cap: any) => cap.class === "network_request")?.approved).toBe(false)
-  })
+      expect(result.capabilities.find((cap: any) => cap.class === "file_read")?.approved).toBe(true)
+      expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.approved).toBe(false)
+      expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.reason).toBe("unapproved")
+      expect(result.capabilities.find((cap: any) => cap.class === "network_request")?.approved).toBe(false)
+    }))
 
-  test("maps approved plugin Host Service capabilities to control-profile capabilities", async () => {
-    const capabilities = ["task.delegate", "asset.write"]
-    const unapprovedGate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "autonomous",
-      pluginToolCapabilities: {
-        plugin__meme__generate_meme: { capabilities },
-      },
-      pluginApprovals: {},
-    })
-
-    const unapprovedEnvelope = unapprovedGate.evaluate("plugin__meme__generate_meme", {})
-    expect(unapprovedEnvelope.decision).toBe("deny")
-    expect(unapprovedEnvelope.opaque).toBe(true)
-
-    const partiallyApprovedGate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "autonomous",
-      pluginToolCapabilities: {
-        plugin__meme__generate_meme: { capabilities },
-      },
-      pluginApprovals: {
-        meme: {
-          schemaVersion: 2,
-          pluginId: "meme",
-          source: "official",
-          grant: { capabilities: [], contributionRequirements: [] },
-          grantHash: "permissions",
-          approvedAt: 1700000000000,
-          approvedBy: "user",
-          trustTier: "declarative",
-          approvedCapabilities: ["task.delegate"],
+  test("maps approved plugin Host Service capabilities to control-profile capabilities", () =>
+    runtime.run(async () => {
+      const capabilities = ["task.delegate", "asset.write"]
+      const unapprovedGate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+        pluginToolCapabilities: {
+          plugin__meme__generate_meme: { capabilities },
         },
-      },
-    })
-    const partialClassification = partiallyApprovedGate.classify("plugin__meme__generate_meme", {})
-    expect(partialClassification.capabilities.find((capability) => capability.class === "task")?.approved).toBe(true)
-    expect(partialClassification.capabilities.find((capability) => capability.class === "file_write")?.approved).toBe(
-      false,
-    )
-    expect(partiallyApprovedGate.evaluate("plugin__meme__generate_meme", {}).decision).toBe("deny")
+        pluginApprovals: {},
+      })
 
-    const approvedGate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "autonomous",
-      pluginToolCapabilities: {
-        plugin__meme__generate_meme: { capabilities },
-      },
-      pluginApprovals: {
-        meme: {
-          schemaVersion: 2,
-          pluginId: "meme",
-          source: "official",
-          grant: { capabilities: [], contributionRequirements: [] },
-          grantHash: "permissions",
-          approvedAt: 1700000000000,
-          approvedBy: "user",
-          trustTier: "declarative",
-          approvedCapabilities: capabilities,
+      const unapprovedEnvelope = unapprovedGate.evaluate("plugin__meme__generate_meme", {})
+      expect(unapprovedEnvelope.decision).toBe("deny")
+      expect(unapprovedEnvelope.opaque).toBe(true)
+
+      const partiallyApprovedGate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+        pluginToolCapabilities: {
+          plugin__meme__generate_meme: { capabilities },
         },
-      },
-    })
-
-    const classification = approvedGate.classify("plugin__meme__generate_meme", {})
-    expect(new Set(classification.capabilities.map((capability) => capability.class))).toEqual(
-      new Set(["task", "file_write"]),
-    )
-    expect(classification.capabilities.every((capability) => capability.approved)).toBe(true)
-
-    const approvedEnvelope = approvedGate.evaluate("plugin__meme__generate_meme", {})
-    expect(approvedEnvelope.decision).toBe("allow")
-    expect(approvedEnvelope.opaque).toBe(false)
-
-    const isolatedEnvelope = await approvedGate.evaluateIsolated("plugin__meme__generate_meme", {})
-    expect(isolatedEnvelope.decision).toBe("allow")
-    expect(new Set(isolatedEnvelope.capabilities.map((capability) => capability.class))).toEqual(
-      new Set(["task", "file_write"]),
-    )
-  })
-
-  test("autonomous allows approved plugin settings reads and bounded agent calls", async () => {
-    const capabilities = ["settings.read", "agent.call"]
-    const unapprovedGate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "autonomous",
-      pluginToolCapabilities: {
-        "plugin__vibe-lingo__record-correction": { capabilities },
-      },
-      pluginApprovals: {},
-    })
-    expect(unapprovedGate.evaluate("plugin__vibe-lingo__record-correction", {}).decision).toBe("deny")
-
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "autonomous",
-      pluginToolCapabilities: {
-        "plugin__vibe-lingo__record-correction": { capabilities },
-      },
-      pluginApprovals: {
-        "vibe-lingo": {
-          schemaVersion: 2,
-          pluginId: "vibe-lingo",
-          source: "local",
-          grant: { capabilities: [], contributionRequirements: [] },
-          grantHash: "permissions",
-          approvedAt: 1700000000000,
-          approvedBy: "user",
-          trustTier: "trusted-import",
-          approvedCapabilities: capabilities,
+        pluginApprovals: {
+          meme: {
+            schemaVersion: 2,
+            pluginId: "meme",
+            source: "official",
+            grant: { capabilities: [], contributionRequirements: [] },
+            grantHash: "permissions",
+            approvedAt: 1700000000000,
+            approvedBy: "user",
+            trustTier: "declarative",
+            approvedCapabilities: ["task.delegate"],
+          },
         },
-      },
-    })
+      })
+      const partialClassification = partiallyApprovedGate.classify("plugin__meme__generate_meme", {})
+      expect(partialClassification.capabilities.find((capability) => capability.class === "task")?.approved).toBe(true)
+      expect(partialClassification.capabilities.find((capability) => capability.class === "file_write")?.approved).toBe(
+        false,
+      )
+      expect(partiallyApprovedGate.evaluate("plugin__meme__generate_meme", {}).decision).toBe("deny")
 
-    const classification = gate.classify("plugin__vibe-lingo__record-correction", {})
-    expect(new Set(classification.capabilities.map((capability) => capability.class))).toEqual(
-      new Set(["config:read", "task"]),
-    )
-    expect(classification.capabilities.every((capability) => capability.approved)).toBe(true)
-    expect(classification.capabilities.every((capability) => !capability.opaque && !capability.nonBypassable)).toBe(
-      true,
-    )
-    expect(gate.evaluate("plugin__vibe-lingo__record-correction", {}).decision).toBe("allow")
-  })
-
-  test("keeps unknown plugin Host Service capabilities behind a hard boundary", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-      pluginToolCapabilities: {
-        plugin__future__run: { capabilities: ["future.unmapped"] },
-      },
-      pluginApprovals: {
-        future: {
-          schemaVersion: 2,
-          pluginId: "future",
-          source: "npm",
-          grant: { capabilities: [], contributionRequirements: [] },
-          grantHash: "permissions",
-          approvedAt: 1700000000000,
-          approvedBy: "user",
-          trustTier: "declarative",
-          approvedCapabilities: ["future.unmapped"],
+      const approvedGate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+        pluginToolCapabilities: {
+          plugin__meme__generate_meme: { capabilities },
         },
-      },
-    })
+        pluginApprovals: {
+          meme: {
+            schemaVersion: 2,
+            pluginId: "meme",
+            source: "official",
+            grant: { capabilities: [], contributionRequirements: [] },
+            grantHash: "permissions",
+            approvedAt: 1700000000000,
+            approvedBy: "user",
+            trustTier: "declarative",
+            approvedCapabilities: capabilities,
+          },
+        },
+      })
 
-    const classification = gate.classify("plugin__future__run", {})
-    const capability = classification.capabilities.find((item) => item.class === "future.unmapped")
-    expect(capability?.approved).toBe(true)
-    expect(capability?.nonBypassable).toBe(true)
-    expect(capability?.opaque).toBe(true)
-    expect(SmartAllow.isEligible("ask", classification.capabilities)).toBe(false)
+      const classification = approvedGate.classify("plugin__meme__generate_meme", {})
+      expect(new Set(classification.capabilities.map((capability) => capability.class))).toEqual(
+        new Set(["task", "file_write"]),
+      )
+      expect(classification.capabilities.every((capability) => capability.approved)).toBe(true)
 
-    const envelope = gate.evaluate("plugin__future__run", {})
-    expect(envelope.decision).toBe("ask")
-  })
+      const approvedEnvelope = approvedGate.evaluate("plugin__meme__generate_meme", {})
+      expect(approvedEnvelope.decision).toBe("allow")
+      expect(approvedEnvelope.opaque).toBe(false)
+
+      const isolatedEnvelope = await approvedGate.evaluateIsolated("plugin__meme__generate_meme", {})
+      expect(isolatedEnvelope.decision).toBe("allow")
+      expect(new Set(isolatedEnvelope.capabilities.map((capability) => capability.class))).toEqual(
+        new Set(["task", "file_write"]),
+      )
+    }))
+
+  test("autonomous allows approved plugin settings reads and bounded agent calls", () =>
+    runtime.run(async () => {
+      const capabilities = ["settings.read", "agent.call"]
+      const unapprovedGate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+        pluginToolCapabilities: {
+          "plugin__vibe-lingo__record-correction": { capabilities },
+        },
+        pluginApprovals: {},
+      })
+      expect(unapprovedGate.evaluate("plugin__vibe-lingo__record-correction", {}).decision).toBe("deny")
+
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "autonomous",
+        pluginToolCapabilities: {
+          "plugin__vibe-lingo__record-correction": { capabilities },
+        },
+        pluginApprovals: {
+          "vibe-lingo": {
+            schemaVersion: 2,
+            pluginId: "vibe-lingo",
+            source: "local",
+            grant: { capabilities: [], contributionRequirements: [] },
+            grantHash: "permissions",
+            approvedAt: 1700000000000,
+            approvedBy: "user",
+            trustTier: "trusted-import",
+            approvedCapabilities: capabilities,
+          },
+        },
+      })
+
+      const classification = gate.classify("plugin__vibe-lingo__record-correction", {})
+      expect(new Set(classification.capabilities.map((capability) => capability.class))).toEqual(
+        new Set(["config:read", "task"]),
+      )
+      expect(classification.capabilities.every((capability) => capability.approved)).toBe(true)
+      expect(classification.capabilities.every((capability) => !capability.opaque && !capability.nonBypassable)).toBe(
+        true,
+      )
+      expect(gate.evaluate("plugin__vibe-lingo__record-correction", {}).decision).toBe("allow")
+    }))
+
+  test("keeps unknown plugin Host Service capabilities behind a hard boundary", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+        pluginToolCapabilities: {
+          plugin__future__run: { capabilities: ["future.unmapped"] },
+        },
+        pluginApprovals: {
+          future: {
+            schemaVersion: 2,
+            pluginId: "future",
+            source: "npm",
+            grant: { capabilities: [], contributionRequirements: [] },
+            grantHash: "permissions",
+            approvedAt: 1700000000000,
+            approvedBy: "user",
+            trustTier: "declarative",
+            approvedCapabilities: ["future.unmapped"],
+          },
+        },
+      })
+
+      const classification = gate.classify("plugin__future__run", {})
+      const capability = classification.capabilities.find((item) => item.class === "future.unmapped")
+      expect(capability?.approved).toBe(true)
+      expect(capability?.nonBypassable).toBe(true)
+      expect(capability?.opaque).toBe(true)
+      expect(SmartAllow.isEligible("ask", classification.capabilities)).toBe(false)
+
+      const envelope = gate.evaluate("plugin__future__run", {})
+      expect(envelope.decision).toBe("ask")
+    }))
 })
 
 // ------------------------------------------------------------------
 // 3. Known vs unknown MCP/plugin distinction
 // ------------------------------------------------------------------
 describe("EnforcementGate known vs unknown MCP/plugin", () => {
-  test("known MCP tool from registered server can be allowed by profile", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-      registeredMcpTools: new Set(["mcp__github__list_repos"]),
-    })
+  test("known MCP tool from registered server can be allowed by profile", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+        registeredMcpTools: new Set(["mcp__github__list_repos"]),
+      })
 
-    const envelope = gate.evaluate("mcp__github__list_repos", {
-      serverName: "github",
-      toolName: "list_repos",
-    })
+      const envelope = gate.evaluate("mcp__github__list_repos", {
+        serverName: "github",
+        toolName: "list_repos",
+      })
 
-    // Known MCP tools can be evaluated by profile rules — the profile may
-    // still ask, but at least it gets classified as known (non-opaque)
-    expect(envelope.opaque).toBe(false)
-  })
+      // Known MCP tools can be evaluated by profile rules — the profile may
+      // still ask, but at least it gets classified as known (non-opaque)
+      expect(envelope.opaque).toBe(false)
+    }))
 
-  test("known plugin tool from registered plugin can be allowed by profile", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      profileId: "guarded",
-      registeredPluginTools: new Set(["plugin__s3__upload"]),
-    })
+  test("known plugin tool from registered plugin can be allowed by profile", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        profileId: "guarded",
+        registeredPluginTools: new Set(["plugin__s3__upload"]),
+      })
 
-    const envelope = gate.evaluate("plugin__s3__upload", {
-      pluginName: "s3",
-      actionName: "upload",
-    })
+      const envelope = gate.evaluate("plugin__s3__upload", {
+        pluginName: "s3",
+        actionName: "upload",
+      })
 
-    // Known plugin tools get non-opaque treatment
-    expect(envelope.opaque).toBe(false)
-  })
+      // Known plugin tools get non-opaque treatment
+      expect(envelope.opaque).toBe(false)
+    }))
 
-  test("known MCP tool still asks under guarded profile", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-      registeredMcpTools: new Set(["mcp__github__list_repos"]),
-    })
+  test("known MCP tool still asks under guarded profile", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+        registeredMcpTools: new Set(["mcp__github__list_repos"]),
+      })
 
-    const envelope = gate.evaluate("mcp__github__list_repos", {
-      serverName: "github",
-      toolName: "list_repos",
-    })
+      const envelope = gate.evaluate("mcp__github__list_repos", {
+        serverName: "github",
+        toolName: "list_repos",
+      })
 
-    expect(envelope.decision).toBe("ask")
-  })
+      expect(envelope.decision).toBe("ask")
+    }))
 })
 
 // ------------------------------------------------------------------
 // 4. ExternalIO capability class consistency
 // ------------------------------------------------------------------
 describe("EnforcementGate externalIO capability classification", () => {
-  test("all MCP and plugin invocations are classified as externalIO", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
+  test("all MCP and plugin invocations are classified as externalIO", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
 
-    const tools = ["mcp__github__list_repos", "mcp__slack__send_message", "plugin__s3__upload", "plugin__email__send"]
+      const tools = ["mcp__github__list_repos", "mcp__slack__send_message", "plugin__s3__upload", "plugin__email__send"]
 
-    for (const toolName of tools) {
-      const result = gate.classify(toolName, {})
-      const externalIO = result.capabilities.some((c: any) => c.class === "mcp_invoke" || c.class === "protected_op")
-      expect(externalIO).toBe(true)
-    }
-  })
-
-  test("externalIO capabilities are always nonBypassable", async () => {
-    const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
-      workspaceType: "worktree",
-    })
-
-    const result = gate.classify("mcp__any_service__any_tool", {})
-
-    for (const cap of result.capabilities) {
-      if (cap.class === "mcp_invoke" || cap.class === "protected_op") {
-        expect(cap.nonBypassable).toBe(true)
+      for (const toolName of tools) {
+        const result = gate.classify(toolName, {})
+        const externalIO = result.capabilities.some((c: any) => c.class === "mcp_invoke" || c.class === "protected_op")
+        expect(externalIO).toBe(true)
       }
-    }
-  })
+    }))
+
+  test("externalIO capabilities are always nonBypassable", () =>
+    runtime.run(async () => {
+      const gate = await EnforcementGate.create({
+        activeWorkspace: "/Users/test/synergy-control-profile",
+        workspaceType: "worktree",
+      })
+
+      const result = gate.classify("mcp__any_service__any_tool", {})
+
+      for (const cap of result.capabilities) {
+        if (cap.class === "mcp_invoke" || cap.class === "protected_op") {
+          expect(cap.nonBypassable).toBe(true)
+        }
+      }
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

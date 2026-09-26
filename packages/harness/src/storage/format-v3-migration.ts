@@ -15,8 +15,12 @@ import {
   type TransactionalStore,
 } from "./transactional-store"
 import type { SqlConnection, SqlRow, SqlValue } from "./sql-contract"
+import { StorageFormatV3State } from "./format-v3-state"
+import { UpgradeWork } from "./upgrade-work"
 import { Log } from "../util/log"
 import { ObservabilityIssues } from "../observability/issues"
+
+const log = Log.create({ service: "storage.format-v3" })
 
 const recordsTable = "storage_records_v3"
 const nodesTable = "storage_nodes_v3"
@@ -41,30 +45,7 @@ const PREFLIGHT_SAMPLE_ROWS = 256
 // portable export differ before and after the rewrite even though no stored
 // evidence changed.
 const stateTable = "storage_format_v3_state"
-// One reclaim call is bounded by this page count and by the maintenance engine's
-// own deadline, so no single statement can occupy the worker past its ceiling.
-// Retention uses the same value. The loop deliberately has no total-call ceiling:
-// a ceiling that could trigger on a store that is still converging would leave
-// pages unclaimed in the one run the migration gets, which is the defect this
-// phase exists to fix. Termination rests on the freelist emptying or on progress
-// stopping, and every call reports progress so startup keeps renewing its health
-// deadline rather than looking stalled.
-const RECLAIM_PAGES = 8192
-// Consecutive calls allowed to release nothing before the phase gives up. A call
-// can legitimately return zero while free pages remain: `SqliteMaintenance.reclaim`
-// spends part of its budget on a `wal_checkpoint(PASSIVE)` before it vacuums, so a
-// busy WAL can consume the whole call. Retrying past that is what separates a
-// transient zero from a genuine stall.
-const RECLAIM_STALL_TOLERANCE = 3
-type Phase = "records" | "nodes" | "artifacts" | "swap" | "reclaim" | "complete"
-const log = Log.create({ service: "storage.format-v3" })
-type State = {
-  version: 3
-  phase: Phase
-  recordsCursor: string
-  nodesCursor: string
-  artifactsCursor: string
-}
+type State = StorageFormatV3State.State
 
 type RecordsRow = {
   key_id: string
@@ -150,6 +131,7 @@ const emptyState = (): State => ({
   recordsCursor: "",
   nodesCursor: "",
   artifactsCursor: "",
+  fenced: true,
 })
 
 /**
@@ -174,16 +156,41 @@ const emptyState = (): State => ({
  * an existing namespace, and this migration -- not the open path -- stamps the
  * new format once the bytes are in place.
  *
- * Once the swap commits, a bounded reclaim phase returns the pages it freed. The
- * swap builds a second copy of each table before dropping the first, so it
- * necessarily leaves the old tables' pages on the SQLite freelist, and nothing
- * else returns them: retention reclaims only after it actually pruned, and a
- * store that has just shrunk is under its budget by definition. Without this
- * phase the rewrite leaves the store larger on disk than it was before it ran,
- * which is the opposite of what it exists for.
+ * Once the swap commits, the store is usable immediately. The remaining free
+ * pages are recorded in the checkpoint and reclaimed by the independent idle
+ * reclamation worker or an explicit maintenance command. Separating those
+ * phases keeps the format upgrade's commit point bounded and makes a stalled
+ * vacuum resumable without blocking ordinary startup.
  */
 export namespace StorageFormatV3Migration {
   export const id = "20260920-storage-format-v3"
+
+  export const state = StorageFormatV3State.read
+
+  export async function isApplied(store: TransactionalStore) {
+    if (store.options.backend !== "sqlite") return true
+    const checkpoint = await state(store)
+    if (store.keyEncodedAs !== "bytes") {
+      if (checkpoint && ["reclaim", "complete"].includes(checkpoint.phase))
+        throw new StorageIntegrityError("The recorded format and upgrade checkpoint disagree")
+      return false
+    }
+    if (checkpoint && !["reclaim", "complete"].includes(checkpoint.phase))
+      throw new StorageIntegrityError("The recorded format and upgrade checkpoint disagree")
+    await store.snapshot(async (tx) => {
+      const keys = await tx.raw.query<{ name: string; type: string }>(
+        "SELECT name, type FROM pragma_table_xinfo('storage_records') WHERE name = 'key_id' UNION ALL SELECT name, type FROM pragma_table_xinfo('storage_nodes') WHERE name IN ('key_id', 'parent_id')",
+      )
+      const indexes = await tx.raw.query<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('storage_records_session', 'storage_records_owner', 'storage_records_message', 'storage_records_kind', 'storage_nodes_parent', 'storage_artifacts_owner', 'storage_artifacts_pack')",
+      )
+      if (keys.length !== 3 || keys.some((column) => column.type.toUpperCase() !== "BLOB") || indexes.length !== 7)
+        throw new StorageIntegrityError(
+          "The committed format layout is incomplete; preserve the database and export diagnostics",
+        )
+    })
+    return true
+  }
 
   export async function run(options: {
     store: TransactionalStore
@@ -202,14 +209,34 @@ export namespace StorageFormatV3Migration {
     // The layout depends on a column with no affinity, which PostgreSQL cannot
     // express; it keeps the format 2 layout and needs no rewrite.
     if (store.options.backend !== "sqlite") return
+    if (await isApplied(store)) return
     await createStateTable(store)
     let state = await readState(store)
     // A namespace created at format 3 wrote its version at open and never wrote a
     // migration row, so there is nothing to rewrite.
     if (!state && store.keyEncodedAs === "bytes") return
     if (state && state.version !== 3) throw new StorageIntegrityError("Unsupported storage format migration version")
-    if (state?.phase === "complete") return
+    if (state?.phase === "complete" || state?.phase === "reclaim") return
+    const [foreign] = await store.snapshot((tx) =>
+      tx.raw.query("SELECT 1 FROM storage_namespaces WHERE namespace <> ? LIMIT 1", [store.options.namespace]),
+    )
+    if (foreign)
+      throw new StorageIntegrityError("Format maintenance requires a database containing only its active namespace")
+    if (state && (!state.fenced || state.invalidated)) {
+      await store.maintainDdlTransaction([
+        ...StorageFormatV3State.fences(false),
+        ...[recordsTable, nodesTable, artifactsTable].map((table) => ({ statement: `DROP TABLE IF EXISTS ${table}` })),
+      ])
+      state = undefined
+    }
     state ??= emptyState()
+    await store.maintainDdlTransaction([
+      {
+        statement: `INSERT INTO ${stateTable}(namespace, state) VALUES (?, ?) ON CONFLICT(namespace) DO UPDATE SET state = excluded.state`,
+        values: [store.options.namespace, JSON.stringify(state)],
+      },
+      ...StorageFormatV3State.fences(true),
+    ])
     // Only a run that still has copy work ahead of it needs the headroom: a run
     // resumed at the swap or the reclaim has already finished building its second
     // copy, and demanding the peak again would refuse to finish a rewrite that is
@@ -225,7 +252,6 @@ export namespace StorageFormatV3Migration {
       options.supportsGeneratedPack ?? (() => supportsGeneratedArtifacts(store)),
     )
     state = await swap(store, state, progress)
-    await reclaim(store, state, progress)
   }
 
   /**
@@ -301,17 +327,28 @@ export namespace StorageFormatV3Migration {
       return Number(row?.rows ?? 0)
     }
 
-    // Only the tables this run still has to build count. Each phase re-derives
-    // nodes from empty, while the records and artifacts copies resume past the
-    // recorded cursor, so a resumed run demands only what it has left to write
-    // instead of the whole peak it has already partly paid for.
+    // Nodes are derived from record prefixes, so a record cursor does not give
+    // their remaining count. Discount the actual durable staging rows instead.
     const recordsAhead =
       state.phase === "records"
         ? state.recordsCursor
           ? await remainingRows("storage_records", "key_id", state.recordsCursor)
           : records
         : 0
-    const nodesAhead = state.phase === "records" || state.phase === "nodes" ? nodes : 0
+    const stagedNodes =
+      state.phase === "nodes" && state.nodesCursor
+        ? await store.snapshot(
+            (tx) =>
+              tx.raw.query<{ rows: number }>(`SELECT COUNT(*) AS rows FROM ${nodesTable} WHERE namespace = ?`, [
+                namespace,
+              ]),
+            { singleStatement: true },
+          )
+        : undefined
+    const nodesAhead =
+      state.phase === "records" || state.phase === "nodes"
+        ? Math.max(0, nodes - Number(stagedNodes?.[0]?.rows ?? 0))
+        : 0
     const artifactsAhead =
       state.phase === "records" || state.phase === "nodes"
         ? artifacts
@@ -405,24 +442,14 @@ export namespace StorageFormatV3Migration {
   }
 
   async function readState(store: TransactionalStore): Promise<State | undefined> {
-    return store.snapshot(
-      async (tx) => {
-        const [row] = await tx.raw.query<{ state: string }>(`SELECT state FROM ${stateTable} WHERE namespace = ?`, [
-          store.options.namespace,
-        ])
-        return row ? (JSON.parse(String(row.state)) as State) : undefined
-      },
-      { singleStatement: true },
-    )
+    return StorageFormatV3State.read(store)
   }
 
   async function writeState(store: TransactionalStore, state: State) {
-    await store.maintainDdlTransaction([
-      {
-        statement: `INSERT INTO ${stateTable}(namespace, state) VALUES (?, ?) ON CONFLICT(namespace) DO UPDATE SET state = excluded.state`,
-        values: [store.options.namespace, JSON.stringify(state)],
-      },
-    ])
+    await store.transaction(async (tx) => {
+      await StorageFormatV3State.assertUnchanged(tx.raw, store.options.namespace)
+      await StorageFormatV3State.write(tx.raw, store.options.namespace, state)
+    })
   }
 
   async function copyRecords(
@@ -439,7 +466,9 @@ export namespace StorageFormatV3Migration {
     let cursor = state.recordsCursor
     let copied = 0
     for (;;) {
+      UpgradeWork.signal()?.throwIfAborted()
       const rows = await store.transaction(async (tx) => {
+        await StorageFormatV3State.assertUnchanged(tx.raw, store.options.namespace)
         const page = await tx.raw.query<RecordsRow>(
           "SELECT key_id, key_text, body, revision, kind, scope_id, session_id, message_id, order_key, updated FROM storage_records WHERE namespace = ? AND key_id > ? ORDER BY key_id LIMIT ?",
           [store.options.namespace, cursor, BATCH],
@@ -473,6 +502,10 @@ export namespace StorageFormatV3Migration {
           `INSERT OR REPLACE INTO ${recordsTable}(namespace, key_id, key_text, body, revision, kind, scope_id, session_id, message_id, order_key, updated) VALUES ${page.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",")}`,
           values,
         )
+        await StorageFormatV3State.write(tx.raw, store.options.namespace, {
+          ...state,
+          recordsCursor: page.at(-1)!.key_id,
+        })
         return page
       })
       if (!rows.length) break
@@ -483,7 +516,6 @@ export namespace StorageFormatV3Migration {
       // The copy is `INSERT OR REPLACE` by primary key, so even a cursor that
       // lags a committed batch only rewrites rows that are already correct.
       state = { ...state, recordsCursor: cursor }
-      await writeState(store, state)
       progress?.(copied, 0, 1)
     }
     state = { ...state, phase: "nodes", recordsCursor: "", nodesCursor: "" }
@@ -498,15 +530,12 @@ export namespace StorageFormatV3Migration {
   ): Promise<State> {
     if (state.phase !== "nodes") return state
     progress?.(0, 0, 2)
-    // Nodes are derived, so a resumed phase re-derives into a table it owns from
-    // empty. Merging into a partial copy would need the exact cursor the
-    // interrupted run reached, and a rebuild from the start is idempotent for the
-    // same cost.
-    await store.maintainDdlTransaction([
-      { statement: `DROP TABLE IF EXISTS ${nodesTable}` },
-      { statement: nodesTableDdl("sqlite", nodesTable) },
-    ])
-    await deriveNodes(store, nodesTable, "", (derived) => progress?.(derived, 0, 2))
+    if (!state.nodesCursor)
+      await store.maintainDdlTransaction([
+        { statement: `DROP TABLE IF EXISTS ${nodesTable}` },
+        { statement: nodesTableDdl("sqlite", nodesTable) },
+      ])
+    await deriveNodes(store, nodesTable, state.nodesCursor, (derived) => progress?.(derived, 0, 2), state)
     state = { ...state, phase: "artifacts", nodesCursor: "" }
     await writeState(store, state)
     return state
@@ -649,7 +678,9 @@ export namespace StorageFormatV3Migration {
     let cursor = state.artifactsCursor
     let copied = 0
     for (;;) {
+      UpgradeWork.signal()?.throwIfAborted()
       const rows = await store.transaction(async (tx) => {
+        await StorageFormatV3State.assertUnchanged(tx.raw, store.options.namespace)
         const page = await tx.raw.query<{ key_text: string; owner_key: string; location: string }>(
           "SELECT key_text, owner_key, location FROM storage_artifacts WHERE namespace = ? AND key_text > ? ORDER BY key_text LIMIT ?",
           [store.options.namespace, cursor, BATCH],
@@ -667,13 +698,16 @@ export namespace StorageFormatV3Migration {
           `INSERT OR REPLACE INTO ${artifactsTable}${columns} VALUES ${page.map(() => placeholder).join(",")}`,
           values,
         )
+        await StorageFormatV3State.write(tx.raw, store.options.namespace, {
+          ...state,
+          artifactsCursor: page.at(-1)!.key_text,
+        })
         return page
       })
       if (!rows.length) break
       copied += rows.length
       cursor = rows.at(-1)!.key_text
       state = { ...state, artifactsCursor: cursor }
-      await writeState(store, state)
       progress?.(copied, 0, 3)
     }
     state = { ...state, phase: "swap", artifactsCursor: "" }
@@ -695,17 +729,25 @@ export namespace StorageFormatV3Migration {
     table: string,
     startCursor: string,
     progress: (derived: number) => void,
+    checkpoint?: State,
   ): Promise<void> {
     let cursor = startCursor
     let derived = 0
     for (;;) {
+      UpgradeWork.signal()?.throwIfAborted()
       const rows = await store.transaction(async (tx) => {
+        if (checkpoint) await StorageFormatV3State.assertUnchanged(tx.raw, store.options.namespace)
         const page = await tx.raw.query<{ key_id: string; key_text: string }>(
           "SELECT key_id, key_text FROM storage_records WHERE namespace = ? AND body IS NOT NULL AND key_id > ? ORDER BY key_id LIMIT ?",
           [store.options.namespace, cursor, BATCH],
         )
         if (!page.length) return []
         await writeNodes(store, tx.raw, table, page)
+        if (checkpoint)
+          await StorageFormatV3State.write(tx.raw, store.options.namespace, {
+            ...checkpoint,
+            nodesCursor: page.at(-1)!.key_id,
+          })
         return page
       })
       if (!rows.length) break
@@ -757,6 +799,7 @@ export namespace StorageFormatV3Migration {
     // inside this same transaction, so a run resumed after it must not drop the
     // byte-encoded tables and rename staging tables that no longer exist.
     if (state.phase !== "swap") return state
+    UpgradeWork.signal()?.throwIfAborted()
     progress?.(0, 0, 4)
     const namespace = store.options.namespace
     // Read before the swap's own transaction: the shape of the table being
@@ -768,6 +811,7 @@ export namespace StorageFormatV3Migration {
     const next: State = { ...state, phase: "reclaim" }
     await store.maintainDdlTransaction(
       [
+        ...StorageFormatV3State.fences(false),
         { statement: "DROP TABLE storage_records" },
         { statement: `ALTER TABLE ${recordsTable} RENAME TO storage_records` },
         { statement: "DROP TABLE storage_nodes" },
@@ -796,6 +840,7 @@ export namespace StorageFormatV3Migration {
         },
       ],
       "create-index",
+      (connection) => StorageFormatV3State.assertUnchanged(connection, namespace),
     )
     // Reads declare a single-statement contract and cannot re-read the format per
     // statement, so the store adopts the byte encoding and the artifact layout in
@@ -803,92 +848,5 @@ export namespace StorageFormatV3Migration {
     store.adoptFormatV3(artifactPack)
     progress?.(1, 1, 4)
     return next
-  }
-
-  /**
-   * Returns the pages the swap freed, in bounded chunks.
-   *
-   * The swap builds a second copy of each table before dropping the first, so it
-   * leaves the old tables' pages on the SQLite freelist. Nothing else returns
-   * them: `StorageRetention.run` reclaims only after it actually pruned, and a
-   * store that has just shrunk is under its budget by definition. Without this
-   * phase the rewrite leaves the store larger on disk than it was before it ran.
-   *
-   * Each call is bounded by `maxPages` and by the maintenance engine's own
-   * deadline, and the loop never merges them into one statement: an unbounded
-   * `incremental_vacuum` over a multi-million page freelist would hold the worker
-   * past its ceiling. A call is reported as it completes, so a long reclaim keeps
-   * renewing the startup health deadline.
-   *
-   * The loop ends when the freelist is empty, or when progress stops:
-   *
-   * - `PRAGMA incremental_vacuum` is a silent no-op unless the database is in
-   *   `INCREMENTAL` auto-vacuum mode, so on any other mode the freelist stays
-   *   non-empty forever and a `while (freelist > 0)` loop would never terminate.
-   *   That mode is detected directly and ends the loop on the first call.
-   * - Otherwise a zero-release call is retried past `RECLAIM_STALL_TOLERANCE`,
-   *   because a call whose budget went to its own checkpoint returns zero while
-   *   free pages remain.
-   *
-   * In both stopping cases the phase stays `reclaim` and the condition is
-   * reported rather than thrown: the rewrite itself succeeded and the store is
-   * fully readable, so failing the migration would strand a valid format 3
-   * namespace. Leaving the phase unclaimed is what keeps the remaining pages
-   * resumable, since the copy phases short-circuit on the recorded phase and the
-   * swap refuses to run again.
-   */
-  async function reclaim(
-    store: TransactionalStore,
-    state: State,
-    progress?: (current: number, total: number, phase: number) => void,
-  ): Promise<State> {
-    if (state.phase !== "reclaim") return state
-    progress?.(0, 0, 5)
-    let released = 0
-    let calls = 0
-    let noProgress = 0
-    let freelistPages = 0
-    let autoVacuum = ""
-    for (;;) {
-      const chunk = await store.maintain({ operation: "reclaim", maxPages: RECLAIM_PAGES })
-      released += chunk.releasedPages
-      calls++
-      freelistPages = chunk.freelistPages
-      autoVacuum = chunk.autoVacuum
-      progress?.(released, 0, 5)
-      if (freelistPages === 0) break
-      if (chunk.releasedPages > 0) {
-        noProgress = 0
-        continue
-      }
-      noProgress++
-      if (autoVacuum !== "incremental" || noProgress > RECLAIM_STALL_TOLERANCE) break
-    }
-    if (freelistPages === 0) {
-      const complete: State = { ...state, phase: "complete" }
-      await writeState(store, complete)
-      return complete
-    }
-    const reason = autoVacuum === "incremental" ? "no-progress" : `auto-vacuum-${autoVacuum || "unknown"}`
-    log.warn("format 3 rewrite left free pages unreturned", {
-      namespace: store.options.namespace,
-      reason,
-      releasedPages: released,
-      freelistPages,
-      calls,
-      autoVacuum,
-    })
-    ObservabilityIssues.raise({
-      code: "STORAGE_FORMAT_V3_RECLAIM_INCOMPLETE",
-      severity: "warning",
-      module: "storage",
-      title: "Format 3 rewrite could not return every freed page",
-      message:
-        "The format 3 rewrite committed and the store is fully readable, but its freed pages remain on the SQLite freelist instead of being returned to the filesystem, so the file keeps the size it reached during the rewrite.",
-      recommendation:
-        "Confirm the authoritative database is in incremental auto-vacuum mode; without it, `PRAGMA incremental_vacuum` is a silent no-op and the freed pages cannot be returned. Re-running the storage-format-v3 migration resumes the reclaim without repeating the rewrite.",
-      evidence: { reason, releasedPages: released, freelistPages, calls, autoVacuum },
-    })
-    return state
   }
 }

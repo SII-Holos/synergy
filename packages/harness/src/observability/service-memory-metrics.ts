@@ -1,3 +1,4 @@
+import { RuntimeContext } from "../lifecycle/context"
 import type { ServiceMemory } from "../process/service-memory"
 
 export namespace ServiceMemoryMetrics {
@@ -11,12 +12,16 @@ export namespace ServiceMemoryMetrics {
     unit: "bytes" | "count" | "percent" | "microseconds"
   }
 
-  let lastDetailAt: number | undefined
-  let previousEvents: ServiceMemory.CgroupV2["events"]
-  let previousPressureTotals: { some?: number; full?: number } | undefined
-  const staticMetrics = new Map<string, { value: number; emittedAt: number }>()
+  const runtimeState = RuntimeContext.state(() => ({
+    lastDetailAt: undefined as number | undefined,
+    previousEvents: undefined as ServiceMemory.CgroupV2["events"],
+    previousPressureTotals: undefined as { some?: number; full?: number } | undefined,
+    staticMetrics: new Map<string, { value: number; emittedAt: number }>(),
+  }))
 
   export function plan(input: { now: number; cgroup: ServiceMemory.CgroupV2; env?: NodeJS.ProcessEnv }): Metric[] {
+    const instanceState = runtimeState()
+
     const rows: Metric[] = []
     add(rows, "service.memory.current", input.cgroup.currentBytes, "bytes")
 
@@ -34,8 +39,8 @@ export namespace ServiceMemoryMetrics {
         envNumber(input.env?.SYNERGY_CGROUP_DETAIL_INTERVAL_MS) ?? DEFAULT_DETAIL_INTERVAL_MS,
       ),
     )
-    if (lastDetailAt === undefined || input.now - lastDetailAt >= detailIntervalMs) {
-      lastDetailAt = input.now
+    if (instanceState.lastDetailAt === undefined || input.now - instanceState.lastDetailAt >= detailIntervalMs) {
+      instanceState.lastDetailAt = input.now
       recordDetails(rows, input.cgroup)
     }
 
@@ -44,10 +49,12 @@ export namespace ServiceMemoryMetrics {
   }
 
   export function reset() {
-    lastDetailAt = undefined
-    previousEvents = undefined
-    previousPressureTotals = undefined
-    staticMetrics.clear()
+    const instanceState = runtimeState()
+
+    instanceState.lastDetailAt = undefined
+    instanceState.previousEvents = undefined
+    instanceState.previousPressureTotals = undefined
+    instanceState.staticMetrics.clear()
   }
 
   export const resetForTest = reset
@@ -91,49 +98,62 @@ export namespace ServiceMemoryMetrics {
   }
 
   function recordDeltas(rows: Metric[], cgroup: ServiceMemory.CgroupV2) {
-    if (previousEvents && cgroup.events) {
+    const instanceState = runtimeState()
+
+    if (instanceState.previousEvents && cgroup.events) {
       const events: Record<string, number | undefined> = {
-        "service.memory.events.low.delta": counterDelta(cgroup.events.low, previousEvents.low),
-        "service.memory.events.high.delta": counterDelta(cgroup.events.high, previousEvents.high),
-        "service.memory.events.max.delta": counterDelta(cgroup.events.max, previousEvents.max),
-        "service.memory.events.oom.delta": counterDelta(cgroup.events.oom, previousEvents.oom),
-        "service.memory.events.oom_kill.delta": counterDelta(cgroup.events.oomKill, previousEvents.oomKill),
+        "service.memory.events.low.delta": counterDelta(cgroup.events.low, instanceState.previousEvents.low),
+        "service.memory.events.high.delta": counterDelta(cgroup.events.high, instanceState.previousEvents.high),
+        "service.memory.events.max.delta": counterDelta(cgroup.events.max, instanceState.previousEvents.max),
+        "service.memory.events.oom.delta": counterDelta(cgroup.events.oom, instanceState.previousEvents.oom),
+        "service.memory.events.oom_kill.delta": counterDelta(
+          cgroup.events.oomKill,
+          instanceState.previousEvents.oomKill,
+        ),
         "service.memory.events.oom_group_kill.delta": counterDelta(
           cgroup.events.oomGroupKill,
-          previousEvents.oomGroupKill,
+          instanceState.previousEvents.oomGroupKill,
         ),
       }
       for (const [name, value] of Object.entries(events)) {
         if (value !== undefined && value > 0) rows.push({ name, value, unit: "count" })
       }
     }
-    previousEvents = cgroup.events ? { ...cgroup.events } : undefined
+    instanceState.previousEvents = cgroup.events ? { ...cgroup.events } : undefined
 
     const pressureTotals = {
       some: cgroup.pressure?.some?.totalMicros,
       full: cgroup.pressure?.full?.totalMicros,
     }
-    if (previousPressureTotals) {
+    if (instanceState.previousPressureTotals) {
       const pressure: Record<string, number | undefined> = {
-        "service.memory.pressure.some.stall_delta": counterDelta(pressureTotals.some, previousPressureTotals.some),
-        "service.memory.pressure.full.stall_delta": counterDelta(pressureTotals.full, previousPressureTotals.full),
+        "service.memory.pressure.some.stall_delta": counterDelta(
+          pressureTotals.some,
+          instanceState.previousPressureTotals.some,
+        ),
+        "service.memory.pressure.full.stall_delta": counterDelta(
+          pressureTotals.full,
+          instanceState.previousPressureTotals.full,
+        ),
       }
       for (const [name, value] of Object.entries(pressure)) {
         if (value !== undefined && value > 0) rows.push({ name, value, unit: "microseconds" })
       }
     }
-    previousPressureTotals = pressureTotals
+    instanceState.previousPressureTotals = pressureTotals
   }
 
   function addStatic(rows: Metric[], name: string, value: number | undefined, now: number, heartbeatMs: number) {
+    const instanceState = runtimeState()
+
     if (value === undefined || !Number.isFinite(value)) {
-      staticMetrics.delete(name)
+      instanceState.staticMetrics.delete(name)
       return
     }
-    const previous = staticMetrics.get(name)
+    const previous = instanceState.staticMetrics.get(name)
     if (previous && previous.value === value && now - previous.emittedAt < heartbeatMs) return
     rows.push({ name, value, unit: "bytes" })
-    staticMetrics.set(name, { value, emittedAt: now })
+    instanceState.staticMetrics.set(name, { value, emittedAt: now })
   }
 
   function add(rows: Metric[], name: string, value: number | undefined, unit: Metric["unit"]) {

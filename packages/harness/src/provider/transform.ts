@@ -2,6 +2,7 @@ import type { APICallError, ModelMessage } from "ai"
 import { unique } from "remeda"
 import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
+import { ProviderThinking } from "./thinking"
 import type { ModelsDev } from "./models-schemas"
 import { PromptCachePolicy } from "./prompt-cache-policy"
 import { supportsImageMediaType } from "./image-capability"
@@ -635,6 +636,19 @@ export namespace ProviderTransform {
   }
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
+    const variants = reasoningVariants(model)
+    if (
+      model.api.npm === "@ai-sdk/openai-compatible" &&
+      model.api.id.toLowerCase().includes("deepseek") &&
+      model.capabilities.reasoningOptions?.some((option) => option.type === "toggle")
+    ) {
+      for (const variant of Object.values(variants)) variant.thinking = { type: "enabled" }
+    }
+    const off = ProviderThinking.offOptions(model)
+    return off ? { ...variants, off } : variants
+  }
+
+  function reasoningVariants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
     const directProviderVariants = directProviderReasoningVariants(model)
     if (directProviderVariants) return directProviderVariants
@@ -730,19 +744,30 @@ export namespace ProviderTransform {
       case "@ai-sdk/google":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/google-generative-ai
         if (id.includes("2.5")) {
+          const budget = model.capabilities.reasoningOptions?.find((option) => option.type === "budget")
+          const high = Math.min(16000, budget?.max ?? 16000)
+          const max = Math.min(24576, budget?.max ?? 24576)
           return {
-            high: {
-              thinkingConfig: {
-                includeThoughts: true,
-                thinkingBudget: 16000,
-              },
-            },
-            max: {
-              thinkingConfig: {
-                includeThoughts: true,
-                thinkingBudget: 24576,
-              },
-            },
+            ...(high >= (budget?.min ?? 0)
+              ? {
+                  high: {
+                    thinkingConfig: {
+                      includeThoughts: true,
+                      thinkingBudget: high,
+                    },
+                  },
+                }
+              : {}),
+            ...(max >= (budget?.min ?? 0)
+              ? {
+                  max: {
+                    thinkingConfig: {
+                      includeThoughts: true,
+                      thinkingBudget: max,
+                    },
+                  },
+                }
+              : {}),
           }
         }
         {

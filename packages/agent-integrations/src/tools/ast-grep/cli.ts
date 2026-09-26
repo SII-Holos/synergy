@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { spawn } from "bun"
 import { existsSync, realpathSync, statSync } from "fs"
 import path from "path"
@@ -108,16 +109,20 @@ function findSgCliPath(): string | null {
   return null
 }
 
-let cachedCliPath: string | null = null
+const runtimeState = RuntimeContext.state(() => ({
+  cachedCliPath: null as string | null,
+}))
 
 function getSgCliPath(): string {
-  if (cachedCliPath !== null) {
-    return cachedCliPath
+  const instanceState = runtimeState()
+
+  if (instanceState.cachedCliPath !== null) {
+    return instanceState.cachedCliPath
   }
 
   const foundPath = findSgCliPath()
   if (foundPath) {
-    cachedCliPath = foundPath
+    instanceState.cachedCliPath = foundPath
     return foundPath
   }
 

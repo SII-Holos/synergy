@@ -67,130 +67,131 @@ const ResolveAuditEntry = z
  * and creation write values over HTTP, matching the existing config PATCH
  * contract that already accepts new secret values.
  */
-export const SecretsRoute = new Hono()
-  .get(
-    "/",
-    describeRoute({
-      summary: "List secret vault entries",
-      description: "List registered secret vault entries. Values are never returned.",
-      operationId: "secrets.list",
-      responses: {
-        200: {
-          description: "Secret entries without values",
-          content: { "application/json": { schema: resolver(z.array(SecretEntry)) } },
+export const SecretsRoute = () =>
+  new Hono()
+    .get(
+      "/",
+      describeRoute({
+        summary: "List secret vault entries",
+        description: "List registered secret vault entries. Values are never returned.",
+        operationId: "secrets.list",
+        responses: {
+          200: {
+            description: "Secret entries without values",
+            content: { "application/json": { schema: resolver(z.array(SecretEntry)) } },
+          },
         },
-      },
-    }),
-    async (c) => c.json(await SecretVault.list()),
-  )
-  .post(
-    "/",
-    describeRoute({
-      summary: "Register a secret",
-      description: "Register a value in the secret vault. Idempotent for an already-registered value.",
-      operationId: "secrets.create",
-      responses: {
-        200: {
-          description: "The registered entry without its value",
-          content: { "application/json": { schema: resolver(SecretEntry) } },
+      }),
+      async (c) => c.json(await SecretVault.list()),
+    )
+    .post(
+      "/",
+      describeRoute({
+        summary: "Register a secret",
+        description: "Register a value in the secret vault. Idempotent for an already-registered value.",
+        operationId: "secrets.create",
+        responses: {
+          200: {
+            description: "The registered entry without its value",
+            content: { "application/json": { schema: resolver(SecretEntry) } },
+          },
+          ...errors(400, 409),
         },
-        ...errors(400, 409),
+      }),
+      validator("json", SecretCreateInput),
+      async (c) => {
+        const { value, policy } = c.req.valid("json")
+        try {
+          const entry = await SecretVault.register(value, { kind: "user" }, { policy })
+          const { value: _stored, ...rest } = entry
+          return c.json(rest)
+        } catch (error) {
+          if (error instanceof SecretVault.ConflictError)
+            return c.json({ name: "SecretConflictError", data: { message: error.message } }, 409)
+          throw error
+        }
       },
-    }),
-    validator("json", SecretCreateInput),
-    async (c) => {
-      const { value, policy } = c.req.valid("json")
-      try {
-        const entry = await SecretVault.register(value, { kind: "user" }, { policy })
-        const { value: _stored, ...rest } = entry
-        return c.json(rest)
-      } catch (error) {
-        if (error instanceof SecretVault.ConflictError)
-          return c.json({ name: "SecretConflictError", data: { message: error.message } }, 409)
-        throw error
-      }
-    },
-  )
-  .patch(
-    "/:id",
-    describeRoute({
-      summary: "Update a secret's policy",
-      description: "Replace the per-key resolution policy of one vault entry.",
-      operationId: "secrets.updatePolicy",
-      responses: {
-        200: {
-          description: "The updated entry without its value",
-          content: { "application/json": { schema: resolver(SecretEntry) } },
+    )
+    .patch(
+      "/:id",
+      describeRoute({
+        summary: "Update a secret's policy",
+        description: "Replace the per-key resolution policy of one vault entry.",
+        operationId: "secrets.updatePolicy",
+        responses: {
+          200: {
+            description: "The updated entry without its value",
+            content: { "application/json": { schema: resolver(SecretEntry) } },
+          },
+          ...errors(400, 404),
         },
-        ...errors(400, 404),
+      }),
+      validator("json", SecretPolicyInput),
+      async (c) => {
+        const updated = await SecretVault.updatePolicy(c.req.param("id"), c.req.valid("json").policy)
+        if (!updated) throw new Storage.NotFoundError({ message: `secret ${c.req.param("id")} does not exist` })
+        return c.json(updated)
       },
-    }),
-    validator("json", SecretPolicyInput),
-    async (c) => {
-      const updated = await SecretVault.updatePolicy(c.req.param("id"), c.req.valid("json").policy)
-      if (!updated) throw new Storage.NotFoundError({ message: `secret ${c.req.param("id")} does not exist` })
-      return c.json(updated)
-    },
-  )
-  .post(
-    "/:id/rotate",
-    describeRoute({
-      summary: "Rotate a secret's value",
-      description: "Replace the value of one vault entry; policy and resolve history carry over.",
-      operationId: "secrets.rotate",
-      responses: {
-        200: {
-          description: "The rotated entry without its value",
-          content: { "application/json": { schema: resolver(SecretEntry) } },
+    )
+    .post(
+      "/:id/rotate",
+      describeRoute({
+        summary: "Rotate a secret's value",
+        description: "Replace the value of one vault entry; policy and resolve history carry over.",
+        operationId: "secrets.rotate",
+        responses: {
+          200: {
+            description: "The rotated entry without its value",
+            content: { "application/json": { schema: resolver(SecretEntry) } },
+          },
+          ...errors(400, 404, 409),
         },
-        ...errors(400, 404, 409),
+      }),
+      validator("json", SecretRotateInput),
+      async (c) => {
+        const { value } = c.req.valid("json")
+        try {
+          const entry = await SecretVault.rotate(c.req.param("id"), value)
+          const { value: _stored, ...rest } = entry
+          return c.json(rest)
+        } catch (error) {
+          if (error instanceof SecretVault.NotFoundError) throw new Storage.NotFoundError({ message: error.message })
+          if (error instanceof SecretVault.ConflictError)
+            return c.json({ name: "SecretConflictError", data: { message: error.message } }, 409)
+          throw error
+        }
       },
-    }),
-    validator("json", SecretRotateInput),
-    async (c) => {
-      const { value } = c.req.valid("json")
-      try {
-        const entry = await SecretVault.rotate(c.req.param("id"), value)
-        const { value: _stored, ...rest } = entry
-        return c.json(rest)
-      } catch (error) {
-        if (error instanceof SecretVault.NotFoundError) throw new Storage.NotFoundError({ message: error.message })
-        if (error instanceof SecretVault.ConflictError)
-          return c.json({ name: "SecretConflictError", data: { message: error.message } }, 409)
-        throw error
-      }
-    },
-  )
-  .delete(
-    "/:id",
-    describeRoute({
-      summary: "Remove a secret",
-      description:
-        "Remove one vault entry. Historical mask tokens stop resolving and render as revoked; re-registering the same value restores them.",
-      operationId: "secrets.remove",
-      responses: {
-        200: {
-          description: "Whether an entry was removed",
-          content: { "application/json": { schema: resolver(z.object({ removed: z.boolean() })) } },
+    )
+    .delete(
+      "/:id",
+      describeRoute({
+        summary: "Remove a secret",
+        description:
+          "Remove one vault entry. Historical mask tokens stop resolving and render as revoked; re-registering the same value restores them.",
+        operationId: "secrets.remove",
+        responses: {
+          200: {
+            description: "Whether an entry was removed",
+            content: { "application/json": { schema: resolver(z.object({ removed: z.boolean() })) } },
+          },
         },
-      },
-    }),
-    async (c) => c.json({ removed: await SecretVault.remove(c.req.param("id")) }),
-  )
-  .get(
-    "/:id/history",
-    describeRoute({
-      summary: "Read a secret's resolve history",
-      description: "Read the bounded resolve audit trail of one vault entry.",
-      operationId: "secrets.history",
-      responses: {
-        200: {
-          description: "Resolve audit entries",
-          content: { "application/json": { schema: resolver(z.array(ResolveAuditEntry)) } },
+      }),
+      async (c) => c.json({ removed: await SecretVault.remove(c.req.param("id")) }),
+    )
+    .get(
+      "/:id/history",
+      describeRoute({
+        summary: "Read a secret's resolve history",
+        description: "Read the bounded resolve audit trail of one vault entry.",
+        operationId: "secrets.history",
+        responses: {
+          200: {
+            description: "Resolve audit entries",
+            content: { "application/json": { schema: resolver(z.array(ResolveAuditEntry)) } },
+          },
         },
-      },
-    }),
-    async (c) => c.json(await SecretVault.resolveHistory(c.req.param("id"))),
-  )
+      }),
+      async (c) => c.json(await SecretVault.resolveHistory(c.req.param("id"))),
+    )
 
 export type { SecretSource }

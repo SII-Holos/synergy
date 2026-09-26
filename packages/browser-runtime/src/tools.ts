@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerToolGroup } from "./tool-group-browser"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { BrowserAnnotateTool } from "./tools/browser-annotate"
@@ -24,12 +25,16 @@ import { BrowserUploadTool } from "./tools/browser-upload"
 /**
  * Browser domain tool registration. Loaded through src/product-registration.ts.
  */
-let registered = false
+const runtimeState = RuntimeContext.state(() => ({
+  registered: false,
+}))
 
 export function registerBrowserTools(): void {
+  const instanceState = runtimeState()
+
   registerToolGroup()
-  if (registered) return
-  registered = true
+  if (instanceState.registered) return
+  instanceState.registered = true
 
   ToolRegistry.registerToolProvider("browser", () => [
     BrowserAnnotateTool,

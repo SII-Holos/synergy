@@ -320,7 +320,7 @@ export namespace PerformanceAnalysis {
       time: { created: completedAt, completed: completedAt },
       modelID: input.root.info.model.modelID,
       providerID: input.root.info.model.providerID,
-      path: { cwd: scope.directory, root: scope.directory },
+      path: { cwd: scope.local?.directory ?? null, root: scope.local?.directory ?? null },
       mode: input.root.info.agent,
       agent: input.root.info.agent,
       cost: 0,

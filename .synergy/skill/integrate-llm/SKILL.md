@@ -42,7 +42,9 @@ A sessionless call does not create session history, Cortex progress, completion 
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
 
-When an in-place internal operation reuses a root user message only for task identity or attribution while selecting a different model, strip root-owned execution settings that do not belong to the target call. Compaction specifically keeps the persisted root unchanged but clears its `variant` from the ephemeral processor envelope, so the compaction model retains normal provider options without validating or applying another model's variant.
+When an in-place internal operation reuses a root user message only for task identity or attribution while selecting a different model, strip root-owned execution settings that do not belong to the target call. Compaction keeps the persisted root unchanged but clears both `variant` and `thinking` from the ephemeral processor envelope. Keep small-call bypass tests for valid and invalid source selections.
+
+For live session model controls, capture model and thinking together before prompt budgeting and tool preparation. Carry that snapshot through serialization and request accounting; do not read mutable UI or session choices midway through preparation. Verify actual next-request wire parameters with a delayed local provider fixture, per-model restoration, restricted tool-turn changes and no tool replay. Apply explicit thinking normalization after ordinary parameter hooks and preserve unrelated options.
 
 Use `Cortex.launch()` for new child-agent work. Cortex owns:
 
@@ -76,7 +78,15 @@ When a provider requires a per-request header derived from the conversation (for
 
 Own upload cancellation inside the recording stream so a native fetch reader lock cannot prevent settlement. Drain admitted request reads and writes before ending the attempt, including network failure and early HTTP responses; test with a cloned Request and the real recorder. Do not wait for an upstream cancellation acknowledgement shared with an unowned live sibling, or let upload cleanup failures replace the transport outcome. Request-side cleanup must not recursively wait on its own attempt finalizer.
 
+When changing fetch wrappers, exercise the complete provider → proxy → authentication retry → recording path against a local HTTP receiver. Verify request bytes and wire framing after a rejected credential, preservation of native fetch options, and `Request` initializer overrides. Preserve already-materialized SDK bodies without eagerly buffering unknown-length streams; hold a producer behind a transport-entry barrier to verify that streaming uploads can start before their source closes.
+
 Production product inference enters `AgentTurn`: the Control Plane resolves final prompt and parameter plugin hooks plus serializable provider options into a request plan, request snapshots are schema-validated and capped, and the plan is sent as acknowledged chunks; event frames are bounded and acknowledged after consumption. The worker protocol owns its event projection: do not expose raw AI SDK stream objects as IPC types, and strip provider request bodies, response diagnostics, warnings, or other fields the Control Plane does not consume before checking the frame bound. Agent workers reconstruct built-in provider runtime functions without provider-plugin discovery. Keep executable callbacks, plugin runtimes and Host Services, session writers, permission promises, and other Control Plane handles out of the worker input. Model-facing tools are `ToolCatalog.Definition[]` only.
+
+Resolve timeout policy from the same final model options used by the SDK, and freeze it before worker transfer. Include effective policy in both SDK and language-model cache identities; test same-model policy changes and A/B/A model reuse. Preserve explicit disable values through configuration validation and plan serialization.
+
+Keep preparation valid for a supplied model before its provider is configured. Changes to `LLM.prepare()` also run `test/session/llm-variant.test.ts` so provider setup cannot mask root-variant validation or leak root options into small calls.
+
+For worker telemetry, verify rows in the host's real observability store through a real subprocess. Capture task identity at admission, including the rollout call independently of ambient observability context, and reject stale request IDs before recording. Scope forwarders to a Runtime and turn, flush before terminal frames, and test concurrent Runtime disposal. Exercise actual timer callbacks: observing a mocked recorder cannot prove that native callback execution preserves asynchronous context. Request-owned timers and reader locks must settle on completion, failure and cancellation.
 
 Keep optional prompt diagnostics and Context Usage attribution out of the Agent worker request and provider-start critical path. Start the provider turn first, execute any non-trivial estimation in a separately isolated worker with fixed input, concurrency, and wall-time bounds, and fail open by omitting the enrichment. Do not move synchronous tokenization onto the Control Plane event loop or await optional enrichment before provider streaming or loop completion.
 
@@ -109,6 +119,7 @@ Never relax TLS verification to work around an endpoint failure — no `rejectUn
 3. Update [LLM loop and compaction](../../../docs/architecture/llm-loop.md) when the shared call pipeline or path-selection contract changes.
 4. Update `add-agent` when a new internal-agent registration pattern or model-role rule emerges.
 5. Assert that `small: true` calls ignore both available and unavailable source-root variants: neither variant options nor `ProviderModelVariantUnavailableError` may reach the target-model call.
+6. Provider configuration changes, including descriptions, regenerate both shipped config schemas with `generateSchema()` from `script/release/shared/build-runtime.ts` for the core and full profiles. Run `bun test --config /dev/null test/script/release/runtime-schema.test.ts`; SDK/OpenAPI generation alone does not refresh those artifacts.
 
 ## Handoff
 

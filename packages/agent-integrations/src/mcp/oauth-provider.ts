@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js"
 import type {
   OAuthClientMetadata,
@@ -14,7 +15,7 @@ const DEFAULT_OAUTH_CALLBACK_PORT = 19876
 const OAUTH_CALLBACK_PATH = "/mcp/oauth/callback"
 
 function getOAuthCallbackPort(): number {
-  const value = process.env.SYNERGY_OAUTH_CALLBACK_PORT
+  const value = RuntimeContext.current().host.env.SYNERGY_OAUTH_CALLBACK_PORT
   if (!value) return DEFAULT_OAUTH_CALLBACK_PORT
 
   const port = Number(value)

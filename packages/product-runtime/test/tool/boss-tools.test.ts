@@ -13,9 +13,11 @@ import { BossSpawnTool } from "@ericsanchezok/synergy-workflows/boss/tools/boss-
 import { BossStatusTool } from "@ericsanchezok/synergy-workflows/boss/tools/boss-status"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 // Product domains register tool providers via the L4 manifest
-import "@ericsanchezok/synergy-product-runtime/product-registration"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
@@ -43,84 +45,92 @@ async function bossAndWorker(): Promise<{ boss: Session.Info; worker: Session.In
 }
 
 describe("Boss tools", () => {
-  test("registers the five boss tools", async () => {
-    await withScope(async () => {
-      expect(await ToolRegistry.find("boss_spawn")).toBeDefined()
-      expect(await ToolRegistry.find("boss_assign")).toBeDefined()
-      expect(await ToolRegistry.find("boss_report")).toBeDefined()
-      expect(await ToolRegistry.find("boss_status")).toBeDefined()
-      expect(await ToolRegistry.find("boss_cancel")).toBeDefined()
-    })
-  })
-
-  test("boss_spawn creates a worker and returns its sessionID", async () => {
-    await withScope(async () => {
-      const boss = await Session.create({})
-      await WorkflowSessionService.enableBoss(boss.id)
-      const tool = await BossSpawnTool.init()
-      const result = await tool.execute({ role: "review" }, ctx(boss.id))
-      expect(result.metadata).toMatchObject({ role: "review" })
-      const workerID = result.metadata.sessionID as string
-      const worker = await Session.get(workerID)
-      expect(worker.workflow).toEqual({
-        kind: "boss",
-        role: "worker",
-        workerRole: "review",
-        rootID: boss.id,
+  test("registers the five boss tools", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        expect(await ToolRegistry.find("boss_spawn")).toBeDefined()
+        expect(await ToolRegistry.find("boss_assign")).toBeDefined()
+        expect(await ToolRegistry.find("boss_report")).toBeDefined()
+        expect(await ToolRegistry.find("boss_status")).toBeDefined()
+        expect(await ToolRegistry.find("boss_cancel")).toBeDefined()
       })
-    })
-  })
+    }))
 
-  test("boss_assign delivers a task and is idempotent", async () => {
-    await withScope(async () => {
-      const { boss, worker } = await bossAndWorker()
-      const tool = await BossAssignTool.init()
-      const first = await tool.execute(
-        { sessionID: worker.id, taskID: "task-1", task: "Implement the widget" },
-        ctx(boss.id),
-      )
-      expect(first.metadata).toMatchObject({ sessionID: worker.id, taskID: "task-1", created: true })
-      const second = await tool.execute(
-        { sessionID: worker.id, taskID: "task-1", task: "Implement the widget" },
-        ctx(boss.id),
-      )
-      expect(second.metadata).toMatchObject({ created: false })
-      expect(await SessionInbox.list(worker.id)).toHaveLength(1)
-    })
-  })
+  test("boss_spawn creates a worker and returns its sessionID", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const boss = await Session.create({})
+        await WorkflowSessionService.enableBoss(boss.id)
+        const tool = await BossSpawnTool.init()
+        const result = await tool.execute({ role: "review" }, ctx(boss.id))
+        expect(result.metadata).toMatchObject({ role: "review" })
+        const workerID = result.metadata.sessionID as string
+        const worker = await Session.get(workerID)
+        expect(worker.workflow).toEqual({
+          kind: "boss",
+          role: "worker",
+          workerRole: "review",
+          rootID: boss.id,
+        })
+      })
+    }))
 
-  test("boss_report reports to the parent", async () => {
-    await withScope(async () => {
-      const { boss, worker } = await bossAndWorker()
-      const tool = await BossReportTool.init()
-      const result = await tool.execute({ summary: "Done", status: "completed", refs: ["a.ts"] }, ctx(worker.id))
-      expect(result.metadata).toMatchObject({ status: "completed" })
-      const items = await SessionInbox.list(boss.id)
-      expect(items).toHaveLength(1)
-      expect(items[0].mode).toBe("steer")
-    })
-  })
+  test("boss_assign delivers a task and is idempotent", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss, worker } = await bossAndWorker()
+        const tool = await BossAssignTool.init()
+        const first = await tool.execute(
+          { sessionID: worker.id, taskID: "task-1", task: "Implement the widget" },
+          ctx(boss.id),
+        )
+        expect(first.metadata).toMatchObject({ sessionID: worker.id, taskID: "task-1", created: true })
+        const second = await tool.execute(
+          { sessionID: worker.id, taskID: "task-1", task: "Implement the widget" },
+          ctx(boss.id),
+        )
+        expect(second.metadata).toMatchObject({ created: false })
+        expect(await SessionInbox.list(worker.id)).toHaveLength(1)
+      })
+    }))
 
-  test("boss_status renders a text tree with the worker count", async () => {
-    await withScope(async () => {
-      const { boss, worker } = await bossAndWorker()
-      await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t1", task: "do it" })
-      const tool = await BossStatusTool.init()
-      const result = await tool.execute({}, ctx(boss.id))
-      expect(result.metadata).toMatchObject({ workerCount: 1 })
-      expect(result.output).toContain(worker.id)
-      expect(result.output).toContain("task t1")
-    })
-  })
+  test("boss_report reports to the parent", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss, worker } = await bossAndWorker()
+        const tool = await BossReportTool.init()
+        const result = await tool.execute({ summary: "Done", status: "completed", refs: ["a.ts"] }, ctx(worker.id))
+        expect(result.metadata).toMatchObject({ status: "completed" })
+        const items = await SessionInbox.list(boss.id)
+        expect(items).toHaveLength(1)
+        expect(items[0].mode).toBe("steer")
+      })
+    }))
 
-  test("boss_cancel removes matching pending inbox items", async () => {
-    await withScope(async () => {
-      const { boss, worker } = await bossAndWorker()
-      await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t1", task: "one" })
-      const tool = await BossCancelTool.init()
-      const result = await tool.execute({ sessionID: worker.id, taskID: "t1" }, ctx(boss.id))
-      expect(result.metadata).toMatchObject({ cancelled: true })
-      expect(await SessionInbox.list(worker.id)).toHaveLength(0)
-    })
-  })
+  test("boss_status renders a text tree with the worker count", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss, worker } = await bossAndWorker()
+        await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t1", task: "do it" })
+        const tool = await BossStatusTool.init()
+        const result = await tool.execute({}, ctx(boss.id))
+        expect(result.metadata).toMatchObject({ workerCount: 1 })
+        expect(result.output).toContain(worker.id)
+        expect(result.output).toContain("task t1")
+      })
+    }))
+
+  test("boss_cancel removes matching pending inbox items", () =>
+    runtime.run(async () => {
+      await withScope(async () => {
+        const { boss, worker } = await bossAndWorker()
+        await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t1", task: "one" })
+        const tool = await BossCancelTool.init()
+        const result = await tool.execute({ sessionID: worker.id, taskID: "t1" }, ctx(boss.id))
+        expect(result.metadata).toMatchObject({ cancelled: true })
+        expect(await SessionInbox.list(worker.id)).toHaveLength(0)
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

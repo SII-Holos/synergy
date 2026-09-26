@@ -48,6 +48,10 @@ One-shot `session` triggers default to `ephemeral`.
 
 An item can override that choice. A persistent item reuses its recorded Agenda session so context can accumulate across fires. An ephemeral item creates a dated session for one run and archives it after extracting the result.
 
+An item captures the origin Session's selected Workspace when it is created, including an explicit no-directory selection. Changing the origin Session later does not retarget the item. New execution sessions use that captured Workspace; a persistent execution session keeps its own selection. Missing or unbound directories produce a recorded failed run. Rebinding the captured Workspace explicitly changes its location for future runs.
+
+File watches subscribe to the captured Workspace even when no Session is open. They ignore other Scopes, other Workspaces and retired binding generations; global visibility does not broaden the directories watched. A file watch requires a Workspace.
+
 Normal execution builds a trigger-aware prompt, invokes the selected agent, observes the item timeout, captures the final assistant text, updates run state, and delivers the result according to the item's notification settings.
 
 `autoDone` is the exception used by one-shot watch-style delivery. It sends the item's prompt directly to the origin session instead of creating and invoking an Agenda session, then completes according to item state rules.

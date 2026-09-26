@@ -7,6 +7,9 @@ import { StorageBootstrap } from "../../src/storage/bootstrap"
 import { Storage } from "../../src/storage/storage"
 import { StorageRecovery } from "../../src/storage/recovery"
 import { migrations as sessionMigrations } from "../../src/session/migration"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 test.each([
   { invalid: { time: null }, migrated: true },
@@ -15,7 +18,7 @@ test.each([
   { invalid: { time: null }, migrated: false },
 ])(
   "invalid historical session fields quarantine only that session during startup: %j",
-  async ({ invalid, migrated }) => {
+  runtime.bind(async ({ invalid, migrated }) => {
     await using tmp = await tmpdir()
     const root = path.join(tmp.path, ".synergy")
     const fixture = (await Bun.file(new URL("./fixtures/v3.0.22.json", import.meta.url)).json()) as {
@@ -41,7 +44,19 @@ test.each([
       await Bun.write(file, JSON.stringify(record.value))
     }
     const entry = new URL("../../src/storage/maintenance.ts", import.meta.url).pathname
-    const script = `import { StorageMaintenance } from ${JSON.stringify(entry)}; await using handle = await StorageMaintenance.open(); if (handle.manifest.phase !== "active") throw new Error("Upgrade did not activate");`
+    const script = `
+      import { StorageMaintenance } from ${JSON.stringify(entry)};
+      import { RuntimeContext } from ${JSON.stringify(new URL("../../src/lifecycle/context.ts", import.meta.url).pathname)};
+      import { registerHarness } from ${JSON.stringify(new URL("../../src/lifecycle/register.ts", import.meta.url).pathname)};
+      const home = process.env.SYNERGY_HOME;
+      const runtime = RuntimeContext.create({ home, root: home + "/.synergy", env: { ...process.env } });
+      await runtime.run(async () => {
+        registerHarness();
+        await using handle = await StorageMaintenance.open();
+        if (handle.manifest.phase !== "active") throw new Error("Upgrade did not activate");
+      });
+      runtime.dispose();
+    `
     for (let attempt = 0; attempt < 2; attempt++) {
       const child = Bun.spawn([process.execPath, "-e", script], {
         env: { ...process.env, SYNERGY_HOME: tmp.path },
@@ -82,6 +97,8 @@ test.each([
     } finally {
       await handle.store.close()
     }
-  },
+  }),
   30000,
 )
+
+afterRuntimeTests(() => runtime.close())

@@ -604,6 +604,7 @@ describe("AgentWorkerPool", () => {
       expect(await turn).toMatchObject({
         message: "Agent worker failed to start after 6 consecutive attempts",
       })
+      expect(pool.stats()).toMatchObject({ queued: 0, queuedBytes: 0 })
       const spawned = fake.workers.length
       await expect(inScope(() => pool.run(input(new AbortController().signal)))).rejects.toThrow(
         "Agent worker failed to start after 6 consecutive attempts",
@@ -1307,6 +1308,98 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
+  test.each(["interactive", "background"] as const)(
+    "accounts for %s waiting bytes across dispatch, cancellation, and stop",
+    async (lane) => {
+      const fake = fakeWorkers()
+      const pool = new AgentWorkerPool(options, fake.spawn)
+      try {
+        const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+        void firstPromise.catch(() => undefined)
+        expect(pool.stats().queuedBytes).toBeGreaterThan(0)
+        fake.workers[0].ready()
+        const worker = fake.workers[0]
+        const firstRun = startTurn(worker)
+        worker.receive({ type: "started", requestId: firstRun.requestId })
+        await firstPromise
+        expect(pool.stats()).toMatchObject({ active: 1, queued: 0, queuedBytes: 0 })
+
+        const cancelledAbort = new AbortController()
+        const cancelled = inScope(() => pool.run({ ...input(cancelledAbort.signal), lane }))
+        void cancelled.catch(() => undefined)
+        const waiting = inScope(() => pool.run({ ...input(new AbortController().signal), lane }))
+        void waiting.catch(() => undefined)
+        expect(pool.stats()).toMatchObject({ queued: 2, queuedBytes: firstRun.totalBytes * 2 })
+
+        cancelledAbort.abort()
+        await expect(cancelled).rejects.toBeDefined()
+        expect(pool.stats()).toMatchObject({ queued: 1, queuedBytes: firstRun.totalBytes })
+
+        worker.receive({
+          type: "complete",
+          requestId: firstRun.requestId,
+          turns: 1,
+          memoryBeforeDispose: workerMemory(),
+          memory: workerMemory(),
+        })
+        releaseTurn(worker, firstRun.requestId)
+        const nextRun = startTurn(worker)
+        worker.receive({ type: "started", requestId: nextRun.requestId })
+        await waiting
+        expect(pool.stats()).toMatchObject({ active: 1, queued: 0, queuedBytes: 0 })
+
+        const stopped = inScope(() => pool.run({ ...input(new AbortController().signal), lane }))
+        void stopped.catch(() => undefined)
+        expect(pool.stats()).toMatchObject({ queued: 1, queuedBytes: nextRun.totalBytes })
+        await pool.stop()
+        await expect(stopped).rejects.toThrow("Agent worker pool stopped")
+        expect(pool.stats()).toMatchObject({ active: 0, queued: 0, queuedBytes: 0 })
+      } finally {
+        await pool.stop()
+      }
+    },
+  )
+
+  test("enforces the combined byte budget across waiting lanes and restores cancelled capacity", async () => {
+    const fake = fakeWorkers()
+    const maxQueuedBytes = 2_048
+    const pool = new AgentWorkerPool({ ...options, maxQueuedBytes }, fake.spawn)
+    const pendingAbort = new AbortController()
+    const turnInput = input(pendingAbort.signal)
+    const largeInput = {
+      ...turnInput,
+      prepared: { ...turnInput.prepared, system: ["x".repeat(1_024)] },
+    }
+    try {
+      const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+      void firstPromise.catch(() => undefined)
+      fake.workers[0].ready()
+      const firstRun = startTurn(fake.workers[0])
+      fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+      await firstPromise
+
+      const pending = inScope(() => pool.run({ ...largeInput, lane: "background" }))
+      void pending.catch(() => undefined)
+      const waitingBytes = pool.stats().queuedBytes
+      expect(waitingBytes).toBeGreaterThan(maxQueuedBytes / 2)
+      expect(waitingBytes).toBeLessThanOrEqual(maxQueuedBytes)
+      await expect(inScope(() => pool.run({ ...largeInput, lane: "interactive" }))).rejects.toThrow("queue exceeded")
+      expect(pool.stats()).toMatchObject({ queued: 1, queuedBytes: waitingBytes })
+
+      pendingAbort.abort()
+      await expect(pending).rejects.toBeDefined()
+      expect(pool.stats()).toMatchObject({ queued: 0, queuedBytes: 0 })
+      const replacement = inScope(() => pool.run({ ...largeInput, abort: new AbortController().signal }))
+      void replacement.catch(() => undefined)
+      expect(pool.stats()).toMatchObject({ queued: 1, queuedBytes: waitingBytes })
+      await pool.stop()
+      await expect(replacement).rejects.toThrow("Agent worker pool stopped")
+      expect(pool.stats()).toMatchObject({ queued: 0, queuedBytes: 0 })
+    } finally {
+      await pool.stop()
+    }
+  })
+
   test("bounds aggregate waiting-turn bytes independently from active work", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, maxQueuedBytes: 2_048 }, fake.spawn)
@@ -1870,6 +1963,48 @@ describe("AgentWorkerPool", () => {
       }
     ).mock.calls
     expect(calls.some((call) => call[0]?.name === "agent.worker.ready_latency" && call[0]?.unit === "ms")).toBe(true)
+    await pool.stop()
+  })
+
+  test("drops late metrics instead of attributing them to the next turn", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, minIdle: 1, idleBaselineRecycle: false }, fake.spawn)
+    using recorded = spyOn(ObservabilityMetrics, "record")
+    const worker = fake.workers[0]
+    worker.ready()
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const first = startTurn(worker)
+    worker.receive({ type: "started", requestId: first.requestId })
+    const stream = await firstPromise
+    worker.receive({
+      type: "complete",
+      requestId: first.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(),
+      memory: workerMemory(),
+    })
+    releaseTurn(worker, first.requestId)
+    await stream.dispose()
+
+    const secondPromise = inScope(() => pool.run({ ...input(new AbortController().signal), sessionID: "ses_second" }))
+    const second = startTurn(worker)
+    worker.receive({ type: "started", requestId: second.requestId })
+    const next = await secondPromise
+    const row = { name: "llm.fetch.headers", value: 42, unit: "ms" as const, module: "llm" as const, labels: {} }
+    worker.receive({ type: "metrics", requestId: first.requestId, rows: [row] })
+    worker.receive({ type: "metrics", requestId: second.requestId, rows: [row] })
+    expect(recorded.mock.calls.map(([value]) => value).filter((value) => value.name === row.name)).toEqual([
+      expect.objectContaining({ sessionID: "ses_second", messageID: "msg_user", value: 42 }),
+    ])
+    worker.receive({
+      type: "complete",
+      requestId: second.requestId,
+      turns: 2,
+      memoryBeforeDispose: workerMemory(),
+      memory: workerMemory(),
+    })
+    releaseTurn(worker, second.requestId, 2)
+    await next.dispose()
     await pool.stop()
   })
 })

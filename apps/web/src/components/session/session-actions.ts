@@ -21,17 +21,12 @@ export function sessionModelControlVisibility(input: { canSelectModel: boolean; 
   }
 }
 
-export type SessionScopeRequest = { scopeID: string } | { directory: string }
+export type SessionScopeRequest = { scopeID: string }
 
-export function sessionScopeRequest(scopeKey: string): SessionScopeRequest {
-  if (isHomeScope(scopeKey)) return { scopeID: HOME_SCOPE_KEY }
-  return { directory: scopeKey }
+export function sessionScopeRequest(scopeID: string): SessionScopeRequest {
+  return { scopeID }
 }
 
-export function sessionScopeRequestFor(session: {
-  scope: { id: string; type?: string; directory?: string }
-}): SessionScopeRequest {
-  if (session.scope.type === "home" || session.scope.id === HOME_SCOPE_KEY) return { scopeID: HOME_SCOPE_KEY }
-  const directory = session.scope.directory ?? session.scope.id
-  return { directory }
+export function sessionScopeRequestFor(session: { scope: { id: string } }): SessionScopeRequest {
+  return { scopeID: session.scope.id }
 }

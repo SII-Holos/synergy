@@ -1,6 +1,6 @@
 import z from "zod"
 
-export const BROWSER_PROTOCOL_VERSION = 2 as const
+export const BROWSER_PROTOCOL_VERSION = 3 as const
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -664,7 +664,6 @@ const BrowserUploadFileSchema = z
     mimeType: z.string().max(256),
     dataBase64: z
       .string()
-      .min(1)
       .max(35 * 1024 * 1024)
       .superRefine((value, ctx) => {
         const bytes = decodedBase64Bytes(value)
@@ -1510,7 +1509,7 @@ export const BrowserHostMessageSchema = z
           .object({
             mode: z.enum(["session", "scope"]),
             scopeID: z.string().min(1).max(1_000),
-            directory: z.string().max(20_000),
+            directory: z.string().max(20_000).nullable(),
             sessionID: z.string().max(1_000).optional(),
           })
           .strict(),
@@ -1613,7 +1612,8 @@ export type BrowserHostMessage = z.infer<typeof BrowserHostMessageSchema>
 
 function decodedBase64Bytes(value: string): number | null {
   const normalized = value.replace(/\s/g, "")
-  if (!normalized || !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) || normalized.length % 4 === 1) return null
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(normalized) || normalized.length % 4 === 1) return null
   const padding = normalized.endsWith("==") ? 2 : normalized.endsWith("=") ? 1 : 0
+  if (padding && (normalized.length % 4 !== 0 || normalized.length <= padding)) return null
   return Math.floor((normalized.length * 3) / 4) - padding
 }

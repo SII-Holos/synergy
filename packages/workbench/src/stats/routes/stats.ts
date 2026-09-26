@@ -14,91 +14,92 @@ const StatsQuery = z.object({
     .meta({ description: "Set to 'true' to force a full recompute from scratch" }),
 })
 
-export const StatsRoute = new Hono()
-  .get(
-    "/",
-    describeRoute({
-      summary: "Get stats snapshot",
-      description:
-        "Read the last computed stats snapshot without scanning history; null means no snapshot exists. Use the progress stream to refresh, or ?recompute=true to force a full recompute.",
-      operationId: "global.stats.get",
-      responses: {
-        200: {
-          description: "Stats snapshot",
-          content: {
-            "application/json": {
-              schema: resolver(StatsSnapshot.meta({ ref: "StatsSnapshot" }).nullable()),
+export const StatsRoute = () =>
+  new Hono()
+    .get(
+      "/",
+      describeRoute({
+        summary: "Get stats snapshot",
+        description:
+          "Read the last computed stats snapshot without scanning history; null means no snapshot exists. Use the progress stream to refresh, or ?recompute=true to force a full recompute.",
+        operationId: "global.stats.get",
+        responses: {
+          200: {
+            description: "Stats snapshot",
+            content: {
+              "application/json": {
+                schema: resolver(StatsSnapshot.meta({ ref: "StatsSnapshot" }).nullable()),
+              },
             },
           },
+          ...errors(400),
         },
-        ...errors(400),
-      },
-    }),
-    validator("query", StatsQuery),
-    async (c) => {
-      const { recompute } = c.req.valid("query")
-      try {
-        const snapshot = recompute === "true" ? await Engine.recompute() : await Engine.get()
-        return c.json(snapshot)
-      } catch (err: any) {
-        return c.json({ message: err?.message ?? String(err) }, 400)
-      }
-    },
-  )
-  .get(
-    "/progress",
-    describeRoute({
-      summary: "Stream stats recompute progress",
-      description:
-        "Refresh changed statistics and stream progress updates until the final snapshot is ready. Concurrent refreshes share one computation.",
-      operationId: "global.stats.progress",
-      responses: {
-        200: {
-          description: "Server-sent events containing progress and final snapshot payloads",
-          content: {
-            "text/event-stream": {
-              schema: resolver(
-                z.object({
-                  type: z.enum(["progress", "done", "error"]),
-                  progress: ProgressEvent.optional(),
-                  snapshot: StatsSnapshot.optional(),
-                  message: z.string().optional(),
-                }),
-              ),
-            },
-          },
-        },
-      },
-    }),
-    async (c) => {
-      c.header("X-Accel-Buffering", "no")
-      c.header("Cache-Control", "no-cache, no-transform")
-      return streamSSE(c, async (stream) => {
+      }),
+      validator("query", StatsQuery),
+      async (c) => {
+        const { recompute } = c.req.valid("query")
         try {
-          const snapshot = await Engine.update(async (event) => {
+          const snapshot = recompute === "true" ? await Engine.recompute() : await Engine.get()
+          return c.json(snapshot)
+        } catch (err: any) {
+          return c.json({ message: err?.message ?? String(err) }, 400)
+        }
+      },
+    )
+    .get(
+      "/progress",
+      describeRoute({
+        summary: "Stream stats recompute progress",
+        description:
+          "Refresh changed statistics and stream progress updates until the final snapshot is ready. Concurrent refreshes share one computation.",
+        operationId: "global.stats.progress",
+        responses: {
+          200: {
+            description: "Server-sent events containing progress and final snapshot payloads",
+            content: {
+              "text/event-stream": {
+                schema: resolver(
+                  z.object({
+                    type: z.enum(["progress", "done", "error"]),
+                    progress: ProgressEvent.optional(),
+                    snapshot: StatsSnapshot.optional(),
+                    message: z.string().optional(),
+                  }),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) => {
+        c.header("X-Accel-Buffering", "no")
+        c.header("Cache-Control", "no-cache, no-transform")
+        return streamSSE(c, async (stream) => {
+          try {
+            const snapshot = await Engine.update(async (event) => {
+              await stream.writeSSE({
+                data: JSON.stringify({
+                  type: "progress",
+                  progress: event,
+                }),
+              })
+            })
             await stream.writeSSE({
               data: JSON.stringify({
-                type: "progress",
-                progress: event,
+                type: "done",
+                snapshot,
               }),
             })
-          })
-          await stream.writeSSE({
-            data: JSON.stringify({
-              type: "done",
-              snapshot,
-            }),
-          })
-        } catch (err: any) {
-          await stream.writeSSE({
-            data: JSON.stringify({
-              type: "error",
-              message: err?.message ?? String(err),
-            }),
-          })
-        } finally {
-          stream.close()
-        }
-      })
-    },
-  )
+          } catch (err: any) {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "error",
+                message: err?.message ?? String(err),
+              }),
+            })
+          } finally {
+            stream.close()
+          }
+        })
+      },
+    )

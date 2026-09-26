@@ -1,3 +1,5 @@
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 import path from "path"
 import fs from "fs/promises"
@@ -12,7 +14,7 @@ import {
   forgetPlugin,
   getPlugin,
   markContributionDegraded,
-  specToPluginId,
+  replacePluginSpec,
   state,
   type LoadedPlugin,
 } from "./loader"
@@ -60,7 +62,12 @@ export class PluginInstallLifecycleGenerationMismatchError extends Error {
 
 export async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
   try {
-    return (await resolvePluginSpec(spec, { cwd: ScopeContext.current.directory, install: false })).manifest.id
+    return (
+      await resolvePluginSpec(spec, {
+        cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
+        install: false,
+      })
+    ).manifest.id
   } catch {
     return null
   }
@@ -75,7 +82,7 @@ async function prepareUpgrade(input: {
   const upgrade = manifest.contributions.find((item) => item.kind === "lifecycle.upgrade")
   if (!oldPlugin || oldPlugin.manifest.version === manifest.version || !upgrade || !input.resolved.entryPath)
     return undefined
-  const prepared = await pluginRuntimeManager.start({
+  const prepared = await pluginRuntimeManager().start({
     manifest,
     pluginDir: input.resolved.pluginDir,
     entryPath: input.resolved.entryPath,
@@ -83,13 +90,13 @@ async function prepareUpgrade(input: {
     limits: await resolvePluginRuntimeLimits(),
   })
   try {
-    await pluginRuntimeManager.invoke({
+    await pluginRuntimeManager().invoke({
       pluginId: manifest.id,
       handlerId: `lifecycle.upgrade:${upgrade.id}`,
       value: { fromVersion: oldPlugin.manifest.version, toVersion: manifest.version },
       context: {
         scopeId: ScopeContext.current.scope.id,
-        directory: ScopeContext.current.directory,
+        directory: ScopeContext.current.workspace?.path,
         actor: { type: "lifecycle" },
       },
       pluginDir: input.resolved.pluginDir,
@@ -98,7 +105,9 @@ async function prepareUpgrade(input: {
     })
     return prepared
   } catch (error) {
-    await pluginRuntimeManager.stopGeneration(prepared.key).catch(() => undefined)
+    await pluginRuntimeManager()
+      .stopGeneration(prepared.key)
+      .catch(() => undefined)
     throw error
   }
 }
@@ -118,7 +127,7 @@ export async function add(
   let preparedKey: string | undefined
   try {
     const resolved = await resolvePluginSpec(spec, {
-      cwd: ScopeContext.current.directory,
+      cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
       install: !spec.startsWith("file://"),
       refresh: !spec.startsWith("file://"),
       stageLocalArchive: spec.startsWith("file://"),
@@ -226,11 +235,8 @@ export async function add(
       resolvePluginId: resolveConfiguredPluginId,
     })
     stagingDir = undefined
-    for (const [registeredSpec, pluginId] of specToPluginId) {
-      if (pluginId === plugin.id) specToPluginId.delete(registeredSpec)
-    }
-    specToPluginId.set(spec, plugin.id)
-    if (prepared) await pluginRuntimeManager.activate(prepared.key)
+    replacePluginSpec(plugin.id, spec)
+    if (prepared) await pluginRuntimeManager().activate(prepared.key)
     preparedKey = undefined
     if (freshInstall) {
       // Deliver install lifecycles (and the runtime.started catch-up) for every fresh
@@ -239,7 +245,10 @@ export async function add(
     }
     return plugin
   } catch (error) {
-    if (preparedKey) await pluginRuntimeManager.stopGeneration(preparedKey).catch(() => undefined)
+    if (preparedKey)
+      await pluginRuntimeManager()
+        .stopGeneration(preparedKey)
+        .catch(() => undefined)
     throw error
   } finally {
     if (stagingDir) await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
@@ -264,7 +273,7 @@ export async function remove(pluginId: string, options: { force?: boolean } = {}
       if (plugin) await runPluginUninstallLifecycle(plugin, Boolean(options.force))
     },
   })
-  await pluginRuntimeManager
+  await pluginRuntimeManager()
     .stop(pluginId)
     .catch((error) => log.warn("plugin runtime stop failed during uninstall", { pluginId, error }))
   await clearThemePreferenceIfOwned(pluginId)
@@ -308,7 +317,7 @@ export async function runPluginInstallLifecycle(
   plugin: LoadedPlugin,
   services: {
     ensureRuntime(plugin: LoadedPlugin): Promise<unknown>
-    invoke(input: Parameters<typeof pluginRuntimeManager.invoke>[0]): Promise<unknown>
+    invoke(input: Parameters<ReturnType<typeof pluginRuntimeManager>["invoke"]>[0]): Promise<unknown>
     onFailure(
       plugin: LoadedPlugin,
       contribution: Extract<LoadedPlugin["manifest"]["contributions"][number], { kind: "lifecycle.install" }>,
@@ -316,7 +325,7 @@ export async function runPluginInstallLifecycle(
     ): void
   } = {
     ensureRuntime,
-    invoke: (input) => pluginRuntimeManager.invoke(input),
+    invoke: (input) => pluginRuntimeManager().invoke(input),
     onFailure(target, contribution, error) {
       markContributionDegraded(target, contribution, error)
       log.warn("plugin install lifecycle failed", { pluginId: target.id, contributionId: contribution.id, error })
@@ -333,7 +342,7 @@ export async function runPluginInstallLifecycle(
       value: {},
       context: {
         scopeId: ScopeContext.current.scope.id,
-        directory: ScopeContext.current.directory,
+        directory: ScopeContext.current.workspace?.path,
         actor: { type: "lifecycle" },
       },
       pluginDir: plugin.pluginDir,
@@ -351,8 +360,8 @@ export async function runPluginUninstallLifecycle(
   force: boolean,
   services: {
     ensureRuntime(plugin: LoadedPlugin): Promise<unknown>
-    invoke(input: Parameters<typeof pluginRuntimeManager.invoke>[0]): Promise<unknown>
-  } = { ensureRuntime, invoke: (input) => pluginRuntimeManager.invoke(input) },
+    invoke(input: Parameters<ReturnType<typeof pluginRuntimeManager>["invoke"]>[0]): Promise<unknown>
+  } = { ensureRuntime, invoke: (input) => pluginRuntimeManager().invoke(input) },
 ) {
   if (force) return
   const uninstall = plugin.manifest.contributions.find((item) => item.kind === "lifecycle.uninstall")
@@ -364,7 +373,7 @@ export async function runPluginUninstallLifecycle(
     value: {},
     context: {
       scopeId: ScopeContext.current.scope.id,
-      directory: ScopeContext.current.directory,
+      directory: ScopeContext.current.workspace?.path,
       actor: { type: "lifecycle" },
     },
     pluginDir: plugin.pluginDir,
@@ -388,10 +397,14 @@ export interface DeliverInstallLifecycleOptions {
  * re-selecting a pending entry while `add()` is still delivering the same plugin's hook:
  * a second delivery would interrupt the first runtime and repeat partial side effects.
  */
-const installLifecyclesInFlight = new Set<string>()
+const runtimeState = RuntimeContext.state(() => ({
+  installLifecyclesInFlight: new Set<string>(),
+}))
 
 export function isInstallLifecycleInFlight(pluginId: string): boolean {
-  return installLifecyclesInFlight.has(pluginId)
+  const instanceState = runtimeState()
+
+  return instanceState.installLifecyclesInFlight.has(pluginId)
 }
 
 async function persistInstallLifecycle(pluginId: string, status: "pending" | "completed" | "failed") {
@@ -420,13 +433,15 @@ export async function deliverInstallLifecycle(
   plugin: LoadedPlugin,
   options: DeliverInstallLifecycleOptions = {},
 ): Promise<PluginInstallLifecycleStatus> {
+  const instanceState = runtimeState()
+
   // Claim the in-flight slot for the whole delivery so a config-watcher reload cannot
   // re-select this pending entry and interrupt the running hook (see runPendingInstallLifecycles).
-  installLifecyclesInFlight.add(plugin.id)
+  instanceState.installLifecyclesInFlight.add(plugin.id)
   try {
     return await deliverInstallLifecycleInner(plugin, options)
   } finally {
-    installLifecyclesInFlight.delete(plugin.id)
+    instanceState.installLifecyclesInFlight.delete(plugin.id)
   }
 }
 
@@ -571,7 +586,7 @@ export async function retryPluginInstallLifecycle(
     // the lockfile spec (local cache read, no network) so a stale generation cannot be
     // silently re-queued into a pending state that boot catch-up will refuse forever.
     const resolved = await resolvePluginSpec(locked.spec, {
-      cwd: ScopeContext.current.directory,
+      cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
       install: false,
     }).catch(() => null)
     if (resolved && resolved.manifest.artifacts.generation !== locked.generation) {

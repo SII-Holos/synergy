@@ -9,9 +9,9 @@ import { LSP } from "."
  */
 export function registerWorkspaceFileSymbolSource() {
   WorkspaceFileSymbolSource.register({
-    async activeClientCount() {
-      return (await LSP.status()).length
+    async availableClientCount() {
+      return await LSP.connectionCount()
     },
-    workspaceSymbol: (query) => LSP.workspaceSymbol(query),
+    workspaceSymbol: (query, signal) => LSP.workspaceSymbol(query, signal),
   })
 }

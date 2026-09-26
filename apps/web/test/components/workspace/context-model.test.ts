@@ -96,8 +96,14 @@ function user(id = "msg_001", input: Partial<UserMessage> = {}): UserMessage {
 function session(input: Partial<Session> = {}): Session {
   return {
     id: input.id ?? "ses_context",
-    scope: input.scope ?? { id: "scope_context", type: "project", directory: "/repo", worktree: "/repo" },
+    scope: input.scope ?? {
+      id: "scope_context",
+      type: "project",
+      time: { created: 1, updated: 1 },
+      local: { sandboxes: [], directory: "/repo", worktree: "/repo" },
+    },
     title: input.title ?? "Context work",
+    workspace: null,
     version: input.version ?? "v1",
     time: input.time ?? { created: 1_000, updated: 2_000 },
     ...input,

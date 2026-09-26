@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, onMount, type JSX } from "solid-js"
 import type { CalendarEvent } from "./expand"
 import {
   startOfDay,
@@ -14,7 +14,7 @@ import {
 import { A } from "./agenda-i18n"
 import { useLocale, type IntlFormatter } from "@/context/locale"
 
-export type ViewMode = "day" | "week" | "month"
+export type ViewMode = "list" | "day" | "week" | "month"
 
 const HOUR_HEIGHT = 58
 const TIME_COL = 72
@@ -86,6 +86,7 @@ interface CalendarGridProps {
   viewMode: ViewMode
   anchor: number
   events: CalendarEvent[]
+  listContent?: JSX.Element
   onViewModeChange?: (mode: ViewMode) => void
   onAnchorChange?: (anchor: number) => void
   onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
@@ -148,11 +149,11 @@ export function CalendarGrid(props: CalendarGridProps) {
 
   const rangeStart = createMemo(() => {
     if (props.viewMode === "month") return monthRange(props.anchor).start
-    return props.viewMode === "week" ? weekStart() : dayStart()
+    return props.viewMode === "week" || props.viewMode === "list" ? weekStart() : dayStart()
   })
   const rangeEnd = createMemo(() => {
     if (props.viewMode === "month") return monthRange(props.anchor).end
-    return addDays(rangeStart(), props.viewMode === "week" ? 7 : 1)
+    return addDays(rangeStart(), props.viewMode === "week" || props.viewMode === "list" ? 7 : 1)
   })
 
   createEffect(() => {
@@ -160,8 +161,8 @@ export function CalendarGrid(props: CalendarGridProps) {
   })
 
   const dayColumns = createMemo(() => {
-    const count = props.viewMode === "week" ? 7 : 1
-    const start = props.viewMode === "week" ? weekStart() : dayStart()
+    const count = props.viewMode === "week" || props.viewMode === "list" ? 7 : 1
+    const start = props.viewMode === "week" || props.viewMode === "list" ? weekStart() : dayStart()
     const f = fmt
     return Array.from({ length: count }, (_, i) => {
       const ts = addDays(start, i)
@@ -203,11 +204,11 @@ export function CalendarGrid(props: CalendarGridProps) {
   }
   function goPrev() {
     if (props.viewMode === "month") props.onAnchorChange?.(addMonths(props.anchor, -1))
-    else props.onAnchorChange?.(addDays(props.anchor, props.viewMode === "week" ? -7 : -1))
+    else props.onAnchorChange?.(addDays(props.anchor, props.viewMode === "week" || props.viewMode === "list" ? -7 : -1))
   }
   function goNext() {
     if (props.viewMode === "month") props.onAnchorChange?.(addMonths(props.anchor, 1))
-    else props.onAnchorChange?.(addDays(props.anchor, props.viewMode === "week" ? 7 : 1))
+    else props.onAnchorChange?.(addDays(props.anchor, props.viewMode === "week" || props.viewMode === "list" ? 7 : 1))
   }
 
   function navTitle(): string {
@@ -217,7 +218,7 @@ export function CalendarGrid(props: CalendarGridProps) {
       const months = getMonthNamesShort(f)
       return `${months[d.getMonth()]} ${d.getFullYear()}`
     }
-    if (props.viewMode === "week") return formatDateRange(weekStart(), f)
+    if (props.viewMode === "week" || props.viewMode === "list") return formatDateRange(weekStart(), f)
     const d = new Date(dayStart())
     const months = getMonthNamesShort(f)
     const days = getDayLabelsShort(f)
@@ -241,7 +242,8 @@ export function CalendarGrid(props: CalendarGridProps) {
         onNext={goNext}
         onViewModeChange={props.onViewModeChange}
       />
-      <Show when={props.viewMode !== "month"}>
+      <Show when={props.viewMode === "list"}>{props.listContent}</Show>
+      <Show when={props.viewMode === "day" || props.viewMode === "week"}>
         <TimeGrid
           ref={(el) => (scrollRef = el)}
           columns={dayColumns()}
@@ -278,8 +280,9 @@ function NavBar(props: {
   onViewModeChange?: (mode: ViewMode) => void
 }) {
   const { i18n } = useLocale()
-  const modes: ViewMode[] = ["day", "week", "month"]
+  const modes: ViewMode[] = ["list", "day", "week", "month"]
   const labels: Record<ViewMode, () => string> = {
+    list: () => i18n._({ id: "app.agenda.calendar.list", message: "List" }),
     day: () => i18n._(A.calendarDay),
     week: () => i18n._(A.calendarWeek),
     month: () => i18n._(A.calendarMonth),
@@ -297,6 +300,7 @@ function NavBar(props: {
       <button
         type="button"
         class="flex size-7 items-center justify-center rounded-full text-text-weak transition-colors hover:bg-surface-raised-base-hover"
+        aria-label={i18n._({ id: "app.agenda.calendar.previous", message: "Previous date range" })}
         onClick={props.onPrev}
       >
         ‹
@@ -304,12 +308,13 @@ function NavBar(props: {
       <button
         type="button"
         class="flex size-7 items-center justify-center rounded-full text-text-weak transition-colors hover:bg-surface-raised-base-hover"
+        aria-label={i18n._({ id: "app.agenda.calendar.next", message: "Next date range" })}
         onClick={props.onNext}
       >
         ›
       </button>
-      <span class="min-w-0 flex-1 truncate text-13-medium text-text-strong">{props.title}</span>
-      <div class="workbench-control-surface flex items-center overflow-hidden rounded-lg bg-surface-raised-base p-0.75">
+      <span class="min-w-max flex-1 whitespace-nowrap text-13-medium text-text-strong">{props.title}</span>
+      <div class="workbench-control-surface flex shrink-0 items-center overflow-hidden rounded-lg bg-surface-raised-base p-0.75">
         <For each={modes}>
           {(mode) => (
             <button
@@ -319,6 +324,7 @@ function NavBar(props: {
                 "bg-text-strong text-background-base": props.viewMode === mode,
                 "text-text-weaker hover:text-text-weak": props.viewMode !== mode,
               }}
+              aria-pressed={props.viewMode === mode}
               onClick={() => props.onViewModeChange?.(mode)}
             >
               {labels[mode]()}
@@ -410,8 +416,9 @@ function TimeGrid(props: {
                       const widthPct = 100 / le.totalCols
                       const leftPct = le.col * widthPct
                       return (
-                        <div
-                          class={`absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-1 transition-opacity hover:opacity-90 ${classes}`}
+                        <button
+                          type="button"
+                          class={`text-left focus-visible:outline-2 focus-visible:outline-border-interactive-focus absolute cursor-pointer overflow-hidden rounded-md px-1.5 py-1 transition-opacity hover:opacity-90 ${classes}`}
                           style={{
                             top: `${top}px`,
                             height: `${Math.max(height, 18)}px`,
@@ -430,7 +437,7 @@ function TimeGrid(props: {
                               {formatEventTime(le.event.time)}
                             </div>
                           </Show>
-                        </div>
+                        </button>
                       )
                     }}
                   </For>
@@ -506,11 +513,11 @@ function MonthGrid(props: {
                 const visible = createMemo(() => events().slice(0, MONTH_MAX_EVENTS))
                 const overflow = createMemo(() => Math.max(0, events().length - MONTH_MAX_EVENTS))
                 return (
-                  <div
-                    class="agenda-month-cell min-h-[118px] cursor-pointer px-2 py-1.5 transition-colors hover:bg-surface-raised-base-hover"
-                    onClick={() => props.onDateClick?.(cell.ts)}
-                  >
-                    <span
+                  <div class="agenda-month-cell min-h-[118px] cursor-pointer px-2 py-1.5 transition-colors hover:bg-surface-raised-base-hover">
+                    <button
+                      type="button"
+                      aria-label={fmt.date(cell.ts, { dateStyle: "full" })}
+                      onClick={() => props.onDateClick?.(cell.ts)}
                       classList={{
                         "mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-12-medium": true,
                         "bg-text-strong text-background-base ring-1 ring-border-weaker-selected": cell.isToday,
@@ -519,12 +526,13 @@ function MonthGrid(props: {
                       }}
                     >
                       {cell.day}
-                    </span>
+                    </button>
                     <div class="flex flex-col gap-0.5">
                       <For each={visible()}>
                         {(event) => (
-                          <div
-                            class="flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
+                          <button
+                            type="button"
+                            class="text-left focus-visible:outline-2 focus-visible:outline-border-interactive-focus flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors hover:bg-surface-raised-base-hover"
                             onClick={(e) => {
                               e.stopPropagation()
                               props.onEventClick?.(event, e)
@@ -535,13 +543,17 @@ function MonthGrid(props: {
                             />
                             <span class="shrink-0 text-10-regular text-text-weaker">{formatEventTime(event.time)}</span>
                             <span class="truncate text-10-regular text-text-weak">{event.title}</span>
-                          </div>
+                          </button>
                         )}
                       </For>
                       <Show when={overflow() > 0}>
-                        <span class="px-0.5 text-10-regular text-text-weaker">
+                        <button
+                          type="button"
+                          class="text-left px-0.5 text-10-regular text-text-weaker"
+                          onClick={() => props.onDateClick?.(cell.ts)}
+                        >
                           {i18n._({ ...A.calendarMore, values: { count: overflow() } })}
-                        </span>
+                        </button>
                       </Show>
                     </div>
                   </div>

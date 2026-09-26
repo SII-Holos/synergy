@@ -1,5 +1,6 @@
 // Ripgrep utility functions
 import path from "path"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import fs from "fs/promises"
 import z from "zod"
@@ -128,91 +129,95 @@ export namespace Ripgrep {
     }),
   )
 
-  const state = lazy(async () => {
-    let filepath = Bun.which("rg")
-    if (filepath) return { filepath }
-    filepath = path.join(Global.Path.bin, "rg" + (process.platform === "win32" ? ".exe" : ""))
+  const state = RuntimeContext.state(() =>
+    lazy(async () => {
+      const { host } = RuntimeContext.current()
+      let filepath = Bun.which("rg", { PATH: host.env.PATH ?? "", cwd: host.home })
+      if (filepath) return { filepath }
+      filepath = path.join(Global.Path.bin, "rg" + (process.platform === "win32" ? ".exe" : ""))
 
-    const file = Bun.file(filepath)
-    if (!(await file.exists())) {
-      const platformKey = `${process.arch}-${process.platform}` as keyof typeof PLATFORM
-      const config = PLATFORM[platformKey]
-      if (!config) throw new UnsupportedPlatformError({ platform: platformKey })
+      const file = Bun.file(filepath)
+      if (!(await file.exists())) {
+        const platformKey = `${process.arch}-${process.platform}` as keyof typeof PLATFORM
+        const config = PLATFORM[platformKey]
+        if (!config) throw new UnsupportedPlatformError({ platform: platformKey })
 
-      const version = "14.1.1"
-      const filename = `ripgrep-${version}-${config.platform}.${config.extension}`
-      const url = `https://github.com/BurntSushi/ripgrep/releases/download/${version}/${filename}`
+        const version = "14.1.1"
+        const filename = `ripgrep-${version}-${config.platform}.${config.extension}`
+        const url = `https://github.com/BurntSushi/ripgrep/releases/download/${version}/${filename}`
 
-      const response = await fetch(url)
-      if (!response.ok) throw new DownloadFailedError({ url, status: response.status })
+        const response = await fetch(url)
+        if (!response.ok) throw new DownloadFailedError({ url, status: response.status })
 
-      const buffer = await response.arrayBuffer()
-      const archivePath = path.join(Global.Path.bin, filename)
-      await Bun.write(archivePath, buffer)
-      if (config.extension === "tar.gz") {
-        const args = ["tar", "-xzf", archivePath, "--strip-components=1"]
+        const buffer = await response.arrayBuffer()
+        const archivePath = path.join(Global.Path.bin, filename)
+        await Bun.write(archivePath, buffer)
+        if (config.extension === "tar.gz") {
+          const args = ["tar", "-xzf", archivePath, "--strip-components=1"]
 
-        if (platformKey.endsWith("-darwin")) args.push("--include=*/rg")
-        if (platformKey.endsWith("-linux")) args.push("--wildcards", "*/rg")
+          if (platformKey.endsWith("-darwin")) args.push("--include=*/rg")
+          if (platformKey.endsWith("-linux")) args.push("--wildcards", "*/rg")
 
-        const proc = Bun.spawn(args, {
-          cwd: Global.Path.bin,
-          stderr: "pipe",
-          stdout: "pipe",
-        })
-        await proc.exited
-        if (proc.exitCode !== 0)
-          throw new ExtractionFailedError({
-            filepath,
-            stderr: await Bun.readableStreamToText(proc.stderr),
+          const proc = Bun.spawn(args, {
+            cwd: Global.Path.bin,
+            env: host.env,
+            stderr: "pipe",
+            stdout: "pipe",
           })
-      }
-      if (config.extension === "zip") {
-        if (config.extension === "zip") {
-          const zipFileReader = new ZipReader(new BlobReader(new Blob([await Bun.file(archivePath).arrayBuffer()])))
-          const entries = await zipFileReader.getEntries()
-          let rgEntry: any
-          for (const entry of entries) {
-            if (entry.filename.endsWith("rg.exe")) {
-              rgEntry = entry
-              break
-            }
-          }
-
-          if (!rgEntry) {
+          await proc.exited
+          if (proc.exitCode !== 0)
             throw new ExtractionFailedError({
-              filepath: archivePath,
-              stderr: "rg.exe not found in zip archive",
+              filepath,
+              stderr: await Bun.readableStreamToText(proc.stderr),
             })
-          }
-
-          const rgBlob = await rgEntry.getData(new BlobWriter())
-          if (!rgBlob) {
-            throw new ExtractionFailedError({
-              filepath: archivePath,
-              stderr: "Failed to extract rg.exe from zip archive",
-            })
-          }
-          await Bun.write(filepath, await rgBlob.arrayBuffer())
-          await zipFileReader.close()
         }
-      }
-      await fs.unlink(archivePath)
-      if (!platformKey.endsWith("-win32")) await fs.chmod(filepath, 0o755)
-    }
+        if (config.extension === "zip") {
+          if (config.extension === "zip") {
+            const zipFileReader = new ZipReader(new BlobReader(new Blob([await Bun.file(archivePath).arrayBuffer()])))
+            const entries = await zipFileReader.getEntries()
+            let rgEntry: any
+            for (const entry of entries) {
+              if (entry.filename.endsWith("rg.exe")) {
+                rgEntry = entry
+                break
+              }
+            }
 
-    return {
-      filepath,
-    }
-  })
+            if (!rgEntry) {
+              throw new ExtractionFailedError({
+                filepath: archivePath,
+                stderr: "rg.exe not found in zip archive",
+              })
+            }
+
+            const rgBlob = await rgEntry.getData(new BlobWriter())
+            if (!rgBlob) {
+              throw new ExtractionFailedError({
+                filepath: archivePath,
+                stderr: "Failed to extract rg.exe from zip archive",
+              })
+            }
+            await Bun.write(filepath, await rgBlob.arrayBuffer())
+            await zipFileReader.close()
+          }
+        }
+        await fs.unlink(archivePath)
+        if (!platformKey.endsWith("-win32")) await fs.chmod(filepath, 0o755)
+      }
+
+      return {
+        filepath,
+      }
+    }),
+  )
 
   export async function filepath() {
-    const { filepath } = await state()
-    // Cache may point to a stale path from a previous test's temp-homedir setup
+    const { filepath } = await state()()
+    // Reinstall if an external cleanup removed this Runtime's cached executable.
     const file = Bun.file(filepath)
     if (!(await file.exists())) {
-      state.reset()
-      const { filepath: newFilepath } = await state()
+      state().reset()
+      const { filepath: newFilepath } = await state()()
       return newFilepath
     }
     return filepath
@@ -245,6 +250,7 @@ export namespace Ripgrep {
 
     const proc = Bun.spawn(args, {
       cwd: input.cwd,
+      env: RuntimeContext.current().host.env,
       stdout: "pipe",
       stderr: "pipe",
     })
@@ -305,6 +311,7 @@ export namespace Ripgrep {
 
     const proc = Bun.spawn(args, {
       cwd: input.cwd,
+      env: RuntimeContext.current().host.env,
       stdout: "pipe",
       stderr: "ignore",
     })

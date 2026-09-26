@@ -14,6 +14,9 @@ export function SessionTransitionStepIcon(props: { state: SessionTransitionStepS
         <Match when={props.state === "active"}>
           <Spinner class="session-transition-step-spinner" />
         </Match>
+        <Match when={props.state === "error"}>
+          <Icon name={getSemanticIcon("state.error")} size="small" />
+        </Match>
         <Match when={props.state === "complete"}>
           <Icon name={getSemanticIcon("state.success")} size="small" />
         </Match>
@@ -25,13 +28,22 @@ export function SessionTransitionStepIcon(props: { state: SessionTransitionStepS
   )
 }
 
-export function SessionTransitionStepList(props: { steps: SessionTransitionStep[] }) {
+export function SessionTransitionStepList(props: {
+  steps: SessionTransitionStep[]
+  phase?: "loading" | "success" | "error"
+}) {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
 
   return (
     <div class="session-transition-step-list">
-      <For each={props.steps}>
+      <For
+        each={props.steps.map((step) =>
+          props.phase === "error" && step.state === "active"
+            ? { ...step, state: "error" as const, detail: undefined }
+            : step,
+        )}
+      >
         {(step) => (
           <div class="session-transition-step-row" data-state={step.state}>
             <SessionTransitionStepIcon state={step.state} />
@@ -43,6 +55,7 @@ export function SessionTransitionStepList(props: { steps: SessionTransitionStep[
             </div>
             <span class="session-transition-step-status">
               <Switch>
+                <Match when={step.state === "error"}>{_(S.transitionStepFailed)}</Match>
                 <Match when={step.state === "active"}>{_(S.worktreeStepActive)}</Match>
                 <Match when={step.state === "complete"}>{_(S.worktreeStepComplete)}</Match>
                 <Match when={true}>{_(S.worktreeStepPending)}</Match>

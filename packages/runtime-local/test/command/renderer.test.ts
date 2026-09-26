@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { CommandRenderer } from "../../src/command/renderer"
 import { SkillRenderer } from "../../src/skill/renderer"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 describe("SkillRenderer", () => {
   const cases = [
@@ -67,40 +70,48 @@ describe("SkillRenderer", () => {
   ] as const
 
   for (const fixture of cases) {
-    test(fixture.name, () => {
-      expect(SkillRenderer.render({ template: fixture.template, arguments: fixture.arguments })).toEqual([
-        ...fixture.expected,
-      ])
-    })
+    test(fixture.name, () =>
+      runtime.run(() => {
+        expect(SkillRenderer.render({ template: fixture.template, arguments: fixture.arguments })).toEqual([
+          ...fixture.expected,
+        ])
+      }),
+    )
   }
 
-  test("advertises zero-based indexed arguments and one-based positional placeholders", () => {
-    expect(SkillRenderer.hints()).toEqual(["$ARGUMENTS", "$ARGUMENTS[N]", "$N (one-based)"])
-  })
+  test("advertises zero-based indexed arguments and one-based positional placeholders", () =>
+    runtime.run(() => {
+      expect(SkillRenderer.hints()).toEqual(["$ARGUMENTS", "$ARGUMENTS[N]", "$N (one-based)"])
+    }))
 })
 
 describe("CommandRenderer", () => {
-  test("preserves one-based positions, greedy highest placeholder, and raw $ARGUMENTS", async () => {
-    await expect(
-      CommandRenderer.render({
-        template: "$1 | $2 | $ARGUMENTS",
-        arguments: '"one value" two three',
-      }),
-    ).resolves.toBe('one value | two three | "one value" two three')
-  })
+  test("preserves one-based positions, greedy highest placeholder, and raw $ARGUMENTS", () =>
+    runtime.run(async () => {
+      await expect(
+        CommandRenderer.render({
+          template: "$1 | $2 | $ARGUMENTS",
+          arguments: '"one value" two three',
+        }),
+      ).resolves.toBe('one value | two three | "one value" two three')
+    }))
 
-  test("trims the rendered template when arguments carry no placeholders", async () => {
-    await expect(
-      CommandRenderer.render({ template: "  Review the diff.  ", arguments: "ignored extra" }),
-    ).resolves.toBe("Review the diff.")
-  })
+  test("trims the rendered template when arguments carry no placeholders", () =>
+    runtime.run(async () => {
+      await expect(
+        CommandRenderer.render({ template: "  Review the diff.  ", arguments: "ignored extra" }),
+      ).resolves.toBe("Review the diff.")
+    }))
 
-  test("keeps !`command` shell syntax literal instead of executing it", async () => {
-    await expect(
-      CommandRenderer.render({
-        template: "Report: !`echo UNEXPECTED`",
-        arguments: "",
-      }),
-    ).resolves.toBe("Report: !`echo UNEXPECTED`")
-  })
+  test("keeps !`command` shell syntax literal instead of executing it", () =>
+    runtime.run(async () => {
+      await expect(
+        CommandRenderer.render({
+          template: "Report: !`echo UNEXPECTED`",
+          arguments: "",
+        }),
+      ).resolves.toBe("Report: !`echo UNEXPECTED`")
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

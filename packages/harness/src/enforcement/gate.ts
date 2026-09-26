@@ -107,7 +107,7 @@ export interface PluginApprovalCapabilities {
 }
 
 export interface GateOptions {
-  activeWorkspace: string
+  activeWorkspace: string | null
   workspaceType: string
   profileId?: ProfileIdInput
   registeredMcpTools?: Set<string>
@@ -195,7 +195,7 @@ function classifyPathCapability(
   caps: Capability[],
   pathInput: string,
   options: {
-    activeWorkspace: string
+    activeWorkspace: string | null
     originalCheckout?: string
     write?: boolean
     readRoots?: string[]
@@ -242,10 +242,10 @@ function classifyProtectedPathCapability(
   caps: Capability[],
   pathInput: string,
   mode: "read" | "write",
-  options: { activeWorkspace?: string; originalCheckout?: string; synergyRoot?: string } = {},
+  options: { activeWorkspace?: string | null; originalCheckout?: string; synergyRoot?: string } = {},
 ) {
   const protectedMatch = checkProtectedPath(pathInput, mode, {
-    workspaceRoot: options.activeWorkspace,
+    workspaceRoot: options.activeWorkspace ?? undefined,
     originalCheckout: options.originalCheckout,
     synergyRoot: options.synergyRoot,
   })
@@ -315,7 +315,7 @@ export namespace EnforcementGate {
     // boundary declares.
     const approvedReadPaths = new Set<string>(trustedRootList)
     const approvedWritePaths = new Set<string>([...trustedRootList, ...(resolved.filesystem.writeRoots ?? [])])
-    if (workspaceType === "worktree") {
+    if (activeWorkspace && workspaceType === "worktree") {
       for (const grant of worktreeSandboxReadGrants(activeWorkspace, originalCheckout)) {
         approvedReadPaths.add(grant)
       }
@@ -487,7 +487,7 @@ export namespace EnforcementGate {
         if (risk === "shell_remote_publish" && ShellSafety.isBarePush(command)) {
           try {
             const proc = Bun.spawnSync(["git", "branch", "--show-current"], {
-              cwd: activeWorkspace,
+              cwd: activeWorkspace ?? undefined,
               stdout: "pipe",
               stderr: "pipe",
             })
@@ -1093,7 +1093,7 @@ export namespace EnforcementGate {
       getSandbox(): ProfileSandbox {
         return resolved.sandbox
       },
-      getWorkspace(): string {
+      getWorkspace(): string | null {
         return activeWorkspace
       },
       getProfileInfo() {
@@ -1129,7 +1129,7 @@ export namespace EnforcementGate {
        */
       getSandboxPolicy(): SynergySandboxPermissionProfile | null {
         const sandbox = resolved.sandbox
-        if (sandbox.mode === "none") return null
+        if (!activeWorkspace || sandbox.mode === "none") return null
         return buildPermissionProfile({
           workspace: activeWorkspace,
           executionCwd: activeWorkspace,

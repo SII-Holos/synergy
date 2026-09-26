@@ -202,7 +202,7 @@ export class Patcher {
     }
 
     const persisted = bom + restoreLineEndings(after, lineEnding)
-    const write: WriteResult = await this.fs.writeText(section.path, persisted)
+    const write: WriteResult = await this.fs.writeText(section.path, persisted, exists ? prepared.rawContent : null)
     const fileHash = this.#recordFullSnapshot(canonicalPath, after)
     const op = exists ? "update" : "create"
 

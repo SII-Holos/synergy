@@ -51,6 +51,7 @@ export class BrowserHostDiagnostics {
   private readonly session: Electron.Session
   private staging = new BrowserStagingLeasePool()
   private pendingDialogs = new Map<string, ReturnType<typeof setTimeout>>()
+  private pendingPrompts = new Map<string, { event: Electron.IpcMainEvent; timer: ReturnType<typeof setTimeout> }>()
   private pendingFileChoosers = new Map<string, PendingFileChooser>()
   private pendingDownloads = new Map<string, Electron.DownloadItem>()
   private readonly onDebuggerMessage: (event: Electron.Event, method: string, params: unknown) => void
@@ -72,6 +73,7 @@ export class BrowserHostDiagnostics {
 
   async start(): Promise<void> {
     const { contents } = this.options
+    contents.ipc.on("synergy:browser:prompt", this.onPrompt)
     installBrowserContentPermissions(contents.session)
     contents.session.on("will-download", this.onDownload)
     await this.attachDebugger()
@@ -79,6 +81,12 @@ export class BrowserHostDiagnostics {
 
   async dispose(): Promise<void> {
     const { contents } = this.options
+    contents.ipc.off("synergy:browser:prompt", this.onPrompt)
+    for (const request of this.pendingPrompts.values()) {
+      clearTimeout(request.timer)
+      request.event.returnValue = null
+    }
+    this.pendingPrompts.clear()
     this.session.off("will-download", this.onDownload)
     clearBrowserContentPermissions(this.session)
     for (const timer of this.pendingDialogs.values()) clearTimeout(timer)
@@ -103,6 +111,13 @@ export class BrowserHostDiagnostics {
   }
 
   async respondToDialog(requestId: string, accept: boolean, promptText?: string): Promise<void> {
+    const prompt = this.pendingPrompts.get(requestId)
+    if (prompt) {
+      clearTimeout(prompt.timer)
+      this.pendingPrompts.delete(requestId)
+      prompt.event.returnValue = accept ? (promptText ?? "") : null
+      return
+    }
     const timer = this.pendingDialogs.get(requestId)
     if (!timer) throw new Error(`Dialog request ${requestId} is no longer available`)
     clearTimeout(timer)
@@ -150,7 +165,9 @@ export class BrowserHostDiagnostics {
           throw new Error("Browser upload exceeds the 25 MB per-file or 50 MB request limit.")
         }
         const name = safeBasename(file.name, `upload-${index}`)
-        const filepath = path.join(uploadDir, `${index}-${name}`)
+        const directory = path.join(uploadDir, String(index))
+        await fs.mkdir(directory, { mode: 0o700 })
+        const filepath = path.join(directory, name)
         await fs.writeFile(filepath, data, { flag: "wx", mode: 0o600 })
         paths.push(filepath)
       }
@@ -175,6 +192,37 @@ export class BrowserHostDiagnostics {
   private handleDebuggerMessage(method: string, params: unknown): void {
     if (method === "Page.javascriptDialogOpening") this.handleJavaScriptDialog(params)
     if (method === "Page.fileChooserOpened") this.handleFileChooser(params)
+  }
+
+  private readonly onPrompt = (event: Electron.IpcMainEvent, payload: unknown): void => {
+    const data = record(payload)
+    if (
+      event.sender !== this.options.contents ||
+      event.senderFrame !== this.options.contents.mainFrame ||
+      typeof data.message !== "string" ||
+      typeof data.defaultValue !== "string" ||
+      data.message.length > 100_000 ||
+      data.defaultValue.length > 100_000 ||
+      this.pendingPrompts.size > 0
+    ) {
+      event.returnValue = null
+      return
+    }
+    const requestId = `dialog-${crypto.randomUUID()}`
+    const timer = setTimeout(() => {
+      if (!this.pendingPrompts.delete(requestId)) return
+      event.returnValue = null
+    }, 30_000)
+    timer.unref?.()
+    this.pendingPrompts.set(requestId, { event, timer })
+    this.options.emitHostEvent({
+      type: "dialog.opened",
+      pageId: this.options.pageId,
+      requestId,
+      dialogType: "prompt",
+      message: data.message,
+      defaultValue: data.defaultValue,
+    })
   }
 
   private handleJavaScriptDialog(params: unknown): void {

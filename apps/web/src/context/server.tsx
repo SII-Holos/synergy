@@ -1,11 +1,13 @@
-import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { createSynergyClient, type Scope } from "@ericsanchezok/synergy-sdk/client"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { batch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
 import { usePlatform } from "@/context/platform"
+import { migrateScopeState } from "@/utils/scope-state-migration"
 import { Persist, persisted } from "@/utils/persist"
 
-type StoredScope = { worktree: string; expanded: boolean; pinned?: number }
+import { migrateServerPreferences, type StoredScope, type LegacyScope } from "./server-preferences"
+import { resolveLegacyScopeID } from "@/utils/session-reference"
 
 const HEALTH_TIMEOUT = 8000
 
@@ -26,9 +28,7 @@ export function serverDisplayName(url: string) {
 
 function projectsKey(url: string) {
   if (!url) return ""
-  const host = url.replace(/^https?:\/\//, "").split(":")[0]
-  if (host === "localhost" || host === "127.0.0.1") return "local"
-  return url
+  return normalizeServerUrl(url) ?? ""
 }
 
 export const { use: useServer, provider: ServerProvider } = createSimpleContext({
@@ -37,10 +37,11 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
     const platform = usePlatform()
 
     const [store, setStore, _, ready] = persisted(
-      Persist.global("server", ["server.v3"]),
+      { ...Persist.global("server", ["server.v3"]), migrate: migrateServerPreferences },
       createStore({
         list: [] as string[],
         scopes: {} as Record<string, StoredScope[]>,
+        legacyScopes: {} as Record<string, LegacyScope[]>,
       }),
     )
 
@@ -127,7 +128,9 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
 
     const origin = createMemo(() => projectsKey(active()))
     const scopesList = createMemo(() => store.scopes[origin()] ?? [])
-    const isLocal = createMemo(() => origin() === "local")
+    const isLocal = createMemo(
+      () => !!active() && ["localhost", "127.0.0.1", "[::1]"].includes(new URL(active()).hostname),
+    )
 
     return {
       ready: isReady,
@@ -150,12 +153,45 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       },
       scopes: {
         list: scopesList,
+        prepare(metadata: Scope[]) {
+          const connection = origin()
+          const isDefault = connection === normalizeServerUrl(props.defaultUrl)
+          const legacyKey = store.legacyScopes[connection] ? connection : isDefault ? "local" : undefined
+          const legacy = legacyKey ? (store.legacyScopes[legacyKey] ?? []) : []
+          const resolved: StoredScope[] = []
+          const pending: LegacyScope[] = []
+          const migrated = new Set<string>()
+          for (const entry of legacy) {
+            const scopeID = resolveLegacyScopeID(entry.worktree, metadata)
+            if (!scopeID) {
+              pending.push(entry)
+              continue
+            }
+            resolved.push({ id: scopeID, expanded: entry.expanded, pinned: entry.pinned })
+            migrated.add(scopeID)
+          }
+          migrateScopeState({
+            connection,
+            scopes: isDefault ? metadata : metadata.filter((scope) => migrated.has(scope.id)),
+            includeHome: isDefault,
+          })
+          batch(() => {
+            if (resolved.length) {
+              const current = store.scopes[connection] ?? []
+              setStore("scopes", connection, [
+                ...current,
+                ...resolved.filter((scope) => !current.some((entry) => entry.id === scope.id)),
+              ])
+            }
+            if (legacyKey) setStore("legacyScopes", legacyKey, pending)
+          })
+        },
         open(directory: string) {
           const key = origin()
           if (!key) return
           const current = store.scopes[key] ?? []
-          if (current.find((x) => x.worktree === directory)) return
-          setStore("scopes", key, [{ worktree: directory, expanded: true }, ...current])
+          if (current.find((x) => x.id === directory)) return
+          setStore("scopes", key, [{ id: directory, expanded: true }, ...current])
         },
         close(directory: string) {
           const key = origin()
@@ -164,28 +200,28 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
           setStore(
             "scopes",
             key,
-            current.filter((x) => x.worktree !== directory),
+            current.filter((x) => x.id !== directory),
           )
         },
         expand(directory: string) {
           const key = origin()
           if (!key) return
           const current = store.scopes[key] ?? []
-          const index = current.findIndex((x) => x.worktree === directory)
+          const index = current.findIndex((x) => x.id === directory)
           if (index !== -1) setStore("scopes", key, index, "expanded", true)
         },
         collapse(directory: string) {
           const key = origin()
           if (!key) return
           const current = store.scopes[key] ?? []
-          const index = current.findIndex((x) => x.worktree === directory)
+          const index = current.findIndex((x) => x.id === directory)
           if (index !== -1) setStore("scopes", key, index, "expanded", false)
         },
         move(directory: string, toIndex: number) {
           const key = origin()
           if (!key) return
           const current = store.scopes[key] ?? []
-          const fromIndex = current.findIndex((x) => x.worktree === directory)
+          const fromIndex = current.findIndex((x) => x.id === directory)
           if (fromIndex === -1 || fromIndex === toIndex) return
           const result = [...current]
           const [item] = result.splice(fromIndex, 1)
@@ -196,7 +232,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
           const key = origin()
           if (!key) return
           const current = store.scopes[key] ?? []
-          const index = current.findIndex((x) => x.worktree === directory)
+          const index = current.findIndex((x) => x.id === directory)
           if (index !== -1) setStore("scopes", key, index, "pinned", value)
         },
       },

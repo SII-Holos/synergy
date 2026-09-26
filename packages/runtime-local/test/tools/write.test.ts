@@ -3,6 +3,9 @@ import path from "path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WriteTool } from "../../src/tools/write"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 const ctx = {
   sessionID: "test-write",
@@ -15,27 +18,30 @@ const ctx = {
 }
 
 describe("tool.write", () => {
-  test("returns diff metadata for the final file content", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const filePath = path.join(tmp.path, "notes.md")
-        const content = "# Notes\n\nBalanced details stay specialized.\n"
-        const tool = await WriteTool.init()
+  test("returns diff metadata for the final file content", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const filePath = path.join(tmp.path, "notes.md")
+          const content = "# Notes\n\nBalanced details stay specialized.\n"
+          const tool = await WriteTool.init()
 
-        const result = await tool.execute({ filePath, content }, ctx)
+          const result = await tool.execute({ filePath, content }, ctx)
 
-        expect(await Bun.file(filePath).text()).toBe(content)
-        expect(result.metadata.diff).toContain("Balanced details stay specialized.")
-        expect(result.metadata.filediff).toMatchObject({
-          file: "notes.md",
-          additions: 3,
-          deletions: 0,
-          afterBytes: Buffer.byteLength(content, "utf8"),
-        })
-        expect(result.metadata.filediff.preview).toBe(result.metadata.diff)
-      },
-    })
-  })
+          expect(await Bun.file(filePath).text()).toBe(content)
+          expect(result.metadata.diff).toContain("Balanced details stay specialized.")
+          expect(result.metadata.filediff).toMatchObject({
+            file: "notes.md",
+            additions: 3,
+            deletions: 0,
+            afterBytes: Buffer.byteLength(content, "utf8"),
+          })
+          expect(result.metadata.filediff.preview).toBe(result.metadata.diff)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

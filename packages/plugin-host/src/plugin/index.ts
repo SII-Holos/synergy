@@ -29,6 +29,7 @@ export namespace Plugin {
   export const lookupSpec = loader.lookupSpec
 
   // Lifecycle
+  export const registerLifecycle = lifecycle.registerPluginLifecycle
   export const trigger = lifecycle.trigger
   export const triggerForPlugin = lifecycle.triggerForPlugin
   export const deliverHookForPlugin = lifecycle.deliverHookForPlugin

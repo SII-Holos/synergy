@@ -21,6 +21,13 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "script", "test", "package.json", "../../script/shared/test-runner.ts"],
+  "include": [
+    "src",
+    "script",
+    "test",
+    "package.json",
+    "../../script/shared/test-runner.ts",
+    "../../packages/testing/src/env.ts"
+  ],
   "exclude": ["dist", "ts-dist"]
 }

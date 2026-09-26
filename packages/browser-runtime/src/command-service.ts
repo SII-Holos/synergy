@@ -1,3 +1,5 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { AsyncLocalStorage } from "node:async_hooks"
 import {
   BrowserBackendCommandSchema,
   BrowserProtocolError,
@@ -20,6 +22,9 @@ interface ExecuteRequest {
 
 interface OwnerQueue {
   tail: Promise<void>
+  dialogTail: Promise<void>
+  pendingFingerprints: Map<string, string>
+  resumeBinding?: ReturnType<typeof AsyncLocalStorage.snapshot>
   results: Map<string, { fingerprint: string; result?: BrowserBackendResult; error?: unknown; bytes: number }>
   resultBytes: number
   closing: boolean
@@ -36,18 +41,56 @@ const MAX_REPLAY_RESULTS = 256
 const MAX_REPLAY_BYTES = 128 * 1024 * 1024
 const MAX_IDLE_SUSPEND_RETRIES = 3
 const DEFAULT_OWNER_IDLE_MS = 10 * 60 * 1_000
-const queues = new Map<string, OwnerQueue>()
-const idleStates = new Map<string, IdleState>()
+const runtimeState = RuntimeContext.state(() => ({
+  queues: new Map<string, OwnerQueue>(),
+  idleStates: new Map<string, IdleState>(),
+  runtime: BrowserRuntime as Pick<typeof BrowserRuntime, "getOrCreateSession" | "withinOwner">,
+  ownerIdleMs: DEFAULT_OWNER_IDLE_MS,
+}))
+
 const log = Log.create({ service: "browser.command" })
-let runtime: Pick<typeof BrowserRuntime, "getOrCreateSession"> = BrowserRuntime
-let ownerIdleMs = DEFAULT_OWNER_IDLE_MS
 
 export namespace BrowserCommandService {
   export async function session(owner: BrowserOwner.Info): Promise<BrowserSession> {
-    return runtime.getOrCreateSession(owner)
+    const instanceState = runtimeState()
+
+    return instanceState.runtime.withinOwner(owner, (resolved) => instanceState.runtime.getOrCreateSession(resolved))
   }
 
   export async function execute(owner: BrowserOwner.Info, request: ExecuteRequest): Promise<BrowserBackendResult> {
+    const key = BrowserOwner.key(owner)
+    const suspended = runtimeState().queues.get(key)?.suspending ?? false
+    const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
+    let entered = false
+    try {
+      const enter = () =>
+        runtimeState().runtime.withinOwner(
+          owner,
+          (resolved) => {
+            entered = true
+            return executeQueued(resolved, request, idleGeneration, suspended)
+          },
+          request.signal,
+        )
+      // Replies share the active command's binding lease; withinOwner still
+      // revalidates the caller, and the command retains its lease until replies drain.
+      const resume =
+        request.command.type === "dialog.respond" ? runtimeState().queues.get(key)?.resumeBinding : undefined
+      return await (resume ? resume(enter) : enter())
+    } catch (error) {
+      if (!entered) clearIdleGeneration(key, idleGeneration)
+      throw error
+    }
+  }
+
+  async function executeQueued(
+    owner: BrowserOwner.Info,
+    request: ExecuteRequest,
+    idleGeneration: number,
+    suspended: boolean,
+  ): Promise<BrowserBackendResult> {
+    const instanceState = runtimeState()
+
     BrowserOwner.assertValid(owner)
     if (!request.commandId.trim() || request.commandId.length > 20_000) {
       throw new BrowserProtocolError({
@@ -73,8 +116,8 @@ export namespace BrowserCommandService {
     const command = parsed.data
     const fingerprint = JSON.stringify(command)
     const key = BrowserOwner.key(owner)
-    const queue = queues.get(key) ?? createQueue()
-    queues.set(key, queue)
+    const queue = instanceState.queues.get(key) ?? createQueue()
+    instanceState.queues.set(key, queue)
     if (queue.closing) {
       throw new BrowserProtocolError({
         code: "browser_session_closing",
@@ -83,8 +126,7 @@ export namespace BrowserCommandService {
         commandId: request.commandId,
       })
     }
-    const restoreAfterIdleSuspension = queue.suspending && requiresExistingPage(command)
-    const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
+    const restoreAfterIdleSuspension = (suspended || queue.suspending) && requiresExistingPage(command)
     const replay = queue.results.get(request.commandId)
     if (replay) {
       try {
@@ -97,7 +139,18 @@ export namespace BrowserCommandService {
       }
     }
 
-    const run = queue.tail.then(async () => {
+    const pendingFingerprint = queue.pendingFingerprints.get(request.commandId)
+    if (pendingFingerprint !== undefined && pendingFingerprint !== fingerprint) {
+      settleIdleActivity(owner, command.type, idleGeneration, false)
+      return replayResult({ fingerprint: pendingFingerprint }, fingerprint, request.commandId)
+    }
+    queue.pendingFingerprints.set(request.commandId, fingerprint)
+    // Dialog responses must release the page command waiting on them, while
+    // remaining serialized with each other for command replay and disposal.
+    const repliesToDialog = command.type === "dialog.respond"
+    const preceding = repliesToDialog ? queue.dialogTail : queue.tail
+    const run = preceding.then(async () => {
+      if (!repliesToDialog) queue.resumeBinding = AsyncLocalStorage.snapshot()
       throwIfAborted(request.signal, request.commandId)
       const repeated = queue.results.get(request.commandId)
       if (repeated) return replayResult(repeated, fingerprint, request.commandId)
@@ -123,7 +176,12 @@ export namespace BrowserCommandService {
         throw normalized
       }
     })
-    const settled = run.then(
+    const completed = repliesToDialog
+      ? run
+      : run.finally(() => {
+          queue.resumeBinding = undefined
+        })
+    const settled = completed.then(
       (result) => {
         settleIdleActivity(owner, command.type, idleGeneration, true)
         return result
@@ -133,26 +191,36 @@ export namespace BrowserCommandService {
         throw error
       },
     )
-    queue.tail = settled.then(
-      () => undefined,
-      () => undefined,
-    )
-    return settled
+    const drained = settled
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => queue.pendingFingerprints.delete(request.commandId))
+    if (repliesToDialog) {
+      queue.dialogTail = drained
+      queue.tail = Promise.all([queue.tail, drained]).then(() => undefined)
+    } else queue.tail = drained
+    return repliesToDialog ? settled : settled.finally(() => queue.dialogTail)
   }
 
   export function clear(): void {
-    for (const state of idleStates.values()) {
+    const instanceState = runtimeState()
+
+    for (const state of instanceState.idleStates.values()) {
       if (state.timer) clearTimeout(state.timer)
     }
-    idleStates.clear()
-    queues.clear()
+    instanceState.idleStates.clear()
+    instanceState.queues.clear()
   }
 
   export async function disposeOwner(owner: BrowserOwner.Info, dispose: () => Promise<void>): Promise<void> {
+    const instanceState = runtimeState()
+
     const key = BrowserOwner.key(owner)
     clearIdleState(key)
-    const queue = queues.get(key) ?? createQueue()
-    queues.set(key, queue)
+    const queue = instanceState.queues.get(key) ?? createQueue()
+    instanceState.queues.set(key, queue)
     queue.closing = true
     const operation = queue.tail.then(dispose)
     queue.tail = operation.then(
@@ -162,7 +230,7 @@ export namespace BrowserCommandService {
     try {
       await operation
     } finally {
-      if (queues.get(key) === queue) queues.delete(key)
+      if (instanceState.queues.get(key) === queue) instanceState.queues.delete(key)
     }
   }
 
@@ -170,13 +238,17 @@ export namespace BrowserCommandService {
     adapter: Pick<typeof BrowserRuntime, "getOrCreateSession">,
     options?: { ownerIdleMs?: number },
   ): () => void {
-    const previous = runtime
-    const previousIdleMs = ownerIdleMs
-    runtime = adapter
-    ownerIdleMs = options?.ownerIdleMs ?? DEFAULT_OWNER_IDLE_MS
+    const instanceState = runtimeState()
+
+    const previous = instanceState.runtime
+    const previousIdleMs = instanceState.ownerIdleMs
+    instanceState.runtime = { ...adapter, withinOwner: (_owner, fn) => fn(_owner) }
+    instanceState.ownerIdleMs = options?.ownerIdleMs ?? DEFAULT_OWNER_IDLE_MS
     return () => {
-      runtime = previous
-      ownerIdleMs = previousIdleMs
+      const instanceState = runtimeState()
+
+      instanceState.runtime = previous
+      instanceState.ownerIdleMs = previousIdleMs
       clear()
     }
   }
@@ -196,83 +268,99 @@ function settleIdleActivity(
 }
 
 function beginIdleActivity(key: string): number {
-  const state = idleStates.get(key) ?? { generation: 0, failures: 0 }
+  const instanceState = runtimeState()
+
+  const state = instanceState.idleStates.get(key) ?? { generation: 0, failures: 0 }
   if (state.timer) clearTimeout(state.timer)
   state.timer = undefined
   state.generation++
   state.failures = 0
-  idleStates.set(key, state)
+  instanceState.idleStates.set(key, state)
   return state.generation
 }
 function clearIdleGeneration(key: string, generation: number): void {
-  const state = idleStates.get(key)
+  const instanceState = runtimeState()
+
+  const state = instanceState.idleStates.get(key)
   if (!state || state.generation !== generation) return
   if (state.timer) clearTimeout(state.timer)
-  idleStates.delete(key)
+  instanceState.idleStates.delete(key)
 }
 
 function scheduleIdleSuspension(owner: BrowserOwner.Info, generation: number): void {
-  if (ownerIdleMs <= 0 || owner.mode !== "session") return
+  const instanceState = runtimeState()
+
+  if (instanceState.ownerIdleMs <= 0 || owner.mode !== "session") return
   const key = BrowserOwner.key(owner)
-  const state = idleStates.get(key)
+  const state = instanceState.idleStates.get(key)
   if (!state || state.generation !== generation) return
   if (state.timer) clearTimeout(state.timer)
   const timer = setTimeout(() => {
     if (state.timer === timer) state.timer = undefined
     void suspendIdleOwner(owner, generation)
-  }, ownerIdleMs)
+  }, instanceState.ownerIdleMs)
   const unref = (timer as { unref?: () => void }).unref
   unref?.call(timer)
   state.timer = timer
 }
 
 async function suspendIdleOwner(owner: BrowserOwner.Info, generation: number): Promise<void> {
+  const instanceState = runtimeState()
+
   const key = BrowserOwner.key(owner)
-  const state = idleStates.get(key)
+  const state = instanceState.idleStates.get(key)
   if (!state || state.generation !== generation) return
-  const queue = queues.get(key) ?? createQueue()
-  queues.set(key, queue)
-  const operation = queue.tail.then(async () => {
-    if (idleStates.get(key)?.generation !== generation) return false
-    const session = await runtime.getOrCreateSession(owner)
-    if (idleStates.get(key)?.generation !== generation) return false
-    if (session.page?.backend === "host") return true
-    queue.suspending = true
-    try {
-      await session.suspend()
-    } finally {
-      queue.suspending = false
-    }
-    return true
-  })
-  queue.tail = operation.then(
-    () => undefined,
-    () => undefined,
-  )
   try {
-    const handled = await operation
-    if (handled && idleStates.get(key)?.generation === generation) idleStates.delete(key)
+    const handled = await instanceState.runtime.withinOwner(owner, async (resolved) => {
+      const queue = instanceState.queues.get(key) ?? createQueue()
+      instanceState.queues.set(key, queue)
+      const operation = queue.tail.then(async () => {
+        const instanceState = runtimeState()
+
+        if (instanceState.idleStates.get(key)?.generation !== generation) return false
+        const session = await instanceState.runtime.getOrCreateSession(resolved)
+        if (instanceState.idleStates.get(key)?.generation !== generation) return false
+        if (session.page?.backend === "host") return true
+        queue.suspending = true
+        try {
+          await session.suspend()
+        } finally {
+          queue.suspending = false
+        }
+        return true
+      })
+      queue.tail = operation.then(
+        () => undefined,
+        () => undefined,
+      )
+      return operation
+    })
+    if (handled && instanceState.idleStates.get(key)?.generation === generation) instanceState.idleStates.delete(key)
   } catch (error) {
-    if (idleStates.get(key)?.generation !== generation) return
+    if (instanceState.idleStates.get(key)?.generation !== generation) return
     state.failures++
     if (state.failures <= MAX_IDLE_SUSPEND_RETRIES) {
       scheduleIdleSuspension(owner, generation)
     } else {
-      idleStates.delete(key)
+      instanceState.idleStates.delete(key)
       log.warn("failed to suspend idle browser owner after retries", { ownerMode: owner.mode, error })
     }
   }
 }
 
 function clearIdleState(key: string): void {
-  const state = idleStates.get(key)
+  const instanceState = runtimeState()
+
+  const state = instanceState.idleStates.get(key)
   if (state?.timer) clearTimeout(state.timer)
-  idleStates.delete(key)
+  instanceState.idleStates.delete(key)
 }
 
 function createQueue(): OwnerQueue {
   return {
     tail: Promise.resolve(),
+    dialogTail: Promise.resolve(),
+    pendingFingerprints: new Map(),
     results: new Map(),
     resultBytes: 0,
     closing: false,
@@ -472,7 +560,9 @@ function throwIfAborted(signal: AbortSignal | undefined, commandId: string): voi
   })
 }
 
-registerBrowserCommandExecutor({
-  disposeOwner: BrowserCommandService.disposeOwner,
-  clear: BrowserCommandService.clear,
-})
+export function registerBrowserCommands() {
+  registerBrowserCommandExecutor({
+    disposeOwner: BrowserCommandService.disposeOwner,
+    clear: BrowserCommandService.clear,
+  })
+}

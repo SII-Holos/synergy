@@ -5,6 +5,9 @@ import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
 import { MessageV2 } from "../../src/session/message-v2"
 import { tmpdir } from "../support/fixture"
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 
 // A session whose message count exceeds the authoritative storage queue depth
 // (1024) must still load its history: the queue rejects rather than backpressures,
@@ -35,39 +38,42 @@ async function writeAnchoredUser(sessionID: string, text: string): Promise<Messa
 }
 
 describe("session history load concurrency", () => {
-  test("loads every message part without exceeding the declared hydration window", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        for (let index = 0; index < MESSAGE_COUNT; index++) {
-          await writeAnchoredUser(session.id, `message ${index}`)
-        }
-
-        let inFlight = 0
-        let peak = 0
-        let loaded = 0
-        const original = MessageV2.parts
-        using _spy = spyOn(MessageV2, "parts").mockImplementation((async (input) => {
-          inFlight++
-          peak = Math.max(peak, inFlight)
-          try {
-            await new Promise((resolve) => setTimeout(resolve, 1))
-            const parts = await original(input)
-            loaded++
-            return parts
-          } finally {
-            inFlight--
+  test("loads every message part without exceeding the declared hydration window", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          for (let index = 0; index < MESSAGE_COUNT; index++) {
+            await writeAnchoredUser(session.id, `message ${index}`)
           }
-        }) as typeof MessageV2.parts)
 
-        const messages = await SessionHistory.detachedModelMessages({ sessionID: session.id })
+          let inFlight = 0
+          let peak = 0
+          let loaded = 0
+          const original = MessageV2.parts
+          using _spy = spyOn(MessageV2, "parts").mockImplementation((async (input) => {
+            inFlight++
+            peak = Math.max(peak, inFlight)
+            try {
+              await new Promise((resolve) => setTimeout(resolve, 1))
+              const parts = await original(input)
+              loaded++
+              return parts
+            } finally {
+              inFlight--
+            }
+          }) as typeof MessageV2.parts)
 
-        expect(messages).toHaveLength(MESSAGE_COUNT)
-        expect(loaded).toBe(MESSAGE_COUNT)
-        expect(peak).toBeLessThanOrEqual(HYDRATION_WINDOW)
-      },
-    })
-  })
+          const messages = await SessionHistory.detachedModelMessages({ sessionID: session.id })
+
+          expect(messages).toHaveLength(MESSAGE_COUNT)
+          expect(loaded).toBe(MESSAGE_COUNT)
+          expect(peak).toBeLessThanOrEqual(HYDRATION_WINDOW)
+        },
+      })
+    }))
 })
+
+afterRuntimeTests(() => runtime.close())

@@ -1,3 +1,5 @@
+import { Global } from "@ericsanchezok/synergy-harness/global"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { PluginEvent } from "./event"
 import path from "path"
@@ -68,23 +70,33 @@ export interface LoaderState {
   scopeId: string
 }
 
-const catalog = new Map<string, LoadedPlugin>()
-const specToPluginId = new Map<string, string>()
+const runtimeState = RuntimeContext.state(() => ({
+  catalog: new Map<string, LoadedPlugin>(),
+  specToPluginId: new Map<string, string>(),
+}))
 
-export { specToPluginId }
+export function replacePluginSpec(pluginId: string, spec: string) {
+  const { specToPluginId } = runtimeState()
+  for (const [registeredSpec, id] of specToPluginId) {
+    if (id === pluginId) specToPluginId.delete(registeredSpec)
+  }
+  specToPluginId.set(spec, pluginId)
+}
 
 function registerResolved(spec: string, resolved: ResolvedPluginSpec): LoadedPlugin {
+  const instanceState = runtimeState()
+
   const manifest = resolved.manifest
-  const existing = catalog.get(manifest.id)
+  const existing = instanceState.catalog.get(manifest.id)
   if (existing) {
-    pluginContributionAdapters.registerPlugin(manifest.id, manifest)
+    pluginContributionAdapters().registerPlugin(manifest.id, manifest)
     existing.name = manifest.name
     existing.manifest = manifest
     existing.pluginDir = resolved.pluginDir
     existing.entryPath = resolved.entryPath
     existing.source = resolved.source
     existing.spec = spec
-    specToPluginId.set(spec, manifest.id)
+    instanceState.specToPluginId.set(spec, manifest.id)
     return existing
   }
   const plugin: LoadedPlugin = {
@@ -98,9 +110,9 @@ function registerResolved(spec: string, resolved: ResolvedPluginSpec): LoadedPlu
     enabledScopes: new Set(),
     contributionHealth: new Map(),
   }
-  pluginContributionAdapters.registerPlugin(plugin.id, manifest)
-  catalog.set(plugin.id, plugin)
-  specToPluginId.set(spec, plugin.id)
+  pluginContributionAdapters().registerPlugin(plugin.id, manifest)
+  instanceState.catalog.set(plugin.id, plugin)
+  instanceState.specToPluginId.set(spec, plugin.id)
   return plugin
 }
 
@@ -152,7 +164,7 @@ export const state = ScopedState.create(
       let resolved: ResolvedPluginSpec | undefined
       try {
         resolved = await resolvePluginSpec(spec, {
-          cwd: ScopeContext.current.directory,
+          cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
           install: !spec.startsWith("file://"),
         })
         const lockEntry = lockfile?.plugins[resolved.manifest.id]
@@ -229,7 +241,9 @@ export const state = ScopedState.create(
       plugin.enabledScopes.delete(current.scopeId)
       if (plugin.enabledScopes.size > 0) continue
       await Promise.all([
-        pluginRuntimeManager.stop(plugin.id).catch(() => undefined),
+        pluginRuntimeManager()
+          .stop(plugin.id)
+          .catch(() => undefined),
         stopForPlugin(plugin.id).catch(() => undefined),
       ])
     }
@@ -257,7 +271,7 @@ export async function reloadDevelopmentGeneration(input: {
   if (!current) throw new Error(`Plugin is not enabled in this Scope: ${input.pluginId}`)
   if (current.source !== "local") throw new Error("Development reload is only available for local plugins")
   const resolved = await resolvePluginSpec(pathToFileURL(path.resolve(input.artifactDir)).href, {
-    cwd: ScopeContext.current.directory,
+    cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
     install: false,
   })
   if (resolved.manifest.id !== input.pluginId) throw new Error("Development generation plugin id mismatch")
@@ -270,9 +284,9 @@ export async function reloadDevelopmentGeneration(input: {
       `Plugin ${input.pluginId} requires capability approval before development reload`,
       resolved.manifest,
     )
-  pluginContributionAdapters.validatePlugin(input.pluginId, resolved.manifest)
+  pluginContributionAdapters().validatePlugin(input.pluginId, resolved.manifest)
   if (resolved.entryPath) {
-    await pluginRuntimeManager.start({
+    await pluginRuntimeManager().start({
       manifest: resolved.manifest,
       pluginDir: resolved.pluginDir,
       entryPath: resolved.entryPath,
@@ -290,12 +304,16 @@ export async function reloadDevelopmentGeneration(input: {
 }
 
 export function getCatalogPlugin(pluginId: string) {
-  return catalog.get(pluginId)
+  const instanceState = runtimeState()
+
+  return instanceState.catalog.get(pluginId)
 }
 
 /** Read-only enumeration of the process-wide plugin catalog across all scopes. */
 export function listCatalogPlugins(): LoadedPlugin[] {
-  return [...catalog.values()]
+  const instanceState = runtimeState()
+
+  return [...instanceState.catalog.values()]
 }
 
 export async function getDisabledPlugin(pluginId: string) {
@@ -369,9 +387,14 @@ export async function getAuthProviderEntries() {
 }
 
 export async function lookupSpec(spec: string) {
-  const id = specToPluginId.get(spec)
+  const instanceState = runtimeState()
+
+  const id = instanceState.specToPluginId.get(spec)
   if (id) return getPlugin(id)
-  const resolved = await resolvePluginSpec(spec, { cwd: ScopeContext.current.directory, install: false })
+  const resolved = await resolvePluginSpec(spec, {
+    cwd: ScopeContext.current.scope.local?.directory ?? Global.Path.config,
+    install: false,
+  })
   return getPlugin(resolved.manifest.id)
 }
 
@@ -387,7 +410,7 @@ export function contributions<Kind extends PluginManifestContribution["kind"]>(
   plugin: LoadedPlugin,
   kind: Kind,
 ): Array<Extract<PluginManifestContribution, { kind: Kind }>> {
-  return pluginContributionAdapters.list(plugin.id, kind)
+  return pluginContributionAdapters().list(plugin.id, kind)
 }
 
 export function markContributionDegraded(
@@ -405,7 +428,7 @@ export function markContributionDegraded(
 export async function ensureRuntime(plugin: LoadedPlugin) {
   const runtime = plugin.manifest.artifacts.runtime
   if (!runtime || !plugin.entryPath) throw new Error(`Plugin ${plugin.id} has no runtime artifact`)
-  return pluginRuntimeManager.start({
+  return pluginRuntimeManager().start({
     manifest: plugin.manifest,
     pluginDir: plugin.pluginDir,
     entryPath: plugin.entryPath,
@@ -418,9 +441,11 @@ export async function resetAllPluginState() {
 }
 
 export function forgetPlugin(pluginId: string) {
-  catalog.delete(pluginId)
-  pluginContributionAdapters.unregisterPlugin(pluginId)
-  for (const [spec, id] of specToPluginId) {
-    if (id === pluginId) specToPluginId.delete(spec)
+  const instanceState = runtimeState()
+
+  instanceState.catalog.delete(pluginId)
+  pluginContributionAdapters().unregisterPlugin(pluginId)
+  for (const [spec, id] of instanceState.specToPluginId) {
+    if (id === pluginId) instanceState.specToPluginId.delete(spec)
   }
 }

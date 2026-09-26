@@ -1,3 +1,4 @@
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as LibraryConfigSchema from "@ericsanchezok/synergy-library/config-schema"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { TurnDigest } from "./turn-digest"
@@ -73,12 +74,16 @@ export namespace ExperienceEncoder {
     if (!scheduled) log.warn("experience-encode job unavailable; skipping encoding", { sessionID: msg.sessionID })
   }
 
-  let encodeJobRegistered = false
+  const runtimeState = RuntimeContext.state(() => ({
+    encodeJobRegistered: false,
+  }))
 
   /** Idempotent capability registration, composed by registerLibrary(). */
   export function register() {
-    if (encodeJobRegistered) return
-    encodeJobRegistered = true
+    const instanceState = runtimeState()
+
+    if (instanceState.encodeJobRegistered) return
+    instanceState.encodeJobRegistered = true
     LoopJob.register({
       type: "experience-encode",
       phase: "post",
