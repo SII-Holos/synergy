@@ -185,9 +185,9 @@ test("a late 401 reuses the token already refreshed by another request", () =>
     const second = current.client.callTool({ name: "ping" })
     await server.challenged
     server.releaseRefresh()
-    await first
+    await Promise.race([first, second])
     server.releaseLate()
-    await second
+    await Promise.all([first, second])
     expect(server.snapshot().refreshCount).toBe(1)
   }))
 
@@ -259,7 +259,7 @@ test("a late 401 refreshes replacement credentials that have already expired", (
     const second = current.client.callTool({ name: "ping" })
     await server.challenged
     server.releaseRefresh()
-    await first
+    await Promise.race([first, second])
     await McpAuth.updateTokens(
       current.name,
       {
@@ -270,7 +270,10 @@ test("a late 401 refreshes replacement credentials that have already expired", (
       server.url,
     )
     server.releaseLate()
-    expect(await second).toMatchObject({ content: [{ text: "pong" }] })
+    expect(await Promise.all([first, second])).toMatchObject([
+      { content: [{ text: "pong" }] },
+      { content: [{ text: "pong" }] },
+    ])
     expect(server.snapshot().refreshCount).toBe(2)
   }))
 
