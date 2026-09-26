@@ -76,7 +76,7 @@ def attempt_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "oom_events_observed": sum(
             row["resources"].get("observed_oom_events", row["resources"].get("oom_events")) or 0 for row in rows
         ),
-        "oom_unknown_attempts": sum(row["resources"].get("oom_coverage") != "live_stream" for row in rows),
+        "oom_unknown_attempts": sum(row["resources"].get("oom_events") is None for row in rows),
         **{
             key: max((row["resources"][key] for row in rows if row["resources"].get(key) is not None), default=None)
             for key in [

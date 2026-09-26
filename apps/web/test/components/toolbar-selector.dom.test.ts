@@ -208,6 +208,7 @@ test("working location popover returns keyboard focus and opens its existing cho
   await trigger.press("Enter")
   await page.getByText("/fixture/project", { exact: true }).waitFor()
   await page.keyboard.press("Escape")
+  await page.getByText("/fixture/project", { exact: true }).waitFor({ state: "detached" })
   await page.waitForFunction(
     () => document.activeElement?.getAttribute("aria-label") === "Working location: Demo, Local directory",
   )
