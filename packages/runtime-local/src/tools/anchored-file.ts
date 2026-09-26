@@ -1,9 +1,10 @@
-import * as fs from "fs"
+import { FileMutation } from "../file/mutation"
 import * as path from "path"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { formatHashlineHeader, formatHashlineBlock } from "../hashline/format"
 import { SessionHashlineStore } from "../hashline/store"
+import { stripBom } from "../hashline/normalize"
 import { normalizeContent, splitContentLines } from "../hashline/tag"
 
 export const SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024
@@ -56,7 +57,7 @@ export async function readTextFile(filePath: string): Promise<string> {
   if (!stats) throw new Error(`File not found: ${filePath}`)
   if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
   if (isKnownBinaryPath(filePath)) throw new Error(`Cannot read binary file: ${filePath}`)
-  return file.text()
+  return FileMutation.readText(filePath)
 }
 
 export async function readTextFileUnderSnapshotCap(filePath: string): Promise<string | undefined> {
@@ -66,11 +67,11 @@ export async function readTextFileUnderSnapshotCap(filePath: string): Promise<st
   if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
   if (isKnownBinaryPath(filePath)) throw new Error(`Cannot read binary file: ${filePath}`)
   if (stats.size > SNAPSHOT_MAX_BYTES) return undefined
-  return file.text()
+  return FileMutation.readText(filePath)
 }
 
 export function recordHashlineSnapshot(sessionID: string, filePath: string, content: string): string {
-  return SessionHashlineStore.get(sessionID).record(filePath, normalizeContent(content))
+  return SessionHashlineStore.get(sessionID).record(filePath, normalizeContent(stripBom(content).text))
 }
 
 export async function recordHashlineSnapshotIfSmall(sessionID: string, filePath: string): Promise<string | undefined> {
@@ -84,17 +85,13 @@ export function formatRecordedBlock(
   filePath: string,
   content: string,
 ): { output: string; tag: string } {
-  const normalized = normalizeContent(content)
+  const normalized = normalizeContent(stripBom(content).text)
   const tag = recordHashlineSnapshot(sessionID, filePath, normalized)
   return { output: formatHashlineBlock(displayPath(filePath), tag, normalized), tag }
 }
 
-export async function ensureParentDir(filePath: string): Promise<void> {
-  await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
-}
-
-export function markFileRead(sessionID: string, filePath: string): void {
-  FileTime.read(sessionID, filePath)
+export function markFileRead(sessionID: string, filePath: string, content?: string): void {
+  FileTime.read(sessionID, filePath, content)
 }
 
 export function hashlineHeaderFor(sessionID: string, filePath: string, content: string): string {
@@ -112,7 +109,7 @@ export function truncateLineForDisplay(line: string): { text: string; truncated:
 }
 
 export function splitDisplayLines(content: string): string[] {
-  return splitContentLines(content)
+  return splitContentLines(stripBom(content).text)
 }
 
 export function formatSelectedLine(lines: string[], lineNumber: number): { output: string; truncated: boolean } {

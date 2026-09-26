@@ -1,5 +1,8 @@
 import { expect, spyOn, test } from "bun:test"
 import * as Formatter from "../../src/format/formatter"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { FormatterProcess } from "../../src/format/process"
 import { Format } from "../../src/format"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -16,9 +19,7 @@ test("formatter discovery combines executable availability with actual project o
       available.has(command) ? `/fixture/${command}` : null,
     )
     let probe = { exitCode: 0, stdout: "Air: An R language server and formatter" }
-    const spawn = spyOn(Bun, "spawn").mockImplementation(
-      () => ({ exited: Promise.resolve(probe.exitCode), stdout: new Response(probe.stdout).body }) as never,
-    )
+    const spawn = spyOn(FormatterProcess, "run").mockImplementation(async () => probe)
     try {
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -96,7 +97,7 @@ test("formatter discovery combines executable availability with actual project o
 
 test("file edits invoke configured formatter processes and isolate failures from other formatters", () =>
   runtime.run(async () => {
-    const { Bus } = await import("@ericsanchezok/synergy-harness/bus")
+    const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
     const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
     await using tmp = await tmpdir({
       config: {
@@ -119,11 +120,17 @@ test("file edits invoke configured formatter processes and isolate failures from
         Format.init()
         const filepath = path.join(tmp.path, "input.fixture")
         await Bun.write(filepath, "original")
-        await Bus.publish(File.Event.Edited, { file: filepath })
+        await WorkspaceEvents.publish(File.Event.Edited, {
+          file: filepath,
+          contentVersion: FileTime.version(await Bun.file(filepath).bytes()),
+        })
         expect(await Bun.file(filepath).text()).toBe("formatted by fixture")
         const unmatched = path.join(tmp.path, "input.unmatched")
         await Bun.write(unmatched, "untouched")
-        await Bus.publish(File.Event.Edited, { file: unmatched })
+        await WorkspaceEvents.publish(File.Event.Edited, {
+          file: unmatched,
+          contentVersion: FileTime.version("untouched"),
+        })
         expect(await Bun.file(unmatched).text()).toBe("untouched")
         expect((await Format.status()).some((formatter) => formatter.name === "disabled")).toBe(false)
       },
@@ -133,7 +140,7 @@ test("file edits invoke configured formatter processes and isolate failures from
 
 test("global formatter opt-out leaves file edits untouched", () =>
   runtime.run(async () => {
-    const { Bus } = await import("@ericsanchezok/synergy-harness/bus")
+    const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
     const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
     await using tmp = await tmpdir({ config: { formatter: false } })
     await ScopeContext.provide({
@@ -144,11 +151,260 @@ test("global formatter opt-out leaves file edits untouched", () =>
         Format.init()
         const filepath = path.join(tmp.path, "disabled.py")
         await Bun.write(filepath, "unchanged")
-        await Bus.publish(File.Event.Edited, { file: filepath })
+        await WorkspaceEvents.publish(File.Event.Edited, {
+          file: filepath,
+          contentVersion: FileTime.version(await Bun.file(filepath).bytes()),
+        })
         expect(await Bun.file(filepath).text()).toBe("unchanged")
       },
     })
     await Format.reload()
   }))
+
+test("formatting runs once in the owning Workspace when one Scope has multiple directories", () =>
+  runtime.run(async () => {
+    const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
+    const { Session } = await import("@ericsanchezok/synergy-harness/session")
+    const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+    await using first = await tmpdir({
+      config: {
+        formatter: {
+          fixture: {
+            command: [
+              process.execPath,
+              "-e",
+              "const p=process.argv[1];await Bun.write(p,(await Bun.file(p).text())+'|'+process.cwd())",
+              "$FILE",
+            ],
+            extensions: [".fixture"],
+          },
+        },
+      },
+    })
+    await using second = await tmpdir()
+    const scope = await first.scope()
+    const sessions = await ScopeContext.provide({
+      scope,
+      fn: async () => [
+        await Session.create({}),
+        await Session.create({ workspace: { type: "directory", scopeID: scope.id, path: second.path } }),
+      ],
+    })
+    for (const session of sessions)
+      await ScopeContext.provide({
+        scope,
+        workspace: session.workspace,
+        fn() {
+          Format.init()
+          Format.init()
+        },
+      })
+    const file = path.join(second.path, "once.fixture")
+    await Bun.write(file, "original")
+    await ScopeContext.provide({
+      scope,
+      workspace: sessions[1]!.workspace,
+      fn: () => WorkspaceEvents.publish(File.Event.Edited, { file, contentVersion: FileTime.version("original") }),
+    })
+    expect(await Bun.file(file).text()).toBe("original|" + second.path)
+  }))
+
+test("a stale edit cannot run a formatter over newer file content", () =>
+  runtime.run(async () => {
+    const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
+    const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+    await using tmp = await tmpdir({
+      config: {
+        formatter: {
+          fixture: {
+            command: [process.execPath, "-e", "await Bun.write(process.argv[1], 'formatted stale event')", "$FILE"],
+            extensions: [".fixture"],
+          },
+        },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      async fn() {
+        await Format.reload()
+        Format.init()
+        const file = path.join(tmp.path, "stale.fixture")
+        await Bun.write(file, "newer file content")
+        await WorkspaceEvents.publish(File.Event.Edited, { file, contentVersion: FileTime.version("old content") })
+        expect(await Bun.file(file).text()).toBe("newer file content")
+        await Format.reload()
+      },
+    })
+  }))
+
+test(
+  "formatter reload cancels queued native work without starting it",
+  () =>
+    runtime.run(async () => {
+      const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
+      const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+      await using tmp = await tmpdir({
+        config: {
+          formatter: {
+            fixture: {
+              command: [process.execPath, "-e", "await Bun.write(process.argv[1], 'unexpected formatter')", "$FILE"],
+              extensions: [".fixture"],
+            },
+          },
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          await Format.reload()
+          Format.init()
+          const file = path.join(tmp.path, "queued.fixture")
+          await Bun.write(file, "original")
+          const started = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          const blocked = WorkspaceAccess.write([tmp.path], async () => {
+            started.resolve()
+            await release.promise
+          })
+          await started.promise
+          let settled = false
+          const formatting = WorkspaceEvents.publish(File.Event.Edited, {
+            file,
+            contentVersion: FileTime.version("original"),
+          }).then(() => {
+            settled = true
+          })
+          try {
+            await Bun.sleep(200)
+            expect(settled).toBe(false)
+            await Format.reload()
+            await formatting
+            expect(await Bun.file(file).text()).toBe("original")
+          } finally {
+            release.resolve()
+            await blocked
+            await formatting
+            await Format.reload()
+          }
+        },
+      })
+    }),
+  10000,
+)
+
+test(
+  "formatting rechecks the edit version after waiting for another writer",
+  () =>
+    runtime.run(async () => {
+      const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
+      const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+      await using tmp = await tmpdir({
+        config: {
+          formatter: {
+            fixture: {
+              command: [process.execPath, "-e", "await Bun.write(process.argv[1], 'stale formatter')", "$FILE"],
+              extensions: [".fixture"],
+            },
+          },
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          await Format.reload()
+          Format.init()
+          const file = path.join(tmp.path, "queued.fixture")
+          await Bun.write(file, "original")
+          const started = Promise.withResolvers<void>(),
+            release = Promise.withResolvers<void>()
+          const blocked = WorkspaceAccess.write([tmp.path], async () => {
+            started.resolve()
+            await release.promise
+          })
+          await started.promise
+          const formatting = WorkspaceEvents.publish(File.Event.Edited, {
+            file,
+            contentVersion: FileTime.version("original"),
+          })
+          try {
+            await Bun.sleep(100)
+            await Bun.write(file, "newer")
+          } finally {
+            release.resolve()
+            await blocked
+          }
+          await formatting
+          expect(await Bun.file(file).text()).toBe("newer")
+          await Format.reload()
+        },
+      })
+    }),
+  10000,
+)
+
+test(
+  "a formatter retains write ownership until its detached descendants finish",
+  () =>
+    runtime.run(async () => {
+      const { WorkspaceEvents } = await import("@ericsanchezok/synergy-harness/workspace/events")
+      const { File } = await import("@ericsanchezok/synergy-runtime-local/file")
+      await using control = await tmpdir()
+      const ready = path.join(control.path, "ready"),
+        finish = path.join(control.path, "finish")
+      const descendant = `await Bun.write(${JSON.stringify(ready)}, 'ready'); while (!(await Bun.file(${JSON.stringify(finish)}).exists())) await Bun.sleep(10); await Bun.write(process.argv[1], 'descendant formatted')`
+      await using tmp = await tmpdir({
+        config: {
+          formatter: {
+            fixture: {
+              command: [
+                process.execPath,
+                "-e",
+                `const {spawn}=await import('node:child_process');spawn(process.execPath,['-e',${JSON.stringify(descendant)},process.argv[1]],{env:{},detached:true,stdio:'ignore'}).unref()`,
+                "$FILE",
+              ],
+              extensions: [".fixture"],
+            },
+          },
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          await Format.reload()
+          Format.init()
+          const file = path.join(tmp.path, "tree.fixture")
+          await Bun.write(file, "original")
+          let settled = false
+          const formatting = WorkspaceEvents.publish(File.Event.Edited, {
+            file,
+            contentVersion: FileTime.version("original"),
+          }).then(() => {
+            settled = true
+          })
+          try {
+            const deadline = Date.now() + 5000
+            while (
+              (await Bun.file(ready)
+                .text()
+                .catch(() => "")) !== "ready" &&
+              Date.now() < deadline
+            )
+              await Bun.sleep(10)
+            expect(await Bun.file(ready).text()).toBe("ready")
+            expect(settled).toBe(false)
+            await expect(
+              WorkspaceAccess.write([control.path], async () => {}, AbortSignal.timeout(100)),
+            ).rejects.toMatchObject({ name: "TimeoutError" })
+          } finally {
+            await Bun.write(finish, "finish")
+            await formatting
+            await Format.reload()
+          }
+          expect(await Bun.file(file).text()).toBe("descendant formatted")
+        },
+      })
+    }),
+  15000,
+)
 
 afterRuntimeTests(() => runtime.close())

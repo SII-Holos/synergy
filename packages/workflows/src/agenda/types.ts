@@ -212,6 +212,7 @@ export namespace AgendaTypes {
     .object({
       scope: ScopeField.describe("Scope where the item was created"),
       sessionID: z.string().optional().describe("Session where the item was created"),
+      workspaceID: z.string().nullable().optional().describe("Workspace captured when the item was created"),
       endpoint: SessionEndpoint.Info.optional().describe("Endpoint context if created from a session endpoint"),
     })
     .meta({ ref: "AgendaOrigin" })

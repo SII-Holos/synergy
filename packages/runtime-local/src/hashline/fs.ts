@@ -1,3 +1,5 @@
+import { FileMutation } from "../file/mutation"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 /**
  * Storage seam for the hashline patcher. Filesystem is intentionally
  * minimal — `readText`, `writeText`, `exists` — so any backing store can be
@@ -32,7 +34,7 @@ export function isNotFound(error: unknown): boolean {
 export abstract class Filesystem {
   abstract readText(path: string): Promise<string>
   async preflightWrite(_path: string): Promise<void> {}
-  abstract writeText(path: string, content: string): Promise<WriteResult>
+  abstract writeText(path: string, content: string, expectedContent?: string | null): Promise<WriteResult>
 
   async exists(path: string): Promise<boolean> {
     try {
@@ -65,7 +67,9 @@ export class InMemoryFilesystem extends Filesystem {
     return text
   }
 
-  override async writeText(path: string, content: string): Promise<WriteResult> {
+  override async writeText(path: string, content: string, expectedContent?: string | null): Promise<WriteResult> {
+    if (expectedContent !== undefined && expectedContent !== (this.#files.get(path) ?? null))
+      throw new FileMutation.ConflictError()
     this.#files.set(path, content)
     return { text: content }
   }
@@ -99,11 +103,17 @@ export class BunFilesystem extends Filesystem {
   override async readText(path: string): Promise<string> {
     const file = Bun.file(path)
     if (!(await file.exists())) throw new NotFoundError(path)
-    return file.text()
+    return FileMutation.readText(path)
   }
 
-  override async writeText(path: string, content: string): Promise<WriteResult> {
-    await Bun.write(path, content)
+  override async writeText(path: string, content: string, expectedContent?: string | null): Promise<WriteResult> {
+    await FileMutation.write({
+      path,
+      content,
+      expectedVersion:
+        expectedContent === undefined || expectedContent === null ? expectedContent : FileTime.version(expectedContent),
+      createParents: true,
+    })
     return { text: content }
   }
 

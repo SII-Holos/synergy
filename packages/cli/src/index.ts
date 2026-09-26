@@ -2,12 +2,18 @@ export async function runCoreWorker(): Promise<boolean> {
   const worker = process.argv.find((arg) =>
     [
       "__storage-worker-runner",
+      "__owned-process-runner",
       "__observability-worker-runner",
       "__agent-turn-runner",
       "__policy-worker-runner",
     ].includes(arg),
   )
   if (!worker) return false
+  if (worker === "__owned-process-runner") {
+    const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-runtime-local/process/owned-worker")
+    await runOwnedProcessWorker(process.argv[process.argv.indexOf(worker) + 1]!)
+    return true
+  }
   if (worker === "__storage-worker-runner") {
     await import("@ericsanchezok/synergy-harness/storage/sqlite-worker")
     await new Promise(() => {})

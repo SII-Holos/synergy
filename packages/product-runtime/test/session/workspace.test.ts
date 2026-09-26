@@ -11,6 +11,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Info as InfoSchema, type Workspace } from "@ericsanchezok/synergy-harness/session/types"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import path from "path"
+import fs from "node:fs/promises"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -113,19 +114,20 @@ describe("session workspace binding", () => {
             using(async () => {
               const customWs: SessionWorkspace = {
                 type: "custom-type",
-                path: "/custom/workspace/path",
+                path: path.join(tmp.path, "custom"),
                 scopeID: scope.id,
               }
 
+              await fs.mkdir(customWs.path, { recursive: true })
               const session = await Session.create({ workspace: customWs })
 
               expect(session).toHaveProperty("workspace")
               const ws = session.workspace as SessionWorkspace
-              expect(ws).toEqual(customWs)
+              expect(ws).toMatchObject({ ...customWs, id: session.workspaceID, generation: 1, bindingState: "bound" })
 
               const read = await Session.get(session.id)
               const readWs = (read as Record<string, unknown>).workspace as SessionWorkspace
-              expect(readWs).toEqual(customWs)
+              expect(readWs).toEqual(ws)
 
               await Session.remove(session.id)
             })(),
@@ -204,15 +206,16 @@ describe("session workspace binding", () => {
 
               const newWs: SessionWorkspace = {
                 type: "updated-workspace",
-                path: "/new/workspace/path",
+                path: path.join(tmp.path, "updated"),
                 scopeID: scope.id,
               }
 
+              await fs.mkdir(newWs.path, { recursive: true })
               const updated = await Session.updateWorkspace(session.id, newWs)
 
               expect(updated).toHaveProperty("workspace")
               const ws = updated.workspace as SessionWorkspace
-              expect(ws).toEqual(newWs)
+              expect(ws).toMatchObject({ ...newWs, id: updated.workspaceID, generation: 1, bindingState: "bound" })
 
               const updatedScope = updated.scope as Scope
               expect(updatedScope.id).toBe(originalScopeID)
@@ -220,7 +223,7 @@ describe("session workspace binding", () => {
 
               const read = await Session.get(session.id)
               const readWs = (read as Record<string, unknown>).workspace as SessionWorkspace
-              expect(readWs).toEqual(newWs)
+              expect(readWs).toEqual(ws)
 
               const readScope = read.scope as Scope
               expect(readScope.id).toBe(originalScopeID)
@@ -302,9 +305,10 @@ describe("session workspace binding", () => {
             using(async () => {
               const ws: SessionWorkspace = {
                 type: "main",
-                path: "/workspace-driven-directory",
+                path: path.join(tmp.path, "session-workspace"),
                 scopeID: scope.id,
               }
+              await fs.mkdir(ws.path, { recursive: true })
               const session = await Session.create({ workspace: ws })
 
               await SessionManager.run(session.id, async () => {
@@ -335,6 +339,7 @@ describe("session workspace binding", () => {
                 path: scope.local!.directory,
                 scopeID: scope.id,
               }
+              await fs.mkdir(ws.path, { recursive: true })
               const session = await Session.create({ workspace: ws })
 
               await SessionManager.run(session.id, async () => {
@@ -361,9 +366,10 @@ describe("session workspace binding", () => {
             using(async () => {
               const ws: SessionWorkspace = {
                 type: "main",
-                path: "/some/workspace/path",
+                path: path.join(tmp.path, "separate-workspace"),
                 scopeID: scope.id,
               }
+              await fs.mkdir(ws.path, { recursive: true })
               const session = await Session.create({ workspace: ws })
 
               await SessionManager.run(session.id, async () => {
@@ -477,8 +483,8 @@ describe("session workspace binding", () => {
               await SessionManager.run(session.id, async () => {
                 expect(ScopeContext.current.directory).toBe(scope.local!.directory)
 
+                await fs.mkdir(worktreeWs.path, { recursive: true })
                 await Session.updateWorkspace(session.id, worktreeWs)
-                ScopeContext.refreshWorkspace(worktreeWs as Workspace)
 
                 expect(ScopeContext.current.directory).toBe(worktreeWs.path)
                 expect((ScopeContext.current.workspace as SessionWorkspace | undefined)?.type).toBe("git_worktree")
@@ -549,8 +555,8 @@ describe("session workspace binding", () => {
               }
 
               await SessionManager.run(session.id, async () => {
+                await fs.mkdir(worktreeWs.path, { recursive: true })
                 await Session.updateWorkspace(session.id, worktreeWs)
-                ScopeContext.refreshWorkspace(worktreeWs as Workspace)
 
                 const gate = (await EnforcementGate.create({
                   activeWorkspace: ScopeContext.current.directory,
@@ -640,6 +646,7 @@ describe("workspace boundary enforcement with sandbox", () => {
               path: "/tmp/isolated-worktree",
               scopeID: scope.id,
             }
+            await fs.mkdir(ws.path, { recursive: true })
             const session = await Session.create({ workspace: ws })
             const policy = await WorkspacePolicy.fromSession(session)
 

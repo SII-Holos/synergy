@@ -1,6 +1,6 @@
 ---
 name: find-logs
-description: Identify the exact Synergy backend and SYNERGY_HOME behind a local or managed runtime, inspect its logs and structured traces, and gather runtime evidence for failures. Use for errors, crashes, stuck sessions, tool calls, traces, daemon startup, performance incidents, multiple bun dev servers, reproducing state-dependent bugs, or adding temporary diagnostic instrumentation in an isolated worktree/runtime.
+description: Identify the exact Synergy backend and SYNERGY_HOME behind a local or managed runtime, inspect its logs and structured traces, and gather runtime evidence for failures. Use for errors, crashes, stuck sessions, native Workspace claim recovery, tool calls, traces, daemon startup, performance incidents, multiple bun dev servers, reproducing state-dependent bugs, or adding temporary diagnostic instrumentation in an isolated worktree/runtime.
 ---
 
 # Diagnose the Running Synergy Instance
@@ -79,6 +79,19 @@ For a local interception hypothesis, check name resolution and routing before ed
 Never write a raw provider URL into a report, commit, or issue while doing this: provider keys are commonly embedded in the URL path, so only the host is publishable.
 
 For a long-running local migration that fails a request deadline, correlate the failure with system sleep/wake events before changing query timeouts. On macOS, inspect the relevant time window in `pmset -g log`. An idle-sleep inhibitor does not guarantee execution through lid closure or forced sleep. Resume only after confirming the previous owner exited, reuse committed migration checkpoints, and repeat checks required by the new transaction; do not skip integrity verification or launch a second owner.
+
+## Recover Native Workspace Coordination
+
+Use this procedure for persistent native write contention or a claims-ledger parse failure. Read [Workspace ownership](../../../docs/architecture/workspace-and-files.md#workspace-write-coordination) before classifying the failure. An agent must never stop, restart or repair the instance carrying its current task; host maintenance belongs in a separately authorized operator window.
+
+1. Distinguish an ordinary `WorkspaceBusyError` from JSON/schema failure or an unverifiable native process tree. Correlate the owning Runtime, claim kind/state, native ownership mechanism, PID/start identity and completion evidence. A shell exit, closed terminal connection, old PID or empty process-list snapshot does not prove all descendants exited.
+2. Resolve the OS-account coordination directory from [the owning implementation](../../../packages/runtime-local/src/file/mutation.ts), not `SYNERGY_HOME`, `TMPDIR` or `TEMP`. POSIX uses `/tmp/synergy-file-locks-<uid>`; Windows uses `.synergy-file-locks` under the OS-reported user profile. The affected ledger is `workspace-claims-v1.json`. Verify directory ownership, privacy and absence of symlinks before accessing it; do not bypass a failed check with a permission change.
+3. Keep a private copy of the evidence before maintenance. The ledger contains owner identifiers, tokens, paths and native receipt references; publish only redacted counts, kinds and failure categories. Read a copy for diagnosis. `WorkspaceCoordinator.inspect()` can reap claims and persist the ledger, so it is not a read-only file viewer. Do not create a replacement coordinator directory or change temporary-directory variables to evade an existing claim.
+4. For a verified live owner, use its normal cancellation or terminal shutdown and wait for complete native cleanup. Closing only the browser connection is insufficient. Leave other Sessions and Runtime instances alone; a host-wide writer can legitimately block unrelated directories. Verify a subsequent small native write after the owner finishes.
+5. For a valid Linux claim whose supervisor died without a completion receipt, retain the ledger and receipt. Arrange a host reboot with the operator, then verify the host boot identity changed. The native inspector treats an old-boot tree as exited, permitting normal coordinator reclamation; a Runtime restart alone does not. Do not forge a completion receipt, remove the claim by PID or impose an age-based expiry.
+6. For a malformed ledger, treat every recorded owner as unknown. Arrange host maintenance with automatic Synergy startup suspended, preserve a private evidence copy and reboot the host. Before any Runtime or native worker starts again, recheck the coordination directory and move only the affected regular ledger file to a new private quarantine filename. Keep its bytes and the rest of the directory intact; do not delete lock files, receipts or the whole directory. Start one Runtime, which creates a new ledger on first admission. If the host cannot be made exclusively offline after reboot, retain the failure and escalate instead of replacing the ledger.
+
+Verify recovery through a disposable, explicitly selected Workspace: create a uniquely named file, read its exact bytes, conditionally edit it, read it again and remove only that test file. Confirm a second operation is admitted after the first completes, the Runtime remains healthy, and any failed operation history still reports its actual result. Resume the other instances after this check. Recovery restores admission; it does not replay interrupted commands or manufacture missing snapshot evidence.
 
 ## Escalate to Runtime Reproduction
 

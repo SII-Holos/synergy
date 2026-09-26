@@ -10,6 +10,9 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
+import { WorkspaceHomeTransfer } from "./workspace-transfer"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import {
   archiveExclusions,
   copyDirSkipExisting,
@@ -34,7 +37,44 @@ const local = new Set([
 ])
 
 export namespace DataTransfer {
+  const fileClaims = RuntimeContext.createAsyncContext<string[]>()
+  async function canonical(directory: string): Promise<string> {
+    try {
+      return await fs.realpath(directory)
+    } catch (error) {
+      const parent = path.dirname(directory)
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" || parent === directory) throw error
+      return path.join(await canonical(parent), path.basename(directory))
+    }
+  }
+
+  function contains(root: string, filename: string) {
+    const relative = path.relative(root, filename)
+    return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+
+  export async function withFiles<T>(roots: string[], fn: () => Promise<T>) {
+    const resolved = await Promise.all(roots.map((root) => canonical(path.resolve(root))))
+    const current = fileClaims.getStore()
+    if (current) {
+      if (!resolved.every((root) => current.some((claimed) => contains(claimed, root))))
+        throw new Error("Nested Home transfer escaped its file ownership")
+      return fn()
+    }
+    return WorkspaceAccess.maintenance(() => WorkspaceAccess.retire(resolved, () => fileClaims.run(resolved, fn)))
+  }
+
+  export async function validateHomes(roots: string[]) {
+    const resolved = await Promise.all(roots.map((root) => canonical(path.resolve(root))))
+    for (let i = 0; i < resolved.length; i++)
+      for (let j = 0; j < resolved.length; j++) {
+        if (i === j) continue
+        if (contains(resolved[i], resolved[j])) throw new Error("Source and target Homes must not overlap")
+      }
+  }
+
   export async function lockHomes(roots: string[]) {
+    await validateHomes(roots)
     for (const root of [...new Set(roots.map((root) => path.resolve(root)))].sort()) {
       const entry = fileURLToPath(new URL("../../index.ts", import.meta.url))
       const child = Bun.spawn({
@@ -70,6 +110,10 @@ export namespace DataTransfer {
   }
 
   export async function pack(sourceRoot: string, destination: string) {
+    return withFiles([sourceRoot, destination], () => packRecords(sourceRoot, destination))
+  }
+
+  async function packRecords(sourceRoot: string, destination: string) {
     const handle = await StorageBootstrap.inspect(sourceRoot)
     if (!handle) throw new Error("Source storage has not been initialized")
     try {
@@ -96,6 +140,15 @@ export namespace DataTransfer {
     targetRoot: string,
     options: { progress?: (progress: CopyProgress) => void; trusted?: boolean } = {},
   ) {
+    return withFiles([sourceRoot, targetRoot], () => mergeRecords(sourceRoot, targetRoot, options))
+  }
+
+  async function mergeRecords(
+    sourceRoot: string,
+    targetRoot: string,
+    options: { progress?: (progress: CopyProgress) => void; trusted?: boolean },
+  ) {
+    await validateHomes([sourceRoot, targetRoot])
     const source = await StorageBootstrap.inspect(sourceRoot)
     if (!source) throw new Error("Source storage has not been initialized")
     let target: StorageBootstrap.Prepared | undefined
@@ -136,12 +189,19 @@ export namespace DataTransfer {
         { accept: acceptArtifact },
       )
       const conflicts = new Set<string>()
+      const workspaces = await WorkspaceHomeTransfer.prepare(
+        source.store,
+        target.store,
+        acceptArtifact,
+        options.trusted ? { sourceRoot, targetRoot } : undefined,
+      )
       const result = await StoragePortable.importFile(target.store, path.join(backup, "data", "agent-records.ndjson"), {
         operationID: id,
         accept: async (entry, tx) => {
           if (entry.type === "event") return false
           if (entry.type === "receipt") return true
           if (local.has(entry.key[0]) || derived.has(entry.key[0])) return false
+          if (workspaces && WorkspaceHomeTransfer.roots.has(entry.key[0])) return false
           // Grants, consent and trust decisions never cross homes through an
           // untrusted merge: an imported approval would silently satisfy the
           // consent prompt for a later plugin install. Same-home relocation
@@ -163,7 +223,12 @@ export namespace DataTransfer {
           }
           return (await tx.readMany([entry.key]))[0] === undefined
         },
+        transform: (entry) =>
+          entry.type === "record" && workspaces && acceptArtifact(entry.key)
+            ? { ...entry, value: workspaces.record(entry.key, entry.value) }
+            : entry,
         afterImport: async (tx) => {
+          await workspaces?.publish(tx)
           await Session.rebuildStorageIndexes(tx)
           await tx.write(["storage_transfer", id], {
             version: 1,

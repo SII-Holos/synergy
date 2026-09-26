@@ -2500,6 +2500,10 @@ msgid "app.file.banner.deleted"
 msgstr "文件已删除。正在显示最后可用的内容。"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.banner.draftBackupUnavailable"
+msgstr "本地草稿备份不可用。关闭窗口前，请保存文件或复制你的修改。"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.banner.truncated"
 msgstr "正在显示此文件的前 512 KiB。"
 
@@ -2615,75 +2619,139 @@ msgstr "切换文件树"
 msgid "app.file.toolbar.viewMode"
 msgstr "文件查看模式"
 
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.workspace.missing"
+msgstr "请从文件所属的工作区重新打开此文件。"
+
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.apply"
+msgstr "执行"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cancel"
+msgstr "取消"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copy"
+msgstr "复制"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createDirectory"
+msgstr "新建文件夹"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createFile"
+msgstr "新建文件"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.deleteWarning"
+msgstr "这会永久删除所选项目及其内容，且无法撤销。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.draftsKept"
+msgstr "未保存的草稿会保留在原路径并保持打开。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.failed"
+msgstr "文件操作失败。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.move"
+msgstr "移动或重命名"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.operation"
+msgstr "操作"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.path"
+msgstr "Workspace 内的路径"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.refreshRequired"
+msgstr "请先刷新文件列表，再修改此项目。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.remove"
+msgstr "永久删除"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.title"
+msgstr "文件操作"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.working"
+msgstr "处理中…"
+
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.closeTree"
 msgstr "关闭文件树"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.collapseAll"
 msgstr "折叠所有文件夹"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
 msgstr "刷新文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.showHidden"
 msgstr "显示隐藏和忽略的文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.error.retryLoadingFolder"
 msgstr "重试加载文件夹"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.notice"
 msgstr "当前文件被资源管理器过滤器隐藏。"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.showIt"
 msgstr "显示该文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.label"
 msgstr "文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loading"
 msgstr "正在加载…"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loadingMore"
 msgstr "正在加载更多…"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.resize"
 msgstr "调整文件面板宽度"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.label"
 msgstr "搜索文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.noMatchingFiles"
 msgstr "没有匹配的文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.placeholder"
 msgstr "搜索文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.results.label"
 msgstr "文件搜索结果"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.title"
 msgstr "文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.label"
 msgstr "工作区文件"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.symbolicLink"
 msgstr "符号链接"
 
@@ -12078,6 +12146,14 @@ msgid "session-review.expand-all"
 msgstr "全部展开"
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.historical-binding"
+msgstr "此变更属于其他工作区绑定，或原绑定已不可用。"
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.operation"
+msgstr "第 {number} 次改动"
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr "拆分"
 
@@ -12088,6 +12164,10 @@ msgstr "会话更改"
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.unified"
 msgstr "统一"
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.view-file"
+msgstr "打开文件"
 
 #. js-lingui-explicit-id
 msgid "session-status.analyzing-files"
@@ -13699,6 +13779,11 @@ msgstr "文件已恢复"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.filesRestoreFailed"
 msgstr "恢复文件失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.partialRestore"
+msgstr "已恢复 {restored} 个文件；{failed} 个文件未能恢复。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -20941,6 +21026,10 @@ msgid "turn-change.calculation-failed"
 msgstr "无法计算文件更改"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.recording-incomplete"
+msgstr "文件改动记录尚不完整"
+
+#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "查看更改"
 
@@ -21315,3 +21404,95 @@ msgstr "{title} 中的更改尚未保存。"
 #. js-lingui-explicit-id
 msgid "workbench.discard.title"
 msgstr "放弃未保存的更改？"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.applyBinding"
+msgstr "重新绑定 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.busy"
+msgstr "会话空闲时才能切换 Workspace。正在进行的文件操作也可能阻止重新绑定或修改共享权限。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.choose"
+msgstr "使用此 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.description"
+msgstr "选择此会话的工作目录。项目、设置和对话保持不变。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.directory"
+msgstr "本地目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.empty"
+msgstr "没有匹配的 Workspace。添加一个已有目录即可开始。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.failed"
+msgstr "无法更新 Workspace。请重新加载以查看当前状态。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.loading"
+msgstr "正在加载 Workspace…"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.none"
+msgstr "不使用本地文件"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.pick"
+msgstr "浏览"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebind"
+msgstr "更改本地绑定"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindDescription"
+msgstr "使用此 Workspace 的所有会话都将改用新目录。已有文件保留在原位置。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindPath"
+msgstr "新的本地目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.register"
+msgstr "添加目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.reload"
+msgstr "重新加载"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.saveSharing"
+msgstr "保存共享权限"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.search"
+msgstr "查找 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharing"
+msgstr "允许额外写入的 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingDescription"
+msgstr "此 Workspace 中的会话也可以写入所选目录。共享权限直接生效，不会继承其他 Workspace 的共享权限。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingEmpty"
+msgstr "添加另一个目录后即可共享写入权限。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.title"
+msgstr "选择 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.unavailable"
+msgstr "不可用，请选择本地目录重新绑定"

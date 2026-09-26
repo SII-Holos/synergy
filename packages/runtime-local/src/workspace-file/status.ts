@@ -1,7 +1,7 @@
 import { $ } from "bun"
 import path from "path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileStatusCache } from "./status-cache"
 
@@ -19,7 +19,7 @@ function root() {
 }
 
 function cleanRelative(input: string) {
-  return input.replaceAll("\\", "/").replace(/^\/+/, "")
+  return input.replace(/^\/+/, "")
 }
 
 function parseStatus(input: string): WorkspaceFile.GitStatus {
@@ -44,14 +44,22 @@ async function lineCount(filepath: string) {
 }
 
 async function build(): Promise<WorkspaceFile.StatusSummary> {
-  const scope = ScopeContext.current.scope
-  if (scope.type !== "project" || scope.local?.vcs !== "git") return { files: [] }
-
   const cwd = root()
+  const repository = await $`git rev-parse --is-inside-work-tree`.cwd(cwd).quiet().nothrow()
+  if (repository.exitCode !== 0 || repository.stdout.toString().trim() !== "true") return { files: [] }
   const counts = new Map<string, { added: number; removed: number }>()
-  const numstat = await $`git diff --numstat HEAD`.cwd(cwd).quiet().nothrow().text()
-  for (const line of numstat.trim().split(/\r?\n/).filter(Boolean)) {
-    const [added, removed, filepath] = line.split("\t")
+  const [numstat, nameStatus, untracked] = await Promise.all([
+    $`git diff --numstat --no-renames --relative -z HEAD -- .`.cwd(cwd).quiet().nothrow().text(),
+    $`git diff --name-status -M --relative -z HEAD -- .`.cwd(cwd).quiet().nothrow().text(),
+    $`git ls-files --others --exclude-standard -z -- .`.cwd(cwd).quiet().nothrow().text(),
+  ])
+  for (const line of numstat.split("\0").filter(Boolean)) {
+    const first = line.indexOf("\t")
+    const second = line.indexOf("\t", first + 1)
+    if (first < 0 || second < 0) continue
+    const added = line.slice(0, first)
+    const removed = line.slice(first + 1, second)
+    const filepath = line.slice(second + 1)
     if (!filepath) continue
     counts.set(cleanRelative(filepath), {
       added: added === "-" ? 0 : Number.parseInt(added, 10) || 0,
@@ -60,11 +68,11 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
   }
 
   const files = new Map<string, WorkspaceFile.StatusSummary["files"][number]>()
-  const nameStatus = await $`git diff --name-status -M HEAD`.cwd(cwd).quiet().nothrow().text()
-  for (const line of nameStatus.trim().split(/\r?\n/).filter(Boolean)) {
-    const parts = line.split("\t")
-    const status = parseStatus(parts[0] ?? "M")
-    const filepath = cleanRelative(status === "renamed" ? (parts[2] ?? parts[1] ?? "") : (parts[1] ?? ""))
+  const names = nameStatus.split("\0")
+  for (let i = 0; i < names.length - 1; ) {
+    const status = parseStatus(names[i++]!)
+    const oldPath = names[i++] ?? ""
+    const filepath = cleanRelative(status === "renamed" ? (names[i++] ?? "") : oldPath)
     if (!filepath) continue
     files.set(filepath, {
       path: filepath,
@@ -73,8 +81,7 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
     })
   }
 
-  const untracked = await $`git ls-files --others --exclude-standard`.cwd(cwd).quiet().nothrow().text()
-  const untrackedFiles = untracked.trim().split(/\r?\n/).filter(Boolean)
+  const untrackedFiles = untracked.split("\0").filter(Boolean)
   const shouldCountUntrackedLines = untrackedFiles.length <= MAX_UNTRACKED_LINE_COUNT_FILES
   for (const filepath of untrackedFiles) {
     const relative = cleanRelative(filepath)
@@ -93,7 +100,7 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
 }
 
 export namespace WorkspaceFileStatus {
-  const state = ScopedState.create(() =>
+  const state = WorkspaceState.create(() =>
     WorkspaceFileStatusCache.create<StatusEntry>({
       ttlMs: STATUS_TTL_MS,
       build: async () => {

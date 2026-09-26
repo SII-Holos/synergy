@@ -118,11 +118,6 @@ export namespace FileWatcherEvents {
     return path.posix.normalize(input)
   }
 
-  function parentOf(input: string, platform: PathPlatform) {
-    const normalized = normalizePath(input, platform)
-    return platform === "win32" ? path.win32.dirname(normalized) : path.posix.dirname(normalized)
-  }
-
   export function normalize(events: RawEvent[], platform: PathPlatform = platformKind()): WorkspaceChange[] {
     const deletes = events.filter((event) => event.type === "delete")
     const creates = events.filter((event) => event.type === "create")
@@ -141,16 +136,7 @@ export namespace FileWatcherEvents {
         continue
       }
 
-      const renameIndex = deletes.findIndex((item, index) => {
-        if (usedDeletes.has(index)) return false
-        return parentOf(item.path, platform) === parentOf(create.path, platform)
-      })
-      if (renameIndex === -1) {
-        result.push({ path: create.path, event: "added" })
-        continue
-      }
-      usedDeletes.add(renameIndex)
-      result.push({ path: create.path, event: "renamed", oldPath: deletes[renameIndex]!.path })
+      result.push({ path: create.path, event: "added" })
     }
 
     for (const update of updates) result.push({ path: update.path, event: "changed" })

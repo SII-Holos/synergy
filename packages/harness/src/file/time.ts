@@ -1,36 +1,29 @@
-import { ScopeContext } from "../scope/context"
-import { ScopedState } from "../scope/scoped-state"
+import { createHash } from "node:crypto"
+import { WorkspaceState } from "../workspace/state"
 import { formatLocalDateTime } from "../util/time-format"
+import { Lock } from "../util/lock"
 import { Log } from "../util/log"
 
 export namespace FileTime {
   const log = Log.create({ service: "file.time" })
-  // Per-session read times plus per-file write locks.
-  // All tools that overwrite existing files should run their
-  // assert/read/write/update sequence inside withLock(filepath, ...)
-  // so concurrent writes to the same file are serialized.
-  export const state = ScopedState.create(() => {
-    const read: {
-      [sessionID: string]: {
-        [path: string]: Date | undefined
-      }
-    } = {}
-    const locks = new Map<string, Promise<void>>()
-    return {
-      read,
-      locks,
-    }
-  })
+  export const state = WorkspaceState.create(() => ({
+    read: new Map<string, Map<string, { at: Date; version?: string }>>(),
+  }))
 
-  export function read(sessionID: string, file: string) {
+  export function version(content: string | Uint8Array): string {
+    return `sha256:${createHash("sha256").update(content).digest("hex")}`
+  }
+
+  export function read(sessionID: string, file: string, content?: string | Uint8Array) {
     log.info("read", { sessionID, file })
-    const { read } = state()
-    read[sessionID] = read[sessionID] || {}
-    read[sessionID][file] = new Date()
+    const current = state()
+    let files = current.read.get(sessionID)
+    if (!files) current.read.set(sessionID, (files = new Map()))
+    files.set(file, { at: new Date(), version: content === undefined ? undefined : version(content) })
   }
 
   export function get(sessionID: string, file: string) {
-    return state().read[sessionID]?.[file]
+    return state().read.get(sessionID)?.get(file)?.at
   }
 
   export async function withLock<T>(
@@ -38,54 +31,19 @@ export namespace FileTime {
     fn: () => Promise<T>,
     options?: { signal?: AbortSignal },
   ): Promise<T> {
-    const current = state()
-    const currentLock = current.locks.get(filepath) ?? Promise.resolve()
-    let release: () => void = () => {}
-    const nextLock = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const chained = currentLock.then(() => nextLock)
-    current.locks.set(filepath, chained)
-
-    // Wait for the previous lock, but abort if signal fires.
-    // On abort, remove our chained entry so subsequent callers don't deadlock.
-    if (options?.signal?.aborted) {
-      if (current.locks.get(filepath) === chained) current.locks.delete(filepath)
-      throw new DOMException("Aborted", "AbortError")
-    }
-    const abortPromise = options?.signal
-      ? new Promise<never>((_, reject) => {
-          const onAbort = () => {
-            if (current.locks.get(filepath) === chained) current.locks.delete(filepath)
-            reject(new DOMException("Aborted", "AbortError"))
-          }
-          options.signal!.addEventListener("abort", onAbort, { once: true })
-        })
-      : null
-    try {
-      await (abortPromise ? Promise.race([currentLock, abortPromise]) : currentLock)
-    } catch (error) {
-      release()
-      throw error
-    }
-
-    try {
-      return await fn()
-    } finally {
-      release()
-      if (current.locks.get(filepath) === chained) {
-        current.locks.delete(filepath)
-      }
-    }
+    const key = JSON.stringify([WorkspaceState.key(), "file", filepath])
+    using lock = options?.signal ? await Lock.writeWithSignal(key, options.signal) : await Lock.write(key)
+    if (!lock || options?.signal?.aborted) throw new DOMException("Aborted", "AbortError")
+    return await fn()
   }
 
-  export async function assert(sessionID: string, filepath: string) {
-    const time = get(sessionID, filepath)
-    if (!time) throw new Error(`You must read the file ${filepath} before overwriting it. Use the Read tool first`)
-    const stats = await Bun.file(filepath).stat()
-    if (stats.mtime.getTime() > time.getTime()) {
+  export function assert(sessionID: string, filepath: string, content: string | Uint8Array) {
+    const evidence = state().read.get(sessionID)?.get(filepath)
+    if (!evidence?.version)
+      throw new Error(`You must read the file ${filepath} before overwriting it. Use the Read tool first`)
+    if (evidence.version !== version(content)) {
       throw new Error(
-        `File ${filepath} has been modified since it was last read.\nLast modification: ${formatLocalDateTime(stats.mtime.getTime())}\nLast read: ${formatLocalDateTime(time.getTime())}\n\nPlease read the file again before modifying it.`,
+        `File ${filepath} has been modified since it was last read.\nLast read: ${formatLocalDateTime(evidence.at.getTime())}\n\nPlease read the file again before modifying it.`,
       )
     }
   }

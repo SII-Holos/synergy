@@ -1,7 +1,9 @@
-import fs from "node:fs/promises"
 import { Workspace } from "./workspace-schema"
+import { WorkspaceBinding } from "../workspace/binding"
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { SessionRecords } from "./records"
 import { ModelSelection } from "./model-selection-schema"
+import { WorkspaceAccess } from "../workspace/access"
 import { RuntimeContext } from "../lifecycle/context"
 import type { StoreTransaction } from "../storage/transactional-store"
 import { StorageIntegrityError } from "../storage/errors"
@@ -13,7 +15,7 @@ import { SnapshotRecords } from "./snapshot-records"
 import { Decimal } from "decimal.js"
 import { RolloutArtifact } from "./rollout/artifact"
 import { record, RolloutRecordingError } from "./rollout/error"
-import z from "zod"
+import { z } from "zod"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Identifier } from "../id/id"
 import { Installation } from "../global/installation"
@@ -35,6 +37,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { PartWriteBuffer } from "./part-write-buffer"
+import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
 import { Config } from "../config/config"
 import { ControlProfileCompiler } from "../control-profile/compiler"
@@ -178,10 +181,13 @@ export namespace Session {
         const batch = await tx.query<Info>({ kind: "session", scopeID, after, limit: 128 })
         if (!batch.length) break
         for (const record of batch) {
-          const session = {
-            ...record.value,
-            endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
-          }
+          const session = await SessionRecords.hydrate(
+            {
+              ...record.value,
+              endpoint: indexEndpoint(record.value.endpoint, record.value.time.archived),
+            },
+            tx,
+          )
           const index = toIndex(session)
           if (index.scopeID !== scopeID || session.id !== record.key[2])
             throw new Error("Session identity does not match its storage owner")
@@ -274,6 +280,11 @@ export namespace Session {
       z.object({ mode: z.literal("none") }),
       z.object({
         mode: z.literal("current"),
+      }),
+      z.object({
+        mode: z.literal("workspace"),
+        workspaceID: z.string().min(1),
+        workspaceGeneration: z.number().int().positive(),
       }),
       z.object({
         mode: z.literal("existing"),
@@ -458,6 +469,7 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    session = await SessionRecords.hydrate(session)
     const storedRollback = session.history?.rollback
     const [working, history] = await Promise.all([
       SessionWorking.resolve(session.id),
@@ -537,6 +549,7 @@ export namespace Session {
       cortex?: CortexDelegationInfoType
       workflow?: Info["workflow"]
       workspace?: import("./types").Workspace | null
+      workspaceID?: string | null
       forkedFrom?: Info["forkedFrom"]
       completionNotice?: {
         silent?: boolean
@@ -545,12 +558,25 @@ export namespace Session {
   ) {
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
     const scope = input?.scope ?? parent?.scope ?? ScopeContext.current.scope
+    const workspaceID =
+      input?.workspaceID !== undefined
+        ? input.workspaceID
+        : input?.workspace === undefined && parent?.scope.id === scope.id
+          ? parent.workspaceID
+          : undefined
     const workspace =
-      input?.workspace !== undefined
-        ? input.workspace
-        : parent?.scope.id === scope.id
-          ? parent.workspace
-          : ScopeContext.defaultWorkspace(scope)
+      workspaceID !== undefined
+        ? workspaceID === null
+          ? null
+          : WorkspaceCatalog.projection(await WorkspaceCatalog.get(workspaceID, scope.id))
+        : await WorkspaceBinding.adopt(
+            input?.workspace !== undefined
+              ? input.workspace
+              : parent?.scope.id === scope.id
+                ? parent.workspace
+                : ScopeContext.defaultWorkspace(scope),
+            scope.id,
+          )
     if (workspace) {
       Workspace.parse(workspace)
       if (workspace.scopeID !== scope.id) throw new Error("Workspace belongs to a different Scope")
@@ -595,6 +621,7 @@ export namespace Session {
       cortex: input?.cortex,
       workflow: input?.workflow,
       workspace,
+      workspaceID: workspace?.id ?? workspaceID ?? null,
       completionNotice,
       time: {
         created: createdAt,
@@ -608,7 +635,7 @@ export namespace Session {
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
       await Storage.write(
         StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(result.id)),
-        withoutRuntimeInfo(result),
+        SessionRecords.serialize(result),
       )
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await writeEndpointIndex(result)
@@ -633,15 +660,23 @@ export namespace Session {
     selection?: WorkspaceSelection,
   ): Promise<Info & { working?: WorkingInfoType }> {
     const session = await get(sessionID)
-    if (!selection || (selection.mode === "current" && session.workspace)) return session
+    if (
+      !selection ||
+      (selection.mode === "current" && (session.workspace || session.workspaceID || !session.scope.local))
+    )
+      return session
+    if (selection.mode === "workspace") {
+      SessionManager.assertIdle(sessionID)
+      const workspace = await WorkspaceBinding.validate(
+        selection.workspaceID,
+        session.scope.id,
+        selection.workspaceGeneration,
+      )
+      return updateWorkspace(sessionID, workspace, { requireIdle: true })
+    }
     if (selection.mode === "none" || selection.mode === "current") {
       SessionManager.assertIdle(sessionID)
       const workspace = selection.mode === "none" ? null : ScopeContext.defaultWorkspace(session.scope)
-      if (selection.mode === "current" && !workspace)
-        throw new Scope.WorkspaceRequiredError({
-          message: "This Scope has no local workspace.",
-          scopeID: session.scope.id,
-        })
       return updateWorkspace(sessionID, workspace, { requireIdle: true })
     }
 
@@ -708,6 +743,7 @@ export namespace Session {
         id: sessionID,
         scope: source.scope as Scope,
         workspace: source.workspace,
+        workspaceID: source.workspaceID,
         title: input.title,
         controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
         forkedFrom: {
@@ -765,7 +801,7 @@ export namespace Session {
               : undefined
           return preparePart(
             {
-              ...part,
+              ...SnapshotEvidence.interrupt(part),
               ...(artifact ? { artifact } : {}),
               ...(state ? { state } : {}),
               id,
@@ -815,17 +851,13 @@ export namespace Session {
   })
 
   export async function assertWorkspaceAvailable(sessionID: string) {
-    const { workspace } = await get(sessionID)
-    if (!workspace) return
-    const available = await fs.stat(workspace.path).then(
-      (stat) => stat.isDirectory(),
-      () => false,
-    )
-    if (!available)
-      throw new Scope.WorkspaceUnavailableError({
-        message: "The workspace for this session is no longer available.",
-        path: workspace.path,
-      })
+    const session = await get(sessionID)
+    const { workspace } = session
+    if (session.workspaceID) {
+      await WorkspaceBinding.validate(session.workspaceID, session.scope.id, workspace?.generation)
+      return
+    }
+    if (workspace) throw new Error("Session has no canonical Workspace reference")
   }
 
   export async function updateWorkspace(
@@ -833,18 +865,43 @@ export namespace Session {
     workspace: import("./types").Workspace | null,
     options?: { requireIdle?: boolean; preserveActivityAt?: boolean },
   ): Promise<Info> {
-    return updateInternal(
-      sessionID,
-      (draft) => {
-        if (options?.requireIdle) SessionManager.assertIdle(sessionID)
-        if (workspace) {
-          Workspace.parse(workspace)
-          if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
+    return SessionWorkspaceRuntime.withBinding(sessionID, async () => {
+      const session = await SessionManager.requireSession(sessionID)
+      const owns = WorkspaceAccess.owns(sessionID)
+      if (!owns) SessionManager.assertIdle(sessionID)
+      workspace = workspace?.id
+        ? await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
+        : await WorkspaceBinding.adopt(workspace, session.scope.id)
+      const commit = async () => {
+        if (workspace?.id) await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
+        if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+        if (workspace && owns) {
+          const { WorkspaceRuntime } = await import("../workspace/runtime")
+          await ScopeContext.provide({
+            scope: session.scope,
+            workspace,
+            fn: () => WorkspaceRuntime.ensure(session.scope, workspace!),
+          })
         }
-        draft.workspace = workspace
-      },
-      options,
-    )
+        await SessionWorkspaceRuntime.beforeTransition(session, workspace)
+        return updateInternal(
+          sessionID,
+          (draft) => {
+            if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
+            if (workspace) {
+              Workspace.parse(workspace)
+              if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
+            }
+            draft.workspace = workspace
+            draft.workspaceID = workspace?.id ?? null
+          },
+          { ...options, workspaceChange: true },
+        )
+      }
+      return owns
+        ? WorkspaceAccess.transition(sessionID, workspace, commit)
+        : WorkspaceAccess.task({ workspace }, commit)
+    })
   }
 
   export async function updateControlProfile(
@@ -1015,7 +1072,7 @@ export namespace Session {
       }
 
       let changed = false
-      const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+      const result = await SessionRecords.update(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
         if (draft.rollbackAck?.rollbackID === rollbackID) return
         draft.rollbackAck = { rollbackID, acknowledgedAt: Date.now() }
         changed = true
@@ -1050,7 +1107,7 @@ export namespace Session {
         const sessionID = asSessionID(id)
 
         let actualAcknowledgedCount = 0
-        const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
+        const result = await SessionRecords.update(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
           const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
           const next = Math.max(0, current - acknowledgedCount)
           actualAcknowledgedCount = current - next
@@ -1120,7 +1177,7 @@ export namespace Session {
   async function updateInternal(
     id: string,
     editor: (session: Info) => void,
-    options?: { preserveActivityAt?: boolean; forcePublish?: boolean },
+    options?: { preserveActivityAt?: boolean; forcePublish?: boolean; workspaceChange?: boolean },
   ) {
     await SessionCompat.requireImported(id)
     return Storage.transaction(async () => {
@@ -1129,13 +1186,21 @@ export namespace Session {
       const scopeID = asScopeID(scope.id)
       const sessionID = asSessionID(id)
 
-      let before: Info | undefined
-      const result = await Storage.update<Info>(StoragePath.sessionInfo(scopeID, sessionID), (draft) => {
-        before = structuredClone(draft)
-        editor(draft)
-        if (!options?.preserveActivityAt) draft.time.updated = Date.now()
-      })
-      if (!before) throw new Error(`Session ${id} was not available before mutation`)
+      const before = structuredClone(session)
+      const result = structuredClone(session)
+      editor(result)
+      if (
+        !options?.workspaceChange &&
+        (result.workspaceID !== before.workspaceID ||
+          JSON.stringify(result.workspace) !== JSON.stringify(before.workspace))
+      )
+        throw new Error("Use Session.updateWorkspace to change a Session's Workspace binding")
+      if (result.workspace) {
+        result.workspace = await WorkspaceBinding.adopt(result.workspace, scope.id)
+        result.workspaceID = result.workspace?.id ?? null
+      }
+      if (!options?.preserveActivityAt) result.time.updated = Date.now()
+      await Storage.write(StoragePath.sessionInfo(scopeID, sessionID), SessionRecords.serialize(result))
 
       await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
       await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
@@ -1449,7 +1514,7 @@ export namespace Session {
       // since the caller (processor) already performs a proper Session.update().
 
       const infoPath = StoragePath.sessionInfo(scopeID, asSessionID(sessionID))
-      await Storage.update<Info>(infoPath, (draft) => {
+      await SessionRecords.update(infoPath, (draft) => {
         draft.lastExchange = lastExchange
       })
     })

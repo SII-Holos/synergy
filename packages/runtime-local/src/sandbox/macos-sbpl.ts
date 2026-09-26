@@ -96,12 +96,6 @@ export namespace MacOSSbpl {
   (subpath "/dev/ptmx"))
 (allow file-read* file-write*
   (regex #"^/dev/ttys[0-9]+"))
-(allow file-read* file-write*
-  (subpath "/var/tmp")
-  (subpath "/dev/shm")
-  (regex #"^/tmp/.com.apple.csseed.*")
-  (regex #"^/var/tmp/.*\.sem\..*")
-  (regex #"^/private/tmp/.com.apple.csseed.*"))
 ; ── Core OS libraries ──
 (allow file-read*
   (subpath "/usr/lib")
@@ -159,6 +153,15 @@ export namespace MacOSSbpl {
   (subpath "/usr/local/lib/ruby")
   (subpath "/opt/homebrew/lib/ruby"))
 (allow user-preference-read)`
+
+  export const DEVICE_WRITES = `(allow file-write-data
+  (literal "/dev/null")
+  (literal "/dev/zero")
+  (literal "/dev/dtracehelper")
+  (subpath "/dev/fd"))
+(allow file-write*
+  (literal "/dev/ptmx")
+  (regex #"^/dev/ttys[0-9]+$"))`
 
   // ------------------------------------------------------------------
   // Platform default readable paths

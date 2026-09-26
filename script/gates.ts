@@ -45,7 +45,12 @@ const LOCAL_GATES: Gate[] = [
   },
   {
     id: "ci-matrix:check",
-    run: "bun test --config /dev/null test/script/coverage-matrix.test.ts test/script/test-matrix.test.ts",
+    run: "bun test --config /dev/null test/script/coverage-matrix.test.ts test/script/test-matrix.test.ts test/script/ci-*.test.ts",
+    needs: [],
+  },
+  {
+    id: "ci-types:check",
+    run: "bun packages/testing/node_modules/.bin/tsgo --project script/ci/tsconfig.json",
     needs: [],
   },
   { id: "secrets:check", run: "bun run secrets:check", needs: [] },

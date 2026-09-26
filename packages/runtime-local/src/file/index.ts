@@ -1,5 +1,6 @@
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
-import z from "zod"
+import { z } from "zod"
 import { $ } from "bun"
 import type { BunFile } from "bun"
 import { formatPatch, structuredPatch } from "diff"
@@ -112,7 +113,9 @@ export namespace File {
     Edited: BusEvent.define(
       "file.edited",
       z.object({
+        ...WorkspaceEvents.Fields,
         file: z.string(),
+        contentVersion: z.string().regex(/^sha256:[a-f0-9]{64}$/),
       }),
     ),
   }

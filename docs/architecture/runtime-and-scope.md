@@ -107,7 +107,7 @@ The Control Plane is the only canonical observability writer. Agent and Policy w
 
 The user therefore chooses the project boundary. Code must not reintroduce implicit upward repository discovery.
 
-### Project folders (multi-root trust boundary)
+### Project folders and Workspace write authority
 
 A project Scope can declare multiple folders: the main `local.worktree` plus additional `local.sandboxes` entries persisted under the same project record. `Scope.fromDirectory()` appends opened worktree/related directories to `local.sandboxes`, and the Web project editor manages the list explicitly. `scope.update` requires the canonical path `scopeID`. Directory hints cannot register or redirect a project during an update; an unknown ID fails explicitly. Clients resolve a directory before updating its Scope.
 
@@ -115,12 +115,10 @@ The canonical derivation lives in `Scope.Root`:
 
 - `Scope.Root.projectRoots(scope)` — `[local.worktree, ...local.sandboxes]`, absolute,
   deduplicated, existing directories only. This is the single source of truth for "which directories belong to this project Scope".
-- `Scope.Root.trustRoots(scope, workspace)` — project roots for the current
-  session; in a `git_worktree` session the original main checkout is excluded so it stays outside the trust boundary.
-- `Scope.Root.executionRoots(scope, workspace, extraRoots)` — trust roots
-  merged with caller-provided roots (e.g. Skill source roots); every `EnforcementGate` creation site uses this so project folders are trusted automatically.
+- `Scope.Root.trustRoots(scope, workspace)` identifies only the selected Workspace directory.
+- `Scope.Root.executionRoots(scope, workspace)` asynchronously resolves that directory plus its direct explicit writable shares, validating and pinning every local binding used by the turn.
 
-The execution boundary, sandbox policy, system prompt, and file-tool containment checks all consume these roots. In a worktree session, sibling worktrees declared as project folders are trusted — only the original checkout remains external and requires explicit authorization.
+Project membership does not grant write authority. The execution boundary, sandbox policy, system prompt and file-tool containment checks consume the canonical execution roots. Skill source roots are read grants. The original checkout and sibling worktrees require explicit sharing or authorization before writes.
 
 ### Scope identity and execution path
 
@@ -135,22 +133,15 @@ Scope ownership and the current execution directory are related but distinct:
 
 ## Session Workspace
 
-Every session persists a required `workspace` field. `null` means no filesystem workspace; a non-null binding contains at least:
+Sessions persist a canonical `workspaceID` reference, with `null` representing no filesystem workspace. Their public `workspace` descriptor projects the current catalog binding and metadata. Missing catalog entries retain their ID and expose an error rather than becoming workspace-free. The [Workspace and files](workspace-and-files.md) contract defines catalog identity, generation and native-resource ownership.
 
-```ts
-{
-  type: string
-  path: string
-  scopeID: string
-}
-```
-
-The schema permits workspace-specific metadata. New sessions default to the Scope local directory, or `null` for Home and other nonlocal Scopes. Child sessions inherit their parent Scope and workspace, including `null`, unless the caller explicitly changes them. Bindings must belong to the session Scope.
+New sessions default to the Scope local directory, or `null` for Home and other nonlocal Scopes. Child sessions inherit their parent Scope and Workspace, including `null`, unless the caller explicitly changes them. Bindings must belong to the session Scope.
 
 Workspace selection supports:
 
 - `none` — persist `null` and retain the session Scope
-- `current` — use the Scope local directory; reject a Scope with no local binding
+- `current` — retain an existing Workspace reference or an absent nonlocal binding; otherwise use the Scope local directory
+- `workspace` — select a registered Workspace ID with an expected binding generation
 - `existing` — bind to an existing worktree target
 - `create` — create an isolated worktree, optionally from the current or a fresh base
 

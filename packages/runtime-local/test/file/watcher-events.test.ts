@@ -245,7 +245,8 @@ describe("FileWatcherEvents path normalization", () => {
         "win32",
       )
       expect(sameDirectory).toEqual([
-        { path: "c:/repo/SRC/new.ts", event: "renamed", oldPath: "C:\\Repo\\src\\old.ts" },
+        { path: "c:/repo/SRC/new.ts", event: "added" },
+        { path: "C:\\Repo\\src\\old.ts", event: "deleted" },
       ])
     }))
 
@@ -291,7 +292,10 @@ describe("FileWatcherEvents path normalization", () => {
           ],
           "posix",
         ),
-      ).toEqual([{ path: "/Repo/src/new.ts", event: "renamed", oldPath: "/Repo/src/old.ts" }])
+      ).toEqual([
+        { path: "/Repo/src/new.ts", event: "added" },
+        { path: "/Repo/src/old.ts", event: "deleted" },
+      ])
       expect(
         FileWatcherEvents.normalize(
           [
@@ -802,3 +806,18 @@ describe("FileWatcherEvents subscription recovery", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("a deleted file and unrelated sibling creation cannot retarget an open editor", () => {
+  expect(
+    FileWatcherEvents.normalize(
+      [
+        { type: "delete", path: "/repo/draft.txt" },
+        { type: "create", path: "/repo/unrelated.txt" },
+      ],
+      "posix",
+    ),
+  ).toEqual([
+    { path: "/repo/unrelated.txt", event: "added" },
+    { path: "/repo/draft.txt", event: "deleted" },
+  ])
+})

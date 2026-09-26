@@ -1,7 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test"
 import { Ripgrep } from "@ericsanchezok/synergy-runtime-local/file/ripgrep"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
-import { registerPluginStartup } from "@ericsanchezok/synergy-plugin-host/plugin/startup"
 import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"

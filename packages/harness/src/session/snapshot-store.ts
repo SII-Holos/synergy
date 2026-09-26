@@ -8,11 +8,15 @@ import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
+import type { SnapshotSchema } from "./snapshot-schema"
 import { SnapshotGit } from "./snapshot-git"
+import { SnapshotPath } from "./snapshot-path"
 import { SnapshotLease } from "./snapshot-lease"
 import { SnapshotProtection } from "./snapshot-protection"
+import { Log } from "../util/log"
 
 export namespace SnapshotStore {
+  const log = Log.create({ service: "snapshot-store" })
   export const Owner = z.object({ version: z.literal(2), backend: z.enum(["legacy", "shared", "deleted"]) })
   export type Owner = z.infer<typeof Owner>
   export const OID = /^[0-9a-f]{40}$/
@@ -95,11 +99,20 @@ export namespace SnapshotStore {
     }
   }
 
-  export async function resolve(scopeID: string, sessionID: string, workspace: string): Promise<Operation> {
+  export async function resolve(
+    scopeID: string,
+    sessionID: string,
+    workspace: string,
+    source?: SnapshotSchema.Workspace,
+  ): Promise<Operation> {
     const owned = await resolveRepository(scopeID, sessionID)
     const { backend, repository: repo } = owned
     const real = await fs.realpath(workspace).catch(() => path.resolve(workspace))
-    const identity = process.platform === "win32" ? real.toLowerCase() : real
+    const identity = source
+      ? JSON.stringify([source.id, source.generation])
+      : process.platform === "win32"
+        ? real.toLowerCase()
+        : real
     const temporary = path.join(cache(scopeID, sessionID), createHash("sha256").update(identity).digest("hex"))
     return {
       scopeID,
@@ -116,7 +129,31 @@ export namespace SnapshotStore {
     return context.use()
   }
 
-  export async function withSession<T>(sessionID: string, fn: () => Promise<T>, signal?: AbortSignal) {
+  export async function withSession<T>(
+    sessionID: string,
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+    options?: { historical?: boolean },
+  ) {
+    const controller = new AbortController()
+    const forwardAbort = () => controller.abort(signal?.reason)
+    // Bun 1.3.14 cancels a timeout signal when its last listener is removed. Keep
+    // this operation's listener through Git, native admission and final cleanup.
+    signal?.addEventListener("abort", forwardAbort, { once: true })
+    if (signal?.aborted) forwardAbort()
+    try {
+      return await withSessionImpl(sessionID, fn, signal ? controller.signal : undefined, options)
+    } finally {
+      signal?.removeEventListener("abort", forwardAbort)
+    }
+  }
+
+  async function withSessionImpl<T>(
+    sessionID: string,
+    fn: () => Promise<T>,
+    signal?: AbortSignal,
+    options?: { historical?: boolean },
+  ) {
     const scopeID = ScopeContext.current.scope.id
     component(sessionID)
     if (
@@ -133,10 +170,20 @@ export namespace SnapshotStore {
       false,
       () =>
         withFileLock(
-          { directory: SnapshotLease.directory(), key: `snapshot-session:${scopeID}:${sessionID}` },
+          { directory: SnapshotLease.directory(), key: `snapshot-session:${scopeID}:${sessionID}`, signal },
           async () => {
             signal?.throwIfAborted()
-            const operation = await resolve(scopeID, sessionID, ScopeContext.current.directory)
+            const workspace = options?.historical ? undefined : ScopeContext.current.workspace
+            const source =
+              workspace?.id && workspace.generation
+                ? { id: workspace.id, generation: workspace.generation, root: workspace.path }
+                : undefined
+            const operation = await resolve(
+              scopeID,
+              sessionID,
+              options?.historical ? path.dirname(repository(scopeID)) : ScopeContext.current.directory,
+              source,
+            )
             await fs.mkdir(operation.temporary, { recursive: true })
             return context.provide(operation, fn)
           },
@@ -166,7 +213,7 @@ export namespace SnapshotStore {
       async () => {
         if (operation.backend === "legacy") {
           await SnapshotProtection.assertWritable(Storage.current().artifactDirectory)
-          if (!(await Bun.file(path.join(operation.repository, "HEAD")).exists()))
+          if (!(await SnapshotPath.exists(path.join(operation.repository, "HEAD"))))
             throw new StorageError("Legacy snapshot repository is missing")
           return
         }
@@ -189,7 +236,7 @@ export namespace SnapshotStore {
     const initialized = await optional<unknown>(StoragePath.snapshotRepository(scopeID))
     if (initialized !== undefined) {
       z.object({ version: z.literal(2), objectFormat: z.literal("sha1") }).parse(initialized)
-      if (!(await Bun.file(path.join(repo, "HEAD")).exists()))
+      if (!(await SnapshotPath.exists(path.join(repo, "HEAD"))))
         throw new StorageError("Snapshot object store is missing")
       await assertStandalone(repo)
       return
@@ -200,19 +247,19 @@ export namespace SnapshotStore {
   }
 
   export async function assertStandalone(repo: string) {
-    if (await Bun.file(path.join(repo, "objects", "info", "alternates")).exists())
+    if (await SnapshotPath.exists(path.join(repo, "objects", "info", "alternates")))
       throw new StorageError("Shared snapshots have an external object dependency")
   }
 
   export async function initializeBareRepository(repo: string) {
     await fs.mkdir(path.dirname(repo), { recursive: true })
-    if (!(await Bun.file(path.join(repo, "HEAD")).exists())) {
+    if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) {
       // Provenance: https://git-scm.com/docs/git-init (GIT_DEFAULT_HASH).
       // Git before 2.29 only writes SHA-1; the environment also pins newer Git
       // without requiring the newer --object-format command-line option.
-      const init = await SnapshotGit.run(["git", "init", "--bare", repo], path.dirname(repo), {
-        GIT_DEFAULT_HASH: "sha1",
-      })
+      // An explicit git-dir avoids init's positional-path chdir before config.
+      // Provenance: https://github.com/git-for-windows/git/blob/main/builtin/init-db.c
+      const init = await initializeNative(repo)
       if (init.exitCode !== 0)
         throw new StorageError(
           `Unable to initialize snapshot object store (exit code ${init.exitCode}): ${init.stderr.trim()}`,
@@ -233,6 +280,33 @@ export namespace SnapshotStore {
       await command(repo, ["config", key, value])
   }
 
+  async function initializeNative(repo: string) {
+    if (process.platform !== "win32" || path.resolve(repo).length < 200)
+      return SnapshotGit.run(["git", "--git-dir", repo, "init", "--bare"], path.dirname(repo), {
+        GIT_DEFAULT_HASH: "sha1",
+      })
+    await using temporary = await SnapshotPath.temporary()
+    const stage = path.join(temporary.directory, "store.git")
+    const result = await SnapshotGit.run(["git", "--git-dir", stage, "init", "--bare"], temporary.directory, {
+      GIT_DEFAULT_HASH: "sha1",
+    })
+    if (result.exitCode !== 0) return result
+    try {
+      await fs.mkdir(repo, { recursive: true })
+      // Git's init canonicalizes its destination before loading long-path
+      // configuration. Publish a native copy, preserving any interrupted store
+      // and its objects; HEAD is the last initialization marker.
+      for (const name of await fs.readdir(stage)) {
+        if (name === "HEAD") continue
+        await fs.cp(path.join(stage, name), path.join(repo, name), { recursive: true, force: false })
+      }
+      await fs.copyFile(path.join(stage, "HEAD"), path.join(repo, "HEAD"), fs.constants.COPYFILE_EXCL)
+      return result
+    } catch (error) {
+      return { exitCode: -1, text: "", bytes: new Uint8Array(), stderr: String(error) }
+    }
+  }
+
   export function reference(sessionID: string, hash: string) {
     component(sessionID)
     if (!OID.test(hash)) throw new StorageError("Invalid snapshot object ID")
@@ -244,7 +318,7 @@ export namespace SnapshotStore {
     const record = await owner(scopeID, sessionID)
     if (record?.backend === "deleted") return false
     const repo = record?.backend === "legacy" ? legacyRepository(scopeID, sessionID) : repository(scopeID)
-    if (!(await Bun.file(path.join(repo, "HEAD")).exists())) return false
+    if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) return false
     const args =
       record?.backend === "legacy" ? ["cat-file", "-t", hash] : ["rev-parse", "--verify", reference(sessionID, hash)]
     const result = await SnapshotGit.run(["git", "--git-dir", repo, ...args], path.dirname(repo))
@@ -262,7 +336,7 @@ export namespace SnapshotStore {
     if (record?.backend === "deleted") return owned
     const legacy = record?.backend === "legacy"
     const repo = legacy ? legacyRepository(scopeID, sessionID) : repository(scopeID)
-    if (!(await Bun.file(path.join(repo, "HEAD")).exists())) return owned
+    if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) return owned
     if (legacy) {
       // Provenance: https://git-scm.com/docs/git-cat-file (BATCH OUTPUT).
       // A missing object reports as a "missing" batch line rather than an
@@ -304,6 +378,8 @@ export namespace SnapshotStore {
       undefined,
       signal,
     )
+    if (result.exitCode !== 0)
+      log.warn("snapshot retention failed", { exitCode: result.exitCode, stderr: result.stderr })
     return result.exitCode === 0
   }
 

@@ -155,6 +155,12 @@ The first policy that returns a proposal wins. Per-session, per-policy deduplica
 
 BlueprintLoop normally continues a `running` bound loop, but an unbound stop intent is handled first by preparing, binding, and starting its reviewer. Lattice reconciles semantic actions and persisted effects, then proposes ordinary state continuation only after a successful terminal turn. Light Loop similarly handles an unbound stop intent before proposing its ordinary task check. Boss Mode proposes continuation only for workers with an un-reported assigned task; the root session stays human-driven.
 
+### Agenda Workspace Ownership
+
+Agenda origins persist a nullable Workspace ID alongside their Scope. Creation captures the origin Session's canonical selection; execution never infers a replacement directory from Scope. New unattended Sessions use that reference, while an existing persistent execution Session retains its own selection. Binding failures enter normal run history and failure accounting. The Agenda migration records the historical default directory once, preserving the execution behavior of previously stored items.
+
+File watch registrations separate the item's storage Scope from the watched Workspace's owning Scope. They start native Workspace resources after startup or rebinding, validate event ownership and the current binding before dispatch, and cancel pending debounce work when registrations or generations change. Global items remain stored under Home while watching only their captured Workspace. Duplicate checks compare origin Scope and Workspace as well as trigger/title semantics.
+
 ### Agenda Wait Ownership
 
 Only wake-capable Agenda items with `autoDone === true` are continuation waits. These one-shot watch-style items deliver directly to their origin session and complete after that delivery, so ordinary workflow continuation must not race their promised wake. Ordinary recurring or manually managed Agenda schedules remain wakeable but do not suppress workflow continuation merely because they are active.

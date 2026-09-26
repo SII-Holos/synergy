@@ -13,6 +13,10 @@ Tool execution derives a session owner from the current `Scope` and tool session
 
 The server derives the canonical owner key and includes it in every session-state payload. Clients use that value for native presentation leases, event validation, Desktop profiles, and view attachment; route directories are routing inputs and are never alternate owner identities.
 
+Browser commands resolve and pin the current Workspace ID and binding generation. Session selection and Browser commands share the Session binding lease; idle suspension acquires that lease before joining the command queue. Before a selection commits, the Browser transition participant drains commands, acknowledges closing the old page, and invalidates command replay results. Catalog rebinding retires the same resources through `WorkspaceState` before publishing its new generation. Both paths preserve owner identity, profiles, descriptors, presentation preference and event subscribers. A failed close leaves the original binding selected. Resuming a saved local-file checkpoint validates its URL against the new binding before creating a page.
+
+Upload staging preserves sanitized original basenames for both headless and Host pages. Duplicate filenames occupy separate private subdirectories so browser-visible file names remain correct without overwriting another staged file.
+
 ## Lazy Runtime and Session State
 
 Browser execution is owned by `packages/browser-runtime`; the harness has no Browser driver or presentation dependency. The reaper consumes the shared session terminal-event contract, so archive, deletion, and child-task termination preserve the same cleanup behavior without importing product task orchestration. A host registers the Browser routes explicitly with its server composition.
@@ -127,6 +131,8 @@ Strict locators never select the first of multiple matches. `browser_locator_amb
 
 `browser_screenshot` persists each PNG as a Synergy asset. When the active model accepts image input, the tool also supplies the PNG directly as a provider-file model attachment. For text-only models, it returns the real local asset path. The output directs the agent to use `look_at` when the configured `vision_model` is image-capable, or reports only the saved local path otherwise. Screenshot inspection does not depend on guessed session paths or an unavailable image tool.
 
+Download, asset-bundle and performance-trace exports capture the destination Workspace and binding generation before collecting browser data. Resolving an export path has no filesystem effects. Asset bundles and trace bytes are staged in private temporary directories, then the Harness file-import Host delegates to Runtime Local for publication with native write admission, conditional source validation, protected-path checks and Workspace-qualified file events. An occupied target is a conflict; cancellation during admission creates no destination directories. A binding change rejects publication instead of redirecting old data into the new directory. Cleanup removes only private staging. If parent creation succeeds but publication fails, the native service reports the partial mutation and requests a file-tree resync.
+
 ## Invariants
 
 - One owner has at most one canonical Browser page.
@@ -143,3 +149,5 @@ Strict locators never select the first of multiple matches. `browser_locator_amb
 - Command inactivity suspends only session-owned headless pages; it never removes the canonical session or its event subscribers.
 - Recoverable idle suspension and terminal owner disposal remain distinct lifecycle transitions.
 - Browser implementations and runtime state never load through the Agent worker runner dependency graph.
+
+Browser uploads pin the resolved Workspace binding through file collection and command dispatch. Cancelled or stale callers fail before obtaining a page. Each file is read in bounded chunks with both per-file and whole-request byte limits enforced while reading; a prior size check cannot authorize unbounded growth. The reader rejects final symlinks, escaping paths, changed file identity, changed byte length and modified timestamps, including content changes that preserve the modification time. File handles close on every result and the binding is revalidated before dispatch. Zero-byte files are valid through the shared command schema and both staging backends; malformed base64 padding remains invalid.

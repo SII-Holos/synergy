@@ -1597,18 +1597,14 @@ export namespace ToolResolver {
                 // bypass the guard as documented (issue #1006).
                 ;(ctx.extra as any).controlProfile = profileId
                 const synergyRoot = Global.Path.root
-                const trustedRoots = Scope.Root.executionRoots(
-                  ScopeContext.current.scope,
-                  workspaceInfo,
-                  SkillSourceProfile.allRootPaths(workspace),
-                )
+                const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                 const gate = await EnforcementGate.create(
                   await configureGateOptions({
                     activeWorkspace: workspace,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
                     originalCheckout: (workspaceInfo as any)?.originalCheckout,
                     profileId,
-                    readRoots: [synergyRoot, ...trustedRoots],
+                    readRoots: [synergyRoot, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)],
                     trustedRoots,
                     synergyRoot,
                     sessionKey: runtimeInput.session?.id,
@@ -1926,11 +1922,7 @@ export namespace ToolResolver {
                   })
                   // Same effective-profile carry as the builtin path (issue #1006).
                   ;(ctx.extra as any).controlProfile = profileId
-                  const trustedRoots = Scope.Root.executionRoots(
-                    ScopeContext.current.scope,
-                    workspaceInfo,
-                    SkillSourceProfile.allRootPaths(workspace),
-                  )
+                  const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                   const gate = await EnforcementGate.create(
                     await configureGateOptions({
                       activeWorkspace: workspace,
@@ -1938,7 +1930,7 @@ export namespace ToolResolver {
                       originalCheckout: (workspaceInfo as any)?.originalCheckout,
                       registeredMcpTools: mcpToolNames,
                       profileId,
-                      readRoots: [Global.Path.root, ...trustedRoots],
+                      readRoots: [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)],
                       synergyRoot: Global.Path.root,
                       trustedRoots,
                       sessionKey: runtimeInput.session?.id,

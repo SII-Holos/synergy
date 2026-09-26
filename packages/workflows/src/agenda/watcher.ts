@@ -3,6 +3,9 @@ import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { AgendaStore } from "./store"
 import { AgendaTypes } from "./types"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { WorkspaceCatalog, WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { ScopeRuntime } from "@ericsanchezok/synergy-harness/scope/runtime"
 
 const DEFAULT_DEBOUNCE_MS = 500
 
@@ -13,6 +16,8 @@ export namespace AgendaWatcher {
 
   interface FileEntry {
     scopeID: string
+    sourceScopeID: string
+    workspaceID: string
     itemID: string
     glob: InstanceType<typeof Bun.Glob>
     event?: "add" | "change" | "unlink"
@@ -27,7 +32,7 @@ export namespace AgendaWatcher {
     files: new Map<string, FileEntry[]>(),
     debounceTimers: new Map<string, Timer>(),
     handler: null as Handler | null,
-    globalBusHandler: null as ((event: { directory?: string; payload: unknown }) => void) | null,
+    globalBusHandler: null as ((event: { scopeID: string | null; payload: unknown }) => void) | null,
     started: false,
   }))
 
@@ -39,11 +44,15 @@ export namespace AgendaWatcher {
   }
 
   export function start(onFire: Handler, items: AgendaTypes.Item[]): void {
+    stop()
     const instanceState = runtimeState()
 
     instanceState.handler = onFire
     for (const item of items) {
-      register(item.id, item.origin.scope.id, item.triggers)
+      register(item.id, item.global ? "home" : item.origin.scope.id, item.triggers, {
+        workspaceID: item.origin.workspaceID,
+        sourceScopeID: item.origin.scope.id,
+      })
     }
 
     instanceState.globalBusHandler = (event) => {
@@ -51,17 +60,41 @@ export namespace AgendaWatcher {
 
       if (!instanceState.started) return
       const payload = event.payload as Record<string, unknown> | undefined
+      if (payload?.type === WorkspaceCatalog.Event.Updated.type) {
+        const workspace = WorkspaceCatalog.Info.safeParse(payload.properties)
+        if (!workspace.success) return
+        for (const entries of instanceState.files.values()) {
+          const entry = entries[0]
+          if (entry?.workspaceID !== workspace.data.id || entry.sourceScopeID !== event.scopeID) continue
+          const pending = instanceState.debounceTimers.get(entry.itemID)
+          if (pending) clearTimeout(pending)
+          instanceState.debounceTimers.delete(entry.itemID)
+          startNativeWatch(entry)
+        }
+        return
+      }
       if (!payload || payload.type !== "file.watcher.updated") return
       const properties = payload.properties as Record<string, unknown> | undefined
       if (!properties) return
-      const filePath = properties.file as string
+      const filePath = properties.file
       const fileEvent = normalizeFileEvent(properties.event as string)
-      if (!filePath || !fileEvent) return
-      handleFileEvent(filePath, fileEvent)
+      const workspaceID = properties.workspaceID
+      const generation = properties.workspaceGeneration
+      if (
+        typeof filePath !== "string" ||
+        !filePath ||
+        !fileEvent ||
+        !event.scopeID ||
+        typeof workspaceID !== "string" ||
+        typeof generation !== "number"
+      )
+        return
+      handleFileEvent(filePath, fileEvent, { scopeID: event.scopeID, workspaceID, generation })
     }
     GlobalBus().on("event", instanceState.globalBusHandler)
 
     instanceState.started = true
+    for (const entries of instanceState.files.values()) startNativeWatch(entries[0]!)
     log.info("started", { files: countFiles() })
   }
 
@@ -86,11 +119,12 @@ export namespace AgendaWatcher {
     itemID: string,
     scopeID: string,
     triggers: AgendaTypes.Trigger[],
-    opts?: { autoDone?: boolean; maxChecks?: number },
+    opts: { workspaceID: string | null | undefined; sourceScopeID: string },
   ): void {
     const instanceState = runtimeState()
 
     unregister(itemID)
+    if (!opts.workspaceID) return
 
     const newFiles: FileEntry[] = []
 
@@ -106,6 +140,8 @@ export namespace AgendaWatcher {
         const debounceMs = watch.debounce ? AgendaStore.parseDuration(watch.debounce) : DEFAULT_DEBOUNCE_MS
         newFiles.push({
           scopeID,
+          sourceScopeID: opts.sourceScopeID,
+          workspaceID: opts.workspaceID,
           itemID,
           glob: new Bun.Glob(watch.glob),
           event: watch.event,
@@ -114,7 +150,23 @@ export namespace AgendaWatcher {
       }
     }
 
-    if (newFiles.length > 0) instanceState.files.set(itemID, newFiles)
+    if (newFiles.length > 0) {
+      instanceState.files.set(itemID, newFiles)
+      if (instanceState.started) startNativeWatch(newFiles[0]!)
+    }
+  }
+
+  function startNativeWatch(entry: FileEntry) {
+    const state = runtimeState()
+    const start = async () => {
+      const workspace = await WorkspaceBinding.validate(entry.workspaceID, entry.sourceScopeID)
+      const scope = await Scope.resolve({ scopeID: entry.sourceScopeID })
+      if (!state.started || !state.files.get(entry.itemID)?.includes(entry)) return
+      await ScopeRuntime.provide({ scope, workspace, fn: () => {} })
+    }
+    void start().catch((error) => {
+      log.error("file watch Workspace unavailable", { itemID: entry.itemID, error })
+    })
   }
 
   export function unregister(itemID: string): void {
@@ -141,19 +193,24 @@ export namespace AgendaWatcher {
     return n
   }
 
-  function handleFileEvent(filePath: string, fileEvent: string): void {
+  function handleFileEvent(
+    filePath: string,
+    fileEvent: string,
+    source: { scopeID: string; workspaceID: string; generation: number },
+  ): void {
     const instanceState = runtimeState()
 
     for (const entries of instanceState.files.values()) {
       for (const entry of entries) {
+        if (entry.sourceScopeID !== source.scopeID || entry.workspaceID !== source.workspaceID) continue
         if (!entry.glob.match(filePath)) continue
         if (entry.event && entry.event !== fileEvent) continue
-        scheduleFileSignal(entry, filePath, fileEvent)
+        scheduleFileSignal(entry, filePath, fileEvent, source.generation)
       }
     }
   }
 
-  function scheduleFileSignal(entry: FileEntry, filePath: string, fileEvent: string): void {
+  function scheduleFileSignal(entry: FileEntry, filePath: string, fileEvent: string, generation: number): void {
     const instanceState = runtimeState()
 
     if (!instanceState.handler) return
@@ -162,16 +219,30 @@ export namespace AgendaWatcher {
     if (existing) clearTimeout(existing)
 
     const timer = setTimeout(() => {
-      const instanceState = runtimeState()
-
-      instanceState.debounceTimers.delete(entry.itemID)
-      const signal: AgendaTypes.FiredSignal = {
-        type: "watch",
-        source: entry.itemID,
-        payload: { file: filePath, event: fileEvent },
-        timestamp: Date.now(),
+      const fire = async () => {
+        await WorkspaceBinding.validate(entry.workspaceID, entry.sourceScopeID, generation)
+        if (
+          !instanceState.started ||
+          !instanceState.files.get(entry.itemID)?.includes(entry) ||
+          instanceState.debounceTimers.get(entry.itemID) !== timer
+        )
+          return
+        instanceState.debounceTimers.delete(entry.itemID)
+        const signal: AgendaTypes.FiredSignal = {
+          type: "watch",
+          source: entry.itemID,
+          payload: {
+            file: filePath,
+            event: fileEvent,
+            workspaceID: entry.workspaceID,
+            workspaceGeneration: generation,
+          },
+          timestamp: Date.now(),
+        }
+        await instanceState.handler!(signal, entry.scopeID)
       }
-      instanceState.handler!(signal, entry.scopeID).catch((err) => {
+      void fire().catch((err) => {
+        if (instanceState.debounceTimers.get(entry.itemID) === timer) instanceState.debounceTimers.delete(entry.itemID)
         log.error("file handler failed", {
           itemID: entry.itemID,
           error: err instanceof Error ? err : new Error(String(err)),

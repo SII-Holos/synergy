@@ -104,6 +104,12 @@ async function bootstrap(): Promise<void> {
 }
 
 export async function main() {
+  const workerIndex = process.argv.indexOf("__owned-process-runner")
+  if (workerIndex >= 0) {
+    const { runOwnedProcessWorker } = await import("@ericsanchezok/synergy-runtime-local/process/owned-worker")
+    await runOwnedProcessWorker(process.argv[workerIndex + 1]!)
+    process.exit(0)
+  }
   await RuntimeContext.create(createLocalHost()).run(bootstrap)
 }
 

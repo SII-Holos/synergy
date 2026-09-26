@@ -1,9 +1,17 @@
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { AtomicFile } from "@ericsanchezok/synergy-harness/storage/atomic-file"
+import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
+import { FileMutation } from "../file/mutation"
+import { FileEntry } from "../file/entry"
+import { WorktreeProcess } from "./process"
+import { ScopedState } from "@ericsanchezok/synergy-harness/scope/scoped-state"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { $ } from "bun"
 import { createHash } from "crypto"
 import fs from "fs/promises"
+import { realpathSync } from "node:fs"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -237,6 +245,8 @@ export namespace Worktree {
     /** A Synergy marker is provenance, not proof this process owns the lock. */
     markerOwner: boolean
     reason?: string
+    locking?: Promise<LockResult>
+    unlocking?: Promise<void>
   }
 
   interface UseState {
@@ -247,7 +257,6 @@ export namespace Worktree {
   const runtimeState = RuntimeContext.state(() => ({
     activeLocks: new Map<string, LockState>(),
     activeUses: new Map<string, UseState>(),
-    registryMutations: new Map<string, Promise<void>>(),
     sweepRequester: undefined as ((scope: Scope.Project) => void) | undefined,
   }))
 
@@ -277,7 +286,7 @@ export namespace Worktree {
   function useState(directory: string) {
     const instanceState = runtimeState()
 
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     const existing = instanceState.activeUses.get(resolved)
     if (existing) return { resolved, state: existing }
     const state: UseState = { removing: false, active: new Map() }
@@ -353,23 +362,32 @@ export namespace Worktree {
     }
   }
 
-  async function withRegistryMutation<T>(key: string, fn: () => Promise<T>) {
-    const instanceState = runtimeState()
+  const registryLocks = RuntimeContext.createAsyncContext<ReadonlySet<string>>()
 
-    const previous = instanceState.registryMutations.get(key) ?? Promise.resolve()
-    let release!: () => void
-    const current = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const next = previous.catch(() => undefined).then(() => current)
-    instanceState.registryMutations.set(key, next)
-    await previous.catch(() => undefined)
-    try {
-      return await fn()
-    } finally {
-      release()
-      if (instanceState.registryMutations.get(key) === next) instanceState.registryMutations.delete(key)
-    }
+  async function withRegistryMutation<T>(key: string, fn: () => Promise<T>) {
+    const held = registryLocks.getStore()
+    if (held?.has(key)) return fn()
+    return WorkspaceAccess.metadata([path.dirname(key)], async () =>
+      withFileLock(
+        {
+          directory: await FileMutation.lockDirectory(),
+          key: `worktree-registry:${key}`,
+          signal: WorkspaceAccess.signal(),
+        },
+        () => registryLocks.run(new Set([...(held ?? []), key]), fn),
+      ),
+    )
+  }
+
+  async function gitMutation(repoRoot: string, args: string[], roots: string[] | null = null) {
+    return WorktreeProcess.run({ command: ["git", ...args], directory: repoRoot, roots, metadata: true })
+  }
+
+  async function gitMetadataRoot(repoRoot: string) {
+    const result = await $`git rev-parse --git-common-dir`.quiet().nothrow().cwd(repoRoot)
+    if (result.exitCode !== 0)
+      throw new CreateFailedError({ message: errorText(result) || "Cannot locate Git metadata" })
+    return canonicalDirectory(path.resolve(repoRoot, outputText(result.stdout)))
   }
 
   function pick<const T extends readonly string[]>(items: T) {
@@ -418,7 +436,18 @@ export namespace Worktree {
     if (scope.type !== "project" || scope.local?.vcs !== "git") {
       throw new NotGitError({ message: "Current scope is not a Git repository; git worktree is unavailable." })
     }
-    return { scope, repoRoot: ScopeContext.current.worktree }
+    return { scope, repoRoot: canonicalDirectory(ScopeContext.current.worktree) }
+  }
+
+  function canonicalDirectory(directory: string): string {
+    const absolute = path.resolve(directory)
+    try {
+      return realpathSync(absolute)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
+      const parent = path.dirname(absolute)
+      return parent === absolute ? absolute : path.join(canonicalDirectory(parent), path.basename(absolute))
+    }
   }
 
   function worktreesRoot(repoRoot = ensureGitScope().repoRoot) {
@@ -456,8 +485,10 @@ export namespace Worktree {
   }
 
   async function writeRegistry(info: RegistryInfo, repoRoot = ensureGitScope().repoRoot) {
-    await fs.mkdir(registryRoot(repoRoot), { recursive: true })
-    await Bun.write(registryPath(info, repoRoot), JSON.stringify(info, null, 2))
+    await withRegistryMutation(registryPath(info, repoRoot), async () => {
+      await fs.mkdir(registryRoot(repoRoot), { recursive: true })
+      await AtomicFile.writeJsonAtomic(registryPath(info, repoRoot), JSON.stringify(info, null, 2), { durable: true })
+    })
   }
 
   async function removeRegistry(id: string, repoRoot = ensureGitScope().repoRoot) {
@@ -466,8 +497,8 @@ export namespace Worktree {
   }
 
   function normalizeRegistryPath(info: RegistryInfo, repoRoot: string): RegistryInfo {
-    const resolved = path.resolve(info.path)
-    if (isPathContained(repoRoot, resolved)) return info
+    const resolved = canonicalDirectory(info.path)
+    if (isPathContained(repoRoot, resolved)) return { ...info, path: resolved }
     return { ...info, path: path.join(worktreesRoot(repoRoot), path.basename(resolved)) }
   }
 
@@ -480,7 +511,7 @@ export namespace Worktree {
       const parsed = await readJson(path.join(root, entry), RegistryInfo).catch(() => undefined)
       if (!parsed) continue
       const normalized = normalizeRegistryPath(parsed, repoRoot)
-      result.set(path.resolve(normalized.path), normalized)
+      result.set(canonicalDirectory(normalized.path), normalized)
     }
     return result
   }
@@ -489,13 +520,15 @@ export namespace Worktree {
     const resolved = await $`git rev-parse --git-path info/exclude`.quiet().nothrow().cwd(repoRoot)
     if (resolved.exitCode !== 0) return
     const excludePath = path.resolve(repoRoot, outputText(resolved.stdout))
-    await fs.mkdir(path.dirname(excludePath), { recursive: true })
-    const existing = await Bun.file(excludePath)
-      .text()
-      .catch(() => "")
-    if (existing.split(/\r?\n/).some((line) => line.trim() === ".synergy/worktrees/")) return
-    const next = existing.endsWith("\n") || existing.length === 0 ? existing : existing + "\n"
-    await Bun.write(excludePath, next + ".synergy/worktrees/\n")
+    await WorkspaceAccess.metadata([excludePath], async () => {
+      await fs.mkdir(path.dirname(excludePath), { recursive: true })
+      const existing = await Bun.file(excludePath)
+        .text()
+        .catch(() => "")
+      if (existing.split(/\r?\n/).some((line) => line.trim() === ".synergy/worktrees/")) return
+      const next = existing.endsWith("\n") || existing.length === 0 ? existing : existing + "\n"
+      await AtomicFile.writeJsonAtomic(excludePath, next + ".synergy/worktrees/\n", { durable: true })
+    })
   }
 
   export function parsePorcelain(text: string): GitWorktreeEntry[] {
@@ -546,8 +579,8 @@ export namespace Worktree {
     repoRoot: string,
     scopeID: string,
   ): Info {
-    const resolved = path.resolve(entry.path)
-    const isMain = resolved === path.resolve(repoRoot)
+    const resolved = canonicalDirectory(entry.path)
+    const isMain = resolved === canonicalDirectory(repoRoot)
     const id = registry?.id ?? hashID(resolved)
     const name = registry?.name ?? (isMain ? "main" : path.basename(resolved))
     return Info.parse({
@@ -626,7 +659,7 @@ export namespace Worktree {
     const [gitEntries, registry] = await Promise.all([gitList(repoRoot), readRegistry(repoRoot)])
     const seen = new Set<string>()
     const result = gitEntries.map((entry) => {
-      const resolved = path.resolve(entry.path)
+      const resolved = canonicalDirectory(entry.path)
       seen.add(resolved)
       return fromGitEntry(entry, registry.get(resolved), repoRoot, scope.id)
     })
@@ -655,7 +688,10 @@ export namespace Worktree {
   }
 
   async function isDirty(directory: string) {
-    const status = await $`git status --porcelain`.quiet().nothrow().cwd(directory)
+    const status = await $`git -c core.fsmonitor=false --no-optional-locks status --porcelain`
+      .quiet()
+      .nothrow()
+      .cwd(directory)
     if (status.exitCode !== 0) return true
     return outputText(status.stdout).length > 0
   }
@@ -685,13 +721,42 @@ export namespace Worktree {
   }
 
   async function copyIgnoredFiles(setup: SetupInfo, repoRoot: string, directory: string) {
+    const validate: FileEntry.Validation = async (target, operation) => {
+      const root = operation === "read" ? repoRoot : directory
+      const canonical = await FileEntry.canonical(target)
+      if (!isPathContained(root, canonical, { followFinalSymlink: false }))
+        throw new SetupConfigError({ message: "copyIgnored cannot escape either checkout" })
+      if (path.relative(root, canonical).split(path.sep).includes(".git"))
+        throw new SetupConfigError({ message: "copyIgnored cannot modify Git metadata" })
+    }
     for (const item of setup.copyIgnored) {
-      const relative = item.replace(/^\/+/, "")
-      const source = path.join(repoRoot, relative)
-      const target = path.join(directory, relative)
-      if (!(await exists(source))) continue
-      await fs.mkdir(path.dirname(target), { recursive: true })
-      await fs.cp(source, target, { recursive: true, force: true, errorOnExist: false })
+      const source = path.resolve(repoRoot, item)
+      if (
+        !item ||
+        path.isAbsolute(item) ||
+        source === repoRoot ||
+        !isPathContained(repoRoot, source, { followFinalSymlink: false })
+      )
+        throw new SetupConfigError({ message: `copyIgnored must name a relative checkout entry: ${item}` })
+      const target = path.join(directory, path.relative(repoRoot, source))
+      await validate(source, "read")
+      await validate(target, "write")
+      const entry = await FileEntry.inspect(source)
+      if (!entry) continue
+      if (await FileEntry.inspect(target))
+        throw new SetupConfigError({
+          message: `copyIgnored destination already exists; use a setup command for intentional replacement: ${item}`,
+        })
+      const parent = path.dirname(target)
+      if (!(await FileEntry.inspect(parent)))
+        await FileEntry.mkdir({ path: parent, createParents: true, validate, signal: WorkspaceAccess.signal() })
+      await FileEntry.copy({
+        from: source,
+        to: target,
+        expectedVersion: entry.version,
+        validate,
+        signal: WorkspaceAccess.signal(),
+      })
     }
   }
 
@@ -706,8 +771,12 @@ export namespace Worktree {
       SYNERGY_SCOPE_ID: ScopeContext.current.scope.id,
     }
     for (const command of setup.setup) {
-      const ran = process.platform === "win32" ? $`cmd /c ${command}` : $`bash -lc ${command}`
-      const result = await ran.env(env).cwd(directory).nothrow()
+      const result = await WorktreeProcess.run({
+        command: process.platform === "win32" ? ["cmd", "/c", command] : ["bash", "-lc", command],
+        directory,
+        env,
+        roots: null,
+      })
       if (result.exitCode !== 0) {
         throw new StartCommandFailedError({ message: errorText(result) || `Worktree setup command failed: ${command}` })
       }
@@ -760,60 +829,137 @@ export namespace Worktree {
     throw new NameGenerationFailedError({ message: "Failed to generate a unique worktree name" })
   }
 
-  async function cleanupCreatedWorktree(repoRoot: string, directory: string, branch: string) {
-    await $`git worktree remove --force ${directory}`.quiet().nothrow().cwd(repoRoot)
-    await $`git branch -D ${branch}`.quiet().nothrow().cwd(repoRoot)
+  interface Creation {
+    info: Awaited<ReturnType<typeof candidate>>
+    base: Awaited<ReturnType<typeof resolveBase>>
+    marker: string
+    published: boolean
+  }
+
+  async function unlockCreation(repoRoot: string, creation: Creation) {
+    const result = await WorktreeProcess.run({
+      command: ["git", "worktree", "unlock", creation.info.directory],
+      directory: repoRoot,
+      roots: [await gitMetadataRoot(repoRoot)],
+      metadata: true,
+      beforeStart: async () => (await readLockReason(creation.info.directory, repoRoot)) === creation.marker,
+    })
+    if (result.exitCode !== 0)
+      throw new CreateFailedError({ message: errorText(result) || "Failed to release worktree creation lock" })
+  }
+
+  async function cleanupCreatedWorktree(repoRoot: string, creation: Creation) {
+    const { info, base } = creation
+    if (creation.published) return unlockCreation(repoRoot, creation)
+    await WorkspaceAccess.retire(
+      [info.directory],
+      async () => {
+        const entry = (await gitList(repoRoot)).find(
+          (item) => canonicalDirectory(item.path) === canonicalDirectory(info.directory),
+        )
+        if (!entry) return
+        if (entry.locked !== creation.marker)
+          throw new CreateFailedError({ message: "Unfinished worktree retained because its creation lock changed" })
+        await unlockCreation(repoRoot, creation)
+        if (entry.head !== base.resolvedCommit || entry.branch !== info.branch)
+          throw new CreateFailedError({ message: "Unfinished worktree retained because its branch or commit changed" })
+        const removed = await gitMutation(
+          repoRoot,
+          ["worktree", "remove", "--force", info.directory],
+          [repoRoot, info.directory],
+        )
+        if (removed.exitCode !== 0)
+          throw new CreateFailedError({ message: errorText(removed) || "Failed to remove unfinished worktree" })
+        const deleted = await gitMutation(repoRoot, [
+          "update-ref",
+          "-d",
+          `refs/heads/${info.branch}`,
+          base.resolvedCommit,
+        ])
+        if (deleted.exitCode !== 0)
+          throw new CreateFailedError({ message: errorText(deleted) || "Unfinished worktree branch was retained" })
+      },
+      { writeRoots: null },
+    )
   }
 
   export const create = fn(CreateInput.optional(), async (input) => {
     const parsed = CreateInput.parse(input ?? {})
     const { scope, repoRoot } = ensureGitScope()
+    WorkspaceAccess.signal()?.throwIfAborted()
     await ensureExclude(repoRoot)
-    await fs.mkdir(worktreesRoot(repoRoot), { recursive: true })
+    await WorkspaceAccess.metadata([worktreesRoot(repoRoot)], () =>
+      fs.mkdir(worktreesRoot(repoRoot), { recursive: true }),
+    )
 
     const session = parsed.sessionID ? await Session.get(parsed.sessionID) : undefined
     const titleName = session?.title && !isDefaultTitle(session.title) ? session.title : undefined
-    const info = await candidate(repoRoot, parsed.name ?? titleName, parsed.sessionID)
-    const base = await resolveBase({ baseRef: parsed.baseRef, baseRevision: parsed.baseRevision }, repoRoot)
-
-    const created = await $`git worktree add -b ${info.branch} ${info.directory} ${base.revision}`
-      .quiet()
-      .nothrow()
-      .cwd(repoRoot)
-    if (created.exitCode !== 0)
-      throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
-
-    const now = Date.now()
-    const registry: RegistryInfo = RegistryInfo.parse({
-      branch: info.branch,
-      id: hashID(path.resolve(info.directory)),
-      name: info.name,
-      path: path.resolve(info.directory),
-      scopeID: scope.id,
-      baseRef: parsed.baseRef,
-      baseRevision: parsed.baseRevision,
-      resolvedBaseCommit: base.resolvedCommit,
-      managed: true,
-      owner: parsed.owner ?? (parsed.sessionID ? { type: "session", sessionID: parsed.sessionID } : { type: "user" }),
-      bindings: parsed.sessionID && parsed.bind ? [parsed.sessionID] : [],
-      lifecycle: "active",
-      createdAt: now,
-      updatedAt: now,
-      lastUsedAt: now,
-    })
-
+    const plan: { selection?: Creation } = {}
     try {
+      const created = await WorktreeProcess.run({
+        async command() {
+          const info = await candidate(repoRoot, parsed.name ?? titleName, parsed.sessionID)
+          const base = await resolveBase({ baseRef: parsed.baseRef, baseRevision: parsed.baseRevision }, repoRoot)
+          const marker = `synergy:creating:${crypto.randomUUID()}`
+          plan.selection = { info, base, marker, published: false }
+          return [
+            "git",
+            "worktree",
+            "add",
+            "--lock",
+            "--reason",
+            marker,
+            "-b",
+            info.branch,
+            info.directory,
+            base.revision,
+          ]
+        },
+        directory: repoRoot,
+        roots: null,
+      })
+      if (created.exitCode !== 0)
+        throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
+
+      if (!plan.selection) throw new CreateFailedError({ message: "Worktree creation did not start" })
+      const creation = plan.selection
+      const { info, base } = creation
+      const now = Date.now()
+      const registry: RegistryInfo = RegistryInfo.parse({
+        branch: info.branch,
+        id: hashID(path.resolve(info.directory)),
+        name: info.name,
+        path: path.resolve(info.directory),
+        scopeID: scope.id,
+        baseRef: parsed.baseRef,
+        baseRevision: parsed.baseRevision,
+        resolvedBaseCommit: base.resolvedCommit,
+        managed: true,
+        owner: parsed.owner ?? (parsed.sessionID ? { type: "session", sessionID: parsed.sessionID } : { type: "user" }),
+        bindings: [],
+        lifecycle: "active",
+        createdAt: now,
+        updatedAt: now,
+        lastUsedAt: now,
+      })
       const result = await withUse(registry.path, parsed.sessionID, async () => {
         const setup = await setupInfo(repoRoot)
         try {
           await copyIgnoredFiles(setup, repoRoot, registry.path)
           await runSetup(setup, repoRoot, registry.path, registry)
         } catch (error) {
+          WorkspaceAccess.signal()?.throwIfAborted()
           registry.setupFailed = true
           registry.setupError = error instanceof Error ? error.message : String(error)
         }
+        WorkspaceAccess.signal()?.throwIfAborted()
         await writeRegistry(registry, repoRoot)
-        if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
+        creation.published = true
+        await unlockCreation(repoRoot, creation)
+        if (parsed.sessionID && parsed.bind) {
+          await bindSession(parsed.sessionID, registry)
+          registry.bindings = [parsed.sessionID]
+        }
         return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
       })
       // Opportunistic cap top-up, fire-and-forget by contract: creation has
@@ -822,7 +968,18 @@ export namespace Worktree {
       requestSweep(scope)
       return result
     } catch (error) {
-      await cleanupCreatedWorktree(repoRoot, registry.path, registry.branch)
+      const creation = plan.selection
+      if (creation)
+        try {
+          await WorkspaceAccess.handoff(() =>
+            WorkspaceAccess.maintenance(() => cleanupCreatedWorktree(repoRoot, creation), { inheritOwner: true }),
+          )
+        } catch (cleanupError) {
+          throw new AggregateError(
+            [error, cleanupError],
+            "Worktree creation failed and its remaining files were retained",
+          )
+        }
       throw error
     }
   })
@@ -879,8 +1036,8 @@ export namespace Worktree {
     }
     await updateBinding(info, sessionID, "add")
     try {
-      await Session.updateWorkspace(sessionID, workspace)
-      ScopeContext.refreshWorkspace(workspace as import("@ericsanchezok/synergy-harness/session/types").Workspace)
+      const session = await Session.updateWorkspace(sessionID, workspace)
+      ScopeContext.refreshWorkspace(session.workspace)
     } catch (error) {
       await updateBinding(info, sessionID, "remove").catch(() => undefined)
       throw error
@@ -907,7 +1064,7 @@ export namespace Worktree {
     const mainPath = originalCheckout ?? Scope.requireLocal(scope).worktree
     const mainWorkspace = { type: "main" as const, path: mainPath, scopeID: scope.id }
     const result = await Session.updateWorkspace(sessionID, mainWorkspace, options)
-    ScopeContext.refreshWorkspace(mainWorkspace as import("@ericsanchezok/synergy-harness/session/types").Workspace)
+    ScopeContext.refreshWorkspace(result.workspace)
     return result
   }
 
@@ -1084,7 +1241,7 @@ export namespace Worktree {
       log.info("worktree branch kept (content not proven landed)", { branch, target })
       return
     }
-    await $`git branch -D ${branch}`.quiet().nothrow().cwd(repoRoot)
+    await gitMutation(repoRoot, ["branch", "-D", branch])
     log.info("worktree branch deleted (content landed)", { branch, target })
   }
 
@@ -1094,28 +1251,36 @@ export namespace Worktree {
    * and branch rules.
    */
   async function removeWorktree(info: Info, options: { force: boolean; reason: string }) {
-    const { repoRoot } = ensureGitScope()
-    // An explicit removal runs inside the turn that holds a git-level lock, and
-    // the janitor may meet a Synergy lock a dead holder left behind. Either one
-    // blocks `git worktree remove` at every force level below `-f -f`, so
-    // release it here; `-f -f` is not an option because the turn's own finally
-    // would then unlock a path that is no longer a working tree and throw.
-    // A lock this repository did not write is refused, never cleared: it is
-    // indistinguishable from one a user pinned by hand.
-    if (!(await releaseLockForRemoval(info.path))) {
-      throw new CreateFailedError({
-        message: `Worktree ${info.name} is locked outside Synergy. Unlock it before removing.`,
-      })
-    }
-    const removed = options.force
-      ? await $`git worktree remove --force ${info.path}`.quiet().nothrow().cwd(repoRoot)
-      : await $`git worktree remove ${info.path}`.quiet().nothrow().cwd(repoRoot)
-    if (removed.exitCode !== 0) {
-      throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
-    }
-    if (info.managed) await removeRegistry(info.id)
-    await deleteBranchIfLanded(repoRoot, info.branch ?? "")
-    log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
+    return WorkspaceAccess.retire(
+      [info.path],
+      async () => {
+        const { repoRoot } = ensureGitScope()
+        // An explicit removal runs inside the turn that holds a git-level lock, and
+        // the janitor may meet a Synergy lock a dead holder left behind. Either one
+        // blocks `git worktree remove` at every force level below `-f -f`, so
+        // release it here; `-f -f` is not an option because the turn's own finally
+        // would then unlock a path that is no longer a working tree and throw.
+        // A lock this repository did not write is refused, never cleared: it is
+        // indistinguishable from one a user pinned by hand.
+        if (!(await releaseLockForRemoval(info.path))) {
+          throw new CreateFailedError({
+            message: `Worktree ${info.name} is locked outside Synergy. Unlock it before removing.`,
+          })
+        }
+        const removed = await gitMutation(
+          repoRoot,
+          ["worktree", "remove", ...(options.force ? ["--force"] : []), info.path],
+          [repoRoot, info.path],
+        )
+        if (removed.exitCode !== 0) {
+          throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
+        }
+        if (info.managed) await removeRegistry(info.id)
+        await deleteBranchIfLanded(repoRoot, info.branch ?? "")
+        log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
+      },
+      { writeRoots: null },
+    )
   }
 
   const LOCK_MARKER_PREFIX = "synergy:v1:"
@@ -1131,63 +1296,163 @@ export namespace Worktree {
   async function readLockReason(directory: string, repoRoot: string): Promise<string | undefined> {
     const text = await $`git worktree list --porcelain`.quiet().nothrow().cwd(repoRoot).text()
     if (!text) return undefined
-    const resolved = path.resolve(directory)
-    return parsePorcelain(text).find((item) => path.resolve(item.path) === resolved)?.locked
+    const resolved = canonicalDirectory(directory)
+    return parsePorcelain(text).find((item) => canonicalDirectory(item.path) === resolved)?.locked
   }
+
+  const unlockState = ScopedState.create(
+    () => ({ controller: new AbortController(), pending: new Map<string, Promise<void>>(), retry: new Set<string>() }),
+    async (state) => {
+      state.controller.abort(new DOMException("Worktree owner disposed", "AbortError"))
+      await Promise.allSettled(state.pending.values())
+    },
+  )
 
   export async function lock(directory: string, sessionID?: string): Promise<LockResult> {
     const instanceState = runtimeState()
-
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     let state = instanceState.activeLocks.get(resolved)
+    if (state?.unlocking) {
+      await state.unlocking
+      state = instanceState.activeLocks.get(resolved)
+    }
     if (!state) {
       state = { count: 0, synergyAcquired: false, markerOwner: false }
       instanceState.activeLocks.set(resolved, state)
     }
     state.count += 1
+    if (state.locking) {
+      const result = await state.locking
+      return { ...result, acquired: false }
+    }
     if (state.count > 1) return { acquired: false, existing: false, markerOwner: state.markerOwner }
-    const { repoRoot } = ensureGitScope()
-    const reason = lockMarker(sessionID)
-    const result = await $`git worktree lock --reason ${reason} ${resolved}`.quiet().nothrow().cwd(repoRoot)
-    if (result.exitCode !== 0) {
-      // "Already locked" is decided from porcelain, never from stderr: git
-      // localizes that message, so a text match only holds under an English
-      // locale and a non-English runtime threw instead of reporting the lock.
+    const own = state
+    own.locking = (async () => {
+      const { repoRoot } = ensureGitScope()
       const existingReason = await readLockReason(resolved, repoRoot)
       if (existingReason !== undefined) {
-        // Keep the state so a concurrent holder's count survives, and record
-        // whether this repository provably wrote the lock that is on disk.
-        state.markerOwner = ownsLockMarker(existingReason)
-        return { acquired: false, existing: true, markerOwner: state.markerOwner }
+        own.markerOwner = ownsLockMarker(existingReason)
+        if (own.reason !== existingReason) own.synergyAcquired = false
+        return { acquired: false, existing: true, markerOwner: own.markerOwner }
       }
-      instanceState.activeLocks.delete(resolved)
-      throw new LockFailedError({ message: errorText(result) || `Failed to lock worktree: ${resolved}` })
+      const reason = lockMarker(sessionID)
+      const result = await gitMutation(
+        repoRoot,
+        ["worktree", "lock", "--reason", reason, resolved],
+        [await gitMetadataRoot(repoRoot)],
+      )
+      if (result.exitCode !== 0) {
+        const concurrent = await readLockReason(resolved, repoRoot)
+        if (concurrent !== undefined) {
+          own.markerOwner = ownsLockMarker(concurrent)
+          return { acquired: false, existing: true, markerOwner: own.markerOwner }
+        }
+        throw new LockFailedError({ message: errorText(result) || `Failed to lock worktree: ${resolved}` })
+      }
+      own.synergyAcquired = true
+      own.markerOwner = true
+      own.reason = reason
+      return { acquired: true, existing: false, markerOwner: true }
+    })()
+    try {
+      return await own.locking
+    } catch (error) {
+      if (instanceState.activeLocks.get(resolved) === own) instanceState.activeLocks.delete(resolved)
+      throw error
+    } finally {
+      own.locking = undefined
     }
-    state.synergyAcquired = true
-    state.markerOwner = true
-    state.reason = reason
-    return { acquired: true, existing: false, markerOwner: true }
+  }
+
+  async function unlockOwned(resolved: string, state: LockState, repoRoot: string, signal: AbortSignal) {
+    const instanceState = runtimeState()
+    const settled = Promise.withResolvers<void>()
+    try {
+      const result = await WorktreeProcess.run({
+        command: ["git", "worktree", "unlock", resolved],
+        directory: repoRoot,
+        roots: [await gitMetadataRoot(repoRoot)],
+        metadata: true,
+        signal,
+        async beforeStart() {
+          if (instanceState.activeLocks.get(resolved) !== state || state.count > 0 || !state.synergyAcquired)
+            return false
+          state.unlocking = settled.promise
+          if ((await readLockReason(resolved, repoRoot)) === state.reason) return true
+          state.synergyAcquired = false
+          instanceState.activeLocks.delete(resolved)
+          return false
+        },
+      })
+      if (result.skipped) return
+      if (result.exitCode !== 0)
+        throw new LockFailedError({ message: errorText(result) || `Failed to unlock worktree: ${resolved}` })
+      state.synergyAcquired = false
+      if (instanceState.activeLocks.get(resolved) === state) instanceState.activeLocks.delete(resolved)
+    } finally {
+      settled.resolve()
+      if (state.unlocking === settled.promise) state.unlocking = undefined
+    }
+  }
+
+  function deferUnlock(resolved: string, state: LockState, repoRoot: string) {
+    const resource = unlockState()
+    if (resource.pending.has(resolved)) {
+      resource.retry.add(resolved)
+      return
+    }
+    const signal = resource.controller.signal
+    const pending = WorkspaceAccess.maintenance(
+      async () => {
+        while (!signal.aborted) {
+          try {
+            await unlockOwned(resolved, state, repoRoot, signal)
+            return
+          } catch (error) {
+            if (signal.aborted) return
+            if (!(error instanceof WorkspaceAccess.BusyError)) throw error
+          }
+        }
+      },
+      { signal },
+    )
+      .catch((error) => {
+        if (!signal.aborted) log.warn("worktree unlock failed", { directory: resolved, error })
+      })
+      .finally(() => {
+        resource.pending.delete(resolved)
+        if (resource.retry.delete(resolved) && !signal.aborted && state.count === 0 && state.synergyAcquired)
+          deferUnlock(resolved, state, repoRoot)
+      })
+    resource.pending.set(resolved, pending)
   }
 
   export async function unlock(directory: string) {
     const instanceState = runtimeState()
-
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     const state = instanceState.activeLocks.get(resolved)
-    if (!state) return
-    if (state.count > 1) {
-      state.count -= 1
+    if (!state || state.count === 0) return
+    state.count -= 1
+    if (state.count > 0) return
+    if (!state.synergyAcquired) {
+      instanceState.activeLocks.delete(resolved)
       return
     }
-    instanceState.activeLocks.delete(resolved)
-    // A lock this repository did not write is never cleared, so a user's own
-    // `git worktree lock` survives a session that merely ran in the worktree.
-    if (!state.synergyAcquired) return
     const { repoRoot } = ensureGitScope()
-    if ((await readLockReason(resolved, repoRoot)) !== state.reason) return
-    const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
-    if (result.exitCode !== 0) {
-      throw new LockFailedError({ message: errorText(result) || `Failed to unlock worktree: ${resolved}` })
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(new DOMException("Worktree unlock deferred", "TimeoutError")), 1000)
+    try {
+      await unlockOwned(resolved, state, repoRoot, controller.signal)
+    } catch (error) {
+      if (
+        !controller.signal.aborted &&
+        !WorkspaceAccess.signal()?.aborted &&
+        !(error instanceof WorkspaceAccess.BusyError)
+      )
+        throw error
+      deferUnlock(resolved, state, repoRoot)
+    } finally {
+      clearTimeout(timer)
     }
   }
 
@@ -1199,13 +1464,13 @@ export namespace Worktree {
   export async function releaseLockForRemoval(directory: string): Promise<boolean> {
     const instanceState = runtimeState()
 
-    const resolved = path.resolve(directory)
+    const resolved = canonicalDirectory(directory)
     const { repoRoot } = ensureGitScope()
     const existingReason = await readLockReason(resolved, repoRoot)
     if (existingReason === undefined) return true
     const state = instanceState.activeLocks.get(resolved)
     if (!ownsLockMarker(existingReason) || !state?.synergyAcquired || state.reason !== existingReason) return false
-    const result = await $`git worktree unlock ${resolved}`.quiet().nothrow().cwd(repoRoot)
+    const result = await gitMutation(repoRoot, ["worktree", "unlock", resolved], [await gitMetadataRoot(repoRoot)])
     if (result.exitCode !== 0) return false
     // Both flags must clear. The turn's own finally still calls unlock(), and
     // leaving the marker recorded would make it run `git worktree unlock` on a
@@ -1368,8 +1633,18 @@ export namespace Worktree {
         if (!missing) continue
         await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
         if (!current.stale) {
-          const removed = await $`git worktree remove --force ${current.path}`.quiet().nothrow().cwd(repoRoot)
-          if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
+          await WorkspaceAccess.retire(
+            [current.path],
+            async () => {
+              const removed = await gitMutation(
+                repoRoot,
+                ["worktree", "remove", "--force", current.path],
+                [repoRoot, current.path],
+              )
+              if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
+            },
+            { writeRoots: null },
+          )
         }
         await removeRegistry(current.id, repoRoot)
         reconciled.add(current.id)
@@ -1388,6 +1663,11 @@ export namespace Worktree {
     for (const item of oldestFirst) {
       let finishRemoval: (() => void) | undefined
       try {
+        if (report.removed.length >= excess) {
+          const decision = await probe(item)
+          if (!decision.eligible) report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
+          continue
+        }
         finishRemoval = beginRemoval(item)
         const current = await find(item.id)
         const decision = await probe(current)
@@ -1395,7 +1675,6 @@ export namespace Worktree {
           report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
           continue
         }
-        if (report.removed.length >= excess) continue
         await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
         await removeWorktree(current, { force: false, reason: "managed cap" })
         report.removed.push(current.id)

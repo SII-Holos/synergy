@@ -2500,6 +2500,10 @@ msgid "app.file.banner.deleted"
 msgstr "File was deleted. Showing the last available content."
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.banner.draftBackupUnavailable"
+msgstr "Local draft backup is unavailable. Save or copy your edits before closing this window."
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.banner.truncated"
 msgstr "Showing the first 512 KiB of this file."
 
@@ -2615,75 +2619,139 @@ msgstr "Toggle file tree"
 msgid "app.file.toolbar.viewMode"
 msgstr "File view mode"
 
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.workspace.missing"
+msgstr "Reopen this file from its Workspace to continue."
+
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.apply"
+msgstr "Apply"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cancel"
+msgstr "Cancel"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copy"
+msgstr "Copy"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createDirectory"
+msgstr "New folder"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createFile"
+msgstr "New file"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.deleteWarning"
+msgstr "This permanently deletes the selected entry and its contents. This action cannot be undone."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.draftsKept"
+msgstr "Unsaved drafts stay open at their original paths."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.failed"
+msgstr "The file operation failed."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.move"
+msgstr "Move or rename"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.operation"
+msgstr "Operation"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.path"
+msgstr "Path within Workspace"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.refreshRequired"
+msgstr "Refresh the file list before changing this entry."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.remove"
+msgstr "Delete permanently"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.title"
+msgstr "File actions"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.working"
+msgstr "Working…"
+
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.closeTree"
 msgstr "Close file tree"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.collapseAll"
 msgstr "Collapse all folders"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
 msgstr "Refresh files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.showHidden"
 msgstr "Show hidden and ignored files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.error.retryLoadingFolder"
 msgstr "Retry loading folder"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.notice"
 msgstr "The active file is hidden by Explorer filters."
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.showIt"
 msgstr "Show it"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.label"
 msgstr "Files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loading"
 msgstr "Loading…"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loadingMore"
 msgstr "Loading more…"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.resize"
 msgstr "Resize file explorer"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.label"
 msgstr "Search files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.noMatchingFiles"
 msgstr "No matching files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.placeholder"
 msgstr "Search files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.results.label"
 msgstr "File search results"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.title"
 msgstr "Files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.label"
 msgstr "Workspace files"
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.symbolicLink"
 msgstr "Symbolic link"
 
@@ -12078,6 +12146,14 @@ msgid "session-review.expand-all"
 msgstr "Expand all"
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.historical-binding"
+msgstr "This change belongs to a different or unavailable Workspace binding."
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.operation"
+msgstr "Change {number}"
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr "Split"
 
@@ -12088,6 +12164,10 @@ msgstr "Session changes"
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.unified"
 msgstr "Unified"
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.view-file"
+msgstr "Open file"
 
 #. js-lingui-explicit-id
 msgid "session-status.analyzing-files"
@@ -13699,6 +13779,11 @@ msgstr "Files restored"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.filesRestoreFailed"
 msgstr "Failed to restore files"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.partialRestore"
+msgstr "{restored, plural, one {# file restored} other {# files restored}}; {failed, plural, one {# file could not be restored} other {# files could not be restored}}."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -20941,6 +21026,10 @@ msgid "turn-change.calculation-failed"
 msgstr "Couldn’t calculate file changes"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.recording-incomplete"
+msgstr "File change recording is incomplete"
+
+#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr "Review changes"
 
@@ -21315,3 +21404,95 @@ msgstr "Changes in {title} have not been saved."
 #. js-lingui-explicit-id
 msgid "workbench.discard.title"
 msgstr "Discard unsaved changes?"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.applyBinding"
+msgstr "Rebind Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.busy"
+msgstr "Switching requires an idle session. Active file operations may also prevent rebinding or changing sharing."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.choose"
+msgstr "Use Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.description"
+msgstr "Choose where this session works. Its project, settings and conversation stay the same."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.directory"
+msgstr "Local directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.empty"
+msgstr "No matching Workspaces. Add an existing directory to get started."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.failed"
+msgstr "The Workspace could not be updated. Reload to review its current state."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.loading"
+msgstr "Loading Workspaces…"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.none"
+msgstr "No local files"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.pick"
+msgstr "Browse"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebind"
+msgstr "Change local binding"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindDescription"
+msgstr "All sessions using this Workspace will use the new directory. Existing files stay in place."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindPath"
+msgstr "New local directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.register"
+msgstr "Add directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.reload"
+msgstr "Reload"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.saveSharing"
+msgstr "Save sharing"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.search"
+msgstr "Find a Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharing"
+msgstr "Additional writable Workspaces"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingDescription"
+msgstr "Sessions in this Workspace may also write to the selected directories. Sharing applies directly and is not inherited."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingEmpty"
+msgstr "Add another directory to share write access."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.title"
+msgstr "Choose Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.unavailable"
+msgstr "Unavailable — choose a local directory to rebind"

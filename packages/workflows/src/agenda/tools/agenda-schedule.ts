@@ -64,6 +64,7 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
       params.title,
       triggers,
       params.global,
+      session?.workspaceID ?? null,
     )
     if (conflicts.length > 0) {
       return {

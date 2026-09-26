@@ -42,7 +42,9 @@ describe("ScopeStartup registration", () => {
       expect(indexOf("format")).toBeLessThan(indexOf("lsp-init"))
       expect(indexOf("lsp-init")).toBeLessThan(indexOf("file-watcher"))
       expect(indexOf("file-watcher")).toBeLessThan(indexOf("vcs-init"))
-      expect(indexOf("vcs-init")).toBeLessThan(indexOf("command-watcher"))
+      expect(ScopeStartup.plan("scope")).not.toContain("file-watcher")
+      expect(ScopeStartup.plan("scope")).toContain("command-watcher")
+      expect(ScopeStartup.plan("workspace")).toEqual(["format", "lsp-init", "file-watcher", "vcs-init"])
     }))
 
   test("a ready Runtime keeps its startup composition immutable", () =>

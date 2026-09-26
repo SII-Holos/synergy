@@ -1,3 +1,9 @@
+import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
+import { FileLink } from "./file/link"
+import { SnapshotRestore } from "@ericsanchezok/synergy-harness/session/snapshot-restore"
+import { WorkspaceFileRestore } from "./workspace-file/restore"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceCoordinator } from "./workspace/coordinator"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Pty } from "./process/pty"
 import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
@@ -5,6 +11,8 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { CortexWorkspace } from "@ericsanchezok/synergy-harness/cortex/workspace"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Worktree } from "./workspace/worktree"
+import { WorkspaceFileImport } from "@ericsanchezok/synergy-harness/workspace/file-import"
+import { WorkspaceFileService } from "./workspace-file/service"
 
 const log = Log.create({ service: "runtime.workspace" })
 
@@ -27,6 +35,10 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
 }
 
 export function registerWorkspace() {
+  SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
+  SnapshotRestore.register(WorkspaceFileRestore)
+  WorkspaceFileImport.register(WorkspaceFileService)
+  WorkspaceAccess.register(new WorkspaceCoordinator())
   SessionWorkspaceRuntime.register(workspaceServices)
   CortexWorkspace.register({
     async create(input) {

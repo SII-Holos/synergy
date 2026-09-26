@@ -14,6 +14,7 @@ import { SessionMessageCache } from "./message-cache"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 import { SessionManager } from "./manager"
 import { Snapshot } from "./snapshot"
+import { SnapshotRestore } from "./snapshot-restore"
 import type { Info } from "./types"
 
 const log = Log.create({ service: "session.history" })
@@ -76,7 +77,7 @@ export namespace SessionHistory {
 
   export const FileRestoreResult = z
     .object({
-      restoredFiles: z.array(z.string()),
+      ...SnapshotRestore.Result.shape,
       patchPartIDs: z.array(Identifier.schema("part")),
       rollbackID: Identifier.schema("history").optional(),
       messageID: Identifier.schema("message").optional(),
@@ -257,58 +258,72 @@ export namespace SessionHistory {
       }),
   )
 
-  export const restoreFiles = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      rollbackID: Identifier.schema("history").optional(),
-      messageID: Identifier.schema("message").optional(),
-      partID: Identifier.schema("part").optional(),
-      files: z.array(z.string()).optional(),
-    }),
-    async (input): Promise<FileRestoreResult> => {
-      SessionManager.assertIdle(input.sessionID)
-      const [raw, events] = await Promise.all([
-        rawMessages({ sessionID: input.sessionID }),
-        readEvents(input.sessionID),
-      ])
-      const active = activeRollbacks(events)
-      const rollbackEvent = input.rollbackID
-        ? active.find((event) => event.id === input.rollbackID)
-        : input.messageID || input.partID
-          ? undefined
-          : latest(events)
-      if ((input.rollbackID || (!input.messageID && !input.partID)) && !rollbackEvent) {
-        throw new FileRestoreMissingPatchDataError({
-          message: "No patch data is available for the requested file restore.",
+  const RestoreFilesInput = z.object({
+    sessionID: Identifier.schema("session"),
+    rollbackID: Identifier.schema("history").optional(),
+    messageID: Identifier.schema("message").optional(),
+    partID: Identifier.schema("part").optional(),
+    files: z.array(z.string()).max(10_000).optional(),
+  })
+  export const restoreFiles = fn(RestoreFilesInput, (input) => restoreFilesWithSignal(input))
+
+  export async function restoreFilesWithSignal(
+    input: z.infer<typeof RestoreFilesInput>,
+    signal?: AbortSignal,
+  ): Promise<FileRestoreResult> {
+    const session = await SessionManager.requireSession(input.sessionID)
+    if (session.scope.id !== ScopeContext.current.scope.id)
+      throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
+    return SessionManager.run(
+      input.sessionID,
+      async (lease) => {
+        const abort = signal ? AbortSignal.any([signal, lease.signal]) : lease.signal
+        abort.throwIfAborted()
+        const [raw, events] = await Promise.all([
+          rawMessages({ sessionID: input.sessionID }),
+          readEvents(input.sessionID),
+        ])
+        const active = activeRollbacks(events)
+        const rollbackEvent = input.rollbackID
+          ? active.find((event) => event.id === input.rollbackID)
+          : input.messageID || input.partID
+            ? undefined
+            : latest(events)
+        if ((input.rollbackID || (!input.messageID && !input.partID)) && !rollbackEvent) {
+          throw new FileRestoreMissingPatchDataError({
+            message: "No patch data is available for the requested file restore.",
+          })
+        }
+        const patches = collectPatches(raw, {
+          rollback: rollbackEvent,
+          messageID: input.messageID,
+          partID: input.partID,
+          files: input.files,
         })
-      }
-      const patches = collectPatches(raw, {
-        rollback: rollbackEvent,
-        messageID: input.messageID,
-        partID: input.partID,
-        files: input.files,
-      })
 
-      if (patches.length === 0) {
-        throw new FileRestoreMissingPatchDataError({
-          message: "No patch data is available for the requested file restore.",
-        })
-      }
+        if (patches.length === 0) {
+          throw new FileRestoreMissingPatchDataError({
+            message: "No patch data is available for the requested file restore.",
+          })
+        }
 
-      await Snapshot.revert(
-        patches.map((patch) => ({ hash: patch.hash, files: patch.files })),
-        input.sessionID,
-      )
+        const result = await Snapshot.revert(
+          patches.map((patch) => ({ hash: patch.hash, workspace: patch.workspace, files: patch.files })),
+          input.sessionID,
+          abort,
+        )
 
-      return {
-        restoredFiles: unique(patches.flatMap((patch) => patch.files)),
-        patchPartIDs: patches.map((patch) => patch.id),
-        rollbackID: rollbackEvent?.id ?? input.rollbackID,
-        messageID: input.messageID,
-        partID: input.partID,
-      }
-    },
-  )
+        return {
+          ...result,
+          patchPartIDs: patches.map((patch) => patch.id),
+          rollbackID: rollbackEvent?.id ?? input.rollbackID,
+          messageID: input.messageID,
+          partID: input.partID,
+        }
+      },
+      { workspace: "history" },
+    )
+  }
 
   async function loadRawFromDisk(sessionID: string) {
     const result = [] as MessageV2.WithParts[]
@@ -721,7 +736,7 @@ export namespace SessionHistory {
     },
   ) {
     const messageIDs = new Set(input.rollback?.droppedMessageIDs ?? (input.messageID ? [input.messageID] : []))
-    const files = input.files ? new Set(input.files.map(normalizeFile)) : undefined
+    const files = input.files ? new Set(input.files) : undefined
     const result: Array<MessageV2.PatchPart & { files: string[] }> = []
 
     for (const msg of messages) {
@@ -729,16 +744,19 @@ export namespace SessionHistory {
       for (const part of msg.parts) {
         if (part.type !== "patch") continue
         if (input.partID && part.id !== input.partID) continue
-        const selectedFiles = files ? part.files.filter((file) => files.has(normalizeFile(file))) : part.files
+        if (part.operation && part.operation.status !== "complete")
+          throw new SnapshotRestore.Invalid({
+            message: "File change evidence is incomplete; this operation cannot be restored",
+          })
+        const root = part.workspace?.root ?? (msg.info.role === "assistant" ? msg.info.path?.cwd : undefined)
+        const selectedFiles = files
+          ? part.files.filter((file) => files.has(file) || (root && files.has(path.relative(root, file))))
+          : part.files
         if (selectedFiles.length === 0) continue
         result.push({ ...part, files: selectedFiles })
       }
     }
     return result
-  }
-
-  function normalizeFile(file: string) {
-    return path.isAbsolute(file) ? path.normalize(file) : path.resolve(ScopeContext.current.directory, file)
   }
 
   function unique(values: string[]) {

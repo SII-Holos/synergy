@@ -261,6 +261,7 @@ export namespace RuntimeHandle {
       ConfigExtensions.lock()
       await Global.initialize({ configSchemaPath: services.configSchemaPath })
       await Log.init(options.logging ?? { print: false })
+      await options.host.workspaceLocation?.hostID()
       options.signal?.throwIfAborted()
       if (options.storage.kind === "owned") storage = await options.storage.open()
       const handle = options.storage.kind === "borrowed" ? options.storage.handle : storage!.handle

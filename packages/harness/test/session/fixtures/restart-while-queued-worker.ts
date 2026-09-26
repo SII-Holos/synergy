@@ -11,6 +11,7 @@ import { SessionInvoke } from "../../../src/session/invoke"
 import { SessionLifecycle } from "../../../src/session/lifecycle"
 import { SessionRecovery } from "../../../src/session/recovery"
 import { MessageV2 } from "../../../src/session/message-v2"
+import { identifyDirectory, readOrCreateIdentityFile } from "@ericsanchezok/synergy-util/filesystem-identity"
 
 // Must run with an explicit isolated SYNERGY_HOME (parent test sets it).
 const home = process.env["SYNERGY_HOME"]
@@ -37,6 +38,10 @@ const context = RuntimeContext.create({
   home,
   root: path.join(home, ".synergy"),
   env: { ...process.env, SYNERGY_TEST_HOME: home },
+  workspaceLocation: {
+    hostID: () => readOrCreateIdentityFile(path.join(home, ".synergy", "workspace-host")),
+    identify: identifyDirectory,
+  },
 })
 await context.run(async () => {
   registerHarness()

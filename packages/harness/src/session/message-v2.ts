@@ -104,6 +104,7 @@ export namespace MessageV2 {
   export const SnapshotPart = PartBase.extend({
     type: z.literal("snapshot"),
     snapshot: z.string(),
+    workspace: SnapshotSchema.Workspace.optional(),
   }).meta({
     ref: "SnapshotPart",
   })
@@ -112,6 +113,18 @@ export namespace MessageV2 {
   export const PatchPart = PartBase.extend({
     type: z.literal("patch"),
     hash: z.string(),
+    operation: z
+      .discriminatedUnion("status", [
+        z.object({ status: z.literal("pending"), toolCallID: z.string() }),
+        z.object({ status: z.literal("incomplete"), toolCallID: z.string() }),
+        z.object({
+          status: z.literal("complete"),
+          toolCallID: z.string(),
+          afterHash: z.string().regex(/^[0-9a-f]{40}$/),
+        }),
+      ])
+      .optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
     files: z.string().array(),
   }).meta({
     ref: "PatchPart",
@@ -274,6 +287,7 @@ export namespace MessageV2 {
   export const StepStartPart = PartBase.extend({
     type: z.literal("step-start"),
     snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
   }).meta({
     ref: "StepStartPart",
   })
@@ -284,6 +298,7 @@ export namespace MessageV2 {
     accounting: RolloutSchema.MessageAccounting.optional(),
     reason: z.string(),
     snapshot: z.string().optional(),
+    workspace: SnapshotSchema.Workspace.optional(),
     cost: z.number(),
     tokens: z.object({
       input: z.number(),
@@ -487,7 +502,7 @@ export namespace MessageV2 {
             z.object({ status: z.literal("ready") }),
             z.object({
               status: z.literal("error"),
-              code: z.enum(["timeout", "git_failure", "unknown"]),
+              code: z.enum(["timeout", "git_failure", "unknown", "incomplete"]),
             }),
           ])
           .optional(),

@@ -269,12 +269,9 @@ export namespace SessionNav {
         })
         if (!session.category) {
           // The nav lock is already held. This idempotent file update avoids the inverse nav-to-session lock order.
-          await Storage.update<SessionInfo>(
-            StoragePath.sessionInfo(sid, Identifier.asSessionID(session.id)),
-            (draft) => {
-              draft.category ??= category
-            },
-          )
+          await SessionRecords.update(StoragePath.sessionInfo(sid, Identifier.asSessionID(session.id)), (draft) => {
+            draft.category ??= category
+          })
         }
         const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
         entries.push({

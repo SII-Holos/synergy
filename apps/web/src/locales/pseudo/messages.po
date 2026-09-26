@@ -2500,6 +2500,10 @@ msgid "app.file.banner.deleted"
 msgstr ""
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.banner.draftBackupUnavailable"
+msgstr ""
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.banner.truncated"
 msgstr ""
 
@@ -2615,75 +2619,139 @@ msgstr ""
 msgid "app.file.toolbar.viewMode"
 msgstr ""
 
+#. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.workspace.missing"
+msgstr ""
+
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.apply"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cancel"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copy"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createDirectory"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.createFile"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.deleteWarning"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.draftsKept"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.failed"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.move"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.operation"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.path"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.refreshRequired"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.remove"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.title"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.working"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.closeTree"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.collapseAll"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.showHidden"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.error.retryLoadingFolder"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.notice"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.hidden.showIt"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.label"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loading"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.loadingMore"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.resize"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.label"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.noMatchingFiles"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.placeholder"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.search.results.label"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.title"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.label"
 msgstr ""
 
-#. ── File explorer ────────────────────────────────────────────────────────────
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.tree.symbolicLink"
 msgstr ""
 
@@ -12078,6 +12146,14 @@ msgid "session-review.expand-all"
 msgstr ""
 
 #. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.historical-binding"
+msgstr ""
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.operation"
+msgstr ""
+
+#. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.split"
 msgstr ""
 
@@ -12087,6 +12163,10 @@ msgstr ""
 
 #. ── Session review chrome ───────────────────────────────────────────
 msgid "session-review.unified"
+msgstr ""
+
+#. ── Session review chrome ───────────────────────────────────────────
+msgid "session-review.view-file"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13698,6 +13778,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.rollback.filesRestoreFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.rollback.partialRestore"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -20941,6 +21026,10 @@ msgid "turn-change.calculation-failed"
 msgstr ""
 
 #. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.recording-incomplete"
+msgstr ""
+
+#. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"
 msgstr ""
 
@@ -21314,4 +21403,96 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workbench.discard.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.applyBinding"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.busy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.directory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.none"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.pick"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebind"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.rebindPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.register"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.reload"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.saveSharing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.sharingEmpty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.unavailable"
 msgstr ""

@@ -13,6 +13,32 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
+test("large rollout inspection keeps timers responsive while validating every chunk", () =>
+  runtime.run(async () => {
+    await fixture(async ({ session, rootID, call }) => {
+      const artifact = await RolloutArtifact.open(call.owner, "application/octet-stream")
+      for (let index = 0; index < 384; index++) {
+        await artifact.append(new Uint8Array([index % 256]))
+        await artifact.checkpoint()
+      }
+      const response = await artifact.finish()
+      await RolloutLedger.finishCall(call.owner, rootID, call.id, { status: "completed", response })
+      await RolloutLedger.finishRun(call.owner, rootID, "completed")
+      const output = new Uint8ArrayWriter()
+      await RolloutArchive.write({ sessionID: session.id, runID: rootID }, output)
+      let ticks = 0
+      const timer = setInterval(() => ticks++, 0)
+      try {
+        const { manifest } = await RolloutArchive.inspect(new Blob([await output.getData()]))
+        expect(manifest.artifacts.some((entry) => entry.ref.chunks === 384)).toBe(true)
+        expect(manifest.integrity.missing).toEqual([])
+        expect(ticks).toBeGreaterThan(0)
+      } finally {
+        clearInterval(timer)
+      }
+    })
+  }))
+
 test("rollout ZIP restores original evidence with new identities and no new spend", () =>
   runtime.run(async () => {
     await fixture(async ({ session, rootID, call }) => {

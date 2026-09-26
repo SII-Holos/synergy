@@ -9,6 +9,8 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import path from "node:path"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 const runtime = await testRuntime()
 
 function manifest(capabilities: string[] = ["shell.execute"]) {
@@ -49,6 +51,45 @@ async function invoke(input: {
 }
 
 describe("plugin shell.run Host Service", () => {
+  test(
+    "retains host write ownership through detached children and cancels the whole invocation",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ config: { controlProfile: "full_access" } })
+        const scope = await tmp.scope()
+        const marker = path.join(tmp.path, "descendant")
+        const controller = new AbortController()
+        const child = `await Bun.write(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000)`
+        const script = `import {spawn} from 'node:child_process'; const child=spawn(process.execPath,['-e',${JSON.stringify(child)}],{env:{},stdio:'ignore',detached:true}); child.unref()`
+        const running = invoke({
+          directory: tmp.path,
+          scopeId: scope.id,
+          params: { command: [process.execPath, "-e", script], timeoutMs: 10000 },
+          signal: controller.signal,
+        })
+        void running.catch(() => {})
+        try {
+          const deadline = Date.now() + 5000
+          while (!(await Bun.file(marker).exists())) {
+            if (Date.now() >= deadline) throw new Error("Plugin shell descendant did not start")
+            await Bun.sleep(10)
+          }
+          await expect(
+            WorkspaceAccess.write([tmp.path], async () => {}, AbortSignal.timeout(100)),
+          ).rejects.toMatchObject({ name: "TimeoutError" })
+          const pid = Number(await Bun.file(marker).text())
+          controller.abort()
+          expect((await running).exitCode).not.toBe(0)
+          expect(() => process.kill(pid, 0)).toThrow()
+          await WorkspaceAccess.write([tmp.path], async () => {})
+        } finally {
+          controller.abort()
+          await running
+        }
+      }),
+    15000,
+  )
+
   test("executes an argv tuple in the active Scope and preserves non-zero process output", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })

@@ -1,6 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import type { RolloutProcess } from "@ericsanchezok/synergy-harness/session/rollout/process"
-import { spawn } from "child_process"
 import * as fs from "node:fs"
 import { fileURLToPath } from "url"
 import { Language, type Node } from "web-tree-sitter"
@@ -28,7 +27,11 @@ import { BashVirtualFile } from "./virtual-file"
 import type { BashSandboxPrepare } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
-import { WindowsProcessJob } from "../../process/windows-process-job"
+import path from "node:path"
+import { OwnedProcess } from "../../process/owned-process"
+import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -425,15 +428,11 @@ export const LocalBashBackend = {
     // source of the denied path that the structured explanation needs.
     let denialSession: DenialLoggerSession | null = null
     using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
-    let windowsProcessJob: WindowsProcessJob.Prepared | undefined
-    let windowsProcessOwner: WindowsProcessJob.Owner | undefined
-    let ownsUnixProcessGroup = false
     let artifactsCleaned = false
     const cleanupExecutionArtifacts = () => {
       if (artifactsCleaned) return
       artifactsCleaned = true
       // Audit drainage remains owned by the foreground execution scope, including early returns.
-      windowsProcessJob?.cleanup()
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
@@ -533,59 +532,30 @@ export const LocalBashBackend = {
       scheduleMetadata()
     }
 
-    let child: ReturnType<typeof spawn>
+    let child: ProcessHandle
+    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
     try {
-      if (sandboxWrapper && !sandboxWrapper.skipReason) {
-        const invocation = detachedDaemonAllowed
+      if (sandboxWrapper?.skipReason && sandboxFallback === "deny")
+        throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
+      const shellName = path.win32.basename(shell).toLowerCase()
+      const args =
+        process.platform === "win32" && ["cmd", "cmd.exe"].includes(shellName)
+          ? ["/d", "/s", "/c", `"${executionCommand}"`]
+          : process.platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(shellName)
+            ? ["-NoProfile", "-Command", executionCommand]
+            : ["-c", executionCommand]
+      const invocation =
+        sandboxWrapper && !sandboxWrapper.skipReason
           ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
-          : Shell.prepareOwnedProcessGroup({ command: sandboxWrapper.command, args: sandboxWrapper.args })
-        ownsUnixProcessGroup = process.platform !== "win32" && !detachedDaemonAllowed
-        child = spawn(invocation.command, invocation.args, {
-          cwd,
-          env: sandboxEnv,
-          stdio: ["pipe", "pipe", "pipe"],
-          detached: process.platform !== "win32",
-        })
-      } else {
-        if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
-          throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
-        }
-        if (sandboxWrapper?.skipReason) {
-          log.warn("sandbox unavailable, running unsandboxed", {
-            reason: sandboxWrapper.skipReason,
-            fallback: sandboxFallback,
-          })
-        }
-        windowsProcessJob = detachedDaemonAllowed
-          ? undefined
-          : WindowsProcessJob.prepareShell({ shell, command: executionCommand, env: sandboxEnv })
-        if (windowsProcessJob) {
-          child = spawn(windowsProcessJob.command, windowsProcessJob.args, {
-            cwd,
-            env: windowsProcessJob.env,
-            stdio: ["pipe", "pipe", "pipe"],
-            windowsVerbatimArguments: windowsProcessJob.verbatimCommandLine,
-          })
-        } else if (process.platform === "win32") {
-          child = spawn(executionCommand, {
-            shell,
-            cwd,
-            env: sandboxEnv,
-            stdio: ["pipe", "pipe", "pipe"],
-          })
-        } else {
-          const invocation = detachedDaemonAllowed
-            ? { command: shell, args: ["-c", executionCommand] }
-            : Shell.prepareOwnedProcessGroup({ command: shell, args: ["-c", executionCommand] })
-          ownsUnixProcessGroup = !detachedDaemonAllowed
-          child = spawn(invocation.command, invocation.args, {
-            cwd,
-            env: sandboxEnv,
-            stdio: ["pipe", "pipe", "pipe"],
-            detached: true,
-          })
-        }
+          : { command: shell, args }
+      const lease = await WorkspaceAccess.process(sandboxWriteRoots(sandboxWrapper), ctx.abort)
+      try {
+        owned = await OwnedProcess.prepare({ ...invocation, cwd, env: sandboxEnv, lease, signal: ctx.abort })
+      } catch (error) {
+        await lease.release()
+        throw error
       }
+      child = owned.child
     } catch (e: unknown) {
       await evidence?.finish({ interrupted: true, exitCode: null, signal: null })
       ProcessRegistry.remove(regProc.id)
@@ -599,24 +569,6 @@ export const LocalBashBackend = {
       )
       throw e
     }
-    if (windowsProcessJob) {
-      let spawnError: Error | undefined
-      const onSpawnError = (error: Error) => {
-        spawnError = error
-      }
-      child.once("error", onSpawnError)
-      try {
-        windowsProcessOwner = await windowsProcessJob.activate(child)
-        if (spawnError) throw spawnError
-      } catch (error) {
-        ProcessRegistry.remove(regProc.id)
-        cleanupExecutionArtifacts()
-        throw error
-      } finally {
-        child.off("error", onSpawnError)
-      }
-    }
-
     if (denialSession && child.pid) {
       denialSession.adoptPid(child.pid)
     }
@@ -638,12 +590,6 @@ export const LocalBashBackend = {
       timeoutMarkerAdded = true
       ProcessRegistry.appendOutput(regProc, `\n\n<bash_metadata>\n${message}\n</bash_metadata>`)
       scheduleMetadata()
-    }
-
-    const terminateWindowsOwner = () => {
-      if (!windowsProcessOwner) return
-      windowsProcessOwner.terminateOrRelease()
-      windowsProcessOwner = undefined
     }
 
     const kill = () => ProcessRegistry.terminate(regProc)
@@ -673,14 +619,6 @@ export const LocalBashBackend = {
       child.stdout?.off("data", appendStdout)
       child.stderr?.off("data", appendStderr)
       ProcessRegistry.setTerminator(regProc, undefined)
-      if (ownsUnixProcessGroup) Shell.releaseOwnedProcessGroup(child)
-      if (windowsProcessOwner) {
-        try {
-          terminateWindowsOwner()
-        } catch (error) {
-          log.warn("Windows job owner cleanup failed", { error })
-        }
-      }
       regProc.child = undefined
       regProc.stdin = undefined
     }
@@ -689,13 +627,6 @@ export const LocalBashBackend = {
       if (finalized) return
       finalized = true
       childError = error
-      if (windowsProcessOwner) {
-        try {
-          terminateWindowsOwner()
-        } catch (cleanupError) {
-          log.warn("Windows job owner cleanup failed after child error", { error: cleanupError })
-        }
-      }
       exited = true
       cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
@@ -715,9 +646,7 @@ export const LocalBashBackend = {
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
 
-    if (windowsProcessOwner) {
-      ProcessRegistry.setTerminator(regProc, terminateWindowsOwner)
-    }
+    if (owned) ProcessRegistry.setTerminator(regProc, owned.stop)
     let outputPending = Promise.resolve()
     let pendingWrites = 0
     let recordingFailure: Error | undefined
@@ -799,6 +728,7 @@ export const LocalBashBackend = {
     })
       .then(
         async (result) => {
+          await owned?.completion
           await outputPending
           await evidence?.finish({
             interrupted: result.drainTimedOut || aborted || timedOut,
@@ -810,6 +740,7 @@ export const LocalBashBackend = {
           finishClose(result.code, result.signal, result.drainTimedOut)
         },
         async (error: unknown) => {
+          await owned?.completion
           await outputPending
           await evidence?.finish({ interrupted: true, exitCode: null, signal: null, pid: child.pid })
           throw error
@@ -817,6 +748,17 @@ export const LocalBashBackend = {
       )
       .catch((error: unknown) => finishError(error instanceof Error ? error : new Error(String(error))))
     ProcessRegistry.trackClosure(regProc, closing)
+    if (owned) {
+      try {
+        await owned.activate()
+        regProc.pid = child.pid
+        if (denialSession && child.pid) denialSession.adoptPid(child.pid)
+      } catch (error) {
+        await owned.stop()
+        await closing
+        throw error
+      }
+    }
 
     await trace("process.spawn", {
       processId: regProc.id,

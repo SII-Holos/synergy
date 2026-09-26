@@ -17,6 +17,8 @@ await runBatchedTests({
     "test/components/diff-patch.dom.test.ts",
     "test/components/activity-trace-layout.browser.test.ts",
     "test/components/activity-trace-narrow.browser.test.ts",
+    "test/components/list-key-navigation.browser.test.ts",
+    "test/components/collection-key-navigation.browser.test.ts",
     "test/components/code.dom.test.ts",
     "test/components/compact-reasoning.dom.test.ts",
     "test/components/compact-reasoning-settlement.dom.test.ts",

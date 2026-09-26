@@ -183,6 +183,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
   const originalUpdateAssistantContextUsage = Session.updateAssistantContextUsage
   const originalUpdateLastExchange = Session.updateLastExchange
   const originalSnapshotTrack = Snapshot.track
+  const originalSnapshotWorkspace = Snapshot.workspace
   const originalConfigCurrent = Config.current
   const originalPluginTrigger = Plugin.trigger
   const originalExperienceComplete = ExperienceEncoder.onComplete
@@ -223,6 +224,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})
     ;(Snapshot.track as any) = mock(async () => "snapshot_test")
+    Snapshot.workspace = mock(() => undefined)
     ;(AgentTurn.stream as any) = mock(async (input: Record<string, unknown>) => {
       scenario.inspectAgentInput?.(input)
       return {
@@ -284,12 +286,30 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(Session.updateAssistantContextUsage as any) = originalUpdateAssistantContextUsage
     ;(Session.updateLastExchange as any) = originalUpdateLastExchange
     ;(Snapshot.track as any) = originalSnapshotTrack
+    Snapshot.workspace = originalSnapshotWorkspace
     ;(Config.current as any) = originalConfigCurrent
     ;(Plugin.trigger as any) = originalPluginTrigger
     ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
     ;(Bus.publish as any) = originalBusPublish
   }
 }
+
+test("read-only model steps carry no filesystem attribution", () =>
+  runtime.run(async () => {
+    const parts = await runSettlementScenario({
+      messageID: "msg_read_only_attribution",
+      async *stream() {
+        yield { type: "start-step" }
+        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } }
+        yield { type: "finish" }
+      },
+    })
+    expect(parts.filter((part) => part.type === "step-start" || part.type === "step-finish").length).toBe(2)
+    for (const part of parts) {
+      expect(part.type).not.toBe("patch")
+      if (part.type === "step-start" || part.type === "step-finish") expect(part.snapshot).toBeUndefined()
+    }
+  }))
 
 describe("SessionProcessor stream lifecycle", () => {
   for (const testCase of ["completion", "failure", "abort"] as const) {
@@ -699,6 +719,7 @@ describe("SessionProcessor context usage persistence", () => {
       await expect(
         Promise.race([processing, Bun.sleep(100).then(() => Promise.reject(new Error("blocked")))]),
       ).resolves.toBeDefined()
+      expect(persisted?.error).toBeUndefined()
       expect(persisted?.finish).toBe("stop")
       expect(persisted?.contextUsage).toBeUndefined()
       settleDraft(undefined)

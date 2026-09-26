@@ -835,6 +835,7 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   if (initial !== 0) return initial
 
   const platform = process.platform
+  await (await import("../packages/runtime-local/script/build-pty")).buildPty()
   if (platform === "darwin") await (await import("../packages/harness/script/build-sqlite")).buildSqlite()
   if (platform === "linux") {
     const { buildWatcher } = await import("../packages/runtime-local/script/build-watcher")

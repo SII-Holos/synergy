@@ -1,3 +1,4 @@
+import { projectWorkspaceBinding } from "./workspace-catalog"
 import { batch, createMemo, onCleanup } from "solid-js"
 import { createStore, produce, reconcile } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
@@ -65,7 +66,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     const reconcileCortexFromSession = (session: Session) => globalSync.reconcileCortexFromSession(session)
 
-    const upsertSession = (session: Session) => {
+    const upsertSession = (incoming: Session) => {
+      const session = incoming.workspaceID
+        ? {
+            ...incoming,
+            workspace: projectWorkspaceBinding(
+              incoming.workspace,
+              store.workspaces.find((record) => record.id === incoming.workspaceID),
+              { workspaceID: incoming.workspaceID, scopeID: incoming.scope.id },
+            ),
+          }
+        : incoming
       reconcileCortexFromSession(session)
       const index = findSessionIndex(store.session, session.id)
       if (index !== -1) {

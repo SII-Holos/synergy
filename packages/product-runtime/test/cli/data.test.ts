@@ -26,6 +26,9 @@ import { registerProductRuntime } from "../../src/product-registration"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 let fixture: Awaited<ReturnType<typeof runtimeHome>>
 let runtime: RuntimeContext.Instance
 
@@ -223,6 +226,43 @@ describe("data shared helpers", () => {
 })
 
 describe("data move command", () => {
+  test("copies selected folders before publishing bindings to their new locations", () =>
+    runtime.run(async () => {
+      const { executeMove } = await import("../../src/cli/data/move")
+      await using target = await tmpdir()
+      const directory = path.join(Global.Path.root, "config", "workspace")
+      await fs.mkdir(directory, { recursive: true })
+      await fs.writeFile(path.join(directory, "native.txt"), "workspace bytes")
+      const prepared = await StorageBootstrap.prepare({ root: Global.Path.root })
+      let workspace!: WorkspaceCatalog.Info
+      try {
+        await Storage.provide({ store: prepared.store, artifactDirectory: Global.Path.data }, async () => {
+          workspace = await WorkspaceCatalog.register({
+            scopeID: "home",
+            type: "directory",
+            hostID: await fixture.host.workspaceLocation!.hostID(),
+            ...(await fixture.host.workspaceLocation!.identify(directory)),
+          })
+        })
+        await prepared.activate()
+      } finally {
+        await prepared.store.close()
+      }
+      await executeMove({ target: target.path, removeOriginal: false, dryRun: false })
+      const destination = path.join(target.path, ".synergy")
+      const imported = (await StorageBootstrap.inspect(destination))!
+      try {
+        const record = await imported.store.read<WorkspaceCatalog.Info>(["workspace", workspace.id])
+        expect(record.binding).toMatchObject({
+          state: "bound",
+          path: await fs.realpath(path.join(destination, "config", "workspace")),
+          generation: 2,
+        })
+        expect(await fs.readFile(path.join(record.binding.path!, "native.txt"), "utf8")).toBe("workspace bytes")
+      } finally {
+        await imported.store.close()
+      }
+    }))
   test("remove-original releases its storage locks without recreating the source home", () =>
     runtime.run(async () => {
       const { executeMove } = await import("../../src/cli/data/move")

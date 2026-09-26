@@ -1,4 +1,4 @@
-import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { SessionStatus, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 import { isWorkingStatus } from "@/utils/session-status"
 
 import {
@@ -8,10 +8,8 @@ import {
 } from "./session-transition-progress"
 import { S } from "./session-i18n"
 
-export type NewSessionWorkspaceSelection =
-  | { mode: "current" }
-  | { mode: "create" }
-  | { mode: "existing"; target: string }
+export type NewSessionWorkspaceSelection = SessionWorkspaceSelection
+type WorktreeSelection = Extract<NewSessionWorkspaceSelection, { mode: "create" | "existing" }>
 
 export type WorkspaceChangeStatus = SessionStatus
 
@@ -76,9 +74,7 @@ export type SessionWorkspaceTransitionRequest =
 
 type NewSessionWorkspaceProgressStage = "workspace" | "message"
 
-function workspaceStepForSelection(
-  selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>,
-): SessionStartupWorkspaceStep {
+function workspaceStepForSelection(selection: WorktreeSelection): SessionStartupWorkspaceStep {
   return selection.mode === "create"
     ? {
         label: S.worktreeStepCreateCheckout,
@@ -209,7 +205,7 @@ export function createWorkspaceTransitionRefreshErrorProgress(input: {
 }
 
 export function createNewSessionWorkspaceProgress(input: {
-  selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
+  selection: WorktreeSelection
   stage: NewSessionWorkspaceProgressStage
 }): SessionTransitionProgress {
   return {
@@ -225,7 +221,7 @@ export function createNewSessionWorkspaceProgress(input: {
 }
 
 export function createNewSessionWorkspaceSuccessProgress(input: {
-  selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
+  selection: WorktreeSelection
 }): SessionTransitionProgress {
   return {
     kind: "new-worktree-session",
@@ -240,7 +236,7 @@ export function createNewSessionWorkspaceSuccessProgress(input: {
 }
 
 export function createNewSessionWorkspaceAcceptedProgress(input: {
-  selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
+  selection: WorktreeSelection
 }): SessionTransitionProgress {
   return {
     kind: "new-worktree-session",

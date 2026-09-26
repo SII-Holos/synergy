@@ -3,24 +3,33 @@ import { $ } from "bun"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { Server } from "../../src/server/server"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
-function workspaceUrl(endpoint: string, directory: string, params?: Record<string, string | number | boolean>) {
+async function workspaceUrl(endpoint: string, directory: string, params?: Record<string, string | number | boolean>) {
   const url = new URL(`http://synergy.test/workspace/files/${endpoint}`)
-  url.searchParams.set("directory", directory)
+  const scope = await Scope.resolve({ directory })
+  const workspace = (await WorkspaceBinding.adopt({ type: "main", path: directory, scopeID: scope.id }, scope.id))!
+  url.searchParams.set("scopeID", scope.id)
+  url.searchParams.set("workspaceID", workspace.id!)
+  url.searchParams.set("workspaceGeneration", String(workspace.generation))
   for (const [key, value] of Object.entries(params ?? {})) {
     url.searchParams.set(key, String(value))
   }
   return url.pathname + url.search
 }
 
-function rawUrl(directory: string, rel: string): string {
-  const token = Buffer.from(directory, "utf-8").toString("base64url")
-  return `/workspace/files/raw/${token}/${rel}`
+async function rawUrl(directory: string, rel: string): Promise<string> {
+  const scope = await Scope.resolve({ directory })
+  const workspace = (await WorkspaceBinding.adopt({ type: "main", path: directory, scopeID: scope.id }, scope.id))!
+  const token = Buffer.from(scope.id, "utf-8").toString("base64url")
+  return `/workspace/files/raw/${token}/${workspace.id}/${workspace.generation}/${rel}`
 }
 
 describe("GET /workspace/files", () => {
@@ -50,7 +59,7 @@ describe("GET /workspace/files", () => {
       const app = Server.App()
 
       const children = await app.request(
-        workspaceUrl("children", tmp.path, {
+        await workspaceUrl("children", tmp.path, {
           path: "",
         }),
       )
@@ -58,24 +67,24 @@ describe("GET /workspace/files", () => {
       const childrenBody = await children.json()
       expect(childrenBody.children.some((node: any) => node.path === "src")).toBe(true)
 
-      const stat = await app.request(workspaceUrl("stat", tmp.path, { path: "src/tracked.ts" }))
+      const stat = await app.request(await workspaceUrl("stat", tmp.path, { path: "src/tracked.ts" }))
       expect(stat.status).toBe(200)
       const statBody = await stat.json()
       expect(statBody.path).toBe("src/tracked.ts")
       expect(statBody.gitStatus).toBe("modified")
 
-      const read = await app.request(workspaceUrl("read", tmp.path, { path: "src/tracked.ts", range: "0:1" }))
+      const read = await app.request(await workspaceUrl("read", tmp.path, { path: "src/tracked.ts", range: "0:1" }))
       expect(read.status).toBe(200)
       const readBody = await read.json()
       expect(readBody.kind).toBe("text")
       expect(readBody.content).toContain("tracked")
 
-      const search = await app.request(workspaceUrl("search", tmp.path, { kind: "files", query: "fresh" }))
+      const search = await app.request(await workspaceUrl("search", tmp.path, { kind: "files", query: "fresh" }))
       expect(search.status).toBe(200)
       const searchBody = await search.json()
       expect(searchBody.items.some((item: any) => item.path === "src/fresh.ts")).toBe(true)
 
-      const status = await app.request(workspaceUrl("status", tmp.path))
+      const status = await app.request(await workspaceUrl("status", tmp.path))
       expect(status.status).toBe(200)
       const statusBody = await status.json()
       expect(statusBody.files.find((file: any) => file.path === "src/tracked.ts")?.status).toBe("modified")
@@ -97,7 +106,9 @@ describe("GET /workspace/files", () => {
   test("returns a stable 404 when a persisted explorer directory no longer exists", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const response = await Server.App().request(workspaceUrl("children", tmp.path, { path: "deleted/directory" }))
+      const response = await Server.App().request(
+        await workspaceUrl("children", tmp.path, { path: "deleted/directory" }),
+      )
 
       expect(response.status).toBe(404)
       const body = await response.json()
@@ -127,18 +138,18 @@ describe("GET /workspace/files", () => {
         if (!linkCreated) return
         const app = Server.App()
 
-        const children = await app.request(workspaceUrl("children", tmp.path, { path: "docs" }))
+        const children = await app.request(await workspaceUrl("children", tmp.path, { path: "docs" }))
         expect(children.status).toBe(403)
         const childrenBody = await children.json()
         expect(childrenBody.name).toBe("WorkspaceFileAccessDeniedError")
         expect(childrenBody.data.message).toContain("Access denied")
 
-        const read = await app.request(workspaceUrl("read", tmp.path, { path: "docs/note.md" }))
+        const read = await app.request(await workspaceUrl("read", tmp.path, { path: "docs/note.md" }))
         expect(read.status).toBe(403)
         const readBody = await read.json()
         expect(readBody.name).toBe("WorkspaceFileAccessDeniedError")
 
-        const stat = await app.request(workspaceUrl("stat", tmp.path, { path: "docs/note.md" }))
+        const stat = await app.request(await workspaceUrl("stat", tmp.path, { path: "docs/note.md" }))
         expect(stat.status).toBe(403)
       } finally {
         await fs.rm(sibling, { recursive: true, force: true }).catch(() => {})
@@ -167,12 +178,12 @@ describe("GET /workspace/files", () => {
         if (!linkCreated) return
         const app = Server.App()
 
-        const children = await app.request(workspaceUrl("children", linkDir, { path: "" }))
+        const children = await app.request(await workspaceUrl("children", linkDir, { path: "" }))
         expect(children.status).toBe(200)
         const childrenBody = await children.json()
         expect(childrenBody.children.some((node: any) => node.path === "docs")).toBe(true)
 
-        const read = await app.request(workspaceUrl("read", linkDir, { path: "docs/note.md" }))
+        const read = await app.request(await workspaceUrl("read", linkDir, { path: "docs/note.md" }))
         expect(read.status).toBe(200)
         const readBody = await read.json()
         expect(readBody.kind).toBe("text")
@@ -183,11 +194,13 @@ describe("GET /workspace/files", () => {
 })
 
 describe("POST /workspace/files/write", () => {
-  function postWrite(app: ReturnType<typeof Server.App>, directory: string, body: Record<string, unknown>) {
-    return app.request(workspaceUrl("write", directory), {
+  async function postWrite(app: ReturnType<typeof Server.App>, directory: string, body: Record<string, unknown>) {
+    const read = await app.request(await workspaceUrl("read", directory, { path: String(body.path), mode: "document" }))
+    const current = await read.json()
+    return app.request(await workspaceUrl("write", directory), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ expectedVersion: current.contentVersion ?? null, ...body }),
     })
   }
 
@@ -212,7 +225,7 @@ describe("POST /workspace/files/write", () => {
       expect(await Bun.file(path.join(tmp.path, "hello.txt")).text()).toBe("updated content")
     }))
 
-  test("allows overwriting without expectedMtime", () =>
+  test("updates successively using fresh content versions", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -229,7 +242,7 @@ describe("POST /workspace/files/write", () => {
       expect(await Bun.file(path.join(tmp.path, "notes.txt")).text()).toBe("third")
     }))
 
-  test("succeeds when expectedMtime matches the on-disk mtime", () =>
+  test("succeeds with the content version returned by read", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -239,20 +252,20 @@ describe("POST /workspace/files/write", () => {
       })
       const app = Server.App()
 
-      const statResponse = await app.request(workspaceUrl("stat", tmp.path, { path: "edit.txt" }))
+      const statResponse = await app.request(await workspaceUrl("read", tmp.path, { path: "edit.txt" }))
       expect(statResponse.status).toBe(200)
       const statBody = await statResponse.json()
 
       const response = await postWrite(app, tmp.path, {
         path: "edit.txt",
         content: "after",
-        expectedMtime: statBody.mtime,
+        expectedVersion: statBody.contentVersion,
       })
       expect(response.status).toBe(200)
       expect(await Bun.file(path.join(tmp.path, "edit.txt")).text()).toBe("after")
     }))
 
-  test("rejects a stale expectedMtime with 409 and leaves the file untouched", () =>
+  test("rejects a stale content version with 409 and leaves the file untouched", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -263,14 +276,13 @@ describe("POST /workspace/files/write", () => {
       const app = Server.App()
 
       const file = path.join(tmp.path, "conflict.txt")
-      const staleMtime = (await fs.stat(file)).mtimeMs
-      await Bun.sleep(25)
+      const staleVersion = FileTime.version(await Bun.file(file).bytes())
       await Bun.write(file, "v2")
 
       const response = await postWrite(app, tmp.path, {
         path: "conflict.txt",
         content: "v3",
-        expectedMtime: staleMtime,
+        expectedVersion: staleVersion,
       })
       expect(response.status).toBe(409)
       const body = await response.json()
@@ -279,7 +291,7 @@ describe("POST /workspace/files/write", () => {
       expect(await Bun.file(file).text()).toBe("v2")
     }))
 
-  test("skips the mtime conflict check with conflictPolicy overwrite", () =>
+  test("accepts an explicit overwrite of a stale content version", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -290,29 +302,34 @@ describe("POST /workspace/files/write", () => {
       const app = Server.App()
 
       const file = path.join(tmp.path, "force.txt")
-      const staleMtime = (await fs.stat(file)).mtimeMs
-      await Bun.sleep(25)
+      const staleVersion = FileTime.version(await Bun.file(file).bytes())
       await Bun.write(file, "v2")
 
       const response = await postWrite(app, tmp.path, {
         path: "force.txt",
         content: "v3",
-        expectedMtime: staleMtime,
+        expectedVersion: staleVersion,
         conflictPolicy: "overwrite",
       })
       expect(response.status).toBe(200)
       expect(await Bun.file(file).text()).toBe("v3")
     }))
 
-  test("returns 404 for a missing file", () =>
+  test("creates a file using a missing-content precondition", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const response = await postWrite(Server.App(), tmp.path, { path: "missing.txt", content: "x" })
-      expect(response.status).toBe(404)
-      const body = await response.json()
-      expect(body.name).toBe("NotFoundError")
-      expect(body.data.message).toContain("does not exist")
-      expect(JSON.stringify(body)).not.toContain(tmp.path)
+      const response = await postWrite(Server.App(), tmp.path, {
+        path: "missing.txt",
+        content: "x",
+        expectedVersion: null,
+      })
+      expect(response.status).toBe(200)
+      expect(await response.json()).toMatchObject({
+        path: "missing.txt",
+        existed: false,
+        contentVersion: FileTime.version("x"),
+      })
+      expect(await Bun.file(path.join(tmp.path, "missing.txt")).text()).toBe("x")
     }))
 
   test("rejects paths escaping the workspace with 403", () =>
@@ -380,7 +397,7 @@ describe("POST /workspace/files/write", () => {
       expect(response.status).toBe(403)
       const body = await response.json()
       expect(body.name).toBe("WorkspaceFileAccessDeniedError")
-      expect(body.data.message).toContain("not a file")
+      expect(body.data.message).toContain("not a regular file")
     }))
 
   test("rejects content larger than the write cap with 400", () =>
@@ -446,7 +463,7 @@ describe("GET /workspace/files/content", () => {
           await Bun.write(path.join(dir, "guide.pdf"), "%PDF-1.1\n% fake body")
         },
       })
-      const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "guide.pdf" }))
+      const response = await Server.App().request(await workspaceUrl("content", tmp.path, { path: "guide.pdf" }))
       expect(response.status).toBe(200)
       expect(response.headers.get("content-type")).toBe("application/pdf")
       expect(response.headers.get("cache-control")).toBe("no-store")
@@ -462,7 +479,7 @@ describe("GET /workspace/files/content", () => {
           await Bun.write(path.join(dir, "GUIDE.PDF"), "%PDF-1.1\n")
         },
       })
-      const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "GUIDE.PDF" }))
+      const response = await Server.App().request(await workspaceUrl("content", tmp.path, { path: "GUIDE.PDF" }))
       expect(response.status).toBe(200)
     }))
 
@@ -475,7 +492,7 @@ describe("GET /workspace/files/content", () => {
           await fs.truncate(path.join(dir, "huge.pdf"), 50 * 1024 * 1024 + 1)
         },
       })
-      const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "huge.pdf" }))
+      const response = await Server.App().request(await workspaceUrl("content", tmp.path, { path: "huge.pdf" }))
       expect(response.status).toBe(400)
       const body = await response.json()
       expect(body.name).toBe("WorkspaceFileTooLargeError")
@@ -493,7 +510,7 @@ describe("GET /workspace/files/content", () => {
       })
       const app = Server.App()
       for (const name of ["deck.pptx", "photo.png", "main.ts"]) {
-        const response = await app.request(workspaceUrl("content", tmp.path, { path: name }))
+        const response = await app.request(await workspaceUrl("content", tmp.path, { path: name }))
         expect(response.status).toBe(400)
         const body = await response.json()
         expect(body.name).toBe("WorkspaceFileUnsupportedPreviewError")
@@ -503,7 +520,7 @@ describe("GET /workspace/files/content", () => {
   test("rejects a path escaping the workspace with 403", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "../outside.pdf" }))
+      const response = await Server.App().request(await workspaceUrl("content", tmp.path, { path: "../outside.pdf" }))
       expect(response.status).toBe(403)
       const body = await response.json()
       expect(body.name).toBe("WorkspaceFileAccessDeniedError")
@@ -529,7 +546,9 @@ describe("GET /workspace/files/content", () => {
           },
         })
         if (!linkCreated) return
-        const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "docs/secret.pdf" }))
+        const response = await Server.App().request(
+          await workspaceUrl("content", tmp.path, { path: "docs/secret.pdf" }),
+        )
         expect(response.status).toBe(403)
         const body = await response.json()
         expect(body.name).toBe("WorkspaceFileAccessDeniedError")
@@ -538,10 +557,10 @@ describe("GET /workspace/files/content", () => {
       }
     }))
 
-  test("returns 404 for a missing file", () =>
+  test("creates a file using a missing-content precondition", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const response = await Server.App().request(workspaceUrl("content", tmp.path, { path: "missing.pdf" }))
+      const response = await Server.App().request(await workspaceUrl("content", tmp.path, { path: "missing.pdf" }))
       expect(response.status).toBe(404)
       const body = await response.json()
       expect(body.name).toBe("NotFoundError")
@@ -556,7 +575,7 @@ describe("GET /workspace/files/content", () => {
         },
       })
       const response = await Server.App().request(
-        workspaceUrl("read", tmp.path, { path: "guide.pdf", mode: "document" }),
+        await workspaceUrl("read", tmp.path, { path: "guide.pdf", mode: "document" }),
       )
       expect(response.status).toBe(200)
       const body = await response.json()
@@ -573,7 +592,7 @@ describe("GET /workspace/files/content", () => {
           await Bun.write(path.join(dir, "doc.html"), html)
         },
       })
-      const response = await Server.App().request(rawUrl(tmp.path, "doc.html"))
+      const response = await Server.App().request(await rawUrl(tmp.path, "doc.html"))
       expect(response.status).toBe(200)
       expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8")
       expect(response.headers.get("content-security-policy")).toBe(
@@ -593,7 +612,7 @@ describe("GET /workspace/files/content", () => {
           await Bun.write(path.join(dir, "doc.htm"), html)
         },
       })
-      const response = await Server.App().request(rawUrl(tmp.path, "doc.htm"))
+      const response = await Server.App().request(await rawUrl(tmp.path, "doc.htm"))
       expect(response.status).toBe(200)
       expect(response.headers.get("content-security-policy")).toBe(
         "sandbox allow-scripts allow-forms allow-popups allow-modals",
@@ -610,7 +629,7 @@ describe("GET /workspace/files/content", () => {
           await Bun.write(path.join(dir, "evil.svg"), svg)
         },
       })
-      const response = await Server.App().request(rawUrl(tmp.path, "evil.svg"))
+      const response = await Server.App().request(await rawUrl(tmp.path, "evil.svg"))
       expect(response.status).toBe(200)
       expect(response.headers.get("content-type")).toContain("image/svg+xml")
       expect(response.headers.get("content-security-policy")).toBe(
@@ -627,7 +646,7 @@ describe("GET /workspace/files/content", () => {
           await Bun.write(path.join(dir, "evil.xml"), xml)
         },
       })
-      const response = await Server.App().request(rawUrl(tmp.path, "evil.xml"))
+      const response = await Server.App().request(await rawUrl(tmp.path, "evil.xml"))
       expect(response.status).toBe(200)
       expect(response.headers.get("content-type")).toContain("application/xml")
       expect(response.headers.get("content-security-policy")).toBe(
@@ -647,7 +666,7 @@ describe("GET /workspace/files/content", () => {
       })
       const app = Server.App()
 
-      const image = await app.request(rawUrl(tmp.path, "assets/cover/image1.jpeg"))
+      const image = await app.request(await rawUrl(tmp.path, "assets/cover/image1.jpeg"))
       expect(image.status).toBe(200)
       expect(image.headers.get("content-type")).toContain("image/jpeg")
       expect(image.headers.get("content-security-policy") ?? "").not.toContain("sandbox")
@@ -655,7 +674,7 @@ describe("GET /workspace/files/content", () => {
       const bytes = await image.arrayBuffer()
       expect(new Uint8Array(bytes)).toEqual(Uint8Array.from([0xff, 0xd8, 0xff]))
 
-      const script = await app.request(rawUrl(tmp.path, "assets/app.js"))
+      const script = await app.request(await rawUrl(tmp.path, "assets/app.js"))
       expect(script.status).toBe(200)
       expect(script.headers.get("content-type")).toContain("javascript")
       expect(script.headers.get("content-security-policy") ?? "").not.toContain("sandbox")
@@ -670,7 +689,9 @@ describe("GET /workspace/files/content", () => {
           await Bun.write(path.join(dir, "resources", "templates", "01-cover-main", "cover.html"), "<p>cover</p>")
         },
       })
-      const response = await Server.App().request(rawUrl(tmp.path, "resources/templates/01-cover-main/cover.html"))
+      const response = await Server.App().request(
+        await rawUrl(tmp.path, "resources/templates/01-cover-main/cover.html"),
+      )
       expect(response.status).toBe(200)
       expect(await response.text()).toBe("<p>cover</p>")
     }))
@@ -688,7 +709,7 @@ describe("GET /workspace/files/content", () => {
           "nested/../../outside.txt",
           "..%2F..%2Foutside.txt",
         ]) {
-          const response = await app.request(rawUrl(tmp.path, rel))
+          const response = await app.request(await rawUrl(tmp.path, rel))
           // Layers may reject these differently: URL parsing collapses lexical ../
           // (404), encoded %2F trips malformed-path handling (400), surviving
           // segments hit the traversal guard (403). All block the escape.
@@ -702,15 +723,17 @@ describe("GET /workspace/files/content", () => {
 
   test("rejects an unavailable raw scope token workspace with 409", () =>
     runtime.run(async () => {
-      const missing = path.join(os.tmpdir(), `synergy-raw-missing-${Date.now()}`)
-      const response = await Server.App().request(rawUrl(missing, "index.html"))
+      await using tmp = await tmpdir()
+      const url = await rawUrl(tmp.path, "index.html")
+      await fs.rm(tmp.path, { recursive: true })
+      const response = await Server.App().request(url)
       expect(response.status).toBe(409)
     }))
 
   test("returns 404 for a missing raw HTML file", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
-      const response = await Server.App().request(rawUrl(tmp.path, "missing.html"))
+      const response = await Server.App().request(await rawUrl(tmp.path, "missing.html"))
       expect(response.status).toBe(404)
       const body = await response.json()
       expect(body.name).toBe("NotFoundError")
@@ -728,7 +751,7 @@ describe("GET /workspace/files/content", () => {
       })
       const app = Server.App()
 
-      const document = await app.request(`${rawUrl(tmp.path, "report.html")}?download=1`)
+      const document = await app.request(`${await rawUrl(tmp.path, "report.html")}?download=1`)
       expect(document.status).toBe(200)
       expect(document.headers.get("content-disposition")).toBe(
         `attachment; filename="report.html"; filename*=UTF-8''report.html`,
@@ -739,7 +762,7 @@ describe("GET /workspace/files/content", () => {
       expect(await document.text()).toBe(html)
 
       const encoded = encodeURIComponent("数据 表.csv")
-      const data = await app.request(`${rawUrl(tmp.path, encoded)}?download`)
+      const data = await app.request(`${await rawUrl(tmp.path, encoded)}?download`)
       expect(data.status).toBe(200)
       expect(data.headers.get("content-disposition")).toContain(`filename*=UTF-8''${encoded}`)
       expect(data.headers.get("content-disposition")).toContain(`filename="__ _.csv"`)
@@ -751,10 +774,10 @@ describe("GET /workspace/files/content", () => {
       await using tmp = await tmpdir({ git: true })
       const app = Server.App()
 
-      const traversal = await app.request(`${rawUrl(tmp.path, "../outside.txt")}?download=1`)
+      const traversal = await app.request(`${await rawUrl(tmp.path, "../outside.txt")}?download=1`)
       expect([400, 403, 404]).toContain(traversal.status)
 
-      const missing = await app.request(`${rawUrl(tmp.path, "missing.txt")}?download=1`)
+      const missing = await app.request(`${await rawUrl(tmp.path, "missing.txt")}?download=1`)
       expect(missing.status).toBe(404)
     }))
 
@@ -772,7 +795,7 @@ describe("GET /workspace/files/content", () => {
         (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
       )
 
-      const response = await app.request(`${rawUrl(tmp.path, encodedName)}?download=1`)
+      const response = await app.request(`${await rawUrl(tmp.path, encodedName)}?download=1`)
       expect(response.status).toBe(200)
       expect(response.headers.get("content-disposition")).toBe(
         `attachment; filename="it's v2*draft.csv"; filename*=UTF-8''it%27s%20v2%2Adraft.csv`,
@@ -789,7 +812,7 @@ describe("GET /workspace/files/content", () => {
         },
       })
       const app = Server.App()
-      const url = rawUrl(tmp.path, "page.html")
+      const url = await rawUrl(tmp.path, "page.html")
 
       for (const value of ["", "1", "true"]) {
         const response = await app.request(`${url}?download=${value}`)
@@ -812,7 +835,7 @@ describe("GET /workspace/files/content", () => {
       })
       const app = Server.App()
 
-      const response = await app.request(`${rawUrl(tmp.path, "huge.pdf")}?download=1`)
+      const response = await app.request(`${await rawUrl(tmp.path, "huge.pdf")}?download=1`)
       expect(response.status).toBe(400)
       const body = await response.json()
       expect(body.name).toBe("WorkspaceFileTooLargeError")
@@ -820,3 +843,32 @@ describe("GET /workspace/files/content", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("workspace entry routes preserve conditional identities and publish usable SDK-shaped results", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const app = Server.App()
+    const post = async (operation: string, body: unknown) =>
+      app.request(await workspaceUrl(operation, tmp.path), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    expect((await post("directory", { path: "folder" })).status).toBe(200)
+    await Bun.write(path.join(tmp.path, "folder", "item.txt"), "original")
+    const stat = await (await app.request(await workspaceUrl("stat", tmp.path, { path: "folder" }))).json()
+    const copied = await post("copy", { from: "folder", to: "copied", expectedVersion: stat.entryVersion })
+    expect(copied.status).toBe(200)
+    const copy = await copied.json()
+    const moved = await post("move", { from: "copied", to: "moved", expectedVersion: copy.node.entryVersion })
+    expect(moved.status).toBe(200)
+    const move = await moved.json()
+    expect((await post("delete", { path: "moved", expectedVersion: move.node.entryVersion })).status).toBe(403)
+    expect(
+      (await post("delete", { path: "moved", expectedVersion: move.node.entryVersion, recursive: true })).status,
+    ).toBe(200)
+    expect((await post("copy", { from: "folder", to: "folder", expectedVersion: stat.entryVersion })).status).toBe(403)
+    expect((await post("delete", { path: "folder" })).status).toBe(400)
+    expect((await post("directory", { path: "folder" })).status).toBe(409)
+    expect(await Bun.file(path.join(tmp.path, "folder", "item.txt")).text()).toBe("original")
+  }))

@@ -239,6 +239,10 @@ export namespace MacOSPolicy {
 
     // 2. Platform defaults (process-exec, sysctl, IOKit, mach, etc.)
     lines.push(MacOSSbpl.PLATFORM_DEFAULTS)
+    // Imported OS profiles may grant writes outside the requested roots (for example /cores).
+    // Reset file writes, then grant only standard descriptors/devices and the compiled paths.
+    lines.push("(deny file-write*)")
+    lines.push(MacOSSbpl.DEVICE_WRITES)
 
     // 3. Global read allow — the read model is a deny list. A bare
     //    (allow file-read*) carries no path filter, so a subpath-scoped
@@ -308,6 +312,18 @@ export namespace MacOSPolicy {
     }
 
     return lines.join("\n") + "\n"
+  }
+
+  export function compileExecution(profile: SynergySandboxPermissionProfile) {
+    const params = generateParams(profile)
+    return {
+      profile: compileProfile(profile),
+      params,
+      writeFootprint: {
+        kind: "roots" as const,
+        roots: [...new Set([...Object.values(params), ...profile.network.allowedUnixSockets.map(canonicalize)])],
+      },
+    }
   }
 
   /**

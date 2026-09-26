@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "bun test test/*.test.ts",
-    "test:coverage": "bun test --coverage --coverage-reporter=lcov --timeout 30000 test/*.test.ts"
+    "test:coverage": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage"
   },
   "dependencies": {
     "zod": "catalog:"

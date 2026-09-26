@@ -40,7 +40,7 @@ const DEFAULT_OWNER_IDLE_MS = 10 * 60 * 1_000
 const runtimeState = RuntimeContext.state(() => ({
   queues: new Map<string, OwnerQueue>(),
   idleStates: new Map<string, IdleState>(),
-  runtime: BrowserRuntime as Pick<typeof BrowserRuntime, "getOrCreateSession">,
+  runtime: BrowserRuntime as Pick<typeof BrowserRuntime, "getOrCreateSession" | "withinOwner">,
   ownerIdleMs: DEFAULT_OWNER_IDLE_MS,
 }))
 
@@ -50,10 +50,35 @@ export namespace BrowserCommandService {
   export async function session(owner: BrowserOwner.Info): Promise<BrowserSession> {
     const instanceState = runtimeState()
 
-    return instanceState.runtime.getOrCreateSession(owner)
+    return instanceState.runtime.withinOwner(owner, (resolved) => instanceState.runtime.getOrCreateSession(resolved))
   }
 
   export async function execute(owner: BrowserOwner.Info, request: ExecuteRequest): Promise<BrowserBackendResult> {
+    const key = BrowserOwner.key(owner)
+    const suspended = runtimeState().queues.get(key)?.suspending ?? false
+    const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
+    let entered = false
+    try {
+      return await runtimeState().runtime.withinOwner(
+        owner,
+        (resolved) => {
+          entered = true
+          return executeQueued(resolved, request, idleGeneration, suspended)
+        },
+        request.signal,
+      )
+    } catch (error) {
+      if (!entered) clearIdleGeneration(key, idleGeneration)
+      throw error
+    }
+  }
+
+  async function executeQueued(
+    owner: BrowserOwner.Info,
+    request: ExecuteRequest,
+    idleGeneration: number,
+    suspended: boolean,
+  ): Promise<BrowserBackendResult> {
     const instanceState = runtimeState()
 
     BrowserOwner.assertValid(owner)
@@ -91,8 +116,7 @@ export namespace BrowserCommandService {
         commandId: request.commandId,
       })
     }
-    const restoreAfterIdleSuspension = queue.suspending && requiresExistingPage(command)
-    const idleGeneration = owner.mode === "session" ? beginIdleActivity(key) : 0
+    const restoreAfterIdleSuspension = (suspended || queue.suspending) && requiresExistingPage(command)
     const replay = queue.results.get(request.commandId)
     if (replay) {
       try {
@@ -186,7 +210,7 @@ export namespace BrowserCommandService {
 
     const previous = instanceState.runtime
     const previousIdleMs = instanceState.ownerIdleMs
-    instanceState.runtime = adapter
+    instanceState.runtime = { ...adapter, withinOwner: (_owner, fn) => fn(_owner) }
     instanceState.ownerIdleMs = options?.ownerIdleMs ?? DEFAULT_OWNER_IDLE_MS
     return () => {
       const instanceState = runtimeState()
@@ -254,29 +278,31 @@ async function suspendIdleOwner(owner: BrowserOwner.Info, generation: number): P
   const key = BrowserOwner.key(owner)
   const state = instanceState.idleStates.get(key)
   if (!state || state.generation !== generation) return
-  const queue = instanceState.queues.get(key) ?? createQueue()
-  instanceState.queues.set(key, queue)
-  const operation = queue.tail.then(async () => {
-    const instanceState = runtimeState()
-
-    if (instanceState.idleStates.get(key)?.generation !== generation) return false
-    const session = await instanceState.runtime.getOrCreateSession(owner)
-    if (instanceState.idleStates.get(key)?.generation !== generation) return false
-    if (session.page?.backend === "host") return true
-    queue.suspending = true
-    try {
-      await session.suspend()
-    } finally {
-      queue.suspending = false
-    }
-    return true
-  })
-  queue.tail = operation.then(
-    () => undefined,
-    () => undefined,
-  )
   try {
-    const handled = await operation
+    const handled = await instanceState.runtime.withinOwner(owner, async (resolved) => {
+      const queue = instanceState.queues.get(key) ?? createQueue()
+      instanceState.queues.set(key, queue)
+      const operation = queue.tail.then(async () => {
+        const instanceState = runtimeState()
+
+        if (instanceState.idleStates.get(key)?.generation !== generation) return false
+        const session = await instanceState.runtime.getOrCreateSession(resolved)
+        if (instanceState.idleStates.get(key)?.generation !== generation) return false
+        if (session.page?.backend === "host") return true
+        queue.suspending = true
+        try {
+          await session.suspend()
+        } finally {
+          queue.suspending = false
+        }
+        return true
+      })
+      queue.tail = operation.then(
+        () => undefined,
+        () => undefined,
+      )
+      return operation
+    })
     if (handled && instanceState.idleStates.get(key)?.generation === generation) instanceState.idleStates.delete(key)
   } catch (error) {
     if (instanceState.idleStates.get(key)?.generation !== generation) return

@@ -112,8 +112,8 @@ export namespace Lock {
    * own signal check after acquisition.
    */
   export async function writeWithSignal(key: string, signal: AbortSignal): Promise<Disposable | undefined> {
-    const lock = get(key)
     if (signal.aborted) return undefined
+    const lock = get(key)
 
     if (!lock.writer && lock.readers === 0) {
       lock.writer = true

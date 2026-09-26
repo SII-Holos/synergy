@@ -98,6 +98,8 @@ async function routeState(c: {
     throw new Error("Browser session belongs to another Scope")
   const owner = BrowserOwner.fromRoute({
     directory: session ? (session.workspace?.path ?? null) : (ScopeContext.current.workspace?.path ?? null),
+    workspaceID: session ? session.workspaceID : (ScopeContext.current.workspace?.id ?? null),
+    generation: session ? session.workspace?.generation : ScopeContext.current.workspace?.generation,
     scopeID: ScopeContext.current.scope.id,
     sessionID: c.req.query("sessionID"),
     mode,

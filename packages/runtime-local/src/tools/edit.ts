@@ -1,15 +1,16 @@
+import { FileMutation } from "../file/mutation"
+import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 // the approaches in this edit tool are sourced from
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-23-25.ts
 // https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/utils/editCorrector.ts
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-26-25.ts
 
-import z from "zod"
+import { z } from "zod"
 import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "../file/index"
-import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SnapshotSchema } from "@ericsanchezok/synergy-harness/session/snapshot-schema"
@@ -66,11 +67,18 @@ export const EditTool = Tool.define(
               },
             })
             beforeDiagnostics = await captureWriteDiagnosticsBefore()
-            await Bun.write(filePath, params.newString)
-            await Bus.publish(File.Event.Edited, {
-              file: filePath,
+            const written = await FileMutation.write({
+              path: filePath,
+              content: params.newString,
+              expectedVersion: null,
+              createParents: true,
+              signal: ctx.abort,
             })
-            FileTime.read(ctx.sessionID, filePath)
+            await WorkspaceEvents.publish(File.Event.Edited, {
+              file: filePath,
+              contentVersion: written.contentVersion,
+            })
+            FileTime.read(ctx.sessionID, filePath, await Bun.file(filePath).bytes())
             return
           }
 
@@ -78,8 +86,8 @@ export const EditTool = Tool.define(
           const stats = await file.stat().catch(() => {})
           if (!stats) throw new Error(`File ${filePath} not found`)
           if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
-          await FileTime.assert(ctx.sessionID, filePath)
-          contentOld = await file.text()
+          contentOld = await FileMutation.readText(filePath)
+          FileTime.assert(ctx.sessionID, filePath, contentOld)
           contentNew = replace(contentOld, params.oldString, params.newString, params.replaceAll)
 
           diff = trimDiff(
@@ -95,15 +103,22 @@ export const EditTool = Tool.define(
           })
           beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
-          await file.write(contentNew)
-          await Bus.publish(File.Event.Edited, {
-            file: filePath,
+          FileTime.assert(ctx.sessionID, filePath, await file.bytes())
+          const written = await FileMutation.write({
+            path: filePath,
+            content: contentNew,
+            expectedVersion: FileTime.version(contentOld),
+            signal: ctx.abort,
           })
-          contentNew = await file.text()
+          await WorkspaceEvents.publish(File.Event.Edited, {
+            file: filePath,
+            contentVersion: written.contentVersion,
+          })
+          contentNew = await FileMutation.readText(filePath)
           diff = trimDiff(
             createTwoFilesPatch(filePath, filePath, normalizeLineEndings(contentOld), normalizeLineEndings(contentNew)),
           )
-          FileTime.read(ctx.sessionID, filePath)
+          FileTime.read(ctx.sessionID, filePath, contentNew)
         },
         { signal: ctx.abort },
       )
