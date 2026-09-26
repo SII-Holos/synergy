@@ -489,7 +489,12 @@
                   "type": "array",
                   "items": {
                     "type": "object",
-                    "properties": { "type": { "type": "string" }, "values": { "type": "array", "items": {} } },
+                    "properties": {
+                      "type": { "type": "string" },
+                      "values": { "type": "array", "items": {} },
+                      "min": { "type": "number" },
+                      "max": { "type": "number" }
+                    },
                     "required": ["type"],
                     "additionalProperties": false
                   }

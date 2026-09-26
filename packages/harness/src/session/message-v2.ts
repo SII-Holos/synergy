@@ -1,4 +1,5 @@
 import { RuntimeContext } from "../lifecycle/context"
+import { ModelSelection } from "./model-selection-schema"
 import { RolloutRecordingError } from "./rollout/error"
 import { BusEvent } from "../bus/bus-event"
 import path from "path"
@@ -515,6 +516,7 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    thinking: ModelSelection.Thinking.optional(),
     origin: OriginUser.optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
@@ -669,6 +671,7 @@ export namespace MessageV2 {
   }
 
   export const Assistant = Base.extend({
+    modelSelection: ModelSelection.Request.optional(),
     role: z.literal("assistant"),
     time: z.object({
       created: z.number(),
@@ -1234,6 +1237,13 @@ export namespace MessageV2 {
           parts: [],
         }
         const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
+        const sameModel =
+          !opts?.model ||
+          (msg.info.providerID === opts.model.providerID &&
+            (msg.info.apiModelID && opts.model.apiModelID
+              ? msg.info.apiModelID === opts.model.apiModelID &&
+                (!msg.info.profileID || !opts.model.profileID || msg.info.profileID === opts.model.profileID)
+              : msg.info.modelID === opts.model.modelID))
         const replayCodexReasoning =
           opts?.model?.profileID === "openai-codex" &&
           msg.info.providerID === opts.model.providerID &&
@@ -1320,6 +1330,7 @@ export namespace MessageV2 {
             }
           }
           if (part.type === "reasoning") {
+            if (!sameModel) continue
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,

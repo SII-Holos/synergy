@@ -13248,6 +13248,22 @@ msgstr ""
 msgid "session.lsp.noServers"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "session.modelSelection.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.saving"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.modelSelection.toolTurn"
+msgstr ""
+
 #. session-new-view
 msgid "session.new.subtitle"
 msgstr ""
@@ -17711,6 +17727,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.variant.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.variant.off"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.variant.offDesc"
 msgstr ""
 
 #. js-lingui-explicit-id

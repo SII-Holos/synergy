@@ -1968,6 +1968,12 @@ export type Model = {
     temperature: boolean
     reasoning: boolean
     reasoningEfforts?: Array<string>
+    reasoningOptions?: Array<{
+      type: string
+      values?: Array<unknown>
+      min?: number
+      max?: number
+    }>
     attachment: boolean
     toolcall: boolean
     input: {
@@ -2426,6 +2432,8 @@ export type ProviderConfig = {
       reasoning_options?: Array<{
         type: string
         values?: Array<unknown>
+        min?: number
+        max?: number
       }>
       temperature?: boolean
       tool_call?: boolean
@@ -5101,6 +5109,45 @@ export type SessionCompletionNotice = {
   silent: boolean
 }
 
+export type SessionThinkingSelection =
+  | {
+      mode: "provider-default"
+    }
+  | {
+      mode: "off"
+    }
+  | {
+      mode: "variant"
+      variant: string
+    }
+
+export type SessionModelChoice = {
+  model: {
+    providerID: string
+    modelID: string
+  }
+  thinking: SessionThinkingSelection
+}
+
+export type SessionModelSelection = {
+  revision: number
+  selected: SessionModelChoice
+  preferences: {
+    [key: string]: SessionThinkingSelection
+  }
+  lastUsed?: {
+    model: {
+      providerID: string
+      modelID: string
+    }
+    thinking: SessionThinkingSelection
+    revision: number
+    rootID: string
+    messageID: string
+  }
+  pendingReason?: "next-request" | "tool-turn"
+}
+
 export type SessionPaused = {
   reason: SessionPausedReason
   description?: string
@@ -5339,12 +5386,13 @@ export type Session = {
   }
   completionNotice?: SessionCompletionNotice
   /**
-   * Per-session model override set by /model command
+   * Legacy model preference projection; modelSelection owns live model and thinking choices
    */
   modelOverride?: {
     providerID: string
     modelID: string
   }
+  modelSelection?: SessionModelSelection
   /**
    * Per-session agent override set by session control
    */
@@ -6927,6 +6975,15 @@ export type SessionWorkspaceSelection =
       baseRevision?: string
     }
 
+export type SessionModelSelectionInput = {
+  model: {
+    providerID: string
+    modelID: string
+  }
+  thinking?: SessionThinkingSelection
+  expectedRevision?: number
+}
+
 export type SessionForkPointMissingError = {
   name: "SessionForkPointMissingError"
   data: {
@@ -7122,6 +7179,7 @@ export type SessionInboxItem = {
       [key: string]: boolean
     }
     variant?: string
+    thinking?: SessionThinkingSelection
   }
   summaryPreview?: string
   summary: {
@@ -7280,10 +7338,21 @@ export type UserMessage = {
     [key: string]: boolean
   }
   variant?: string
+  thinking?: SessionThinkingSelection
   origin?: OriginUser
   metadata?: {
     [key: string]: unknown
   }
+}
+
+export type SessionRequestModelSelection = {
+  model: {
+    providerID: string
+    modelID: string
+  }
+  thinking: SessionThinkingSelection
+  revision: number
+  rootID: string
 }
 
 export type RolloutRecordingError = {
@@ -7365,6 +7434,7 @@ export type AssistantMessage = {
   visible?: boolean
   includeInContext?: boolean
   rootID?: string
+  modelSelection?: SessionRequestModelSelection
   role: "assistant"
   time: {
     created: number
@@ -15461,6 +15531,52 @@ export type SessionDagResponses = {
 
 export type SessionDagResponse = SessionDagResponses[keyof SessionDagResponses]
 
+export type SessionSetModelSelectionData = {
+  body?: SessionModelSelectionInput
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/model-selection"
+}
+
+export type SessionSetModelSelectionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionSetModelSelectionError = SessionSetModelSelectionErrors[keyof SessionSetModelSelectionErrors]
+
+export type SessionSetModelSelectionResponses = {
+  /**
+   * Saved session selection
+   */
+  200: Session
+}
+
+export type SessionSetModelSelectionResponse =
+  SessionSetModelSelectionResponses[keyof SessionSetModelSelectionResponses]
+
 export type SessionSelectWorkspaceData = {
   body?: SessionWorkspaceSelection
   path: {
@@ -15838,6 +15954,7 @@ export type SessionInputData = {
     }
     system?: string
     variant?: string
+    thinking?: SessionThinkingSelection
     parts: Array<TextPartInput | AttachmentPartInput>
   }
   path: {
@@ -16145,6 +16262,7 @@ export type SessionPromptData = {
     }
     system?: string
     variant?: string
+    thinking?: SessionThinkingSelection
     parts: Array<TextPartInput | AttachmentPartInput>
   }
   path: {
@@ -16440,6 +16558,7 @@ export type SessionPromptAsyncData = {
     }
     system?: string
     variant?: string
+    thinking?: SessionThinkingSelection
     parts: Array<TextPartInput | AttachmentPartInput>
   }
   path: {

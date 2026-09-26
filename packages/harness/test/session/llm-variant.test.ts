@@ -5,6 +5,7 @@ import { LLM } from "../../src/session/llm"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { SessionPluginHooks } from "../../src/session/plugin-hooks"
 const runtime = await testRuntime()
 
 function model(): Provider.Model {
@@ -68,6 +69,56 @@ function input(userVariant?: string, small = false): LLM.StreamInput {
 }
 
 describe("LLM root variant consumption", () => {
+  test("explicit thinking normalizes inherited and hook options while preserving unrelated parameters", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          SessionPluginHooks.registerTrigger(async (_point, _input, initial) => {
+            if (initial && typeof initial === "object" && "options" in initial) {
+              Object.assign(initial, {
+                options: {
+                  thinking: { type: "enabled", budgetTokens: 2000, display: "summarized" },
+                  reasoningEffort: "max",
+                  reasoning: { effort: "high" },
+                  thinkingConfig: { thinkingBudget: 4000 },
+                  include: ["reasoning.encrypted_content", "message.output_text.logprobs"],
+                  custom: true,
+                },
+              })
+            }
+            return initial
+          })
+          try {
+            for (const thinking of [
+              { mode: "provider-default" },
+              { mode: "off" },
+              { mode: "variant", variant: "high" },
+            ] as const) {
+              const request = input()
+              request.user.thinking = thinking
+              request.model.variants = { high: { reasoningEffort: "high" }, off: { thinking: { type: "disabled" } } }
+              request.agent.options = { thinking: { type: "enabled", budgetTokens: 5000 } }
+              const prepared = await LLM.prepare(request)
+              const expected =
+                thinking.mode === "off"
+                  ? { thinking: { type: "disabled" } }
+                  : thinking.mode === "variant"
+                    ? { reasoningEffort: "high" }
+                    : {}
+              expect(prepared.params.options).toEqual({
+                custom: true,
+                include: ["message.output_text.logprobs"],
+                ...expected,
+              })
+            }
+          } finally {
+            SessionPluginHooks.registerTrigger(async (_point, _input, initial) => initial)
+          }
+        },
+      })
+    }))
   test("does not re-run agent defaults when the persisted root has no variant", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

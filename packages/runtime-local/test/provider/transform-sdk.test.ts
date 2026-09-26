@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { createAnthropic } from "@ai-sdk/anthropic"
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { ProviderTransform } from "@ericsanchezok/synergy-harness/provider/transform"
 import type { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -133,5 +134,35 @@ test("adaptive variants pass the locked Anthropic SDK validator", () =>
       expect(requestBody?.output_config).toEqual({ effort: variant })
     }
   }))
+
+test("DeepSeek thinking reaches the compatible SDK as separate mode and effort fields", async () => {
+  const model = createMockModel({
+    id: "deepseek-v4-flash",
+    api: { id: "deepseek-v4-flash", npm: "@ai-sdk/openai-compatible", url: "https://example.invalid" },
+    capabilities: { reasoningEfforts: ["low", "high", "max"], reasoningOptions: [{ type: "toggle" }] },
+  })
+  const variants = ProviderTransform.variants(model)
+  for (const [name, options] of Object.entries({ default: {}, ...variants })) {
+    let body: Record<string, unknown> | undefined
+    const client = createOpenAICompatible({
+      name: model.providerID,
+      baseURL: "https://example.invalid",
+      apiKey: "fixture",
+      fetch: (async (_url, init) => {
+        body = JSON.parse(String(init?.body))
+        return new Response("{}", { status: 400, headers: { "content-type": "application/json" } })
+      }) as typeof fetch,
+    })
+    await Promise.resolve(
+      client.chatModel(model.api.id).doGenerate({
+        prompt: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
+        providerOptions: ProviderTransform.providerOptions(model, options),
+      }),
+    ).catch(() => {})
+    expect(body).toBeDefined()
+    expect(body?.thinking).toEqual(name === "default" ? undefined : { type: name === "off" ? "disabled" : "enabled" })
+    expect(body?.reasoning_effort).toBe(name === "default" || name === "off" ? undefined : name)
+  }
+})
 
 afterRuntimeTests(() => runtime.close())
