@@ -63,7 +63,13 @@ test("catalog reasoning efforts survive unrelated future option types", () =>
     })
 
     const model = Provider.fromModelsDevProvider(catalog).models["future-reasoning-model"]
-    expect(Object.keys(model.variants ?? {})).toEqual(["low", "max"])
+    expect(Object.keys(model.variants ?? {})).toEqual(["low", "max", "off"])
+    expect(model.variants?.off).toEqual({ reasoningEffort: "none" })
+    expect(model.capabilities.reasoningOptions).toEqual([
+      { type: "budget_tokens" },
+      { type: "toggle" },
+      { type: "effort", values: [null, "low", "max"] },
+    ])
   }))
 
 test("Kimi K3 catalog efforts become Anthropic-compatible variants", () =>
@@ -131,11 +137,12 @@ test("image media type capabilities normalize restrictions and allow explicit cl
   }))
 
 test.each([
-  ["empty values", []],
-  ["all invalid values", [null, 3]],
+  ["empty values", [], []],
+  ["invalid values", [3], []],
+  ["disabled with invalid values", [null, 3], ["off"]],
 ])(
-  "empty catalog reasoning efforts preserve provider fallbacks for %s",
-  runtime.bind((_name, values) => {
+  "declared catalog reasoning efforts do not invent unsupported levels for %s",
+  runtime.bind((_name, values, expectedVariants) => {
     const capabilities = Provider.mergeModelCapabilities({
       reasoning: true,
       reasoning_options: [{ type: "effort", values }],
@@ -163,7 +170,9 @@ test.each([
         },
       }),
     ).models["gpt-5.6"].variants
-    expect(Object.keys(variants ?? {})).toEqual(["none", "low", "medium", "high", "xhigh"])
+    expect(capabilities.reasoningEfforts).toEqual([])
+    expect(Object.keys(variants ?? {})).toEqual(expectedVariants)
+    if (expectedVariants.includes("off")) expect(variants?.off).toEqual({ reasoningEffort: "none" })
   }),
 )
 

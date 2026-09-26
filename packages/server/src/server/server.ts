@@ -528,7 +528,8 @@ export namespace Server {
             err instanceof WorkspaceCatalog.Unavailable ||
             err instanceof WorkspaceCatalog.BindingChanged ||
             err instanceof Scope.WorkspaceUnavailableError ||
-            err instanceof Session.ForkPointMissingError
+            err instanceof Session.ForkPointMissingError ||
+            err.name === "SessionModelSelectionConflictError"
           )
             status = 409
           else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
@@ -543,7 +544,16 @@ export namespace Server {
             err instanceof Provider.ModelNotFoundError
           )
             status = 400
-          else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
+          else if (
+            err.name.startsWith("Worktree") ||
+            err.name.startsWith("Command") ||
+            [
+              "SessionThinkingUnavailableError",
+              "SessionModelSelectionUnavailableError",
+              "ProviderModelVariantUnavailableError",
+            ].includes(err.name)
+          )
+            status = 400
           else if (err.name.startsWith("ProviderAuth")) status = 400
           else status = 500
           return c.json(err.toObject(), { status })
