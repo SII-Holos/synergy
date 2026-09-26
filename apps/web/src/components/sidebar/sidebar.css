@@ -239,6 +239,7 @@
 
 .sb-scroll {
   flex: 1;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -1667,4 +1668,53 @@
 .sidebar-holos-reconnect-btn:hover:not(:disabled),
 .sidebar-holos-reconnect-btn:focus-visible:not(:disabled) {
   background: var(--surface-success-weak);
+}
+
+button.sb-projects-header,
+button.sb-session-group-header {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+.sb-projects-header-actions {
+  padding-left: 0;
+}
+.sb-projects-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding-left: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+button.sb-projects-header:focus-visible,
+button.sb-session-group-header:focus-visible,
+.sb-projects-section-toggle:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.sb-logo-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.sb-product-label {
+  color: var(--text-weak);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sb-root .sb-globals {
+  flex-shrink: 0;
 }

@@ -49,6 +49,48 @@
   gap: 1rem;
 }
 
+.performance-snapshot-empty {
+  display: flex;
+  min-height: min(42rem, calc(100dvh - 12rem));
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+.performance-snapshot-error-icon {
+  display: grid;
+  width: 4rem;
+  height: 4rem;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-critical-weak);
+}
+
+.performance-snapshot-retry[data-component="button"] {
+  min-width: 8rem;
+  min-height: 2.75rem;
+}
+
+.performance-snapshot-notice {
+  border: 1px solid var(--performance-line);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: var(--surface-warning-weak);
+}
+
+.performance-snapshot-error-details {
+  max-width: 100%;
+  margin-top: 0.5rem;
+  text-align: start;
+}
+
+.performance-snapshot-notice-pending {
+  background: var(--surface-base);
+}
+
 .performance-toolbar,
 .performance-card {
   border: 1px solid var(--performance-line);

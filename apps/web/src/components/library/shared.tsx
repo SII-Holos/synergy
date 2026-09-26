@@ -7,7 +7,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { library as L } from "@/locales/messages"
 import type { MemoryCategory } from "./category-colors"
 export { MEMORY_CATEGORIES, categoryColors, type MemoryCategory } from "./category-colors"
-export type View = "stats" | "memory" | "experience" | "skill"
+export type View = "home" | "stats" | "memory" | "experience" | "skill"
 
 export type MemorySortKey = "newest" | "oldest" | "relevance"
 export type ExperienceSortKey = "newest" | "oldest" | "relevance" | "reward" | "qvalue" | "visits"
@@ -261,7 +261,7 @@ export function ViewTab(props: { active: boolean; onClick: () => void; children:
 
 export function SelectionCheckbox(props: { selected: boolean }) {
   return (
-    <div
+    <span
       classList={{
         "flex size-4 shrink-0 items-center justify-center rounded-[0.45rem] border ring-1 ring-inset transition-colors": true,
         "border-border-base/55 bg-text-strong text-background-base ring-border-base/20": props.selected,
@@ -272,6 +272,6 @@ export function SelectionCheckbox(props: { selected: boolean }) {
       <Show when={props.selected}>
         <Icon name={getSemanticIcon("state.success")} size="small" class="scale-75" color="inherit" />
       </Show>
-    </div>
+    </span>
   )
 }

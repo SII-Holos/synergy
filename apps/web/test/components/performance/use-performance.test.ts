@@ -1,8 +1,139 @@
 import { describe, expect, test } from "bun:test"
 import { createRoot, sharedConfig } from "solid-js"
 import { usePerformance } from "../../../src/components/performance/use-performance"
+import type { PerformanceSummary } from "../../../src/components/performance/types"
+
+function snapshot(windowMs = 900_000): PerformanceSummary {
+  return { generatedAt: "2026-09-25T06:20:00.000Z", windowMs } as PerformanceSummary
+}
+
+function mountPerformance(
+  summary: (input: { windowMs: number }) => Promise<{ data: PerformanceSummary | null }>,
+  timeline = async (): Promise<{ data: null }> => ({ data: null }),
+) {
+  const sdk = {
+    client: {
+      performance: {
+        summary,
+        timeline,
+        traces: {
+          list: async () => ({ data: { items: [] } }),
+          detail: async () => ({ data: null }),
+        },
+      },
+    },
+  }
+  return createRoot((dispose) => ({
+    dispose,
+    perf: (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk),
+  }))
+}
 
 describe("performance refresh", () => {
+  test("settles the displayed snapshot's pending timeline after a failed same-range refresh", async () => {
+    const pending = Promise.withResolvers<{ data: null }>()
+    let calls = 0
+    const { perf, dispose } = mountPerformance(
+      async () => {
+        if (++calls > 1) throw new Error("refresh unavailable")
+        return { data: snapshot() }
+      },
+      () => pending.promise,
+    )
+    try {
+      await settle()
+      expect(perf.timelineLoading()).toBe(true)
+      await perf.refresh()
+      pending.reject(new Error("timeline unavailable"))
+      await settle()
+      expect(perf.timelineLoading()).toBe(false)
+      expect(perf.timelineError()).toBe("timeline unavailable")
+      expect(perf.error()).toBe("refresh unavailable")
+    } finally {
+      dispose()
+    }
+  })
+
+  test("ignores a previous range's timeline failure after the current range settles", async () => {
+    const pending = Promise.withResolvers<{ data: null }>()
+    let calls = 0
+    const { perf, dispose } = mountPerformance(
+      async ({ windowMs }) => ({ data: snapshot(windowMs) }),
+      async () => (++calls === 1 ? pending.promise : { data: null }),
+    )
+    try {
+      await settle()
+      perf.setWindowMs(3_600_000)
+      await settle()
+      expect(perf.timelineLoading()).toBe(false)
+      pending.reject(new Error("old timeline failure"))
+      await settle()
+      expect(perf.timelineError()).toBeNull()
+      expect(perf.summary()?.windowMs).toBe(3_600_000)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("keeps the last successful same-range snapshot after a failed manual refresh", async () => {
+    const data = snapshot()
+    let calls = 0
+    const { perf, dispose } = mountPerformance(async () => {
+      if (++calls > 1) throw new Error("snapshot unavailable")
+      return { data }
+    })
+    try {
+      await settle()
+      expect(perf.summary()).toBe(data)
+      await perf.refresh()
+      expect(perf.loading).toBe(false)
+      expect(perf.error()).toBe("snapshot unavailable")
+      expect(perf.summary()).toBe(data)
+      expect(perf.summary()?.generatedAt).toBe(data.generatedAt)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("hides the previous range immediately and never restores it after a failed new-range load", async () => {
+    const next = Promise.withResolvers<{ data: PerformanceSummary }>()
+    const { perf, dispose } = mountPerformance(async ({ windowMs }) =>
+      windowMs === 900_000 ? { data: snapshot() } : next.promise,
+    )
+    try {
+      await settle()
+      expect(perf.summary()?.windowMs).toBe(900_000)
+      perf.setWindowMs(3_600_000)
+      expect(perf.summary()).toBeNull()
+      expect(perf.loading).toBe(true)
+      next.reject(new Error("new range unavailable"))
+      await settle()
+      expect(perf.summary()).toBeNull()
+      expect(perf.error()).toBe("new range unavailable")
+    } finally {
+      dispose()
+    }
+  })
+
+  test("does not let an older range failure overwrite a newer successful snapshot", async () => {
+    const first = Promise.withResolvers<{ data: PerformanceSummary }>()
+    const current = snapshot(3_600_000)
+    const { perf, dispose } = mountPerformance(async ({ windowMs }) =>
+      windowMs === 900_000 ? first.promise : { data: current },
+    )
+    try {
+      perf.setWindowMs(3_600_000)
+      await settle()
+      expect(perf.summary()).toBe(current)
+      first.reject(new Error("outdated failure"))
+      await settle()
+      expect(perf.summary()).toBe(current)
+      expect(perf.error()).toBeNull()
+    } finally {
+      dispose()
+    }
+  })
+
   test("does not schedule or trigger background dashboard loads", async () => {
     let summaryCalls = 0
     let timelineCalls = 0

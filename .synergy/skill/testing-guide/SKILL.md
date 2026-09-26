@@ -5,6 +5,10 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 # Test Synergy Behavior
 
+## Avoid concurrent artifact mutation
+
+Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
+
 ## Define the Invariant First
 
 1. State the observable contract and the failure that would violate it.
@@ -32,6 +36,8 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 When a public operation returns a typed in-progress outcome at its foreground budget, correctness tests must await its documented completion path before asserting durable results. Exercise that outcome with an explicit held-operation fixture; do not raise the product deadline or swallow unrelated failures.
 
 ## Choose the Lowest Useful Level
+
+For byte-bounded queues, hold a worker busy and admit several individually valid requests across scheduling lanes. Verify aggregate rejection and exact byte release on dispatch, queued cancellation, startup failure, and shutdown; a single oversized request does not exercise aggregate admission.
 
 - pure function/schema: inline data and direct calls
 - tool/domain behavior: real implementation plus isolated temp directory and Scope context

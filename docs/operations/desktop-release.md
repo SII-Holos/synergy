@@ -60,7 +60,7 @@ The Linux `.deb` depends on the system `bubblewrap` package. Linux portable arti
 
 The product release also publishes the minimal remote Browser Host for every supported OS/architecture:
 
-`browser-host:build` stages an independent manifest and bundled entry in `apps/desktop/build/browser-host-app`. Browser Host packaging explicitly excludes node_modules, and its afterPack hook verifies the actual ASAR contains only the entry and manifest. It must never inherit Desktop Computer drivers, runtime packages, source trees or test/coverage outputs.
+`browser-host:build` stages an independent manifest, bundled entry, and sandboxed page prompt preload in `apps/desktop/build/browser-host-app`. Browser Host packaging explicitly excludes node_modules, and its afterPack hook verifies the actual ASAR contains only the entry, `browser-page-preload.cjs`, and manifest. It must never inherit Desktop Computer drivers, runtime packages, source trees or test/coverage outputs.
 
 - `synergy-browser-host-{darwin|win32|linux}-{x64|arm64}-${version}.zip`
 - the matching `.manifest.json`

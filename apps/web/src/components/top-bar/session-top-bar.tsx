@@ -1,3 +1,7 @@
+import { workspaceLocation } from "./workspace-location"
+import { WorkspaceLocationButton } from "./workspace-location-button"
+import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
+import type { SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/client"
 import { useLingui } from "@lingui/solid"
 import { PI } from "@/components/prompt-input/prompt-input-i18n"
 import { topBar } from "@/locales/messages"
@@ -170,6 +174,8 @@ function SessionActionMenu(props: {
 export function SessionTopBar(props: {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   sessionTransitionPending?: Accessor<boolean>
+  newSessionWorkspaceSelection?: SessionWorkspaceSelection
+  onWorkspaceSelectionChange?: (selection: SessionWorkspaceSelection) => void
 }) {
   const { _ } = useLingui()
 
@@ -193,9 +199,34 @@ export function SessionTopBar(props: {
 
   const projectScope = createMemo(() => resolveProjectScope(directory() || undefined, sync.scope, layout.scopes.list()))
   const projectLabel = createMemo(() => getScopeLabel(projectScope(), directory()))
-  const projectPath = createMemo(() => projectScope()?.local?.directory)
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
+  const location = createMemo(() =>
+    params.id && !sessionInfo()
+      ? { state: "unavailable" as const }
+      : workspaceLocation({
+          session: sessionInfo(),
+          selection: props.newSessionWorkspaceSelection,
+          current: sync.data.path.workspace,
+          records: sync.data.workspaces,
+        }),
+  )
+  const LocationButton = () => (
+    <WorkspaceLocationButton
+      project={isGlobal() ? _({ id: "workspace.location.home", message: "Home" }) : projectLabel()}
+      location={location()}
+      disabled={!!params.id && !sessionInfo()}
+      onChoose={() =>
+        dialog.show(() => (
+          <DialogWorkspace
+            sessionID={params.id}
+            selection={params.id ? undefined : props.newSessionWorkspaceSelection}
+            onSelect={params.id ? undefined : props.onWorkspaceSelectionChange}
+          />
+        ))
+      }
+    />
+  )
   const availableSessionTags = createMemo(() => {
     const tags = new Set(sessionInfo()?.tags ?? [])
     const entries = [
@@ -299,19 +330,21 @@ export function SessionTopBar(props: {
           </Tooltip>
         }
       >
-        <ModelSelectorPopover>
-          <TooltipKeybind placement="bottom" title={_(topBar.chooseModel)} keybind={command.keybind("model.choose")}>
-            <button type="button" class="stb-selector-btn">
-              <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
-              <Show when={local.model.current()?.catalogState === "retained"}>
-                <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
-                  <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
-                </Tooltip>
-              </Show>
-              <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
-            </button>
-          </TooltipKeybind>
-        </ModelSelectorPopover>
+        <ModelSelectorPopover
+          triggerAs={(triggerProps) => (
+            <TooltipKeybind placement="bottom" title={_(topBar.chooseModel)} keybind={command.keybind("model.choose")}>
+              <button {...triggerProps} type="button" class="stb-selector-btn">
+                <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
+                <Show when={local.model.current()?.catalogState === "retained"}>
+                  <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
+                    <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
+                  </Tooltip>
+                </Show>
+                <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
+              </button>
+            </TooltipKeybind>
+          )}
+        />
       </Show>
     </Show>
   )
@@ -390,13 +423,8 @@ export function SessionTopBar(props: {
             <Icon name={getSemanticIcon("app.toolsDrawer")} size="normal" />
           </button>
         </div>
-        <div class="stb-center flex min-w-0 flex-col items-center justify-center">
-          <div class="min-w-0 max-w-full">
-            <ModelSelectorButton />
-          </div>
-          <div class="flex min-w-0 max-w-full items-center">
-            <VariantSelectorButton />
-          </div>
+        <div class="stb-center flex min-w-0 items-center justify-center">
+          <LocationButton />
         </div>
         <div class="flex items-center gap-1">
           <button
@@ -446,15 +474,7 @@ export function SessionTopBar(props: {
       {/* Desktop layout */}
       <div class="hidden md:flex w-full items-center justify-between pointer-events-auto">
         <div class="stb-left">
-          <Show when={!isGlobal()}>
-            <span class="stb-project">
-              <Icon name={getSemanticIcon("workspace.main")} size="normal" class="stb-folder" />
-              <Tooltip placement="bottom" value={projectPath()}>
-                <span class="stb-project-name">{projectLabel()}</span>
-              </Tooltip>
-            </span>
-            <span class="stb-slash">/</span>
-          </Show>
+          <LocationButton />
           <ModelSelectorButton />
           <VariantSelectorButton />
         </div>

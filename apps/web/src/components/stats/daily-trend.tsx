@@ -18,6 +18,7 @@ import { useLocale } from "@/context/locale"
 import { formatCompact, formatCost } from "./use-stats"
 import { useChartTheme } from "../visualization/use-chart-theme"
 import { S } from "./stats-i18n"
+import { calendarDate, calendarDays } from "./calendar-range"
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
@@ -50,7 +51,7 @@ function createAreaFill(ctx: ScriptableContext<"line">, top: string, bottom: str
   return gradient
 }
 
-export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] }) {
+export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"]; computedAt: number }) {
   const theme = useChartTheme()
   const { i18n, fmt } = useLocale()
   const [range, setRange] = createSignal<Range>(14)
@@ -62,16 +63,25 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
     { label: i18n._(S.dailyRangeAll.id), value: "all" },
   ])
 
-  const filtered = createMemo(() => {
-    const selectedRange = range()
-    if (selectedRange === "all") return props.days
-    return props.days.slice(-selectedRange)
-  })
+  const filtered = createMemo(() =>
+    calendarDays(props.days, range(), new Date(props.computedAt), (day) => ({
+      day,
+      sessions: 0,
+      turns: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      cost: 0,
+      additions: 0,
+      deletions: 0,
+      files: 0,
+      toolCalls: 0,
+      errors: 0,
+    })),
+  )
 
   const points = createMemo<DailyPoint[]>(() =>
     filtered().map((day) => ({
       day: day.day,
-      label: fmt.date(new Date(day.day), { month: "short", day: "numeric" }),
+      label: fmt.date(calendarDate(day.day), { month: "short", day: "numeric" }),
       cost: day.cost,
       tokens: totalTokens(day.tokens),
     })),
@@ -247,6 +257,11 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         <div>
           <h3 class="text-14-semibold text-text-base">{i18n._(S.dailyTitle.id)}</h3>
           <p class="mt-1 text-11-regular text-text-weak">{i18n._(S.dailySubtitle.id)}</p>
+          <Show when={filtered().length > 0}>
+            <p class="mt-1 text-11-regular text-text-weak">
+              {filtered()[0]?.day} → {filtered().at(-1)?.day}
+            </p>
+          </Show>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-1.5">
           {ranges().map((item) => {
@@ -259,6 +274,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
                     ? "bg-surface-interactive-solid text-text-on-interactive-base shadow-sm"
                     : "bg-surface-inset-base/70 text-text-weak hover:bg-surface-inset-base hover:text-text-base"
                 }`}
+                aria-pressed={active()}
                 onClick={() => setRange(item.value)}
               >
                 {item.label}

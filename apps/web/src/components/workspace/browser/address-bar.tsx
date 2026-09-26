@@ -1,4 +1,5 @@
-import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
@@ -81,7 +82,9 @@ export function AddressBar(props: AddressBarProps) {
   let inputEl: HTMLInputElement | undefined
   const browser = useBrowser()
   const lingui = useLingui()
-  const [menuOpen, setMenuOpen] = createSignal(false)
+  const menuOpen = browser.controlsOpen
+  const setMenuOpen = browser.setControlsOpen
+  onCleanup(() => setMenuOpen(false))
   const [draft, setDraft] = createSignal(displayUrl(props.activeUrl()))
   const [editing, setEditing] = createSignal(false)
   const [dirty, setDirty] = createSignal(false)
@@ -206,150 +209,152 @@ export function AddressBar(props: AddressBarProps) {
         title={browser.session.connectionStatus}
       />
 
-      <div class="relative shrink-0">
-        <IconButton
-          icon={getSemanticIcon("action.more")}
-          variant="ghost"
-          title={lingui._(B.options.id)}
-          class="browser-nav-button"
-          onClick={() => setMenuOpen((v) => !v)}
-        />
-        <Show when={menuOpen()}>
-          <div
-            class="browser-options-menu absolute right-0 top-full z-50 mt-1 w-[280px] max-w-[calc(100vw-16px)] rounded-lg border text-12"
-            aria-label={lingui._(B.controls.id)}
-            onClick={() => setMenuOpen(false)}
-          >
-            <div class="browser-menu-section">
+      <Popover
+        open={menuOpen()}
+        onOpenChange={setMenuOpen}
+        placement="bottom-end"
+        title={lingui._(B.controls.id)}
+        class="browser-options-popover synergy-workbench-canvas"
+        triggerAs={(triggerProps) => (
+          <IconButton
+            {...triggerProps}
+            icon={getSemanticIcon("action.more")}
+            variant="ghost"
+            title={lingui._(B.options.id)}
+            class="browser-nav-button"
+          />
+        )}
+      >
+        <div class="browser-options-menu browser-workspace text-12" onClick={() => setMenuOpen(false)}>
+          <div class="browser-menu-section">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={browser.followAgent()}
+              class="browser-menu-row browser-switch-row"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleFollowAgent()
+              }}
+            >
+              <span class="browser-menu-row-copy">
+                <span class="browser-menu-row-title">
+                  <Trans id={B.followAgent.id} message={B.followAgent.message} />
+                </span>
+                <span class="browser-menu-row-description">
+                  <Trans id={B.agentNavigation.id} message={B.agentNavigation.message} />
+                </span>
+              </span>
+              <span class="browser-toggle" data-checked={browser.followAgent()}>
+                <span class="browser-toggle-thumb" />
+              </span>
+            </button>
+          </div>
+
+          <div class="browser-menu-section">
+            <div class="browser-menu-heading">
+              <span>
+                <Trans id={B.viewport.id} message={B.viewport.message} />
+              </span>
+              <span>{selectedViewport()}</span>
+            </div>
+            <div class="browser-segment" aria-label={lingui._(B.viewport.id)}>
               <button
                 type="button"
-                role="switch"
-                aria-checked={browser.followAgent()}
-                class="browser-menu-row browser-switch-row"
+                class="browser-segment-button"
+                classList={{
+                  "is-active text-text-strong": browser.viewportMode() === "fit",
+                  "text-text-weak": browser.viewportMode() !== "fit",
+                }}
                 onClick={(e) => {
                   e.stopPropagation()
-                  toggleFollowAgent()
+                  browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" })
                 }}
               >
-                <span class="browser-menu-row-copy">
-                  <span class="browser-menu-row-title">
-                    <Trans id={B.followAgent.id} message={B.followAgent.message} />
-                  </span>
-                  <span class="browser-menu-row-description">
-                    <Trans id={B.agentNavigation.id} message={B.agentNavigation.message} />
-                  </span>
-                </span>
-                <span class="browser-toggle" data-checked={browser.followAgent()}>
-                  <span class="browser-toggle-thumb" />
-                </span>
+                <Trans id={B.fit.id} message={B.fit.message} />
               </button>
-            </div>
-
-            <div class="browser-menu-section">
-              <div class="browser-menu-heading">
-                <span>
-                  <Trans id={B.viewport.id} message={B.viewport.message} />
-                </span>
-                <span>{selectedViewport()}</span>
-              </div>
-              <div class="browser-segment" aria-label={lingui._(B.viewport.id)}>
-                <button
-                  type="button"
-                  class="browser-segment-button"
-                  classList={{
-                    "is-active text-text-strong": browser.viewportMode() === "fit",
-                    "text-text-weak": browser.viewportMode() !== "fit",
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" })
-                  }}
-                >
-                  <Trans id={B.fit.id} message={B.fit.message} />
-                </button>
-                <For each={VIEWPORT_PRESETS}>
-                  {(preset) => (
-                    <button
-                      type="button"
-                      class="browser-segment-button"
-                      classList={{
-                        "is-active text-text-strong": selectedViewport() === viewportPresetLabel(preset.id, lingui._),
-                        "text-text-weak": selectedViewport() !== viewportPresetLabel(preset.id, lingui._),
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        browser.setViewport(preset.width, preset.height)
-                      }}
-                    >
-                      {viewportPresetLabel(preset.id, lingui._)}
-                    </button>
-                  )}
-                </For>
-              </div>
-            </div>
-
-            <div class="browser-menu-section">
-              <div class="browser-menu-heading">
-                <span>
-                  <Trans id={B.panels.id} message={B.panels.message} />
-                </span>
-              </div>
-              <For each={DEV_PANELS}>
-                {(panel) => (
+              <For each={VIEWPORT_PRESETS}>
+                {(preset) => (
                   <button
                     type="button"
-                    class="browser-menu-row browser-panel-row"
+                    class="browser-segment-button"
                     classList={{
-                      "is-active text-text-strong": browser.devPanel() === panel.id,
+                      "is-active text-text-strong": selectedViewport() === viewportPresetLabel(preset.id, lingui._),
+                      "text-text-weak": selectedViewport() !== viewportPresetLabel(preset.id, lingui._),
                     }}
-                    onClick={() => requestPanel(panel.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      browser.setViewport(preset.width, preset.height)
+                    }}
                   >
-                    <span class="browser-menu-row-copy">
-                      <span class="browser-menu-row-title">{lingui._(panel.label)}</span>
-                      <span class="browser-menu-row-description">{lingui._(panel.description)}</span>
-                    </span>
-                    <Show when={browser.devPanel() === panel.id}>
-                      <Icon name={getSemanticIcon("state.success")} size="small" class="browser-menu-check" />
-                    </Show>
-                  </button>
-                )}
-              </For>
-              <button type="button" class="browser-menu-row" onClick={() => props.onRequestDiagnostics("clear")}>
-                <span class="browser-menu-row-copy">
-                  <span class="browser-menu-row-title">
-                    <Trans id={B.clearDiagnostics.id} message={B.clearDiagnostics.message} />
-                  </span>
-                  <span class="browser-menu-row-description">
-                    <Trans id={B.capturedLogs.id} message={B.capturedLogs.message} />
-                  </span>
-                </span>
-              </button>
-            </div>
-
-            <div class="browser-menu-section">
-              <div class="browser-menu-heading">
-                <span>
-                  <Trans id={B.openLocal.id} message={B.openLocal.message} />
-                </span>
-              </div>
-              <For each={DEV_SERVER_URLS}>
-                {(entry) => (
-                  <button
-                    type="button"
-                    class="browser-menu-row browser-local-row"
-                    onClick={() => props.onNavigate(entry.url)}
-                  >
-                    <span class="browser-menu-row-title">{entry.label}</span>
-                    <span class="browser-menu-row-description">
-                      <Trans id={B.open.id} message={B.open.message} />
-                    </span>
+                    {viewportPresetLabel(preset.id, lingui._)}
                   </button>
                 )}
               </For>
             </div>
           </div>
-        </Show>
-      </div>
+
+          <div class="browser-menu-section">
+            <div class="browser-menu-heading">
+              <span>
+                <Trans id={B.panels.id} message={B.panels.message} />
+              </span>
+            </div>
+            <For each={DEV_PANELS}>
+              {(panel) => (
+                <button
+                  type="button"
+                  class="browser-menu-row browser-panel-row"
+                  classList={{
+                    "is-active text-text-strong": browser.devPanel() === panel.id,
+                  }}
+                  onClick={() => requestPanel(panel.id)}
+                >
+                  <span class="browser-menu-row-copy">
+                    <span class="browser-menu-row-title">{lingui._(panel.label)}</span>
+                    <span class="browser-menu-row-description">{lingui._(panel.description)}</span>
+                  </span>
+                  <Show when={browser.devPanel() === panel.id}>
+                    <Icon name={getSemanticIcon("state.success")} size="small" class="browser-menu-check" />
+                  </Show>
+                </button>
+              )}
+            </For>
+            <button type="button" class="browser-menu-row" onClick={() => props.onRequestDiagnostics("clear")}>
+              <span class="browser-menu-row-copy">
+                <span class="browser-menu-row-title">
+                  <Trans id={B.clearDiagnostics.id} message={B.clearDiagnostics.message} />
+                </span>
+                <span class="browser-menu-row-description">
+                  <Trans id={B.capturedLogs.id} message={B.capturedLogs.message} />
+                </span>
+              </span>
+            </button>
+          </div>
+
+          <div class="browser-menu-section">
+            <div class="browser-menu-heading">
+              <span>
+                <Trans id={B.openLocal.id} message={B.openLocal.message} />
+              </span>
+            </div>
+            <For each={DEV_SERVER_URLS}>
+              {(entry) => (
+                <button
+                  type="button"
+                  class="browser-menu-row browser-local-row"
+                  onClick={() => props.onNavigate(entry.url)}
+                >
+                  <span class="browser-menu-row-title">{entry.label}</span>
+                  <span class="browser-menu-row-description">
+                    <Trans id={B.open.id} message={B.open.message} />
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+        </div>
+      </Popover>
     </div>
   )
 }

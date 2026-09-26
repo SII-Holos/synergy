@@ -31,7 +31,7 @@ const RemoveFailure = z
   .meta({ ref: "SkillRemoveFailure" })
 
 function resolveDestination(scope: z.infer<typeof Scope>) {
-  const destination = SkillSourceProfile.writableDestination(scope, ScopeContext.current.directory)
+  const destination = SkillSourceProfile.writableDestination(scope, ScopeContext.current.workspace?.path ?? null)
   if (!destination) throw new Error(`No writable Skill destination for ${scope} scope`)
   return destination
 }
@@ -249,7 +249,10 @@ export const SkillRoute = () =>
               name,
             })
           }
-          const result = await SkillArchive.createExport({ skill, instanceDirectory: ScopeContext.current.directory })
+          const result = await SkillArchive.createExport({
+            skill,
+            instanceDirectory: ScopeContext.current.workspace?.path ?? null,
+          })
           return c.body(new Uint8Array(result.bytes).buffer, 200, {
             "Content-Type": "application/zip",
             "Content-Disposition": `attachment; filename="${skill.name}.${format}"`,
@@ -289,7 +292,12 @@ export const SkillRoute = () =>
         }
         if (skill.backing.kind !== "file")
           return c.json({ error: "Cannot delete a Skill without file backing", name }, 400)
-        if (!(await SkillSourceProfile.containsCanonicalPath(skill.backing.baseDir, ScopeContext.current.directory))) {
+        if (
+          !(await SkillSourceProfile.containsCanonicalPath(
+            skill.backing.baseDir,
+            ScopeContext.current.workspace?.path ?? null,
+          ))
+        ) {
           return c.json({ error: "Cannot delete a Skill outside trusted Skill roots", name }, 400)
         }
         await fs.rm(skill.backing.baseDir, { recursive: true, force: true })

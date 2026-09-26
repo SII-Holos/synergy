@@ -100,6 +100,8 @@ class MockSession extends EventEmitter {
 }
 
 class MockContents extends EventEmitter {
+  readonly ipc = new EventEmitter()
+  readonly mainFrame = {}
   readonly debugger: MockDebugger
   destroyed = false
   readonly id = 42
@@ -179,6 +181,58 @@ afterEach(async () => {
 })
 
 describe("Browser Host diagnostics", () => {
+  test("routes prompt responses only to the requesting page and releases them on disposal", async () => {
+    const fixture = await createFixture()
+    fixtures.push(fixture)
+    const event = () => ({
+      sender: fixture.contents,
+      senderFrame: fixture.contents.mainFrame,
+      returnValue: undefined as unknown,
+    })
+    const emit = (request: ReturnType<typeof event>, payload: unknown) =>
+      fixture.contents.ipc.emit("synergy:browser:prompt", request, payload)
+    for (const answer of ["edited", "", null]) {
+      const request = event()
+      emit(request, { message: "Name", defaultValue: "draft" })
+      const opened = fixture.events.at(-1) as { requestId: string }
+      expect(fixture.events.at(-1)).toMatchObject({
+        type: "dialog.opened",
+        pageId: "page-1",
+        dialogType: "prompt",
+        message: "Name",
+        defaultValue: "draft",
+      })
+      expect(request.returnValue).toBeUndefined()
+      await fixture.diagnostics.respondToDialog(opened.requestId, answer !== null, answer ?? undefined)
+      expect(request.returnValue).toBe(answer)
+    }
+    const invalidRequests = [
+      { ...event(), sender: {} },
+      { ...event(), senderFrame: {} },
+    ]
+    for (const request of invalidRequests) {
+      fixture.contents.ipc.emit("synergy:browser:prompt", request, { message: "Name", defaultValue: "draft" })
+      expect(request.returnValue).toBeNull()
+    }
+    for (const payload of [
+      { message: "x".repeat(100_001), defaultValue: "" },
+      { message: 1, defaultValue: "" },
+    ]) {
+      const request = event()
+      emit(request, payload)
+      expect(request.returnValue).toBeNull()
+    }
+    const pending = event()
+    emit(pending, { message: "Name", defaultValue: "draft" })
+    const duplicate = event()
+    emit(duplicate, { message: "Another", defaultValue: "" })
+    expect(duplicate.returnValue).toBeNull()
+    expect(pending.returnValue).toBeUndefined()
+    await fixture.diagnostics.dispose()
+    expect(pending.returnValue).toBeNull()
+    expect(fixture.contents.ipc.listenerCount("synergy:browser:prompt")).toBe(0)
+  })
+
   test("installs content permissions, subscribes downloads, and enables CDP domains on start", async () => {
     const fixture = await createFixture({ start: false })
     fixtures.push(fixture)

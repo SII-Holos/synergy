@@ -58,9 +58,10 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
 
   return (
     <ToolbarSelectorPopover
-      trigger={
+      triggerAs={(triggerProps) => (
         <Tooltip placement="top" value={i18n._(PI.addLabel)}>
           <button
+            {...triggerProps}
             type="button"
             aria-label={i18n._(PI.addLabel)}
             class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
@@ -68,7 +69,7 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
             <Icon name={getSemanticIcon("action.add")} size="small" />
           </button>
         </Tooltip>
-      }
+      )}
       title={i18n._(PI.addLabel)}
       contentClass="w-52 max-h-80"
       placement="top-start"

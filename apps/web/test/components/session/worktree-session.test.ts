@@ -246,6 +246,7 @@ describe("workspace transition progress model", () => {
       ["Prepare session", "complete"],
       ["Create checkout", "complete"],
       ["Submit message", "complete"],
+      ["Initialize execution", "complete"],
     ])
 
     const createAccepted = createNewSessionWorkspaceAcceptedProgress({ selection: { mode: "create" } })
@@ -256,7 +257,8 @@ describe("workspace transition progress model", () => {
     expect(createAccepted.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
       ["Create checkout", "complete"],
-      ["Submit message", "active"],
+      ["Submit message", "complete"],
+      ["Initialize execution", "active"],
     ])
 
     const existingSuccess = createNewSessionWorkspaceSuccessProgress({
@@ -266,6 +268,7 @@ describe("workspace transition progress model", () => {
       "Prepare session",
       "Bind worktree",
       "Submit message",
+      "Initialize execution",
     ])
 
     expect(

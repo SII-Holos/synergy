@@ -5,7 +5,7 @@ import type { SyncResourceRequest } from "@/context/sync-resource-freshness"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "@/context/session-message-loader"
 import type { planMessagePageApply } from "@/context/session-message-page"
 import type { SessionPartSnapshotAction, SessionPartSnapshotRequest } from "@/context/session-part-snapshot-freshness"
-import type { MessageWindowState } from "@/context/session-message-window"
+import type { MessageWindowMetadata } from "@/context/session-message-window"
 import { internMessages, internParts } from "@/context/string-intern"
 
 export type BoardMessagePageResult = {
@@ -28,7 +28,7 @@ type BoardLoadResult = {
 
 type BoardScopeStore = {
   message: Record<string, Message[]>
-  messageWindow: Record<string, MessageWindowState<Message>>
+  messageWindow: Record<string, MessageWindowMetadata>
   part: Record<string, Part[]>
 }
 
@@ -118,7 +118,7 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
       const setStore = store[1] as unknown as SetStoreFunction<BoardScopeStore>
       const current = deps.ensureScopeState(scopeKey)[0] as {
         message?: Record<string, Message[]>
-        messageWindow?: Record<string, MessageWindowState<Message>>
+        messageWindow?: Record<string, MessageWindowMetadata>
       }
       const metadata = current.messageWindow?.[sessionID]
       const plan = deps.plan({
@@ -160,6 +160,7 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
               sessionID,
               deps.reconcile(internMessages(plan.window.messages), { key: "id" }) as Message[],
             )
+            setStore("messageWindow", sessionID, deps.reconcile(plan.metadata) as MessageWindowMetadata)
             deps.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, result.revision)
             for (const [messageID, parts] of Object.entries(plan.parts)) {
               if (partActions.get(messageID) === "preserve") continue

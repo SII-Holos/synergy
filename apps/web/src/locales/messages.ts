@@ -748,9 +748,10 @@ export const sidebar = {
   projects: { id: "app.sidebar.projects", message: "Projects" },
   addProject: { id: "app.sidebar.addProject", message: "Add project" },
   collapseAllProjects: { id: "app.sidebar.collapseAllProjects", message: "Collapse all projects" },
-  agentMenu: { id: "app.sidebar.agent.menu", message: "Agent menu" },
+  agentMenu: { id: "app.sidebar.account.menu", message: "HOLOS account menu" },
   agent: { id: "app.sidebar.agent", message: "Agent" },
   // Sections
+  collections: { id: "app.sidebar.collections", message: "Session collections" },
   recent: { id: "app.sidebar.section.recent", message: "Recent" },
   markAllRead: { id: "app.sidebar.markAllRead", message: "Mark all read" },
   markingAllRead: { id: "app.sidebar.markingAllRead", message: "Marking all read…" },
@@ -1423,6 +1424,11 @@ export const kanbanPage = {
   unavailable: { id: "app.kanban.unavailable", message: "Session no longer available" },
   loading: { id: "app.kanban.loading", message: "Loading…" },
   loadError: { id: "app.kanban.loadError", message: "Failed to load messages" },
+  loadErrorDescription: {
+    id: "app.kanban.loadErrorDescription",
+    message: "Messages are temporarily unavailable. Please retry.",
+  },
+  errorDetails: { id: "app.kanban.errorDetails", message: "Error details" },
   retry: { id: "app.kanban.retry", message: "Retry" },
   addPane: { id: "app.kanban.addPane", message: "Add session" },
   addPaneHint: { id: "app.kanban.addPaneHint", message: "Pick a session to pin to the board" },

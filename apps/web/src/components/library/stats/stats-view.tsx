@@ -1,6 +1,7 @@
-import { createEffect, createSignal, Show } from "solid-js"
+import { createEffect, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { useLibraryStats, type LibraryStatsSnapshot, EMPTY_SNAPSHOT } from "./use-library-stats"
+import { useLocale } from "@/context/locale"
+import { useLibraryStats, type LibraryStatsSnapshot } from "./use-library-stats"
 import { LibraryOverviewCards } from "./overview-cards"
 import { MemoryDistribution } from "./memory-distribution"
 import { QValueChart } from "./q-value-chart"
@@ -30,20 +31,11 @@ function SyncStatus(props: { syncing: boolean; syncError: string | null }) {
 export function StatsView(props: { registerSync?: (handle: LibraryStatsSyncHandle) => void; storageLabel?: string }) {
   const { _ } = useLingui()
   const { data, error, loading, recompute } = useLibraryStats()
-  const [syncing, setSyncing] = createSignal(false)
-  const [syncError, setSyncError] = createSignal<string | null>(null)
-
+  const { fmt } = useLocale()
+  const syncing = loading
+  const syncError = error
   async function handleSync() {
-    if (syncing()) return
-    setSyncing(true)
-    setSyncError(null)
-    try {
-      await recompute()
-    } catch (err: any) {
-      setSyncError(err?.message ?? _({ id: "app.library.stats.syncFailed", message: "Sync failed" }))
-    } finally {
-      setSyncing(false)
-    }
+    await recompute()
   }
 
   createEffect(() => {
@@ -57,6 +49,29 @@ export function StatsView(props: { registerSync?: (handle: LibraryStatsSyncHandl
   return (
     <>
       <SyncStatus syncing={syncing()} syncError={syncError()} />
+      <Show when={data()}>
+        {(snapshot) => (
+          <p class="library-toolbar-summary" role="status">
+            {_({
+              id: "app.library.stats.asOf",
+              message: "Data as of {time}",
+              values: { time: fmt.date(snapshot().computedAt, { dateStyle: "medium", timeStyle: "short" }) },
+            })}
+          </p>
+        )}
+      </Show>
+      <Show when={error()}>
+        <div class="library-sync-row">
+          <span class="text-12-regular text-text-weak">
+            {data()
+              ? _({ id: "app.library.stats.stale", message: "Refresh failed. The previous snapshot is still shown." })
+              : error()}
+          </span>
+          <button type="button" class="library-plain-action" disabled={loading()} onClick={() => void handleSync()}>
+            {_({ id: "app.library.stats.retry", message: "Retry" })}
+          </button>
+        </div>
+      </Show>
       <Show
         when={data()}
         fallback={
@@ -74,9 +89,7 @@ export function StatsView(props: { registerSync?: (handle: LibraryStatsSyncHandl
           </div>
         }
       >
-        {(snapshot) => (
-          <LibraryStatsContent snapshot={snapshot() ?? EMPTY_SNAPSHOT} storageLabel={props.storageLabel} />
-        )}
+        {(snapshot) => <LibraryStatsContent snapshot={snapshot()} storageLabel={props.storageLabel} />}
       </Show>
     </>
   )

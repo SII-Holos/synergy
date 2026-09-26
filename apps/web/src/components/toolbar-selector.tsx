@@ -1,12 +1,12 @@
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
-import { createSignal, type JSX } from "solid-js"
+import { createSignal, type Component, type JSX } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function ToolbarSelectorPopover(props: {
-  trigger: JSX.Element
+  triggerAs: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
   children: (close: () => void) => JSX.Element
-  title?: string
+  title: string
   placement?: "top-start" | "top" | "top-end" | "bottom-start" | "bottom" | "bottom-end"
   contentClass?: string
 }) {
@@ -15,12 +15,12 @@ export function ToolbarSelectorPopover(props: {
 
   return (
     <KobaltePopover open={open()} onOpenChange={setOpen} placement={props.placement ?? "top-start"} gutter={8}>
-      <KobaltePopover.Trigger as="div">{props.trigger}</KobaltePopover.Trigger>
+      <KobaltePopover.Trigger as={props.triggerAs} />
       <KobaltePopover.Portal>
         <KobaltePopover.Content
           class={`flex flex-col rounded-2xl border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg z-50 outline-none overflow-hidden ${props.contentClass ?? "w-56 max-h-64"}`}
         >
-          <KobaltePopover.Title class="sr-only">{props.title ?? "Select"}</KobaltePopover.Title>
+          <KobaltePopover.Title class="sr-only">{props.title}</KobaltePopover.Title>
           {props.children(close)}
         </KobaltePopover.Content>
       </KobaltePopover.Portal>

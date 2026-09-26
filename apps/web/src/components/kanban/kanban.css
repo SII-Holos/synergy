@@ -248,27 +248,14 @@
 .kanban-pane-error {
   margin: auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 10px;
+  max-width: 100%;
+  padding: 1rem;
+  text-align: center;
   color: var(--text-weak);
   font-size: var(--font-size-small);
-}
-
-.kanban-pane-retry {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  width: auto;
-  height: auto;
-  padding: 4px 10px;
-  border: 1px solid var(--border-base);
-  border-radius: 6px;
-  color: var(--text-strong);
-  font-size: var(--font-size-small);
-}
-
-.kanban-pane-retry:hover {
-  background: var(--surface-base-interactive-active);
 }
 
 /* --- Pane --- */

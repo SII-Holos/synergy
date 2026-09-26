@@ -2,6 +2,7 @@ import { createMemo, createSignal, For, Show } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./stats-i18n"
+import { calendarDays } from "./calendar-range"
 
 const HEATMAP_STYLE = `
 @keyframes heatmapCellEnter {
@@ -68,8 +69,8 @@ function addHours(date: Date, delta: number) {
   return copy
 }
 
-function startOfCurrentHour() {
-  const now = new Date()
+function startOfCurrentHour(computedAt: number) {
+  const now = new Date(computedAt)
   now.setMinutes(0, 0, 0)
   return now
 }
@@ -144,6 +145,7 @@ function HourView(props: { rows: Array<{ label: string; cells: HourCell[] }> }) 
 
 export function ActivityHeatmap(props: {
   days: StatsSnapshot["timeSeries"]["days"]
+  computedAt: number
   hours?: Array<{ hour: string; turns: number }>
 }) {
   const { i18n, fmt } = useLocale()
@@ -170,12 +172,21 @@ export function ActivityHeatmap(props: {
   })
 
   const filteredDays = createMemo(() => {
-    const selectedRange = range()
-    if (selectedRange === "all") return props.days
-    if (selectedRange === "24h") return props.days.slice(-1)
-    if (selectedRange === "7d") return props.days.slice(-7)
-    if (selectedRange === "30d") return props.days.slice(-30)
-    return props.days.slice(-90)
+    const selected = range()
+    const count =
+      selected === "all" ? "all" : selected === "24h" ? 1 : selected === "7d" ? 7 : selected === "30d" ? 30 : 90
+    return calendarDays(props.days, count, new Date(props.computedAt), (day) => ({
+      day,
+      sessions: 0,
+      turns: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      cost: 0,
+      additions: 0,
+      deletions: 0,
+      files: 0,
+      toolCalls: 0,
+      errors: 0,
+    }))
   })
 
   const dayCells = createMemo<DayCell[]>(() => {
@@ -195,7 +206,7 @@ export function ActivityHeatmap(props: {
 
     const hoursByKey = new Map(availableHours().map((hour) => [hour.hour, hour.turns]))
     const totalHours = selectedRange === "24h" ? 24 : 24 * 7
-    const end = startOfCurrentHour()
+    const end = startOfCurrentHour(props.computedAt)
     const cells: HourCell[] = []
 
     for (let index = totalHours - 1; index >= 0; index--) {
@@ -295,6 +306,7 @@ export function ActivityHeatmap(props: {
                         ? "bg-surface-interactive-solid text-text-on-interactive-base shadow-sm"
                         : "bg-surface-inset-base/70 text-text-weak hover:bg-surface-inset-base hover:text-text-base"
                     }`}
+                    aria-pressed={active()}
                     onClick={() => setRange(item.value)}
                   >
                     {item.label}

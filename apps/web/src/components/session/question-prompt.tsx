@@ -12,6 +12,8 @@ import { useSDK } from "@/context/sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
 import { questionCountdown, questionOptionShortcutIndex } from "./question-prompt-model"
+import { createRequestSubmission, requestSubmissionLocked } from "./request-submission"
+import { RequestSubmissionNotice } from "./request-submission-notice"
 import "./question-prompt.css"
 
 export interface QuestionPromptProps {
@@ -19,7 +21,41 @@ export interface QuestionPromptProps {
 }
 
 export function QuestionPrompt(props: QuestionPromptProps) {
+  const actions = createRequestSubmission()
+  const key = () => JSON.stringify([props.request.sessionID, props.request.id])
+  return (
+    <Show when={key()} keyed>
+      {(requestKey) => <QuestionPromptForm request={props.request} actions={actions} requestKey={requestKey} />}
+    </Show>
+  )
+}
+
+function QuestionPromptForm(
+  props: QuestionPromptProps & {
+    actions: ReturnType<typeof createRequestSubmission>
+    requestKey: string
+  },
+) {
   const sdk = useSDK()
+  const state = () => props.actions.state(props.requestKey)
+  const locked = () => requestSubmissionLocked(state())
+  let lastAction: "reply" | "reject" = "reply"
+  const respond = (action: "reply" | "reject", answers?: QuestionAnswer[]) => {
+    const requestID = props.request.id
+    const sessionID = props.request.sessionID
+    const client = sdk.client
+    lastAction = action
+    return props.actions.run(props.requestKey, {
+      submit: () =>
+        action === "reply"
+          ? client.question.reply({ requestID, answers: answers! }, { throwOnError: true })
+          : client.question.reject({ requestID }, { throwOnError: true }),
+      isPending: async () =>
+        (await client.question.list(undefined, { throwOnError: true })).data.some(
+          (request) => request.id === requestID && request.sessionID === sessionID,
+        ),
+    })
+  }
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const [collapsed, setCollapsed] = createSignal(false)
@@ -57,15 +93,16 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   })
 
   function submit() {
-    if (!single() && !allAnswered()) return
+    if (!allAnswered()) return
     const answers = questions().map((_, i) => store.answers[i] ?? [])
-    sdk.client.question.reply({ requestID: props.request.id, answers })
+    void respond("reply", answers)
   }
   function reject() {
-    sdk.client.question.reject({ requestID: props.request.id })
+    void respond("reject")
   }
 
   function pick(answer: string, custom = false) {
+    if (locked()) return
     const answers = [...store.answers]
     answers[store.tab] = [answer]
     setStore("answers", answers)
@@ -75,7 +112,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
       setStore("custom", inputs)
     }
     if (single()) {
-      sdk.client.question.reply({ requestID: props.request.id, answers: [[answer]] })
+      void respond("reply", [[answer]])
       return
     }
     setStore("tab", store.tab + 1)
@@ -83,6 +120,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   }
 
   function toggle(answer: string) {
+    if (locked()) return
     const existing = store.answers[store.tab] ?? []
     const next = [...existing]
     const idx = next.indexOf(answer)
@@ -94,6 +132,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   }
 
   function handleCustomSubmit() {
+    if (locked()) return
     const text = input().trim()
     if (!text) return
     if (multi()) {
@@ -112,6 +151,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   }
 
   function goToTab(index: number) {
+    if (locked()) return
     setStore("tab", index)
     setStore("otherOpen", false)
   }
@@ -135,7 +175,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
         modified: event.altKey || event.ctrlKey || event.metaKey || event.shiftKey,
         editable,
       })
-      if (index == null || collapsed() || confirm() || store.otherOpen || menuOpen()) return
+      if (locked() || index == null || collapsed() || confirm() || store.otherOpen || menuOpen()) return
       const option = options()[index]
       if (!option) return
       event.preventDefault()
@@ -147,7 +187,12 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   })
 
   return (
-    <section ref={root} class="question-prompt-shell" aria-label={_(S.questionAria)}>
+    <section
+      ref={root}
+      aria-busy={state().status === "pending"}
+      class="question-prompt-shell"
+      aria-label={_(S.questionAria)}
+    >
       <div
         class="question-prompt-collapsed-shell"
         classList={{ "is-open": collapsed() }}
@@ -156,6 +201,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
       >
         <button
           type="button"
+          disabled={locked()}
           class="question-prompt-collapsed"
           aria-expanded="false"
           onClick={() => setCollapsed(false)}
@@ -210,6 +256,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                 trigger={
                   <button
                     type="button"
+                    disabled={locked()}
                     class="question-prompt-more-button"
                     aria-label={_(S.questionMoreActions)}
                     aria-expanded={menuOpen()}
@@ -222,6 +269,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                 <div class="question-prompt-menu-list" role="menu">
                   <button
                     type="button"
+                    disabled={locked()}
                     role="menuitem"
                     class="question-prompt-menu-item question-prompt-skip"
                     title={_(S.questionSkipTitle)}
@@ -236,6 +284,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
               </Popover>
               <button
                 type="button"
+                disabled={locked()}
                 class="question-prompt-collapse-button"
                 aria-expanded="true"
                 onClick={() => {
@@ -257,6 +306,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                   return (
                     <button
                       type="button"
+                      disabled={locked()}
                       class="question-prompt-step"
                       classList={{ "is-active": isActive(), "is-answered": isAnswered() }}
                       onClick={() => goToTab(idx())}
@@ -271,6 +321,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
               </For>
               <button
                 type="button"
+                disabled={locked()}
                 class="question-prompt-step"
                 classList={{ "is-active": confirm(), "is-answered": allAnswered() }}
                 onClick={() => goToTab(questions().length)}
@@ -299,6 +350,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                     return (
                       <button
                         type="button"
+                        disabled={locked()}
                         role={multi() ? "checkbox" : "radio"}
                         aria-checked={picked()}
                         aria-keyshortcuts={idx() < 9 ? String(idx() + 1) : undefined}
@@ -324,6 +376,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                   fallback={
                     <button
                       type="button"
+                      disabled={locked()}
                       class="question-prompt-option question-prompt-other-trigger"
                       onClick={() => setStore("otherOpen", true)}
                     >
@@ -346,6 +399,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                     </div>
                     <div class="question-prompt-other-row">
                       <TextField
+                        disabled={locked()}
                         placeholder={_(S.questionCustomPlaceholder)}
                         value={input()}
                         onInput={(e: InputEvent & { currentTarget: HTMLInputElement }) => {
@@ -365,7 +419,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                         variant="secondary"
                         size="large"
                         onClick={handleCustomSubmit}
-                        disabled={!input().trim()}
+                        disabled={locked() || !input().trim()}
                         class="question-prompt-other-button"
                       >
                         {multi() ? _(S.questionAdd) : _(S.questionSubmit)}
@@ -386,6 +440,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                       return (
                         <button
                           type="button"
+                          disabled={locked()}
                           class="question-prompt-review-row"
                           classList={{ "is-missing": !answered() }}
                           onClick={() => goToTab(idx())}
@@ -403,11 +458,12 @@ export function QuestionPrompt(props: QuestionPromptProps) {
               </div>
             </Show>
           </div>
+          <RequestSubmissionNotice state={state()} onRetry={() => (lastAction === "reject" ? reject() : submit())} />
           <Show when={!single()}>
             <footer class="question-prompt-footer">
               <div class="question-prompt-footer-actions">
                 <Show when={store.tab > 0}>
-                  <Button variant="ghost" size="large" onClick={() => goToTab(store.tab - 1)}>
+                  <Button variant="ghost" size="large" disabled={locked()} onClick={() => goToTab(store.tab - 1)}>
                     {_(S.questionPrevious)}
                   </Button>
                 </Show>
@@ -416,13 +472,13 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                     variant="secondary"
                     size="large"
                     onClick={() => goToTab(store.tab + 1)}
-                    disabled={!currentAnswered()}
+                    disabled={locked() || !currentAnswered()}
                   >
                     {_(S.questionNext)}
                   </Button>
                 </Show>
                 <Show when={confirm()}>
-                  <Button variant="primary" size="large" onClick={submit} disabled={!allAnswered()}>
+                  <Button variant="primary" size="large" onClick={submit} disabled={locked() || !allAnswered()}>
                     {_(S.questionSubmit)}
                   </Button>
                 </Show>

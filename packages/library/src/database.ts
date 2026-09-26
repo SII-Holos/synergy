@@ -856,7 +856,7 @@ export namespace LibraryDB {
     }
 
     export type ListFilter = "all" | "scope" | "session"
-    export type ListSort = "newest" | "oldest" | "reward" | "qvalue" | "visits"
+    export type ListSort = "updated" | "newest" | "oldest" | "reward" | "qvalue" | "visits"
 
     export interface RewardWeights {
       outcome: number
@@ -884,6 +884,9 @@ export namespace LibraryDB {
       hasMore: boolean
     }
 
+    export const REWARD_STATUSES = ["evaluated", "pending", "encoding_failed"] as const
+    export type RewardStatus = (typeof REWARD_STATUSES)[number]
+
     export const REWARD_DIMS = ["outcome", "intent", "execution", "orchestration", "expression"] as const
 
     export interface Row {
@@ -905,7 +908,7 @@ export namespace LibraryDB {
       retrieved_experience_ids: string
       created_at: number
       updated_at: number
-      reward_status: string
+      reward_status: RewardStatus
       turns_remaining: number | null
     }
 
@@ -967,6 +970,8 @@ export namespace LibraryDB {
       )`
 
       switch (sort) {
+        case "updated":
+          return "ORDER BY updated_at DESC, id DESC"
         case "oldest":
           return "ORDER BY created_at ASC, id ASC"
         case "reward":

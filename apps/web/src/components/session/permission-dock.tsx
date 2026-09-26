@@ -11,6 +11,10 @@ import { ToolRegistry, getToolInfo } from "@ericsanchezok/synergy-ui/message-par
 import { SmartTool } from "@ericsanchezok/synergy-ui/basic-tool"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
+import { useSDK } from "@/context/sdk"
+import { createRequestSubmission, requestSubmissionLocked } from "./request-submission"
+import { RequestSubmissionNotice } from "./request-submission-notice"
+
 const copy = {
   agent: { id: "session.permissionDock.agent", message: "Agent" },
   permission: { id: "session.permissionDock.permission", message: "Permission" },
@@ -52,6 +56,9 @@ interface PermissionItem {
 
 export function PermissionDock(props: PermissionDockProps) {
   const data = useData()
+  const sdk = useSDK()
+  const actions = createRequestSubmission()
+  const responses = new Map<string, "once" | "session" | "always" | "reject">()
   const { _ } = useLingui()
   const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
 
@@ -118,13 +125,22 @@ export function PermissionDock(props: PermissionDockProps) {
     return title
   })
 
+  const requestKey = () => JSON.stringify([activeItem()?.permission.sessionID, activeItem()?.permission.id])
+  const state = () => actions.state(requestKey())
+  const locked = () => requestSubmissionLocked(state())
   const respond = (response: "once" | "session" | "always" | "reject") => {
     const item = activeItem()
-    if (!item || !data.respondToPermission) return
-    data.respondToPermission({
-      sessionID: item.permission.sessionID,
-      permissionID: item.permission.id,
-      response,
+    if (!item) return
+    const key = requestKey()
+    const { id: requestID, sessionID } = item.permission
+    const client = sdk.client
+    responses.set(key, response)
+    void actions.run(key, {
+      submit: () => client.permission.reply({ requestID, reply: response }, { throwOnError: true }),
+      isPending: async () =>
+        (await client.permission.list({ sessionID }, { throwOnError: true })).data.some(
+          (request) => request.id === requestID,
+        ),
     })
   }
 
@@ -192,7 +208,10 @@ export function PermissionDock(props: PermissionDockProps) {
                   </Tabs>
                 </Show>
 
-                <div class="flex items-center justify-between gap-3 overflow-hidden min-w-0">
+                <div
+                  class="flex flex-wrap items-center justify-between gap-3 min-w-0"
+                  aria-busy={state().status === "pending"}
+                >
                   <div class="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
                     <Icon
                       name={getSemanticIcon("settings.permissions")}
@@ -211,21 +230,28 @@ export function PermissionDock(props: PermissionDockProps) {
                       </span>
                     </Show>
                   </div>
-                  <div class="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
-                    <Button variant="ghost" size="small" onClick={() => respond("reject")}>
+                  <div class="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
+                    <Button variant="ghost" size="small" disabled={locked()} onClick={() => respond("reject")}>
                       {_(copy.deny)}
                     </Button>
-                    <Button variant="ghost" size="small" onClick={() => respond("session")}>
+                    <Button variant="ghost" size="small" disabled={locked()} onClick={() => respond("session")}>
                       {_(copy.allowSession)}
                     </Button>
-                    <Button variant="ghost" size="small" onClick={() => respond("always")}>
+                    <Button variant="ghost" size="small" disabled={locked()} onClick={() => respond("always")}>
                       {_(copy.alwaysAllow)}
                     </Button>
-                    <Button variant="primary" size="small" onClick={() => respond("once")}>
+                    <Button variant="primary" size="small" disabled={locked()} onClick={() => respond("once")}>
                       {_(copy.allowOnce)}
                     </Button>
                   </div>
                 </div>
+                <RequestSubmissionNotice
+                  state={state()}
+                  onRetry={() => {
+                    const response = responses.get(requestKey())
+                    if (response) respond(response)
+                  }}
+                />
                 <Show when={riskReason()}>
                   {(reason) => (
                     <div class="flex items-center gap-1.5 text-12-regular text-text-weak">

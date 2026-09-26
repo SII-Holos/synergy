@@ -1,3 +1,4 @@
+import { BrowserPageDialog } from "./page-dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -32,6 +33,9 @@ export function BrowserSurface(props: {
   ownerKey: string
   clientPresentation: "native" | "webrtc"
   onRetryNative?: () => void
+  onRetryRemote?: () => void
+  recovering?: boolean
+  recoveryVersion?: number
 }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
@@ -45,7 +49,7 @@ export function BrowserSurface(props: {
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
   const nativeRecoveryAvailable = () => props.clientPresentation === "native" && Boolean(platform.browserNative)
-  const webrtcPresentation = () => browser.presentation()?.kind === "webrtc"
+  const webrtcPresentation = () => props.clientPresentation === "webrtc" && browser.presentation()?.kind !== "native"
 
   function fitViewportSize() {
     if (!wrapperRef) return null
@@ -129,16 +133,10 @@ export function BrowserSurface(props: {
     browser.setFileChooserRequest(null)
   }
 
-  function respondDialog(accept: boolean) {
-    const request = browser.dialogRequest()
-    if (!request) return
-    browser.send({ type: "dialog.respond", pageId: request.pageId, requestId: request.requestId, accept })
-    browser.setDialogRequest(null)
-  }
-
   function hasPresentationSurface() {
     return shouldShowBrowserPresentationSurface({
       presentation: browser.presentation()?.kind,
+      clientPresentation: props.clientPresentation,
       hostStatus: browser.hostStatus(),
       nativeAvailable: Boolean(platform.browserNative),
       pageId: browser.pageId(),
@@ -196,6 +194,9 @@ export function BrowserSurface(props: {
             sessionID={props.sessionID}
             routeDirectory={props.routeDirectory}
             container={container}
+            onRetry={props.onRetryRemote}
+            recovering={props.recovering}
+            recoveryVersion={props.recoveryVersion}
           />
         </Show>
       </Show>
@@ -279,22 +280,21 @@ export function BrowserSurface(props: {
         )}
       </Show>
 
-      <Show when={browser.dialogRequest()}>
+      <Show when={browser.dialogRequest()} keyed>
         {(request) => (
-          <div class="absolute inset-0 z-50 flex items-center justify-center bg-surface-overlay">
-            <div class="w-[360px] rounded-lg border border-border-weak-base bg-surface-raised-base p-4 shadow-sm">
-              <div class="text-13 font-medium text-text-strong">{request().type}</div>
-              <div class="mt-2 text-12 text-text-weak whitespace-pre-wrap">{request().message}</div>
-              <div class="mt-4 flex justify-end gap-2">
-                <Button size="small" variant="ghost" onClick={() => respondDialog(false)}>
-                  <Trans id={B.cancel.id} message={B.cancel.message} />
-                </Button>
-                <Button size="small" variant="primary" onClick={() => respondDialog(true)}>
-                  <Trans id={B.ok.id} message={B.ok.message} />
-                </Button>
-              </div>
-            </div>
-          </div>
+          <BrowserPageDialog
+            request={request}
+            onRespond={(accept, promptText) => {
+              browser.send({
+                type: "dialog.respond",
+                pageId: request.pageId,
+                requestId: request.requestId,
+                accept,
+                ...(promptText === undefined ? {} : { promptText }),
+              })
+              if (browser.dialogRequest()?.requestId === request.requestId) browser.setDialogRequest(null)
+            }}
+          />
         )}
       </Show>
     </div>

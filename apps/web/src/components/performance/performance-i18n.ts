@@ -6,13 +6,45 @@ export const P = {
   panelTitle: { id: "app.performance.panel.title", message: "Performance" },
   panelSubtitle: {
     id: "app.performance.panel.subtitle",
-    message: "Live runtime resource usage, trace latency, browser metrics, and performance issues.",
+    message: "Runtime resource usage, trace latency, browser metrics, and performance issues at the last snapshot.",
   },
 
   // PerformanceDashboard.tsx
   snapshotLabel: { id: "app.performance.snapshot.label", message: "Performance snapshot" },
   snapshotFrom: { id: "app.performance.snapshot.from", message: "Snapshot from {time}" },
   refresh: { id: "app.performance.action.refresh", message: "Refresh" },
+  retry: { id: "app.performance.action.retry", message: "Fetch again" },
+  loading: { id: "app.performance.snapshot.loading", message: "Loading performance snapshot…" },
+  empty: { id: "app.performance.snapshot.empty", message: "No performance snapshot available" },
+  unavailable: { id: "app.performance.snapshot.unavailable", message: "Unable to fetch performance snapshot" },
+  unavailableDescription: {
+    id: "app.performance.snapshot.unavailableDescription",
+    message: "Server data is unavailable. Current runtime health cannot be determined.",
+  },
+  stale: {
+    id: "app.performance.snapshot.stale",
+    message: "Refresh failed. Showing the last successful snapshot.",
+  },
+  staleDescription: {
+    id: "app.performance.snapshot.staleDescription",
+    message: "Data as of {time}. Current runtime health has not been confirmed.",
+  },
+  refreshing: {
+    id: "app.performance.snapshot.refreshing",
+    message: "Refreshing. Showing the snapshot from {time}.",
+  },
+  attemptedAt: { id: "app.performance.snapshot.attemptedAt", message: "Last attempt: {time}" },
+  errorDetails: { id: "app.performance.snapshot.errorDetails", message: "Error details" },
+  timelineUnavailable: {
+    id: "app.performance.timeline.unavailable",
+    message: "Unable to fetch performance trends",
+  },
+  tracesUnavailable: {
+    id: "app.performance.traces.unavailable",
+    message: "Unable to fetch traces",
+  },
+  timelineLoading: { id: "app.performance.timeline.loading", message: "Loading performance trends…" },
+  tracesLoading: { id: "app.performance.traces.loading", message: "Loading traces…" },
 
   // performance analysis
   analysisAnalyze: { id: "app.performance.analysis.action.analyze", message: "Analyze" },

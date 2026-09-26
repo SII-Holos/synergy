@@ -12,6 +12,7 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createAutoScroll } from "@ericsanchezok/synergy-ui/hooks"
 import { SessionTurn } from "@ericsanchezok/synergy-ui/session-turn"
@@ -269,14 +270,24 @@ export function KanbanPane(props: {
             when={hasSnapshot()}
             fallback={
               <Show when={loadError()} fallback={<div class="kanban-pane-empty">{_(kanbanPage.loading)}</div>}>
-                <div class="kanban-pane-error">
+                <div class="kanban-pane-error" role="alert">
+                  <Icon name={getSemanticIcon("state.warning")} class="text-icon-critical-base" />
                   <span>{_(kanbanPage.loadError)}</span>
+                  <span class="text-12-regular text-text-weaker">{_(kanbanPage.loadErrorDescription)}</span>
                   <Show when={props.onRetry}>
-                    <button class="kanban-pane-action kanban-pane-retry" onClick={props.onRetry}>
-                      <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                      <span>{_(kanbanPage.retry)}</span>
-                    </button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      icon={getSemanticIcon("action.refresh")}
+                      onClick={props.onRetry}
+                    >
+                      {_(kanbanPage.retry)}
+                    </Button>
                   </Show>
+                  <details class="max-w-full text-start">
+                    <summary class="cursor-pointer text-text-interactive-base">{_(kanbanPage.errorDetails)}</summary>
+                    <pre class="mt-2 whitespace-pre-wrap break-words text-12-regular">{loadError()}</pre>
+                  </details>
                 </div>
               </Show>
             }

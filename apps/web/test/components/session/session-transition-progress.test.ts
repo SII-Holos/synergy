@@ -55,7 +55,8 @@ describe("session transition progress model", () => {
     )
     expect(accepted.steps.map((step) => [step.id, step.state])).toEqual([
       ["session", "complete"],
-      ["message", "active"],
+      ["message", "complete"],
+      ["initialization", "active"],
     ])
 
     const success = createNewSessionTransitionSuccessProgress()
@@ -67,6 +68,7 @@ describe("session transition progress model", () => {
     expect(success.steps.map((step) => [step.id, translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["session", "Prepare session", "complete"],
       ["message", "Submit message", "complete"],
+      ["initialization", "Initialize execution", "complete"],
     ])
 
     const error = createNewSessionTransitionErrorProgress({
@@ -88,7 +90,7 @@ describe("session transition progress model", () => {
       kind: accepted.kind,
       steps: accepted.steps,
     })
-    expect(stalled).toMatchObject({ kind: "new-session", phase: "error", steps: accepted.steps })
+    expect(stalled).toMatchObject({ kind: "new-session", phase: "error" })
     expect(translateSessionTransitionCopy(stalled.title, i18n)).toBe("Conversation setup needs attention")
     expect(translateSessionTransitionCopy(stalled.description, i18n)).toBe(
       "Your first message is still saved, but initialization did not finish. Retry to resume processing.",
@@ -115,12 +117,14 @@ describe("session transition progress model", () => {
     expect(createSessionStartupSteps({ stage: "accepted", workspace }).map((step) => [step.id, step.state])).toEqual([
       ["session", "complete"],
       ["workspace", "complete"],
-      ["message", "active"],
+      ["message", "complete"],
+      ["initialization", "active"],
     ])
     expect(createSessionStartupSteps({ stage: "complete", workspace }).map((step) => [step.id, step.state])).toEqual([
       ["session", "complete"],
       ["workspace", "complete"],
       ["message", "complete"],
+      ["initialization", "complete"],
     ])
   })
 
@@ -160,4 +164,17 @@ describe("session transition progress model", () => {
     const raw = createNewSessionTransitionErrorProgress({ title: "Provider failed", message: "Connection closed." })
     expect(translateSessionTransitionCopy(raw.title, i18n)).toBe("Provider failed")
   })
+})
+
+test("handoff failures stop active steps and retain structured diagnostics", () => {
+  const accepted = createNewSessionTransitionAcceptedProgress()
+  const failed = createSessionTransitionHandoffErrorProgress({
+    kind: accepted.kind,
+    steps: accepted.steps,
+    error: { code: "ModelUnavailable", message: "Select a configured model" },
+  })
+  expect(failed.steps.some((step) => step.state === "active")).toBe(false)
+  expect(failed.steps.at(-1)?.state).toBe("error")
+  expect(failed.error).toEqual({ code: "ModelUnavailable", message: "Select a configured model" })
+  expect(accepted.steps.at(-1)?.state).toBe("active")
 })

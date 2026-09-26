@@ -194,6 +194,10 @@ msgstr "活动暂不可用"
 msgid "app.agenda.calendar.day"
 msgstr "日"
 
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.list"
+msgstr "列表"
+
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.month"
@@ -203,6 +207,14 @@ msgstr "月"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.calendar.more"
 msgstr "+{count} 个更多"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.next"
+msgstr "下一时间范围"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.calendar.previous"
+msgstr "上一时间范围"
 
 #. calendar.tsx
 msgid "app.agenda.calendar.today"
@@ -582,6 +594,58 @@ msgstr "日程"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.agenda.panel.todoLabel"
 msgstr "待办"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.active"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.all"
+msgstr "全部系列"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.done"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.empty"
+msgstr "暂无符合条件的日程"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.failed"
+msgstr "上次执行失败"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.missingStatus"
+msgstr "缺少最近运行状态"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.noRuns"
+msgstr "暂无运行记录"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.noTimes"
+msgstr "本时间范围内无计划时间"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.pending"
+msgstr "待办"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.previewCount"
+msgstr "预览 {count, plural, one {# 个计划时间} other {# 个计划时间}}"
+
+#. js-lingui-explicit-id
+msgid "app.agenda.series.previewHint"
+msgstr "以下为计划时间预览，实际执行情况请查看“历史”。"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -1190,6 +1254,26 @@ msgstr "网络"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.network.description"
 msgstr "请求"
+
+#. js-lingui-explicit-id
+msgid "app.browser.dialog.alert"
+msgstr "网页消息"
+
+#. js-lingui-explicit-id
+msgid "app.browser.dialog.beforeunload"
+msgstr "离开此页面？"
+
+#. js-lingui-explicit-id
+msgid "app.browser.dialog.confirm"
+msgstr "网页请求确认"
+
+#. js-lingui-explicit-id
+msgid "app.browser.dialog.input"
+msgstr "输入内容"
+
+#. js-lingui-explicit-id
+msgid "app.browser.dialog.prompt"
+msgstr "网页请求输入"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.disconnected"
@@ -2981,6 +3065,10 @@ msgid "app.kanban.emptyHint"
 msgstr "会话会按最近顺序自动出现在这里。从侧边栏拖入会话即可固定。"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.errorDetails"
+msgstr "错误详情"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.focus.resizeRail"
 msgstr "调整面板宽度"
 
@@ -3011,6 +3099,10 @@ msgstr "网格"
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.loadError"
 msgstr "消息加载失败"
+
+#. ── Kanban page ─────────────────────────────────────────────────────────────
+msgid "app.kanban.loadErrorDescription"
+msgstr "暂时无法获取消息，请重试。"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.loading"
@@ -3822,12 +3914,24 @@ msgid "app.library.editor.saved"
 msgstr "已保存"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.collapse"
+msgstr "收起经验"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.copyFailed"
 msgstr "无法复制经验。"
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.copyLabel"
 msgstr "复制全部内容"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.delete"
+msgstr "删除经验"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.detailFailed"
+msgstr "无法加载详情，卡片内容仍然可用。"
 
 #. Empty / loading states
 msgid "app.library.experience.empty.loadError"
@@ -3844,6 +3948,18 @@ msgstr "暂无历史经验"
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.empty.noneHint"
 msgstr "使用智能体完成任务时，Synergy 会整理可供以后复用的做法。"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.encodingFailedHint"
+msgstr "此回合未能完成经验编码。可打开来源会话查看原始内容。"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.encodingFailedTitle"
+msgstr "经验编码失败"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.expand"
+msgstr "展开经验"
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.filter.all"
@@ -3870,8 +3986,24 @@ msgid "app.library.experience.loadingMore"
 msgstr "正在加载更多经验…"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.metrics"
+msgstr "评估详情"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.missingIntent"
+msgstr "未记录意图"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.model"
 msgstr "模型"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.notRecorded"
+msgstr "未记录"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.openSession"
+msgstr "打开来源会话"
 
 #. js-lingui-explicit-id
 msgid "app.library.experience.raw"
@@ -3933,13 +4065,49 @@ msgstr "R"
 msgid "app.library.experience.stat.score"
 msgstr "S"
 
+#. js-lingui-explicit-id
+msgid "app.library.experience.status.evaluated"
+msgstr "已评估"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.status.failed"
+msgstr "编码失败"
+
+#. js-lingui-explicit-id
+msgid "app.library.experience.status.pending"
+msgstr "待评估"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.experience.total"
 msgstr "{total} 条经验"
 
 #. js-lingui-explicit-id
+msgid "app.library.experience.updated"
+msgstr " · 更新于 {date}"
+
+#. js-lingui-explicit-id
 msgid "app.library.experience.visits"
 msgstr "已使用 {visits} 次"
+
+#. js-lingui-explicit-id
+msgid "app.library.home.empty"
+msgstr "你的记忆和经验将在这里显示。"
+
+#. js-lingui-explicit-id
+msgid "app.library.home.groupFailed"
+msgstr "无法刷新{group}，其他结果仍然可用。"
+
+#. js-lingui-explicit-id
+msgid "app.library.home.loading"
+msgstr "正在加载知识库…"
+
+#. js-lingui-explicit-id
+msgid "app.library.home.noMatches"
+msgstr "没有匹配结果"
+
+#. js-lingui-explicit-id
+msgid "app.library.home.recent"
+msgstr "最近更新"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.allCategories"
@@ -3948,6 +4116,10 @@ msgstr "全部类别"
 #. js-lingui-explicit-id
 msgid "app.library.memory.categoriesCount"
 msgstr "{count} 个类别"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.collapse"
+msgstr "收起记忆"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.count"
@@ -3968,6 +4140,10 @@ msgstr "会话整理上下文时会生成记忆，保存智能体在工作中学
 #. js-lingui-explicit-id
 msgid "app.library.memory.empty.none"
 msgstr "暂无记忆"
+
+#. js-lingui-explicit-id
+msgid "app.library.memory.expand"
+msgstr "展开记忆"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.filter.aria"
@@ -3994,6 +4170,10 @@ msgid "app.library.nav.experiencesCount"
 msgstr "经验 {count}"
 
 #. js-lingui-explicit-id
+msgid "app.library.nav.home"
+msgstr "首页"
+
+#. js-lingui-explicit-id
 msgid "app.library.nav.memories"
 msgstr "记忆"
 
@@ -4002,12 +4182,12 @@ msgid "app.library.nav.memoriesCount"
 msgstr "记忆 {count}"
 
 #. js-lingui-explicit-id
-msgid "app.library.nav.overview"
-msgstr "概览"
-
-#. js-lingui-explicit-id
 msgid "app.library.nav.skills"
 msgstr "技能"
+
+#. js-lingui-explicit-id
+msgid "app.library.nav.stats"
+msgstr "统计"
 
 #. Recall modes
 msgid "app.library.recall.always"
@@ -4021,13 +4201,25 @@ msgstr "按上下文"
 msgid "app.library.recall.searchOnly"
 msgstr "仅搜索"
 
+#. js-lingui-explicit-id
+msgid "app.library.refresh"
+msgstr "刷新"
+
 #. Actions
 msgid "app.library.retry"
 msgstr "重试"
 
 #. js-lingui-explicit-id
+msgid "app.library.search.all"
+msgstr "搜索记忆、经验和技能"
+
+#. js-lingui-explicit-id
 msgid "app.library.search.experiences"
 msgstr "搜索经验…"
+
+#. js-lingui-explicit-id
+msgid "app.library.search.label"
+msgstr "搜索知识库"
 
 #. js-lingui-explicit-id
 msgid "app.library.search.memories"
@@ -4430,6 +4622,10 @@ msgid "app.library.sort.reward"
 msgstr "奖励"
 
 #. js-lingui-explicit-id
+msgid "app.library.stats.asOf"
+msgstr "数据截至 {time}"
+
+#. js-lingui-explicit-id
 msgid "app.library.stats.collection"
 msgstr "集合"
 
@@ -4534,6 +4730,10 @@ msgid "app.library.stats.q.weeklyTrend"
 msgstr "Q 中位数 · 每周趋势"
 
 #. js-lingui-explicit-id
+msgid "app.library.stats.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
 msgid "app.library.stats.reward.average"
 msgstr "平均值"
 
@@ -4570,8 +4770,8 @@ msgid "app.library.stats.signals"
 msgstr "信号"
 
 #. js-lingui-explicit-id
-msgid "app.library.stats.syncFailed"
-msgstr "同步失败"
+msgid "app.library.stats.stale"
+msgstr "刷新失败，仍显示上次快照。"
 
 #. js-lingui-explicit-id
 msgid "app.library.stats.unavailable"
@@ -4580,10 +4780,6 @@ msgstr "知识库统计信息暂不可用"
 #. js-lingui-explicit-id
 msgid "app.library.stats.usage"
 msgstr "用量"
-
-#. js-lingui-explicit-id
-msgid "app.library.sync"
-msgstr "同步"
 
 #. js-lingui-explicit-id
 msgid "app.library.syncing"
@@ -5258,6 +5454,11 @@ msgstr "终端"
 msgid "app.performance.action.refresh"
 msgstr "刷新"
 
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.action.retry"
+msgstr "重新获取"
+
 #. performance analysis
 msgid "app.performance.analysis.action.analyze"
 msgstr "分析"
@@ -5510,7 +5711,7 @@ msgstr "性能问题"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.panel.subtitle"
-msgstr "实时运行时资源使用、追踪延迟、浏览器指标和性能问题。"
+msgstr "查看上次快照中的资源使用、追踪延迟、浏览器指标与性能问题。"
 
 #. panel.tsx
 msgid "app.performance.panel.title"
@@ -5834,12 +6035,57 @@ msgstr "信息"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.attemptedAt"
+msgstr "上次尝试：{time}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.empty"
+msgstr "暂无性能快照"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.errorDetails"
+msgstr "错误详情"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.snapshot.from"
 msgstr "来自 {time} 的快照"
 
 #. PerformanceDashboard.tsx
 msgid "app.performance.snapshot.label"
 msgstr "性能快照"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.loading"
+msgstr "正在获取性能快照…"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.refreshing"
+msgstr "正在刷新，当前显示 {time} 的快照。"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.stale"
+msgstr "刷新失败，正在显示上次成功的快照。"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.staleDescription"
+msgstr "数据截至 {time}，当前运行状态尚未确认。"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.unavailable"
+msgstr "无法获取性能快照"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.snapshot.unavailableDescription"
+msgstr "无法读取服务端数据，暂时无法判断当前运行状态。"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5982,6 +6228,11 @@ msgstr "追踪时间线"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.timeline.loading"
+msgstr "正在获取性能趋势…"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.timeline.noSpans"
 msgstr "未报告追踪片段"
 
@@ -5993,6 +6244,11 @@ msgstr "没有近期追踪"
 #. traces and issues
 msgid "app.performance.timeline.title"
 msgstr "近期事件追踪"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.timeline.unavailable"
+msgstr "无法获取性能趋势"
 
 #. time ranges
 msgid "app.performance.timeRange.15m"
@@ -6096,6 +6352,16 @@ msgstr "追踪详情"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.trace.unknown"
 msgstr "未知"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.traces.loading"
+msgstr "正在获取追踪…"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.traces.unavailable"
+msgstr "无法获取追踪"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.agenda"
@@ -6554,12 +6820,8 @@ msgid "app.plugin.marketplace.registryUnavailable.title"
 msgstr "插件注册表不可用"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.compatibility"
-msgstr "Synergy {range}"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.installed"
-msgstr "已安装"
+msgid "app.plugin.marketplace.row.available"
+msgstr "未安装"
 
 #. eslint-disable-next-line solid/prefer-show
 msgid "app.plugin.marketplace.row.installedSummary"
@@ -6572,10 +6834,6 @@ msgstr "已安装 v{version}"
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.pluginDisabled"
 msgstr "插件已禁用"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.tools"
-msgstr "{count} 个工具"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.unknownAuthor"
@@ -7163,8 +7421,36 @@ msgid "app.search.sessions.archived"
 msgstr "已归档"
 
 #. js-lingui-explicit-id
+msgid "app.search.sessions.close"
+msgstr "关闭搜索"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.failed"
+msgstr "搜索失败，已保留你的查询。"
+
+#. js-lingui-explicit-id
 msgid "app.search.sessions.includeArchived"
 msgstr "包含已归档"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.loadedCount"
+msgstr "已加载 {loaded} / {total} 个会话"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.loading"
+msgstr "正在搜索…"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.loadingMore"
+msgstr "正在加载更多…"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.loadMore"
+msgstr "加载更多"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.moreFailed"
+msgstr "加载更多失败，已加载的结果仍可使用。"
 
 #. js-lingui-explicit-id
 msgid "app.search.sessions.noMatch"
@@ -7179,8 +7465,20 @@ msgid "app.search.sessions.placeholder"
 msgstr "搜索会话…"
 
 #. js-lingui-explicit-id
-msgid "app.search.sessions.total"
-msgstr "{total} 个会话"
+msgid "app.search.sessions.results"
+msgstr "搜索结果"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.retry"
+msgstr "重试搜索"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.retryMore"
+msgstr "重试加载更多"
+
+#. js-lingui-explicit-id
+msgid "app.search.sessions.title"
+msgstr "搜索会话"
 
 #. js-lingui-explicit-id
 msgid "app.search.sessions.youSaid"
@@ -7448,6 +7746,10 @@ msgid "app.shell.window.restore"
 msgstr "还原"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.account.menu"
+msgstr "HOLOS 账号菜单"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.addProject"
 msgstr "添加项目"
 
@@ -7462,10 +7764,6 @@ msgstr "创建智能体"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.agent.import"
 msgstr "导入智能体"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.agent.menu"
-msgstr "智能体菜单"
 
 #. Agent hub
 msgid "app.sidebar.agent.noAgent"
@@ -7538,6 +7836,10 @@ msgstr "折叠侧边栏"
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.collapseAllProjects"
 msgstr "折叠所有项目"
+
+#. Sections
+msgid "app.sidebar.collections"
+msgstr "会话分类"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.dialog.addProject"
@@ -7739,7 +8041,7 @@ msgstr "频道"
 msgid "app.sidebar.section.home"
 msgstr "首页"
 
-#. Sections
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.recent"
 msgstr "最近"
 
@@ -7770,6 +8072,11 @@ msgstr "{count} 次委派运行"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.agent.sessionsCovered"
 msgstr "覆盖 {count} 个会话"
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.asOf"
+msgstr "数据截至 {time}"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -8324,6 +8631,11 @@ msgstr "工具"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.stats.stale"
+msgstr "刷新失败，仍显示上次快照。"
+
+#. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.stats.sync.done"
 msgstr "统计已同步"
 
@@ -8774,11 +9086,11 @@ msgstr "会话已丢失"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.bottomSpace.hide"
-msgstr "隐藏"
+msgstr "隐藏底部面板"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.bottomSpace.open"
-msgstr "打开"
+msgstr "打开底部面板"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.mobile.openNav"
@@ -8866,11 +9178,11 @@ msgstr "请先停止会话，再切换工作区。"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.sideWorkspace.hide"
-msgstr "隐藏"
+msgstr "隐藏侧边工作区"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.sideWorkspace.open"
-msgstr "打开"
+msgstr "打开侧边工作区"
 
 #. js-lingui-explicit-id
 msgid "app.upgrade.attention"
@@ -8968,6 +9280,14 @@ msgstr "工作区"
 msgid "app.workspace.mobileHeader.close"
 msgstr "关闭工作区"
 
+#. js-lingui-explicit-id
+msgid "app.workspace.panel.details"
+msgstr "错误详情"
+
+#. js-lingui-explicit-id
+msgid "app.workspace.panel.failed"
+msgstr "此面板遇到了问题。"
+
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.reload"
 msgstr "重新加载应用"
@@ -8975,6 +9295,10 @@ msgstr "重新加载应用"
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.retry"
 msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "app.workspace.panel.retryRendering"
+msgstr "重试面板"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
@@ -9104,6 +9428,10 @@ msgstr "错误"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
+#. js-lingui-explicit-id
+msgid "brand.workbench.synergy"
+msgstr "Synergy 工作台"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
 msgstr "{count} 个资源"
@@ -9131,6 +9459,10 @@ msgstr "超时"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "未稳定"
+
+#. js-lingui-explicit-id
+msgid "browser.recovery.checking"
+msgstr "正在核对已有页面……"
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.condition"
@@ -9961,6 +10293,10 @@ msgid "model.manager.tag.latest"
 msgstr "最新"
 
 #. js-lingui-explicit-id
+msgid "nav.tools.close"
+msgstr "关闭工具"
+
+#. js-lingui-explicit-id
 msgid "nav.tools.section"
 msgstr "工具"
 
@@ -10405,6 +10741,146 @@ msgstr "将支持的文件、笔记或会话拖放到这里"
 msgid "prompt.escKey"
 msgstr "ESC"
 
+#. js-lingui-explicit-id
+msgid "prompt.example.addErrorHandlingToThisFunction"
+msgstr "为这个函数添加错误处理"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.addInputValidation"
+msgstr "添加输入校验"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.addLoggingThroughoutTheCodebase"
+msgstr "为代码补充日志"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.addPaginationToThisList"
+msgstr "为这个列表添加分页"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.addUnitTestsForTheUserService"
+msgstr "为用户服务补充单元测试"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.brainstormIdeasFor"
+msgstr "一起为……构思想法"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.compareProsAndConsOf"
+msgstr "比较……的优缺点"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.convertThisToTypescript"
+msgstr "将这段代码转换为 TypeScript"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.createACliCommandFor"
+msgstr "创建一个命令行命令，用于……"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.createANewComponentFor"
+msgstr "创建一个新组件，用于……"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.draftABlogPostAbout"
+msgstr "起草一篇关于……的博客"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.explainHowAuthenticationWorks"
+msgstr "解释身份验证的实现"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.explainQuantumComputingSimply"
+msgstr "用简单的话解释量子计算"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.explainThisRegexPattern"
+msgstr "解释这个正则表达式"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.findAndFixSecurityVulnerabilities"
+msgstr "查找并修复安全漏洞"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.fixATodoInTheCodebase"
+msgstr "完成代码中的一项 TODO"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.fixBrokenTests"
+msgstr "修复失败的测试"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.generateApiDocumentation"
+msgstr "生成 API 文档"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.helpMeDebugThisIssue"
+msgstr "帮我排查这个问题"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.helpMePrepareForAnInterview"
+msgstr "帮我准备面试"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.helpMeWriteAMigrationScript"
+msgstr "帮我编写迁移脚本"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.helpMeWriteAnEmail"
+msgstr "帮我写一封邮件"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.howDoEnvironmentVariablesWorkHere"
+msgstr "这里的环境变量是如何使用的？"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.howDoIDeployThisProject"
+msgstr "如何部署这个项目？"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.implementCachingForThisEndpoint"
+msgstr "为这个接口添加缓存"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.optimizeDatabaseQueries"
+msgstr "优化数据库查询"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.planATripToTokyo"
+msgstr "规划一次东京旅行"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.refactorThisFunctionToBeMoreReadable"
+msgstr "重构这个函数，让代码更易读"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.reviewMyCodeForBestPractices"
+msgstr "审查我的代码并提出改进建议"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.summarizeThisArticleForMe"
+msgstr "帮我总结这篇文章"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.translateThisToFrench"
+msgstr "将这段内容翻译为法语"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.whatDependenciesAreOutdated"
+msgstr "哪些依赖需要更新？"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.whatDoesThisErrorMean"
+msgstr "这个错误是什么意思？"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.whatIsTheTechStackOfThis"
+msgstr "这个项目使用了哪些技术？"
+
+#. js-lingui-explicit-id
+msgid "prompt.example.whatSOnYourMind"
+msgstr "有什么想法？"
+
 #. prompt-input.tsx — workflow chips / tooltips
 msgid "prompt.exitPlan"
 msgstr "退出 Plan"
@@ -10750,6 +11226,20 @@ msgstr "为此函数添加错误处理"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.placeholder.errorMeaning"
 msgstr "这个错误是什么意思？"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.exampleGlobal"
+msgstr "说说你的想法……「{example}」"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.exampleProject"
+msgstr "描述你的需求……「{example}」"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -11183,6 +11673,13 @@ msgstr "撤销"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.quickActions.undo.desc"
 msgstr "撤销上一个消息回合"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.recoveryRequired"
+msgstr "请先完成上方恢复操作。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -13029,6 +13526,102 @@ msgstr "请求失败"
 msgid "session.fork.confirm.title"
 msgstr "从此消息分叉会话"
 
+#. js-lingui-explicit-id
+msgid "session.greeting.afternoonFlowState"
+msgstr "进入午后的专注时刻"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.askAnythingILlFigureItOut"
+msgstr "告诉我你的问题，一起找到答案。"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.bugsToSquashFeaturesToBuild"
+msgstr "想修复问题，还是开发新功能？"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.buildingSomethingGreat"
+msgstr "一起构建新的可能"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.coffeeLoadedReadyToBuild"
+msgstr "咖啡就绪，准备开工"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.deepWorkHours"
+msgstr "专注做好眼前的事"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.dropSomeContextLetSGo"
+msgstr "给我一些背景，我们开始吧。"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.earlyBirdEarlyMerge"
+msgstr "早点动手，早点完成"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.eveningCodingSession"
+msgstr "开启晚间编程时光"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.freshStartFreshCode"
+msgstr "全新开始，写点新代码"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.keepTheMomentumGoing"
+msgstr "保持节奏，继续推进"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.lateNightInspiration"
+msgstr "捕捉深夜的灵感"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.letSMakeSomethingHappen"
+msgstr "一起把想法变成现实。"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.letSShipIt"
+msgstr "准备好，让想法落地"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.morningMomentum"
+msgstr "带着晨间活力出发"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.needABreakthroughLetSBrainstorm"
+msgstr "需要新思路？一起想想。"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.nightOwlMode"
+msgstr "夜间专注模式"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.oneMoreThingBeforeBed"
+msgstr "睡前再完成一件事"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.quietHoursDeepFocus"
+msgstr "夜深人静，静心创造"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.readyWhenYouAre"
+msgstr "准备好了，随时开始。"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.riseAndShip"
+msgstr "开始新的一天，动手构建"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.whatAreWeBuildingToday"
+msgstr "今天想做些什么？"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.whatSOnYourMind"
+msgstr "有什么想法？"
+
+#. js-lingui-explicit-id
+msgid "session.greeting.writeDebugShipRepeat"
+msgstr "编写、调试、交付，持续推进。"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.afterTurn"
@@ -13156,6 +13749,11 @@ msgstr "下一次调用"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.operationPending"
+msgstr "正在更新消息…"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.queue.contexts"
 msgstr "{count} 个上下文更新正在等待"
 
@@ -13205,6 +13803,21 @@ msgstr "该消息已从收件箱中移除。恢复后会将其添加到队列末
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.removedHeading"
+msgstr "已移除的消息"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.removedLoadFailed"
+msgstr "无法加载已移除的消息。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.removeFailed"
+msgstr "暂时无法确认移除结果，核对完成前保留消息。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.requestFailed"
 msgstr "请求失败"
 
@@ -13215,6 +13828,11 @@ msgstr "恢复"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.restoreFailed"
+msgstr "暂时无法确认恢复结果，原内容与执行配置已保留。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.retry"
 msgstr "重试投递"
 
@@ -13222,6 +13840,16 @@ msgstr "重试投递"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.inbox.retryFailed"
 msgstr "重试消息失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.retryRemove"
+msgstr "重试移除"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.inbox.retryRestore"
+msgstr "重试恢复"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -13247,6 +13875,10 @@ msgstr "更新"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.lsp.noServers"
 msgstr "没有 LSP 服务器"
+
+#. js-lingui-explicit-id
+msgid "session.mcp.status"
+msgstr "MCP：{enabled} / {total} 已连接{failed, select, true {；存在连接错误} other {}}"
 
 #. js-lingui-explicit-id
 msgid "session.modelSelection.pending"
@@ -14010,6 +14642,34 @@ msgstr "点按打开 · 长按取消"
 msgid "session.subagent.toolsCount"
 msgstr "{count} 个工具"
 
+#. js-lingui-explicit-id
+msgid "session.submission.check"
+msgstr "核对并重试"
+
+#. js-lingui-explicit-id
+msgid "session.submission.details"
+msgstr "错误详情"
+
+#. js-lingui-explicit-id
+msgid "session.submission.failed"
+msgstr "提交失败，已保留你的选择。"
+
+#. js-lingui-explicit-id
+msgid "session.submission.pending"
+msgstr "正在提交决定…"
+
+#. js-lingui-explicit-id
+msgid "session.submission.retry"
+msgstr "重试提交"
+
+#. js-lingui-explicit-id
+msgid "session.submission.settled"
+msgstr "此请求已不再等待处理。"
+
+#. js-lingui-explicit-id
+msgid "session.submission.unknown"
+msgstr "暂时无法确认结果，请先核对请求状态再重试。"
+
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "session.tags.all"
 msgstr "全部"
@@ -14055,6 +14715,11 @@ msgstr "关闭"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.card.retry"
 msgstr "重试"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.continue"
+msgstr "继续任务"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -14105,6 +14770,31 @@ msgstr "正在提交你的第一条消息。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.detail.messageQueued"
 msgstr "第一条消息已排队。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.errorDetails"
+msgstr "错误详情"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.recoveryFailed"
+msgstr "暂时无法确认恢复结果，请检查连接后重试。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.retryInitialization"
+msgstr "重试初始化"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.step.failed"
+msgstr "失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.step.initialize"
+msgstr "初始化执行"
 
 #. session-transition-progress.ts — general session startup factory
 msgid "session.transition.step.prepareSession"
@@ -17890,6 +18580,10 @@ msgid "settings.panel.developerMode.label"
 msgstr "开发者模式"
 
 #. js-lingui-explicit-id
+msgid "settings.panel.diagnostics.loadFailed"
+msgstr "无法检查配置问题。"
+
+#. js-lingui-explicit-id
 msgid "settings.panel.dialog.label"
 msgstr "设置"
 
@@ -17952,6 +18646,14 @@ msgstr "未找到设置"
 #. js-lingui-explicit-id
 msgid "settings.panel.search.placeholder"
 msgstr "搜索设置…"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.section.loadFailed"
+msgstr "无法加载{label}。你的更改已保留。"
+
+#. js-lingui-explicit-id
+msgid "settings.panel.section.retry"
+msgstr "重试"
 
 #. js-lingui-explicit-id
 msgid "settings.panel.section.unavailable"
@@ -20093,6 +20795,14 @@ msgstr "按项目列出由 Synergy 管理的工作树。主工作区和外部工
 msgid "settings.worktrees.section.title"
 msgstr "工作树列表"
 
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
+msgid "sidebar.account.holos"
+msgstr "HOLOS 账号"
+
+#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
+msgid "sidebar.account.signedOut"
+msgstr "未登录 · 本地工作台"
+
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.blueprint"
 msgstr "蓝图"
@@ -20140,6 +20850,18 @@ msgstr "已批准"
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.status.changes-requested"
 msgstr "请求更改"
+
+#. js-lingui-explicit-id
+msgid "stats.rank.unit.calls"
+msgstr "次调用"
+
+#. js-lingui-explicit-id
+msgid "stats.rank.unit.messages"
+msgstr "条消息"
+
+#. js-lingui-explicit-id
+msgid "stats.rank.unit.sessions"
+msgstr "个会话"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.agents"
@@ -21338,6 +22060,10 @@ msgid "ui.mediaGeneration.generating"
 msgstr "正在生成"
 
 #. js-lingui-explicit-id
+msgid "ui.session.awaitingResponse"
+msgstr "等待回复……"
+
+#. js-lingui-explicit-id
 msgid "ui.toast.copyFailure"
 msgstr "无法复制通知。"
 
@@ -21496,3 +22222,31 @@ msgstr "选择 Workspace"
 #. js-lingui-explicit-id
 msgid "workspace.dialog.unavailable"
 msgstr "不可用，请选择本地目录重新绑定"
+
+#. js-lingui-explicit-id
+msgid "workspace.location.directory"
+msgstr "本地目录"
+
+#. js-lingui-explicit-id
+msgid "workspace.location.explanation"
+msgstr "文件操作和命令使用当前会话的工作目录。已打开的文件保留原来的工作区归属。"
+
+#. js-lingui-explicit-id
+msgid "workspace.location.home"
+msgstr "全局"
+
+#. js-lingui-explicit-id
+msgid "workspace.location.isolated"
+msgstr "独立工作区"
+
+#. js-lingui-explicit-id
+msgid "workspace.location.open"
+msgstr "工作位置：{project}，{state}"
+
+#. js-lingui-explicit-id
+msgid "workspace.location.planned"
+msgstr "待准备独立工作区"
+
+#. js-lingui-explicit-id
+msgid "workspace.location.unavailable"
+msgstr "目录不可用"

@@ -149,6 +149,74 @@ class WorkspaceHost implements BrowserBrokerSocket {
   }
 }
 
+test("dialog replies unblock a pending page command and retain response replay", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const session = await Session.create({})
+        const original = owner(session)
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(original, directory.path, "native")
+        await BrowserCommandService.execute(original, {
+          commandId: "open-for-dialog",
+          command: { type: "navigate", url: "https://example.com/", source: "user" },
+        })
+        const entered = Promise.withResolvers<void>()
+        const finish = Promise.withResolvers<void>()
+        host.beforeReply = async (message) => {
+          if (message.type !== "page.command") return
+          if (message.command.type === "evaluate") {
+            entered.resolve()
+            await finish.promise
+          }
+          if (message.command.type === "dialog.respond") finish.resolve()
+        }
+        const pending = BrowserCommandService.execute(original, {
+          commandId: "pending-prompt",
+          command: { type: "evaluate", mode: "trusted", expression: "prompt('Name')" },
+        })
+        await entered.promise
+        await expect(
+          BrowserCommandService.execute(
+            { ...original, directory: `${directory.path}/stale` },
+            {
+              commandId: "stale-prompt-answer",
+              command: { type: "dialog.respond", requestId: "prompt-1", accept: true },
+            },
+          ),
+        ).rejects.toMatchObject({ code: "browser_workspace_changed" })
+        await expect(
+          BrowserCommandService.execute(original, {
+            commandId: "pending-prompt",
+            command: { type: "dialog.respond", requestId: "prompt-1", accept: true },
+          }),
+        ).rejects.toMatchObject({ code: "browser_command_id_conflict" })
+        const request = {
+          commandId: "prompt-answer",
+          command: { type: "dialog.respond", requestId: "prompt-1", accept: true, promptText: "" },
+        } as const
+        const replies = Promise.all([
+          BrowserCommandService.execute(original, request),
+          BrowserCommandService.execute(original, request),
+        ])
+        try {
+          expect(await Promise.race([replies.then(() => true), Bun.sleep(500).then(() => false)])).toBe(true)
+          expect(
+            host.requests.filter(
+              (message) => message.type === "page.command" && message.command.type === "dialog.respond",
+            ),
+          ).toHaveLength(1)
+        } finally {
+          finish.resolve()
+          await Promise.all([pending, replies])
+        }
+      },
+    })
+  }))
+
 test("Workspace selection drains an active Host command and acknowledges page closure before committing", () =>
   runtime.run(async () => {
     await using first = await tmpdir(),

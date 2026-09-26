@@ -54,6 +54,28 @@ async function importFile(input: {
 }
 
 describe.serial("skill route", () => {
+  test("lists global skills in Home without a local Workspace", () =>
+    runtime.run(async () => {
+      const directory = path.join(Global.Path.config, "skill", "home-catalog-fixture")
+      await Bun.write(path.join(directory, "SKILL.md"), manifest("home-catalog-fixture"))
+      try {
+        const response = await Server.App().request("/skill?scopeID=home")
+        expect(response.status).toBe(200)
+        const data = (await response.json()) as { items: Array<{ name: string; scope: string; exportable: boolean }> }
+        expect(data.items).toContainEqual(
+          expect.objectContaining({ name: "home-catalog-fixture", scope: "global", exportable: true }),
+        )
+        expect(data.items.some((item) => item.scope === "project")).toBe(false)
+        const exported = await Server.App().request("/skill/home-catalog-fixture/export?scopeID=home")
+        expect(exported.status).toBe(200)
+        expect(await zipNames(new Uint8Array(await exported.arrayBuffer()))).toContain("home-catalog-fixture/SKILL.md")
+        const removed = await Server.App().request("/skill/home-catalog-fixture?scopeID=home", { method: "DELETE" })
+        expect(removed.status).toBe(200)
+      } finally {
+        await fs.rm(directory, { recursive: true, force: true })
+      }
+    }))
+
   test("lists domain-owned public summaries and diagnostics", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({

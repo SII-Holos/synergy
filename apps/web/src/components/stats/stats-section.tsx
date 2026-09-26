@@ -103,6 +103,21 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
   return (
     <div>
       <StatsSyncStatus syncing={syncing()} progress={progress()} syncError={syncError()} i18n={i18n} />
+      <Show when={data()}>
+        {(snapshot) => (
+          <p class="library-toolbar-summary mb-3" role="status">
+            {i18n._(S.asOf.id, { time: fmt.date(snapshot().computedAt, { dateStyle: "medium", timeStyle: "short" }) })}
+          </p>
+        )}
+      </Show>
+      <Show when={data() && syncError()}>
+        <div class="library-sync-row">
+          <span class="text-12-regular text-text-weak">{i18n._(S.stale.id)}</span>
+          <button type="button" class="library-plain-action" disabled={syncing()} onClick={() => void refresh()}>
+            {i18n._(S.loadButtonRetry.id)}
+          </button>
+        </div>
+      </Show>
       <Show
         when={data()}
         fallback={
@@ -118,7 +133,8 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
                 <button
                   type="button"
                   class="rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-12-medium text-text-interactive-base transition hover:bg-surface-inset-base hover:text-text-interactive-base"
-                  onClick={refresh}
+                  disabled={loading() || syncing()}
+                  onClick={() => void refresh()}
                 >
                   {loading() ? i18n._(S.loadButtonLoading.id) : i18n._(S.loadButtonRetry.id)}
                 </button>
@@ -166,8 +182,9 @@ function StatsContent(props: {
           </p>
         )}
       </Show>
-      <DailyTrend days={snapshot().timeSeries.days} />
+      <DailyTrend days={snapshot().timeSeries.days} computedAt={snapshot().computedAt} />
       <ActivityHeatmap
+        computedAt={snapshot().computedAt}
         days={snapshot().timeSeries.days}
         hours={
           (snapshot().timeSeries as StatsSnapshot["timeSeries"] & { hours?: Array<{ hour: string; turns: number }> })

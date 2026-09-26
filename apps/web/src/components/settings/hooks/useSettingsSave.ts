@@ -29,6 +29,7 @@ export type SaveContext<TDraft> = {
   preparePatchSave?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
   rejectPatchSave?: (patch: Record<string, unknown>, submittedDraft: TDraft) => void | Promise<void>
   discardChanges: () => void | Promise<void>
+  closeBlocked?: () => boolean
   closeDialog: () => void
   showConfirm: ShowConfirmFn
 }
@@ -49,10 +50,13 @@ export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
     const grouped = groupPatchByDomain(patch, ctx.domainSummaries())
     const responses = await Promise.all(
       [...grouped.entries()].map(([domain, config]) =>
-        globalSDK.client.config.domain.update({
-          domain,
-          configDomainUpdateInput: { config: config as never },
-        }),
+        globalSDK.client.config.domain.update(
+          {
+            domain,
+            configDomainUpdateInput: { config: config as never },
+          },
+          { throwOnError: true },
+        ),
       ),
     )
     // The server reports which top-level config fields actually changed;
@@ -62,6 +66,7 @@ export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
   }
 
   async function saveServerChanges() {
+    if (status() === "saving") return false
     const patch = ctx.serverPatch()
     if (Object.keys(patch).length === 0) return true
     const submittedDraft = ctx.serverDraft()
@@ -94,22 +99,16 @@ export function useSettingsSave<TDraft>(ctx: SaveContext<TDraft>) {
     }
   }
 
-  function runDiscardGuard(onConfirm: () => void | Promise<void>) {
+  function closeWithGuard() {
+    if (status() === "saving" || ctx.closeBlocked?.()) return
     if (!ctx.hasAnyChanges()) {
-      void onConfirm()
+      void Promise.resolve(ctx.discardChanges()).then(ctx.closeDialog)
       return
     }
-
     ctx.showConfirm({
       ...discardSettingsConfirm(),
-      onConfirm,
-    })
-  }
-
-  function closeWithGuard() {
-    runDiscardGuard(async () => {
-      await ctx.discardChanges()
-      ctx.closeDialog()
+      onConfirm: ctx.discardChanges,
+      onConfirmed: ctx.closeDialog,
     })
   }
 
