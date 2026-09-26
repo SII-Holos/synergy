@@ -32,6 +32,8 @@ beforeAll(async () => {
     import { handleComposerTypingAutofocus } from ${JSON.stringify(`/@fs/${components}/prompt-input/typing-autofocus.ts`)}
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
+    import { WorkspaceLocationButton } from ${JSON.stringify(`/@fs/${components}/top-bar/workspace-location-button.tsx`)}
+    import { RequestSubmissionNotice } from ${JSON.stringify(`/@fs/${components}/session/request-submission-notice.tsx`)}
     import { PromptAddMenu } from ${JSON.stringify(`/@fs/${components}/prompt-input/add-menu.tsx`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${components}/../index.css`)}
@@ -42,6 +44,9 @@ beforeAll(async () => {
     function Fixture() {
       let input
       onMount(()=>{ const handle=event=>handleComposerTypingAutofocus(event,input,false); document.addEventListener("keydown",handle); onCleanup(()=>document.removeEventListener("keydown",handle)) })
+      const [submission, setSubmission] = createSignal({status:"idle"})
+      const [retries, setRetries] = createSignal(0)
+      const [chosen, setChosen] = createSignal(0)
       const [expanded, setExpanded] = createSignal(false)
       const [selected, setSelected] = createSignal("None")
       const item = (id, label, extra={}) => ({id,label,icon:"plus",onSelect:()=>setSelected(id),...extra})
@@ -60,6 +65,11 @@ beforeAll(async () => {
         <SidebarSectionButton open={expanded()} onClick={() => setExpanded(!expanded())}>Projects</SidebarSectionButton>
         <div ref={input} contentEditable="true" aria-label="Composer"/>
         <div data-testid="reading-area" style="height:80px">Read content</div>
+        <WorkspaceLocationButton project="Demo" location={{state:"bound",path:"/fixture/project",isolated:false}} onChoose={()=>setChosen(value=>value+1)}/>
+        <span data-testid="chosen">{chosen()}</span>
+        {["pending","error","unknown","settled","idle"].map(status=><button onClick={()=>setSubmission({status,...(["error","unknown"].includes(status)?{error:new Error("Offline")}: {})})}>State {status}</button>)}
+        <RequestSubmissionNotice state={submission()} onRetry={()=>setRetries(value=>value+1)}/>
+        <span data-testid="retries">{retries()}</span>
       </>
     }
     render(() => <I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><Fixture /></I18nProvider>, document.getElementById("root"))
@@ -191,4 +201,39 @@ test("typing outside controls focuses the composer while sidebar keys retain the
   await page.keyboard.press("x")
   expect(await page.getByLabel("Composer").evaluate((el) => el === document.activeElement)).toBe(true)
   expect(errors).toEqual([])
+})
+
+test("working location popover returns keyboard focus and opens its existing chooser", async () => {
+  const trigger = page.getByRole("button", { name: "Working location: Demo, Local directory" })
+  await trigger.press("Enter")
+  await page.getByText("/fixture/project", { exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("aria-label") === "Working location: Demo, Local directory",
+  )
+  expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true)
+  await trigger.click()
+  await page.getByRole("button", { name: "Choose Workspace", exact: true }).click()
+  expect(await page.getByTestId("chosen").textContent()).toBe("1")
+  await page.getByRole("button", { name: "Choose Workspace", exact: true }).waitFor({ state: "detached" })
+  expect(await page.getByRole("button", { name: "Choose Workspace", exact: true }).count()).toBe(0)
+})
+
+test("submission notices distinguish pending, failed, unknown and settled decisions", async () => {
+  await page.getByRole("button", { name: "State pending", exact: true }).click()
+  expect(await page.locator('div[role="status"]').textContent()).toContain("Submitting your decision")
+  await page.getByRole("button", { name: "State error", exact: true }).click()
+  expect(await page.getByRole("alert").textContent()).toContain("Your selection is preserved")
+  await page.getByText("Error details", { exact: true }).click()
+  expect(await page.getByText("Offline", { exact: true }).isVisible()).toBe(true)
+  await page.getByRole("button", { name: "Retry submission", exact: true }).click()
+  expect(await page.getByTestId("retries").textContent()).toBe("1")
+  await page.getByRole("button", { name: "State unknown", exact: true }).click()
+  await page.getByRole("button", { name: "Check and retry", exact: true }).click()
+  expect(await page.getByTestId("retries").textContent()).toBe("2")
+  await page.getByRole("button", { name: "State settled", exact: true }).click()
+  expect(await page.locator('div[role="status"]').textContent()).toContain("no longer pending")
+  await page.getByRole("button", { name: "State idle", exact: true }).click()
+  expect(await page.locator('div[role="status"]').count()).toBe(0)
+  expect(await page.getByRole("alert").count()).toBe(0)
 })

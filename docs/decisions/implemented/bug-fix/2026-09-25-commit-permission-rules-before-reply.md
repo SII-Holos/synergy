@@ -8,7 +8,7 @@ A failed Always allow write removed the pending request and updated the rule cac
 
 ## Decision
 
-Write all patterns in one storage transaction and publish the cached rules only after commit. Serialize replies per Session, retain failed requests, and await replies on both HTTP routes.
+Write all patterns in one storage transaction and publish the cached rules only after commit. Rule removal uses the same explicit transaction and reads the current durable rules before publishing its cache after commit. Serialize replies per Session, retain failed requests, and await replies on both HTTP routes.
 
 ## Alternatives considered
 

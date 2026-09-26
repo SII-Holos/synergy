@@ -22,6 +22,8 @@ Keep successful statistics snapshots on refresh failure and label their computat
 
 **Clear everything on refresh.** This discards useful evidence and couples independent failures. Retaining results only within the same query preserves context without showing another query’s matches.
 
+Selection indicators sit inside each card’s labeled native toggle, so clicking the visible checkbox and pressing Enter or Space update the same selection. Browser regression fixtures load the product styles to exercise the actual hit targets.
+
 ## Consequences
 
 API tests cover persisted status and updated-time pagination. Browser tests cover keyboard activation, source links, detail retries, partial search failure and calendar actions. Resource tests cover stale responses, cancellation and retained snapshots; date tests cover sparse, empty, leap-day and year-boundary intervals. Existing encoding and reward policies are unchanged.

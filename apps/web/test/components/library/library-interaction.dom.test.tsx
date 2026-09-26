@@ -1,10 +1,13 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, test, setDefaultTimeout } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import tailwindcss from "@tailwindcss/vite"
 import { lingui } from "@lingui/vite-plugin"
+
+setDefaultTimeout(30000)
 
 let browser: Browser
 let page: Page
@@ -69,18 +72,28 @@ beforeAll(async () => {
     import {I18nProvider} from "@lingui/solid"
     import {createSynergyClient} from "@ericsanchezok/synergy-sdk/client"
     import {AppPanel} from "/@fs/${source}/components/app-panel.tsx"
+    import {ExperienceCard} from "/@fs/${source}/components/library/experience-view.tsx"
+    import {MemoryCard} from "/@fs/${source}/components/library/memory-view.tsx"
     import {LibraryHome} from "/@fs/${source}/components/library/home-view.tsx"
     import {CalendarGrid} from "/@fs/${source}/components/agenda/calendar.tsx"
     import {messages as en} from "/@fs/${source}/locales/en/messages.po"
+    import "@ericsanchezok/synergy-ui/styles"
+    import "/@fs/${source}/index.css"
     import "/@fs/${source}/components/library/library-panel.css"
     const i18n=setupI18n({locale: "en", messages: {en}})
     const sdk={client:createSynergyClient({baseUrl: location.origin + "/api"})}
     function Fixture() {
+      const [selected,setSelected]=createSignal(false)
+      const [memorySelected,setMemorySelected]=createSignal(false)
       const [query,setQuery]=createSignal("")
       const [calendar,setCalendar]=createSignal(false)
       const [mode,setMode]=createSignal("week")
       const [opened,setOpened]=createSignal("")
       const [anchor,setAnchor]=createSignal(new Date(2026,8,25).getTime())
+      if (new URLSearchParams(location.search).has("selection")) return <>
+        <section aria-label="Experience selection"><ExperienceCard item={${JSON.stringify(experience)}} expanded={false} searching={false} selecting={true} selected={selected()} detailError={false} expandedSections={new Set()} onRetry={() => {}} onToggle={() => setSelected(value => !value)} onToggleSection={() => {}} /></section>
+        <section aria-label="Memory selection"><MemoryCard item={${JSON.stringify(memory)}} expanded={false} searching={false} selecting={true} selected={memorySelected()} onToggle={() => setMemorySelected(value => !value)} /></section>
+      </>
       return <><button onClick={() => setCalendar(value => !value)}>Toggle calendar</button>
       <Show when={calendar()} fallback={<><div class="library-header-controls library-header-home"><AppPanel.SegmentedNav items={[{id:"home",label:"Home"},{id:"memory",label:"Memories 100"},{id:"experience",label:"Experiences 120"},{id:"skill",label:"Skills"},{id:"stats",label:"Statistics"}]} active="home" onChange={() => {}} /><div class="library-search-field"><input aria-label="Search library" style={{"flex":"1", "width":"100%"}} value={query()} onInput={event => setQuery(event.currentTarget.value)} /></div></div><Suspense fallback={<span>Waiting for all sources</span>}><LibraryHome sdk={sdk} search={query()} onBrowse={(view, name) => setOpened(view+":"+name)} registerSync={() => {}} /></Suspense></>}>
         <CalendarGrid viewMode={mode()} onViewModeChange={setMode} anchor={anchor()} onAnchorChange={setAnchor} events={[{id:"event", itemId:"item", title:"Keyboard event", status:"active", time:new Date(2026,8,25,10).getTime(), triggerType:"at"}]} onEventClick={event => setOpened(event.title)} />
@@ -93,7 +106,7 @@ beforeAll(async () => {
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, "cache"),
-    plugins: [solidPlugin(), ...lingui()],
+    plugins: [solidPlugin(), tailwindcss(), ...lingui()],
     resolve: {
       alias: [
         { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
@@ -235,3 +248,19 @@ test("Library search remains inside a narrow header with all navigation reachabl
     await page.setViewportSize({ width: 1000, height: 800 })
   }
 })
+
+for (const category of ["Experience", "Memory"]) {
+  test(`${category} selection checkbox activates its labeled card control`, async () => {
+    await page.goto(`${url}?selection`)
+    const section = page.getByRole("region", { name: `${category} selection` })
+    const toggle = section.locator("button.library-card-toggle")
+    await toggle.waitFor()
+    const visual = section.locator(".size-4").first()
+    await visual.click()
+    expect(await toggle.getAttribute("aria-pressed")).toBe("true")
+    await toggle.press("Space")
+    expect(await toggle.getAttribute("aria-pressed")).toBe("false")
+    await toggle.press("Enter")
+    expect(await toggle.getAttribute("aria-pressed")).toBe("true")
+  })
+}

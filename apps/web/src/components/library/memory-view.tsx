@@ -364,24 +364,26 @@ export function MemoryCard(props: {
     >
       <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
-          <Show when={props.selecting}>
-            <div class="pt-0.5">
-              <SelectionCheckbox selected={props.selected} />
-            </div>
-          </Show>
           {/* item.title is user/agent content — pass through */}
           <button
             type="button"
-            class="library-card-toggle text-left text-13-medium text-text-strong flex-1 min-w-0 leading-snug"
+            class="library-card-toggle flex items-start gap-2 text-left text-13-medium text-text-strong flex-1 min-w-0 leading-snug"
             aria-expanded={props.selecting ? undefined : props.expanded}
             aria-pressed={props.selecting ? props.selected : undefined}
             onClick={props.onToggle}
           >
-            {props.expanded && !props.selecting ? (
-              props.item.title
-            ) : (
-              <span class="line-clamp-2">{props.item.title}</span>
-            )}
+            <Show when={props.selecting}>
+              <span class="shrink-0 pt-0.5" aria-hidden="true">
+                <SelectionCheckbox selected={props.selected} />
+              </span>
+            </Show>
+            <span class="min-w-0 flex-1">
+              {props.expanded && !props.selecting ? (
+                props.item.title
+              ) : (
+                <span class="line-clamp-2">{props.item.title}</span>
+              )}
+            </span>
           </button>
           <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
             <Show when={category()}>

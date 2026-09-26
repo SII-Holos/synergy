@@ -167,8 +167,13 @@ export namespace PermissionRules {
 
   export async function removeUserRule(permission: string, pattern: string) {
     using lock = await Lock.write("permission-user-rules")
-    const current = await loadUserRules()
-    await saveUserRules(current.filter((r) => !(r.permission === permission && r.pattern === pattern)))
+    await Storage.transaction(async () => {
+      const current = await Storage.read<Ruleset>(StoragePath.permissionRules()).catch((error) => {
+        if (error instanceof Storage.NotFoundError) return []
+        throw error
+      })
+      await saveUserRules(current.filter((r) => !(r.permission === permission && r.pattern === pattern)))
+    })
   }
 
   export async function userRuleset(): Promise<Ruleset> {

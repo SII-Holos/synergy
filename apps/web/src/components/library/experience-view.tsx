@@ -728,35 +728,37 @@ export function ExperienceCard(props: {
     >
       <div class="flex flex-col gap-3 p-4">
         <div class="flex items-start gap-2">
-          <Show when={props.selecting}>
-            <div class="pt-0.5">
-              <SelectionCheckbox selected={props.selected} />
-            </div>
-          </Show>
           <button
             type="button"
-            class="library-card-toggle min-w-0 flex-1 text-left"
+            class="library-card-toggle flex items-start gap-2 min-w-0 flex-1 text-left"
             aria-expanded={props.selecting ? undefined : props.expanded}
             aria-pressed={props.selecting ? props.selected : undefined}
             onClick={props.onToggle}
           >
-            <span
-              classList={{
-                "block text-13-medium text-text-strong leading-snug [overflow-wrap:anywhere]": true,
-                "line-clamp-2": !props.expanded || props.selecting,
-              }}
-            >
-              {props.item.intent ||
-                (props.item.rewardStatus === "encoding_failed"
-                  ? _({ id: "app.library.experience.encodingFailedTitle", message: "Experience encoding failed" })
-                  : _({ id: "app.library.experience.missingIntent", message: "Intent not recorded" }))}
-            </span>
-            <span class="mt-2 block text-11-regular text-text-weak">
-              {props.item.rewardStatus === "encoding_failed"
-                ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
-                : props.item.rewardStatus === "pending"
-                  ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
-                  : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" })}
+            <Show when={props.selecting}>
+              <span class="shrink-0 pt-0.5" aria-hidden="true">
+                <SelectionCheckbox selected={props.selected} />
+              </span>
+            </Show>
+            <span class="min-w-0 flex-1">
+              <span
+                classList={{
+                  "block text-13-medium text-text-strong leading-snug [overflow-wrap:anywhere]": true,
+                  "line-clamp-2": !props.expanded || props.selecting,
+                }}
+              >
+                {props.item.intent ||
+                  (props.item.rewardStatus === "encoding_failed"
+                    ? _({ id: "app.library.experience.encodingFailedTitle", message: "Experience encoding failed" })
+                    : _({ id: "app.library.experience.missingIntent", message: "Intent not recorded" }))}
+              </span>
+              <span class="mt-2 block text-11-regular text-text-weak">
+                {props.item.rewardStatus === "encoding_failed"
+                  ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
+                  : props.item.rewardStatus === "pending"
+                    ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
+                    : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" })}
+              </span>
             </span>
           </button>
           <div class="flex shrink-0 items-center gap-1.5 self-start">

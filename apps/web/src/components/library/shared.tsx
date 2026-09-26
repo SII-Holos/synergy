@@ -261,7 +261,7 @@ export function ViewTab(props: { active: boolean; onClick: () => void; children:
 
 export function SelectionCheckbox(props: { selected: boolean }) {
   return (
-    <div
+    <span
       classList={{
         "flex size-4 shrink-0 items-center justify-center rounded-[0.45rem] border ring-1 ring-inset transition-colors": true,
         "border-border-base/55 bg-text-strong text-background-base ring-border-base/20": props.selected,
@@ -272,6 +272,6 @@ export function SelectionCheckbox(props: { selected: boolean }) {
       <Show when={props.selected}>
         <Icon name={getSemanticIcon("state.success")} size="small" class="scale-75" color="inherit" />
       </Show>
-    </div>
+    </span>
   )
 }
