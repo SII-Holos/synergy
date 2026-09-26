@@ -56,6 +56,30 @@ describe("required CI topology", () => {
     expect(workflow.on.schedule.length).toBe(1)
     expect(workflow.concurrency["cancel-in-progress"]).toContain("pull_request")
   })
+  test("each long-session model has an independent Docker execution unit", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const controls = tasks.filter((task) => task.id.startsWith("native-synergy-"))
+    expect(controls).toHaveLength(8)
+    const units = controls.map((task) => {
+      const assigned = plan.units.filter((unit) => unit.tasks.includes(task.id))
+      expect(assigned).toHaveLength(1)
+      expect(assigned[0]!.tasks).toEqual([task.id])
+      expect(executionQueue(assigned[0]!, tasks)).toBe("docker")
+      return assigned[0]!.id
+    })
+    expect(new Set(units).size).toBe(8)
+  })
   test("every prepared benchmark consumer restores its artifact before executing", async () => {
     const tasks = await catalog()
     const plan = createPlan({

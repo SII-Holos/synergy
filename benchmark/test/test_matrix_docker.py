@@ -252,15 +252,24 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
     await run_native_matrix(tmp_path, monkeypatch, protocol)
 
 
+@pytest.mark.parametrize("model", ["fixture-one", "fixture-two"])
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 @pytest.mark.parametrize("tool_turns", [1, 120], ids=["short", "long"])
 @pytest.mark.parametrize("bun_jit", [False, True], ids=["jitless", "jit"])
 async def test_synergy_long_sessions_preserve_native_tools_and_usage(
-    tmp_path, monkeypatch, protocol, tool_turns, bun_jit
+    tmp_path, monkeypatch, protocol, tool_turns, bun_jit, model
 ):
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
         pytest.skip("Synergy long-session control belongs to the Synergy native matrix")
-    await run_native_matrix(tmp_path, monkeypatch, protocol, long_session=True, tool_turns=tool_turns, bun_jit=bun_jit)
+    await run_native_matrix(
+        tmp_path,
+        monkeypatch,
+        protocol,
+        long_session=True,
+        tool_turns=tool_turns,
+        bun_jit=bun_jit,
+        models=(model,),
+    )
 
 
 @pytest.mark.parametrize("empty_stop", [False, True], ids=["tool-roundtrip", "empty-provider-stop"])
@@ -294,6 +303,7 @@ async def run_native_matrix(
     task_home=False,
     empty_stop=False,
     unattended=False,
+    models=("fixture-one", "fixture-two"),
 ):
     create_matrix_suite(tmp_path, task_home=task_home)
 
@@ -442,7 +452,7 @@ async def run_native_matrix(
             if protocol == "chat-completions"
             else {"reasoning": {"effort": "none"}},
         }
-        for name in ["fixture-one", "fixture-two"]
+        for name in models
     }
     config = {
         "version": 2,
@@ -491,6 +501,7 @@ async def run_native_matrix(
 
         def retained_results():
             results = []
+            identities = set()
             for trial in sorted((root / "trials").iterdir()):
                 attempts = sorted(trial.glob("attempt-*"))
                 assert len(attempts) == 1
@@ -498,7 +509,9 @@ async def run_native_matrix(
                     result = read_json(attempt / "evidence.json")
                     verify_terminal(attempt, result)
                     results.append(result)
-                    harness = read_json(attempt / "trial.json")["harness"]
+                    identity = read_json(attempt / "trial.json")
+                    harness = identity["harness"]
+                    identities.add((harness, identity["model"]))
                     if harness.endswith(("-jitless", "-jit")):
                         options = read_json(attempt / "inputs/options.json")
                         enabled = harness.endswith("-jit")
@@ -527,6 +540,7 @@ async def run_native_matrix(
                                     if event.get("type") == "tool_use"
                                     and event["part"]["state"]["status"] == "completed"
                                 }
+            assert identities == {(harness, model) for harness in harnesses for model in profiles}
             return results
 
         results = await asyncio.to_thread(retained_results)
@@ -537,7 +551,7 @@ async def run_native_matrix(
                 assert parent["interaction"] == {"mode": "unattended", "source": "benchmark"}
                 assert child["parent"] == child["child"] == parent["interaction"]
                 assert child["question_disabled"] is True
-        assert len(results) == 2 * len(harnesses)
+        assert len(results) == len(profiles) * len(harnesses)
         assert all((result["execution"] or {}).get("outcome") == "completed" for result in results), results
         assert all((result["verifier"] or {}).get("rewards") == {"reward": 1.0} for result in results), results
         assert all(result["evidence"]["valid"] for result in results), results
@@ -551,6 +565,11 @@ async def run_native_matrix(
             for archive_path in root.glob("trials/*/attempt-*/*/agent/rollout.zip"):
                 with zipfile.ZipFile(archive_path) as archive:
                     manifest = json.loads(archive.read("manifest.json"))
+                identity = read_json(archive_path.parents[2] / "trial.json")
+                if long_session and identity["harness"].startswith("synergy-"):
+                    assert {
+                        call["model"]["modelID"] for snapshot in manifest["snapshots"] for call in snapshot["calls"]
+                    } == {profiles[identity["model"]]["model"]}
                 attempts = [attempt for snapshot in manifest["snapshots"] for attempt in snapshot["attempts"]]
                 assert attempts
                 assert all(
