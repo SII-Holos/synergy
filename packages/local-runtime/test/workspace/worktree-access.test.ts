@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
 import fs from "node:fs/promises"
+import { watch } from "node:fs"
 import { $ } from "bun"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { OwnedProcess } from "../../src/process/owned-process"
@@ -8,6 +9,7 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { FileMutation } from "../../src/file/mutation"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspection"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Worktree } from "../../src/workspace/worktree"
 import { testRuntime } from "../support/runtime"
@@ -44,7 +46,7 @@ test.skipIf(process.platform === "win32")(
             (error: unknown) => error,
           )
           try {
-            await waitUntil(() => Bun.file(marker).exists())
+            await waitForCheckout(marker, creation)
             controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
             const failure = await creation
             if (failure instanceof AggregateError) throw failure
@@ -108,7 +110,7 @@ test.skipIf(process.platform === "win32").each(["foreign lock", "new commit"])(
             Worktree.create({ name: "preserve-hook", bind: false, baseRef: "current" }),
           ).catch((error: unknown) => error)
           try {
-            await waitUntil(() => Bun.file(marker).exists())
+            await waitForCheckout(marker, creation)
             controller.abort(new DOMException("Cancelled during checkout", "AbortError"))
             expect(await creation).toBeInstanceOf(AggregateError)
             const directory = await Bun.file(marker).text()
@@ -131,6 +133,86 @@ test.skipIf(process.platform === "win32").each(["foreign lock", "new commit"])(
     })
   },
   20000,
+)
+
+test.skipIf(process.platform === "win32")(
+  "checkout readiness preserves hook failure and releases native ownership",
+  async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const marker = path.join(tmp.path, "started")
+      await fs.writeFile(
+        path.join(tmp.path, ".git", "hooks", "post-checkout"),
+        "#!/bin/sh\nprintf '%s\\n' 'checkout fixture failure' >&2\nexit 42\n",
+        { mode: 0o755 },
+      )
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          const controller = new AbortController()
+          const creation = WorkspaceAccess.task({ workspace: null, signal: controller.signal }, () =>
+            Worktree.create({ name: "failed-hook", bind: false, baseRef: "current" }),
+          ).catch((error: unknown) => error)
+          try {
+            const failure = await waitForCheckout(marker, creation).catch((error: unknown) => error)
+            expect(failure).toMatchObject({
+              name: "WorktreeCreateFailedError",
+              data: { message: expect.stringContaining("checkout fixture failure") },
+            })
+            expect(await Worktree.list()).toHaveLength(1)
+            await WorkspaceAccess.write([tmp.path], () => fs.writeFile(path.join(tmp.path, "next-write"), "released"))
+            expect(await fs.readFile(path.join(tmp.path, "next-write"), "utf8")).toBe("released")
+          } finally {
+            controller.abort(new DOMException("Checkout fixture closed", "AbortError"))
+            await creation
+          }
+        },
+      })
+    })
+  },
+  20_000,
+)
+
+test.skipIf(process.platform === "win32")(
+  "a checkout readiness deadline drains the hook before admitting another writer",
+  async () => {
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await using scripts = await tmpdir()
+      const marker = path.join(scripts.path, "ready")
+      const pidFile = path.join(scripts.path, "pid")
+      const hook = path.join(scripts.path, "hook.ts")
+      await fs.writeFile(hook, "await Bun.write(process.argv[2]!, String(process.pid)); setInterval(() => {}, 1000)")
+      await fs.writeFile(
+        path.join(tmp.path, ".git", "hooks", "post-checkout"),
+        `#!/bin/sh\nexec ${quote(process.execPath)} ${quote(hook)} ${quote(pidFile)}\n`,
+        { mode: 0o755 },
+      )
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        async fn() {
+          const controller = new AbortController()
+          const creation = WorkspaceAccess.task({ workspace: null, signal: controller.signal }, () =>
+            Worktree.create({ name: "unready-hook", bind: false, baseRef: "current" }),
+          ).catch((error: unknown) => error)
+          const failure = await waitForCheckout(marker, creation)
+            .catch((error: unknown) => error)
+            .finally(async () => {
+              controller.abort(new DOMException("Checkout fixture closed", "AbortError"))
+              await creation
+            })
+          expect(failure).toMatchObject({ message: "Worktree state did not settle" })
+          expect(ProcessInspection.alive(Number(await Bun.file(pidFile).text()))).toBe(false)
+          expect(await Worktree.list()).toHaveLength(1)
+          await WorkspaceAccess.write([tmp.path], () => fs.writeFile(path.join(tmp.path, "next-write"), "released"))
+          expect(await fs.readFile(path.join(tmp.path, "next-write"), "utf8")).toBe("released")
+        },
+      })
+    })
+  },
+  20_000,
 )
 
 test("cancelled worktree creation has no Git or filesystem effects", async () => {
@@ -229,6 +311,34 @@ test("worktree removal refuses a Workspace used outside its Session registry", a
     })
   })
 }, 20_000)
+
+async function waitForCheckout(marker: string, creation: Promise<unknown>) {
+  const ready = Promise.withResolvers<void>()
+  const check = () => {
+    void Bun.file(marker)
+      .exists()
+      .then((exists) => {
+        if (exists) ready.resolve()
+      }, ready.reject)
+  }
+  const watcher = watch(path.dirname(marker), check)
+  watcher.on("error", ready.reject)
+  // Reject before Bun's hard deadline so the caller can drain its native process in finally.
+  const timer = setTimeout(() => ready.reject(new Error("Worktree state did not settle")), 10_000)
+  try {
+    check()
+    await Promise.race([
+      ready.promise,
+      creation.then(async (result) => {
+        if (result instanceof Error) throw result
+        if (!(await Bun.file(marker).exists())) throw new Error("Worktree creation completed before checkout readiness")
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+    watcher.close()
+  }
+}
 
 async function waitUntil(fn: () => Promise<boolean>) {
   const deadline = Date.now() + 10_000
