@@ -8,7 +8,7 @@ An owned process receives input through a private socket while a separate contro
 
 ## Decision
 
-The native worker forwards input through one bounded Writable and counts bytes only after the destination's write callback succeeds. EOF closes the destination only when its acknowledged bytes reach the declared count. The same forwarding path handles ordinary processes and PTYs, and accepts the EOF control message before or after input without buffering the complete body. A failed write closes upstream input and never converts the failure into a successful EOF.
+The native worker forwards input through one bounded Writable and counts bytes only after the destination's write callback succeeds. EOF closes the destination only when its acknowledged bytes reach the declared count. The same forwarding path handles ordinary processes and PTYs, and accepts the EOF control message before or after input without buffering the complete body. Normal source closure retains queued destination writes; premature source destruction cancels them. A failed write closes upstream input and never converts the failure into a successful EOF.
 
 The implementation records its Bun source provenance beside the forwarding code. Tests hold a destination write behind an explicit acknowledgement, exercise empty and late EOF, and compare byte counts and SHA-256 for socket-fed child processes through pipe boundaries and fragmented 16 MiB input. Existing native ownership, process cancellation, output drainage and installed-worker verification remain required.
 

@@ -4,6 +4,7 @@ import { once } from "node:events"
 import { spawn } from "node:child_process"
 import { text } from "node:stream/consumers"
 import net from "node:net"
+import { setImmediate } from "node:timers/promises"
 import { forwardOwnedInput } from "../../src/process/owned-input"
 
 test("input EOF waits for the destination to acknowledge its last bytes", async () => {
@@ -50,6 +51,39 @@ test("input EOF can arrive after all bytes or before an empty stream", async () 
     await finished
     expect(received).toBe(bytes)
     source.destroy()
+  }
+})
+
+test("normal source closure preserves queued writes until their acknowledgement", async () => {
+  const source = new PassThrough()
+  const held = Promise.withResolvers<void>()
+  const chunks: Buffer[] = []
+  const destination = new Writable({
+    write(chunk: Buffer, _encoding, callback) {
+      chunks.push(Buffer.from(chunk))
+      if (chunks.length === 1) void held.promise.then(() => callback())
+      else callback()
+    },
+  })
+  const finished = once(destination, "finish")
+  const closed = once(source, "close")
+  const end = forwardOwnedInput(source, destination)
+  try {
+    end(39)
+    source.write(Buffer.alloc(13, 1))
+    source.write(Buffer.alloc(13, 2))
+    source.end(Buffer.alloc(13, 3))
+    await closed
+    held.resolve()
+    await setImmediate()
+    expect(Buffer.concat(chunks)).toEqual(
+      Buffer.concat([Buffer.alloc(13, 1), Buffer.alloc(13, 2), Buffer.alloc(13, 3)]),
+    )
+    await finished
+  } finally {
+    held.resolve()
+    source.destroy()
+    destination.destroy()
   }
 })
 

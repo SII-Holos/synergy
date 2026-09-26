@@ -26,7 +26,9 @@ export function forwardOwnedInput(source: Readable, destination: Writable) {
   destination.once("error", stop)
   destination.once("close", stop)
   sink.once("error", stop)
-  source.once("close", () => sink.destroy())
+  source.once("close", () => {
+    if (!source.readableEnded) sink.destroy()
+  })
   source.pipe(sink, { end: false })
   return (bytes: number) => {
     expected = bytes
