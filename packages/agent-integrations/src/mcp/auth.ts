@@ -102,8 +102,8 @@ export namespace McpAuth {
     })
   }
 
-  export async function remove(mcpName: string): Promise<void> {
-    await mutate(mcpName, (entry) => (entry ? undefined : false))
+  export async function remove(mcpName: string, options: MutationOptions = {}): Promise<void> {
+    await mutate(mcpName, (entry) => (entry && options.isCurrent?.() !== false ? undefined : false))
   }
 
   export async function updateTokens(
@@ -136,12 +136,25 @@ export namespace McpAuth {
     await mutate(mcpName, (entry) => (options.isCurrent?.() === false ? false : { ...entry, codeVerifier }))
   }
 
-  export function clearCodeVerifier(mcpName: string, expected?: string): Promise<boolean> {
+  export function clearCodeVerifier(
+    mcpName: string,
+    expected?: string,
+    options: MutationOptions = {},
+  ): Promise<boolean> {
     return mutate(mcpName, (entry) => {
-      if (!entry?.codeVerifier) return false
+      if (!entry?.codeVerifier || options.isCurrent?.() === false) return false
       if (expected !== undefined && entry.codeVerifier !== expected) return false
       const next = { ...entry }
       delete next.codeVerifier
+      return next
+    })
+  }
+  export function clearTokens(mcpName: string, options: MutationOptions = {}): Promise<boolean> {
+    return mutate(mcpName, (entry) => {
+      if (!entry || options.isCurrent?.() === false) return false
+      if (!entry.tokens) return false
+      const next = { ...entry }
+      delete next.tokens
       return next
     })
   }

@@ -4,7 +4,7 @@ import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
 export interface CommandEntry {
   command: string | string[]
   describe: string
-  storage?: "maintenance"
+  storage?: "maintenance" | ((positionals: readonly (string | number)[]) => "maintenance" | undefined)
   load(): Promise<CommandModule>
 }
 
