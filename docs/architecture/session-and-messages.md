@@ -4,6 +4,8 @@
 
 A session is the durable unit of work in Synergy. It belongs to one Scope, persists an explicit nullable execution workspace, stores its message history and operational state, and can be resumed by any client connected to the same runtime.
 
+Session metadata batch reads resolve distinct Workspace references through one catalog batch, whose SQL statements are bounded by the storage reader. Projection preserves input order, missing records and Scope ownership checks. The resolved catalog is local to that read, so subsequent reads observe rebinding without a persistent cache. See the [batch hydration decision](../decisions/implemented/bug-fix/2026-09-25-batch-session-workspace-hydration.md).
+
 Session state includes, when applicable:
 
 - Scope, workspace, title, category, timestamps, and archive state

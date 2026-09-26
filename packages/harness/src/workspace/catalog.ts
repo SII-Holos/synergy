@@ -71,11 +71,15 @@ export namespace WorkspaceCatalog {
     scopeID: string,
     transaction?: Pick<StoreTransaction, "readMany">,
   ): Promise<Info> {
-    const [record] = await (transaction ?? Storage).readMany<unknown>([recordKey(id)])
-    const info = record === undefined ? undefined : Info.parse(record)
+    const [info] = await readMany([id], transaction)
     if (!info || info.scopeID !== scopeID)
       throw new Storage.NotFoundError({ message: "Workspace not found in this Scope" })
     return info
+  }
+
+  export async function readMany(ids: string[], transaction?: Pick<StoreTransaction, "readMany">) {
+    const records = await (transaction ?? Storage).readMany<unknown>(ids.map(recordKey))
+    return records.map((record) => (record === undefined ? undefined : Info.parse(record)))
   }
 
   export async function list(scopeID: string): Promise<Info[]> {
