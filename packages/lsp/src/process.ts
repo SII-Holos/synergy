@@ -2,7 +2,9 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { OwnedProcess } from "@ericsanchezok/synergy-local-runtime/process/owned-process"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -54,26 +56,51 @@ export namespace LSPProcess {
     cooperative = true,
     cleanup?: () => Promise<void>,
   ) {
-    const lease = await WorkspaceAccess.process(null, signal, { cooperative, retainAfterExit: !!cleanup })
-    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+    const selected = EnvironmentResources.current()
+    const scopeID = ScopeContext.current.scope.id
+    const workspaceID = selected?.workspace?.id ?? ScopeContext.tryWorkspace()?.id
+    const environmentID = selected?.environment?.id ?? selected?.selection?.environmentID
+    const resources = await (environmentID ? EnvironmentResources.resolve : EnvironmentResources.select)({
+      scopeID,
+      ownerID: `lsp:${workspaceID ?? scopeID}`,
+      workspaceID,
+      environmentID,
+      needs: { execution: "exec" },
+      signal,
+    })
     try {
-      owned = await OwnedProcess.prepare({
-        ...command,
-        env: { ...RuntimeContext.current().host.env, ...command.env },
-        lease: {
-          ...lease,
-          release: (beforeRelease) =>
-            lease.release(async () => {
-              await cleanup?.()
-              await beforeRelease?.()
-            }),
-        },
+      const owned = await EnvironmentProcess.prepare({
+        id: `lsp:${randomUUID()}`,
+        scopeID,
+        resources,
         signal,
+        command: {
+          ...command,
+          env: {
+            ...resources.runtime!.env,
+            ...Object.fromEntries(
+              Object.entries(command.env ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined),
+            ),
+          },
+          writableRoots: null,
+          cooperative,
+        },
       })
-      return { ...owned, claimID: lease.id }
+      const completion = owned.completion.finally(async () => {
+        try {
+          await cleanup?.()
+        } finally {
+          await resources.release()
+        }
+      })
+      void completion.catch(() => {})
+      return { ...owned, completion }
     } catch (error) {
-      if (owned) await owned.stop()
-      else await lease.release(cleanup)
+      try {
+        await cleanup?.()
+      } finally {
+        await resources.release()
+      }
       throw error
     }
   }

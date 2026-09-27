@@ -51,6 +51,7 @@ export namespace EnvironmentResources {
   }
   export interface Resolved extends AsyncDisposable {
     kind: "none" | "objects" | "native" | "execution"
+    selection?: Selection
     workspace?: WorkspaceCatalog.Info
     environment?: Environment.Info
     executor?: Executor
@@ -88,6 +89,17 @@ export namespace EnvironmentResources {
   }
 
   export async function resolve(input: Selection & { needs: Needs; signal?: AbortSignal }): Promise<Resolved> {
+    const resolved = await resolveSelection(input)
+    resolved.selection = {
+      scopeID: input.scopeID,
+      environmentID: input.environmentID,
+      workspaceID: input.workspaceID,
+      workspaceGeneration: input.workspaceGeneration,
+    }
+    return resolved
+  }
+
+  async function resolveSelection(input: Selection & { needs: Needs; signal?: AbortSignal }): Promise<Resolved> {
     input.signal?.throwIfAborted()
     if (!input.needs.workspace && !input.needs.execution) return result({ kind: "none" })
     if (input.needs.workspace && !input.workspaceID)

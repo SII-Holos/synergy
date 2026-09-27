@@ -87,6 +87,7 @@
     "./hashline/patcher": "./src/hashline/patcher.ts",
     "./hashline/seen": "./src/hashline/seen.ts",
     "./file": "./src/file/index.ts",
+    "./file/view": "./src/file/view.ts",
     "./file/ripgrep": "./src/file/ripgrep.ts",
     "./workspace-file/types": "./src/workspace-file/types.ts",
     "./workspace-file/search": "./src/workspace-file/search.ts",

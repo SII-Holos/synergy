@@ -1,6 +1,6 @@
 # local-runtime Package
 
-Own native execution, generic runtime reload, CLI network/Scope host adapters and public exports. Read the root AGENTS.md and the owning architecture document before changes.
+Own native execution, generic runtime reload, CLI network/Scope host adapters and public exports.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
@@ -27,3 +27,5 @@ First-party native integrations use the declared `process/owned-process`, `file/
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
 
 Native release preparation builds and uploads each PTY target with its verified receipt. Build identity includes the PTY builder, native sources and libc target; shared CI preparation transfers the complete PTY output alongside watcher assets.
+
+Use `file/view` for selected Workspace paths and bounded content reads.

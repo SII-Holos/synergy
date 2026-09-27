@@ -78,7 +78,11 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
             env: ProcessEnvironment.select(RuntimeContext.current().host.env),
           },
           acquire: (command, signal) =>
-            WorkspaceAccess.process(command.writableRoots, signal, { retainAfterExit: true, durable: true }),
+            WorkspaceAccess.process(command.writableRoots, signal, {
+              retainAfterExit: true,
+              durable: true,
+              cooperative: command.cooperative,
+            }),
         })
         executors.set(request.requestID, pending)
         void pending.catch(() => executors.delete(request.requestID))

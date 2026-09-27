@@ -64,6 +64,7 @@ export namespace EnvironmentProcess {
     let finished = false
     let physicalExit = false
     let active = false
+    let contended = false
     let stage = "admission"
     let cursor = 0
     const stdin = new Writable({
@@ -113,6 +114,7 @@ export namespace EnvironmentProcess {
       stage = "execution"
       while (!finished) {
         const info = await EnvironmentExecution.reconcile(input.id, input.scopeID)
+        contended = info.status?.contended === true
         if (!child.pid) {
           child.pid = input.resources.executor?.localPID?.(input.id)
           if (child.pid) child.emit("spawn")
@@ -220,6 +222,7 @@ export namespace EnvironmentProcess {
       stop,
       completion: completed.promise,
       executionID: input.id,
+      isContended: () => contended,
       detachSignal() {
         input.signal?.removeEventListener("abort", abort)
       },

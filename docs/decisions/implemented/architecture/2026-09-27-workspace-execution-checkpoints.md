@@ -28,6 +28,8 @@ The file workbench resolves physical aliases at the execution host and carries p
 
 File history records immutable before/after manifests under physical admission, including every mounted view covered by an execution write footprint. Evidence references belong to durable operations and can finish after a save failure or controller restart. Snapshot storage retains its existing Git object format while logical Workspace-relative paths survive allocation relocation. Restore uses conditional file operations, preserving multi-Workspace attribution even when names match. A failed history publication retains execution ownership instead of reporting a complete write with missing evidence.
 
+Language servers hold durable Environment executions instead of controller process claims. The Executor exposes cooperative contention in operation status so an idle client can retire without interrupting active queries. Unchanged status observations do not rewrite Agent Storage. Explicit commands avoid importing native installers or controller paths into a remote allocation; the same file view supplies protocol document contents.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

@@ -404,6 +404,12 @@ export namespace EnvironmentExecution {
         return latest
       if (latest.state === "cancel_requested" && changes.state === "running")
         changes = { ...changes, state: "cancel_requested" }
+      if (
+        Object.entries(changes).every(
+          ([key, value]) => JSON.stringify(latest[key as keyof Info]) === JSON.stringify(value),
+        )
+      )
+        return latest
       return write({ ...latest, ...changes })
     })
   }

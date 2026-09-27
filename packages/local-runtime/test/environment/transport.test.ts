@@ -233,3 +233,57 @@ test.skipIf(process.platform !== "darwin")(
   },
   20_000,
 )
+
+test("cooperative execution reports host contention and retains ownership until acknowledgement", async () => {
+  await using tmp = await tmpdir()
+  const target = { environmentID: "environment", allocationID: "allocation", generation: 1 }
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  await using executor = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
+  const token = "test-token-with-at-least-thirty-two-bytes"
+  await using host = ExecutionHost.listen({ executor, target, token, listen: { hostname: "127.0.0.1", port: 0 } })
+  const remote = new RemoteExecutor({ url: host.url, target, token })
+  const command = {
+    command: process.execPath,
+    args: ["-e", "process.stdin.resume()"],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [tmp.path],
+    cooperative: true,
+  }
+  const digest = ExecutionProtocol.digest(command)
+  await remote.start({ id: "service", target, command, digest })
+  const deadline = Date.now() + 10000
+  while ((await remote.status("service"))?.state !== "running") {
+    if (Date.now() > deadline) throw new Error("Service did not start")
+    await Bun.sleep(10)
+  }
+  const abort = new AbortController()
+  const waiting = coordinator.acquire({
+    id: "writer",
+    owner: "writer",
+    ancestors: [],
+    kind: "operation",
+    roots: [tmp.path],
+    signal: abort.signal,
+  })
+  void waiting.catch(() => {})
+  try {
+    while (!(await remote.status("service"))?.contended) {
+      if (Date.now() > deadline) throw new Error("Contention was not reported")
+      await Bun.sleep(10)
+    }
+    await remote.cancel("service", digest)
+    while (!ExecutionProtocol.terminal((await remote.status("service"))!)) {
+      if (Date.now() > deadline) throw new Error("Service did not drain")
+      await Bun.sleep(10)
+    }
+    expect((await coordinator.inspect()).find((claim) => claim.id === "writer")?.state).toBe("waiting")
+    await remote.release("service")
+    const admitted = await waiting
+    await admitted.release()
+    expect(await coordinator.inspect()).toEqual([])
+  } finally {
+    abort.abort()
+    await waiting.catch(() => {})
+  }
+}, 15000)

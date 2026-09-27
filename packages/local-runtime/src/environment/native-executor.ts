@@ -47,6 +47,7 @@ type Operation = {
   writes: Promise<void>
   bytes: number
   sandboxID?: string
+  cooperative?: boolean
 }
 
 export class NativeExecutor implements Executor {
@@ -199,6 +200,7 @@ export class NativeExecutor implements Executor {
       writes: Promise.resolve(),
       bytes: 0,
       sandboxID: request.command.sandboxID,
+      cooperative: request.command.cooperative,
     }
     this.operations.set(request.id, operation)
     await this.persist(operation)
@@ -220,6 +222,7 @@ export class NativeExecutor implements Executor {
             roots: command.writableRoots,
             retainAfterExit: true,
             durable: true,
+            cooperative: command.cooperative,
             signal: operation.abort.signal,
           })
       operation.abort.signal.throwIfAborted()
@@ -334,7 +337,13 @@ export class NativeExecutor implements Executor {
   async status(id: string): Promise<ExecutionProtocol.Status | undefined> {
     ExecutionProtocol.ID.parse(id)
     const operation = this.operations.get(id)
-    if (operation) return structuredClone(operation.status)
+    if (operation)
+      return {
+        ...structuredClone(operation.status),
+        ...(operation.cooperative && operation.lease
+          ? { contended: (await this.options.coordinator.contendedProcesses()).includes(operation.lease.id) }
+          : {}),
+      }
     const receipt = await this.read(id)
     if (!receipt) return
     this.assertTarget(receipt.status.target)

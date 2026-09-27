@@ -99,6 +99,7 @@ export namespace ExecutionProtocol {
       pty: z.object({ cols: z.number().int().min(1).max(65535), rows: z.number().int().min(1).max(65535) }).optional(),
       timeoutMs: z.number().int().positive().max(86_400_000).optional(),
       sandboxID: z.string().uuid().optional(),
+      cooperative: z.boolean().optional(),
       capture: z.array(WorkspaceProtocol.Reference).max(1000).optional(),
     })
     .strict()
@@ -125,6 +126,7 @@ export namespace ExecutionProtocol {
       error: z.string().optional(),
       outputTruncated: z.boolean().optional(),
       effectsStarted: z.boolean().optional(),
+      contended: z.boolean().optional(),
       before: z.array(WorkspaceProtocol.Reference.extend({ manifest: WorkspaceTree.Hash })).optional(),
     })
     .meta({ ref: "EnvironmentExecutionStatus" })
