@@ -62,6 +62,11 @@ export namespace EnvironmentExecution {
     return Info.parse(record)
   }
 
+  export async function listActive(scopeID: string): Promise<Info[]> {
+    const keys = await Storage.list(StoragePath.environmentExecutionActive(scopeID))
+    return Promise.all(keys.map((key) => get(key[2], scopeID)))
+  }
+
   export async function start(input: {
     id: string
     scopeID: string

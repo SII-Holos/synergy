@@ -427,7 +427,11 @@ export namespace SessionManager {
     runtimeState().sessionCompletions.set(sessionID, completion.promise)
 
     try {
-      const session = await requireSession(sessionID)
+      const session = await SessionWorkspaceRuntime.withBinding(
+        sessionID,
+        () => requireSession(sessionID),
+        lease.signal,
+      )
       const scope = session.scope as Scope
       const workspace = options?.workspace === "history" ? null : session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")

@@ -7130,6 +7130,11 @@ export type SessionWorkspaceSelection =
       baseRevision?: string
     }
 
+export type SessionEnvironmentSelection = {
+  environmentID: string | null
+  expectedEnvironmentID: string | null
+}
+
 export type SessionModelSelectionInput = {
   model: {
     providerID: string
@@ -8670,6 +8675,142 @@ export type WorkspaceFileDeleteInput = {
   expectedVersion: string
 }
 
+export type WorkspaceOperationSummary = {
+  id: string
+  scopeID: string
+  workspaceID: string
+  generation: number
+  target?: EnvironmentTarget
+  state: "submitted" | "unknown" | "unsaved" | "completed" | "failed"
+  error?: string
+  failure?: {
+    name: string
+    message: string
+    code?: string
+    completed?: Array<string>
+  }
+  createdAt: number
+  updatedAt: number
+}
+
+export type ServiceUnavailableError = {
+  message: string
+}
+
+export type RuntimeShuttingDownError = {
+  name: "RuntimeShuttingDown"
+  data: {
+    message: string
+  }
+}
+
+export type ResourceProfiles = {
+  defaultEnvironment: string | null
+  environments: Array<{
+    name: string
+    provider: string
+    reuse: "session" | "workspace" | "scope"
+  }>
+  stores: Array<{
+    name: string
+    provider: string
+  }>
+}
+
+export type EnvironmentInfo = {
+  id: string
+  scopeID: string
+  provider: string
+  spec: {
+    [key: string]: unknown
+  }
+  ownership: "borrowed" | "managed"
+  state: "idle" | "allocating" | "ready" | "releasing" | "unavailable"
+  generation: number
+  allocation?: {
+    requestID: string
+    id?: string
+    capabilities?: Array<string>
+  }
+  idleTimeoutMs: number
+  createdAt: number
+  updatedAt: number
+  lastUsedAt: number
+}
+
+export type EnvironmentExecutionStatus = {
+  id: string
+  target: EnvironmentTarget
+  digest: string
+  state: "accepted" | "running" | "exited" | "cancelled" | "unknown"
+  cursor: number
+  exitCode?: number | null
+  signal?: string | null
+  treeDrained?: boolean
+  streamsDrained?: boolean
+  error?: string
+  failure?: {
+    name: string
+    message: string
+    code?: string
+    completed?: Array<string>
+  }
+  outputTruncated?: boolean
+  effectsStarted?: boolean
+  contended?: boolean
+  before?: Array<{
+    id: string
+    workspaceID: string
+    generation: number
+    manifest: string
+  }>
+}
+
+export type EnvironmentExecutionInfo = {
+  id: string
+  scopeID: string
+  target: EnvironmentTarget
+  workspaces?: Array<{
+    id: string
+    workspaceID: string
+    generation: number
+    readOnly?: boolean
+  }>
+  evidence?: Array<{
+    workspaceID: string
+    reference: {
+      scopeID: string
+      sessionID: string
+      messageID: string
+      toolCallID: string
+      partID: string
+    }
+  }>
+  digest: string
+  intentDigest?: string
+  state: "submitted" | "running" | "cancel_requested" | "unknown" | "exited" | "unsaved" | "saved" | "completed"
+  status?: EnvironmentExecutionStatus
+  saved?: {
+    [key: string]: unknown
+  }
+  outputCursor: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type EnvironmentActivity = {
+  environment: EnvironmentInfo
+  uses: Array<{
+    id: string
+    target: EnvironmentTarget
+    createdAt: number
+    kind?: "operation" | "admission"
+    ownerEpoch?: string
+  }>
+  executions: Array<EnvironmentExecutionInfo>
+  files: Array<WorkspaceOperationSummary>
+}
+
 export type EmbeddingStatus =
   | {
       mode: "local"
@@ -9986,17 +10127,6 @@ export type ForbiddenError = {
   message: string
 }
 
-export type ServiceUnavailableError = {
-  message: string
-}
-
-export type RuntimeShuttingDownError = {
-  name: "RuntimeShuttingDown"
-  data: {
-    message: string
-  }
-}
-
 export type PluginConfigUpdate = {
   [key: string]: unknown
 }
@@ -10633,6 +10763,11 @@ export type EventScopeRuntimeDisposed = {
 export type EventWorkspaceUpdated = {
   type: "workspace.updated"
   properties: WorkspaceInfo
+}
+
+export type EventEnvironmentUpdated = {
+  type: "environment.updated"
+  properties: EnvironmentInfo
 }
 
 export type EventProviderAuthUpdated = {
@@ -11290,6 +11425,7 @@ export type EventRuntimeReloaded = {
 export type Event =
   | EventScopeRuntimeDisposed
   | EventWorkspaceUpdated
+  | EventEnvironmentUpdated
   | EventProviderAuthUpdated
   | EventConfigUpdated
   | EventInstallationUpdated
@@ -15481,6 +15617,7 @@ export type SessionCreateData = {
     id?: string
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
+    environmentID?: string | null
     completionNotice?: {
       silent?: boolean
     }
@@ -15803,6 +15940,51 @@ export type SessionDagResponses = {
 }
 
 export type SessionDagResponse = SessionDagResponses[keyof SessionDagResponses]
+
+export type SessionSetEnvironmentData = {
+  body?: SessionEnvironmentSelection
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/environment"
+}
+
+export type SessionSetEnvironmentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionSetEnvironmentError = SessionSetEnvironmentErrors[keyof SessionSetEnvironmentErrors]
+
+export type SessionSetEnvironmentResponses = {
+  /**
+   * Updated Session
+   */
+  200: Session
+}
+
+export type SessionSetEnvironmentResponse = SessionSetEnvironmentResponses[keyof SessionSetEnvironmentResponses]
 
 export type SessionSetModelSelectionData = {
   body?: SessionModelSelectionInput
@@ -19139,6 +19321,184 @@ export type WorkspaceFilesRemoveResponses = {
 
 export type WorkspaceFilesRemoveResponse = WorkspaceFilesRemoveResponses[keyof WorkspaceFilesRemoveResponses]
 
+export type WorkspaceCreateObjectsData = {
+  body?: {
+    profile: string
+    name?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/objects"
+}
+
+export type WorkspaceCreateObjectsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceCreateObjectsError = WorkspaceCreateObjectsErrors[keyof WorkspaceCreateObjectsErrors]
+
+export type WorkspaceCreateObjectsResponses = {
+  /**
+   * Created Workspace
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceCreateObjectsResponse = WorkspaceCreateObjectsResponses[keyof WorkspaceCreateObjectsResponses]
+
+export type WorkspaceOperationsData = {
+  body?: never
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/operations"
+}
+
+export type WorkspaceOperationsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceOperationsError = WorkspaceOperationsErrors[keyof WorkspaceOperationsErrors]
+
+export type WorkspaceOperationsResponses = {
+  /**
+   * Unfinished file operations
+   */
+  200: Array<WorkspaceOperationSummary>
+}
+
+export type WorkspaceOperationsResponse = WorkspaceOperationsResponses[keyof WorkspaceOperationsResponses]
+
+export type WorkspaceRecoverOperationData = {
+  body?: never
+  path: {
+    workspaceID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/operations/{operationID}/recover"
+}
+
+export type WorkspaceRecoverOperationErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type WorkspaceRecoverOperationError = WorkspaceRecoverOperationErrors[keyof WorkspaceRecoverOperationErrors]
+
+export type WorkspaceRecoverOperationResponses = {
+  /**
+   * File operation outcome
+   */
+  200: WorkspaceOperationSummary
+}
+
+export type WorkspaceRecoverOperationResponse =
+  WorkspaceRecoverOperationResponses[keyof WorkspaceRecoverOperationResponses]
+
+export type WorkspaceDetachData = {
+  body?: {
+    expectedRevision: number
+  }
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/detach"
+}
+
+export type WorkspaceDetachErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type WorkspaceDetachError = WorkspaceDetachErrors[keyof WorkspaceDetachErrors]
+
+export type WorkspaceDetachResponses = {
+  /**
+   * Workspace after saving
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceDetachResponse = WorkspaceDetachResponses[keyof WorkspaceDetachResponses]
+
 export type WorkspaceListData = {
   body?: never
   path?: never
@@ -19315,6 +19675,425 @@ export type WorkspaceRebindResponses = {
 }
 
 export type WorkspaceRebindResponse = WorkspaceRebindResponses[keyof WorkspaceRebindResponses]
+
+export type EnvironmentProfilesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/profiles"
+}
+
+export type EnvironmentProfilesErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentProfilesError = EnvironmentProfilesErrors[keyof EnvironmentProfilesErrors]
+
+export type EnvironmentProfilesResponses = {
+  /**
+   * Available profiles without credentials
+   */
+  200: ResourceProfiles
+}
+
+export type EnvironmentProfilesResponse = EnvironmentProfilesResponses[keyof EnvironmentProfilesResponses]
+
+export type EnvironmentListData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment"
+}
+
+export type EnvironmentListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentListError = EnvironmentListErrors[keyof EnvironmentListErrors]
+
+export type EnvironmentListResponses = {
+  /**
+   * Environment catalog
+   */
+  200: Array<EnvironmentInfo>
+}
+
+export type EnvironmentListResponse = EnvironmentListResponses[keyof EnvironmentListResponses]
+
+export type EnvironmentCreateData = {
+  body?: {
+    profile: string
+    requestID: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment"
+}
+
+export type EnvironmentCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentCreateError = EnvironmentCreateErrors[keyof EnvironmentCreateErrors]
+
+export type EnvironmentCreateResponses = {
+  /**
+   * Logical Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentCreateResponse = EnvironmentCreateResponses[keyof EnvironmentCreateResponses]
+
+export type EnvironmentGetData = {
+  body?: never
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}"
+}
+
+export type EnvironmentGetErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentGetError = EnvironmentGetErrors[keyof EnvironmentGetErrors]
+
+export type EnvironmentGetResponses = {
+  /**
+   * Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentGetResponse = EnvironmentGetResponses[keyof EnvironmentGetResponses]
+
+export type EnvironmentActivityData = {
+  body?: never
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/activity"
+}
+
+export type EnvironmentActivityErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type EnvironmentActivityError = EnvironmentActivityErrors[keyof EnvironmentActivityErrors]
+
+export type EnvironmentActivityResponses = {
+  /**
+   * Activity and unfinished operations
+   */
+  200: EnvironmentActivity
+}
+
+export type EnvironmentActivityResponse = EnvironmentActivityResponses[keyof EnvironmentActivityResponses]
+
+export type EnvironmentReconcileData = {
+  body?: never
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/reconcile"
+}
+
+export type EnvironmentReconcileErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentReconcileError = EnvironmentReconcileErrors[keyof EnvironmentReconcileErrors]
+
+export type EnvironmentReconcileResponses = {
+  /**
+   * Reconciled Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentReconcileResponse = EnvironmentReconcileResponses[keyof EnvironmentReconcileResponses]
+
+export type EnvironmentReleaseData = {
+  body?: {
+    expectedGeneration: number
+  }
+  path: {
+    environmentID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/release"
+}
+
+export type EnvironmentReleaseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentReleaseError = EnvironmentReleaseErrors[keyof EnvironmentReleaseErrors]
+
+export type EnvironmentReleaseResponses = {
+  /**
+   * Released Environment
+   */
+  200: EnvironmentInfo
+}
+
+export type EnvironmentReleaseResponse = EnvironmentReleaseResponses[keyof EnvironmentReleaseResponses]
+
+export type EnvironmentRecoverExecutionData = {
+  body?: never
+  path: {
+    environmentID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/execution/{operationID}/recover"
+}
+
+export type EnvironmentRecoverExecutionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentRecoverExecutionError =
+  EnvironmentRecoverExecutionErrors[keyof EnvironmentRecoverExecutionErrors]
+
+export type EnvironmentRecoverExecutionResponses = {
+  /**
+   * Existing execution outcome
+   */
+  200: EnvironmentExecutionInfo
+}
+
+export type EnvironmentRecoverExecutionResponse =
+  EnvironmentRecoverExecutionResponses[keyof EnvironmentRecoverExecutionResponses]
+
+export type EnvironmentCancelExecutionData = {
+  body?: never
+  path: {
+    environmentID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/execution/{operationID}/cancel"
+}
+
+export type EnvironmentCancelExecutionErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentCancelExecutionError = EnvironmentCancelExecutionErrors[keyof EnvironmentCancelExecutionErrors]
+
+export type EnvironmentCancelExecutionResponses = {
+  /**
+   * Durable cancellation status
+   */
+  200: EnvironmentExecutionInfo
+}
+
+export type EnvironmentCancelExecutionResponse =
+  EnvironmentCancelExecutionResponses[keyof EnvironmentCancelExecutionResponses]
+
+export type EnvironmentRecoverFileData = {
+  body?: never
+  path: {
+    environmentID: string
+    operationID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/environment/{environmentID}/file/{operationID}/recover"
+}
+
+export type EnvironmentRecoverFileErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Service unavailable or runtime shutting down
+   */
+  503: ServiceUnavailableError | RuntimeShuttingDownError
+}
+
+export type EnvironmentRecoverFileError = EnvironmentRecoverFileErrors[keyof EnvironmentRecoverFileErrors]
+
+export type EnvironmentRecoverFileResponses = {
+  /**
+   * File operation outcome
+   */
+  200: WorkspaceOperationSummary
+}
+
+export type EnvironmentRecoverFileResponse = EnvironmentRecoverFileResponses[keyof EnvironmentRecoverFileResponses]
 
 export type LibraryEmbeddingStatusData = {
   body?: never

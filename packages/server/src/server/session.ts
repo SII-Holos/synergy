@@ -415,6 +415,7 @@ export const SessionRoute = () =>
             id: z.string().optional(),
             controlProfile: ControlProfileId.optional(),
             workspace: Session.WorkspaceSelection.optional(),
+            environmentID: z.string().min(1).nullable().optional(),
             completionNotice: z
               .object({
                 silent: z.boolean().optional(),
@@ -427,6 +428,20 @@ export const SessionRoute = () =>
       async (c) => {
         return c.json(await createSession(c.req.valid("json")))
       },
+    )
+    .post(
+      "/:sessionID/environment",
+      describeRoute({
+        summary: "Change an idle Session's Environment selection",
+        operationId: "session.setEnvironment",
+        responses: {
+          200: { description: "Updated Session", content: { "application/json": { schema: resolver(Session.Info) } } },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("json", Session.EnvironmentSelection),
+      async (c) => c.json(await Session.updateEnvironment(c.req.valid("param").sessionID, c.req.valid("json"))),
     )
     .delete(
       "/:sessionID",

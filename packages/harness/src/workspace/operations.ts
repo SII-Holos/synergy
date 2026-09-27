@@ -42,6 +42,18 @@ export namespace WorkspaceOperations {
     })
     .meta({ ref: "WorkspaceOperationInfo" })
   export type Info = z.infer<typeof Info>
+  export const Summary = Info.pick({
+    id: true,
+    scopeID: true,
+    workspaceID: true,
+    generation: true,
+    target: true,
+    state: true,
+    error: true,
+    failure: true,
+    createdAt: true,
+    updatedAt: true,
+  }).meta({ ref: "WorkspaceOperationSummary" })
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
 
   export function register() {
@@ -50,6 +62,11 @@ export namespace WorkspaceOperations {
 
   export async function get(id: string, scopeID: string): Promise<Info> {
     return Info.parse(await Storage.read(StoragePath.workspaceOperation(scopeID, id)))
+  }
+
+  export async function listActive(scopeID: string) {
+    const keys = await Storage.list(StoragePath.workspaceOperationActive(scopeID))
+    return Promise.all(keys.map(async (key) => Summary.parse(await get(key[2], scopeID))))
   }
 
   async function persist(info: Info) {

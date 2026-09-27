@@ -48,4 +48,6 @@ Product resource profiles snapshot storage locations and execution settings into
 
 ## Consequences
 
+Operators inspect and recover Scope-owned resources through generated API/SDK methods. Session selection changes preserve idle admission and compare the caller's previous Environment. Saving retries use the original operation identity, and generation/revision preconditions fence reclamation. Turn admission waits for in-flight binding changes before reading its context. Native directory and logical Workspace selection share the same mutation path.
+
 Upload failures consume compute and writer occupancy until saving succeeds or explicit recovery resolves the operation. The single writable view excludes conflicting allocations. The file host has resource-local receipts and immutable staging objects but does not own Agent conversations or a second business database. Native, Unix, HTTP and TLS access share the same schemas and file implementation.

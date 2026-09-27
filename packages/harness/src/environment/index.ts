@@ -6,6 +6,10 @@ import { StorageRecovery } from "../storage/recovery"
 import { EnvironmentProviders, type EnvironmentRequest } from "./provider"
 import { EnvironmentSchema } from "./schema"
 import { Log } from "../util/log"
+import { BusEvent } from "../bus/bus-event"
+import { Bus } from "../bus"
+import { Scope } from "../scope"
+import { ScopeContext } from "../scope/context"
 
 export namespace Environment {
   export const Info = EnvironmentSchema.Info
@@ -15,6 +19,11 @@ export namespace Environment {
   export const Unavailable = EnvironmentSchema.Unavailable
   export const Stale = EnvironmentSchema.Stale
   export const Busy = EnvironmentSchema.Busy
+  export const Event = { Updated: BusEvent.define("environment.updated", Info) }
+  async function publishUpdated(info: Info) {
+    const scope = await Scope.fromID(info.scopeID)
+    if (scope) await ScopeContext.provide({ scope, workspace: null, fn: () => Bus.publish(Event.Updated, info) })
+  }
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const epoch = RuntimeContext.state(() => randomUUID())
   const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
@@ -119,6 +128,7 @@ export namespace Environment {
       await Storage.write(StoragePath.environment(candidate.id), candidate)
       await Storage.write(StoragePath.environmentScope(candidate.scopeID, candidate.id), candidate.id)
       await Storage.write(StoragePath.environmentBinding(input.scopeID, input.ownerID), candidate.id)
+      await publishUpdated(candidate)
       return candidate
     })
   }
@@ -131,6 +141,26 @@ export namespace Environment {
         throw new Busy({ environmentID: current.id, message: "The owner already has an Environment binding" })
       await Storage.write(StoragePath.environmentBinding(input.scopeID, input.ownerID), id)
       return info
+    })
+  }
+
+  export async function changeBinding(input: {
+    scopeID: string
+    ownerID: string
+    environmentID: string | null
+    expectedEnvironmentID: string | null
+  }) {
+    return Storage.transaction(async () => {
+      const previous = await binding(input.scopeID, input.ownerID)
+      if ((previous?.id ?? null) !== input.expectedEnvironmentID)
+        throw new Stale({ environmentID: previous?.id ?? "", message: "Environment binding changed" })
+      if (previous && (await uses(previous.id)).length)
+        throw new Busy({ environmentID: previous.id, message: "Environment still has active or unreconciled uses" })
+      const key = StoragePath.environmentBinding(input.scopeID, input.ownerID)
+      if (input.environmentID) {
+        await get(input.environmentID, input.scopeID)
+        await Storage.write(key, input.environmentID)
+      } else await Storage.remove(key)
     })
   }
 
@@ -210,13 +240,15 @@ export namespace Environment {
     return info
   }
 
-  export async function deallocate(id: string, input: { scopeID: string }) {
-    return release(id, input.scopeID)
+  export async function deallocate(id: string, input: { scopeID: string; expectedGeneration?: number }) {
+    return release(id, input.scopeID, undefined, input.expectedGeneration)
   }
 
-  async function release(id: string, scopeID: string, idleBefore?: number) {
+  async function release(id: string, scopeID: string, idleBefore?: number, expectedGeneration?: number) {
     const info = await Storage.transaction(async () => {
       const info = await get(id, scopeID)
+      if (expectedGeneration !== undefined && info.generation !== expectedGeneration)
+        throw new Stale({ environmentID: id, message: "Environment allocation changed" })
       if (info.state === "idle") return info
       if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
       if (info.state !== "ready")
@@ -368,6 +400,7 @@ export namespace Environment {
   async function write(info: Info) {
     const next = Info.parse({ ...info, updatedAt: Date.now() })
     await Storage.write(StoragePath.environment(info.id), next)
+    await publishUpdated(next)
     return next
   }
 

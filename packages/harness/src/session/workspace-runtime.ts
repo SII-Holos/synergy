@@ -55,9 +55,13 @@ export namespace SessionWorkspaceRuntime {
     state().transitions.set(id, transition)
   }
 
-  export async function beforeTransition(session: Info, workspace: Info["workspace"]) {
+  export async function beforeTransition(
+    session: Info,
+    workspace: Info["workspace"],
+    workspaceID = workspace?.id ?? null,
+  ) {
     if (
-      session.workspaceID === (workspace?.id ?? null) &&
+      session.workspaceID === workspaceID &&
       session.workspace?.generation === workspace?.generation &&
       session.workspace?.path === workspace?.path
     )

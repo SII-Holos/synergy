@@ -188,10 +188,13 @@ export namespace WorkspaceMounts {
     return { id: info.activeMount.id, workspaceID: info.id, generation: info.activeMount.generation }
   }
 
-  export async function detach(input: { workspaceID: string; scopeID: string }) {
+  export async function detach(input: { workspaceID: string; scopeID: string; expectedRevision?: number }) {
     const key = JSON.stringify([input.scopeID, input.workspaceID])
     const pending = detaching().get(key)
-    if (pending) return pending
+    if (pending) {
+      await pending
+      return detach(input)
+    }
     const task = detachView(input)
     detaching().set(key, task)
     try {
@@ -201,8 +204,16 @@ export namespace WorkspaceMounts {
     }
   }
 
-  async function detachView(input: { workspaceID: string; scopeID: string }) {
+  async function detachView(input: { workspaceID: string; scopeID: string; expectedRevision?: number }) {
     let info = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
+    const assertRevision = (info: WorkspaceCatalog.Info) => {
+      if (input.expectedRevision !== undefined && info.revision !== input.expectedRevision)
+        throw new WorkspaceCatalog.BindingChanged({
+          workspaceID: info.id,
+          message: "Workspace changed before detachment",
+        })
+    }
+    assertRevision(info)
     const mount = info.activeMount
     if (!mount) return
     const useID = `detach:${mount.id}`
@@ -215,6 +226,7 @@ export namespace WorkspaceMounts {
     try {
       info = await Storage.transaction(async () => {
         const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
+        assertRevision(latest)
         assertMount(latest, info)
         if ((await Environment.uses(mount.target.environmentID)).some((held) => held.id !== useID))
           throw new Environment.Busy({

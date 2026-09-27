@@ -20,6 +20,10 @@ Default selection has an explicit Session, Workspace or Scope reuse policy. The 
 
 Environment providers are registered during Runtime composition and sealed before storage startup. Registration is isolated across Runtime instances. Structured records, owner bindings, uses and active indexes share [Agent Storage](agent-storage.md) transactions. External allocation, inspection and termination run outside retryable transactions.
 
+The Scope-owned Environment API lists profiles, logical resources, retained uses and unfinished operations. Creation selects a profile without allocating. Session Environment changes compare the previous selection, require an idle Session and drained uses, save/detach its previous Workspace view, and commit the owner binding with Session indexes. New turn admission waits for the Session binding lease before reading execution context. Allocation reclamation and Workspace detachment accept generation/revision preconditions. Environment state changes publish `environment.updated` through the transactional outbox.
+
+Recovery endpoints inspect existing operation identities and retry confirmed saves. They never submit a replacement command. Unknown execution remains unknown; an unavailable live view remains unavailable. Cancellation requests retain ownership until physical completion and saving. Activity responses exclude file-operation payloads and expose their status and structured failure only.
+
 The [decision record](../decisions/implemented/architecture/2026-09-27-environment-allocation-identity.md) explains independent identity and reconciliation. Workspace authority remains defined by [Workspace and files](workspace-and-files.md).
 
 ## Execution and saving
