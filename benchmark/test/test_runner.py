@@ -49,6 +49,30 @@ async def test_trial_failure_does_not_drop_other_pairs(tmp_path: Path) -> None:
     assert read_json(tmp_path / "trials/0000/attempt-001/evidence.json")["infrastructure_error"]["type"] == "ValueError"
 
 
+async def test_unsupported_docker_endpoint_blocks_remaining_trials_before_model_execution(tmp_path, monkeypatch):
+    from synergy_bench.docker_resources import DockerStats
+    from synergy_bench.runner import DispatchStopped
+
+    monkeypatch.setenv("DOCKER_HOST", "tcp://127.0.0.1:2375")
+    monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    plan = {"schedule": [{"pair": "p", "variant": "A"}, {"pair": "p", "variant": "B"}], "concurrency": 1}
+    attempted = []
+
+    async def execute(item, attempt):
+        attempted.append(item["variant"])
+        await DockerStats().snapshot()
+        pytest.fail("An unsupported endpoint must fail before model execution")
+
+    with pytest.raises(DispatchStopped, match="local Docker Unix endpoint"):
+        await execute_plan(tmp_path, plan, execute)
+    assert attempted == ["A"]
+    state = read_json(tmp_path / "state.json")
+    assert state["status"] == "blocked"
+    assert list(state["trials"]) == ["0000"]
+    result = read_json(tmp_path / "trials/0000/attempt-001/evidence.json")
+    assert result["infrastructure_error"]["type"] == "DockerEndpointError"
+
+
 async def test_exception_keeps_paid_wire_evidence_and_original_terminal(tmp_path):
     plan = {"schedule": [{"pair": "p", "variant": "A"}], "concurrency": 1}
 

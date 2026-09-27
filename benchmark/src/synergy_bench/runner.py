@@ -338,6 +338,8 @@ def dispatch_blocker(attempt: Path, result: dict[str, Any]) -> str | None:
         return "Owned resources could not be removed or verified"
     if any(row.get("http_status") == 401 for row in read_ledger(attempt / "wire")):
         return "Provider rejected the configured credential (HTTP 401)"
+    if (result.get("infrastructure_error") or {}).get("type") == "DockerEndpointError":
+        return "Benchmark requires a local Docker Unix endpoint"
     if (result.get("infrastructure_error") or {}).get("type") in {"ResourceRecordingError", "ResourcePressureError"}:
         return "Shared resource conditions or durable resource recording failed"
     return None
