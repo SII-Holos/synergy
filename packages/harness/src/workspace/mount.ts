@@ -21,7 +21,7 @@ export namespace WorkspaceMounts {
     directory?: string
   }
   const attaching = RuntimeContext.state(() => new Map<string, Promise<WorkspaceCatalog.Info>>())
-  const detaching = RuntimeContext.state(() => new Map<string, Promise<void>>())
+  const detaching = RuntimeContext.state(() => new Map<string, Promise<WorkspaceCatalog.Info>>())
 
   export function register() {
     Environment.registerResourceOwner("workspace", beforeDeallocate, allocationLost)
@@ -189,7 +189,11 @@ export namespace WorkspaceMounts {
     return { id: info.activeMount.id, workspaceID: info.id, generation: info.activeMount.generation }
   }
 
-  export async function detach(input: { workspaceID: string; scopeID: string; expectedRevision?: number }) {
+  export async function detach(input: {
+    workspaceID: string
+    scopeID: string
+    expectedRevision?: number
+  }): Promise<WorkspaceCatalog.Info> {
     const key = JSON.stringify([input.scopeID, input.workspaceID])
     const pending = detaching().get(key)
     if (pending) {
@@ -199,7 +203,7 @@ export namespace WorkspaceMounts {
     const task = detachView(input)
     detaching().set(key, task)
     try {
-      await task
+      return await task
     } finally {
       detaching().delete(key)
     }
@@ -216,7 +220,7 @@ export namespace WorkspaceMounts {
     }
     assertRevision(info)
     const mount = info.activeMount
-    if (!mount) return
+    if (!mount) return info
     const useID = `detach:${mount.id}`
     const use = await Environment.acquire(mount.target.environmentID, {
       scopeID: input.scopeID,
@@ -256,7 +260,7 @@ export namespace WorkspaceMounts {
       info = await save(info, files, checkpoint)
     }
     await files.detach(reference(info))
-    await Storage.transaction(async () => {
+    return Storage.transaction(async () => {
       const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
       assertMount(latest, info)
       await Environment.assertTarget(mount.target, input.scopeID)
@@ -270,6 +274,7 @@ export namespace WorkspaceMounts {
       await WorkspaceCatalog.publishUpdated(next)
       await Storage.remove(StoragePath.workspaceEnvironment(mount.target.environmentID, info.id))
       await Environment.releaseUse(mount.target, input.scopeID, useID)
+      return next
     })
   }
 

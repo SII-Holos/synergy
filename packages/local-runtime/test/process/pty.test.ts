@@ -160,10 +160,11 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
             }
             expect(Pty.get(info.id)?.workspaceID).toBe(session.workspaceID!)
             expect(Pty.get(info.id)?.workspaceGeneration).toBe(workspace.binding.generation)
+            const mounted = await WorkspaceCatalog.get(workspace.id, scope.id)
             await expect(
               WorkspaceBinding.rebind(workspace.id, {
                 scopeID: scope.id,
-                expectedRevision: workspace.revision,
+                expectedRevision: mounted.revision,
                 path: next.path,
               }),
             ).rejects.toThrow("busy")
@@ -174,11 +175,14 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
             expect(Pty.get(info.id)).toBeUndefined()
             const child = await Bun.file(ready).json()
             expect(() => process.kill(child.pid, 0)).toThrow()
-            await WorkspaceBinding.rebind(workspace.id, {
+            const rebound = await WorkspaceBinding.rebind(workspace.id, {
               scopeID: scope.id,
-              expectedRevision: workspace.revision,
+              expectedRevision: (await WorkspaceCatalog.get(workspace.id, scope.id)).revision,
               path: next.path,
             })
+            expect(rebound.binding.path).toBe(next.path)
+            expect(rebound.binding.generation).toBe(workspace.binding.generation + 1)
+            expect(rebound.activeMount).toBeUndefined()
           } finally {
             await Pty.remove(info.id)
           }
