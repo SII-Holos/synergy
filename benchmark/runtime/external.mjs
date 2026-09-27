@@ -90,6 +90,7 @@ let timedOut = false
 let interrupted = false
 let forced = false
 let stopping = false
+let nativeEnded = false
 let forceTimer
 function signal(value) {
   if (!child.pid) return
@@ -103,6 +104,7 @@ function stop() {
   if (stopping) return
   stopping = true
   void capture?.close(options.cleanup_seconds, true)
+  if (nativeEnded) return
   signal("SIGTERM")
   forceTimer = setTimeout(() => {
     forced = true
@@ -128,6 +130,7 @@ const result = await new Promise((resolve) => {
   child.once("error", (error) => resolve({ code: null, error: error.code ?? error.name }))
   child.once("exit", (code, signal) => resolve({ code, signal }))
 })
+nativeEnded = true
 const ended = Date.now()
 await executionClock.stop()
 clearTimeout(forceTimer)
