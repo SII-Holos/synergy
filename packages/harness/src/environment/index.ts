@@ -49,6 +49,15 @@ export namespace Environment {
     return id ? get(id, scopeID) : undefined
   }
 
+  export async function select(input: { scopeID: string; ownerID: string; environmentID?: string | null }) {
+    if (input.environmentID === null) return undefined
+    if (input.environmentID) return share(input.environmentID, input)
+    const existing = await binding(input.scopeID, input.ownerID)
+    if (existing) return existing
+    const selection = EnvironmentProviders.defaultSelection()
+    return selection ? bind({ ...input, ...selection }) : undefined
+  }
+
   export async function bind(input: {
     scopeID: string
     ownerID: string

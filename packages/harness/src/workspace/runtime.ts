@@ -3,10 +3,41 @@ import { RuntimeContext } from "../lifecycle/context"
 import { ScopeStartup } from "../scope/startup"
 import { WorkspaceBinding } from "./binding"
 import { WorkspaceState } from "./state"
+import { WorkspaceAccess } from "./access"
+import { SessionWorkspaceRuntime } from "../session/workspace-runtime"
 import type { Scope } from "../scope"
 import type { Workspace } from "../session/workspace-schema"
 
 export namespace WorkspaceRuntime {
+  export async function withUse<T>(
+    scope: Scope,
+    workspace: Workspace,
+    sessionID: string | undefined,
+    fn: () => Promise<T>,
+  ) {
+    if (!workspace.id) throw new Error("Workspace has no canonical reference")
+    await WorkspaceBinding.validate(workspace.id, scope.id, workspace.generation)
+    const use = await WorkspaceAccess.pin()
+    try {
+      const run = async () => {
+        await ensure(scope, workspace)
+        return fn()
+      }
+      if (workspace.type !== "git_worktree") return await run()
+      const worktree = SessionWorkspaceRuntime.get()
+      return await worktree.withWorktree(workspace.path, sessionID, async () => {
+        await worktree.lockWorktree(workspace.path)
+        try {
+          return await run()
+        } finally {
+          await worktree.unlockWorktree(workspace.path)
+        }
+      })
+    } finally {
+      await use.release()
+    }
+  }
+
   interface Entry {
     scopeID: string
     workspaceID: string

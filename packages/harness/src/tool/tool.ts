@@ -71,6 +71,22 @@ export namespace Tool {
   export type InferParameters<T extends Info> = T extends Info<infer P> ? z.infer<P> : never
   export type InferMetadata<T extends Info> = T extends Info<any, infer M> ? M : never
 
+  export async function withWorkspace<T>(
+    required: boolean | undefined,
+    ctx: { sessionID?: string },
+    fn: () => Promise<T>,
+  ) {
+    if (!required) return fn()
+    const workspace = ScopeContext.current.workspace
+    if (!workspace)
+      throw new Scope.WorkspaceRequiredError({
+        message: "This tool requires a Workspace.",
+        scopeID: ScopeContext.current.scope.id,
+      })
+    const { WorkspaceRuntime } = await import("../workspace/runtime")
+    return WorkspaceRuntime.withUse(ScopeContext.current.scope, workspace, ctx.sessionID, fn)
+  }
+
   export function validateAttachmentResult(
     tool: string,
     result: { output: string; attachments?: MessageV2.AttachmentPart[] },
@@ -143,7 +159,7 @@ export namespace Tool {
               { cause: error },
             )
           }
-          const result = await execute(parsed, ctx)
+          const result = await withWorkspace(options?.requiresWorkspace, ctx, () => execute(parsed, ctx))
           await ctx.captureResult?.(result)
           validateAttachmentResult(id, result)
           if (result.metadata.truncated !== undefined) {

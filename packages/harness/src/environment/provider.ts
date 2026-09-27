@@ -30,6 +30,26 @@ export interface EnvironmentProvider {
 
 export namespace EnvironmentProviders {
   const providers = RuntimeContext.state(() => new Map<string, EnvironmentProvider>())
+  const defaults = RuntimeContext.state(() => ({ selection: undefined as Default | undefined }))
+  export interface Default {
+    provider: string
+    spec: EnvironmentSchema.Info["spec"]
+    idleTimeoutMs?: number
+  }
+
+  export function setDefault(selection: Default) {
+    RuntimeContext.assertCompositionOpen("Default Environment")
+    if (defaults().selection) throw new Error("Default Environment is already registered")
+    const provider = get(selection.provider)
+    defaults().selection = structuredClone({
+      ...selection,
+      spec: provider.validateSpec?.(selection.spec) ?? selection.spec,
+    })
+  }
+
+  export function defaultSelection(): Default | undefined {
+    return structuredClone(defaults().selection)
+  }
 
   export function register(provider: EnvironmentProvider) {
     RuntimeContext.assertCompositionOpen("Environment providers")

@@ -428,43 +428,25 @@ export namespace SessionManager {
 
     try {
       const session = await requireSession(sessionID)
-      if (session.workspaceID && options?.workspace !== "history") {
-        const { WorkspaceBinding } = await import("../workspace/binding")
-        await WorkspaceBinding.validate(session.workspaceID, session.scope.id, session.workspace?.generation)
-      }
       const scope = session.scope as Scope
       const workspace = options?.workspace === "history" ? null : session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")
-      const runWithScope = () =>
-        ExecutionCapacity.session(sessionID, () =>
-          WorkspaceAccess.task({ sessionID, parentSessionID: session.parentID, workspace, signal: lease.signal }, () =>
+      const result = await ExecutionCapacity.session(sessionID, () =>
+        WorkspaceAccess.task(
+          { sessionID, parentSessionID: session.parentID, workspace, signal: lease.signal, lazy: true },
+          () =>
             ScopeRuntime.provide({
               scope,
               workspace,
-              ensure: workspace !== null,
+              ensure: false,
               fn: async () => {
                 if (options?.workspace !== "history") assertExecutionContext(session, "session manager run")
-                if (workspace?.type !== "git_worktree") {
-                  activate(lease)
-                  return fn(lease)
-                }
-                await SessionWorkspaceRuntime.get().lockWorktree(workspace.path)
-                try {
-                  activate(lease)
-                  return await fn(lease)
-                } finally {
-                  await SessionWorkspaceRuntime.get().unlockWorktree(workspace.path)
-                }
+                activate(lease)
+                return fn(lease)
               },
             }),
-          ),
-        )
-      let result: T
-      if (workspace?.type !== "git_worktree") {
-        result = await runWithScope()
-      } else {
-        result = await SessionWorkspaceRuntime.get().withWorktree(workspace.path, session.id, runWithScope)
-      }
+        ),
+      )
       completed = true
       return result
     } finally {

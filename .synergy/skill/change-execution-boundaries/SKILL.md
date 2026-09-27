@@ -56,6 +56,8 @@ For native process ownership changes, test the preactivation barrier and recover
 
 For Environment execution, also read [Environments](../../../docs/architecture/environments.md). Test lost allocation and execution acknowledgements, operation identity conflicts, old allocation generations, failed checkpoints and owner restart. A durable physical writer must remain occupied until saving is acknowledged; recovery cannot repeat the command or infer saving from process exit.
 
+Trace resource acquisition through input acceptance, Session loops, tool authorization and actual dispatch. Exercise a real resolved API tool with an unavailable selected directory, an imported file-tool handle, parent/fork Environment inheritance and an embedded host with no native default. Tool classification must not validate or allocate an unused physical resource; resource-dependent entrypoints must still acquire their own use before effects.
+
 For physical-root exclusion, include an occupied-directory rename followed by admission against its new descendant path. Root equality and lexical path ancestry alone cannot establish overlap after an external rename; compare root and ancestor filesystem identities without conflating disjoint siblings.
 
 Public subprocess entrypoints, including plugin Host Services, must enter native ownership through their final compiled footprint. Test queued cancellation before command activation, whole-tree termination, and cleanup on policy rejection or spawn-hook failure. An output cap bounds retained bytes across both streams; continue consuming discarded bytes so backpressure cannot keep the native tree or its claim alive.

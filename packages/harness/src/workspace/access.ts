@@ -111,6 +111,7 @@ export namespace WorkspaceAccess {
     parentSessionID?: string
     workspace?: Workspace | null
     signal?: AbortSignal
+    lazy?: boolean
   }
   export function task<T>(input: TaskInput, fn: () => Promise<T>): Promise<T> {
     return runTask(input, fn)
@@ -143,7 +144,7 @@ export namespace WorkspaceAccess {
       signal: input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal,
     }
     try {
-      if (value.workspace && state().host) {
+      if (value.workspace && state().host && !input.lazy) {
         await ExecutionCapacity.wait(async () => {
           value.use = await host().acquire({
             id: randomUUID(),

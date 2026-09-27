@@ -4,6 +4,8 @@ An Environment identifies an execution destination independently of a Session, S
 
 ## Identity and lifetime
 
+Sessions persist an optional Environment ID independently of their Workspace ID. Creation, parent/child inheritance and forks select that identity without allocating compute. Composition can register one explicit default; the local preset selects `native`, while `environment: false` in either embedded runtime entry point omits it. Explicit `null` disables the default. Transcript imports clear execution authority. The versioned Session migration records the configured default without allocating, inherits parent selections and keeps unavailable imported Workspaces unbound.
+
 Owner bindings select a logical Environment without allocating it. `Environment.acquire` persists an allocation intent before calling its provider and coalesces concurrent acquisition within the writing Runtime. The target includes the Environment ID, physical allocation ID and monotonically increasing execution generation. Workspace binding generation and content version are separate values.
 
 A provider reports an allocation as ready, pending, absent or unknown. Unknown allocation results are inspected by their original request identity. A provider may resume a verified partial allocation under the original intent before admission; it cannot restart an allocation with active uses. New allocations require confirmed absence. Recovery reconciles an active-allocation index before admitting work. Missing providers fail explicitly.

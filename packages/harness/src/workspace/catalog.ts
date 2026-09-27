@@ -8,9 +8,10 @@ import type { Workspace } from "../session/workspace-schema"
 import type { StoreTransaction } from "../storage/transactional-store"
 import { WorkspaceTree } from "./tree"
 import { EnvironmentSchema } from "../environment/schema"
+import { JsonValue } from "../util/json-value"
 
 export namespace WorkspaceCatalog {
-  export const Backend = z.object({ provider: z.string().min(1), spec: z.record(z.string(), z.json()) })
+  export const Backend = z.object({ provider: z.string().min(1), spec: z.record(z.string(), JsonValue) })
   export const Content = z.object({ revision: z.number().int().nonnegative(), manifest: WorkspaceTree.Hash.nullable() })
   export const Mount = z.object({
     id: z.string(),

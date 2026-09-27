@@ -19,6 +19,7 @@ import { registerCortexSessionRuntime } from "@ericsanchezok/synergy-harness/cor
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerConfig } from "./config-schema"
 import { registerNativeEnvironment } from "./environment/native"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -37,7 +38,10 @@ export function registerLocalRuntime(options: { workers?: boolean; environment?:
   registerLocalTools()
   registerInputTools()
   registerWorkspace()
-  if (options.environment !== false) registerNativeEnvironment()
+  if (options.environment !== false) {
+    registerNativeEnvironment()
+    EnvironmentProviders.setDefault({ provider: "native", spec: {} })
+  }
   registerSkillDomain()
   registerCommandDomain()
   Command.registerActions()

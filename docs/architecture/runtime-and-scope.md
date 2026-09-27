@@ -205,7 +205,7 @@ GET responses produced inside a Scope advertise the current event watermark thro
 
 `SessionManager.run()` restores both the persisted Scope and workspace before executing a session loop. Code reached through a session should use `ScopeContext.current` rather than process working-directory assumptions.
 
-Execution-context checks reject sessions whose Scope or workspace cannot be used safely. This is especially important for:
+Execution-context checks reject a mismatched persisted selection. Physical availability is checked when an operation uses the resource, so a missing directory does not block API-only work. Resource checks cover:
 
 - restored sessions whose project directory disappeared
 - worktree sessions

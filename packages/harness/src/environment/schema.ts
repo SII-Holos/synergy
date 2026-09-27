@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { JsonValue } from "../util/json-value"
 
 export namespace EnvironmentSchema {
   export const Target = z
@@ -20,7 +21,7 @@ export namespace EnvironmentSchema {
       id: z.string().min(1),
       scopeID: z.string().min(1),
       provider: z.string().min(1),
-      spec: z.record(z.string(), z.json()),
+      spec: z.record(z.string(), JsonValue),
       ownership: z.enum(["borrowed", "managed"]),
       state: z.enum(["idle", "allocating", "ready", "releasing", "unavailable"]),
       generation: z.number().int().nonnegative(),

@@ -1586,8 +1586,8 @@ export namespace ToolResolver {
                 if (runtimeInput.session) {
                   SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
                 }
-                const workspace = ScopeContext.current.workspace?.path ?? null
-                const workspaceInfo = ScopeContext.current.workspace
+                const workspaceInfo = item.requiresWorkspace !== false ? ScopeContext.current.workspace : null
+                const workspace = workspaceInfo?.path ?? null
                 const profileId = await Session.resolveEffectiveControlProfile({
                   sessionID: runtimeInput.session?.id,
                   agentControlProfile: runtimeInput.agent.controlProfile,
@@ -1914,8 +1914,8 @@ export namespace ToolResolver {
                   if (runtimeInput.session) {
                     SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${key}`)
                   }
-                  const workspace = ScopeContext.current.workspace?.path ?? null
-                  const workspaceInfo = ScopeContext.current.workspace
+                  const workspaceInfo = entry.requiresWorkspace !== false ? ScopeContext.current.workspace : null
+                  const workspace = workspaceInfo?.path ?? null
                   const profileId = await Session.resolveEffectiveControlProfile({
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,

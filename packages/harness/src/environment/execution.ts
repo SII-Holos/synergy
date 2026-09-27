@@ -8,6 +8,7 @@ import { ExecutionProtocol, type Executor } from "./executor"
 import { WorkspaceProtocol } from "../workspace/protocol"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { WorkspaceMounts } from "../workspace/mount"
+import { JsonValue } from "../util/json-value"
 
 export namespace EnvironmentExecution {
   export const Info = z
@@ -19,7 +20,7 @@ export namespace EnvironmentExecution {
       digest: z.string(),
       state: z.enum(["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]),
       status: ExecutionProtocol.Status.optional(),
-      saved: z.record(z.string(), z.json()).optional(),
+      saved: z.record(z.string(), JsonValue).optional(),
       outputCursor: z.number().int().nonnegative(),
       createdAt: z.number(),
       updatedAt: z.number(),

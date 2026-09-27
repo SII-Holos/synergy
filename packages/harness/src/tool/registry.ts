@@ -74,7 +74,6 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          assertWorkspace(def.requiresWorkspace ?? true)
           const pluginCtx = {
             sessionID: ctx.sessionID,
             messageID: ctx.messageID,
@@ -84,7 +83,9 @@ export namespace ToolRegistry {
             ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
-          const raw = await def.execute(args as any, pluginCtx)
+          const raw = await Tool.withWorkspace(def.requiresWorkspace ?? true, ctx, () =>
+            def.execute(args as any, pluginCtx),
+          )
           await ctx.captureResult?.(raw)
           return normalizePluginResult(raw, initCtx?.agent)
         },
@@ -148,16 +149,18 @@ export namespace ToolRegistry {
               code: "CONTRIBUTION_DISABLED",
             })
           }
-          const raw = await entry.execute(args, {
-            sessionID: ctx.sessionID,
-            messageID: ctx.messageID,
-            agent: ctx.agent,
-            abort: ctx.abort,
-            callID: ctx.callID,
-            userMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
-            scopeId: ScopeContext.current.scope.id,
-            directory: ScopeContext.current.workspace?.path,
-          })
+          const raw = await Tool.withWorkspace(entry.requiresWorkspace ?? true, ctx, () =>
+            entry.execute(args, {
+              sessionID: ctx.sessionID,
+              messageID: ctx.messageID,
+              agent: ctx.agent,
+              abort: ctx.abort,
+              callID: ctx.callID,
+              userMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
+              scopeId: ScopeContext.current.scope.id,
+              directory: ScopeContext.current.workspace?.path,
+            }),
+          )
           await ctx.captureResult?.(raw)
           return normalizePluginResult(raw, initCtx?.agent)
         },
@@ -272,6 +275,7 @@ export namespace ToolRegistry {
         const def = await t.init({ agent })
         return {
           id: t.id,
+          requiresWorkspace: t.requiresWorkspace ?? false,
           exposure: ToolExposure.deferredExposure(t.id, ToolExposure.normalize(t.id, t.exposure), agent?.deferredTools),
           display: t.display,
           source: t.source,

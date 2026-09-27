@@ -1,6 +1,7 @@
 import { Workspace } from "./workspace-schema"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
+import { Environment } from "../environment"
 import { SessionRecords } from "./records"
 import { ModelSelection } from "./model-selection-schema"
 import { WorkspaceAccess } from "../workspace/access"
@@ -551,6 +552,7 @@ export namespace Session {
       workflow?: Info["workflow"]
       workspace?: import("./types").Workspace | null
       workspaceID?: string | null
+      environmentID?: string | null
       forkedFrom?: Info["forkedFrom"]
       completionNotice?: {
         silent?: boolean
@@ -634,6 +636,17 @@ export namespace Session {
     await Storage.transaction(async () => {
       if (result.parentID && !(await SessionManager.getSession(result.parentID)))
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
+      const environment = await Environment.select({
+        scopeID: scope.id,
+        ownerID: result.id,
+        environmentID:
+          input?.environmentID !== undefined
+            ? input.environmentID
+            : parent?.scope.id === scope.id
+              ? parent.environmentID
+              : undefined,
+      })
+      result.environmentID = environment?.id ?? null
       await Storage.write(
         StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(result.id)),
         SessionRecords.serialize(result),
@@ -745,6 +758,7 @@ export namespace Session {
         scope: source.scope as Scope,
         workspace: source.workspace,
         workspaceID: source.workspaceID,
+        environmentID: source.environmentID,
         title: input.title,
         controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
         forkedFrom: {
@@ -1190,6 +1204,8 @@ export namespace Session {
       const before = structuredClone(session)
       const result = structuredClone(session)
       editor(result)
+      if (result.environmentID !== before.environmentID)
+        throw new Error("Environment bindings cannot be changed through Session.update")
       if (
         !options?.workspaceChange &&
         (result.workspaceID !== before.workspaceID ||
