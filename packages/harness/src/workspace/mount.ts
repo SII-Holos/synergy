@@ -192,6 +192,7 @@ export namespace WorkspaceMounts {
       await files.acknowledge(checkpoint.id)
       return info
     }
+    if (!checkpoint.manifest) throw new Error("Object-backed Workspace checkpoint has no manifest")
     const bytes = WorkspaceTree.verify(
       checkpoint.manifest,
       await files.getBlob(checkpoint.manifest, WorkspaceTree.manifestBytes),

@@ -47,6 +47,7 @@ const model = {
 function bashRegistryTool() {
   return {
     id: "bash",
+    requiresExecution: "exec" as const,
     description: "Bash tool",
     parameters: z.object({
       command: z.string(),

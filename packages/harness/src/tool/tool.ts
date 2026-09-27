@@ -45,6 +45,8 @@ export namespace Tool {
     agent: string
     abort: AbortSignal
     callID?: string
+    environmentID?: string | null
+    resources?: import("../environment/resources").EnvironmentResources.Resolved
     captureResult?(result: unknown): Promise<void>
     openProcessEvidence?(id: string): Promise<RolloutProcess.Writer>
     extra?: { [key: string]: any }
@@ -54,6 +56,7 @@ export namespace Tool {
   export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
     id: string
     requiresWorkspace?: boolean
+    requiresExecution?: "exec" | "pty"
     exposure?: ToolExposure.Info
     display?: ToolDisplay
     source?: Source
@@ -117,6 +120,7 @@ export namespace Tool {
     init: Info<Parameters, Result>["init"] | Awaited<ReturnType<Info<Parameters, Result>["init"]>>,
     options?: {
       requiresWorkspace?: boolean
+      requiresExecution?: "exec" | "pty"
       exposure?: ToolExposure.Info
       display?: ToolDisplay
     },
@@ -136,6 +140,7 @@ export namespace Tool {
     return {
       id,
       requiresWorkspace: options?.requiresWorkspace,
+      requiresExecution: options?.requiresExecution,
       exposure: options?.exposure,
       display: options?.display,
       init: async (initCtx) => {

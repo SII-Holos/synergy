@@ -5,7 +5,6 @@ import { fileURLToPath } from "url"
 import { Language, type Node } from "web-tree-sitter"
 import { $ } from "bun"
 import { lazy } from "@ericsanchezok/synergy-harness/util/lazy"
-import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
@@ -28,9 +27,10 @@ import type { BashSandboxPrepare } from "@ericsanchezok/synergy-harness/tool/bas
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import path from "node:path"
-import { OwnedProcess } from "../../process/owned-process"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { createHash } from "node:crypto"
 import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
-import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
 
 /**
@@ -199,12 +199,44 @@ export function withLinuxChildOomPreference(command: string, platform = process.
   return `{ printf '%s\\n' ${CHILD_OOM_SCORE_ADJ} > /proc/self/oom_score_adj; } 2>/dev/null || :; ${command}`
 }
 
-export const LocalBashBackend = {
-  async execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
-    const shell = Shell.acceptable()
+export namespace LocalBashBackend {
+  export async function execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
+    await using admission = ctx.resources
+      ? null
+      : await EnvironmentResources.select({
+          scopeID: ScopeContext.current.scope.id,
+          ownerID: ctx.sessionID,
+          environmentID: ctx.environmentID,
+          workspaceID: ScopeContext.current.workspace?.id,
+          workspaceGeneration: ScopeContext.current.workspace?.generation,
+          needs: { execution: "exec" },
+          signal: ctx.abort,
+        })
+    const resources = ctx.resources ?? admission!
+    const workspace = ScopeContext.current.workspace
+    if (
+      workspace &&
+      resources.environment?.provider === "native" &&
+      resources.workspace?.backend?.provider === "directory"
+    ) {
+      const { WorkspaceRuntime } = await import("@ericsanchezok/synergy-harness/workspace/runtime")
+      return await WorkspaceRuntime.withUse(ScopeContext.current.scope, workspace, ctx.sessionID, () =>
+        run(params, ctx, resources),
+      )
+    }
+    return await run(params, ctx, resources)
+  }
+
+  async function run(
+    params: BashParams,
+    ctx: BashContext,
+    resources: EnvironmentResources.Resolved,
+  ): Promise<BashResult> {
+    const shell = resources.runtime!.shell
+    const platform = resources.runtime!.platform
     log.info("bash tool using shell", { shell })
 
-    const cwd = params.workdir || ScopeContext.current.directory
+    const cwd = params.workdir || resources.directory!
     const traceId = ((ctx.extra as any)?.traceId as string | undefined) ?? Observability.traceId("bash")
     let regProc: ProcessRegistry.Process | undefined
     const trace = (type: string, data?: Record<string, unknown>, level?: Observability.Event["level"]) =>
@@ -352,13 +384,7 @@ export const LocalBashBackend = {
     }
 
     // Build sandbox-safe environment from the backend allowlist
-    const sandboxEnv: Record<string, string> = {}
-    for (const key of SandboxBackend.SANDBOX_ENV_ALLOWLIST) {
-      const val = RuntimeContext.current().host.env[key]
-      if (val !== undefined) {
-        sandboxEnv[key] = val
-      }
-    }
+    const sandboxEnv: Record<string, string> = { ...resources.runtime!.env }
 
     // Secret boundary: resolved mask tokens arrive as SYNERGY_SEC_* environment
     // variables from the resolver; the command references them via
@@ -376,7 +402,7 @@ export const LocalBashBackend = {
       // Base the controlled root on the session workspace (the sandbox
       // wrapper's writable root), never on a possibly external workdir: the
       // host-side mkdir below must stay inside the workspace boundary.
-      const workspaceRoot = ScopeContext.current.directory
+      const workspaceRoot = resources.directory!
       const controlledRoot = controlledTempRoot(workspaceRoot, ctx.sessionID)
       try {
         fs.mkdirSync(controlledRoot, { recursive: true })
@@ -420,7 +446,7 @@ export const LocalBashBackend = {
       scopeID: ScopeContext.current.scope.id,
     })
     let executionCommand = materialized.command
-    executionCommand = withLinuxChildOomPreference(executionCommand)
+    executionCommand = withLinuxChildOomPreference(executionCommand, platform)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
     // macOS sandboxd audit stream for this child. Seatbelt reports denials to
@@ -436,6 +462,7 @@ export const LocalBashBackend = {
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
+      void sandboxWrapper?.cleanup?.().catch((error) => log.warn("sandbox cleanup failed", { error }))
       materialized.cleanup()
     }
 
@@ -447,7 +474,7 @@ export const LocalBashBackend = {
         })
       }
       assertDetachedDaemonContainment({
-        platform: process.platform,
+        platform,
         detachedDaemonAllowed,
         sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
       })
@@ -461,7 +488,7 @@ export const LocalBashBackend = {
     // child's stderr, and a fast command's denial is emitted microseconds after
     // spawn — so the audit stream must already be live before the child runs.
     // Bind it to the pid once the child exists.
-    if (sandboxWrapper && !sandboxWrapper.skipReason && process.platform === "darwin") {
+    if (sandboxWrapper && !sandboxWrapper.skipReason && platform === "darwin" && resources.executor?.localPID) {
       denialSession = startDenialLogger()
     }
 
@@ -533,28 +560,31 @@ export const LocalBashBackend = {
     }
 
     let child: ProcessHandle
-    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+    let owned: Awaited<ReturnType<typeof EnvironmentProcess.prepare>> | undefined
     try {
       if (sandboxWrapper?.skipReason && sandboxFallback === "deny")
         throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
       const shellName = path.win32.basename(shell).toLowerCase()
       const args =
-        process.platform === "win32" && ["cmd", "cmd.exe"].includes(shellName)
+        platform === "win32" && ["cmd", "cmd.exe"].includes(shellName)
           ? ["/d", "/s", "/c", `"${executionCommand}"`]
-          : process.platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(shellName)
+          : platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(shellName)
             ? ["-NoProfile", "-Command", executionCommand]
             : ["-c", executionCommand]
       const invocation =
         sandboxWrapper && !sandboxWrapper.skipReason
           ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
           : { command: shell, args }
-      const lease = await WorkspaceAccess.process(sandboxWriteRoots(sandboxWrapper), ctx.abort)
-      try {
-        owned = await OwnedProcess.prepare({ ...invocation, cwd, env: sandboxEnv, lease, signal: ctx.abort })
-      } catch (error) {
-        await lease.release()
-        throw error
-      }
+      const id = createHash("sha256")
+        .update(JSON.stringify([ScopeContext.current.scope.id, ctx.sessionID, ctx.messageID, ctx.callID || regProc.id]))
+        .digest("hex")
+      owned = await EnvironmentProcess.prepare({
+        id,
+        scopeID: ScopeContext.current.scope.id,
+        resources,
+        command: { ...invocation, cwd, env: sandboxEnv, writableRoots: sandboxWriteRoots(sandboxWrapper) },
+        signal: ctx.abort,
+      })
       child = owned.child
     } catch (e: unknown) {
       await evidence?.finish({ interrupted: true, exitCode: null, signal: null })
@@ -572,6 +602,9 @@ export const LocalBashBackend = {
     if (denialSession && child.pid) {
       denialSession.adoptPid(child.pid)
     }
+    child.once("spawn", () => {
+      if (denialSession && child.pid) denialSession.adoptPid(child.pid)
+    })
 
     let aborted = false
     let timedOut = false
@@ -813,6 +846,7 @@ export const LocalBashBackend = {
     if (waitResult === "background") {
       cleanupForegroundWait()
       if (!exited) {
+        owned?.detachSignal()
         ProcessRegistry.markBackgrounded(regProc)
         return {
           title: `[Auto-Background] ${params.description}`,
@@ -900,7 +934,7 @@ export const LocalBashBackend = {
       },
       output: warnOutput(output),
     })
-  },
+  }
 }
 
 /**

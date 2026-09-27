@@ -28,6 +28,39 @@ export namespace ExecutionProtocol {
     })
     .meta({ ref: "ExecutorDescription" })
   export type Description = z.infer<typeof Description>
+  export const SandboxInput = z
+    .object({
+      command: z.string(),
+      args: z.array(z.string()),
+      workspace: z.string().min(1),
+      executionCwd: z.string().optional(),
+      sandboxMode: z.enum(["none", "read_only", "workspace_write"]),
+      backend: z.string().optional(),
+      runtimeReadRoots: z.array(z.string()).optional(),
+      extraReadRoots: z.array(z.string()).optional(),
+      writableRoots: z.array(z.string()).optional(),
+      extraWritableRoots: z.array(z.string()).optional(),
+      protectedPaths: z.array(z.string()).optional(),
+      dataDenyRoots: z.array(z.string()).optional(),
+      stripDefaultHomeDenyRoot: z.boolean().optional(),
+      networkMode: z.enum(["full", "restricted", "proxy_only"]).optional(),
+    })
+    .strict()
+  export type SandboxInput = z.infer<typeof SandboxInput>
+  export const Sandbox = z.object({
+    id: z.string().uuid(),
+    command: z.string(),
+    args: z.array(z.string()),
+    sandboxed: z.boolean(),
+    skipReason: z.string().optional(),
+    writeFootprint: z
+      .union([
+        z.object({ kind: z.literal("roots"), roots: z.array(z.string()) }),
+        z.object({ kind: z.literal("host") }),
+      ])
+      .optional(),
+  })
+  export type Sandbox = z.infer<typeof Sandbox>
   export const ID = z
     .string()
     .min(1)
@@ -95,6 +128,8 @@ export namespace ExecutionProtocol {
 }
 
 export interface Executor {
+  prepareSandbox?(input: ExecutionProtocol.SandboxInput): Promise<ExecutionProtocol.Sandbox>
+  releaseSandbox?(id: string): Promise<void>
   /** Direct native adapters only; remote process IDs must never become controller OS identities. */
   localPID?(id: string): number | undefined
   describe?(): Promise<ExecutionProtocol.Description>

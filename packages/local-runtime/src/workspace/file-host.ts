@@ -317,10 +317,14 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         }
         throw error
       }
-      const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
-      const bytes = WorkspaceTree.encode(tree)
-      const manifest = WorkspaceTree.hash(bytes)
-      await this.putBlob(manifest, bytes)
+      const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
+      let manifest: string | null = null
+      if (source.kind === "materialized") {
+        const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
+        const bytes = WorkspaceTree.encode(tree)
+        manifest = WorkspaceTree.hash(bytes)
+        await this.putBlob(manifest, bytes)
+      }
       const checkpoint = { id, mount: reference, manifest }
       await this.persist("checkpoints", id, { ...receipt, checkpoint })
       return checkpoint

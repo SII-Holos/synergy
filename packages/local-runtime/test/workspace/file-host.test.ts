@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test"
 import path from "node:path"
 import fs from "node:fs/promises"
-import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { NativeWorkspaceFiles } from "../../src/workspace/file-host"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
@@ -38,10 +37,7 @@ test("active file host retains a mutation until its checkpoint is acknowledged a
     timeoutMs: 20,
   })
   await expect(waiting).rejects.toThrow()
-  const manifest = WorkspaceTree.Manifest.parse(
-    JSON.parse(new TextDecoder().decode(await host.getBlob(checkpoint.manifest, WorkspaceTree.manifestBytes))),
-  )
-  expect(manifest.entries[0].kind).toBe("file")
+  expect(checkpoint.manifest).toBeNull()
   await host.acknowledge(input.id)
   await expect(host.write({ ...input, id: "conflict" })).rejects.toThrow("changed")
   expect((await host.checkpointStatus("conflict"))?.state).toBe("failed")

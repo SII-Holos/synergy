@@ -16,6 +16,7 @@ import { NativeExecutor } from "./native-executor"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { ProcessEnvironment } from "../process/environment"
+import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
 
@@ -70,6 +71,7 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
           target,
           directory: path.join(path.dirname(filename(request)), request.requestID),
           coordinator,
+          sandbox: SandboxHost,
           runtime: {
             shell: Shell.acceptable(),
             directory: path.join(path.dirname(filename(request)), request.requestID, "work"),

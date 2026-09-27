@@ -58,6 +58,7 @@ export namespace EnvironmentProcess {
     void completed.promise.catch(() => {})
     void running.promise.catch(() => {})
     let activation: Promise<void> | undefined
+    let submission: Promise<EnvironmentExecution.Info> | undefined
     let stopping: Promise<void> | undefined
     let finished = false
     let physicalExit = false
@@ -164,7 +165,7 @@ export namespace EnvironmentProcess {
       if (finished) return completed.promise
       return (activation ??= (async () => {
         try {
-          await EnvironmentExecution.start({
+          submission = EnvironmentExecution.start({
             id: input.id,
             scopeID: input.scopeID,
             environmentID: environment!.id,
@@ -172,7 +173,13 @@ export namespace EnvironmentProcess {
             workspaces,
             signal: input.signal,
           })
+          await submission
           void stream().catch(fail)
+          if (!(await running.promise)) {
+            const info = await EnvironmentExecution.get(input.id, input.scopeID)
+            if (info.status?.state === "cancelled" && info.status.effectsStarted === false)
+              throw input.signal?.reason ?? new globalThis.Error("Execution cancelled before activation")
+          }
         } catch (error) {
           fail(error)
           throw error
@@ -195,7 +202,7 @@ export namespace EnvironmentProcess {
           completed.resolve()
           return
         }
-        await activation
+        await submission
         await EnvironmentExecution.cancel(input.id, input.scopeID)
         await completed.promise
       })())
@@ -210,6 +217,9 @@ export namespace EnvironmentProcess {
       stop,
       completion: completed.promise,
       executionID: input.id,
+      detachSignal() {
+        input.signal?.removeEventListener("abort", abort)
+      },
       async resize(cols: number, rows: number) {
         if (!command.pty || !(await running.promise) || finished) throw new globalThis.Error("PTY is not running")
         await EnvironmentExecution.resize(input.id, input.scopeID, cols, rows)

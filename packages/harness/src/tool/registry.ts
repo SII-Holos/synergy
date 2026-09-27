@@ -276,6 +276,7 @@ export namespace ToolRegistry {
         return {
           id: t.id,
           requiresWorkspace: t.requiresWorkspace ?? false,
+          requiresExecution: t.requiresExecution,
           exposure: ToolExposure.deferredExposure(t.id, ToolExposure.normalize(t.id, t.exposure), agent?.deferredTools),
           display: t.display,
           source: t.source,

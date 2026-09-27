@@ -24,7 +24,9 @@ export interface BashSandboxPrepareInput {
   extraReadRoots: string[]
 }
 
-export type BashSandboxPrepare = (input: BashSandboxPrepareInput) => Promise<SandboxExecutionWrapper>
+export type BashSandboxPrepare = (
+  input: BashSandboxPrepareInput,
+) => Promise<SandboxExecutionWrapper & { cleanup?: () => Promise<void> }>
 
 export const MAX_METADATA_LENGTH = 30_000
 

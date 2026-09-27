@@ -58,6 +58,17 @@ export namespace ExecutionHost {
             return Response.json(await input.executor.describe())
           }
           if (request.method === "GET" && url.pathname === "/v1/openapi.json") return Response.json(openAPI())
+          if (url.pathname === "/v1/sandbox" && request.method === "POST") {
+            if (!input.executor.prepareSandbox)
+              return Response.json({ error: "Sandbox preparation unavailable" }, { status: 404 })
+            return Response.json(
+              await input.executor.prepareSandbox(ExecutionProtocol.SandboxInput.parse(await request.json())),
+            )
+          }
+          if (url.pathname.startsWith("/v1/sandbox/") && request.method === "DELETE") {
+            await input.executor.releaseSandbox?.(z.string().uuid().parse(url.pathname.slice("/v1/sandbox/".length)))
+            return Response.json(true)
+          }
           if (url.pathname === "/v1/workspaces" && request.method === "POST") {
             if (!input.executor.files)
               return Response.json({ error: "Workspace operations unavailable" }, { status: 404 })
@@ -305,6 +316,10 @@ export namespace ExecutionHost {
       security: [{ bearerAuth: [] }],
       components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } },
       paths: {
+        "/v1/sandbox": action("Prepare target sandbox containment", ExecutionProtocol.SandboxInput),
+        "/v1/sandbox/{id}": {
+          delete: { summary: "Release target sandbox preparation", responses: { "200": { description: "Released" } } },
+        },
         "/v1/workspaces": action(
           "Manage Workspace mounts, file operations and retained checkpoints",
           WorkspaceProtocol.Request,

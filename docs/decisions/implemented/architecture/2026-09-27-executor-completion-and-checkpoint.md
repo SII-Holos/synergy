@@ -12,6 +12,8 @@ Harness persists operation identities, input digests and allocation targets befo
 
 The native Executor uses the existing `OwnedProcess` implementation and physical Workspace coordinator. It writes a private operation receipt and bounded output spool that can be queried after a lost response or executor restart. This spool contains execution receipts rather than Agent state. Native and transported Executors use the same request, status and output schemas. Environment providers remain independent of Synergy Link.
 
+Bash uses the common process facade with the resolver's admitted target. Target-side sandbox preparation keeps containment on the same OS and filesystem as execution. Its foreground closure waits for saving, while background execution owns a durable use independently of the caller's admission. Failures confirmed before command activation close as failed executions without fabricating uncertainty about effects.
+
 Durable process claims persist until explicit release, including after their finalizer exits. Recovery requires the original claim reference. Host-local ledger version 2 prevents older coordinators from silently discarding this retention requirement. Its upgrade occurs under the existing host-wide coordination lock when a durable claim is first written; it does not migrate Agent records or create a second coordination file.
 
 ## Alternatives considered

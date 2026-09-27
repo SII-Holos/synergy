@@ -7,6 +7,8 @@ description: Add, modify, or review Synergy capability classification, control p
 
 For Environment execution, retain Workspace writers until checkpoint publication. Verify Linux completion evidence before supervisor cleanup removes its receipt, then persist that proof in the coordinator. Test container destruction and reallocation after a failed upload, cancellation before activation, and file-host shutdown while writes are queued. Native provider tests must inject an isolated coordinator into both Workspace access and the Environment provider; never migrate the host-wide coordination ledger from a test fixture.
 
+Declare execution needs separately from Workspace needs. Resolve the target before requesting its containment verdict, keep Synergy Link independent, and use the common process completion promise through saving. Test queued cancellation before activation and background ownership after foreground abort listeners detach. Real Bash resolver fixtures must carry the execution declaration so they exercise target-side preparation. Local Runtime's fixture supplies one private coordinator to both file admission and native execution.
+
 ## Trace the Whole Decision
 
 1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.

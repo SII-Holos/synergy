@@ -35,6 +35,24 @@ export namespace EnvironmentResources {
     return { ...value, release, [Symbol.asyncDispose]: release }
   }
 
+  export async function select(input: Selection & { ownerID: string; needs: Needs; signal?: AbortSignal }) {
+    const environment = input.needs.execution ? await Environment.select(input) : undefined
+    return resolve({ ...input, environmentID: environment?.id ?? input.environmentID, needs: input.needs })
+  }
+
+  export async function prepareSandbox(resources: Resolved, input: ExecutionProtocol.SandboxInput) {
+    const executor = resources.executor
+    if (!executor?.prepareSandbox || !executor.releaseSandbox)
+      return {
+        command: input.command,
+        args: input.args,
+        sandboxed: false,
+        skipReason: "Selected Environment has no sandbox",
+      }
+    const wrapper = await executor.prepareSandbox(input)
+    return { ...wrapper, cleanup: () => executor.releaseSandbox!(wrapper.id) }
+  }
+
   export async function resolve(input: Selection & { needs: Needs; signal?: AbortSignal }): Promise<Resolved> {
     input.signal?.throwIfAborted()
     if (!input.needs.workspace && !input.needs.execution) return result({ kind: "none" })

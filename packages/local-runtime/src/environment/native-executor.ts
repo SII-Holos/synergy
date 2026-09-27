@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { ProcessEnvironment } from "../process/environment"
@@ -13,6 +13,8 @@ import { WorkspaceCoordinator } from "../workspace/coordinator"
 import { OwnedProcess } from "../process/owned-process"
 import { NativePty } from "../process/native-pty"
 import { NativeWorkspaceFiles } from "../workspace/file-host"
+import type { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
+import type { SandboxExecutionWrapper } from "@ericsanchezok/synergy-harness/sandbox/types"
 
 const Receipt = z.object({
   status: ExecutionProtocol.Status,
@@ -28,6 +30,7 @@ interface NativeExecutorOptions {
   runAs?: { uid: number; gid: number }
   files?: { materializationRoot: string; allowedRoots?: string[] }
   runtime?: Pick<ExecutionProtocol.Description, "shell" | "directory" | "env">
+  sandbox?: SandboxHost.Host
 }
 type Operation = {
   status: ExecutionProtocol.Status
@@ -50,6 +53,7 @@ export class NativeExecutor implements Executor {
   private closing?: Promise<void>
   private accepting = true
   private readonly description: ExecutionProtocol.Description
+  private readonly sandboxes = new Map<string, SandboxExecutionWrapper>()
 
   private constructor(private readonly options: NativeExecutorOptions) {
     this.description = ExecutionProtocol.Description.parse({
@@ -102,6 +106,30 @@ export class NativeExecutor implements Executor {
 
   localPID(id: string) {
     return this.operations.get(id)?.owned?.child.pid
+  }
+
+  async prepareSandbox(raw: ExecutionProtocol.SandboxInput) {
+    if (!this.accepting) throw new Error("Executor is closing")
+    const input = ExecutionProtocol.SandboxInput.parse(raw)
+    const id = randomUUID()
+    if (!this.options.sandbox)
+      return {
+        id,
+        command: input.command,
+        args: input.args,
+        sandboxed: false,
+        skipReason: "Target sandbox is unavailable",
+      }
+    const wrapper = this.options.sandbox.prepareWrapper(input)
+    this.sandboxes.set(id, wrapper)
+    return ExecutionProtocol.Sandbox.parse({ ...wrapper, id })
+  }
+
+  async releaseSandbox(id: string) {
+    const wrapper = this.sandboxes.get(id)
+    if (!wrapper) return
+    this.options.sandbox?.cleanupWrapper(wrapper)
+    this.sandboxes.delete(id)
   }
 
   async start(raw: ExecutionProtocol.Request): Promise<ExecutionProtocol.Status> {
@@ -221,9 +249,18 @@ export class NativeExecutor implements Executor {
         streamsDrained: true,
       }
     } catch (error) {
-      if (operation.cancelled && !operation.owned) {
+      if (operation.status.effectsStarted === false) {
+        await operation.owned?.stop()
         await operation.lease?.release()
-        operation.status = { ...operation.status, state: "cancelled", treeDrained: true, streamsDrained: true }
+        operation.released = true
+        operation.status = {
+          ...operation.status,
+          state: operation.cancelled ? "cancelled" : "exited",
+          exitCode: operation.cancelled ? null : 1,
+          error: operation.cancelled ? undefined : error instanceof Error ? error.message : String(error),
+          treeDrained: true,
+          streamsDrained: true,
+        }
       } else {
         await operation.owned?.stop().catch(() => {})
         operation.status = {
@@ -364,6 +401,7 @@ export class NativeExecutor implements Executor {
       )
       this.stopped.resolve()
       await files
+      for (const id of this.sandboxes.keys()) await this.releaseSandbox(id)
       await this.lock
       const failed = results.find((result) => result.status === "rejected")
       if (failed?.status === "rejected") throw failed.reason

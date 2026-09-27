@@ -34,11 +34,11 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
   },
 }
 
-export function registerWorkspace() {
+export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
   SnapshotLink.register({ type: (filename) => FileLink.type(filename) })
   SnapshotRestore.register(WorkspaceFileRestore)
   WorkspaceFileImport.register(WorkspaceFileService)
-  WorkspaceAccess.register(new WorkspaceCoordinator())
+  WorkspaceAccess.register(coordinator)
   SessionWorkspaceRuntime.register(workspaceServices)
   CortexWorkspace.register({
     async create(input) {

@@ -157,3 +157,56 @@ test("duplex transport preserves binary input and output, and disconnect does no
     socket.close()
   }
 }, 30_000)
+
+test.skipIf(process.platform !== "darwin")(
+  "sandbox preparation and release stay on the selected execution host",
+  async () => {
+    const { testRuntime } = await import("../support/runtime")
+    const { SandboxBackend } = await import("../../src/sandbox/backend")
+    await using runtime = await testRuntime()
+    await runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await using outside = await tmpdir()
+      const target = { environmentID: "sandbox", allocationID: "allocation", generation: 1 }
+      await using executor = await NativeExecutor.open({
+        target,
+        directory: path.join(tmp.path, "receipts"),
+        coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+        sandbox: SandboxBackend,
+      })
+      await using host = ExecutionHost.listen({
+        executor,
+        target,
+        token: "test-token-with-at-least-thirty-two-bytes",
+        listen: { hostname: "127.0.0.1", port: 0 },
+      })
+      const remote = new RemoteExecutor({ url: host.url, target, token: "test-token-with-at-least-thirty-two-bytes" })
+      const wrapper = await remote.prepareSandbox({
+        command: "/bin/sh",
+        args: ["-c", `printf allowed > allowed; printf refused > '${outside.path}/refused'`],
+        workspace: tmp.path,
+        sandboxMode: "workspace_write",
+        networkMode: "restricted",
+      })
+      expect(wrapper.sandboxed).toBe(true)
+      expect(wrapper).not.toHaveProperty("tempPath")
+      const command = {
+        command: wrapper.command,
+        args: wrapper.args,
+        cwd: tmp.path,
+        env: {},
+        writableRoots: wrapper.writeFootprint?.kind === "roots" ? wrapper.writeFootprint.roots : null,
+      }
+      await remote.start({ id: "sandboxed", target, command, digest: ExecutionProtocol.digest(command) })
+      for (let i = 0; i < 400 && !ExecutionProtocol.terminal((await remote.status("sandboxed"))!); i++)
+        await Bun.sleep(10)
+      expect((await remote.status("sandboxed"))?.exitCode).not.toBe(0)
+      expect(await Bun.file(path.join(tmp.path, "allowed")).text()).toBe("allowed")
+      expect(await Bun.file(path.join(outside.path, "refused")).exists()).toBe(false)
+      await remote.release("sandboxed")
+      await remote.releaseSandbox(wrapper.id)
+      await remote.releaseSandbox(wrapper.id)
+    })
+  },
+  20_000,
+)

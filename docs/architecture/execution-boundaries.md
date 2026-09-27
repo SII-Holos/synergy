@@ -4,6 +4,8 @@ Synergy evaluates every tool call at a centralized Control Plane execution bound
 
 The harness owns permission policy and the `SandboxHost` wrapper contract. The local runtime owns OS sandbox implementations and helpers, native PTYs, process containment and file watchers. Local composition registers these before execution; a bare harness neither imports their native dependencies nor starts a file watcher. A sandboxed operation without a registered host fails explicitly.
 
+Tools declare execution requirements separately from Workspace requirements. Bash selects its Session Environment before containment and may use the target's scratch directory without a Workspace. Executor sandbox preparation supplies the target's actual containment verdict; Synergy Link calls retain their independent transport and do not allocate an Environment. See [Environments](environments.md) for target lifetime and durable completion.
+
 ## Execution Pipeline
 
 For each model turn, the session tool resolver collects ephemeral tools, built-in and plugin tools, and MCP tools. Workspace capability is checked before exposure and again at execution: a session with a null workspace cannot invoke filesystem tools, even through a retained tool handle or `full_access`. This is a capability requirement independent of permission approval. Plugin and MCP tools require a workspace by default; the owning declaration may explicitly set `requiresWorkspace: false` for directory-independent operations. It filters that set by agent visibility and session exposure, then emits two separate products:
