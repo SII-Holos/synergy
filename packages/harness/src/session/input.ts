@@ -3,7 +3,7 @@ import { ModelSelection } from "./model-selection-schema"
 import { RolloutArtifact } from "./rollout/artifact"
 import { RolloutAttachment } from "./rollout/attachment"
 import { findRecordingError, isTransientStorageError } from "./rollout/error"
-import { attachmentPreparationError, prepareManagedAttachment } from "./input-attachment"
+import { attachmentPreparationError, prepareManagedAttachment, shouldExtractAttachmentText } from "./input-attachment"
 import path from "path"
 import { pathToFileURL } from "url"
 import fs from "fs/promises"
@@ -335,7 +335,7 @@ async function materializeUserMessage(
           if (causal && part.artifact) await RolloutLedger.attachInput(causal.owner, causal.runID, part.artifact)
           // before checking the protocol we check if this is an mcp resource because it needs special handling
           if (part.source?.type === "resource") {
-            if (part.model)
+            if (!shouldExtractAttachmentText(part))
               return [
                 {
                   ...part,
@@ -404,7 +404,7 @@ async function materializeUserMessage(
             return pieces
           }
           const url = new URL(part.url)
-          if (url.protocol === "data:" || source?.managed || (source && part.model)) {
+          if (url.protocol === "data:" || source?.managed || (source && !shouldExtractAttachmentText(part))) {
             if (source && !source.managed) FileTime.read(input.sessionID, source.filepath)
             return await prepareManagedAttachment(
               { ...part, id: part.id ?? Identifier.ascending("part"), sessionID: input.sessionID, messageID: info.id },

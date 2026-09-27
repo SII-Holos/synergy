@@ -13,6 +13,10 @@ export const AttachmentPreparationError = NamedError.create(
   z.object({ filename: z.string(), message: z.string() }),
 )
 
+export function shouldExtractAttachmentText(part: Pick<MessageV2.AttachmentPart, "model">) {
+  return !part.model || (part.model.mode === "content" && part.model.text === undefined)
+}
+
 export function attachmentPreparationError(part: { filename?: string }, cause: unknown): unknown {
   if (
     findRecordingError(cause) ||
@@ -50,7 +54,7 @@ export async function prepareManagedAttachment(
     ...(await Attachment.fromBytes({ ...part, bytes, localPath })),
     artifact: part.artifact,
   }
-  if (part.model) return [attachment]
+  if (!shouldExtractAttachmentText(part)) return [attachment]
   const policy = Attachment.policy({ filename: part.filename, filepath: localPath, mime: part.mime })
   const text = Attachment.isText(part.mime)
     ? new TextDecoder("utf-8", { fatal: true }).decode(bytes)

@@ -30,6 +30,27 @@ const fixtures = [
   { filename: "trace.bin", mime: "application/octet-stream", bytes: Buffer.from([0, 1, 2, 255]) },
 ]
 
+test("content policy without embedded text still extracts uploaded and inline text", () =>
+  runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const bytes = Buffer.from("CONTENT_TO_EXTRACT")
+        const id = await Asset.write(bytes, "text/plain", "notes.txt")
+        for (const url of [`asset://${id}`, `data:text/plain;base64,${bytes.toString("base64")}`]) {
+          const session = await Session.create({ workspace: null })
+          const message = await createUserMessage({
+            sessionID: session.id,
+            model,
+            parts: [{ type: "attachment", url, filename: "notes.txt", mime: "text/plain", model: { mode: "content" } }],
+          })
+          expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("CONTENT_TO_EXTRACT")
+        }
+      },
+    }),
+  ))
+
 test("explicit text attachment policies never create an extra extracted body", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()

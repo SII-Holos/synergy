@@ -1,10 +1,12 @@
 import { afterAll, expect, test } from "bun:test"
+import { pathToFileURL } from "node:url"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionInputStatus } from "@ericsanchezok/synergy-harness/session/input-status"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { createUserMessage } from "@ericsanchezok/synergy-harness/session/input"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -75,6 +77,39 @@ async function withProvider(body: (requests: RequestBody[]) => Promise<void>) {
     await server.stop(true)
   }
 }
+
+test("workspace file content policy preserves native selected-line reading", () =>
+  runtime.run(() =>
+    withProvider(async () => {
+      const session = await Session.create({ title: "Native file selection" })
+      expect(session.workspace).not.toBeNull()
+      await ScopeContext.provide({
+        scope: session.scope,
+        workspace: session.workspace,
+        fn: async () => {
+          const filepath = `${ScopeContext.current.directory}/selected.txt`
+          await Bun.write(filepath, "BEFORE_SELECTION\nSELECTED_CONTENT\nSELECTED_MORE\nAFTER_SELECTION\n")
+          const message = await createUserMessage({
+            sessionID: session.id,
+            model,
+            parts: [
+              {
+                type: "attachment",
+                url: pathToFileURL(filepath).href + "?start=2&end=3",
+                mime: "text/plain",
+                filename: "selected.txt",
+                model: { mode: "content" },
+              },
+            ],
+          })
+          const projected = JSON.stringify(MessageV2.toModelMessage([message]))
+          expect(projected).toContain("SELECTED_CONTENT")
+          expect(projected).not.toContain("BEFORE_SELECTION")
+          expect(projected).not.toContain("AFTER_SELECTION")
+        },
+      })
+    }),
+  ))
 
 test(
   "a failed uploaded task does not block the next task or contaminate its provider request",
