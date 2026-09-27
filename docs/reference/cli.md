@@ -329,6 +329,14 @@ export a session transcript or self-contained rollout ZIP
 | `--run` (string) | root run ID to include in the rollout |
 | `--output` (string) | destination file (required for rollout ZIP) |
 
+## export <workspaceID> <output>
+
+export the observed saved files; does not include unsaved live changes
+
+| Option | Description |
+| --- | --- |
+| `--revision` (number) | observed Workspace revision |
+
 ## file
 
 file system debugging utilities
@@ -353,6 +361,14 @@ manage Holos identity and runtime
 
 import a session transcript or rollout ZIP
 
+
+## import <file> <profile>
+
+verify an archive and publish its files as a new Workspace
+
+| Option | Description |
+| --- | --- |
+| `--name` (string) | display name for the imported Workspace |
 
 ## import <source>
 
@@ -661,6 +677,15 @@ reconcile an existing operation and retry saving its result
 
 reconcile an existing Workspace mutation without replaying effects
 
+
+## recover-saved <workspaceID> <profile>
+
+copy the saved version to a new Workspace; retain unknown work on the original
+
+| Option | Description |
+| --- | --- |
+| `--name` (string) | display name for the recovered Workspace |
+| `--revision` (number) | observed source Workspace revision |
 
 ## reencode
 

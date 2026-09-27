@@ -16613,6 +16613,341 @@
         ]
       }
     },
+    "/workspace/{workspaceID}/export": {
+      "get": {
+        "operationId": "workspace.exportSaved",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "expectedRevision",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Export the observed saved Workspace version without live authority",
+        "responses": {
+          "200": {
+            "description": "Versioned Workspace archive",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.exportSaved({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/import": {
+      "post": {
+        "operationId": "workspace.importSaved",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        ],
+        "summary": "Import saved files as a new Workspace in a chosen storage profile",
+        "responses": {
+          "200": {
+            "description": "Imported Workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "contentEncoding": "binary"
+                  }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.importSaved({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/recover-saved": {
+      "post": {
+        "operationId": "workspace.recoverSaved",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Copy the last saved files into a new Workspace without clearing unknown live work",
+        "responses": {
+          "200": {
+            "description": "New Workspace from saved content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "profile": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": ["expectedRevision", "profile"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.recoverSaved({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/workspace/objects": {
       "post": {
         "operationId": "workspace.createObjects",
@@ -60778,51 +61113,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.provider.auth.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "provider.auth.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "health": {
-                "$ref": "#/components/schemas/ProviderAuthHealth"
-              }
-            },
-            "required": ["health"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.installation.updated": {
         "type": "object",
         "properties": {
@@ -60980,6 +61270,51 @@
               }
             },
             "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.provider.auth.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "provider.auth.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "health": {
+                "$ref": "#/components/schemas/ProviderAuthHealth"
+              }
+            },
+            "required": ["health"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -62646,12 +62981,6 @@
             "$ref": "#/components/schemas/Event.environment.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.provider.auth.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.installation.updated"
           },
           {
@@ -62674,6 +63003,12 @@
           },
           {
             "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.provider.auth.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.permission.asked"

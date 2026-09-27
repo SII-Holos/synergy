@@ -73,6 +73,8 @@ synergy workspace create files --name Research --attach http://localhost:4096 --
 synergy environment create worker --request-id research-compute --attach http://localhost:4096 --scope home
 ```
 
+Saved files can be moved with `workspace export <workspace-id> <new-file> --revision <observed-revision>` and `workspace import <file> <destination-profile>`. Use `workspace recover-saved <workspace-id> <profile> --revision <observed-revision>` to create a separate saved copy when a live view is unavailable. These commands do not include unsaved live changes or resolve unknown execution. All take the same explicit `--attach` and `--scope` options. See [Workspace file authority](../architecture/workspace-and-files.md).
+
 ## One-off Work with `send`
 
 ```bash

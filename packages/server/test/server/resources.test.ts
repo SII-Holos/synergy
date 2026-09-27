@@ -14,6 +14,74 @@ import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/p
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
+test("saved Workspace export and recovery publish new identities and preserve a lost live view", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await Config.updateGlobal({
+      resources: { stores: { files: { provider: "local", spec: { namespace: "archive" } } } },
+    })
+    const response = await Server.App().request("/workspace/objects?scopeID=home", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ profile: "files" }),
+    })
+    const source = WorkspaceCatalog.Info.parse(await response.json())
+    const saved = await WorkspaceContent.write(
+      { workspaceID: source.id, scopeID: "home" },
+      { path: "data.txt", data: new TextEncoder().encode("saved"), expectedVersion: null },
+    )
+    const lost: WorkspaceCatalog.Info = {
+      ...saved,
+      activeMount: {
+        id: "lost",
+        generation: 1,
+        target: { environmentID: "env_lost", allocationID: "allocation", generation: 1 },
+        path: "/files",
+        state: "unavailable",
+        readOnly: false,
+      },
+    }
+    await Storage.write(["workspace", source.id], lost)
+    const exported = await Server.App().request(
+      `/workspace/${source.id}/export?scopeID=home&expectedRevision=${saved.revision}`,
+    )
+    expect(exported.status).toBe(200)
+    const archive = await exported.arrayBuffer()
+    const form = new FormData()
+    form.set("file", new Blob([archive]), "workspace.ndjson")
+    const imported = await Server.App().request("/workspace/import?scopeID=home&profile=files&name=Imported", {
+      method: "POST",
+      body: form,
+    })
+    expect(imported.status).toBe(200)
+    const target = WorkspaceCatalog.Info.parse(await imported.json())
+    expect(await WorkspaceContent.read({ workspaceID: target.id, scopeID: "home" }, "data.txt")).toEqual(
+      new TextEncoder().encode("saved"),
+    )
+    const recovered = await Server.App().request(`/workspace/${source.id}/recover-saved?scopeID=home`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ expectedRevision: saved.revision, profile: "files" }),
+    })
+    expect(recovered.status).toBe(200)
+    const copy = WorkspaceCatalog.Info.parse(await recovered.json())
+    expect(copy.id).not.toBe(source.id)
+    expect(copy.activeMount).toBeUndefined()
+    expect(copy.metadata.recoveredFrom).toMatchObject({ workspaceID: source.id, revision: saved.revision })
+    expect(await WorkspaceCatalog.get(source.id, "home")).toEqual(lost)
+    await expect(WorkspaceContent.read({ workspaceID: source.id, scopeID: "home" }, "data.txt")).rejects.toThrow()
+    expect(await Environment.list("home")).toEqual([])
+    const invalid = new FormData()
+    invalid.set("file", new Blob(["{}\n"]), "broken.ndjson")
+    const before = await WorkspaceCatalog.list("home")
+    expect(
+      (await Server.App().request("/workspace/import?scopeID=home&profile=files", { method: "POST", body: invalid }))
+        .status,
+    ).toBe(400)
+    expect(await WorkspaceCatalog.list("home")).toEqual(before)
+  })
+})
+
 test("resource APIs select logical files and execution independently without starting compute", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {

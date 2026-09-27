@@ -790,6 +790,8 @@ import type {
   WorkspaceCreateObjectsResponses,
   WorkspaceDetachErrors,
   WorkspaceDetachResponses,
+  WorkspaceExportSavedErrors,
+  WorkspaceExportSavedResponses,
   WorkspaceFileCopyInput,
   WorkspaceFileCreateDirectoryInput,
   WorkspaceFileDeleteInput,
@@ -817,6 +819,8 @@ import type {
   WorkspaceFilesWriteErrors,
   WorkspaceFilesWriteResponses,
   WorkspaceFileWriteFileInput,
+  WorkspaceImportSavedErrors,
+  WorkspaceImportSavedResponses,
   WorkspaceListErrors,
   WorkspaceListResponses,
   WorkspaceOperationsErrors,
@@ -825,6 +829,8 @@ import type {
   WorkspaceRebindResponses,
   WorkspaceRecoverOperationErrors,
   WorkspaceRecoverOperationResponses,
+  WorkspaceRecoverSavedErrors,
+  WorkspaceRecoverSavedResponses,
   WorkspaceRegisterErrors,
   WorkspaceRegisterResponses,
   WorkspaceSetSharingErrors,
@@ -9841,6 +9847,131 @@ export class Skill extends HeyApiClient {
 }
 
 export class Workspace extends HeyApiClient {
+  /**
+   * Export the observed saved Workspace version without live authority
+   */
+  public exportSaved<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "expectedRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      WorkspaceExportSavedResponses,
+      WorkspaceExportSavedErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/{workspaceID}/export",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Import saved files as a new Workspace in a chosen storage profile
+   */
+  public importSaved<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      profile: string
+      name?: string
+      file?: Blob | File
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "profile" },
+            { in: "query", key: "name" },
+            { in: "body", key: "file" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceImportSavedResponses,
+      WorkspaceImportSavedErrors,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/workspace/import",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Copy the last saved files into a new Workspace without clearing unknown live work
+   */
+  public recoverSaved<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision?: number
+      profile?: string
+      name?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "profile" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceRecoverSavedResponses,
+      WorkspaceRecoverSavedErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/{workspaceID}/recover-saved",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Create a durable Workspace from an object-storage profile
    */

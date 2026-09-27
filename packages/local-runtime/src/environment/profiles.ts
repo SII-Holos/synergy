@@ -90,15 +90,21 @@ export namespace ResourceProfiles {
   }
 
   export async function createWorkspace(input: { scopeID: string; profile: string; name?: string }) {
-    const configured = (await config()).stores?.[input.profile]
+    return WorkspaceCatalog.create({
+      scopeID: input.scopeID,
+      ...(await workspaceDefinition(input.profile, input.name)),
+    })
+  }
+
+  export async function workspaceDefinition(name: string, displayName?: string) {
+    const configured = (await config()).stores?.[name]
     if (!configured) throw new Storage.NotFoundError({ message: "Workspace storage profile is unavailable" })
     const profile = StoreProfile.parse(configured)
     WorkspaceBlobs.get(profile.provider, profile.spec)
-    return WorkspaceCatalog.create({
-      scopeID: input.scopeID,
+    return {
       backend: { provider: "objects", spec: { blobStore: profile.provider, settings: profile.spec } },
-      metadata: { ...(input.name ? { name: input.name } : {}), profile: input.profile },
-    })
+      metadata: { ...(displayName ? { name: displayName } : {}), profile: name },
+    }
   }
 
   function configuredDocker(): EnvironmentProvider {

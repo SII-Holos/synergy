@@ -15,12 +15,20 @@ test("attached resource commands preserve Scope, preconditions and auth without 
     port: 0,
     hostname: "127.0.0.1",
     async fetch(request) {
+      const pathname = new URL(request.url).pathname
       received.push({
         path: new URL(request.url).pathname,
         scope: request.headers.get("x-synergy-scope-id"),
         auth: request.headers.get("authorization"),
-        body: request.method === "POST" ? await request.json().catch(() => null) : null,
+        body:
+          pathname === "/workspace/import"
+            ? Array.from(new Uint8Array(await ((await request.formData()).get("file") as File).arrayBuffer()))
+            : request.method === "POST"
+              ? await request.json().catch(() => null)
+              : null,
       })
+      if (pathname.endsWith("/export"))
+        return new Response(new Uint8Array([0, 255, 1]), { headers: { "content-type": "application/octet-stream" } })
       return request.url.endsWith("env_stale/release")
         ? Response.json({ name: "EnvironmentStale", data: { message: "Allocation changed" } }, { status: 409 })
         : Response.json({ accepted: true })
@@ -85,6 +93,13 @@ test("attached resource commands preserve Scope, preconditions and auth without 
     expect(JSON.parse(stale.stdout)).toEqual({
       error: { name: "EnvironmentStale", data: { message: "Allocation changed" } },
     })
+    const archive = path.join(home, "saved.ndjson")
+    const exported = await invoke(["workspace", "export", "wsp_one", archive, "--revision", "5"])
+    expect(exported.code, exported.stderr).toBe(0)
+    expect(new Uint8Array(await Bun.file(archive).arrayBuffer())).toEqual(new Uint8Array([0, 255, 1]))
+    expect((await invoke(["workspace", "export", "wsp_one", archive, "--revision", "5"])).code).toBe(1)
+    expect((await invoke(["workspace", "import", archive, "files"])).code).toBe(0)
+    expect(received.at(-1)).toMatchObject({ path: "/workspace/import", body: [0, 255, 1] })
   } finally {
     server.stop(true)
     await lock.release()

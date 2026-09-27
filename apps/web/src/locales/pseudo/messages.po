@@ -22300,6 +22300,14 @@ msgid "workspace.dialog.rebindPath"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recoverDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.recoverSaved"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr ""
 

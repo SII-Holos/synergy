@@ -2,7 +2,11 @@
 
 Local Runtime owns native filesystem subscriptions in `packages/local-runtime/src/file/watcher.ts` and declares each subscription's Scope or Workspace owner in startup. Harness owns generic Scope, storage and file contracts; importing Harness alone does not start a native watcher.
 
-Synergy keeps project ownership (`Scope`) separate from the directory in which a session executes (`workspace`). The normal workspace is the selected project directory; a session can instead bind to a Synergy-managed worktree without changing its owning Scope, config, Notes, or session index.
+Synergy keeps project ownership (`Scope`) separate from durable files (`Workspace`) and compute (`Environment`). A Session can select a native directory, managed worktree or object-backed Workspace without changing its owning Scope, config, Notes or session index.
+
+Saved object Workspace versions have a streaming NDJSON archive containing a validated manifest, deduplicated content chunks and a required completion record. Import verifies chunk and file digests before publishing a new catalog identity into an explicitly chosen storage profile. Archives carry no host paths, storage credentials, live mounts or Environment authority. Native directories use their directory and snapshot transfer mechanisms.
+
+Saved-version reads require the observed catalog revision. Recovery copies the saved head to a new Workspace and records its source; it does not clear the original mount, pending operation, execution claim or unsaved data. Web/Desktop expose the same recovery action. Transcript and rollout imports retain historical Workspace references without granting execution or storage authority. See the [resource CLI](../reference/cli-guide.md) for export, import and saved-copy recovery.
 
 The Harness Workspace catalog owns a stable ID and a versioned local binding. Sessions persist only `workspaceID`; their public `workspace` descriptor is resolved from that catalog. Multiple Sessions share the same binding, while rebinding preserves the ID and advances its generation. Execution verifies the host namespace, generation and directory identity. A missing catalog record, missing directory, or replaced directory retains its historical reference and fails execution.
 

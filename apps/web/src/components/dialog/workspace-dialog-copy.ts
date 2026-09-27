@@ -11,6 +11,12 @@ export const workspaceCopy = {
   create: { id: "workspace.dialog.create", message: "Create Workspace" },
   name: { id: "workspace.dialog.name", message: "Workspace name" },
   store: { id: "workspace.dialog.store", message: "Storage profile" },
+  recoverSaved: { id: "workspace.dialog.recoverSaved", message: "Recover saved copy" },
+  recoverDescription: {
+    id: "workspace.dialog.recoverDescription",
+    message:
+      "Create a separate Workspace from the last saved files. Unsaved changes remain on the original. Destination storage profile:",
+  },
   register: { id: "workspace.dialog.register", message: "Add directory" },
   reload: { id: "workspace.dialog.reload", message: "Reload" },
   loading: { id: "workspace.dialog.loading", message: "Loading Workspaces…" },

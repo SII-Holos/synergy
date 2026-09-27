@@ -41,6 +41,7 @@ export function DialogWorkspace(props: {
   const [stores, setStores] = createSignal<ResourceProfiles["stores"]>([])
   const [storeProfile, setStoreProfile] = createSignal("")
   const [workspaceName, setWorkspaceName] = createSignal("")
+  const [savedRevision, setSavedRevision] = createSignal<number>()
   const label = (item: WorkspaceInfo) =>
     item.binding.path ?? (typeof item.metadata.name === "string" ? item.metadata.name : item.id)
   const [search, setSearch] = createSignal("")
@@ -53,6 +54,7 @@ export function DialogWorkspace(props: {
   const available = (item: WorkspaceInfo) =>
     item.lifecycle === "active" &&
     item.binding.state === "bound" &&
+    item.activeMount?.state !== "unavailable" &&
     (item.backend?.provider === "objects" || (!!item.binding.path && !!item.binding.physicalID))
   const filtered = createMemo(() =>
     records.data.filter((item) => `${label(item)} ${item.id}`.toLowerCase().includes(search().toLowerCase())),
@@ -64,7 +66,7 @@ export function DialogWorkspace(props: {
   const options = { signal: controller.signal, throwOnError: true as const }
   onCleanup(() => controller.abort())
   createEffect(() => {
-    if (sdk.scopeID !== scopeID) dialog.close()
+    if (sdk.scopeID !== scopeID || sdk.client !== client) dialog.close()
   })
 
   function upsert(item: WorkspaceInfo) {
@@ -78,6 +80,7 @@ export function DialogWorkspace(props: {
     const item = records.data.find((record) => record.id === id)
     setSharing([...(item?.sharedWritableWorkspaceIDs ?? [])])
     setSharingRevision(item?.revision)
+    setSavedRevision(item?.revision)
     setBindingPath("")
     setBindingRevision(undefined)
     setError("")
@@ -103,22 +106,16 @@ export function DialogWorkspace(props: {
       const result = await client.workspace.list({ scopeID }, options)
       for (const item of result.data) upsert(item)
       if (!controller.signal.aborted) select(selected())
+      const profiles = await client.environment.profiles({ scopeID }, options)
+      if (!controller.signal.aborted) {
+        setStores(profiles.data.stores)
+        if (!profiles.data.stores.some((item) => item.name === storeProfile()))
+          setStoreProfile(profiles.data.stores[0]?.name ?? "")
+      }
     })
     if (!controller.signal.aborted) setLoading(false)
   }
-  onMount(() => {
-    void reload()
-    void client.environment
-      .profiles({ scopeID }, options)
-      .then((result) => {
-        if (controller.signal.aborted) return
-        setStores(result.data.stores)
-        setStoreProfile(result.data.stores[0]?.name ?? "")
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setError(requestErrorMessage(error, _(copy.failed)))
-      })
-  })
+  onMount(() => void reload())
   onCleanup(sdk.event.on("workspace.updated", (event) => upsert(structuredClone(event.properties))))
 
   async function pick() {
@@ -153,6 +150,24 @@ export function DialogWorkspace(props: {
       if (!current || expectedRevision === undefined) return
       const result = await client.workspace.setSharing(
         { scopeID, workspaceID: current.id, expectedRevision, workspaceIDs: sharing() },
+        options,
+      )
+      upsert(result.data)
+      if (!controller.signal.aborted) select(result.data.id)
+    })
+  const recoverSaved = () =>
+    perform(async () => {
+      const current = record()
+      const expectedRevision = savedRevision()
+      if (!current || expectedRevision === undefined || !storeProfile()) return
+      const result = await client.workspace.recoverSaved(
+        {
+          scopeID,
+          workspaceID: current.id,
+          expectedRevision,
+          profile: storeProfile(),
+          name: workspaceName().trim() || undefined,
+        },
         options,
       )
       upsert(result.data)
@@ -266,6 +281,23 @@ export function DialogWorkspace(props: {
         <Show when={record()}>
           {(current) => (
             <>
+              <Show
+                when={
+                  current().backend?.provider === "objects" && current().binding.state === "bound" && stores().length
+                }
+              >
+                <div class="flex flex-col gap-2">
+                  <p class="text-small text-text-weak">
+                    {_(copy.recoverDescription)} {storeProfile()}
+                  </p>
+                  <Button
+                    onClick={recoverSaved}
+                    disabled={pending() || savedRevision() === undefined || !storeProfile()}
+                  >
+                    {_(copy.recoverSaved)}
+                  </Button>
+                </div>
+              </Show>
               <Show when={available(current())}>
                 <fieldset class="flex flex-col gap-2" disabled={pending()}>
                   <legend class="text-base font-medium">{_(copy.sharing)}</legend>

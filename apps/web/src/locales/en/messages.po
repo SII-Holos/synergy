@@ -22300,6 +22300,14 @@ msgid "workspace.dialog.rebindPath"
 msgstr "New local directory"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recoverDescription"
+msgstr "Create a separate Workspace from the last saved files. Unsaved changes remain on the original. Destination storage profile:"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.recoverSaved"
+msgstr "Recover saved copy"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "Add directory"
 

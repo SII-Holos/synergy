@@ -1,4 +1,6 @@
 import { z } from "zod"
+import fs from "node:fs/promises"
+import { randomUUID } from "node:crypto"
 import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { createSynergyClient, type SynergyClientInstance } from "@ericsanchezok/synergy-sdk/client"
 
@@ -125,14 +127,12 @@ export const EnvironmentReleaseCommand = cmd({
   command: "release <environmentID>",
   describe: "save mounted files and release idle compute",
   builder: (yargs) =>
-    yargs
-      .positional("environmentID", { ...identifier, describe: "Environment ID" })
-      .option("generation", {
-        type: "number",
-        demandOption: true,
-        describe: "observed allocation generation",
-        coerce: positive,
-      }),
+    yargs.positional("environmentID", { ...identifier, describe: "Environment ID" }).option("generation", {
+      type: "number",
+      demandOption: true,
+      describe: "observed allocation generation",
+      coerce: positive,
+    }),
   handler: (args) =>
     request(args, (client) =>
       client.environment.release({ environmentID: args.environmentID, expectedGeneration: args.generation }),
@@ -189,6 +189,9 @@ export const WorkspaceCommand = cmd({
       .command(WorkspaceDetachCommand)
       .command(WorkspaceOperationsCommand)
       .command(WorkspaceRecoverCommand)
+      .command(WorkspaceExportCommand)
+      .command(WorkspaceImportCommand)
+      .command(WorkspaceRecoverSavedCommand)
       .demandCommand(),
   async handler() {},
 })
@@ -246,14 +249,12 @@ export const WorkspaceDetachCommand = cmd({
   command: "detach <workspaceID>",
   describe: "save and detach an idle Workspace view",
   builder: (yargs) =>
-    yargs
-      .positional("workspaceID", { ...identifier, describe: "Workspace ID" })
-      .option("revision", {
-        type: "number",
-        demandOption: true,
-        describe: "observed Workspace revision",
-        coerce: positive,
-      }),
+    yargs.positional("workspaceID", { ...identifier, describe: "Workspace ID" }).option("revision", {
+      type: "number",
+      demandOption: true,
+      describe: "observed Workspace revision",
+      coerce: positive,
+    }),
   handler: (args) =>
     request(args, (client) =>
       client.workspace.detach({ workspaceID: args.workspaceID, expectedRevision: args.revision }),
@@ -275,5 +276,96 @@ export const WorkspaceRecoverCommand = cmd({
   handler: (args) =>
     request(args, (client) =>
       client.workspace.recoverOperation({ workspaceID: args.workspaceID, operationID: args.operationID }),
+    ),
+})
+
+export const WorkspaceExportCommand = cmd({
+  command: "export <workspaceID> <output>",
+  describe: "export the observed saved files; does not include unsaved live changes",
+  builder: (yargs) =>
+    yargs
+      .positional("workspaceID", { ...identifier, describe: "Workspace ID" })
+      .positional("output", { ...identifier, describe: "new local archive file (must not exist)" })
+      .option("revision", {
+        type: "number",
+        demandOption: true,
+        describe: "observed Workspace revision",
+        coerce: positive,
+      }),
+  handler: (args) =>
+    request(args, async (client) => {
+      const result = await client.workspace.exportSaved(
+        { workspaceID: args.workspaceID, expectedRevision: args.revision },
+        { parseAs: "stream" },
+      )
+      if (result.error) return result
+      if (!(result.data instanceof ReadableStream)) throw new Error("Archive stream is unavailable")
+      const temporary = args.output + "." + randomUUID() + ".partial"
+      const file = await fs.open(temporary, "wx", 0o600)
+      try {
+        await result.data.pipeTo(
+          new WritableStream<Uint8Array>({
+            async write(bytes) {
+              for (let offset = 0; offset < bytes.length; ) {
+                const { bytesWritten } = await file.write(bytes, offset, bytes.length - offset)
+                if (!bytesWritten) throw new Error("Archive write made no progress")
+                offset += bytesWritten
+              }
+            },
+          }),
+        )
+        await file.sync()
+        await fs.link(temporary, args.output)
+        return { data: { output: args.output } }
+      } catch {
+        return {
+          error: {
+            name: "ArchiveExportIncomplete",
+            data: {
+              message: "Export did not complete; use a new writable output path and verify the server's saved version.",
+            },
+          },
+        }
+      } finally {
+        await file.close()
+        await fs.unlink(temporary)
+      }
+    }),
+})
+export const WorkspaceImportCommand = cmd({
+  command: "import <file> <profile>",
+  describe: "verify an archive and publish its files as a new Workspace",
+  builder: (yargs) =>
+    yargs
+      .positional("file", { ...identifier, describe: "local Workspace archive file" })
+      .positional("profile", { ...identifier, describe: "destination storage profile on the server" })
+      .option("name", { type: "string", describe: "display name for the imported Workspace" }),
+  handler: (args) =>
+    request(args, (client) =>
+      client.workspace.importSaved({ profile: args.profile, name: args.name, file: Bun.file(args.file) }),
+    ),
+})
+export const WorkspaceRecoverSavedCommand = cmd({
+  command: "recover-saved <workspaceID> <profile>",
+  describe: "copy the saved version to a new Workspace; retain unknown work on the original",
+  builder: (yargs) =>
+    yargs
+      .positional("workspaceID", { ...identifier, describe: "source Workspace ID" })
+      .positional("profile", { ...identifier, describe: "destination storage profile" })
+      .option("name", { type: "string", describe: "display name for the recovered Workspace" })
+      .option("revision", {
+        type: "number",
+        demandOption: true,
+        describe: "observed source Workspace revision",
+        coerce: positive,
+      }),
+  handler: (args) =>
+    request(args, (client) =>
+      client.workspace.recoverSaved({
+        workspaceID: args.workspaceID,
+        expectedRevision: args.revision,
+        profile: args.profile,
+        name: args.name,
+      }),
     ),
 })

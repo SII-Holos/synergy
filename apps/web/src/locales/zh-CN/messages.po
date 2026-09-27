@@ -22300,6 +22300,14 @@ msgid "workspace.dialog.rebindPath"
 msgstr "新的本地目录"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.recoverDescription"
+msgstr "从上次保存的文件创建一个独立工作区。未保存的更改仍保留在原工作区。目标存储配置："
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.recoverSaved"
+msgstr "恢复已保存副本"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.register"
 msgstr "添加目录"
 

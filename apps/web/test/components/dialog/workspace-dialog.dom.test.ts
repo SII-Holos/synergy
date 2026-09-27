@@ -28,6 +28,7 @@ beforeAll(async () => {
     export const useSDK=()=>({scopeID:"scope",client:{environment:{async profiles(){return {data:{defaultEnvironment:"native",environments:[],stores:[{name:"local",provider:"local"}]}}}},workspace:{
       async createObjects(input){requests.push({kind:"objects",...input});const next={...record("wsp_created",null),type:"objects",backend:{provider:"objects",spec:{}},metadata:{name:input.name}}; rows.push(next);return {data:next}},
       async list(){return {data:structuredClone(rows)}},
+      async recoverSaved(input){requests.push({kind:"recover-saved",...input});if(h.fail)throw new Error("Workspace changed before recovery");const next={...rows.find(row=>row.id===input.workspaceID),id:"wsp_recovered",activeMount:undefined,metadata:{name:"Recovered"}};rows.push(next);return {data:next}},
       async register(input){requests.push({kind:"register",...input});const next=record("wsp_new",input.path);rows.push(next);return {data:next}},
       async setSharing(input){requests.push({kind:"share",...input});if(h.fail)throw new Error("Workspace changed before sharing");const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.sharedWritableWorkspaceIDs=input.workspaceIDs;return {data:structuredClone(row)}},
       async rebind(input){requests.push({kind:"rebind",...input});const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.binding={...row.binding,state:"bound",path:input.path,physicalID:"physical:"+row.id,generation:row.binding.generation+1};return {data:structuredClone(row)}}},
@@ -120,6 +121,34 @@ test("selecting a Workspace preserves Scope and reports busy failures without di
     sessionID: "session",
     sessionWorkspaceSelection: { mode: "workspace", workspaceID: "wsp_b", workspaceGeneration: 1 },
   })
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("lost file views recover a separate saved copy with the observed revision", async () => {
+  await open()
+  await page.evaluate(
+    "window.fixture.rows[4].activeMount={state:'unavailable'};window.fixture.emit(window.fixture.rows[4])",
+  )
+  await page
+    .getByRole("button", { name: /Research/ })
+    .first()
+    .click()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
+  await page.evaluate("window.fixture.emit({...window.fixture.rows[4],revision:2});window.fixture.fail=true")
+  await page.getByRole("button", { name: "Recover saved copy", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "recover-saved",
+    workspaceID: "wsp_objects",
+    expectedRevision: 1,
+    profile: "local",
+  })
+  await page.evaluate("window.fixture.fail=false")
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Recover saved copy", exact: true }).click()
+  await page.getByRole("button", { name: "Recovered", exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
+  expect(await page.evaluate("window.fixture.rows[4].activeMount.state")).toBe("unavailable")
   expect(errors).toEqual([])
 }, 20_000)
 

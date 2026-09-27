@@ -10770,21 +10770,6 @@ export type EventEnvironmentUpdated = {
   properties: EnvironmentInfo
 }
 
-export type EventProviderAuthUpdated = {
-  type: "provider.auth.updated"
-  properties: {
-    health: ProviderAuthHealth
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
-  }
-}
-
 export type EventInstallationUpdated = {
   type: "installation.updated"
   properties: {
@@ -10841,6 +10826,21 @@ export type EventScopeRemoved = {
   properties: {
     id: string
     directory?: string
+  }
+}
+
+export type EventProviderAuthUpdated = {
+  type: "provider.auth.updated"
+  properties: {
+    health: ProviderAuthHealth
+  }
+}
+
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
   }
 }
 
@@ -11426,8 +11426,6 @@ export type Event =
   | EventScopeRuntimeDisposed
   | EventWorkspaceUpdated
   | EventEnvironmentUpdated
-  | EventProviderAuthUpdated
-  | EventConfigUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventMessageUpdated
@@ -11436,6 +11434,8 @@ export type Event =
   | EventMessagePartRemoved
   | EventScopeUpdated
   | EventScopeRemoved
+  | EventProviderAuthUpdated
+  | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
   | EventSessionInputProgress
@@ -19320,6 +19320,141 @@ export type WorkspaceFilesRemoveResponses = {
 }
 
 export type WorkspaceFilesRemoveResponse = WorkspaceFilesRemoveResponses[keyof WorkspaceFilesRemoveResponses]
+
+export type WorkspaceExportSavedData = {
+  body?: never
+  path: {
+    workspaceID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    expectedRevision: number
+  }
+  url: "/workspace/{workspaceID}/export"
+}
+
+export type WorkspaceExportSavedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceExportSavedError = WorkspaceExportSavedErrors[keyof WorkspaceExportSavedErrors]
+
+export type WorkspaceExportSavedResponses = {
+  /**
+   * Versioned Workspace archive
+   */
+  200: Blob | File
+}
+
+export type WorkspaceExportSavedResponse = WorkspaceExportSavedResponses[keyof WorkspaceExportSavedResponses]
+
+export type WorkspaceImportSavedData = {
+  body?: {
+    file: Blob | File
+  }
+  path?: never
+  query: {
+    directory?: string
+    scopeID?: string
+    profile: string
+    name?: string
+  }
+  url: "/workspace/import"
+}
+
+export type WorkspaceImportSavedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceImportSavedError = WorkspaceImportSavedErrors[keyof WorkspaceImportSavedErrors]
+
+export type WorkspaceImportSavedResponses = {
+  /**
+   * Imported Workspace
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceImportSavedResponse = WorkspaceImportSavedResponses[keyof WorkspaceImportSavedResponses]
+
+export type WorkspaceRecoverSavedData = {
+  body?: {
+    expectedRevision: number
+    profile: string
+    name?: string
+  }
+  path: {
+    workspaceID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workspace/{workspaceID}/recover-saved"
+}
+
+export type WorkspaceRecoverSavedErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type WorkspaceRecoverSavedError = WorkspaceRecoverSavedErrors[keyof WorkspaceRecoverSavedErrors]
+
+export type WorkspaceRecoverSavedResponses = {
+  /**
+   * New Workspace from saved content
+   */
+  200: WorkspaceInfo
+}
+
+export type WorkspaceRecoverSavedResponse = WorkspaceRecoverSavedResponses[keyof WorkspaceRecoverSavedResponses]
 
 export type WorkspaceCreateObjectsData = {
   body?: {
