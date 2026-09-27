@@ -2,6 +2,8 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+// Keep the production dependency loaded, as it is after other native suites in a coverage batch.
+import "../../src/process/native-pty"
 
 const owner = path.resolve(import.meta.dir, "../..")
 const cases = [
@@ -52,15 +54,33 @@ const cases = [
 for (const example of cases) {
   test(`native library build and loading select ${example.name}`, async () => {
     await using directory = await tmpdir()
-    const compiled = await Bun.build({
-      entrypoints: ["src/process/native-pty.ts", "script/build-pty.ts"].map((source) => path.join(owner, source)),
-      root: owner,
-      outdir: directory.path,
-      naming: "[dir]/[name].js",
-      target: "bun",
-      define: "override" in example ? { SYNERGY_LIBC: JSON.stringify(example.override) } : {},
-    })
-    expect(compiled.success, compiled.logs.map(String).join("\n")).toBe(true)
+    const compiler = Bun.spawn(
+      [
+        process.execPath,
+        "build",
+        "src/process/native-pty.ts",
+        "script/build-pty.ts",
+        "--root",
+        owner,
+        "--outdir",
+        directory.path,
+        "--entry-naming=[dir]/[name].js",
+        "--target=bun",
+        ...("override" in example ? ["--define", `SYNERGY_LIBC=${JSON.stringify(example.override)}`] : []),
+      ],
+      { cwd: owner, stdout: "pipe", stderr: "pipe" },
+    )
+    try {
+      const [code, output, error] = await Promise.all([
+        compiler.exited,
+        new Response(compiler.stdout).text(),
+        new Response(compiler.stderr).text(),
+      ])
+      expect(code, `${output}\n${error}`).toBe(0)
+    } finally {
+      if (compiler.exitCode === null) compiler.kill("SIGKILL")
+      await compiler.exited
+    }
     const names = ["Cargo.toml", "Cargo.lock", "src/lib.rs"]
     for (const name of names) {
       const target = path.join(directory.path, "src/process/native-pty", name)
