@@ -15,7 +15,7 @@ export namespace FileView {
   export const native = EnvironmentResources.localFiles
 
   export function directory() {
-    if (native()) return ScopeContext.current.directory
+    if (native()) return EnvironmentResources.current()?.directory ?? ScopeContext.current.directory
     return EnvironmentResources.current()?.directory ?? ""
   }
 
@@ -27,7 +27,12 @@ export namespace FileView {
     const api = paths()
     if (native()) {
       const absolute = resolve(filename)
-      return path.relative(ScopeContext.tryWorkspace()?.path ?? path.dirname(absolute), absolute).replaceAll("\\", "/")
+      return path
+        .relative(
+          EnvironmentResources.current()?.directory ?? ScopeContext.tryWorkspace()?.path ?? path.dirname(absolute),
+          absolute,
+        )
+        .replaceAll("\\", "/")
     }
     const root = directory()
     const candidate = root && api.isAbsolute(filename) ? api.relative(root, filename) : filename
@@ -41,6 +46,23 @@ export namespace FileView {
     return directory() ? paths().join(directory(), name) : name
   }
 
+  export function dirname(filename: string) {
+    return resolve(paths().dirname(filename))
+  }
+
+  export async function canonical(filename: string, follow = true) {
+    if (native())
+      return follow ? NativeFileMutation.canonical(resolve(filename)) : NativeFileEntry.canonical(resolve(filename))
+    const info = await selected()
+    const name = relative(filename)
+    if (info.activeMount)
+      return resolve(
+        await (await WorkspaceMounts.connect(info)).canonical(WorkspaceMounts.reference(info), name, follow),
+      )
+    const { store } = await WorkspaceContent.resolve(selection(info))
+    return resolve(WorkspaceTree.resolve(await WorkspaceContent.manifest(info, store), name, follow).path)
+  }
+
   export function display(filename: string) {
     const rel = relative(filename)
     return rel && !rel.startsWith("..") ? rel : filename
@@ -50,6 +72,11 @@ export namespace FileView {
     const selected = EnvironmentResources.current()?.workspace
     if (!selected) throw new Error("File operation requires a selected Workspace")
     const latest = await WorkspaceCatalog.get(selected.id, selected.scopeID)
+    if (latest.lifecycle !== "active" || latest.binding.state !== "bound")
+      throw new WorkspaceCatalog.Unavailable({
+        workspaceID: selected.id,
+        message: "Workspace has no active storage authority",
+      })
     if (latest.binding.generation !== selected.binding.generation)
       throw new WorkspaceCatalog.BindingChanged({ workspaceID: selected.id, message: "Workspace binding changed" })
     if (
@@ -70,7 +97,6 @@ export namespace FileView {
         follow ? await NativeFileMutation.canonical(resolve(filename)) : resolve(filename),
       )
       if (!entry) return
-      if (entry.type === "unknown") throw new Error("Special filesystem entries are unavailable")
       return {
         path: relative(filename),
         entryVersion: entry.version,
@@ -180,6 +206,7 @@ export namespace FileView {
     data: Uint8Array,
     expectedVersion: string | null,
     signal?: AbortSignal,
+    protectSensitive?: boolean,
   ) {
     signal?.throwIfAborted()
     const info = await selected()
@@ -191,6 +218,7 @@ export namespace FileView {
       data,
       expectedVersion,
       signal,
+      protectSensitive,
     })
     return {
       mtime: Date.now(),
@@ -200,9 +228,15 @@ export namespace FileView {
     }
   }
 
-  export async function mutate(change: WorkspaceProtocol.Change, signal?: AbortSignal) {
+  export async function mutate(change: WorkspaceProtocol.Change, signal?: AbortSignal, protectSensitive?: boolean) {
     const info = await selected()
-    await WorkspaceOperations.mutate({ ...selection(info), id: EnvironmentResources.nextOperationID(), change, signal })
+    await WorkspaceOperations.mutate({
+      ...selection(info),
+      id: EnvironmentResources.nextOperationID(),
+      change,
+      signal,
+      protectSensitive,
+    })
   }
 
   export function file(filename: string) {

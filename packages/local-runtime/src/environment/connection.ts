@@ -1,3 +1,4 @@
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 import type { EnvironmentSchema } from "@ericsanchezok/synergy-harness/environment/schema"
 
 export interface ExecutorConnection {
@@ -32,11 +33,32 @@ export class ExecutionConnection {
     if (response.status === 404) return undefined
     if (!response.ok) {
       const reader = response.body?.getReader()
-      const first = await reader?.read()
-      await reader?.cancel()
-      throw new Error(
-        `Executor request failed (${response.status}): ${first?.value ? new TextDecoder().decode(first.value.subarray(0, 1024)) : ""}`,
+      const chunks: Uint8Array[] = []
+      let length = 0
+      try {
+        for (;;) {
+          const part = await reader?.read()
+          if (!part || part.done) break
+          length += part.value.length
+          if (length > 8 * 1024 * 1024) throw new Error("Executor error response exceeds its size limit")
+          chunks.push(part.value)
+        }
+      } finally {
+        await reader?.cancel()
+      }
+      const message = Buffer.concat(chunks, length).toString()
+      const body: unknown = (() => {
+        try {
+          return JSON.parse(message)
+        } catch {
+          return undefined
+        }
+      })()
+      const failure = WorkspaceErrors.Failure.safeParse(
+        body && typeof body === "object" && "failure" in body ? body.failure : undefined,
       )
+      if (failure.success) throw WorkspaceErrors.restore(failure.data)
+      throw new Error(`Executor request failed (${response.status}): ${message.slice(0, 1024)}`)
     }
     return response
   }

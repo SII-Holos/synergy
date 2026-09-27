@@ -24,6 +24,8 @@ Mounted file writes use the same intent-before-dispatch ordering. Their core ope
 
 Directory creation, copy, move and removal use the same operation record and checkpoint acknowledgement. The file host records completed mutation effects before capturing the tree, so an interrupted capture retries saving without changing files again. Uncertain partial effects retain ownership. Dormant object operations upload immutable data before publishing their content head and completed operation record in one SQL transaction; they allocate no execution resources. Entry versions fence tree mutations, and destination publication never overwrites an existing entry.
 
+The file workbench resolves physical aliases at the execution host and carries protected-path enforcement into the admitted mutation. Controller preflight alone cannot protect a directory whose descendants change before admission. A known pre-effect rejection releases its durable use immediately and preserves its structured failure for identical retries. Transport errors without a confirmed rejection retain the original recovery rules.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

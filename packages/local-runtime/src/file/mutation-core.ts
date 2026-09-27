@@ -4,6 +4,7 @@ import { constants } from "node:fs"
 import path from "node:path"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { retry } from "@ericsanchezok/synergy-util/retry"
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 import { FileCoordination } from "./coordination"
 import { FileOwnership } from "./ownership"
 
@@ -11,12 +12,7 @@ export namespace NativeFileMutation {
   export async function readText(input: string): Promise<string> {
     return new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(await fs.readFile(input))
   }
-  export class ConflictError extends Error {
-    override name = "WorkspaceFileWriteConflictError"
-    constructor() {
-      super("File changed on disk; read it again before writing")
-    }
-  }
+  export const ConflictError = WorkspaceErrors.ConflictError
   export const AccessDeniedError = FileCoordination.AccessDeniedError
   export const canonical = FileCoordination.canonical
   export const lockDirectory = FileCoordination.lockDirectory
@@ -59,6 +55,7 @@ export namespace NativeFileMutation {
       expectedVersion?: string | null
       createParents?: boolean
       signal?: AbortSignal
+      start?: () => Promise<void>
       owner?: FileOwnership.Owner
       validate?(target: string): Promise<void>
     },
@@ -72,6 +69,7 @@ export namespace NativeFileMutation {
       if (input.expectedVersion !== undefined && input.expectedVersion !== (before?.version ?? null))
         throw new ConflictError()
       if (before && (before.mode & 0o222) === 0) throw new AccessDeniedError("Access denied: file is read-only")
+      await input.start?.()
       const parent = path.dirname(target)
       if (input.createParents) await FileOwnership.mkdir(parent, { owner: input.owner })
       const parentBefore = await fs.stat(parent, { bigint: true })

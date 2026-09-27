@@ -8506,6 +8506,7 @@ export type WorkspaceFileSearchResponse = {
 }
 
 export type WorkspaceFileStatusSummary = {
+  capability?: WorkspaceSearchCapability
   files: Array<{
     path: string
     status: "added" | "deleted" | "modified" | "renamed" | "untracked"

@@ -8,22 +8,12 @@ import { NativeFileMutation as FileMutation } from "./mutation-core"
 import { FileRename } from "./rename"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileLink } from "./link"
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 import { FileOwnership } from "./ownership"
 
 export namespace NativeFileEntry {
-  export class PartialError extends Error {
-    override name = "WorkspaceFilePartialMutationError"
-    constructor(
-      message: string,
-      readonly completed: string[],
-      options?: ErrorOptions,
-    ) {
-      super(message, options)
-    }
-  }
-  export class LimitError extends Error {
-    override name = "WorkspaceFileTooLargeError"
-  }
+  export const PartialError = WorkspaceErrors.PartialError
+  export const LimitError = WorkspaceErrors.LimitError
   export type Validation = (target: string, operation: "read" | "write") => Promise<void>
   export interface Options {
     signal?: AbortSignal

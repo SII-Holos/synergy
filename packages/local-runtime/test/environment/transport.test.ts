@@ -7,6 +7,7 @@ import { ExecutionHost } from "../../src/environment/host"
 import { RemoteExecutor } from "../../src/environment/remote-executor"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { z } from "zod"
+import { NativeFileMutation } from "../../src/file/mutation-core"
 
 const Socket = WebSocket as unknown as { new (url: URL, options: Bun.WebSocketOptions): WebSocket }
 
@@ -31,6 +32,18 @@ test("authenticated execution transport uses the native handler and replays outp
   expect(description.platform).toBe(process.platform)
   expect(description.env).not.toHaveProperty("SYNERGY_EXECUTION_TOKEN")
   expect((await fetch(new URL("/v1/status", host.url))).status).toBe(401)
+  const mount = await remote.files.mount({
+    id: "files",
+    workspaceID: "workspace",
+    generation: 1,
+    readOnly: false,
+    source: { kind: "directory", path: tmp.path },
+  })
+  await remote.files.write({ id: "write-file", mount, path: "file", data: "b25jZQ==", expectedVersion: null })
+  await remote.files.acknowledge("write-file")
+  await expect(
+    remote.files.write({ id: "conflicting-file", mount, path: "file", data: "dHdpY2U=", expectedVersion: null }),
+  ).rejects.toBeInstanceOf(NativeFileMutation.ConflictError)
   const wrong = new RemoteExecutor({
     url: host.url,
     target: { ...target, generation: 2 },

@@ -8,6 +8,7 @@
     "./environment/process": "./src/environment/process.ts",
     "./workspace/operations": "./src/workspace/operations.ts",
     "./workspace/tree": "./src/workspace/tree.ts",
+    "./workspace/errors": "./src/workspace/errors.ts",
     "./workspace/protocol": "./src/workspace/protocol.ts",
     "./workspace/mount": "./src/workspace/mount.ts",
     "./workspace/content": "./src/workspace/content.ts",

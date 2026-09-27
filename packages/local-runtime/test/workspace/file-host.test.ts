@@ -117,6 +117,15 @@ test("file view metadata and bounded ranges refer to the same content version", 
   ).rejects.toThrow("changed")
   await fs.symlink(tmp.path, path.join(root, "escape"))
   await expect(host.stat(mount, "escape/file")).rejects.toThrow("escapes")
+  await expect(host.canonical(mount, "escape/new", true)).rejects.toThrow("escapes")
+  expect(await host.canonical(mount, "link", false)).toBe("link")
+  expect(await host.canonical(mount, "link", true)).toBe("file")
+  await Bun.write(path.join(root, ".env"), "secret")
+  await fs.symlink(".env", path.join(root, "alias"))
+  await expect(
+    host.write({ id: "protected", mount, path: "alias", data: "eA==", expectedVersion: null, protectSensitive: true }),
+  ).rejects.toThrow("protected")
+  expect(await Bun.file(path.join(root, ".env")).text()).toBe("secret")
 })
 
 test("directory operations preserve versions and deduplicate completed mutations", async () => {

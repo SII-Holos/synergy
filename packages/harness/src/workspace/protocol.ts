@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { WorkspaceErrors } from "./errors"
 import { WorkspaceTree } from "./tree"
 
 export namespace WorkspaceProtocol {
@@ -30,6 +31,7 @@ export namespace WorkspaceProtocol {
     state: z.enum(["pending", "failed", "saved", "released"]),
     checkpoint: Checkpoint.optional(),
     error: z.string().optional(),
+    failure: WorkspaceErrors.Failure.optional(),
   })
   export type CheckpointStatus = z.infer<typeof CheckpointStatus>
   export const ReadInput = z.object({
@@ -53,6 +55,7 @@ export namespace WorkspaceProtocol {
     path: WorkspaceTree.Path,
     data: z.string().max(writeBytes * 1.34),
     expectedVersion: z.string().nullable(),
+    protectSensitive: z.boolean().optional(),
   })
   export type WriteInput = z.infer<typeof WriteInput>
   export const Change = z.discriminatedUnion("kind", [
@@ -82,13 +85,18 @@ export namespace WorkspaceProtocol {
     }),
   ])
   export type Change = z.infer<typeof Change>
-  export const ChangeInput = z.object({ id: ID, mount: Reference, change: Change })
+  export const ChangeInput = z.object({
+    id: ID,
+    mount: Reference,
+    change: Change,
+    protectSensitive: z.boolean().optional(),
+  })
   export type ChangeInput = z.infer<typeof ChangeInput>
   export const Item = z.object({
     path: z.union([WorkspaceTree.Path, z.literal("")]),
     entryVersion: z.string(),
     ctime: z.number(),
-    kind: z.enum(["file", "directory", "symlink"]),
+    kind: z.enum(["file", "directory", "symlink", "unknown"]),
     size: z.number().nonnegative(),
     mode: z.number(),
     mtime: z.number(),
@@ -99,6 +107,12 @@ export namespace WorkspaceProtocol {
     z.object({ action: z.literal("inspect"), mount: Reference }),
     z.object({ action: z.literal("detach"), mount: Reference }),
     z.object({ action: z.literal("read"), input: ReadInput }),
+    z.object({
+      action: z.literal("canonical"),
+      mount: Reference,
+      path: z.union([WorkspaceTree.Path, z.literal("")]),
+      follow: z.boolean(),
+    }),
     z.object({
       action: z.literal("stat"),
       mount: Reference,
@@ -120,6 +134,7 @@ export interface WorkspaceFileHost {
   inspect(mount: WorkspaceProtocol.Reference): Promise<WorkspaceProtocol.Mount | undefined>
   detach(mount: WorkspaceProtocol.Reference): Promise<void>
   stat(mount: WorkspaceProtocol.Reference, path: string, follow?: boolean): Promise<WorkspaceProtocol.Item | undefined>
+  canonical(mount: WorkspaceProtocol.Reference, path: string, follow: boolean): Promise<string>
   read(input: WorkspaceProtocol.ReadInput): Promise<WorkspaceProtocol.Read>
   list(mount: WorkspaceProtocol.Reference, path: string): Promise<WorkspaceProtocol.Item[]>
   write(input: WorkspaceProtocol.WriteInput): Promise<WorkspaceProtocol.Checkpoint>

@@ -52077,6 +52077,9 @@
       "WorkspaceFileStatusSummary": {
         "type": "object",
         "properties": {
+          "capability": {
+            "$ref": "#/components/schemas/WorkspaceSearchCapability"
+          },
           "files": {
             "type": "array",
             "items": {

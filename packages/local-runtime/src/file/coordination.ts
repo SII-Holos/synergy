@@ -2,10 +2,10 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
+
 export namespace FileCoordination {
-  export class AccessDeniedError extends Error {
-    override name = "WorkspaceFileAccessDeniedError"
-  }
+  export const AccessDeniedError = WorkspaceErrors.AccessDeniedError
 
   export async function canonical(input: string): Promise<string> {
     const absolute = path.resolve(input)

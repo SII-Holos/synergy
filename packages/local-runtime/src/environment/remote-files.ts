@@ -24,6 +24,11 @@ export class RemoteWorkspaceFiles implements WorkspaceFileHost {
       WorkspaceProtocol.Item.nullable().parse(await this.request({ action: "stat", mount, path, follow })) ?? undefined
     )
   }
+  async canonical(mount: WorkspaceProtocol.Reference, path: string, follow: boolean) {
+    return z
+      .union([WorkspaceTree.Path, z.literal("")])
+      .parse(await this.request({ action: "canonical", mount, path, follow }))
+  }
   async read(input: WorkspaceProtocol.ReadInput) {
     return WorkspaceProtocol.Read.parse(await this.request({ action: "read", input }))
   }

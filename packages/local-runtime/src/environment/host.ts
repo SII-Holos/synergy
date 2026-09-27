@@ -1,3 +1,4 @@
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 import { timingSafeEqual } from "node:crypto"
 import { z } from "zod"
 import { EnvironmentSchema } from "@ericsanchezok/synergy-harness/environment/schema"
@@ -137,7 +138,10 @@ export namespace ExecutionHost {
           return Response.json(true)
         } catch (error) {
           return Response.json(
-            { error: error instanceof Error ? error.message : "Executor request failed" },
+            {
+              error: error instanceof Error ? error.message : "Executor request failed",
+              failure: WorkspaceErrors.failure(error),
+            },
             { status: error instanceof z.ZodError ? 400 : 409 },
           )
         }
@@ -238,6 +242,8 @@ export namespace ExecutionHost {
         return true
       case "stat":
         return (await files.stat(request.mount, request.path, request.follow)) ?? null
+      case "canonical":
+        return files.canonical(request.mount, request.path, request.follow)
       case "read":
         return files.read(request.input)
       case "list":

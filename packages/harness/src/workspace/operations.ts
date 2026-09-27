@@ -5,6 +5,7 @@ import { StoragePath } from "../storage/path"
 import { StorageRecovery } from "../storage/recovery"
 import { Environment } from "../environment"
 import { WorkspaceCatalog } from "./catalog"
+import { WorkspaceErrors } from "./errors"
 import { WorkspaceProtocol } from "./protocol"
 import { WorkspaceContent } from "./content"
 import { WorkspaceTree } from "./tree"
@@ -15,7 +16,10 @@ export namespace WorkspaceOperations {
   const ObjectWrite = WorkspaceProtocol.WriteInput.omit({ mount: true }).extend({ kind: z.literal("objects-write") })
   const ObjectChange = WorkspaceProtocol.ChangeInput.omit({ mount: true }).extend({ kind: z.literal("objects-change") })
   type Selection = { id: string; scopeID: string; workspaceID: string; generation?: number; signal?: AbortSignal }
-  type Change = { path: string; data: string; expectedVersion: string | null } | { change: WorkspaceProtocol.Change }
+  type Change = (
+    | { path: string; data: string; expectedVersion: string | null }
+    | { change: WorkspaceProtocol.Change }
+  ) & { protectSensitive?: boolean }
 
   export const Info = z
     .object({
@@ -28,6 +32,7 @@ export namespace WorkspaceOperations {
       digest: z.string(),
       state: z.enum(["submitted", "unknown", "unsaved", "completed", "failed"]),
       error: z.string().optional(),
+      failure: WorkspaceErrors.Failure.optional(),
       createdAt: z.number(),
       updatedAt: z.number(),
     })
@@ -77,17 +82,22 @@ export namespace WorkspaceOperations {
     path: string
     data: Uint8Array
     expectedVersion: string | null
+    protectSensitive?: boolean
     signal?: AbortSignal
   }) {
     return operate(input, {
       path: input.path,
       data: Buffer.from(input.data).toString("base64"),
       expectedVersion: input.expectedVersion,
+      protectSensitive: input.protectSensitive,
     })
   }
 
-  export function mutate(input: Selection & { change: WorkspaceProtocol.Change }) {
-    return operate(input, { change: WorkspaceProtocol.Change.parse(input.change) })
+  export function mutate(input: Selection & { change: WorkspaceProtocol.Change; protectSensitive?: boolean }) {
+    return operate(input, {
+      change: WorkspaceProtocol.Change.parse(input.change),
+      protectSensitive: input.protectSensitive,
+    })
   }
 
   async function operate(input: Selection, change: Change) {
@@ -112,7 +122,7 @@ export namespace WorkspaceOperations {
             : ObjectWrite.parse({ id: input.id, kind: "objects-write", ...change })
         const prepared =
           "change" in change
-            ? await WorkspaceContent.prepareChange(input, change.change)
+            ? await WorkspaceContent.prepareChange(input, change.change, change.protectSensitive)
             : await WorkspaceContent.prepareWrite(input, { ...change, data: Buffer.from(change.data, "base64") })
         input.signal?.throwIfAborted()
         return Storage.transaction(async () => {
@@ -182,6 +192,18 @@ export namespace WorkspaceOperations {
         return completed(await resume(info))
       } catch (error) {
         if (!recorded) await use.release()
+        else {
+          try {
+            const files = await WorkspaceMounts.connect(workspace)
+            if ((await files.checkpointStatus(input.id))?.state === "failed")
+              await resume(await get(input.id, input.scopeID))
+          } catch (cause) {
+            Log.create({ service: "workspace-operations" }).warn("Rejected operation could not release its use", {
+              id: input.id,
+              error: cause,
+            })
+          }
+        }
         throw error
       }
     })
@@ -211,7 +233,13 @@ export namespace WorkspaceOperations {
     if (receipt.state === "failed") {
       return Storage.transaction(async () => {
         await Environment.releaseUse(info.target!, info.scopeID, useID(info.scopeID, info.id))
-        return persist({ ...info, state: "failed", error: receipt.error, updatedAt: Date.now() })
+        return persist({
+          ...info,
+          state: "failed",
+          error: receipt.error,
+          failure: receipt.failure,
+          updatedAt: Date.now(),
+        })
       })
     }
     try {
@@ -234,6 +262,7 @@ export namespace WorkspaceOperations {
   }
 
   function completed(info: Info) {
+    if (info.failure) throw WorkspaceErrors.restore(info.failure)
     if (info.state !== "completed") throw new Error(info.error ?? `Workspace operation outcome is ${info.state}`)
     return info
   }

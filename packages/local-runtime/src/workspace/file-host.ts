@@ -7,6 +7,8 @@ import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
+import { SensitivePathPolicy } from "@ericsanchezok/synergy-harness/enforcement/sensitive-path"
 import { NativeFileEntry } from "../file/entry-core"
 import { NativeFileMutation } from "../file/mutation-core"
 import { WorkspaceCoordinator } from "./coordinator"
@@ -28,6 +30,7 @@ const Receipt = z.object({
   effectStarted: z.boolean().default(false),
   effectCompleted: z.boolean().default(false),
   error: z.string().optional(),
+  failure: WorkspaceErrors.Failure.optional(),
 })
 type Receipt = z.infer<typeof Receipt>
 
@@ -166,6 +169,21 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     return target
   }
 
+  async canonical(reference: WorkspaceProtocol.Reference, relative: string, follow: boolean) {
+    const mount = await this.required(reference)
+    if (relative) WorkspaceTree.Path.parse(relative)
+    const requested = path.join(mount.path, ...relative.split("/"))
+    const target = follow ? await this.target(mount, relative) : await NativeFileEntry.canonical(requested)
+    if (!this.contains(mount.path, target))
+      throw new NativeFileMutation.AccessDeniedError("Workspace path escapes its mount")
+    return path.relative(mount.path, target).replaceAll(path.sep, "/")
+  }
+
+  private protectedTarget(mount: WorkspaceProtocol.Mount, target: string) {
+    if (SensitivePathPolicy.classifyRelative(path.relative(mount.path, target)).matched)
+      throw new NativeFileMutation.AccessDeniedError("Access denied: protected filesystem entry")
+  }
+
   async read(raw: WorkspaceProtocol.ReadInput) {
     const input = WorkspaceProtocol.ReadInput.parse(raw)
     const mount = await this.required(input.mount)
@@ -248,7 +266,6 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     if (!this.contains(mount.path, target)) throw new Error("Workspace path escapes its mount")
     const entry = await NativeFileEntry.inspect(target)
     if (!entry) return
-    if (entry.type === "unknown") throw new Error("Special filesystem entries are unavailable")
     return {
       path: relative,
       entryVersion: entry.version,
@@ -273,13 +290,13 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         if (bytes.toString("base64") !== input.data || bytes.length > WorkspaceProtocol.writeBytes)
           throw new Error("Invalid Workspace file bytes")
         const target = await this.target(mount, input.path)
+        if (input.protectSensitive) this.protectedTarget(mount, target)
         const current = await NativeFileMutation.snapshot(target)
         if (receipt.effectStarted) {
           if (current?.version === `sha256:${WorkspaceTree.hash(bytes)}`) return
           throw new Error("Workspace write outcome is unknown; the mutation cannot be repeated")
         }
         if ((current?.version ?? null) !== input.expectedVersion) throw new NativeFileMutation.ConflictError()
-        await start()
         await NativeFileMutation.write(
           {
             path: path.join(mount.path, input.path),
@@ -287,10 +304,12 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
             expectedVersion: input.expectedVersion,
             createParents: true,
             owner: this.options.owner,
+            start,
             signal: this.shutdown.signal,
             validate: async () => {
               await this.required(input.mount)
               if ((await this.target(mount, input.path)) !== target) throw new Error("Workspace path changed")
+              if (input.protectSensitive) this.protectedTarget(mount, target)
             },
           },
           target,
@@ -316,8 +335,9 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           start,
           validate: async (target) => {
             await this.required(input.mount)
-            if (!this.contains(mount.path, await NativeFileEntry.canonical(target)))
-              throw new Error("Workspace path escapes its mount")
+            const canonical = await NativeFileEntry.canonical(target)
+            if (input.protectSensitive) this.protectedTarget(mount, canonical)
+            if (!this.contains(mount.path, canonical)) throw new Error("Workspace path escapes its mount")
           },
         }
         const change = input.change
@@ -349,6 +369,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     return this.serial(`checkpoint:${id}`, async () => {
       let receipt = Receipt.optional().parse(await this.receipt("checkpoints", id))
       if (receipt && receipt.digest !== digest) throw new Error("Workspace operation already has different input")
+      if (receipt?.failure) throw WorkspaceErrors.restore(receipt.failure)
       if (receipt?.error) throw new Error(receipt.error)
       if (receipt?.checkpoint) return receipt.checkpoint
       const mount = await this.required(reference)
@@ -370,6 +391,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
             signal: this.shutdown.signal,
           })
           .catch(async (error: unknown) => {
+            receipt.failure = WorkspaceErrors.failure(error)
             receipt.error = error instanceof Error ? error.message : "Workspace write admission failed"
             receipt.released = true
             await this.persist("checkpoints", id, receipt)
@@ -391,6 +413,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       } catch (error) {
         if (!receipt.effectStarted && receipt.claim) {
           await (await this.options.coordinator.recover(receipt.claim)).release()
+          receipt.failure = WorkspaceErrors.failure(error)
           receipt.error = error instanceof Error ? error.message : "Workspace mutation rejected"
           receipt.released = true
           await this.persist("checkpoints", id, receipt)
@@ -429,6 +452,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       state: receipt.error ? "failed" : receipt.released ? "released" : receipt.checkpoint ? "saved" : "pending",
       checkpoint: receipt.checkpoint,
       error: receipt.error,
+      failure: receipt.failure,
     }
   }
 

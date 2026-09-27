@@ -3,6 +3,8 @@ import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
 import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceTree } from "./tree"
+import { SensitivePathPolicy } from "../enforcement/sensitive-path"
+import { WorkspaceErrors } from "./errors"
 import { WorkspaceProtocol } from "./protocol"
 
 export interface BlobStore {
@@ -110,20 +112,27 @@ export namespace WorkspaceContent {
 
   export async function prepareWrite(
     input: Selection,
-    change: { path: string; data: Uint8Array; expectedVersion: string | null; mode?: number },
+    change: {
+      path: string
+      data: Uint8Array
+      expectedVersion: string | null
+      mode?: number
+      protectSensitive?: boolean
+    },
   ) {
     WorkspaceTree.Path.parse(change.path)
     const { info, store } = await resolve(input)
     const tree = await manifest(info, store)
     const resolved = WorkspaceTree.resolve(tree, change.path)
     change = { ...change, path: WorkspaceTree.Path.parse(resolved.path) }
+    if (change.protectSensitive) protectedPath(change.path)
     const previous = resolved.entry
-    if (previous && !(previous.mode & 0o222)) throw new Error("Workspace file is read-only")
+    if (previous && !(previous.mode & 0o222)) throw new WorkspaceErrors.AccessDeniedError("Workspace file is read-only")
     if (
       (previous && previous.kind !== "file") ||
       (previous?.kind === "file" ? `sha256:${previous.hash}` : null) !== change.expectedVersion
     )
-      throw new WorkspaceCatalog.BindingChanged({ workspaceID: info.id, message: "File content version changed" })
+      throw new WorkspaceErrors.ConflictError()
     const chunks = []
     for (let offset = 0; offset < change.data.length; offset += WorkspaceTree.chunkBytes) {
       const bytes = change.data.subarray(offset, offset + WorkspaceTree.chunkBytes)
@@ -155,14 +164,14 @@ export namespace WorkspaceContent {
     return WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
   }
 
-  export async function prepareChange(input: Selection, raw: WorkspaceProtocol.Change) {
+  export async function prepareChange(input: Selection, raw: WorkspaceProtocol.Change, protectSensitive?: boolean) {
     const change = WorkspaceProtocol.Change.parse(raw)
     const { info, store } = await resolve(input)
     const tree = await manifest(info, store)
     const from = WorkspaceTree.resolve(tree, "path" in change ? change.path : change.from, false)
+    if (protectSensitive) protectedPath(from.path)
     const entries = new Map(tree.entries.map((entry) => [entry.path, entry]))
-    const conflict = () =>
-      new WorkspaceCatalog.BindingChanged({ workspaceID: info.id, message: "Filesystem entry changed" })
+    const conflict = () => new WorkspaceErrors.ConflictError()
     const parents = (filename: string, create: boolean) => {
       const missing: string[] = []
       for (let name = path.posix.dirname(filename); name !== "."; name = path.posix.dirname(name)) {
@@ -183,6 +192,7 @@ export namespace WorkspaceContent {
       if (!from.entry || WorkspaceTree.entryVersion(from.entry, info.content?.revision) !== change.expectedVersion)
         throw conflict()
       const members = tree.entries.filter((entry) => entry.path === from.path || entry.path.startsWith(`${from.path}/`))
+      if (protectSensitive) for (const entry of members) protectedPath(entry.path)
       if (change.kind === "remove") {
         if (!change.recursive && members.length > 1)
           throw new Error("Directory is not empty; recursive removal is required")
@@ -200,6 +210,7 @@ export namespace WorkspaceContent {
         }
         for (const entry of members) {
           const name = to.path + entry.path.slice(from.path.length)
+          if (protectSensitive) protectedPath(name)
           entries.set(name, { ...entry, path: name })
         }
       }
@@ -210,6 +221,11 @@ export namespace WorkspaceContent {
   export async function mutate(input: Selection, change: WorkspaceProtocol.Change) {
     const prepared = await prepareChange(input, change)
     return WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+  }
+
+  function protectedPath(filename: string) {
+    if (SensitivePathPolicy.classifyRelative(filename).matched)
+      throw new WorkspaceErrors.AccessDeniedError("Access denied: protected filesystem entry")
   }
 
   async function prepare(info: WorkspaceCatalog.Info, store: BlobStore, tree: WorkspaceTree.Manifest) {

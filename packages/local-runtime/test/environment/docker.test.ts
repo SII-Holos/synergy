@@ -1,3 +1,6 @@
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
+import { WorkspaceFileService } from "../../src/workspace-file/service"
+import { WorktreeProcess } from "../../src/workspace/process"
 import { ViewFileTool } from "../../src/tools/view-file"
 import { EditTool } from "../../src/tools/edit"
 import { AttachTool } from "../../src/tools/attach"
@@ -352,6 +355,40 @@ test.skipIf(!image)(
                 environmentID: environment.id,
                 needs: { workspace: true },
               })
+              await WorkspaceState.provide(
+                { id: workspace.id, generation: workspace.binding.generation, scopeID },
+                () =>
+                  EnvironmentResources.provide(resources, "workbench", async () => {
+                    await WorkspaceFileService.createDirectory({ path: "created/child", createParents: true })
+                    await WorkspaceFileService.write({
+                      path: "created/child/file.txt",
+                      content: "panel",
+                      encoding: "utf-8",
+                      createParents: false,
+                      conflictPolicy: "fail",
+                      expectedVersion: null,
+                    })
+                    const created = await WorkspaceFileService.node("created")
+                    await WorkspaceFileService.copy({
+                      from: "created",
+                      to: "copied",
+                      expectedVersion: created.entryVersion!,
+                    })
+                    const command = await WorktreeProcess.run({
+                      command: ["/bin/sh", "-c", "printf command >> copied/child/file.txt"],
+                      directory: resources.directory!,
+                      roots: [resources.directory!],
+                    })
+                    expect(command.exitCode).toBe(0)
+                    const content = await WorkspaceFileService.read({ path: "copied/child/file.txt", mode: "document" })
+                    expect(content.kind === "text" && content.content).toBe("panelcommand")
+                    expect(
+                      (await WorkspaceFileService.children({ path: "copied/child" })).children.map(
+                        (entry) => entry.name,
+                      ),
+                    ).toEqual(["file.txt"])
+                  }),
+              )
               const context = {
                 sessionID: session.id,
                 messageID: "msg_files",

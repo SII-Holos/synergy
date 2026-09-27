@@ -12,7 +12,7 @@ export namespace FileMutation {
   export const ConflictError = NativeFileMutation.ConflictError
   export const AccessDeniedError = NativeFileMutation.AccessDeniedError
 
-  export async function write(input: Parameters<typeof NativeFileMutation.write>[0]) {
+  export async function write(input: Parameters<typeof NativeFileMutation.write>[0] & { protectSensitive?: boolean }) {
     if (!FileView.native()) {
       if (input.validate) await input.validate(FileView.resolve(input.path))
       const data = typeof input.content === "string" ? new TextEncoder().encode(input.content) : input.content
@@ -27,7 +27,7 @@ export namespace FileMutation {
         !(await FileView.stat(FileView.display(input.path).split("/").slice(0, -1).join("/")))
       )
         throw new Error("Workspace parent directory is absent")
-      return FileView.write(input.path, data, current, input.signal)
+      return FileView.write(input.path, data, current, input.signal, input.protectSensitive)
     }
     const target = await canonical(input.path)
     return WorkspaceAccess.write([target], () => NativeFileMutation.write(input, target), input.signal)
