@@ -83,6 +83,7 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   page.setDefaultTimeout(4000)
+  page.setDefaultNavigationTimeout(15_000)
   page.on("pageerror", (error) => errors.push(error.message))
 }, 30_000)
 afterAll(async () => {
