@@ -151,12 +151,13 @@ export namespace WorkspaceMounts {
     id: string
     scopeID: string
     target: Environment.Target
-    workspaces?: WorkspaceProtocol.Reference[]
+    workspaces?: (WorkspaceProtocol.Reference & { readOnly?: boolean })[]
     status?: { effectsStarted?: boolean }
   }) {
     const saved: Record<string, { revision: number; manifest: string | null }> = {}
     if (input.status?.effectsStarted === false) return saved
     for (const reference of input.workspaces ?? []) {
+      if (reference.readOnly) continue
       const info = await WorkspaceCatalog.get(reference.workspaceID, input.scopeID)
       if (
         !info.activeMount ||
@@ -171,7 +172,7 @@ export namespace WorkspaceMounts {
       const files = await connect(info)
       const checkpoint = await files.checkpoint({
         id: checkpointID(input.id, reference.id),
-        mount: reference,
+        mount: WorkspaceProtocol.Reference.parse(reference),
         executionID: input.id,
       })
       const published = await save(info, files, checkpoint)

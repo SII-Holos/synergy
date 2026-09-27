@@ -32,6 +32,7 @@ export async function migrateSessionEnvironment(
     const environment = await Environment.select({
       scopeID: owner.scopeID,
       ownerID: owner.sessionID,
+      workspaceID: info.workspaceID,
       environmentID,
     })
     await Storage.write(key, { ...info, environmentID: environment?.id ?? null })

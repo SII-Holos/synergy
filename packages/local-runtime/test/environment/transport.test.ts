@@ -25,6 +25,11 @@ test("authenticated execution transport uses the native handler and replays outp
     listen: { hostname: "127.0.0.1", port: 0 },
   })
   const remote = new RemoteExecutor({ url: host.url, target, token: "test-token-with-at-least-thirty-two-bytes" })
+  const description = await remote.describe()
+  expect(description).toEqual(await executor.describe())
+  expect(description.target).toEqual(target)
+  expect(description.platform).toBe(process.platform)
+  expect(description.env).not.toHaveProperty("SYNERGY_EXECUTION_TOKEN")
   expect((await fetch(new URL("/v1/status", host.url))).status).toBe(401)
   const wrong = new RemoteExecutor({
     url: host.url,

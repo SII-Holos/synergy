@@ -52,6 +52,11 @@ export namespace ExecutionHost {
           const url = new URL(request.url)
           if (request.method === "GET" && url.pathname === "/v1/status")
             return Response.json({ version: ExecutionProtocol.version, target: input.target })
+          if (request.method === "GET" && url.pathname === "/v1/runtime") {
+            if (!input.executor.describe)
+              return Response.json({ error: "Runtime description unavailable" }, { status: 404 })
+            return Response.json(await input.executor.describe())
+          }
           if (request.method === "GET" && url.pathname === "/v1/openapi.json") return Response.json(openAPI())
           if (url.pathname === "/v1/workspaces" && request.method === "POST") {
             if (!input.executor.files)
@@ -332,6 +337,12 @@ export namespace ExecutionHost {
                 ...json(z.object({ version: z.literal(1), target: EnvironmentSchema.Target })),
               },
             },
+          },
+        },
+        "/v1/runtime": {
+          get: {
+            summary: "Inspect target execution defaults",
+            responses: { "200": { description: "Target runtime", ...json(ExecutionProtocol.Description) } },
           },
         },
         "/v1/operations": {

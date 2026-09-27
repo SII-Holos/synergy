@@ -40,7 +40,7 @@ export function registerLocalRuntime(options: { workers?: boolean; environment?:
   registerWorkspace()
   if (options.environment !== false) {
     registerNativeEnvironment()
-    EnvironmentProviders.setDefault({ provider: "native", spec: {} })
+    EnvironmentProviders.setDefault({ provider: "native", spec: {}, reuse: "scope" })
   }
   registerSkillDomain()
   registerCommandDomain()

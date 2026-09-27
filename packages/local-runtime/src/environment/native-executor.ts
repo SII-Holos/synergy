@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto"
 import path from "node:path"
+import fs from "node:fs/promises"
+import { ProcessEnvironment } from "../process/environment"
 import type { Readable } from "node:stream"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
@@ -25,6 +27,7 @@ interface NativeExecutorOptions {
   maxOutputBytes?: number
   runAs?: { uid: number; gid: number }
   files?: { materializationRoot: string; allowedRoots?: string[] }
+  runtime?: Pick<ExecutionProtocol.Description, "shell" | "directory" | "env">
 }
 type Operation = {
   status: ExecutionProtocol.Status
@@ -46,8 +49,17 @@ export class NativeExecutor implements Executor {
   private lock?: Promise<void>
   private closing?: Promise<void>
   private accepting = true
+  private readonly description: ExecutionProtocol.Description
 
   private constructor(private readonly options: NativeExecutorOptions) {
+    this.description = ExecutionProtocol.Description.parse({
+      target: options.target,
+      platform: process.platform,
+      arch: process.arch,
+      shell: options.runtime?.shell ?? (process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "/bin/sh"),
+      directory: options.runtime?.directory ?? path.join(options.directory, "work"),
+      env: ProcessEnvironment.select(options.runtime?.env ?? process.env),
+    })
     this.files = new NativeWorkspaceFiles({
       directory: path.join(options.directory, "workspace"),
       materializationRoot: options.files?.materializationRoot ?? path.join(options.directory, "views"),
@@ -72,8 +84,24 @@ export class NativeExecutor implements Executor {
       await executor.stopped.promise
     })
     void executor.lock.catch(ready.reject)
-    await ready.promise
-    return executor
+    try {
+      await ready.promise
+      await fs.mkdir(executor.description.directory, { recursive: true, mode: 0o700 })
+      return executor
+    } catch (error) {
+      executor.stopped.resolve()
+      await executor.lock.catch(() => {})
+      throw error
+    }
+  }
+
+  async describe() {
+    if (!this.accepting) throw new Error("Executor is closing")
+    return structuredClone(this.description)
+  }
+
+  localPID(id: string) {
+    return this.operations.get(id)?.owned?.child.pid
   }
 
   async start(raw: ExecutionProtocol.Request): Promise<ExecutionProtocol.Status> {

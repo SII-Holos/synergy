@@ -1,6 +1,7 @@
 import { RuntimeContext } from "../lifecycle/context"
 import { EnvironmentSchema } from "./schema"
 import type { Executor } from "./executor"
+import type { WorkspaceCatalog } from "../workspace/catalog"
 
 export interface EnvironmentRequest {
   environmentID: string
@@ -25,6 +26,7 @@ export interface EnvironmentProvider {
   resume?(request: EnvironmentRequest): Promise<EnvironmentSchema.Allocation>
   deallocate(request: EnvironmentRequest): Promise<void>
   connect?(request: EnvironmentRequest, target: EnvironmentSchema.Target): Promise<Executor>
+  workspacePath?(spec: EnvironmentSchema.Info["spec"], workspace: WorkspaceCatalog.Info): Promise<string>
   close?(): Promise<void>
 }
 
@@ -35,6 +37,7 @@ export namespace EnvironmentProviders {
     provider: string
     spec: EnvironmentSchema.Info["spec"]
     idleTimeoutMs?: number
+    reuse?: "session" | "workspace" | "scope"
   }
 
   export function setDefault(selection: Default) {

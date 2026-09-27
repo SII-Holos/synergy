@@ -3,6 +3,7 @@ import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { dockerEnvironment } from "../../src/environment/docker"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
@@ -120,7 +121,16 @@ test.skipIf(!image)(
         expectedVersion: null,
       })
       try {
-        const mounted = await WorkspaceMounts.attach({ ...selection, environmentID: environment.id })
+        const resolved = await EnvironmentResources.resolve({
+          ...selection,
+          environmentID: environment.id,
+          needs: { execution: "exec" },
+        })
+        const mounted = resolved.workspace!
+        expect(resolved.runtime?.platform).toBe("linux")
+        expect(resolved.runtime?.shell).toBe("/bin/bash")
+        expect(resolved.runtime?.env).not.toHaveProperty("SYNERGY_EXECUTION_TOKEN")
+        await resolved.release()
         const target = mounted.activeMount!.path
         let operation = await EnvironmentExecution.start({
           id: "transform",

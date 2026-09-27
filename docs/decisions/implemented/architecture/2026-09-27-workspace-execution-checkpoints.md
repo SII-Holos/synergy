@@ -14,6 +14,8 @@ The physical coordinator verifies native process completion while its platform e
 
 Environment resource owners drain Workspace views before provider deallocation. A final checkpoint and fenced detachment precede deletion of allocation-owned staging volumes. User-supplied directory and volume storage has independent ownership and is preserved. Save failures retain uses and writers; retries save the completed operation rather than execute it again.
 
+The common process facade binds stream completion to this durable completion path. Physical exit remains observable, but presentation drainage cannot complete a command while checkpoint publication is pending. An explicitly empty compiled write footprint skips Workspace publication; nonempty footprints retain the complete selected root. Target runtime descriptions supply execution paths and shell settings without forwarding controller credentials.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

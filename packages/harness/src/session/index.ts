@@ -639,6 +639,7 @@ export namespace Session {
       const environment = await Environment.select({
         scopeID: scope.id,
         ownerID: result.id,
+        workspaceID: result.workspaceID,
         environmentID:
           input?.environmentID !== undefined
             ? input.environmentID

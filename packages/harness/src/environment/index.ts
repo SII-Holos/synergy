@@ -15,6 +15,7 @@ export namespace Environment {
   export const Stale = EnvironmentSchema.Stale
   export const Busy = EnvironmentSchema.Busy
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
+  const epoch = RuntimeContext.state(() => randomUUID())
   const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
 
   export function registerResourceOwner(name: string, release: (info: Info) => Promise<void>) {
@@ -49,13 +50,30 @@ export namespace Environment {
     return id ? get(id, scopeID) : undefined
   }
 
-  export async function select(input: { scopeID: string; ownerID: string; environmentID?: string | null }) {
+  export async function select(input: {
+    scopeID: string
+    ownerID: string
+    environmentID?: string | null
+    workspaceID?: string | null
+  }) {
     if (input.environmentID === null) return undefined
     if (input.environmentID) return share(input.environmentID, input)
     const existing = await binding(input.scopeID, input.ownerID)
     if (existing) return existing
     const selection = EnvironmentProviders.defaultSelection()
-    return selection ? bind({ ...input, ...selection }) : undefined
+    if (!selection) return undefined
+    const sharedOwner =
+      selection.reuse === "scope"
+        ? ["default", "scope", input.scopeID]
+        : selection.reuse === "workspace" && input.workspaceID
+          ? ["default", "workspace", input.workspaceID]
+          : undefined
+    const environment = await bind({
+      ...input,
+      ...selection,
+      ownerID: sharedOwner ? JSON.stringify(sharedOwner) : input.ownerID,
+    })
+    return sharedOwner ? share(environment.id, input) : environment
   }
 
   export async function bind(input: {
@@ -115,6 +133,7 @@ export namespace Environment {
       scopeID: string
       useID: string
       capabilities: string[]
+      kind?: EnvironmentSchema.Use["kind"]
       signal?: AbortSignal
     },
   ) {
@@ -131,7 +150,13 @@ export namespace Environment {
       await assertTarget(target, input.scopeID)
       await Storage.write(
         StoragePath.environmentUse(id, input.useID),
-        EnvironmentSchema.Use.parse({ id: input.useID, target, createdAt: Date.now() }),
+        EnvironmentSchema.Use.parse({
+          id: input.useID,
+          target,
+          createdAt: Date.now(),
+          kind: input.kind,
+          ownerEpoch: input.kind === "admission" ? epoch() : undefined,
+        }),
       )
     })
     return {
@@ -234,6 +259,9 @@ export namespace Environment {
     for (const key of await Storage.list(StoragePath.environmentActive())) {
       const [scopeID] = await Storage.readMany<string>([key])
       if (!scopeID) continue
+      for (const use of await uses(key[1])) {
+        if (use.kind === "admission" && use.ownerEpoch !== epoch()) await releaseUse(use.target, scopeID, use.id)
+      }
       try {
         await reconcile(key[1], scopeID)
       } catch {

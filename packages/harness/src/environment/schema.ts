@@ -39,7 +39,13 @@ export namespace EnvironmentSchema {
     })
     .meta({ ref: "EnvironmentInfo" })
   export type Info = z.infer<typeof Info>
-  export const Use = z.object({ id: z.string(), target: Target, createdAt: z.number() })
+  export const Use = z.object({
+    id: z.string(),
+    target: Target,
+    createdAt: z.number(),
+    kind: z.enum(["operation", "admission"]).default("operation"),
+    ownerEpoch: z.string().optional(),
+  })
   export type Use = z.infer<typeof Use>
   export const Unavailable = NamedError.create(
     "EnvironmentUnavailable",

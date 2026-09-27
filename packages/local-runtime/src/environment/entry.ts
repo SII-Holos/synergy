@@ -10,11 +10,25 @@ export async function startExecutionHost() {
   const token = process.env.SYNERGY_EXECUTION_TOKEN ?? ""
   const directory = "/var/lib/synergy-executor"
   await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+  const scratch = "/workspaces/.scratch"
+  await fs.mkdir(scratch, { recursive: true, mode: 0o700 })
+  await fs.chown(scratch, 1000, 1000)
   const executor = await NativeExecutor.open({
     target,
     directory: `${directory}/receipts`,
     coordinator: new WorkspaceCoordinator({ directory: `${directory}/claims` }),
     runAs: { uid: 1000, gid: 1000 },
+    runtime: {
+      shell: "/bin/bash",
+      directory: scratch,
+      env: {
+        PATH: "/usr/local/bin:/usr/bin:/bin",
+        HOME: scratch,
+        TMPDIR: "/tmp",
+        LANG: "C.UTF-8",
+        TERM: "xterm-256color",
+      },
+    },
     files: {
       materializationRoot: "/workspaces",
       allowedRoots: z.array(z.string()).parse(JSON.parse(process.env.SYNERGY_WORKSPACE_ROOTS ?? "[]")),

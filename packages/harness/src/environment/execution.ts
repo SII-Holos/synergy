@@ -16,7 +16,7 @@ export namespace EnvironmentExecution {
       id: ExecutionProtocol.ID,
       scopeID: z.string(),
       target: Environment.Target,
-      workspaces: z.array(WorkspaceProtocol.Reference).optional(),
+      workspaces: z.array(WorkspaceProtocol.Reference.extend({ readOnly: z.boolean().optional() })).optional(),
       digest: z.string(),
       state: z.enum(["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]),
       status: ExecutionProtocol.Status.optional(),
@@ -29,6 +29,7 @@ export namespace EnvironmentExecution {
   export type Info = z.infer<typeof Info>
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const finishing = RuntimeContext.state(() => new Map<string, Promise<Info>>())
+  const connections = RuntimeContext.state(() => new Map<string, Promise<Executor>>())
 
   export async function get(id: string, scopeID: string): Promise<Info> {
     const [record] = await Storage.readMany<unknown>([
@@ -105,7 +106,7 @@ export namespace EnvironmentExecution {
               workspaceID: info.id,
               message: "Execution requires the selected active Workspace mount",
             })
-          if (input.command.writableRoots !== null && !input.command.writableRoots.includes(mount.path))
+          if (input.command.writableRoots?.length && !input.command.writableRoots.includes(mount.path))
             throw new Error("Execution must retain the Workspace root through checkpoint publication")
         }
         const now = Date.now()
@@ -113,7 +114,10 @@ export namespace EnvironmentExecution {
           id: input.id,
           scopeID: input.scopeID,
           target: use.target,
-          workspaces: input.workspaces,
+          workspaces: input.workspaces?.map((reference) => ({
+            ...reference,
+            ...(input.command.writableRoots?.length === 0 ? { readOnly: true } : {}),
+          })),
           digest: input.digest,
           state: "submitted",
           outputCursor: 0,
@@ -248,7 +252,16 @@ export namespace EnvironmentExecution {
         environmentID: environment.id,
         message: "Provider does not expose an Executor",
       })
-    return provider.connect(Environment.requestOf(environment), info.target)
+    const key = JSON.stringify([info.scopeID, info.target])
+    let connection = connections().get(key)
+    if (!connection) {
+      connection = provider.connect(Environment.requestOf(environment), info.target)
+      connections().set(key, connection)
+      void connection.catch(() => {
+        if (connections().get(key) === connection) connections().delete(key)
+      })
+    }
+    return connection
   }
 
   async function captureOutput(info: Info, executor: Executor) {
@@ -288,7 +301,8 @@ export namespace EnvironmentExecution {
     if (
       info.target.environmentID !== environmentID ||
       info.digest !== digest ||
-      JSON.stringify(info.workspaces ?? []) !== JSON.stringify(workspaces ?? [])
+      JSON.stringify((info.workspaces ?? []).map((reference) => WorkspaceProtocol.Reference.parse(reference))) !==
+        JSON.stringify(workspaces ?? [])
     )
       throw new Error("Operation ID already has different input")
   }

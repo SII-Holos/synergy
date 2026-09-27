@@ -10,6 +10,8 @@ Requiring a usable native directory when accepting input makes network and manag
 
 Sessions persist an independent nullable Environment reference. Creation, children and forks establish references without allocating compute. Runtime composition registers the default selection; the local host selects native and embedded hosts can omit it. A versioned migration fills historical Session selections without allocating. Transcript import clears execution authority.
 
+Composition declares whether the default is shared per Session, Workspace or Scope. Local native selection shares per Scope to keep Sessions on the same active Workspace view. Resource admission obtains an epoch-owned temporary use; restart recovery clears those abandoned uses while retaining physical-operation uses. Resource resolution checks backend compatibility before allocating and takes execution paths from the selected target.
+
 Input acceptance and Session loop admission carry logical selections. Workspace use is acquired by resource-dependent operations, which validate the binding before effects and start file services under the acquired use. Worktree locks cover these operations rather than model/network waiting. Background native process ownership continues independently through completion and saving.
 
 ## Alternatives considered

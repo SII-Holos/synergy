@@ -3,6 +3,8 @@ import { Environment } from "../../src/environment"
 import { EnvironmentProviders, type EnvironmentProvider } from "../../src/environment/provider"
 import { Storage } from "../../src/storage/storage"
 import { testRuntime } from "../support/runtime"
+import { runtimeHome } from "../support/runtime-home"
+import { StorageRecovery } from "../../src/storage/recovery"
 
 function provider() {
   const calls = { allocate: 0, deallocate: 0 }
@@ -31,6 +33,47 @@ function provider() {
 }
 
 describe("Environment lifecycle", () => {
+  test("explicit default sharing selects one logical target without allocating", async () => {
+    const { host, calls } = provider()
+    await using runtime = await testRuntime({
+      register() {
+        EnvironmentProviders.register(host)
+        EnvironmentProviders.setDefault({ provider: "fixture", spec: {}, reuse: "scope" })
+      },
+    })
+    await runtime.run(async () => {
+      const [a, b] = await Promise.all(["a", "b"].map((ownerID) => Environment.select({ scopeID: "scope", ownerID })))
+      expect(a!.id).toBe(b!.id)
+      expect((await Environment.binding("scope", "b"))?.id).toBe(a!.id)
+      expect(calls.allocate).toBe(0)
+      expect(await Environment.select({ scopeID: "scope", ownerID: "unbound", environmentID: null })).toBeUndefined()
+    })
+  })
+  test("restart releases abandoned admission while retaining physical-operation uses", async () => {
+    const { host } = provider()
+    await using home = await runtimeHome()
+    const first = await testRuntime({ home: home.host.home, register: () => EnvironmentProviders.register(host) })
+    let id = ""
+    try {
+      await first.run(async () => {
+        id = (await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "fixture", spec: {} })).id
+        await Environment.acquire(id, { scopeID: "scope", useID: "preparing", capabilities: [], kind: "admission" })
+        await Environment.acquire(id, { scopeID: "scope", useID: "operation", capabilities: [] })
+        await StorageRecovery.recoverOwners()
+        expect(await Environment.uses(id)).toHaveLength(2)
+      })
+    } finally {
+      await first.close()
+    }
+    await using second = await testRuntime({
+      home: home.host.home,
+      register: () => EnvironmentProviders.register(host),
+    })
+    await second.run(async () => {
+      expect((await Environment.uses(id)).map((use) => use.id)).toEqual(["operation"])
+      await expect(Environment.deallocate(id, { scopeID: "scope" })).rejects.toMatchObject({ name: "EnvironmentBusy" })
+    })
+  })
   test("logical bindings allocate nothing; concurrent first uses share one durable allocation", async () => {
     const { host, calls } = provider()
     await using runtime = await testRuntime({ register: () => EnvironmentProviders.register(host) })

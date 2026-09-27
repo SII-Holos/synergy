@@ -5,6 +5,29 @@ import type { WorkspaceFileHost } from "../workspace/protocol"
 
 export namespace ExecutionProtocol {
   export const version = 1
+  export const Description = z
+    .object({
+      target: EnvironmentSchema.Target,
+      platform: z.enum([
+        "aix",
+        "android",
+        "darwin",
+        "freebsd",
+        "haiku",
+        "linux",
+        "openbsd",
+        "sunos",
+        "win32",
+        "cygwin",
+        "netbsd",
+      ]),
+      arch: z.string(),
+      shell: z.string().min(1),
+      directory: z.string().min(1),
+      env: z.record(z.string(), z.string()),
+    })
+    .meta({ ref: "ExecutorDescription" })
+  export type Description = z.infer<typeof Description>
   export const ID = z
     .string()
     .min(1)
@@ -72,6 +95,9 @@ export namespace ExecutionProtocol {
 }
 
 export interface Executor {
+  /** Direct native adapters only; remote process IDs must never become controller OS identities. */
+  localPID?(id: string): number | undefined
+  describe?(): Promise<ExecutionProtocol.Description>
   readonly files?: WorkspaceFileHost
   start(request: ExecutionProtocol.Request): Promise<ExecutionProtocol.Status>
   status(id: string): Promise<ExecutionProtocol.Status | undefined>

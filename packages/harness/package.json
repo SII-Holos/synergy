@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./environment/process": "./src/environment/process.ts",
     "./workspace/tree": "./src/workspace/tree.ts",
     "./workspace/protocol": "./src/workspace/protocol.ts",
     "./workspace/mount": "./src/workspace/mount.ts",
@@ -14,6 +15,7 @@
     "./environment/schema": "./src/environment/schema.ts",
     "./environment/executor": "./src/environment/executor.ts",
     "./environment/execution": "./src/environment/execution.ts",
+    "./environment/resources": "./src/environment/resources.ts",
     "./session/snapshot-link": "./src/session/snapshot-link.ts",
     "./session/snapshot-restore": "./src/session/snapshot-restore.ts",
     "./session/snapshot": "./src/session/snapshot.ts",

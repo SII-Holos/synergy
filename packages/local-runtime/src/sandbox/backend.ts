@@ -1,3 +1,4 @@
+import { ProcessEnvironment } from "../process/environment"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 // ---------------------------------------------------------------------------
 // SandboxBackend — unified dispatch layer
@@ -176,31 +177,7 @@ export namespace SandboxBackend {
    * Environment variables allowed through the sandbox.
    * Never expose credential-bearing variables.
    */
-  export const SANDBOX_ENV_ALLOWLIST = [
-    "PATH",
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "TMPDIR",
-    "TEMP",
-    "TMP",
-    "SHELL",
-    "TERM",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "SystemRoot",
-    "SYSTEMROOT",
-    "WINDIR",
-    "ComSpec",
-    "COMSPEC",
-    "PATHEXT",
-    "BUN_INSTALL",
-    "NODE_PATH",
-    "npm_config_cache",
-    "PYTHONPATH",
-    "GIT_EXEC_PATH",
-  ]
+  export const SANDBOX_ENV_ALLOWLIST = ProcessEnvironment.allowed
 
   /** Env var injected to tell the agent that network is unavailable. */
   export const NETWORK_DISABLED_ENV_VAR = "SYNERGY_SANDBOX_NETWORK_DISABLED"

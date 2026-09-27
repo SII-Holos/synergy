@@ -21,6 +21,9 @@ export class RemoteExecutor implements Executor {
   async start(request: ExecutionProtocol.Request) {
     return ExecutionProtocol.Status.parse(await this.request("POST", "/v1/operations", request))
   }
+  async describe() {
+    return ExecutionProtocol.Description.parse(await this.request("GET", "/v1/runtime"))
+  }
   async status(id: string) {
     const result = await this.request("GET", this.route(id))
     return result === undefined ? undefined : ExecutionProtocol.Status.parse(result)

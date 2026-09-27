@@ -13,6 +13,9 @@ import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { WorkspaceCoordinator } from "../workspace/coordinator"
 import { NativeExecutor } from "./native-executor"
+import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { ProcessEnvironment } from "../process/environment"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
 
@@ -26,6 +29,9 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
     id: "native",
     ownership: "borrowed",
     validateSpec: (spec) => z.object({}).strict().parse(spec),
+    async workspacePath(_request, workspace) {
+      return (await WorkspaceBinding.validate(workspace.id, workspace.scopeID, workspace.binding.generation)).path
+    },
     async allocate(request) {
       const target = {
         environmentID: request.environmentID,
@@ -64,6 +70,11 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
           target,
           directory: path.join(path.dirname(filename(request)), request.requestID),
           coordinator,
+          runtime: {
+            shell: Shell.acceptable(),
+            directory: path.join(path.dirname(filename(request)), request.requestID, "work"),
+            env: ProcessEnvironment.select(RuntimeContext.current().host.env),
+          },
           acquire: (command, signal) =>
             WorkspaceAccess.process(command.writableRoots, signal, { retainAfterExit: true, durable: true }),
         })
