@@ -16,10 +16,10 @@ import { NativeExecutor } from "./native-executor"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
 
-export function registerNativeEnvironment() {
+export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoordinator } = {}) {
   const root = path.join(RuntimeContext.current().host.root, "state", "environments")
   const executors = new Map<string, Promise<NativeExecutor>>()
-  const coordinator = new WorkspaceCoordinator()
+  const coordinator = options.coordinator ?? new WorkspaceCoordinator()
   const filename = (request: EnvironmentRequest) =>
     path.join(root, createHash("sha256").update(request.environmentID).digest("hex"), "allocation.json")
   const provider: EnvironmentProvider = {

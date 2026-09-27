@@ -32,12 +32,12 @@ test("dormant object files commit immutable manifests with a transactional head,
       WorkspaceContent.write(input, {
         path: "hello.txt",
         data: new TextEncoder().encode("second"),
-        expectedVersion: WorkspaceTree.hash(new TextEncoder().encode("first")),
+        expectedVersion: `sha256:${WorkspaceTree.hash(new TextEncoder().encode("first"))}`,
       }),
       WorkspaceContent.write(input, {
         path: "hello.txt",
         data: new TextEncoder().encode("third"),
-        expectedVersion: WorkspaceTree.hash(new TextEncoder().encode("first")),
+        expectedVersion: `sha256:${WorkspaceTree.hash(new TextEncoder().encode("first"))}`,
       }),
     ])
     expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1)

@@ -5,6 +5,8 @@ description: Add, modify, or review Synergy capability classification, control p
 
 # Change Execution Boundaries
 
+For Environment execution, retain Workspace writers until checkpoint publication. Verify Linux completion evidence before supervisor cleanup removes its receipt, then persist that proof in the coordinator. Test container destruction and reallocation after a failed upload, cancellation before activation, and file-host shutdown while writes are queued. Native provider tests must inject an isolated coordinator into both Workspace access and the Environment provider; never migrate the host-wide coordination ledger from a test fixture.
+
 ## Trace the Whole Decision
 
 1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.

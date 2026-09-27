@@ -18,6 +18,7 @@ export namespace WorkspaceCatalog {
     target: EnvironmentSchema.Target,
     path: z.string(),
     state: z.enum(["preparing", "active", "saving", "unavailable"]),
+    readOnly: z.boolean().default(false),
   })
   export const Binding = z.object({
     state: z.enum(["bound", "unbound"]),
@@ -177,9 +178,28 @@ export namespace WorkspaceCatalog {
         latest.binding.generation !== previous.binding.generation ||
         latest.content?.revision !== previous.content?.revision ||
         latest.activeMount?.id !== previous.activeMount?.id ||
-        latest.activeMount?.generation !== previous.activeMount?.generation
+        latest.activeMount?.generation !== previous.activeMount?.generation ||
+        (latest.activeMount &&
+          previous.activeMount &&
+          !EnvironmentSchema.sameTarget(latest.activeMount.target, previous.activeMount.target))
       )
         throw new BindingChanged({ workspaceID: latest.id, message: "Workspace changed before checkpoint publication" })
+      if (latest.activeMount) {
+        const [value] = await Storage.readMany<unknown>([
+          StoragePath.environment(latest.activeMount.target.environmentID),
+        ])
+        const environment = EnvironmentSchema.Info.parse(value)
+        if (
+          environment.scopeID !== latest.scopeID ||
+          !["ready", "releasing"].includes(environment.state) ||
+          environment.allocation?.id !== latest.activeMount.target.allocationID ||
+          environment.generation !== latest.activeMount.target.generation
+        )
+          throw new BindingChanged({
+            workspaceID: latest.id,
+            message: "Workspace allocation changed before checkpoint publication",
+          })
+      }
       const next = Info.parse({
         ...latest,
         content: { revision: (latest.content?.revision ?? 0) + 1, manifest },
@@ -297,6 +317,8 @@ export namespace WorkspaceCatalog {
   ): Promise<Info> {
     return Storage.transaction(async () => {
       const previous = await get(id, input.scopeID)
+      if (previous.activeMount)
+        throw new Unavailable({ workspaceID: id, message: "Detach the active Workspace mount before rebinding" })
       if (previous.revision !== input.expectedRevision)
         throw new BindingChanged({ message: "Workspace changed before rebinding", workspaceID: id })
       if (previous.lifecycle !== "active")

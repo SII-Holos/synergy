@@ -5,12 +5,16 @@ import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { registerNativeEnvironment } from "../../src/environment/native"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+import path from "node:path"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 
 test("native provider uses the durable execution path and saves output outside its allocation", async () => {
+  await using temporary = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(temporary.path, "claims") })
   await using runtime = await testRuntime({
     register() {
-      WorkspaceAccess.register(new WorkspaceCoordinator())
-      registerNativeEnvironment()
+      WorkspaceAccess.register(coordinator)
+      registerNativeEnvironment({ coordinator })
     },
   })
   await runtime.run(async () => {

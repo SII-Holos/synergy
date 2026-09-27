@@ -1,0 +1,396 @@
+import fs from "node:fs/promises"
+import { constants } from "node:fs"
+import path from "node:path"
+import { createHash } from "node:crypto"
+import { z } from "zod"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
+import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
+import { WorkspaceProtocol, type WorkspaceFileHost } from "@ericsanchezok/synergy-harness/workspace/protocol"
+import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
+import { NativeFileMutation } from "../file/mutation-core"
+import { WorkspaceCoordinator } from "./coordinator"
+import { NativeWorkspaceTree } from "./tree"
+
+const MountReceipt = z.object({
+  input: WorkspaceProtocol.MountInput,
+  digest: z.string(),
+  mount: WorkspaceProtocol.Mount.optional(),
+  detached: z.boolean().default(false),
+})
+const Receipt = z.object({
+  id: z.string(),
+  digest: z.string(),
+  mount: WorkspaceProtocol.Reference,
+  claim: z.object({ id: z.string(), token: z.string() }).optional(),
+  checkpoint: WorkspaceProtocol.Checkpoint.optional(),
+  released: z.boolean().default(false),
+  effectStarted: z.boolean().default(false),
+  error: z.string().optional(),
+})
+type Receipt = z.infer<typeof Receipt>
+
+export class NativeWorkspaceFiles implements WorkspaceFileHost {
+  private readonly pending = new Map<string, Promise<unknown>>()
+  private readonly shutdown = new AbortController()
+  constructor(
+    private readonly options: {
+      directory: string
+      materializationRoot: string
+      coordinator: WorkspaceCoordinator
+      allowedRoots?: string[]
+      owner?: { uid: number; gid: number }
+      executionWriter?(id: string, root: string): Promise<void>
+    },
+  ) {}
+
+  private filename(kind: string, id: string) {
+    return path.join(this.options.directory, kind, createHash("sha256").update(id).digest("hex"))
+  }
+  private digest(value: unknown) {
+    return WorkspaceTree.hash(new TextEncoder().encode(JSON.stringify(value)))
+  }
+  private async persist(kind: string, id: string, value: unknown) {
+    await AtomicFile.writeJsonAtomic(this.filename(kind, id), JSON.stringify(value), { private: true, durable: true })
+  }
+  private async receipt(kind: string, id: string): Promise<unknown> {
+    const file = Bun.file(this.filename(kind, id))
+    return (await file.exists()) ? file.json() : undefined
+  }
+  private async serial<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    this.shutdown.signal.throwIfAborted()
+    for (;;) {
+      const current = this.pending.get(key)
+      if (!current) break
+      await current.catch(() => {})
+      this.shutdown.signal.throwIfAborted()
+    }
+    const promise = fn()
+    this.pending.set(key, promise)
+    try {
+      return await promise
+    } finally {
+      this.pending.delete(key)
+    }
+  }
+
+  async mount(raw: WorkspaceProtocol.MountInput): Promise<WorkspaceProtocol.Mount> {
+    const input = WorkspaceProtocol.MountInput.parse(raw)
+    return this.serial(`mount:${input.id}`, async () => {
+      const digest = this.digest(input)
+      const previous = MountReceipt.optional().parse(await this.receipt("mounts", input.id))
+      if (previous && (previous.digest !== digest || previous.detached))
+        throw new Error("Workspace mount already has different input or was detached")
+      if (previous?.mount) return this.required(input)
+      await this.persist("mounts", input.id, { input, digest })
+      const root =
+        input.source.kind === "directory"
+          ? await fs.realpath(input.source.path)
+          : path.join(await this.materializationRoot(), createHash("sha256").update(input.id).digest("hex"))
+      if (input.source.kind === "directory" && this.options.allowedRoots) {
+        const allowed = await Promise.all(this.options.allowedRoots.map((root) => fs.realpath(root)))
+        if (!allowed.some((parent) => this.contains(parent, root)))
+          throw new Error("Workspace path is not an allowed mount")
+      }
+      const claim = await this.options.coordinator.acquire({
+        id: `mount:${input.id}`,
+        owner: input.id,
+        ancestors: [],
+        roots: [root],
+        kind: "exclusive",
+        signal: this.shutdown.signal,
+      })
+      try {
+        if (input.source.kind === "materialized") {
+          const manifest = WorkspaceTree.Manifest.parse(
+            JSON.parse(
+              new TextDecoder().decode(await this.getBlob(input.source.manifest, WorkspaceTree.manifestBytes)),
+            ),
+          )
+          const exists = await fs.lstat(root).catch((error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") throw error
+          })
+          if (exists) {
+            const actual = WorkspaceTree.hash(
+              WorkspaceTree.encode(await NativeWorkspaceTree.capture(root, this.blobs(), this.shutdown.signal)),
+            )
+            if (actual !== input.source.manifest)
+              throw new Error("Materialized Workspace changed before mount acknowledgement")
+          } else
+            await NativeWorkspaceTree.materialize(root, manifest, this.blobs(), {
+              owner: this.options.owner,
+              signal: this.shutdown.signal,
+            })
+        }
+        const identity = await identifyFilesystemObject(root)
+        if (!(await fs.stat(root)).isDirectory()) throw new Error("Workspace mount is not a directory")
+        const mount = WorkspaceProtocol.Mount.parse({ ...input, path: root, physicalID: identity.physicalID })
+        await this.persist("mounts", input.id, { input, digest, mount })
+        return mount
+      } finally {
+        await claim.release()
+      }
+    })
+  }
+
+  private async materializationRoot() {
+    await fs.mkdir(this.options.materializationRoot, { recursive: true, mode: 0o711 })
+    return fs.realpath(this.options.materializationRoot)
+  }
+  async inspect(reference: WorkspaceProtocol.Reference) {
+    const input = WorkspaceProtocol.Reference.parse(reference)
+    const receipt = MountReceipt.optional().parse(await this.receipt("mounts", input.id))
+    if (!receipt || receipt.detached || !receipt.mount) return undefined
+    const mount = receipt.mount
+    if (mount.workspaceID !== input.workspaceID || mount.generation !== input.generation)
+      throw new Error("Workspace mount changed")
+    if ((await identifyFilesystemObject(mount.path)).physicalID !== mount.physicalID)
+      throw new Error("Workspace directory changed")
+    return mount
+  }
+  private async required(reference: WorkspaceProtocol.Reference) {
+    const mount = await this.inspect(reference)
+    if (!mount) throw new Error("Workspace mount is unavailable")
+    return mount
+  }
+  private contains(root: string, value: string) {
+    const relative = path.relative(root, value)
+    return !relative || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))
+  }
+  private async target(mount: WorkspaceProtocol.Mount, relative: string) {
+    if (relative) WorkspaceTree.Path.parse(relative)
+    const requested = path.join(mount.path, ...relative.split("/"))
+    const target = await NativeFileMutation.canonical(requested)
+    if (!this.contains(mount.path, target)) throw new Error("Workspace path escapes its mount")
+    return target
+  }
+
+  async read(raw: WorkspaceProtocol.ReadInput) {
+    const input = WorkspaceProtocol.ReadInput.parse(raw)
+    const mount = await this.required(input.mount)
+    const target = await this.target(mount, input.path)
+    const file = await fs.open(
+      target,
+      constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK),
+    )
+    try {
+      const before = await file.stat({ bigint: true })
+      if (!before.isFile() || before.size > input.maximumBytes)
+        throw new Error("Workspace file exceeds the read limit or is not regular")
+      const bytes = Buffer.alloc(input.maximumBytes + 1)
+      let size = 0
+      while (size < bytes.length) {
+        const read = await file.read(bytes, size, bytes.length - size, null)
+        if (!read.bytesRead) break
+        size += read.bytesRead
+      }
+      const after = await file.stat({ bigint: true })
+      if (
+        size > input.maximumBytes ||
+        before.ctimeNs !== after.ctimeNs ||
+        before.mtimeNs !== after.mtimeNs ||
+        before.size !== after.size ||
+        (await this.target(mount, input.path)) !== target
+      )
+        throw new Error("Workspace file changed while reading")
+      const data = bytes.subarray(0, size)
+      return {
+        data: data.toString("base64"),
+        version: `sha256:${WorkspaceTree.hash(data)}`,
+        size,
+        mode: Number(after.mode & 0o777n),
+      }
+    } finally {
+      await file.close()
+    }
+  }
+  async list(reference: WorkspaceProtocol.Reference, relative: string) {
+    const mount = await this.required(reference)
+    const directory = await this.target(mount, relative)
+    const names = await fs.readdir(directory)
+    if (names.length > 100_000) throw new Error("Workspace directory exceeds its listing limit")
+    const result: WorkspaceProtocol.Item[] = []
+    for (const name of names.sort()) {
+      const stat = await fs.lstat(path.join(directory, name))
+      if (!stat.isDirectory() && !stat.isFile() && !stat.isSymbolicLink()) continue
+      result.push(
+        WorkspaceProtocol.Item.parse({
+          path: relative ? `${relative}/${name}` : name,
+          kind: stat.isSymbolicLink() ? "symlink" : stat.isDirectory() ? "directory" : "file",
+          size: stat.size,
+          mode: stat.mode & 0o777,
+          mtime: stat.mtimeMs,
+        }),
+      )
+    }
+    return result
+  }
+
+  async write(raw: WorkspaceProtocol.WriteInput) {
+    const input = WorkspaceProtocol.WriteInput.parse(raw)
+    return this.checkpointOperation(
+      input.id,
+      input.mount,
+      this.digest(input),
+      undefined,
+      async (mount, receipt, start) => {
+        if (mount.readOnly) throw new Error("Workspace mount is read-only")
+        const bytes = Buffer.from(input.data, "base64")
+        if (bytes.toString("base64") !== input.data || bytes.length > WorkspaceTree.chunkBytes)
+          throw new Error("Invalid Workspace file bytes")
+        const target = await this.target(mount, input.path)
+        const current = await NativeFileMutation.snapshot(target)
+        if (receipt.effectStarted && current?.version === `sha256:${WorkspaceTree.hash(bytes)}`) return
+        if ((current?.version ?? null) !== input.expectedVersion) throw new NativeFileMutation.ConflictError()
+        await start()
+        await NativeFileMutation.write(
+          {
+            path: path.join(mount.path, input.path),
+            content: bytes,
+            expectedVersion: input.expectedVersion,
+            createParents: true,
+            signal: this.shutdown.signal,
+            validate: async () => {
+              await this.required(input.mount)
+              if ((await this.target(mount, input.path)) !== target) throw new Error("Workspace path changed")
+            },
+          },
+          target,
+        )
+        if (this.options.owner) await fs.chown(target, this.options.owner.uid, this.options.owner.gid)
+      },
+    )
+  }
+  async checkpoint(raw: WorkspaceProtocol.CheckpointInput) {
+    const input = WorkspaceProtocol.CheckpointInput.parse(raw)
+    return this.checkpointOperation(input.id, input.mount, this.digest(input), input.executionID)
+  }
+  private async checkpointOperation(
+    id: string,
+    reference: WorkspaceProtocol.Reference,
+    digest: string,
+    executionID?: string,
+    mutate?: (mount: WorkspaceProtocol.Mount, receipt: Receipt, start: () => Promise<void>) => Promise<void>,
+  ) {
+    return this.serial(`checkpoint:${id}`, async () => {
+      let receipt = Receipt.optional().parse(await this.receipt("checkpoints", id))
+      if (receipt && receipt.digest !== digest) throw new Error("Workspace operation already has different input")
+      if (receipt?.error) throw new Error(receipt.error)
+      if (receipt?.checkpoint) return receipt.checkpoint
+      const mount = await this.required(reference)
+      receipt ??= { id, digest, mount: reference, released: false, effectStarted: false }
+      await this.persist("checkpoints", id, receipt)
+      if (executionID) {
+        if (!this.options.executionWriter) throw new Error("Execution checkpoint is unavailable")
+        await this.options.executionWriter(executionID, mount.path)
+      } else if (!receipt.claim) {
+        const lease = await this.options.coordinator
+          .acquire({
+            id: `checkpoint:${id}`,
+            owner: id,
+            ancestors: [],
+            roots: [mount.path],
+            kind: "process",
+            retainAfterExit: true,
+            durable: true,
+            signal: this.shutdown.signal,
+          })
+          .catch(async (error: unknown) => {
+            receipt.error = error instanceof Error ? error.message : "Workspace write admission failed"
+            receipt.released = true
+            await this.persist("checkpoints", id, receipt)
+            throw error
+          })
+        receipt.claim = lease.recovery
+        await this.persist("checkpoints", id, receipt)
+      } else await this.options.coordinator.validateRetention(receipt.claim, mount.path)
+      try {
+        await mutate?.(mount, receipt, async () => {
+          receipt.effectStarted = true
+          await this.persist("checkpoints", id, receipt)
+        })
+      } catch (error) {
+        if (!receipt.effectStarted && receipt.claim) {
+          await (await this.options.coordinator.recover(receipt.claim)).release()
+          receipt.error = error instanceof Error ? error.message : "Workspace mutation rejected"
+          receipt.released = true
+          await this.persist("checkpoints", id, receipt)
+        }
+        throw error
+      }
+      const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
+      const bytes = WorkspaceTree.encode(tree)
+      const manifest = WorkspaceTree.hash(bytes)
+      await this.putBlob(manifest, bytes)
+      const checkpoint = { id, mount: reference, manifest }
+      await this.persist("checkpoints", id, { ...receipt, checkpoint })
+      return checkpoint
+    })
+  }
+  async acknowledge(id: string) {
+    await this.serial(`checkpoint:${id}`, async () => {
+      const receipt = Receipt.parse(await this.receipt("checkpoints", id))
+      if (receipt.released) return
+      if (!receipt.checkpoint) throw new Error("Workspace checkpoint is incomplete")
+      if (receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
+      await this.persist("checkpoints", id, { ...receipt, released: true })
+    })
+  }
+
+  async checkpointStatus(id: string): Promise<WorkspaceProtocol.CheckpointStatus | undefined> {
+    const receipt = Receipt.optional().parse(await this.receipt("checkpoints", id))
+    if (!receipt) return
+    return {
+      id,
+      mount: receipt.mount,
+      state: receipt.error ? "failed" : receipt.released ? "released" : receipt.checkpoint ? "saved" : "pending",
+      checkpoint: receipt.checkpoint,
+      error: receipt.error,
+    }
+  }
+
+  async detach(reference: WorkspaceProtocol.Reference) {
+    await this.serial(`mount:${reference.id}`, async () => {
+      const receipt = MountReceipt.parse(await this.receipt("mounts", reference.id))
+      if (receipt.detached) return
+      const mount = await this.required(reference)
+      const lease = await this.options.coordinator.acquire({
+        id: `detach:${reference.id}`,
+        owner: reference.id,
+        ancestors: [],
+        roots: [mount.path],
+        kind: "exclusive",
+        signal: this.shutdown.signal,
+      })
+      try {
+        await this.required(reference)
+        if (receipt.input.source.kind === "materialized") await fs.rm(mount.path, { recursive: true })
+        await this.persist("mounts", reference.id, { ...receipt, detached: true })
+      } finally {
+        await lease.release()
+      }
+    })
+  }
+  async putBlob(hash: string, bytes: Uint8Array) {
+    WorkspaceTree.verify(hash, bytes, WorkspaceTree.manifestBytes)
+    await AtomicFile.writeFileAtomic(this.filename("blobs", hash), bytes, { private: true, durable: true })
+  }
+  async getBlob(hash: string, maximumBytes: number) {
+    WorkspaceTree.Hash.parse(hash)
+    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || maximumBytes > WorkspaceTree.manifestBytes)
+      throw new Error("Invalid Workspace object size")
+    const file = Bun.file(this.filename("blobs", hash))
+    if (file.size > maximumBytes) throw new Error("Workspace object exceeds its read limit")
+    return WorkspaceTree.verify(hash, new Uint8Array(await file.arrayBuffer()), maximumBytes)
+  }
+  private blobs() {
+    return {
+      put: (hash: string, bytes: Uint8Array) => this.putBlob(hash, bytes),
+      get: (hash: string, maximumBytes: number) => this.getBlob(hash, maximumBytes),
+    }
+  }
+
+  async close() {
+    this.shutdown.abort(new Error("Workspace file host is closing"))
+    await Promise.allSettled(this.pending.values())
+  }
+}

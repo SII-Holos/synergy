@@ -15,6 +15,17 @@ export namespace Environment {
   export const Stale = EnvironmentSchema.Stale
   export const Busy = EnvironmentSchema.Busy
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
+  const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
+
+  export function registerResourceOwner(name: string, release: (info: Info) => Promise<void>) {
+    RuntimeContext.assertCompositionOpen("Environment resource owners")
+    if (consumers().has(name)) throw new Error(`Duplicate Environment resource owner: ${name}`)
+    consumers().set(name, release)
+  }
+
+  async function releaseResources(info: Info) {
+    for (const release of consumers().values()) await release(info)
+  }
 
   export function registerRecovery() {
     StorageRecovery.register("environment", recover)
@@ -163,6 +174,7 @@ export namespace Environment {
       return write({ ...info, state: "releasing" })
     })
     if (info.state !== "releasing") return info
+    await releaseResources(info)
     await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
     return updateAllocation(info, undefined)
   }
@@ -188,6 +200,7 @@ export namespace Environment {
     if (status.state === "pending") {
       const provider = EnvironmentProviders.get(info.provider)
       if (info.state === "releasing") {
+        await releaseResources(info)
         await provider.deallocate(requestOf(info))
         return updateAllocation(info, undefined)
       }
@@ -201,6 +214,7 @@ export namespace Environment {
       return updateAllocation(info, undefined)
     }
     if (info.state === "releasing") {
+      await releaseResources(info)
       await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
       return updateAllocation(info, undefined)
     }

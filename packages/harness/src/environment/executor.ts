@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { EnvironmentSchema } from "./schema"
+import type { WorkspaceFileHost } from "../workspace/protocol"
 
 export namespace ExecutionProtocol {
   export const version = 1
@@ -42,6 +43,7 @@ export namespace ExecutionProtocol {
       streamsDrained: z.boolean().default(false),
       error: z.string().optional(),
       outputTruncated: z.boolean().optional(),
+      effectsStarted: z.boolean().optional(),
     })
     .meta({ ref: "EnvironmentExecutionStatus" })
   export type Status = z.infer<typeof Status>
@@ -70,6 +72,7 @@ export namespace ExecutionProtocol {
 }
 
 export interface Executor {
+  readonly files?: WorkspaceFileHost
   start(request: ExecutionProtocol.Request): Promise<ExecutionProtocol.Status>
   status(id: string): Promise<ExecutionProtocol.Status | undefined>
   output(id: string, after: number, limit: number): Promise<ExecutionProtocol.Chunk[]>

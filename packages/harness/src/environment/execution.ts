@@ -5,6 +5,9 @@ import { StoragePath } from "../storage/path"
 import { Environment } from "."
 import { EnvironmentProviders } from "./provider"
 import { ExecutionProtocol, type Executor } from "./executor"
+import { WorkspaceProtocol } from "../workspace/protocol"
+import { WorkspaceCatalog } from "../workspace/catalog"
+import { WorkspaceMounts } from "../workspace/mount"
 
 export namespace EnvironmentExecution {
   export const Info = z
@@ -12,6 +15,7 @@ export namespace EnvironmentExecution {
       id: ExecutionProtocol.ID,
       scopeID: z.string(),
       target: Environment.Target,
+      workspaces: z.array(WorkspaceProtocol.Reference).optional(),
       digest: z.string(),
       state: z.enum(["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]),
       status: ExecutionProtocol.Status.optional(),
@@ -38,6 +42,7 @@ export namespace EnvironmentExecution {
     scopeID: string
     environmentID: string
     command: ExecutionProtocol.Command
+    workspaces?: WorkspaceProtocol.Reference[]
     signal?: AbortSignal
   }): Promise<Info> {
     const id = ExecutionProtocol.ID.parse(input.id)
@@ -46,7 +51,7 @@ export namespace EnvironmentExecution {
     const previous = pending().get(key)
     if (previous) {
       const info = await previous
-      verifyInput(info, input.environmentID, digest)
+      verifyInput(info, input.environmentID, digest, input.workspaces)
       return info
     }
     const promise = submit({ ...input, id, digest })
@@ -63,12 +68,13 @@ export namespace EnvironmentExecution {
     scopeID: string
     environmentID: string
     command: ExecutionProtocol.Command
+    workspaces?: WorkspaceProtocol.Reference[]
     digest: string
     signal?: AbortSignal
   }) {
     const [existing] = await Storage.readMany<Info>([StoragePath.environmentExecution(input.scopeID, input.id)])
     if (existing) {
-      verifyInput(existing, input.environmentID, input.digest)
+      verifyInput(existing, input.environmentID, input.digest, input.workspaces)
       return ["completed", "saved", "unsaved", "exited"].includes(existing.state)
         ? existing
         : reconcile(input.id, input.scopeID)
@@ -84,11 +90,29 @@ export namespace EnvironmentExecution {
     try {
       const info = await Storage.transaction(async () => {
         await Environment.assertTarget(use.target, input.scopeID)
+        for (const workspace of input.workspaces ?? []) {
+          const info = await WorkspaceCatalog.get(workspace.workspaceID, input.scopeID)
+          const mount = info.activeMount
+          if (
+            !mount ||
+            mount.id !== workspace.id ||
+            mount.generation !== workspace.generation ||
+            mount.state !== "active" ||
+            !Environment.sameTarget(mount.target, use.target)
+          )
+            throw new WorkspaceCatalog.BindingChanged({
+              workspaceID: info.id,
+              message: "Execution requires the selected active Workspace mount",
+            })
+          if (input.command.writableRoots !== null && !input.command.writableRoots.includes(mount.path))
+            throw new Error("Execution must retain the Workspace root through checkpoint publication")
+        }
         const now = Date.now()
         const info = Info.parse({
           id: input.id,
           scopeID: input.scopeID,
           target: use.target,
+          workspaces: input.workspaces,
           digest: input.digest,
           state: "submitted",
           outputCursor: 0,
@@ -138,7 +162,7 @@ export namespace EnvironmentExecution {
   export async function complete(
     id: string,
     scopeID: string,
-    checkpoint: (info: Info) => Promise<NonNullable<Info["saved"]>>,
+    checkpoint: (info: Info) => Promise<NonNullable<Info["saved"]>> = WorkspaceMounts.checkpointExecution,
   ): Promise<Info> {
     const key = JSON.stringify([scopeID, id])
     const current = finishing().get(key)
@@ -259,8 +283,12 @@ export namespace EnvironmentExecution {
     })
   }
 
-  function verifyInput(info: Info, environmentID: string, digest: string) {
-    if (info.target.environmentID !== environmentID || info.digest !== digest)
+  function verifyInput(info: Info, environmentID: string, digest: string, workspaces?: WorkspaceProtocol.Reference[]) {
+    if (
+      info.target.environmentID !== environmentID ||
+      info.digest !== digest ||
+      JSON.stringify(info.workspaces ?? []) !== JSON.stringify(workspaces ?? [])
+    )
       throw new Error("Operation ID already has different input")
   }
 

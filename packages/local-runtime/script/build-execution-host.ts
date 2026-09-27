@@ -5,6 +5,7 @@ import { parseArgs } from "node:util"
 export async function buildExecutionHost(input: { image: string }) {
   const owner = path.resolve(import.meta.dir, "..")
   const directory = path.join(owner, ".artifacts", "execution-host")
+  await fs.rm(directory, { recursive: true, force: true })
   await fs.mkdir(directory, { recursive: true })
   for (const [entry, output] of [
     ["environment/entry.ts", "execution-host.js"],

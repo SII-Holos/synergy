@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto"
 import { z } from "zod"
+import path from "node:path"
 import {
   EnvironmentProviders,
   type EnvironmentProvider,
@@ -28,7 +29,13 @@ export const DockerEnvironmentSpec = z
           .object({
             type: z.enum(["bind", "volume"]),
             source: z.string().min(1),
-            target: z.string().startsWith("/"),
+            target: z
+              .string()
+              .startsWith("/")
+              .refine(
+                (value) => path.posix.normalize(value) === value && !value.includes("\0"),
+                "Mount target must be a normalized absolute path",
+              ),
             readOnly: z.boolean().default(false),
           })
           .strict(),
@@ -70,6 +77,14 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
     const info = z.object({ Labels: z.record(z.string(), z.string()).nullable() }).parse(await response.json())
     if (Object.entries(labels(request)).some(([key, value]) => info.Labels?.[key] !== value))
       throw new Error("Docker network belongs to another allocation")
+    return true
+  }
+  async function inspectVolume(request: EnvironmentRequest) {
+    const response = await engine.request("GET", `/volumes/${name(request)}-files`, undefined, [404])
+    if (response.status === 404) return false
+    const info = z.object({ Labels: z.record(z.string(), z.string()).nullable() }).parse(await response.json())
+    if (Object.entries(labels(request)).some(([key, value]) => info.Labels?.[key] !== value))
+      throw new Error("Docker staging volume belongs to another allocation")
     return true
   }
   const allocation = (request: EnvironmentRequest) => ({
@@ -127,7 +142,7 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
       for (const mount of spec.mounts) {
         if (
           mount.target === "/" ||
-          ["/proc", "/sys", "/dev", "/opt/synergy", "/var/lib/synergy-executor"].some(
+          ["/proc", "/sys", "/dev", "/opt/synergy", "/var/lib/synergy-executor", "/workspaces"].some(
             (root) => mount.target === root || mount.target.startsWith(root + "/"),
           )
         )
@@ -136,6 +151,8 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
       const token = await credential(request, true)
       let container = await engine.inspect(name(request))
       if (!container) {
+        await engine.request("POST", "/volumes/create", { Name: `${name(request)}-files`, Labels: labels(request) })
+        await inspectVolume(request)
         const network = await engine.request(
           "POST",
           "/networks/create",
@@ -153,6 +170,7 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
             Env: [
               `SYNERGY_EXECUTION_TARGET=${JSON.stringify({ environmentID: request.environmentID, allocationID: request.requestID, generation: request.generation })}`,
               `SYNERGY_EXECUTION_TOKEN=${token}`,
+              `SYNERGY_WORKSPACE_ROOTS=${JSON.stringify(spec.mounts.map((mount) => mount.target))}`,
               ...(options.executionTLS
                 ? [
                     `SYNERGY_EXECUTION_CERT=${options.executionTLS.cert}`,
@@ -165,7 +183,7 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
               NetworkMode: name(request),
               ReadonlyRootfs: true,
               CapDrop: ["ALL"],
-              CapAdd: ["SETUID", "SETGID", "KILL"],
+              CapAdd: ["SETUID", "SETGID", "KILL", "CHOWN", "FOWNER", "DAC_OVERRIDE"],
               SecurityOpt: ["no-new-privileges:true"],
               Memory: spec.memoryBytes,
               NanoCpus: Math.round(spec.cpus * 1e9),
@@ -175,12 +193,15 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
                 "/var/lib/synergy-executor": "rw,nosuid,nodev,noexec,mode=0700,size=512m",
               },
               PortBindings: { "7443/tcp": [{ HostIp: publishHostIP, HostPort: "" }] },
-              Mounts: spec.mounts.map((mount) => ({
-                Type: mount.type,
-                Source: mount.source,
-                Target: mount.target,
-                ReadOnly: mount.readOnly,
-              })),
+              Mounts: [
+                { Type: "volume", Source: `${name(request)}-files`, Target: "/workspaces", ReadOnly: false },
+                ...spec.mounts.map((mount) => ({
+                  Type: mount.type,
+                  Source: mount.source,
+                  Target: mount.target,
+                  ReadOnly: mount.readOnly,
+                })),
+              ],
             },
           },
           [409],
@@ -206,7 +227,8 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
     },
     async inspect(request) {
       const container = await engine.inspect(name(request))
-      if (!container) return { state: (await inspectNetwork(request)) ? "pending" : "absent" }
+      if (!container)
+        return { state: (await inspectVolume(request)) || (await inspectNetwork(request)) ? "pending" : "absent" }
       assertOwned(request, container)
       if (container.State.Status === "created") return { state: "pending" }
       if (!container.State.Running) return { state: "unknown" }
@@ -239,6 +261,8 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
         if (await engine.inspect(name(request))) throw new Error("Docker Environment termination is unconfirmed")
       }
       if (await inspectNetwork(request)) await engine.request("DELETE", `/networks/${name(request)}`, undefined, [404])
+      if (await inspectVolume(request))
+        await engine.request("DELETE", `/volumes/${name(request)}-files`, undefined, [404])
       const key = StoragePath.environmentCredential(providerID, request.requestID)
       const [id] = await Storage.readMany<string>([key])
       if (id) await SecretVault.remove(id)

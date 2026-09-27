@@ -88,7 +88,7 @@ export namespace WorkspaceContent {
     const previous = tree.entries.find((entry) => entry.path === change.path)
     if (
       (previous && previous.kind !== "file") ||
-      (previous?.kind === "file" ? previous.hash : null) !== change.expectedVersion
+      (previous?.kind === "file" ? `sha256:${previous.hash}` : null) !== change.expectedVersion
     )
       throw new WorkspaceCatalog.BindingChanged({ workspaceID: info.id, message: "File content version changed" })
     const chunks = []

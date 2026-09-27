@@ -32,11 +32,12 @@ const Claim = z.object({
   finalizer: z.object({ pid: z.number().int().positive(), startIdentity: z.string() }).optional(),
   finalizing: z.boolean().optional(),
   durable: z.boolean().optional(),
+  drained: z.boolean().optional(),
   cooperative: z.boolean().optional(),
   transient: z.boolean().optional(),
   state: z.enum(["waiting", "active"]),
 })
-const Ledger = z.object({ version: z.union([z.literal(1), z.literal(2)]), claims: z.array(Claim) })
+const Ledger = z.object({ version: z.union([z.literal(1), z.literal(2), z.literal(3)]), claims: z.array(Claim) })
 type Claim = z.infer<typeof Claim>
 type Ledger = z.infer<typeof Ledger>
 
@@ -144,7 +145,8 @@ export class WorkspaceCoordinator {
     })())
   }
 
-  private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree">, fresh = false) {
+  private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree" | "drained">, fresh = false) {
+    if (claim.drained) return false
     if (claim.processTree) {
       try {
         return OwnedTree.inspect(claim.processTree).state === "active"
@@ -194,7 +196,8 @@ export class WorkspaceCoordinator {
         const retired = ledger.claims.filter((_claim, index) => !alive[index])
         ledger.claims = ledger.claims.filter((_claim, index) => alive[index])
         const result = await fn(ledger)
-        if (ledger.claims.some((claim) => claim.durable)) ledger.version = 2
+        if (ledger.claims.some((claim) => claim.drained)) ledger.version = 3
+        else if (ledger.version < 2 && ledger.claims.some((claim) => claim.durable)) ledger.version = 2
         const serialized = JSON.stringify(ledger)
         if (raw !== serialized) await AtomicFile.writeJsonAtomic(filename, serialized, { durable: true, private: true })
         for (const claim of retired) {
@@ -385,6 +388,38 @@ export class WorkspaceCoordinator {
       if (claim && !claim.durable) throw new Error("Workspace claim is not recoverable")
     })
     return this.lease(reference.id, reference.token, true)
+  }
+
+  async confirmDrained(reference: { id: string; token: string }) {
+    // OwnedProcess removes its Linux receipt during cleanup; preserve the verified result before checkpoint I/O.
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (!claim?.durable || !claim.processTree) throw new Error("A retained process tree is required for completion")
+      if (claim.drained) return
+      if (OwnedTree.inspect(claim.processTree).state !== "exited")
+        throw new Error("Workspace process tree is still active")
+      claim.drained = true
+    })
+  }
+
+  async validateRetention(reference: { id: string; token: string }, root: string) {
+    const canonical = await FileCoordination.canonical(root)
+    const identity = await identifyFilesystemObject(canonical)
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (
+        !claim?.durable ||
+        claim.state !== "active" ||
+        !covers(claim.roots, [
+          {
+            path: process.platform === "win32" ? canonical.toLowerCase() : canonical,
+            physicalID: identity.physicalID,
+            ancestorPhysicalIDs: [],
+          },
+        ])
+      )
+        throw new Error("Checkpoint has no retained writer covering this Workspace")
+    })
   }
 
   private lease(id: string, token: string, durable?: boolean) {

@@ -2,6 +2,8 @@ import { timingSafeEqual } from "node:crypto"
 import { z } from "zod"
 import { EnvironmentSchema } from "@ericsanchezok/synergy-harness/environment/schema"
 import { ExecutionProtocol, type Executor } from "@ericsanchezok/synergy-harness/environment/executor"
+import { WorkspaceProtocol, type WorkspaceFileHost } from "@ericsanchezok/synergy-harness/workspace/protocol"
+import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
 type SocketData = { id: string; cursor: number; closed: boolean; drain?: () => void }
 const Input = z.object({ data: z.string().max(90_000), end: z.boolean().default(false) })
@@ -32,7 +34,7 @@ export namespace ExecutionHost {
     const server = Bun.serve<SocketData>({
       ...input.listen,
       tls: input.tls,
-      maxRequestBodySize: 8 * 1024 * 1024,
+      maxRequestBodySize: WorkspaceTree.manifestBytes,
       async fetch(request, server) {
         if (closing) return new Response(null, { status: 503 })
         const supplied = Buffer.from(request.headers.get("authorization") ?? "")
@@ -51,6 +53,37 @@ export namespace ExecutionHost {
           if (request.method === "GET" && url.pathname === "/v1/status")
             return Response.json({ version: ExecutionProtocol.version, target: input.target })
           if (request.method === "GET" && url.pathname === "/v1/openapi.json") return Response.json(openAPI())
+          if (url.pathname === "/v1/workspaces" && request.method === "POST") {
+            if (!input.executor.files)
+              return Response.json({ error: "Workspace operations unavailable" }, { status: 404 })
+            return Response.json(
+              await workspace(input.executor.files, WorkspaceProtocol.Request.parse(await request.json())),
+            )
+          }
+          if (url.pathname.startsWith("/v1/workspace-objects/")) {
+            if (!input.executor.files)
+              return Response.json({ error: "Workspace operations unavailable" }, { status: 404 })
+            const hash = WorkspaceTree.Hash.parse(url.pathname.slice("/v1/workspace-objects/".length))
+            if (request.method === "PUT") {
+              await input.executor.files.putBlob(hash, new Uint8Array(await request.arrayBuffer()))
+              return Response.json(true)
+            }
+            if (request.method === "GET")
+              return new Response(
+                new Uint8Array(
+                  await input.executor.files.getBlob(
+                    hash,
+                    z.coerce
+                      .number()
+                      .int()
+                      .min(0)
+                      .max(WorkspaceTree.manifestBytes)
+                      .parse(url.searchParams.get("maximumBytes")),
+                  ),
+                ),
+              )
+            return new Response(null, { status: 405 })
+          }
           if (request.method === "POST" && url.pathname === "/v1/operations")
             return Response.json(await input.executor.start(ExecutionProtocol.Request.parse(await request.json())))
           const match = /^\/v1\/operations\/([^/]+)(?:\/(output|events|duplex|stdin|resize|cancel|release))?$/.exec(
@@ -178,6 +211,31 @@ export namespace ExecutionHost {
     return { url: server.url, stop, [Symbol.asyncDispose]: stop }
   }
 
+  async function workspace(files: WorkspaceFileHost, request: WorkspaceProtocol.Request) {
+    switch (request.action) {
+      case "mount":
+        return files.mount(request.input)
+      case "inspect":
+        return (await files.inspect(request.mount)) ?? null
+      case "detach":
+        await files.detach(request.mount)
+        return true
+      case "read":
+        return files.read(request.input)
+      case "list":
+        return files.list(request.mount, request.path)
+      case "write":
+        return files.write(request.input)
+      case "checkpoint":
+        return files.checkpoint(request.input)
+      case "checkpointStatus":
+        return (await files.checkpointStatus(request.id)) ?? null
+      case "acknowledge":
+        await files.acknowledge(request.id)
+        return true
+    }
+  }
+
   function cursor(url: URL) {
     return z.coerce
       .number()
@@ -242,6 +300,29 @@ export namespace ExecutionHost {
       security: [{ bearerAuth: [] }],
       components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } },
       paths: {
+        "/v1/workspaces": action(
+          "Manage Workspace mounts, file operations and retained checkpoints",
+          WorkspaceProtocol.Request,
+        ),
+        "/v1/workspace-objects/{hash}": {
+          get: {
+            summary: "Read an immutable Workspace object",
+            responses: {
+              "200": {
+                description: "Verified bytes",
+                content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },
+              },
+            },
+          },
+          put: {
+            summary: "Stage an immutable Workspace object",
+            requestBody: {
+              required: true,
+              content: { "application/octet-stream": { schema: { type: "string", format: "binary" } } },
+            },
+            responses: { "200": { description: "Object staged" } },
+          },
+        },
         "/v1/status": {
           get: {
             summary: "Inspect allocation and protocol version",
@@ -304,6 +385,16 @@ export namespace ExecutionHost {
           {
             ...item,
             parameters: [
+              ...(route.includes("{hash}")
+                ? [
+                    { name: "hash", in: "path", required: true, schema: schema(WorkspaceTree.Hash) },
+                    {
+                      name: "maximumBytes",
+                      in: "query",
+                      schema: { type: "integer", minimum: 0, maximum: WorkspaceTree.manifestBytes },
+                    },
+                  ]
+                : []),
               {
                 name: "x-synergy-target",
                 in: "header",

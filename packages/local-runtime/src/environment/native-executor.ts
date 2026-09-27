@@ -10,6 +10,7 @@ import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/a
 import { WorkspaceCoordinator } from "../workspace/coordinator"
 import { OwnedProcess } from "../process/owned-process"
 import { NativePty } from "../process/native-pty"
+import { NativeWorkspaceFiles } from "../workspace/file-host"
 
 const Receipt = z.object({
   status: ExecutionProtocol.Status,
@@ -23,6 +24,7 @@ interface NativeExecutorOptions {
   acquire?: (command: ExecutionProtocol.Command, signal: AbortSignal) => Promise<WorkspaceAccess.Lease>
   maxOutputBytes?: number
   runAs?: { uid: number; gid: number }
+  files?: { materializationRoot: string; allowedRoots?: string[] }
 }
 type Operation = {
   status: ExecutionProtocol.Status
@@ -37,6 +39,7 @@ type Operation = {
 }
 
 export class NativeExecutor implements Executor {
+  readonly files: NativeWorkspaceFiles
   private readonly operations = new Map<string, Operation>()
   private readonly starting = new Map<string, Promise<ExecutionProtocol.Status>>()
   private readonly stopped = Promise.withResolvers<void>()
@@ -44,7 +47,22 @@ export class NativeExecutor implements Executor {
   private closing?: Promise<void>
   private accepting = true
 
-  private constructor(private readonly options: NativeExecutorOptions) {}
+  private constructor(private readonly options: NativeExecutorOptions) {
+    this.files = new NativeWorkspaceFiles({
+      directory: path.join(options.directory, "workspace"),
+      materializationRoot: options.files?.materializationRoot ?? path.join(options.directory, "views"),
+      allowedRoots: options.files?.allowedRoots,
+      coordinator: options.coordinator,
+      owner: options.runAs,
+      executionWriter: async (id, root) => {
+        const status = await this.required(id)
+        const receipt = await this.read(id)
+        if (!ExecutionProtocol.terminal(status) || !receipt?.claim || receipt.released)
+          throw new Error("Execution has no retained completed writer")
+        await options.coordinator.validateRetention(receipt.claim, root)
+      },
+    })
+  }
 
   static async open(options: NativeExecutorOptions) {
     const executor = new NativeExecutor(options)
@@ -91,6 +109,7 @@ export class NativeExecutor implements Executor {
         target: this.options.target,
         digest: request.digest,
         state: "accepted",
+        effectsStarted: false,
         cursor: 0,
       }),
       abort: new AbortController(),
@@ -123,6 +142,7 @@ export class NativeExecutor implements Executor {
           })
       operation.abort.signal.throwIfAborted()
       const lease = operation.lease
+      if (!lease.recovery) throw new Error("Executor requires a durable Workspace claim")
       await this.persist(operation)
       operation.owned = await OwnedProcess.prepare({
         command: this.options.runAs ? "/usr/bin/setpriv" : command.command,
@@ -140,7 +160,11 @@ export class NativeExecutor implements Executor {
         env: command.env,
         signal: operation.abort.signal,
         pty: command.pty ? { ...command.pty, library: NativePty.libraryPath() } : undefined,
-        lease: { id: lease.id, bindProcess: (pid, options) => lease.bindProcess(pid, options), async release() {} },
+        lease: {
+          id: lease.id,
+          bindProcess: (pid, options) => lease.bindProcess(pid, options),
+          release: () => this.options.coordinator.confirmDrained(lease.recovery!),
+        },
       })
       const owned = operation.owned
       const streams = Promise.all([
@@ -148,6 +172,8 @@ export class NativeExecutor implements Executor {
         this.capture(operation, "stderr", owned.child.stderr),
       ])
       void streams.catch(() => owned.stop())
+      operation.status.effectsStarted = true
+      await this.persist(operation)
       await owned.activate()
       operation.status.state = "running"
       await this.persist(operation)
@@ -263,6 +289,7 @@ export class NativeExecutor implements Executor {
             target: this.options.target,
             digest,
             state: "cancelled",
+            effectsStarted: false,
             cursor: 0,
             treeDrained: true,
             streamsDrained: true,
@@ -302,11 +329,13 @@ export class NativeExecutor implements Executor {
   async close() {
     this.accepting = false
     return (this.closing ??= (async () => {
+      const files = this.files.close()
       await Promise.allSettled(this.starting.values())
       const results = await Promise.allSettled(
         [...this.operations.values()].map((operation) => this.cancel(operation.status.id, operation.status.digest)),
       )
       this.stopped.resolve()
+      await files
       await this.lock
       const failed = results.find((result) => result.status === "rejected")
       if (failed?.status === "rejected") throw failed.reason

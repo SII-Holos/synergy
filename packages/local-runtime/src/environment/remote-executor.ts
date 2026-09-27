@@ -1,36 +1,21 @@
 import { z } from "zod"
 import { EnvironmentSchema } from "@ericsanchezok/synergy-harness/environment/schema"
 import { ExecutionProtocol, type Executor } from "@ericsanchezok/synergy-harness/environment/executor"
+import { ExecutionConnection, type ExecutorConnection } from "./connection"
+import { RemoteWorkspaceFiles } from "./remote-files"
 
-export interface ExecutorConnection {
-  url: string | URL
-  target: EnvironmentSchema.Target
-  token: string
-  unix?: string
-  tls?: Bun.TLSOptions
-}
+export type { ExecutorConnection } from "./connection"
 
 export class RemoteExecutor implements Executor {
-  constructor(private readonly connection: ExecutorConnection) {}
+  readonly files: RemoteWorkspaceFiles
+  private readonly connection: ExecutionConnection
+  constructor(connection: ExecutorConnection) {
+    this.connection = new ExecutionConnection(connection)
+    this.files = new RemoteWorkspaceFiles(this.connection)
+  }
 
   private async request(method: string, route: string, body?: unknown) {
-    const response = await fetch(new URL(route, this.connection.url), {
-      method,
-      unix: this.connection.unix,
-      tls: this.connection.tls,
-      headers: {
-        authorization: `Bearer ${this.connection.token}`,
-        "x-synergy-target": JSON.stringify(this.connection.target),
-        "content-type": "application/json",
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
-      redirect: "error",
-    })
-    if (response.status === 404) return undefined
-    if (!response.ok)
-      throw new Error(`Executor request failed (${response.status}): ${(await response.text()).slice(0, 1024)}`)
-    return response.json() as Promise<unknown>
+    return this.connection.json(method, route, body)
   }
 
   async start(request: ExecutionProtocol.Request) {

@@ -13,6 +13,7 @@ import { ObservabilityMetrics } from "../observability/metrics"
 import { RuntimeContext } from "./context"
 import { Environment } from "../environment"
 import { registerWorkspaceMigrations } from "../workspace/migration"
+import { WorkspaceMounts } from "../workspace/mount"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -26,6 +27,7 @@ export function registerHarness() {
   registerStorageMigrations()
   registerWorkspaceMigrations()
   Environment.registerRecovery()
+  WorkspaceMounts.register()
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

@@ -1,4 +1,5 @@
 import fs from "node:fs/promises"
+import { z } from "zod"
 import { EnvironmentSchema } from "@ericsanchezok/synergy-harness/environment/schema"
 import { ExecutionHost } from "./host"
 import { NativeExecutor } from "./native-executor"
@@ -14,6 +15,10 @@ export async function startExecutionHost() {
     directory: `${directory}/receipts`,
     coordinator: new WorkspaceCoordinator({ directory: `${directory}/claims` }),
     runAs: { uid: 1000, gid: 1000 },
+    files: {
+      materializationRoot: "/workspaces",
+      allowedRoots: z.array(z.string()).parse(JSON.parse(process.env.SYNERGY_WORKSPACE_ROOTS ?? "[]")),
+    },
   })
   const cert = process.env.SYNERGY_EXECUTION_CERT
   const key = process.env.SYNERGY_EXECUTION_KEY
