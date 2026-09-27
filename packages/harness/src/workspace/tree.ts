@@ -89,6 +89,10 @@ export namespace WorkspaceTree {
     throw new Error("Workspace symbolic link cycle")
   }
 
+  export function entryVersion(entry: Entry, revision?: number) {
+    return `entry:${hash(new TextEncoder().encode(JSON.stringify([entry, revision])))}`
+  }
+
   export function hash(bytes: Uint8Array) {
     return createHash("sha256").update(bytes).digest("hex")
   }

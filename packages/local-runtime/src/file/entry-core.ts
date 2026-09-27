@@ -8,6 +8,7 @@ import { NativeFileMutation as FileMutation } from "./mutation-core"
 import { FileRename } from "./rename"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileLink } from "./link"
+import { FileOwnership } from "./ownership"
 
 export namespace NativeFileEntry {
   export class PartialError extends Error {
@@ -28,6 +29,8 @@ export namespace NativeFileEntry {
     signal?: AbortSignal
     validate?: Validation
     checkpoint?: () => Promise<void>
+    start?: () => Promise<void>
+    owner?: FileOwnership.Owner
   }
   export interface Entry {
     version: string
@@ -170,12 +173,14 @@ export namespace NativeFileEntry {
       if (await inspect(target!)) throw new FileMutation.ConflictError()
       if (input.mode !== undefined && (!Number.isInteger(input.mode) || input.mode < 0 || input.mode > 0o777))
         throw new FileMutation.AccessDeniedError("Invalid directory permissions")
-      if (input.createParents) await fs.mkdir(path.dirname(target!), { recursive: true, mode: input.mode })
+      await input.start?.()
+      if (input.createParents) await FileOwnership.mkdir(path.dirname(target!), input)
       if ((await canonical(input.path)) !== target) throw new FileMutation.ConflictError()
       await input.validate?.(target!, "write")
       input.signal?.throwIfAborted()
       await checkpoint()
       await fs.mkdir(target!, { mode: input.mode })
+      if (input.owner) await fs.chown(target!, input.owner.uid, input.owner.gid)
       try {
         await syncParent(target!)
       } catch (cause) {
@@ -202,7 +207,8 @@ export namespace NativeFileEntry {
       if (before?.type === "file" && (before.stat.mode & 0o222n) === 0n)
         throw new FileMutation.AccessDeniedError("Access denied: file is read-only")
       await input.validate?.(absolute, "write")
-      if (input.createParents) await fs.mkdir(path.dirname(absolute), { recursive: true })
+      await input.start?.()
+      if (input.createParents) await FileOwnership.mkdir(path.dirname(absolute), { owner: input.owner })
       const temporary = path.join(path.dirname(absolute), `.synergy-restore-${randomUUID()}`)
       let published = false
       try {
@@ -211,11 +217,13 @@ export namespace NativeFileEntry {
           if (process.platform === "win32" && !link.kind)
             throw new FileMutation.AccessDeniedError("Historical symbolic link native kind is unavailable")
           await fs.symlink(link.target, temporary, link.kind)
+          if (input.owner) await fs.lchown(temporary, input.owner.uid, input.owner.gid)
         } else {
           const mode = input.mode === "100755" ? 0o755 : 0o644
           const file = await fs.open(temporary, "wx", mode)
           try {
             await file.writeFile(input.content)
+            if (input.owner) await file.chown(input.owner.uid, input.owner.gid)
             await file.chmod(mode & ~process.umask())
             await file.sync()
           } finally {
@@ -254,7 +262,7 @@ export namespace NativeFileEntry {
     )
       throw new FileMutation.AccessDeniedError("Source and destination must be separate filesystem entries")
   }
-  async function copyFile(from: string, to: string, entry: Entry, signal?: AbortSignal) {
+  async function copyFile(from: string, to: string, entry: Entry, input: Options) {
     const source = await fs.open(
       from,
       constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK),
@@ -266,7 +274,7 @@ export namespace NativeFileEntry {
         const buffer = Buffer.allocUnsafe(128 * 1024)
         let offset = 0
         while (offset < entry.stat.size) {
-          signal?.throwIfAborted()
+          input.signal?.throwIfAborted()
           const size = Number(
             entry.stat.size - BigInt(offset) > BigInt(buffer.length) ? buffer.length : entry.stat.size - BigInt(offset),
           )
@@ -276,6 +284,7 @@ export namespace NativeFileEntry {
           offset += bytesRead
         }
         if (version(await source.stat({ bigint: true })) !== entry.version) throw new FileMutation.ConflictError()
+        if (input.owner) await destination.chown(input.owner.uid, input.owner.gid)
         await destination.chmod(Number(entry.stat.mode & 0o777n))
         await destination.utimes(Number(entry.stat.atimeNs) / 1e9, Number(entry.stat.mtimeNs) / 1e9)
         await destination.sync()
@@ -290,6 +299,7 @@ export namespace NativeFileEntry {
     await validateTree(from, members, input, "read")
     await validateTree(to, members, input, "write")
     if (await inspect(to)) throw new FileMutation.ConflictError()
+    await input.start?.()
     const staging = await fs.mkdtemp(path.join(path.dirname(to), ".synergy-copy-"))
     await fs.chmod(staging, 0o700)
     const output = path.join(staging, "entry")
@@ -301,12 +311,15 @@ export namespace NativeFileEntry {
           target = path.join(output, member.relative)
         await requireVersion(source, member.entry.version)
         if (member.entry.type === "directory") await fs.mkdir(target, { mode: 0o700 })
-        else if (member.entry.type === "symlink") await FileLink.copy(source, target, member.entry.link!)
-        else await copyFile(source, target, member.entry, input.signal)
+        else if (member.entry.type === "symlink") {
+          await FileLink.copy(source, target, member.entry.link!)
+          if (input.owner) await fs.lchown(target, input.owner.uid, input.owner.gid)
+        } else await copyFile(source, target, member.entry, input)
       }
       for (const member of [...members].reverse())
         if (member.entry.type === "directory") {
           const target = path.join(output, member.relative)
+          if (input.owner) await fs.chown(target, input.owner.uid, input.owner.gid)
           await fs.chmod(target, Number(member.entry.stat.mode & 0o777n))
           await fs.utimes(target, Number(member.entry.stat.atimeNs) / 1e9, Number(member.entry.stat.mtimeNs) / 1e9)
           if (process.platform !== "win32") {
@@ -361,6 +374,10 @@ export namespace NativeFileEntry {
       input.signal?.throwIfAborted()
       if (members[0]!.entry.version !== input.expectedVersion) throw new FileMutation.ConflictError()
       await checkpoint()
+      const destination = await inspect(to!)
+      if (destination && (from!.toLowerCase() !== to!.toLowerCase() || destination.version !== input.expectedVersion))
+        throw new FileMutation.ConflictError()
+      await input.start?.()
       try {
         FileRename.exclusive(from!, to!)
       } catch (error) {
@@ -387,6 +404,7 @@ export namespace NativeFileEntry {
   async function removeTree(target: string, members: Member[], input: Options) {
     await validateTree(target, members, input, "write")
     await verifyTree(target, members, input)
+    await input.start?.()
     const completed: string[] = []
     try {
       for (const member of [...members].reverse()) {

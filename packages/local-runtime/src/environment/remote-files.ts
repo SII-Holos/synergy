@@ -45,6 +45,9 @@ export class RemoteWorkspaceFiles implements WorkspaceFileHost {
       undefined
     )
   }
+  async mutate(input: WorkspaceProtocol.ChangeInput) {
+    return WorkspaceProtocol.Checkpoint.parse(await this.request({ action: "mutate", input }))
+  }
   async putBlob(hash: string, bytes: Uint8Array) {
     WorkspaceTree.verify(hash, bytes, WorkspaceTree.manifestBytes)
     if (!(await this.connection.send("PUT", `/v1/workspace-objects/${hash}`, bytes, true)))

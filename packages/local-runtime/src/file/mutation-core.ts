@@ -5,6 +5,7 @@ import path from "node:path"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { FileCoordination } from "./coordination"
+import { FileOwnership } from "./ownership"
 
 export namespace NativeFileMutation {
   export async function readText(input: string): Promise<string> {
@@ -58,6 +59,7 @@ export namespace NativeFileMutation {
       expectedVersion?: string | null
       createParents?: boolean
       signal?: AbortSignal
+      owner?: FileOwnership.Owner
       validate?(target: string): Promise<void>
     },
     canonicalTarget?: string,
@@ -71,13 +73,14 @@ export namespace NativeFileMutation {
         throw new ConflictError()
       if (before && (before.mode & 0o222) === 0) throw new AccessDeniedError("Access denied: file is read-only")
       const parent = path.dirname(target)
-      if (input.createParents) await fs.mkdir(parent, { recursive: true })
+      if (input.createParents) await FileOwnership.mkdir(parent, { owner: input.owner })
       const parentBefore = await fs.stat(parent, { bigint: true })
       const temporary = path.join(parent, `.${path.basename(target)}.synergy-write-${process.pid}-${randomUUID()}`)
       try {
         const file = await fs.open(temporary, "wx", before ? before.mode & 0o777 : 0o666)
         try {
           await file.writeFile(input.content)
+          if (input.owner) await file.chown(input.owner.uid, input.owner.gid)
           if (before) await file.chmod(before.mode & 0o777)
           await file.sync()
         } finally {

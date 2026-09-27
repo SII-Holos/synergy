@@ -4,6 +4,7 @@ import fs from "node:fs/promises"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { NativeWorkspaceFiles } from "../../src/workspace/file-host"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
 test("active file host retains a mutation until its checkpoint is acknowledged and deduplicates lost responses", async () => {
   await using tmp = await tmpdir()
@@ -116,4 +117,108 @@ test("file view metadata and bounded ranges refer to the same content version", 
   ).rejects.toThrow("changed")
   await fs.symlink(tmp.path, path.join(root, "escape"))
   await expect(host.stat(mount, "escape/file")).rejects.toThrow("escapes")
+})
+
+test("directory operations preserve versions and deduplicate completed mutations", async () => {
+  await using tmp = await tmpdir()
+  const root = path.join(tmp.path, "workspace")
+  await fs.mkdir(root)
+  const host = new NativeWorkspaceFiles({
+    directory: path.join(tmp.path, "receipts"),
+    materializationRoot: path.join(tmp.path, "views"),
+    coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+  })
+  const mount = { id: "mount", workspaceID: "workspace", generation: 1 }
+  await host.mount({ ...mount, readOnly: false, source: { kind: "directory", path: root } })
+  const mkdir = { id: "mkdir", mount, change: { kind: "mkdir" as const, path: "folder" } }
+  const created = await host.mutate(mkdir)
+  expect(await host.mutate(mkdir)).toEqual(created)
+  await host.acknowledge(mkdir.id)
+  await Bun.write(path.join(root, "folder", "file"), "preserved")
+  const folder = (await host.stat(mount, "folder"))!
+  await expect(
+    host.mutate({
+      id: "conflict",
+      mount,
+      change: {
+        kind: "remove",
+        path: "folder",
+        expectedVersion: "stale",
+        recursive: true,
+      },
+    }),
+  ).rejects.toThrow("changed")
+  expect((await host.checkpointStatus("conflict"))?.state).toBe("failed")
+  await host.mutate({
+    id: "copy",
+    mount,
+    change: {
+      kind: "copy",
+      from: "folder",
+      to: "copy",
+      expectedVersion: folder.entryVersion,
+    },
+  })
+  await host.acknowledge("copy")
+  await host.mutate({
+    id: "move",
+    mount,
+    change: {
+      kind: "move",
+      from: "folder",
+      to: "moved",
+      expectedVersion: folder.entryVersion,
+    },
+  })
+  await host.acknowledge("move")
+  expect(await host.stat(mount, "folder")).toBeUndefined()
+  expect(await Bun.file(path.join(root, "moved", "file")).text()).toBe("preserved")
+  const moved = (await host.stat(mount, "moved"))!
+  const remove = {
+    id: "remove",
+    mount,
+    change: {
+      kind: "remove" as const,
+      path: "moved",
+      expectedVersion: moved.entryVersion,
+      recursive: true,
+    },
+  }
+  const removed = await host.mutate(remove)
+  await host.acknowledge("remove")
+  expect(await host.mutate(remove)).toEqual(removed)
+  expect(await host.stat(mount, "moved")).toBeUndefined()
+  expect(await Bun.file(path.join(root, "copy", "file")).text()).toBe("preserved")
+})
+
+test("a completed directory mutation retries only its failed checkpoint after a host restart", async () => {
+  await using tmp = await tmpdir()
+  const options = {
+    directory: path.join(tmp.path, "receipts"),
+    materializationRoot: path.join(tmp.path, "views"),
+    coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+  }
+  const host = new NativeWorkspaceFiles(options)
+  const empty = WorkspaceTree.encode({ version: 1, entries: [] })
+  const manifest = WorkspaceTree.hash(empty)
+  await host.putBlob(manifest, empty)
+  const mount = await host.mount({
+    id: "materialized",
+    workspaceID: "workspace",
+    generation: 1,
+    readOnly: false,
+    source: { kind: "materialized", manifest },
+  })
+  host.putBlob = async () => {
+    throw new Error("checkpoint interrupted")
+  }
+  const input = { id: "mkdir", mount, change: { kind: "mkdir" as const, path: "folder" } }
+  await expect(host.mutate(input)).rejects.toThrow("checkpoint interrupted")
+  const inode = (await fs.stat(path.join(mount.path, "folder"))).ino
+  await host.close()
+  const recovered = new NativeWorkspaceFiles(options)
+  expect((await recovered.mutate(input)).manifest).not.toBeNull()
+  expect((await fs.stat(path.join(mount.path, "folder"))).ino).toBe(inode)
+  await recovered.acknowledge(input.id)
+  await recovered.close()
 })

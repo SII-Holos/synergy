@@ -26,6 +26,7 @@ const Receipt = z.object({
   checkpoint: WorkspaceProtocol.Checkpoint.optional(),
   released: z.boolean().default(false),
   effectStarted: z.boolean().default(false),
+  effectCompleted: z.boolean().default(false),
   error: z.string().optional(),
 })
 type Receipt = z.infer<typeof Receipt>
@@ -269,7 +270,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       async (mount, receipt, start) => {
         if (mount.readOnly) throw new Error("Workspace mount is read-only")
         const bytes = Buffer.from(input.data, "base64")
-        if (bytes.toString("base64") !== input.data || bytes.length > WorkspaceTree.chunkBytes)
+        if (bytes.toString("base64") !== input.data || bytes.length > WorkspaceProtocol.writeBytes)
           throw new Error("Invalid Workspace file bytes")
         const target = await this.target(mount, input.path)
         const current = await NativeFileMutation.snapshot(target)
@@ -285,6 +286,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
             content: bytes,
             expectedVersion: input.expectedVersion,
             createParents: true,
+            owner: this.options.owner,
             signal: this.shutdown.signal,
             validate: async () => {
               await this.required(input.mount)
@@ -293,7 +295,43 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           },
           target,
         )
-        if (this.options.owner) await fs.chown(target, this.options.owner.uid, this.options.owner.gid)
+      },
+    )
+  }
+  async mutate(raw: WorkspaceProtocol.ChangeInput) {
+    const input = WorkspaceProtocol.ChangeInput.parse(raw)
+    return this.checkpointOperation(
+      input.id,
+      input.mount,
+      this.digest(input),
+      undefined,
+      async (mount, receipt, start) => {
+        if (mount.readOnly) throw new Error("Workspace mount is read-only")
+        if (receipt.effectStarted)
+          throw new Error("Workspace entry mutation outcome is unknown; the mutation cannot be repeated")
+        const absolute = (relative: string) => path.join(mount.path, ...relative.split("/"))
+        const options: NativeFileEntry.Options = {
+          owner: this.options.owner,
+          signal: this.shutdown.signal,
+          start,
+          validate: async (target) => {
+            await this.required(input.mount)
+            if (!this.contains(mount.path, await NativeFileEntry.canonical(target)))
+              throw new Error("Workspace path escapes its mount")
+          },
+        }
+        const change = input.change
+        if (change.kind === "mkdir") {
+          await NativeFileEntry.mkdir({ ...change, path: absolute(change.path), ...options })
+        } else if (change.kind === "remove")
+          await NativeFileEntry.remove({ ...change, path: absolute(change.path), ...options })
+        else
+          await NativeFileEntry[change.kind]({
+            ...change,
+            from: absolute(change.from),
+            to: absolute(change.to),
+            ...options,
+          })
       },
     )
   }
@@ -314,7 +352,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       if (receipt?.error) throw new Error(receipt.error)
       if (receipt?.checkpoint) return receipt.checkpoint
       const mount = await this.required(reference)
-      receipt ??= { id, digest, mount: reference, released: false, effectStarted: false }
+      receipt ??= { id, digest, mount: reference, released: false, effectStarted: false, effectCompleted: false }
       await this.persist("checkpoints", id, receipt)
       if (executionID) {
         if (!this.options.executionWriter) throw new Error("Execution checkpoint is unavailable")
@@ -341,10 +379,15 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         await this.persist("checkpoints", id, receipt)
       } else await this.options.coordinator.validateRetention(receipt.claim, mount.path)
       try {
-        await mutate?.(mount, receipt, async () => {
-          receipt.effectStarted = true
+        if (mutate && !receipt.effectCompleted) {
+          await mutate(mount, receipt, async () => {
+            if (receipt.effectStarted) return
+            receipt.effectStarted = true
+            await this.persist("checkpoints", id, receipt)
+          })
+          receipt.effectCompleted = true
           await this.persist("checkpoints", id, receipt)
-        })
+        }
       } catch (error) {
         if (!receipt.effectStarted && receipt.claim) {
           await (await this.options.coordinator.recover(receipt.claim)).release()

@@ -2,6 +2,7 @@ import { z } from "zod"
 import { WorkspaceTree } from "./tree"
 
 export namespace WorkspaceProtocol {
+  export const writeBytes = 8 * 1024 * 1024
   const ID = z
     .string()
     .min(1)
@@ -50,10 +51,39 @@ export namespace WorkspaceProtocol {
     id: ID,
     mount: Reference,
     path: WorkspaceTree.Path,
-    data: z.string().max(WorkspaceTree.chunkBytes * 1.34),
+    data: z.string().max(writeBytes * 1.34),
     expectedVersion: z.string().nullable(),
   })
   export type WriteInput = z.infer<typeof WriteInput>
+  export const Change = z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("mkdir"),
+      path: WorkspaceTree.Path,
+      createParents: z.boolean().optional(),
+      mode: z.number().int().min(0).max(0o777).optional(),
+    }),
+    z.object({
+      kind: z.literal("remove"),
+      path: WorkspaceTree.Path,
+      expectedVersion: z.string(),
+      recursive: z.boolean().optional(),
+    }),
+    z.object({
+      kind: z.literal("move"),
+      from: WorkspaceTree.Path,
+      to: WorkspaceTree.Path,
+      expectedVersion: z.string(),
+    }),
+    z.object({
+      kind: z.literal("copy"),
+      from: WorkspaceTree.Path,
+      to: WorkspaceTree.Path,
+      expectedVersion: z.string(),
+    }),
+  ])
+  export type Change = z.infer<typeof Change>
+  export const ChangeInput = z.object({ id: ID, mount: Reference, change: Change })
+  export type ChangeInput = z.infer<typeof ChangeInput>
   export const Item = z.object({
     path: z.union([WorkspaceTree.Path, z.literal("")]),
     entryVersion: z.string(),
@@ -77,6 +107,7 @@ export namespace WorkspaceProtocol {
     }),
     z.object({ action: z.literal("list"), mount: Reference, path: z.union([WorkspaceTree.Path, z.literal("")]) }),
     z.object({ action: z.literal("write"), input: WriteInput }),
+    z.object({ action: z.literal("mutate"), input: ChangeInput }),
     z.object({ action: z.literal("checkpoint"), input: CheckpointInput }),
     z.object({ action: z.literal("acknowledge"), id: ID }),
     z.object({ action: z.literal("checkpointStatus"), id: ID }),
@@ -92,6 +123,7 @@ export interface WorkspaceFileHost {
   read(input: WorkspaceProtocol.ReadInput): Promise<WorkspaceProtocol.Read>
   list(mount: WorkspaceProtocol.Reference, path: string): Promise<WorkspaceProtocol.Item[]>
   write(input: WorkspaceProtocol.WriteInput): Promise<WorkspaceProtocol.Checkpoint>
+  mutate(input: WorkspaceProtocol.ChangeInput): Promise<WorkspaceProtocol.Checkpoint>
   checkpoint(input: WorkspaceProtocol.CheckpointInput): Promise<WorkspaceProtocol.Checkpoint>
   acknowledge(id: string): Promise<void>
   checkpointStatus(id: string): Promise<WorkspaceProtocol.CheckpointStatus | undefined>

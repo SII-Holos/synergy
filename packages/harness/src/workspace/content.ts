@@ -3,6 +3,7 @@ import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
 import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceTree } from "./tree"
+import { WorkspaceProtocol } from "./protocol"
 
 export interface BlobStore {
   put(hash: string, bytes: Uint8Array): Promise<void>
@@ -107,7 +108,7 @@ export namespace WorkspaceContent {
     return { bytes, version: `sha256:${entry.hash}`, size: entry.size, mode: entry.mode }
   }
 
-  export async function write(
+  export async function prepareWrite(
     input: Selection,
     change: { path: string; data: Uint8Array; expectedVersion: string | null; mode?: number },
   ) {
@@ -146,7 +147,76 @@ export namespace WorkspaceContent {
       if (!existing) entries.push({ kind: "directory", path: parent, mode: 0o755 })
       parent = path.posix.dirname(parent)
     }
-    return publish(info, store, { version: 1, entries: [...entries, entry] })
+    return prepare(info, store, { version: 1, entries: [...entries, entry] })
+  }
+
+  export async function write(input: Selection, change: Parameters<typeof prepareWrite>[1]) {
+    const prepared = await prepareWrite(input, change)
+    return WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+  }
+
+  export async function prepareChange(input: Selection, raw: WorkspaceProtocol.Change) {
+    const change = WorkspaceProtocol.Change.parse(raw)
+    const { info, store } = await resolve(input)
+    const tree = await manifest(info, store)
+    const from = WorkspaceTree.resolve(tree, "path" in change ? change.path : change.from, false)
+    const entries = new Map(tree.entries.map((entry) => [entry.path, entry]))
+    const conflict = () =>
+      new WorkspaceCatalog.BindingChanged({ workspaceID: info.id, message: "Filesystem entry changed" })
+    const parents = (filename: string, create: boolean) => {
+      const missing: string[] = []
+      for (let name = path.posix.dirname(filename); name !== "."; name = path.posix.dirname(name)) {
+        const parent = entries.get(name)
+        if (!parent) {
+          if (!create) throw new Error("Workspace parent directory is absent")
+          missing.push(name)
+        } else if (parent.kind !== "directory" || !(parent.mode & 0o222))
+          throw new Error("Workspace parent is not a writable directory")
+      }
+      for (const name of missing) entries.set(name, { kind: "directory", path: name, mode: 0o755 })
+    }
+    if (change.kind === "mkdir") {
+      if (from.entry) throw conflict()
+      parents(from.path, change.createParents ?? false)
+      entries.set(from.path, { kind: "directory", path: from.path, mode: change.mode ?? 0o755 })
+    } else {
+      if (!from.entry || WorkspaceTree.entryVersion(from.entry, info.content?.revision) !== change.expectedVersion)
+        throw conflict()
+      const members = tree.entries.filter((entry) => entry.path === from.path || entry.path.startsWith(`${from.path}/`))
+      if (change.kind === "remove") {
+        if (!change.recursive && members.length > 1)
+          throw new Error("Directory is not empty; recursive removal is required")
+        parents(from.path, false)
+        for (const entry of members) entries.delete(entry.path)
+      } else {
+        const to = WorkspaceTree.resolve(tree, change.to, false)
+        if (to.entry) throw conflict()
+        if (from.path.startsWith(`${to.path}/`) || to.path.startsWith(`${from.path}/`))
+          throw new Error("Source and destination must be separate filesystem entries")
+        parents(to.path, false)
+        if (change.kind === "move") {
+          parents(from.path, false)
+          for (const entry of members) entries.delete(entry.path)
+        }
+        for (const entry of members) {
+          const name = to.path + entry.path.slice(from.path.length)
+          entries.set(name, { ...entry, path: name })
+        }
+      }
+    }
+    return prepare(info, store, { version: 1, entries: [...entries.values()] })
+  }
+
+  export async function mutate(input: Selection, change: WorkspaceProtocol.Change) {
+    const prepared = await prepareChange(input, change)
+    return WorkspaceCatalog.publishContent(prepared.info, prepared.manifest)
+  }
+
+  async function prepare(info: WorkspaceCatalog.Info, store: BlobStore, tree: WorkspaceTree.Manifest) {
+    const bytes = WorkspaceTree.encode(tree)
+    const manifest = WorkspaceTree.hash(bytes)
+    await store.put(manifest, bytes)
+    return { info, manifest }
   }
 
   export async function publish(info: WorkspaceCatalog.Info, store: BlobStore, tree: WorkspaceTree.Manifest) {

@@ -200,6 +200,8 @@ Every successful edit mints a new tag and makes older tags stale. The patch lang
 
 ## Write Pipeline
 
+File and directory operations select the Workspace live view or its dormant object manifest. Mounted operations retain their allocation and writer until checkpoint publication. Dormant operations commit the immutable manifest head and operation result atomically in Agent Storage. Both paths deduplicate stable operation IDs and reject stale entry/content versions. Byte writes accept at most 8 MiB per request; larger files are read through versioned 4 MiB ranges. Execution-host creations assign files and new parent directories to the command identity before publication.
+
 A governed file write can include:
 
 1. path resolution and protected/external path classification

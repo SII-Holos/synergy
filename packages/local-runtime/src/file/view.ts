@@ -96,7 +96,7 @@ export namespace FileView {
     return {
       path: filename,
       kind: entry.kind,
-      entryVersion: `entry:${WorkspaceTree.hash(new TextEncoder().encode(JSON.stringify([entry, info.content?.revision])))}`,
+      entryVersion: WorkspaceTree.entryVersion(entry, info.content?.revision),
       mode: entry.mode,
       size: entry.kind === "file" ? entry.size : 0,
       mtime: info.updatedAt,
@@ -184,22 +184,25 @@ export namespace FileView {
     signal?.throwIfAborted()
     const info = await selected()
     const name = relative(filename)
-    if (info.activeMount)
-      await WorkspaceOperations.write({
-        ...selection(info),
-        id: EnvironmentResources.nextOperationID(),
-        path: name,
-        data,
-        expectedVersion,
-        signal,
-      })
-    else await WorkspaceContent.write(selection(info), { path: name, data, expectedVersion })
+    await WorkspaceOperations.write({
+      ...selection(info),
+      id: EnvironmentResources.nextOperationID(),
+      path: name,
+      data,
+      expectedVersion,
+      signal,
+    })
     return {
       mtime: Date.now(),
       size: data.byteLength,
       existed: expectedVersion !== null,
       contentVersion: `sha256:${WorkspaceTree.hash(data)}`,
     }
+  }
+
+  export async function mutate(change: WorkspaceProtocol.Change, signal?: AbortSignal) {
+    const info = await selected()
+    await WorkspaceOperations.mutate({ ...selection(info), id: EnvironmentResources.nextOperationID(), change, signal })
   }
 
   export function file(filename: string) {

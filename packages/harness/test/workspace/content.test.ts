@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { WorkspaceCatalog } from "../../src/workspace/catalog"
 import { WorkspaceContent, WorkspaceBlobs, type BlobStore } from "../../src/workspace/content"
 import { WorkspaceTree } from "../../src/workspace/tree"
+import { WorkspaceOperations } from "../../src/workspace/operations"
 import { Storage } from "../../src/storage/storage"
 import { testRuntime } from "../support/runtime"
 
@@ -109,5 +110,64 @@ test("bounded object reads follow contained links and only fetch intersecting ch
     expect((await WorkspaceContent.manifest(latest, blobs)).entries.find((entry) => entry.path === "link")?.kind).toBe(
       "symlink",
     )
+  })
+})
+
+test("object directory operations commit their receipt with the head and allocate no compute", async () => {
+  const blobs: BlobStore = {
+    put: (hash, bytes) => Storage.writeBinary(["test_blobs", hash], bytes),
+    get: (hash) => Storage.readBinary(["test_blobs", hash]),
+  }
+  await using runtime = await testRuntime({ register: () => WorkspaceBlobs.register("fixture", blobs) })
+  await runtime.run(async () => {
+    const info = await WorkspaceCatalog.create({
+      scopeID: "scope",
+      backend: { provider: "objects", spec: { blobStore: "fixture" } },
+    })
+    const input = { scopeID: info.scopeID, workspaceID: info.id }
+    await WorkspaceOperations.mutate({
+      ...input,
+      id: "mkdir",
+      change: { kind: "mkdir", path: "a/b", createParents: true },
+    })
+    const write = { ...input, id: "write", path: "a/b/file", data: new Uint8Array([1, 2]), expectedVersion: null }
+    await WorkspaceOperations.write(write)
+    await WorkspaceOperations.write(write)
+    expect((await WorkspaceCatalog.get(info.id, info.scopeID)).content?.revision).toBe(2)
+    expect((await WorkspaceOperations.get("write", info.scopeID)).state).toBe("completed")
+    const version = async (filename: string) => {
+      const current = await WorkspaceCatalog.get(info.id, info.scopeID)
+      const tree = await WorkspaceContent.manifest(current, blobs)
+      return WorkspaceTree.entryVersion(
+        tree.entries.find((entry) => entry.path === filename)!,
+        current.content?.revision,
+      )
+    }
+    await WorkspaceOperations.mutate({
+      ...input,
+      id: "copy",
+      change: { kind: "copy", from: "a", to: "copy", expectedVersion: await version("a") },
+    })
+    await expect(
+      WorkspaceOperations.mutate({
+        ...input,
+        id: "conflict",
+        change: { kind: "remove", path: "a", recursive: true, expectedVersion: "stale" },
+      }),
+    ).rejects.toThrow("changed")
+    await WorkspaceOperations.mutate({
+      ...input,
+      id: "move",
+      change: { kind: "move", from: "a", to: "moved", expectedVersion: await version("a") },
+    })
+    await WorkspaceOperations.mutate({
+      ...input,
+      id: "remove",
+      change: { kind: "remove", path: "moved", recursive: true, expectedVersion: await version("moved") },
+    })
+    expect([...(await WorkspaceContent.read(input, "copy/b/file"))]).toEqual([1, 2])
+    await expect(WorkspaceContent.read(input, "moved/b/file")).rejects.toThrow("absent")
+    expect(await Storage.list(["environment"])).toHaveLength(0)
+    expect(await Storage.list(["workspace_operation_active"])).toHaveLength(0)
   })
 })

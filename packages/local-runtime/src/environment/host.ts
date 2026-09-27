@@ -244,6 +244,8 @@ export namespace ExecutionHost {
         return files.list(request.mount, request.path)
       case "write":
         return files.write(request.input)
+      case "mutate":
+        return files.mutate(request.input)
       case "checkpoint":
         return files.checkpoint(request.input)
       case "checkpointStatus":

@@ -22,6 +22,8 @@ An indexed set of unfinished operations makes startup recovery independent of co
 
 Mounted file writes use the same intent-before-dispatch ordering. Their core operation record carries the immutable write input, digest, view generation and allocation target. Recovery only resumes a known receipt, and cannot repeat a mutation after uncertain effects. Admission becomes durable in the same transaction as its owning intent so a crash before dispatch does not strand an unowned use.
 
+Directory creation, copy, move and removal use the same operation record and checkpoint acknowledgement. The file host records completed mutation effects before capturing the tree, so an interrupted capture retries saving without changing files again. Uncertain partial effects retain ownership. Dormant object operations upload immutable data before publishing their content head and completed operation record in one SQL transaction; they allocate no execution resources. Entry versions fence tree mutations, and destination publication never overwrites an existing entry.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.
