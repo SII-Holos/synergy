@@ -279,35 +279,40 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         ),
       ]
     case "artifacts":
-      return [
-        test("watcher-native", ["--config", "/dev/null", ...task.files!]),
-        bun("core-build", ["packages/cli/script/build.ts", "--single", "--skip-install"], undefined, {
-          SYNERGY_BUILD_TARGETS: "linux-x64",
-          SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
-        }),
-        test("core-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-          SYNERGY_TEST_ARTIFACT_PROFILE: "core",
-          SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/cli/dist/synergy-linux-x64/bin/synergy"),
-        }),
-        bun("product-build", ["packages/presets/script/build.ts", "--single", "--skip-install"], undefined, {
-          SYNERGY_BUILD_TARGETS: "linux-x64",
-          SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
-        }),
-        test("product-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-          SYNERGY_TEST_ARTIFACT_PROFILE: "full",
-          SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/presets/dist/synergy-linux-x64/bin/synergy"),
-        }),
-        bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),
-        bun("core-install", ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")]),
-        bun("product-composition", [
-          "script/runtime-composition-check.ts",
-          path.join(root, "packages/presets/dist/modules-packages"),
-        ]),
-        bun("installation-composition", [
-          "script/installation-composition-check.ts",
-          path.join(root, "packages/presets/dist/modules-packages"),
-        ]),
-      ]
+      if (task.variant === "core")
+        return [
+          test("watcher-native", ["--config", "/dev/null", ...task.files!]),
+          bun("core-build", ["packages/cli/script/build.ts", "--single", "--skip-install"], undefined, {
+            SYNERGY_BUILD_TARGETS: "linux-x64",
+            SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
+          }),
+          test("core-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
+            SYNERGY_TEST_ARTIFACT_PROFILE: "core",
+            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/cli/dist/synergy-linux-x64/bin/synergy"),
+          }),
+          bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),
+          bun("core-install", ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")]),
+        ]
+      if (task.variant === "full")
+        return [
+          bun("product-build", ["packages/presets/script/build.ts", "--single", "--skip-install"], undefined, {
+            SYNERGY_BUILD_TARGETS: "linux-x64",
+            SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
+          }),
+          test("product-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
+            SYNERGY_TEST_ARTIFACT_PROFILE: "full",
+            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/presets/dist/synergy-linux-x64/bin/synergy"),
+          }),
+          bun("product-composition", [
+            "script/runtime-composition-check.ts",
+            path.join(root, "packages/presets/dist/modules-packages"),
+          ]),
+          bun("installation-composition", [
+            "script/installation-composition-check.ts",
+            path.join(root, "packages/presets/dist/modules-packages"),
+          ]),
+        ]
+      throw new Error(`Unknown installed runtime profile: ${task.variant}`)
   }
 }
 
