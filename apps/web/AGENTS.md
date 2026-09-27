@@ -21,6 +21,8 @@ Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before 
 - Keep the rendered turn tree bounded: while pinned at the bottom in latest mode, `turnStart` auto-advances (trim from the top, re-pin the scroller after layout) so the DOM does not grow with session length; parts stay fine-grained store reads and must not move into the turn projection.
 - Reconcile single messages into the sorted window incrementally (binary-search insertion) rather than re-merging and re-sorting the whole window; window order and eviction semantics stay canonical.
 
+Discover active components through the generated capabilities API before optional API calls. Keep startup requests, settings, navigation, composer controls and workbench registrations consistent with that selection; reconnect discards the previous selection and never assumes a full product.
+
 Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regenerate the SDK when a required route is missing. Keep raw browser APIs for WebSocket/EventSource/WebRTC, external URLs, local file/blob operations, downloads/uploads without an SDK contract, and platform fetch injection.
 
 ## Product and Interaction

@@ -5,7 +5,7 @@ import {
   type BrowserPage,
   type BrowserProtocolErrorData,
   type BrowserUserCommand,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import type { BrowserSession } from "./types.js"
 import type { BrowserPageBackend } from "./page.js"
 

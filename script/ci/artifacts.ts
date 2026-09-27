@@ -15,10 +15,11 @@ export const BUILD_INPUTS = [
   "script/build-workspace.ts",
   "script/generate-openapi.ts",
   ".github/actions/ci-setup/action.yml",
-  "packages/runtime-local/package.json",
-  "packages/runtime-local/script/build-watcher.ts",
-  "packages/runtime-local/script/build-pty.ts",
-  "packages/runtime-local/src/process/native-pty.ts",
+  "packages/local-runtime/package.json",
+  "packages/local-runtime/script/build-watcher.ts",
+  "packages/local-runtime/script/build-pty.ts",
+  "packages/local-runtime/src/process/native-pty.ts",
+  "packages/util/src/native-assets.ts",
   "tsconfig.json",
 ]
 
@@ -76,9 +77,9 @@ export function buildCommands(root = ROOT) {
 
 function buildPaths(root: string) {
   return [
-    "packages/runtime-local/.artifacts/watcher",
-    "packages/runtime-local/.artifacts/pty",
-    ...(process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1" ? ["packages/runtime-local/sandbox-assets/linux-x64"] : []),
+    "packages/local-runtime/.artifacts/watcher",
+    "packages/local-runtime/.artifacts/pty",
+    ...(process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1" ? ["packages/local-runtime/sandbox-assets/linux-x64"] : []),
     ...buildWorkspaces(root)
       .filter((entry) => entry.scripts?.build)
       .map((entry) => `${entry.directory}/dist`),
@@ -105,9 +106,9 @@ export async function buildIdentity(root = ROOT): Promise<string> {
       files.push(path.relative(root, file))
   }
   for (const directory of [
-    "packages/runtime-local/script/watcher",
-    "packages/runtime-local/src/process/native-pty",
-    "packages/runtime-local/src/sandbox/helper-linux",
+    "packages/local-runtime/script/watcher",
+    "packages/local-runtime/src/process/native-pty",
+    "packages/local-runtime/src/sandbox/helper-linux",
   ]) {
     for (const file of await filesIn(path.join(root, directory), ["target", "node_modules"]))
       files.push(path.relative(root, file))

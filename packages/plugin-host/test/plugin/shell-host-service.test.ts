@@ -3,7 +3,7 @@ import { capability, compilePluginManifest, definePlugin } from "@ericsanchezok/
 import type { PluginActor } from "@ericsanchezok/synergy-plugin"
 import { EnforcementError } from "@ericsanchezok/synergy-harness/enforcement/errors"
 import { executePluginHostService } from "../../src/plugin/host-services-runtime"
-import { SandboxBackend } from "@ericsanchezok/synergy-runtime-local/sandbox/backend"
+import { SandboxBackend } from "@ericsanchezok/synergy-local-runtime/sandbox/backend"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

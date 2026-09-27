@@ -2,7 +2,7 @@
 
 This package is the published plugin-author contract. Load `change-plugin-runtime` and read [Plugin documentation](../../docs/plugins/README.md) before changing it.
 
-- Keep this package independent from private Harness and product runtime modules. Public definitions, generated-manifest schemas, capabilities, contributions, contexts, tools, UI contracts, artifacts, and version helpers must remain usable by third-party plugins.
+- Keep this package independent from private Harness and preset runtime modules. Public definitions, generated-manifest schemas, capabilities, contributions, contexts, tools, UI contracts, artifacts, and version helpers must remain usable by third-party plugins.
 - Infer TypeScript types from the public schemas and preserve stable IDs, defaults, validation errors, and export paths. A host-only implementation detail does not belong in the public manifest.
 - Keep canonical manifest and permissions hashing in `src/integrity.ts`; plugin-kit and the host must import that public contract rather than duplicate its payload or stable serialization.
 - Capability declarations are Host Service ceilings consumed by approval and enforcement. Do not restore the old nested permission model or imply control over direct OS access.
@@ -13,3 +13,7 @@ This package is the published plugin-author contract. Load `change-plugin-runtim
 Run `bun run typecheck` and root `bun turbo build --filter=@ericsanchezok/synergy-plugin`, then the focused host/plugin-kit tests and root `bun run package:check` plus `bun run quality:quick`. Inspect the built package and public exports, not only source compilation.
 
 The workspace `build` writes only this package’s outputs. Turbo and the release/development entrypoints build declared dependencies first; never clear a sibling package’s `dist` from a package build.
+
+The separate `./package` export describes installable components, presets, applications and plugin wrappers. Keep Plugin API4 and UI API6 manifests unchanged; package metadata is read before code execution and never substitutes for plugin capability approval. Presets contain selections, not executable entrypoints.
+
+Application metadata distinguishes an Authenticode-signed Windows distribution from an explicit checksum-only distribution. macOS always requires an Apple identity. Release signing continuity is enforced by the owning publisher; do not label an unsigned artifact as signed.

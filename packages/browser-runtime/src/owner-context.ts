@@ -1,4 +1,4 @@
-import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
+import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"

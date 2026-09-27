@@ -91,7 +91,10 @@
     "./session/light-loop-review-access": "./src/session/light-loop-review-access.ts",
     "./session-schema": "./src/session-schema.ts",
     "./session/register": "./src/session/register.ts",
-    "./session-migration": "./src/session-migration.ts"
+    "./session-migration": "./src/session-migration.ts",
+    "./component": "./src/component.ts",
+    "./anima-schedule": "./src/anima-schedule.ts",
+    "./http": "./src/http.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -103,12 +106,12 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-library": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-note": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-plugin-host": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
-    "@ericsanchezok/synergy-server": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
     "croner": "10.0.1",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
@@ -121,5 +124,35 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "workflows",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "workflows",
+    "requires": {
+      "local-runtime": "1.1.26",
+      "library": "1.1.26",
+      "note": "1.1.26",
+      "plugin-host": "1.1.26"
+    },
+    "packages": {
+      "@ericsanchezok/synergy-library": "1.1.26",
+      "@ericsanchezok/synergy-note": "1.1.26"
+    }
   }
 }

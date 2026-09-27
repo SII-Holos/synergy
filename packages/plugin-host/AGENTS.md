@@ -10,3 +10,15 @@ Plugin processes, discovery, configuration, trust, permissions and capability-ga
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
 File-capable invocations pin canonical Workspace generations. Restore the invocation async context for every IPC Host callback, drain Host work before releasing ownership, and preserve native file conflicts. Verify with `bun test test/plugin-runtime/workspace-context.test.ts test/plugin/tool-invocation.test.ts test/plugin/shell-host-service.test.ts`.
+
+Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
+
+Own the installation generation ledger under `src/installation`. Its pre-bootstrap metadata, integrity verification and recovery must remain independent of Harness imports. Component activation and existing API4 plugin transactions share the same cross-process installation lock; retain old generations while processes may still use their modules. Host-code trust does not grant API4 plugin capabilities.
+
+Add/update/remove preserves explicit roots and the package-manager lock; rebuild a stage from that lock to prune removed dependencies. Resolve the selected graph to one canonical Harness before importing component factories, compare executable declarations with approved metadata, and pin worker generations by their manifest digest.
+
+The dependency-light `installation/catalog` leaf owns the four first-party install selections and aliases. Source Presets, the installer and release tooling consume it without a core dependency on complete-product assembly.
+
+Installation CLI handlers use the metadata-first manager. API4 activation journals retain plugin transactions, source identity and capability consent; recovery must be idempotent and cannot replay an older generation over the current selection. Application checksums and native publisher checks precede activation. Test real local archives, script suppression, interrupted activation and subprocess generation pins.
+
+Launcher upgrades preserve roots, third-party pins and API4 grants; first-party versions advance with the core. Initial selection has a versioned pre-bootstrap owner registered with the central migration runner. Keep component-only changes independent of SQL maintenance and source composition independent of installed-package state.

@@ -10,6 +10,7 @@ export interface Workspace {
   optionalDependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>
 }
 
 export function workspaces(root: string): Workspace[] {
@@ -20,13 +21,18 @@ export function workspaces(root: string): Workspace[] {
   }))
 }
 
-export function workspaceGraph(packages: Workspace[]) {
+export function workspaceGraph(packages: Workspace[], options: { optionalPeers?: boolean } = {}) {
   const names = new Set(packages.map((pkg) => pkg.name))
   return Object.fromEntries(
     packages.map((pkg) => [
       pkg.name,
-      Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies, ...pkg.peerDependencies }).filter((name) =>
-        names.has(name),
+      Object.keys({ ...pkg.dependencies, ...pkg.optionalDependencies, ...pkg.peerDependencies }).filter(
+        (name) =>
+          names.has(name) &&
+          (options.optionalPeers !== false ||
+            !pkg.peerDependenciesMeta?.[name]?.optional ||
+            Object.hasOwn(pkg.dependencies ?? {}, name) ||
+            Object.hasOwn(pkg.optionalDependencies ?? {}, name)),
       ),
     ]),
   )

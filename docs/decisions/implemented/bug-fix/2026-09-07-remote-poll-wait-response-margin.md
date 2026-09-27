@@ -11,7 +11,7 @@ A healthy long-running remote process caused `process poll(block=true, timeout=3
 Both sides now keep remote blocking-poll waits inside the transport deadline:
 
 1. The host (`packages/synergy-link/src/exec/process-registry.ts`) caps blocking-poll waits at 25 seconds by default — the same five-second response margin remote bash yields reserve — regardless of the requested timeout. The cap is configurable per `ProcessRegistry`/`RPCHandler` (`maxBlockingPollMs`, exported as `ProcessRegistryOptions` and wired through `RPCHandlerOptions.registry`) so hosts with a different transport deadline can tune it and tests can exercise the ordering at millisecond scale.
-2. The sender (`packages/runtime-local/src/tools/process/remote.ts`) clamps blocking-poll timeouts it sends to remote hosts at 25 seconds (defaulting omitted timeouts to 25 for remote polls) so even a host running an older binary that honors the full requested wait returns a still-running result inside the transport window.
+2. The sender (`packages/local-runtime/src/tools/process/remote.ts`) clamps blocking-poll timeouts it sends to remote hosts at 25 seconds (defaulting omitted timeouts to 25 for remote polls) so even a host running an older binary that honors the full requested wait returns a still-running result inside the transport window.
 
 An ordinary wait expiry returns a normal still-running result; process exit during the wait returns the terminal state; non-blocking polls remain immediate; real transport failures still reject as ambiguous without automatic replay. The wait is bounded at the start of remote handling so dispatch, handling, and network latency keep their share of the 30-second budget.
 

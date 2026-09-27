@@ -1,0 +1,66 @@
+{
+  "name": "@ericsanchezok/synergy-link-client",
+  "version": "1.1.26",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "exports": {
+    "./tools": "./src/tools.ts",
+    "./tool-target-source": "./src/tool-target-source.ts",
+    "./routes/synergy-link-route": "./src/routes/synergy-link-route.ts",
+    "./tools/connect": "./src/tools/connect.ts",
+    "./target-store": "./src/target-store.ts",
+    "./target-service": "./src/target-service.ts",
+    "./component": "./src/component.ts",
+    "./http": "./src/http.ts"
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun ../testing/script/test-ci.ts",
+    "build": "bun ../../script/build-workspace.ts packages/link-client",
+    "test:ci": "bun ../testing/script/test-ci.ts",
+    "test:coverage": "bun ../testing/script/coverage-run.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-harness": "workspace:*",
+    "@ericsanchezok/synergy-link-protocol": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@hono/standard-validator": "^0.2.0",
+    "hono": "catalog:",
+    "hono-openapi": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@ericsanchezok/synergy-connections": "workspace:*",
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-testing": "workspace:*",
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-server": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-server": {
+      "optional": true
+    }
+  },
+  "synergy": {
+    "formatVersion": 1,
+    "kind": "component",
+    "id": "link-client",
+    "version": "1.1.26",
+    "compatibility": {
+      "synergy": "1.1.26"
+    },
+    "apiVersion": 1,
+    "entry": "./dist/component.js",
+    "export": "linkClient",
+    "requires": {
+      "local-runtime": "1.1.26"
+    }
+  }
+}

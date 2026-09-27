@@ -4,7 +4,7 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { MemoryWriteTool, MemoryEditTool, MemorySearchTool, MemoryGetTool } from "./tools/memory"
 
 /**
- * Library domain tool registration. Loaded through src/product-registration.ts.
+ * Library domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

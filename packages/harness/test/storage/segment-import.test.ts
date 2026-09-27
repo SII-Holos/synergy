@@ -37,7 +37,7 @@ test("a cancelled segment keeps its source and can resume without duplicate reco
           UpgradeWork.run({ background: false, signal: controller.signal }, () => SessionCompat.requireImported(id)),
         ).rejects.toThrow("interrupted segment")
         expect(await Bun.file(path.join(backup.sourceRoot, ...fixture.records[0].key) + ".json").exists()).toBe(true)
-        await SessionCompat.requireImported(id)
+        await SessionCompat.ensureImported(id)
         expect(await store.read(fixture.records[3].key)).toEqual(fixture.records[3].value)
         expect((await SessionCompat.stats()).imported).toBe(1)
         await SessionCompat.requireImported(id)
@@ -71,7 +71,7 @@ test("source drift after sealing never publishes staged records or deletes recov
         await backup.sealSession(owner)
         const file = path.join(backup.sourceRoot, ...fixture.records[0].key) + ".json"
         await Bun.write(file, JSON.stringify({ ...fixture.records[0].value, title: "external modification" }))
-        await expect(SessionCompat.requireImported(id)).rejects.toThrow("changed")
+        await expect(SessionCompat.ensureImported(id)).rejects.toThrow("changed")
         await expect(Storage.read(fixture.records[0].key)).rejects.toThrow("preparation")
         expect((await StorageCompat.readLocator(store, id))?.status).toBe("partial")
         expect((await Bun.file(file).json()).title).toBe("external modification")
@@ -120,7 +120,7 @@ test("failed publication rolls back indexes and admission, then resumes from dur
       await store.close()
       store = await TransactionalStore.open(options)
       await Storage.provide({ store, artifactDirectory: data }, async () => {
-        await SessionCompat.requireImported(fixture.records[0].value.id)
+        await SessionCompat.ensureImported(fixture.records[0].value.id)
         expect(await Storage.read<unknown>(fixture.records[3].key)).toEqual(fixture.records[3].value)
         expect((await SessionCompat.stats()).imported).toBe(1)
         expect((await store.verify()).issues).toEqual([])

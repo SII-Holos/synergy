@@ -218,7 +218,7 @@ export namespace BossService {
 
     if (input.workspace === "worktree") {
       try {
-        const { Worktree } = await import("@ericsanchezok/synergy-runtime-local/workspace/worktree")
+        const { Worktree } = await import("@ericsanchezok/synergy-local-runtime/workspace/worktree")
         await Worktree.create({ sessionID: session.id, baseRef: "current", bind: true })
         return await Session.get(session.id)
       } catch (error) {

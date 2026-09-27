@@ -1,5 +1,5 @@
 import z from "zod"
-import { BrowserWaitConditionSchema } from "@ericsanchezok/synergy-browser"
+import { BrowserWaitConditionSchema } from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper } from "./browser-shared"
 

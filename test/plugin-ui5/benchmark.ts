@@ -36,7 +36,7 @@ export default definePlugin({ id: "benchmark-panel", version: "1.0.0", descripti
       if (!(await buildPluginProject(project.root))) throw new Error("Benchmark plugin build failed")
       preview = await startPluginPreview({
         artifacts: [path.join(project.root, "dist")],
-        command: [process.execPath, path.join(checkout!, "packages/product-runtime/src/index.ts")],
+        command: [process.execPath, path.join(checkout!, "packages/presets/src/index.ts")],
       })
       await approvePreviewPlugins(preview)
       const a = await importPreviewConversation(preview, { title: "Benchmark A", turns: 160 })

@@ -1,7 +1,7 @@
 import { $ } from "bun"
 import { describe, expect, mock, test } from "bun:test"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Server } from "../../src/server/server"
 import { Session } from "@ericsanchezok/synergy-harness/session"

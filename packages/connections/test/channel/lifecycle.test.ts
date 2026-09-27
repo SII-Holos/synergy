@@ -14,7 +14,7 @@ import type {
 } from "../../src/channel/types"
 import { QuestionCardRuntime } from "../../src/channel/question-card"
 import { ChannelInteraction } from "../../src/channel/interaction"
-import { Question } from "@ericsanchezok/synergy-runtime-local/question"
+import { Question } from "@ericsanchezok/synergy-local-runtime/question"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { FeishuProvider } from "../../src/channel/provider/feishu"

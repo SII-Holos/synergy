@@ -5,10 +5,41 @@ import os from "node:os"
 import path from "node:path"
 import { Installation } from "../../src/global/installation"
 import { StandaloneInstallation } from "../../src/global/standalone-installation"
+import { DesktopInstallation } from "../../src/global/desktop-installation"
 
 const env = {}
 
 describe("Installation desktop detection", () => {
+  test("opens the native application that owns a directly installed runtime", () => {
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "darwin",
+        execPath: "/usr/local/bin/synergy",
+        realExecPath: "/Applications/Synergy.app/Contents/Resources/synergy/bin/synergy",
+      }),
+    ).toEqual(["open", "/Applications/Synergy.app"])
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "win32",
+        execPath: "C:\\Synergy\\resources\\synergy\\bin\\synergy.exe",
+        realExecPath: "C:\\Synergy\\resources\\synergy\\bin\\synergy.exe",
+      }),
+    ).toEqual(["C:\\Synergy\\synergy-desktop.exe"])
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "linux",
+        execPath: "/usr/bin/synergy",
+        realExecPath: "/opt/Synergy/resources/synergy/bin/synergy",
+      }),
+    ).toEqual(["/opt/Synergy/synergy-desktop"])
+    expect(
+      DesktopInstallation.applicationCommand({
+        platform: "linux",
+        execPath: "/usr/bin/bun",
+        realExecPath: "/usr/bin/bun",
+      }),
+    ).toBeUndefined()
+  })
   test("detects macOS app bundle runtime paths", () => {
     expect(
       Installation.detectDesktopInstall({
@@ -545,4 +576,44 @@ describe("standalone installation", () => {
       await fs.rm(home, { recursive: true, force: true })
     }
   })
+})
+
+test("standalone upgrades verify and remove the sealed module payload", async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-module-upgrade-"))
+  const root = path.join(home, ".synergy")
+  const required = [
+    "bin/synergy",
+    "runtime/generation.json",
+    "runtime-assets.txt",
+    "runtime/node_modules/@ericsanchezok/synergy-harness/package.json",
+    "runtime/node_modules/@ericsanchezok/synergy-cli/dist/modules/index.js",
+    "runtime/Third Party.txt",
+  ]
+  const context = {
+    platform: "darwin" as const,
+    execPath: path.join(root, "bin/synergy"),
+    realExecPath: path.join(root, "bin/synergy"),
+    env,
+  }
+  try {
+    const manifest: string[] = []
+    for (const relative of required) {
+      const content = relative === "runtime-assets.txt" ? required.join("\n") + "\n" : relative
+      await fs.mkdir(path.dirname(path.join(root, relative)), { recursive: true })
+      await fs.writeFile(path.join(root, relative), content)
+      manifest.push(`${createHash("sha256").update(content).digest("hex")}  ${relative}`)
+    }
+    await fs.writeFile(path.join(root, "runtime-manifest.sha256"), manifest.join("\n") + "\n")
+    expect(await StandaloneInstallation.verify(home, context)).toBe(true)
+    await fs.writeFile(path.join(root, "runtime/unlisted.js"), "unapproved code")
+    expect(await StandaloneInstallation.verify(home, context)).toBe(false)
+    await fs.rm(path.join(root, "runtime/unlisted.js"))
+    await fs.writeFile(path.join(root, "runtime/Third Party.txt"), "tampered")
+    expect(await StandaloneInstallation.verify(home, context)).toBe(false)
+    const result = await StandaloneInstallation.remove({ home, platform: "darwin" })
+    expect(result.removed).toContain(path.join(root, "runtime"))
+    expect(result.removed).toContain(path.join(root, "runtime-assets.txt"))
+  } finally {
+    await fs.rm(home, { recursive: true, force: true })
+  }
 })

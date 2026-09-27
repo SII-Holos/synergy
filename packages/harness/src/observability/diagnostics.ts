@@ -15,7 +15,7 @@ import { ObservabilityRedaction } from "./redaction"
 import { ObservabilitySchema } from "./schema"
 import { ObservabilityStore } from "./store"
 import { parseJson } from "../util/json-parse"
-import { readFileWithRetry } from "../util/io-retry"
+import { readFileWithRetry } from "@ericsanchezok/synergy-util/io-retry"
 import {
   RuntimeStartupProgress,
   RUNTIME_STARTUP_PREFIX,

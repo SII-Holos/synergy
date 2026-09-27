@@ -2,8 +2,8 @@ import fs from "fs/promises"
 import path from "path"
 import os from "os"
 import * as prompts from "@clack/prompts"
-import { cmd } from "../cmd"
-import { UI } from "../../../util/ui"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import {
   shortenPath,

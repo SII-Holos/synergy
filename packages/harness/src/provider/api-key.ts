@@ -5,7 +5,7 @@ import fs from "fs/promises"
 import path from "path"
 import z from "zod"
 import { ProviderAuthHealth } from "./auth-health"
-import { readFileWithRetry } from "../util/io-retry"
+import { readFileWithRetry } from "@ericsanchezok/synergy-util/io-retry"
 
 export namespace Auth {
   const runtimeState = RuntimeContext.state(() => ({

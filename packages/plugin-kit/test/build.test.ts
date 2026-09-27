@@ -37,6 +37,14 @@ export default definePlugin({
       expect(await buildPluginProject(root)).toBe(true)
       expect(fs.readFileSync(path.join(root, "dist", "runtime", "prompts", "method.md"), "utf8")).toBe("first prompt")
       const first = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+      expect(JSON.parse(fs.readFileSync(path.join(root, "dist", "package.json"), "utf8")).synergy).toEqual({
+        formatVersion: 1,
+        kind: "plugin",
+        id: first.id,
+        version: first.version,
+        compatibility: first.compatibility,
+        manifest: "./plugin.json",
+      })
 
       fs.writeFileSync(path.join(root, "src", "prompts", "method.md"), "second prompt")
       expect(await buildPluginProject(root)).toBe(true)

@@ -6,11 +6,13 @@ Status: implemented
 
 Two deterministic native matrix controls assumed retired behavior. The unattended helper opened an explicit Runtime but resolved its Scope outside that Runtime's context. The real tool failed with `StorageClosedError` before writing its child-session evidence. Separately, a provider that permanently returned an empty `stop` response was expected to complete successfully, although the native session deliberately retries empty responses and records a structured terminal error when recovery is exhausted.
 
+Package-rename integration separately fails while importing the removed `product-runtime` registration and CLI Scope entry points; its missing-module evidence is distinct from the `StorageClosedError` observed with the pre-rename composition.
+
 The retained native archives distinguish these failures. The unattended tool exits unsuccessfully before creating the marker, while its enclosing agent session completes. The empty-response control completes its three tool operations and earns the marker reward, then the native CLI exits with the session's `APIError` carrying `metadata.code=empty_response`. Neither result can be inferred from the verifier reward alone.
 
 ## Decision
 
-The unattended fixture executes its existing Scope, parent/child Session, and permission checks through the opened Runtime's `run` method. It closes that Runtime in `finally`, including when input parsing or an assertion fails. The historical native adapter retains its existing Scope entry point.
+The unattended fixture opens the current full composition through the public `PresetRuntimeHandle.openTask` entry, which owns component registration. It resolves its directory with Harness `Scope.resolve` and enters `ScopeContext.provide` inside the opened Runtime's `run` method before checking parent/child Sessions and permissions. It closes that Runtime in `finally`, including when input parsing or an assertion fails. Only the existing historical `packages/synergy` native adapter retains its original registration and CLI Scope entry point; there is no fallback to removed intermediate packages or CLI helpers.
 
 The `empty-provider-stop` selection remains a permanent-empty-response failure control. It requires the native failed outcome and exit code, the exported root session's structured terminal `empty_response` error, and multiple actual attempts for that terminal message and empty wire responses. It does not pin incidental request totals or duplicate the product's retry budget. Ordinary controls still require successful native completion.
 

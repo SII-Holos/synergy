@@ -45,15 +45,14 @@ test("every task has an executable recipe and type/package checks execute once",
 test("root contracts cover each file once and leave native watcher tests with prepared artifacts", async () => {
   const rootTests = tasks.find((task) => task.id === "root-tests")!
   const policy = tasks.find((task) => task.id === "policy")!
-  const installed = tasks.find((task) => task.id === "installed-runtime")!
-  const declared = [rootTests, policy, installed].flatMap((task) => task.files ?? [])
+  const installed = tasks.filter((task) => task.kind === "artifacts")
+  const declared = [rootTests, policy, ...installed].flatMap((task) => task.files ?? [])
   expect(declared.toSorted()).toEqual((await collectTests("test/script", process.cwd())).toSorted())
   const rootRecipe = await commands(rootTests, plan)
   expect(rootRecipe.map((command) => command.args.at(-1))).toEqual(rootTests.files!)
   expect(rootRecipe.flatMap((command) => command.args)).not.toContain("test/script/watcher-native.test.ts")
-  expect((await commands(installed, plan)).flatMap((command) => command.args)).toContain(
-    "test/script/watcher-native.test.ts",
-  )
+  const installedRecipes = (await Promise.all(installed.map((task) => commands(task, plan)))).flat()
+  expect(installedRecipes.flatMap((command) => command.args)).toContain("test/script/watcher-native.test.ts")
 })
 
 test("normal and fault Docker groups retain the complete lifecycle file inventory", async () => {

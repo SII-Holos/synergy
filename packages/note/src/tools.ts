@@ -10,7 +10,7 @@ import { NoteEditTool } from "./tools/note-edit"
 import { NoteDeleteTool } from "./tools/note-delete"
 
 /**
- * Note domain tool registration. Loaded through src/product-registration.ts.
+ * Note domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

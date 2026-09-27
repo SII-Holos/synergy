@@ -2,8 +2,8 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { readWorktreeConfig } from "@ericsanchezok/synergy-runtime-local/config-schema"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { readWorktreeConfig } from "@ericsanchezok/synergy-local-runtime/config-schema"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 
 const log = Log.create({ service: "worktree-janitor" })
 

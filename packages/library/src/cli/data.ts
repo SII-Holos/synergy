@@ -1,5 +1,5 @@
 import path from "node:path"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 async function dirExists(file: string) {
   return Bun.file(file).exists()
 }

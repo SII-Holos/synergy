@@ -5,7 +5,6 @@ import * as sqliteVec from "sqlite-vec"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import type { Embedding } from "./vector/embedding"
-import { existsSync, realpathSync } from "fs"
 import path from "path"
 
 import { ObservabilityIssues } from "@ericsanchezok/synergy-harness/observability/issues"
@@ -88,20 +87,6 @@ type MemoryCategory = (typeof MEMORY_CATEGORIES)[number]
 type MemoryRecallMode = (typeof MEMORY_RECALL_MODES)[number]
 
 function loadSqliteVec(conn: Database) {
-  const suffix = process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so"
-
-  // Compiled binary: look for vec0 next to the executable
-  try {
-    const execDir = path.dirname(realpathSync(process.execPath))
-    const fromExec = path.resolve(execDir, "..", `vec0.${suffix}`)
-    if (existsSync(fromExec)) {
-      conn.loadExtension(fromExec)
-      log.info("sqlite-vec loaded", { source: "binary", path: fromExec })
-      return
-    }
-  } catch {}
-
-  // Dev mode: use npm package resolution
   sqliteVec.load(conn)
   log.info("sqlite-vec loaded", { source: "npm" })
 }

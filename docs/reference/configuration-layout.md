@@ -6,7 +6,7 @@ Synergy uses JSONC domain files. Global and project configuration share the same
 
 ## Package ownership
 
-The harness owns configuration loading, file transactions, core schemas, and the `ConfigExtensions` registry. Each optional backend owns its field schemas, defaults, provider-reference checks, and exact credential redaction/restoration in `src/config-schema.ts`. The full product composes these through `packages/product-runtime/src/configuration.ts` before validating configuration or generating its schema. Schema references obtained before registration resolve the current composition, including registered domain IDs.
+The harness owns configuration loading, file transactions, core schemas, and the `ConfigExtensions` registry. Each optional backend owns its field schemas, defaults, provider-reference checks, and exact credential redaction/restoration in `src/config-schema.ts`. The full product composes these through `packages/presets/src/configuration.ts` before validating configuration or generating its schema. Schema references obtained before registration resolve the current composition, including registered domain IDs.
 
 A reduced composition preserves unregistered fields in shared files and leaves unregistered domain files untouched. Replacing a known domain retains its unregistered fields on disk. Client-facing redaction omits fields whose owner is absent because the core cannot classify that owner's credentials. Explicit requests for an unregistered domain or unsupported experiment override fail validation; dormant optional experiment settings in an existing home do not activate that capability. Full composition retains the strict root validation and recovery rules of the product.
 

@@ -5,7 +5,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 import { BrowserAssets } from "../assets"
 import { BrowserExport } from "../export"
-import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser"
+import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser-core"
 
 const assetType = z.enum(["image", "script", "stylesheet", "font", "media", "document", "other"])
 

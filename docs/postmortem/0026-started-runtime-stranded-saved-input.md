@@ -32,7 +32,7 @@ Existing narrow tests established startup, navigation and small-store correctnes
 - [Subtree cleanup](../../packages/harness/test/storage/subtree-cleanup.test.ts) verifies addressed query plans and complete wide/deep deletion in both supported key formats.
 - [Admission](../../packages/harness/test/storage/queue-admission.test.ts) verifies pending deadlines, inherited cancellation, foreground ordering and caller context.
 - [Reader isolation](../../packages/harness/test/storage/reader-worker-isolation.test.ts) suspends an owned writer and verifies independent reads, snapshots and reader replacement.
-- [Historical execution](../../packages/product-runtime/test/runtime/queued-input-upgrade.test.ts) exercises new input behind historical, failed and cancelled roots with a real protocol fixture.
+- [Historical execution](../../packages/presets/test/runtime/queued-input-upgrade.test.ts) exercises new input behind historical, failed and cancelled roots with a real protocol fixture.
 - [Input status](../../packages/harness/test/session/input-status.test.ts), [retry](../../packages/server/test/server/session-input-worktree.test.ts), and [frontend observation](../../apps/web/test/components/session/session-input-observer.test.ts) cover durable recovery and late responses without timer-inferred failure.
 - [Maintenance admission](../../packages/server/test/server/maintenance-admission.test.ts) checks active work and already-admitted mutations before storage shutdown.
 - [Context projection](../../apps/web/test/context/global-sync-context-projection.dom.test.ts) verifies retained transcript identity across consecutive replies, metadata enrichment, snapshot changes and history-mode arrivals. Managed Desktop additionally checks every earlier reply before reload.

@@ -9,7 +9,7 @@ import { Global } from "@ericsanchezok/synergy-harness/global"
 import path from "path"
 import fs from "fs/promises"
 import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
-import { readFileWithRetry } from "@ericsanchezok/synergy-harness/util/io-retry"
+import { readFileWithRetry } from "@ericsanchezok/synergy-util/io-retry"
 
 export namespace HolosAccounts {
   export class MalformedStoreError extends Error {

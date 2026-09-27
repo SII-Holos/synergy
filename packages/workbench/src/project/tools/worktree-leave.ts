@@ -1,6 +1,6 @@
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 

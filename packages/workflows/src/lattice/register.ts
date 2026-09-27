@@ -24,7 +24,7 @@ import { LatticeSubmitTool } from "./tools/lattice-submit"
 /**
  * Lattice domain registration (H1 continuation provider + H2 prompt
  * contribution with the full session-loop lifecycle + domain tools). Loaded
- * through src/product-registration.ts.
+ * through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

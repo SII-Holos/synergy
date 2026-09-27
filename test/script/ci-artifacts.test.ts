@@ -31,10 +31,10 @@ async function inputs(root: string) {
     path.join(root, "packages/shared/package.json"),
     JSON.stringify({ name: "@fixture/shared", scripts: { build: "compile" } }),
   )
+  await Bun.write(path.join(root, "packages/local-runtime/.artifacts/pty/library"), "verified PTY")
   await Bun.write(path.join(root, "packages/shared/src/index.ts"), "export const value = 1")
   await Bun.write(path.join(root, "packages/shared/dist/index.js"), "verified dependency")
-  await Bun.write(path.join(root, "packages/runtime-local/.artifacts/pty/library"), "verified PTY")
-  await Bun.write(path.join(root, "packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
+  await Bun.write(path.join(root, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
 }
 
 test("build identity invalidates native process artifacts when their implementation changes", async () => {
@@ -42,7 +42,7 @@ test("build identity invalidates native process artifacts when their implementat
   try {
     await inputs(root)
     for (const file of ["Cargo.toml", "Cargo.lock", "src/lib.rs"]) {
-      const source = path.join(root, "packages/runtime-local/src/process/native-pty", file)
+      const source = path.join(root, "packages/local-runtime/src/process/native-pty", file)
       const before = await buildIdentity(root)
       await Bun.write(source, `changed native input: ${file}`)
       expect(await buildIdentity(root)).not.toBe(before)
@@ -80,7 +80,7 @@ test("build outputs transfer between compatible runners during an image rollout"
   try {
     await inputs(root)
     await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
-    await Bun.write(path.join(root, "packages/runtime-local/.artifacts/watcher/watcher"), "verified watcher")
+    await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
     process.env.ImageVersion = "20260907.300.1"
     const key = await buildCacheIdentity(root)
     await publishBuild(root)
@@ -98,13 +98,13 @@ test("build outputs transfer between compatible runners during an image rollout"
 test("build reuse validates inputs, bytes, modes and complete inventory before replacing outputs", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-"))
   const plugin = "packages/plugin/dist/index.js"
-  const watcher = "packages/runtime-local/.artifacts/watcher/watcher"
+  const watcher = "packages/local-runtime/.artifacts/watcher/watcher"
   try {
     await inputs(root)
     await Bun.write(path.join(root, plugin), "verified plugin")
     await Bun.write(path.join(root, watcher), "verified watcher")
     await chmod(path.join(root, watcher), 0o755)
-    const pty = "packages/runtime-local/.artifacts/pty/native-library"
+    const pty = "packages/local-runtime/.artifacts/pty/native-library"
     await Bun.write(path.join(root, pty), "verified PTY")
     await publishBuild(root)
     await rm(path.join(root, pty))

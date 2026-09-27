@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { resolveCliScope } from "../../src/cli/scope"
+import { resolveCliScope } from "@ericsanchezok/synergy-local-runtime/cli/scope"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"

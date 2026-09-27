@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { Context } from "../util/context"
 import { Storage } from "./storage"
-import { AtomicFile } from "./atomic-file"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { StorageBusyError } from "./errors"
 import { withStorageQueueOptions } from "./queue"
 

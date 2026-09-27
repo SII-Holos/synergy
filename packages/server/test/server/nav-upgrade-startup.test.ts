@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

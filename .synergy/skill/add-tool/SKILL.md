@@ -13,7 +13,7 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 
 ## Implement the Backend
 
-1. Define the tool with `Tool.define(id, init, options?)` under the owning business package’s domain `tools/` directory. Harness owns generic definitions, discovery, execution and scheduling; concrete file/shell tools belong to `runtime-local`.
+1. Define the tool with `Tool.define(id, init, options?)` under the owning business package’s domain `tools/` directory. Harness owns generic definitions, discovery, execution and scheduling; concrete file/shell tools belong to `local-runtime`.
 2. Use precise Zod parameters and descriptions. Model-facing parameters must serialize to a JSON Schema object at the root; wrap a discriminated action union in an object field such as `input`. The production tool resolver excludes schemas without an object root. Test this boundary as well as individual variants. Return the established `{ title, metadata, output, attachments? }` shape.
 3. Honor `ctx.abort`, use `ctx.ask()` for operation-specific permission requests, and route filesystem, shell, network, remote, or external-write work through existing boundaries.
 4. Register through the owning package’s explicit tool contribution using `ToolRegistry.registerToolProvider`. Keep selection and ordering in the capability registration; only generic built-ins belong in the Harness registry.
@@ -85,4 +85,4 @@ Report the tool ID, registry/exposure, taxonomy and capabilities, UI registratio
 
 ## Measure coding observations
 
-Run `bun test test/tools/coding-observation-probe.test.ts` from `packages/runtime-local` with `SYNERGY_OBSERVATION_REPORT` set to a new absolute JSON output path. The fixed-input probe exercises small reads, sparse edits, disjoint ranges and full-file search; existing reports are never overwritten. Use the identical probe with frozen source versions and retain its identity separately from the measured implementation. Its UTF-8 byte counts establish tool presentation differences only; use native task outcomes and reconciled provider usage for task-level token and latency comparisons.
+Run `bun test test/tools/coding-observation-probe.test.ts` from `packages/local-runtime` with `SYNERGY_OBSERVATION_REPORT` set to a new absolute JSON output path. The fixed-input probe exercises small reads, sparse edits, disjoint ranges and full-file search; existing reports are never overwritten. Use the identical probe with frozen source versions and retain its identity separately from the measured implementation. Its UTF-8 byte counts establish tool presentation differences only; use native task outcomes and reconciled provider usage for task-level token and latency comparisons.

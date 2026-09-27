@@ -6,7 +6,7 @@ import {
   ComputerObserveSchema,
   ComputerError,
   type ComputerCommand,
-} from "@ericsanchezok/synergy-computer"
+} from "@ericsanchezok/synergy-computer-protocol"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { Session } from "@ericsanchezok/synergy-harness/session"

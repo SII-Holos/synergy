@@ -21,7 +21,7 @@ export type SynergyLinkResponse =
 import {
   SynergyLinkRemoteError,
   type SynergyLinkTransportFailureReason,
-} from "@ericsanchezok/synergy-runtime-local/tools/remote-error"
+} from "@ericsanchezok/synergy-local-runtime/tools/remote-error"
 
 export { SynergyLinkRemoteError }
 export type { SynergyLinkTransportFailureReason }

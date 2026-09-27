@@ -5,9 +5,23 @@ import path from "path"
 import { pathToFileURL } from "url"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { ConfigExtensions } from "../../src/config/extensions"
+import { z } from "zod"
 const runtime = await testRuntime()
 
 const globalModulePath = path.resolve(import.meta.dirname, "../../src/global/index.ts")
+
+test("runtime startup publishes configuration from its selected components without a bundled schema", async () => {
+  await using selected = await testRuntime({
+    register() {
+      ConfigExtensions.register("schema-fixture", { shape: { fixtureFeature: z.boolean().optional() } })
+      ConfigExtensions.completeRegistration()
+    },
+  })
+  const schema = await Bun.file(path.join(selected.host.root, "schema/config.schema.json")).json()
+  expect(schema.properties.fixtureFeature.type).toBe("boolean")
+  expect(schema.properties).not.toHaveProperty("lsp")
+})
 
 describe("startup schema publish", () => {
   test(

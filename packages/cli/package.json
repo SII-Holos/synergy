@@ -5,9 +5,6 @@
   "private": false,
   "license": "MIT",
   "exports": {
-    "./cli/cmd/cmd": "./src/cli/cmd/cmd.ts",
-    "./cli/network": "./src/cli/network.ts",
-    "./util/ui": "./src/util/ui.ts",
     "./main": "./src/main.ts",
     "./daemon/log-rotate": "./src/daemon/log-rotate.ts",
     "./cli/maintenance-progress": "./src/cli/maintenance-progress.ts",
@@ -16,7 +13,6 @@
     "./index": "./src/index.ts",
     "./cli/commands": "./src/cli/commands.ts",
     "./cli/cmd/debug": "./src/cli/cmd/debug/index.ts",
-    "./cli/scope": "./src/cli/scope.ts",
     "./cli/error": "./src/cli/error.ts",
     "./cli/cmd/start": "./src/cli/cmd/start.ts",
     "./cli/cmd/stop": "./src/cli/cmd/stop.ts",
@@ -34,7 +30,15 @@
     "./cli/cmd/data/shared": "./src/cli/cmd/data/shared.ts",
     "./cli/cmd/data": "./src/cli/cmd/data/index.ts",
     "./cli/cmd/data/path": "./src/cli/cmd/data/path.ts",
-    "./cli/cmd/data/set-home": "./src/cli/cmd/data/set-home.ts"
+    "./cli/cmd/data/set-home": "./src/cli/cmd/data/set-home.ts",
+    "./branding": "./src/branding.ts",
+    "./server/runtime": "./src/server/runtime.ts",
+    "./cli/managed-startup": "./src/cli/managed-startup.ts",
+    "./cli/server": "./src/cli/server.ts",
+    "./cli/web": "./src/cli/web.ts",
+    "./runtime-cli": "./src/runtime-cli.ts",
+    "./component-selection": "./src/component-selection.ts",
+    "./launcher": "./src/launcher.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",
@@ -46,8 +50,10 @@
   "dependencies": {
     "@ai-sdk/openai-compatible": "1.0.42",
     "@clack/prompts": "1.0.0-alpha.1",
+    "@ericsanchezok/synergy-agent-runtime": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*",
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-plugin-host": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "ai": "catalog:",
@@ -55,6 +61,7 @@
     "figlet": "1.11.0",
     "gradient-string": "3.0.0",
     "jsonc-parser": "3.3.1",
+    "open": "10.1.2",
     "remeda": "catalog:",
     "yargs": "18.0.0",
     "zod": "catalog:"

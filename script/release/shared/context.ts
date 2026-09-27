@@ -1,4 +1,4 @@
-import { FIXED_REGISTRY_PACKAGES, type ReleaseKind, type ReleaseState } from "./packages"
+import { FIXED_REGISTRY_PACKAGES, DESKTOP_APP_PACKAGE, type ReleaseKind, type ReleaseState } from "./packages"
 import { releaseStatePath } from "./runtime"
 
 export type ReleaseContext = {
@@ -15,7 +15,7 @@ export function createReleaseState(context: ReleaseContext): ReleaseState {
     channel: context.channel,
     promoteTag: context.promoteTag,
     createdAt: new Date().toISOString(),
-    registryPackages: [...FIXED_REGISTRY_PACKAGES],
+    registryPackages: [...FIXED_REGISTRY_PACKAGES, ...(context.kind === "stable" ? [DESKTOP_APP_PACKAGE] : [])],
     binaryAssets: [],
     binaryChecksums: null,
     desktopAssets: [],

@@ -4,7 +4,7 @@ import {
   BrowserHostMessageSchema,
   type BrowserHostMessage,
   type BrowserBackendResult,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -12,7 +12,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { BrowserRuntime } from "../src/runtime"
 import { BrowserCommandService } from "../src/command-service"
 import { BrowserOwner } from "../src/owner"

@@ -8,7 +8,7 @@ The boss domain (Boss Mode) lived inside the harness-core directories: five modu
 
 ## Decision
 
-Move the boss domain out of the core and invert its four attachment points through registries, all loaded via the L4 product manifest (`src/product-registration.ts`, `registerBossDomain()`):
+Move the boss domain out of the core and invert its four attachment points through registries, all loaded via the L4 product manifest (`src/registration.ts`, `registerBossDomain()`):
 
 - **Move**: `session/boss*.ts` → `src/boss/`, `tool/boss-*.ts|.txt` → `src/boss/tools/` (git history preserved). Consumers (server/boss route, channel routing, runtime reload boss sync, global-runtime ensure) import from the new location.
 - **H1 continuation**: `ContinuationKernel` replaces `registerBuiltins()` with `registerProvider(sourceID, () => Policy[])`; providers drain lazily on `init()`/`propose()`/`registeredPolicyIDs()`, preserving the legacy self-heal semantics (the old `propose():83` re-registration safety net) so registration order and entry point cannot drop a policy. `reset()` clears drained state for tests. An empty registry after drain now logs a warning (the one deliberate behavior addition). Boss registers under `"boss"`; blueprint/lightloop/lattice register through a legacy bridge block in the product manifest until their slices (S3–S5) land.
@@ -28,7 +28,7 @@ Behavior equivalence is locked by the S2a golden contract (`test/boss/prompt-con
 ## Consequences
 
 - `session/` and `tool/` no longer contain boss code; L1→product edges for boss are gone (kernel, invoke, wrapper, registry all query registries). The S2 budget holds at 48→46 expected after the lightloop/blueprint/lattice legacy bridge lines settle (bridge lines live in the L4 manifest, not L1).
-- Domains that need registration completeness at startup rely on `product-registration.ts` being imported by both entry chains (`main.ts`, `server/runtime.ts` + daemon); the kernel's lazy drain plus the empty-registry warning covers direct-invoke CLI paths.
-- Tests that assert registry contents import `src/product-registration` (kernel, boss tools) — the same contract as production entries.
+- Domains that need registration completeness at startup rely on `registration.ts` being imported by both entry chains (`main.ts`, `server/runtime.ts` + daemon); the kernel's lazy drain plus the empty-registry warning covers direct-invoke CLI paths.
+- Tests that assert registry contents import `src/registration` (kernel, boss tools) — the same contract as production entries.
 - `WorkflowUserWrapper` boss-mode wrapping now depends on boss registration; without it, boss user messages pass through unwrapped (registry miss → passthrough), which is the correct degradation when the domain is absent.
 - The boss-runtime suite has two 5s-timeout-boundary tests that occasionally exceed the default timeout under load (5.01s vs 5.00s); they pass with a 30s timeout and are pre-existing timing characteristics, not functional regressions.

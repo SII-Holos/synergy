@@ -2,7 +2,7 @@ import { BenchmarkInputError } from "./input-error"
 import { pathToFileURL } from "node:url"
 import path from "node:path"
 import { realpath } from "node:fs/promises"
-import type { openLocalRuntime } from "@ericsanchezok/synergy-runtime-local"
+import type { openLocalRuntime } from "@ericsanchezok/synergy-local-runtime"
 
 export interface Composition {
   id: string

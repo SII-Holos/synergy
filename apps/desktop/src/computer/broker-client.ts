@@ -3,7 +3,7 @@ import {
   COMPUTER_MAX_MESSAGE_BYTES,
   ComputerServerMessageSchema,
   ComputerError,
-} from "@ericsanchezok/synergy-computer"
+} from "@ericsanchezok/synergy-computer-protocol"
 import { ComputerDriver } from "./driver.js"
 
 export class ComputerBrokerClient {

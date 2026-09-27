@@ -12,7 +12,7 @@ const log = Log.create({ service: "plugin.tool-source" })
  * S9d source inversion: the L1 tool registry loads plugin tool contributions
  * and evaluates their setting conditions through this registered source
  * instead of importing the plugin product domain. Loaded through
- * src/product-registration.ts.
+ * src/registration.ts.
  */
 export function registerToolPluginSource() {
   ToolPluginSource.register({

@@ -1,3 +1,5 @@
+import { useGlobalSDK } from "@/context/global-sdk"
+import { runtimeFeatureAvailable } from "../runtime-features"
 import { createEffect, onCleanup, type ParentProps } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
@@ -12,6 +14,9 @@ import { createContextWorkbenchPanel } from "./context-panel-entry"
 import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
 import { createBossWorkbenchPanel } from "./boss-panel-entry"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
+  const { capabilities } = useGlobalSDK()
+  const register = (entry: Parameters<typeof registerWorkbenchPanel>[0]) =>
+    runtimeFeatureAvailable("panel", entry.id, capabilities.has) ? registerWorkbenchPanel(entry) : () => {}
   const terminal = useTerminal()
   const file = useFile()
   const { controller, i18n } = useLocale()
@@ -24,7 +29,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
     // switches to relabel the builtin panels.
     for (const dispose of disposers.splice(0)) dispose()
     disposers.push(
-      registerWorkbenchPanel({
+      register({
         id: "notes",
         label: i18n._(P.notes),
         icon: getSemanticIcon("notes.main"),
@@ -34,8 +39,8 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 10,
         loader: async () => ({ default: (await import("./tool-notes")).NotesWorkbenchContent }),
       }),
-      registerWorkbenchPanel(createContextWorkbenchPanel(i18n._(P.context))),
-      registerWorkbenchPanel({
+      register(createContextWorkbenchPanel(i18n._(P.context))),
+      register({
         id: "session-review",
         label: i18n._(P.review),
         icon: getSemanticIcon("command.review"),
@@ -47,9 +52,9 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         loader: async () => ({ default: (await import("./tool-session-review")).SessionReviewWorkbenchContent }),
         title: () => i18n._(P.review),
       }),
-      registerWorkbenchPanel(createLatticeWorkbenchPanel(i18n._(P.lattice))),
-      registerWorkbenchPanel(createBossWorkbenchPanel(i18n._(P.boss))),
-      registerWorkbenchPanel({
+      register(createLatticeWorkbenchPanel(i18n._(P.lattice))),
+      register(createBossWorkbenchPanel(i18n._(P.boss))),
+      register({
         id: "attachment",
         label: i18n._(P.attachment),
         icon: getSemanticIcon("workspace.files"),
@@ -67,7 +72,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
           return <FileIcon node={{ path: tab.title ?? "attachment", type: "file" }} class="size-4" />
         },
       }),
-      registerWorkbenchPanel({
+      register({
         id: "file",
         label: i18n._(P.files),
         icon: getSemanticIcon("workspace.files"),
@@ -100,7 +105,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
           )
         },
       }),
-      registerWorkbenchPanel({
+      register({
         id: "browser",
         label: i18n._(P.browser),
         icon: getSemanticIcon("browser.main"),
@@ -111,7 +116,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 20,
         loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
       }),
-      registerWorkbenchPanel({
+      register({
         id: "terminal",
         label: i18n._(P.terminal),
         icon: getSemanticIcon("terminal.main"),

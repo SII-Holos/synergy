@@ -14,6 +14,9 @@ import type { ResolvedPluginSpec } from "./spec-resolver"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { recordEvent } from "./audit"
 import { IncompatiblePluginStore } from "./incompatible-store"
+import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+import { withInstallationLock } from "../installation/lock"
+import { InstallationGenerations } from "../installation/generations"
 
 const log = Log.create({ service: "plugin.install.transaction" })
 
@@ -87,8 +90,12 @@ export interface PluginDoctorResult {
 
 export async function withPluginInstallationLock<T>(fn: () => Promise<T>): Promise<T> {
   using lock = await Lock.write("plugin-installation")
-  await PluginInstallationRecovery.recoverUnlocked()
-  return fn()
+  const root = RuntimeContext.current().host.root
+  return withInstallationLock(root, async () => {
+    await InstallationGenerations.recoverUnlocked(root)
+    await PluginInstallationRecovery.recoverUnlocked()
+    return fn()
+  })
 }
 
 export async function canonicalizePluginSpecs(

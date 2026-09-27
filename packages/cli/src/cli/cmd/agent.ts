@@ -1,6 +1,6 @@
-import { cmd } from "./cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import * as prompts from "@clack/prompts"
-import { UI } from "../../util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"

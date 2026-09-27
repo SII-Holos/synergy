@@ -4,7 +4,7 @@ import fs from "fs/promises"
 import { authLockDirectory, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { Global } from "../global"
 import { Log } from "../util/log"
-import { readFileWithRetry } from "../util/io-retry"
+import { readFileWithRetry } from "@ericsanchezok/synergy-util/io-retry"
 import { SecretPaths } from "./path-registry"
 
 const log = Log.create({ service: "secrets" })

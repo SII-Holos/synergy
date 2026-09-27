@@ -11,7 +11,7 @@ import {
   BrowserProtocolErrorSchema,
   type BrowserCheckpoint,
   type BrowserProtocolErrorData,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 
 export namespace BrowserMigration {
   export interface Result {

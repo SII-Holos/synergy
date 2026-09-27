@@ -4,7 +4,7 @@ import path from "node:path"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { Worktree } from "@ericsanchezok/synergy-runtime-local/workspace/worktree"
+import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import {
   requestScopeSweep,
   startWorktreeJanitor,

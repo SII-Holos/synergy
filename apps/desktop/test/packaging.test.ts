@@ -60,49 +60,17 @@ const afterPack = require("../script/after-pack.cjs") as {
 async function createRuntimeFixture(platform: "darwin" | "linux" | "win32" = "darwin", includeBinary = true) {
   const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-desktop-after-pack-"))
   temporaryDirectories.push(runtimeDir)
-  const binary = platform === "win32" ? "synergy.exe" : "synergy"
-  const astGrep = platform === "win32" ? "ast-grep.exe" : "ast-grep"
-  const sqliteVec = platform === "win32" ? "vec0.dll" : platform === "darwin" ? "vec0.dylib" : "vec0.so"
-  await Promise.all([
-    fs.mkdir(path.join(runtimeDir, "bin"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "app"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "schema"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "lib", "onnxruntime-web"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "lib", "resvg-wasm"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "lib", "resvg-wasm", "fonts"), { recursive: true }),
-  ])
-  await Promise.all([
-    fs.mkdir(path.join(runtimeDir, "lib", "holos-cli", "vendor", "clarus-shared"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "ws"), { recursive: true }),
-    fs.mkdir(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "zod"), { recursive: true }),
-  ])
-  await Promise.all([
-    fs.writeFile(path.join(runtimeDir, "app", "index.html"), "<!doctype html>"),
-    fs.writeFile(path.join(runtimeDir, "schema", "config.schema.json"), "{}"),
-    fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "package.json"), "{}"),
-    fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "index.js"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "index_bg.wasm"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "LICENSE-MPL-2.0.txt"), "license"),
-    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "THIRD_PARTY_NOTICES.txt"), "notice"),
-    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "fonts", "LICENSE-OFL-1.1.txt"), "license"),
-    fs.writeFile(
-      path.join(runtimeDir, "lib", "resvg-wasm", "fonts", "noto-sans-sc-chinese-simplified-400-normal.woff2"),
-      "font",
-    ),
-    fs.writeFile(path.join(runtimeDir, "lib", "resvg-wasm", "fonts", "noto-sans-sc-latin-400-normal.woff2"), "font"),
-    fs.writeFile(path.join(runtimeDir, "bin", astGrep), "runtime"),
-    fs.writeFile(path.join(runtimeDir, sqliteVec), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "watcher.node"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "index.js"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "vendor", "clarus-shared", "index.js"), "runtime"),
-    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "ws", "package.json"), "{}"),
-    fs.writeFile(path.join(runtimeDir, "lib", "holos-cli", "node_modules", "zod", "package.json"), "{}"),
-  ])
-  if (includeBinary) await fs.writeFile(path.join(runtimeDir, "bin", binary), "runtime")
+  const { requiredRuntimeArtifactPaths } = require("../../../script/release/shared/runtime-layout.cjs") as {
+    requiredRuntimeArtifactPaths(name: string): string[]
+  }
+  await fs.mkdir(path.join(runtimeDir, "bin"), { recursive: true })
+  const name = `synergy-${platform === "win32" ? "windows" : platform}-x64`
+  for (const relative of requiredRuntimeArtifactPaths(name)) {
+    if (relative.includes("synergy-sandbox-") || (!includeBinary && relative.startsWith("bin/"))) continue
+    const filename = path.join(runtimeDir, relative)
+    await fs.mkdir(path.dirname(filename), { recursive: true })
+    await fs.writeFile(filename, "runtime")
+  }
   await writeRuntimeManifest(runtimeDir)
   return runtimeDir
 }
@@ -127,6 +95,15 @@ async function writeRuntimeManifest(runtimeDir: string) {
 }
 
 describe("desktop packaging", () => {
+  test("accepts sealed module filenames with spaces and rejects unlisted code", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.writeFile(path.join(runtimeDir, "runtime/Third Party.txt"), "license")
+    await writeRuntimeManifest(runtimeDir)
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).not.toThrow()
+    await fs.writeFile(path.join(runtimeDir, "runtime/unlisted.js"), "unapproved code")
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(/unlisted file/)
+  })
+
   test("uses one product icon source and copies runtime indicator resources", async () => {
     const config = (await Bun.file(
       new URL("../electron-builder.json", import.meta.url),
@@ -233,7 +210,10 @@ describe("desktop packaging", () => {
 
   test("rejects a runtime whose manifest checksum no longer matches", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.writeFile(path.join(runtimeDir, "app", "index.html"), "tampered")
+    await fs.writeFile(
+      path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app/index.html"),
+      "tampered",
+    )
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
       /runtime manifest checksum mismatch.*app\/index\.html/i,
@@ -251,7 +231,7 @@ describe("desktop packaging", () => {
 
   test("rejects a runtime manifest entry that resolves through a symbolic link", async () => {
     const runtimeDir = await createRuntimeFixture()
-    const appPath = path.join(runtimeDir, "app", "index.html")
+    const appPath = path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app/index.html")
     const linkedApp = path.join(runtimeDir, "linked-app.html")
     await fs.rename(appPath, linkedApp)
     await fs.symlink(linkedApp, appPath)
@@ -263,7 +243,10 @@ describe("desktop packaging", () => {
 
   test("rejects a symbolic link outside the Desktop runtime manifest", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.symlink(path.join(runtimeDir, "app", "index.html"), path.join(runtimeDir, "extra-link"))
+    await fs.symlink(
+      path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app/index.html"),
+      path.join(runtimeDir, "extra-link"),
+    )
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
       /runtime contains a symbolic link.*extra-link/i,
@@ -272,16 +255,16 @@ describe("desktop packaging", () => {
 
   test("rejects a runtime without the packaged Holos CLI", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "lib", "holos-cli", "vendor", "clarus-shared", "index.js"))
+    await fs.rm(path.join(runtimeDir, "runtime/node_modules/@sii-holos/holos-cli/dist/vendor/clarus-shared/index.js"))
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
-      /lib\/holos-cli\/vendor\/clarus-shared\/index\.js/,
+      /holos-cli\/dist\/vendor\/clarus-shared\/index\.js/,
     )
   })
 
   test("rejects a runtime that cannot serve the Desktop application", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "app", "index.html"))
+    await fs.rm(path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-web-app/app/index.html"))
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(/app\/index\.html/)
   })
@@ -289,7 +272,7 @@ describe("desktop packaging", () => {
   test("requires the Linux sandbox helper", async () => {
     const runtimeDir = await createRuntimeFixture("linux")
 
-    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "linux")).toThrow(/sandbox\/synergy-sandbox-linux/)
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "linux")).toThrow(/synergy-native-.*\/synergy-sandbox-linux/)
   })
 
   test("requires the Windows executable and sandbox helper", async () => {
@@ -298,36 +281,57 @@ describe("desktop packaging", () => {
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/bin\/synergy\.exe/)
     await fs.writeFile(path.join(runtimeDir, "bin", "synergy.exe"), "runtime")
     await writeRuntimeManifest(runtimeDir)
-    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(/sandbox\/synergy-sandbox-windows\.exe/)
-  })
-
-  test("rejects a runtime without its Playwright Core sidecar", async () => {
-    const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "browser-runtime", "playwright-core", "package.json"))
-
-    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
-      /browser-runtime\/playwright-core\/package\.json/,
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "win32")).toThrow(
+      /synergy-native-.*\/synergy-sandbox-windows\.exe/,
     )
   })
 
-  test("rejects a runtime without its ONNX Web embedding sidecar", async () => {
+  test("rejects a runtime without its Playwright Core module", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"))
+    await fs.rm(path.join(runtimeDir, "runtime/node_modules/playwright-core/package.json"))
+
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
+      /node_modules\/playwright-core\/package\.json/,
+    )
+  })
+
+  test("rejects a runtime without its ONNX Web embedding module", async () => {
+    const runtimeDir = await createRuntimeFixture()
+    await fs.rm(
+      path.join(
+        runtimeDir,
+        "runtime/node_modules/@ericsanchezok/synergy-library/dist/lib/onnxruntime-web",
+        "ort-wasm-simd-threaded.asyncify.wasm",
+      ),
+    )
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
       /lib\/onnxruntime-web\/ort-wasm-simd-threaded\.asyncify\.wasm/,
     )
   })
 
-  test("rejects a runtime without its SVG raster sidecar", async () => {
+  test("rejects a runtime without its SVG raster module", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "lib", "resvg-wasm", "index_bg.wasm"))
+    await fs.rm(
+      path.join(
+        runtimeDir,
+        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm",
+        "index_bg.wasm",
+      ),
+    )
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(/lib\/resvg-wasm\/index_bg\.wasm/)
   })
   test("rejects a runtime without its SVG raster fallback fonts", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "lib", "resvg-wasm", "fonts", "noto-sans-sc-chinese-simplified-400-normal.woff2"))
+    await fs.rm(
+      path.join(
+        runtimeDir,
+        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm",
+        "fonts",
+        "noto-sans-sc-chinese-simplified-400-normal.woff2",
+      ),
+    )
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
       /lib\/resvg-wasm\/fonts\/noto-sans-sc-chinese-simplified-400-normal\.woff2/,
@@ -336,7 +340,13 @@ describe("desktop packaging", () => {
 
   test("rejects a runtime without its SVG raster license notice", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "lib", "resvg-wasm", "THIRD_PARTY_NOTICES.txt"))
+    await fs.rm(
+      path.join(
+        runtimeDir,
+        "runtime/node_modules/@ericsanchezok/synergy-connections/dist/lib/resvg-wasm",
+        "THIRD_PARTY_NOTICES.txt",
+      ),
+    )
 
     expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
       /lib\/resvg-wasm\/THIRD_PARTY_NOTICES\.txt/,

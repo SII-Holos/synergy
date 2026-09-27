@@ -6,7 +6,7 @@ import { WorktreeLeaveTool } from "./tools/worktree-leave"
 import { WorktreeListTool } from "./tools/worktree-list"
 
 /**
- * Project domain tool registration. Loaded through src/product-registration.ts.
+ * Project domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

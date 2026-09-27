@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserHostBrokerClient } from "./browser-host-broker.js"
 import { BrowserNativePagePool } from "./browser-native-page-pool.js"
-import { BrowserNativeLease } from "@ericsanchezok/synergy-browser/native-lease"
+import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserRegistrationSecretSchema,
@@ -30,7 +30,7 @@ import {
   type BrowserNativePresentationIPCError,
   type BrowserNativePresentationTicketRequest,
   type BrowserNativePresentationTicketResult,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { desktopErrorPage } from "./error-page.js"
 import {
   DESKTOP_PROTOCOL,

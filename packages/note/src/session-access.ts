@@ -4,7 +4,7 @@ import { NoteStore } from "./store"
 /**
  * S9c source inversion: the L1 session recovery pass reaches blueprint note
  * projections through the SessionNoteAccess registry instead of importing
- * the note product domain. Loaded through src/product-registration.ts.
+ * the note product domain. Loaded through src/registration.ts.
  */
 export function registerNoteSessionAccess() {
   SessionNoteAccess.register({

@@ -1,4 +1,4 @@
-import { cmd } from "./cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 import { Daemon } from "../../daemon"
 import { DaemonHealth } from "../../daemon/health"
 import { DaemonOutput } from "../../daemon/output"

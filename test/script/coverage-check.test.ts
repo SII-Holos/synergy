@@ -20,7 +20,7 @@ const roots: string[] = []
 
 test("the Computer protocol participates in coverage enforcement", async () => {
   const manifest = await loadManifest()
-  const config = manifest.packages["packages/computer"]
+  const config = manifest.packages["packages/computer-protocol"]
   expect(config).toBeDefined()
   expect(config!.command).toContain("coverage")
   expect(config!.thresholds.lines).toBeGreaterThanOrEqual(80)
@@ -362,16 +362,22 @@ describe("relocated coverage enforcement", () => {
     expect(manifest.packages["apps/desktop"]?.thresholds).toEqual({ lines: 60, functions: 50 })
     for (const owner of [
       "harness",
-      "runtime-local",
+      "local-runtime",
       "server",
       "cli",
-      "product-runtime",
+      "presets",
       "library",
       "note",
       "browser-runtime",
       "computer-runtime",
       "connections",
-      "agent-integrations",
+      "mcp",
+      "lsp",
+      "formatter",
+      "acp",
+      "external-agents",
+      "link-client",
+      "code-tools",
       "plugin-host",
       "media",
       "workbench",

@@ -6,7 +6,7 @@ The chain is deliberately additive: it stores data under `data/push/`, adds one 
 
 ## Ownership
 
-`packages/workbench/src/push/` owns the whole server side and is wired into the runtime in `GlobalRuntime.start()` (immediately after `startChannels()`) via `PushBridge.init()`, which returns a dispose function. The delivery chain:
+`packages/workbench/src/push/` owns the whole server side and starts through the Workbench component’s resident lifecycle via `PushBridge.init()`, which returns a dispose function. The delivery chain:
 
 1. **Event bridge** (`bridge.ts`) — subscribes to four global bus events and turns them into push payloads:
    - `SessionEvent.Completion` → "Response ready", `badge` = unread count.

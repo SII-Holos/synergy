@@ -2,7 +2,7 @@ import fs from "node:fs/promises"
 import os from "node:os"
 import type { RuntimeArtifactProfile } from "../shared/packages"
 import path from "path"
-import { WEB_DIST_DIR, PRODUCT_RUNTIME_DIR, PRODUCT_RUNTIME_DIST_DIR } from "../shared/packages"
+import { WEB_DIST_DIR, PRESETS_DIR, PRESETS_DIST_DIR } from "../shared/packages"
 import { assertRuntimeManifest } from "../shared/runtime-contract"
 
 const playwrightRuntimeCheck = "__browser-playwright-runtime-check"
@@ -14,12 +14,12 @@ export async function validateLocalArtifacts(platformPackageNames: string[]) {
   if (!(await Bun.file(path.join(WEB_DIST_DIR, "index.html")).exists())) {
     throw new Error("apps/web/dist/index.html is missing")
   }
-  if (!(await Bun.file(path.join(PRODUCT_RUNTIME_DIR, "schema/config.schema.json")).exists())) {
-    throw new Error("packages/product-runtime/schema/config.schema.json is missing")
+  if (!(await Bun.file(path.join(PRESETS_DIR, "schema/config.schema.json")).exists())) {
+    throw new Error("packages/presets/schema/config.schema.json is missing")
   }
 
   for (const name of platformPackageNames) {
-    await assertRuntimeManifest(path.join(PRODUCT_RUNTIME_DIST_DIR, name), name)
+    await assertRuntimeManifest(path.join(PRESETS_DIST_DIR, name), name)
   }
 
   const currentPlatform = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`
@@ -27,7 +27,7 @@ export async function validateLocalArtifacts(platformPackageNames: string[]) {
     (name) => name.includes(currentPlatform) && !name.includes("baseline") && !name.includes("musl"),
   )
   if (smokeTarget) {
-    for (const result of await smokeRuntimeArtifact(path.join(PRODUCT_RUNTIME_DIST_DIR, smokeTarget), "full")) {
+    for (const result of await smokeRuntimeArtifact(path.join(PRESETS_DIST_DIR, smokeTarget), "full")) {
       console.log(result.stdout.trim())
     }
   }

@@ -3,7 +3,7 @@ import {
   BrowserProtocolError,
   type BrowserNativePresentationCapabilityResult,
   type BrowserNativePresentationIPCError,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import type { BrowserNativeViewBridge } from "@/context/platform"
 
 const FAST_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 5_000] as const

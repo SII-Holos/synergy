@@ -1,7 +1,7 @@
 import { Flag } from "@ericsanchezok/synergy-harness/flag/flag"
 import type { Argv } from "yargs"
-import { cmd } from "./cmd"
-import { withScopeContext } from "../scope"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
+import { withScopeContext } from "@ericsanchezok/synergy-local-runtime/cli/scope"
 import { SessionImport } from "@ericsanchezok/synergy-harness/session/session-import"
 import { EOL } from "os"
 

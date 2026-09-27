@@ -3,7 +3,7 @@
 import { readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import { ConfigMarkdown } from "@ericsanchezok/synergy-harness/config/markdown"
-import { SkillManifest } from "@ericsanchezok/synergy-runtime-local/skill/manifest"
+import { SkillManifest } from "@ericsanchezok/synergy-local-runtime/skill/manifest"
 
 const MARKDOWN_LINK = /\[[^\]]*\]\(([^)]+)\)/g
 

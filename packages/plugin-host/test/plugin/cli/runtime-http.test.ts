@@ -1,6 +1,6 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test"
 import yargs from "yargs"
-import { UI } from "@ericsanchezok/synergy-cli/util/ui"
+import { UI } from "@ericsanchezok/synergy-util/terminal"
 import { PluginRuntimeCommand } from "../../../src/plugin/cli/plugin-runtime"
 import { PluginInfoCommand } from "../../../src/plugin/cli/plugin-info"
 import { fetchPluginApi, fetchRegistryApi, PluginApiError } from "../../../src/plugin/cli/plugin-server"

@@ -8,7 +8,7 @@ The patched Parcel watcher statically linked libstdc++ and libgcc. Initializing 
 
 ## Decision
 
-The [watcher builder](../../../../packages/runtime-local/script/build-watcher.ts) uses dynamic C++ runtime linkage for glibc and musl, matching Parcel's published Linux packages. The pinned source, EINTR patch and patch marker stay unchanged. The build receipt hashes the builder, so this change invalidates cached static artifacts without changing the source-patch identity.
+The [watcher builder](../../../../packages/local-runtime/script/build-watcher.ts) uses dynamic C++ runtime linkage for glibc and musl, matching Parcel's published Linux packages. The pinned source, EINTR patch and patch marker stay unchanged. The build receipt hashes the builder, so this change invalidates cached static artifacts without changing the source-patch identity.
 
 The [native regression suite](../../../../test/script/watcher-native.test.ts) loads the actual built watcher and installed ONNX Node module in separate fresh Bun processes for each load order. A subscription with real recursive ignore rules must coexist with ONNX and deliver an event. A separate real signal interruption must preserve event delivery. General CI runs the suite on glibc x64; helper CI also runs it on glibc arm64 before uploading assets.
 

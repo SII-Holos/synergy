@@ -10,10 +10,10 @@ import ts from "typescript"
 import path from "node:path"
 import { readFile } from "node:fs/promises"
 import { findAssign, findBlock, isFresh, REPO_ROOT, writeGenerated, resolveWorkspaceModule } from "./shared"
+import { FULL_COMPONENTS } from "../../packages/plugin-host/src/installation/catalog"
 
 const MAIN = path.join(REPO_ROOT, "packages/cli/src/cli/commands.ts")
-const PRODUCT_COMMANDS = path.join(REPO_ROOT, "packages/product-runtime/src/cli-commands.ts")
-const PRODUCT_ENTRY = path.join(REPO_ROOT, "packages/product-runtime/src/index.ts")
+const RUNTIME_COMMANDS = path.join(REPO_ROOT, "packages/cli/src/cli/runtime-commands.ts")
 const OUT = path.join(REPO_ROOT, "docs/reference/cli.md")
 const GENERATOR = "gen-cli-reference.ts"
 
@@ -67,7 +67,7 @@ export async function collectCommandSources(startFiles: string[]): Promise<strin
     for (const specifier of moduleSpecifiers(source)) {
       if (specifier.includes(".txt") || specifier.includes(".json")) continue
       const resolved = await resolveModuleFile(path.dirname(file), specifier)
-      if (resolved && /\/(?:cli|daemon)\//.test(resolved) && !seen.has(resolved)) queue.push(resolved)
+      if (resolved && /\/(?:cli|daemon|commands)\//.test(resolved) && !seen.has(resolved)) queue.push(resolved)
     }
   }
   return [...seen]
@@ -101,7 +101,12 @@ export function parseCommandBlocks(source: string): CommandBlock[] {
 
 async function commandRegistrations(): Promise<CliCommand[]> {
   const commands = new Map<string, CliCommand>()
-  for (const registry of [MAIN, PRODUCT_COMMANDS]) {
+  const adapters: string[] = []
+  for (const owner of FULL_COMPONENTS) {
+    const filename = path.join(REPO_ROOT, "packages", owner, "src/cli-adapter.ts")
+    if (await Bun.file(filename).exists()) adapters.push(filename)
+  }
+  for (const registry of [MAIN, RUNTIME_COMMANDS, ...adapters]) {
     const main = await readFile(registry, "utf8")
     const source = ts.createSourceFile(registry, main, ts.ScriptTarget.Latest, true)
     const entries: Array<{ name: string; describe: string | null; specifiers: string[] }> = []
@@ -148,23 +153,22 @@ async function commandRegistrations(): Promise<CliCommand[]> {
       })
     }
   }
-  const productEntry = ts.createSourceFile(
-    PRODUCT_ENTRY,
-    await readFile(PRODUCT_ENTRY, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-  )
-  const dataSpecifiers: string[] = []
-  function findDataContribution(node: ts.Node) {
-    if (ts.isPropertyAssignment(node) && node.name.getText(productEntry) === "dataCommands")
-      dataSpecifiers.push(...moduleSpecifiers(node.initializer))
-    ts.forEachChild(node, findDataContribution)
-  }
-  findDataContribution(productEntry)
-  for (const specifier of dataSpecifiers) {
-    const resolved = await resolveModuleFile(path.dirname(PRODUCT_ENTRY), specifier)
-    if (!resolved) throw new Error(`Unresolved data command contribution: ${specifier}`)
-    commands.get("data")?.sources.push(resolved)
+  for (const adapter of adapters) {
+    const source = ts.createSourceFile(adapter, await readFile(adapter, "utf8"), ts.ScriptTarget.Latest, true)
+    const contributions: Array<{ group: string; specifier: string }> = []
+    function findContributions(node: ts.Node) {
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        const group = { dataCommands: "data", debugCommands: "debug", pluginCommands: "plugin" }[node.name.text]
+        if (group) for (const specifier of moduleSpecifiers(node)) contributions.push({ group, specifier })
+      }
+      ts.forEachChild(node, findContributions)
+    }
+    findContributions(source)
+    for (const { group, specifier } of contributions) {
+      const resolved = await resolveModuleFile(path.dirname(adapter), specifier)
+      if (!resolved) throw new Error(`Unresolved ${group} command contribution: ${specifier}`)
+      commands.get(group)?.sources.push(resolved)
+    }
   }
   return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name))
 }

@@ -135,7 +135,7 @@ export const BlueprintLoopStopTool = Tool.define("blueprint_loop_stop", {
     const summary = params.summary.trim()
     if (!summary) throw new Error("summary is required")
     if (!instanceState.agendaAssertClear) {
-      throw new Error("BlueprintLoop stop guard is not wired (load src/product-registration)")
+      throw new Error("BlueprintLoop stop guard is not wired (load src/registration)")
     }
     await instanceState.agendaAssertClear({
       sessionID: ctx.sessionID,

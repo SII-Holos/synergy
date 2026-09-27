@@ -1,6 +1,6 @@
 import { registerSessionSchema } from "../../src/session-schema"
 import { testRuntime as harnessRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
-import { registerLocalRuntime } from "@ericsanchezok/synergy-runtime-local/register"
+import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { registerConfig } from "../../src/config-schema"
 import { registerWorkflowSessions } from "../../src/session/register"
 import { registerBlueprintDomain } from "../../src/blueprint/register"

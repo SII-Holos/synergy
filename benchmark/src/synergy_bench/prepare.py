@@ -46,7 +46,7 @@ SESSION_RUNTIME = {
 
 
 def source_protocol(source: Path, commit: str | None) -> str:
-    if (source / "packages/runtime-local/package.json").is_file():
+    if (source / "packages/local-runtime/package.json").is_file():
         return "synergy-rollout-v1"
     # Provenance: https://github.com/SII-Holos/synergy/tree/v3.0.22/packages/synergy
     # This audited release predates compositions and native rollout exports.
@@ -104,25 +104,25 @@ def source_recipe(source: Path, *, image_id: str, protocol: str, links: dict[str
             "FROM node:22.14.0-bullseye AS native\n"
             "COPY --from=source /opt/synergy /opt/synergy\n"
             "WORKDIR /opt/synergy/source\n"
-            "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
+            "RUN /opt/synergy/bin/bun packages/local-runtime/script/build-watcher.ts --local\n"
         )
-        pty = (source / "packages/runtime-local/script/build-pty.ts").is_file()
+        pty = (source / "packages/local-runtime/script/build-pty.ts").is_file()
         if pty:
             native += (
                 "FROM rust:1.94.0-bookworm AS native_pty\n"
                 "COPY --from=source /opt/synergy /opt/synergy\n"
                 "WORKDIR /opt/synergy/source\n"
-                "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-pty.ts\n"
+                "RUN /opt/synergy/bin/bun packages/local-runtime/script/build-pty.ts\n"
             )
         native += (
             "FROM source\n"
-            "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
-            "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
+            "COPY --from=native /opt/synergy/source/packages/local-runtime/.artifacts/watcher "
+            "/opt/synergy/source/packages/local-runtime/.artifacts/watcher\n"
         )
         if pty:
             native += (
-                "COPY --from=native_pty /opt/synergy/source/packages/runtime-local/.artifacts/pty "
-                "/opt/synergy/source/packages/runtime-local/.artifacts/pty\n"
+                "COPY --from=native_pty /opt/synergy/source/packages/local-runtime/.artifacts/pty "
+                "/opt/synergy/source/packages/local-runtime/.artifacts/pty\n"
             )
     prepare_entry = "session-prepare.mjs" if protocol == "synergy-session-v1" else "prepare.ts"
     return (

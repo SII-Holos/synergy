@@ -6,7 +6,7 @@ import { BlueprintLoopStore } from "./loop-store"
  * P9 source inversion: the L1 session tool resolver checks blueprint review
  * and stop access through this registered adapter instead of importing the
  * blueprint product domain directly. Loaded through
- * src/product-registration.ts.
+ * src/registration.ts.
  */
 export const BlueprintToolAccess = {
   async canUseReviewTools(agent: string, reviewSessionID: string, reviewSession?: SessionInfo) {

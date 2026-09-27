@@ -27,6 +27,11 @@
       "bun": "./src/server.ts",
       "types": "./src/server.ts",
       "import": "./dist/server.js"
+    },
+    "./runtime-ready": {
+      "bun": "./src/runtime-ready.ts",
+      "types": "./src/runtime-ready.ts",
+      "import": "./dist/runtime-ready.js"
     }
   },
   "files": [

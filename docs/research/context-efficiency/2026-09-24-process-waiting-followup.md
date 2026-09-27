@@ -19,7 +19,7 @@
 
 区间内包含正常安装、诊断和恢复工作，不能把全部 32.8 分钟或全部 token 判为浪费，也不能直接相减来预测修复后的用时。它仍然证明：减少刷新轮次并不保证命令有实际进展。
 
-这是两层行为的差别。[无人值守判定](../../../packages/harness/src/session/interaction.ts)与[交互问题拒绝](../../../packages/runtime-local/src/question/index.ts)限制会话向人提问；[本地 Bash](../../../packages/runtime-local/src/tools/bash/local.ts)仍以 pipe 启动子进程并保留 stdin，供 `process write` 使用。会话的 unattended 属性不会自动给任意包管理器添加非交互参数。[本地 process](../../../packages/runtime-local/src/tools/process/local.ts)根据进程是否退出报告 running，并返回捕获的输出尾部；它没有把运行、等待输入或等待锁识别为不同状态。
+这是两层行为的差别。[无人值守判定](../../../packages/harness/src/session/interaction.ts)与[交互问题拒绝](../../../packages/local-runtime/src/question/index.ts)限制会话向人提问；[本地 Bash](../../../packages/local-runtime/src/tools/bash/local.ts)仍以 pipe 启动子进程并保留 stdin，供 `process write` 使用。会话的 unattended 属性不会自动给任意包管理器添加非交互参数。[本地 process](../../../packages/local-runtime/src/tools/process/local.ts)根据进程是否退出报告 running，并返回捕获的输出尾部；它没有把运行、等待输入或等待锁识别为不同状态。
 
 下一步应先改命令构造和诊断提示。对无人值守安装使用命令级、工具原生的非交互参数；例如 apt 的 `-y` 和 debconf 的 `DEBIAN_FRONTEND=noninteractive` 解决不同问题。利用已有输出截断与完整输出工件，保持当前错误和交互提示可见。一次长等待后仍没有进展证据、且命令可能要求输入时，做一次有目的的日志或子进程诊断；确认是在正常编译后继续阻塞。沉默本身不证明卡死，不能自动杀进程或重跑命令。
 

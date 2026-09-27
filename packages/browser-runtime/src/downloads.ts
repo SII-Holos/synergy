@@ -1,7 +1,7 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser"
+import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser-core"
 import { BrowserOwner } from "./owner.js"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

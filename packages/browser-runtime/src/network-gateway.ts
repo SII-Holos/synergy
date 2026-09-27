@@ -2,7 +2,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import http from "node:http"
 import net from "node:net"
 import { randomBytes, timingSafeEqual } from "node:crypto"
-import { BrowserProtocolError } from "@ericsanchezok/synergy-browser"
+import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { BrowserOwner } from "./owner.js"
 
 interface OwnerGrant {

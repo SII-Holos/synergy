@@ -1,4 +1,4 @@
-import { chromiumManifestArtifacts } from "@ericsanchezok/synergy-browser"
+import { chromiumManifestArtifacts } from "@ericsanchezok/synergy-browser-core"
 
 export const DESKTOP_RELEASE_PLATFORMS = ["darwin", "win32", "linux"] as const
 export const DESKTOP_RELEASE_ARCHES = ["x64", "arm64"] as const
@@ -6,7 +6,7 @@ export const DESKTOP_RELEASE_ARCHES = ["x64", "arm64"] as const
 export type DesktopReleasePlatform = (typeof DESKTOP_RELEASE_PLATFORMS)[number]
 export type DesktopReleaseArch = (typeof DESKTOP_RELEASE_ARCHES)[number]
 
-const DESKTOP_RELEASE_TARGETS: ReadonlyArray<{
+export const DESKTOP_RELEASE_TARGETS: ReadonlyArray<{
   platform: DesktopReleasePlatform
   arch: DesktopReleaseArch
 }> = [
@@ -91,7 +91,7 @@ export function expectedBrowserHostArtifacts(version: string): string[] {
     ]),
   )
 }
-export { chromiumManifestName, chromiumManifestSignatureName } from "@ericsanchezok/synergy-browser"
+export { chromiumManifestName, chromiumManifestSignatureName } from "@ericsanchezok/synergy-browser-core"
 
 export function expectedChromiumManifestArtifacts(version: string): string[] {
   return chromiumManifestArtifacts(version)

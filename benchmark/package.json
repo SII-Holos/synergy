@@ -13,8 +13,8 @@
     "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-library": "workspace:*",
-    "@ericsanchezok/synergy-product-runtime": "workspace:*",
-    "@ericsanchezok/synergy-runtime-local": "workspace:*"
+    "@ericsanchezok/synergy-local-runtime": "workspace:*",
+    "@ericsanchezok/synergy-presets": "workspace:*"
   },
   "devDependencies": {
     "@tsconfig/bun": "catalog:",

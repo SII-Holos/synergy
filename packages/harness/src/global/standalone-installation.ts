@@ -100,6 +100,8 @@ export namespace StandaloneInstallation {
       path.join(root, vec0),
       path.join(root, "watcher.node"),
       path.join(root, "runtime-manifest.sha256"),
+      path.join(root, "runtime-assets.txt"),
+      path.join(root, "runtime"),
     ]
   }
 
@@ -286,7 +288,7 @@ export namespace StandaloneInstallation {
     const installationRoot = path.join(home, ".synergy")
     const manifestPath = path.join(installationRoot, "runtime-manifest.sha256")
     const contents = await fs.readFile(manifestPath, "utf8").catch(() => undefined)
-    const required = requiredRuntimePaths(context, contents !== undefined)
+    let required = requiredRuntimePaths(context, contents !== undefined)
     if (contents === undefined) {
       const files = await Promise.all(required.map((relative) => runtimeFileIsSafe(installationRoot, relative)))
       return files.every(Boolean)
@@ -295,19 +297,47 @@ export namespace StandaloneInstallation {
 
     const entries = new Map<string, string>()
     for (const line of contents.trim().split("\n")) {
-      const match = /^([a-f0-9]{64})  ([^/\\\s]+(?:\/[^/\\\s]+)*)$/.exec(line)
+      const match = /^([a-f0-9]{64})  (.+)$/.exec(line)
       const checksum = match?.[1]
       const relative = match?.[2]
       const components = relative?.split("/")
       if (
         !checksum ||
         !relative ||
+        relative.startsWith("/") ||
+        /[\\\x00-\x1f\x7f]/.test(relative) ||
         /^[A-Za-z]:/.test(relative) ||
-        components?.some((component) => component === "." || component === "..") ||
+        components?.some((component) => !component || component === "." || component === "..") ||
         entries.has(relative)
       )
         return false
       entries.set(relative, checksum)
+    }
+    if (entries.has("runtime-assets.txt")) {
+      const inventory = await fs
+        .readFile(path.join(installationRoot, "runtime-assets.txt"), "utf8")
+        .catch(() => undefined)
+      if (!inventory) return false
+      required = [
+        context.platform === "win32" ? "bin/synergy.exe" : "bin/synergy",
+        "runtime/generation.json",
+        "runtime/node_modules/@ericsanchezok/synergy-harness/package.json",
+        "runtime/node_modules/@ericsanchezok/synergy-cli/dist/modules/index.js",
+        ...inventory.trim().split("\n"),
+      ]
+      const pending = [path.join(installationRoot, "runtime")]
+      while (pending.length) {
+        const directory = pending.pop()!
+        const files = await fs.readdir(directory, { withFileTypes: true }).catch(() => undefined)
+        if (!files) return false
+        for (const file of files) {
+          const absolute = path.join(directory, file.name)
+          if (file.isSymbolicLink()) return false
+          if (file.isDirectory()) pending.push(absolute)
+          else if (!file.isFile() || !entries.has(path.relative(installationRoot, absolute).split(path.sep).join("/")))
+            return false
+        }
+      }
     }
     if (required.some((relative) => !entries.has(relative))) return false
 

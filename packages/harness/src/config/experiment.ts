@@ -210,6 +210,15 @@ export namespace Experiment {
   const NO_RUNTIME_OVERRIDES = {}
   const NO_SNAPSHOT = {}
 
+  function parseConfig(value: unknown): Config {
+    const fields = ConfigSchema.shape
+    return ConfigSchema.parse(
+      object(value)
+        ? Object.fromEntries(Object.entries(value).filter(([key, item]) => item !== undefined || key in fields))
+        : value,
+    )
+  }
+
   export function apply(live: Config): Config {
     const instanceState = runtimeState()
 
@@ -236,7 +245,7 @@ export namespace Experiment {
     if (snapshot) {
       const result = { ...value }
       for (const key of taskKeys) delete (result as Record<string, unknown>)[key]
-      value = ConfigSchema.parse({
+      value = parseConfig({
         ...result,
         ...snapshot.effective,
         execution: { ...value.execution, ...snapshot.effective.execution },
@@ -247,7 +256,7 @@ export namespace Experiment {
     return value
   }
   export function applyRuntime(config: Config, runtime: z.infer<typeof Runtime>): Config {
-    return ConfigSchema.parse(merge(config, Runtime.parse(runtime)))
+    return parseConfig(merge(config, Runtime.parse(runtime)))
   }
   function runtimeFrom(config: Config) {
     const { continueOnDeny, messageCache, ...execution } = config.execution ?? {}

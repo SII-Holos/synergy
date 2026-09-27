@@ -18,7 +18,7 @@ The evaluator receives independent labeled synthetic cases and does not expose l
 
 ## Alternatives considered
 
-**Move the whole secret subsystem into a package.** Rejected because Vault, session ownership and execution permissions would couple offline detector experiments to the product runtime.
+**Move the whole secret subsystem into a package.** Rejected because Vault, session ownership and execution permissions would couple offline detector experiments to the preset runtime.
 
 **Return only a contains-secret boolean.** Rejected because masking needs the original value's position. A classifier can be wrapped with candidate extraction or span labeling while preserving the same interface.
 

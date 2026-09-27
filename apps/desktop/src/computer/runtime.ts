@@ -6,7 +6,7 @@ import {
   ComputerResultSchema,
   type ComputerCommand,
   type ComputerResult,
-} from "@ericsanchezok/synergy-computer"
+} from "@ericsanchezok/synergy-computer-protocol"
 
 const NativeResult = z.object({
   isError: z.boolean().optional(),

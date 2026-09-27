@@ -6,7 +6,7 @@ import { randomUUID, createHash } from "node:crypto"
 import { gzipSync, gunzipSync } from "node:zlib"
 import { ArtifactLocation, MAX_COMPRESSED_ARTIFACT_BYTES } from "./artifact-location"
 import { StorageConflictError, StorageIntegrityError } from "./errors"
-import { isRetryableIOError } from "../util/io-retry"
+import { isRetryableIOError } from "@ericsanchezok/synergy-util/io-retry"
 import { StorageQueue } from "./queue"
 
 function digest(bytes: Uint8Array) {

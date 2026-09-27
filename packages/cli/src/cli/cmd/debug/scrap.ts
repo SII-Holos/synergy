@@ -1,7 +1,7 @@
 import { EOL } from "os"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { cmd } from "../cmd"
+import { cmd } from "@ericsanchezok/synergy-util/cli-command"
 
 export const ScrapCommand = cmd({
   command: "scrap",

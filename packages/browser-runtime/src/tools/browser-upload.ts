@@ -1,7 +1,7 @@
 import z from "zod"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { BrowserLocatorSchema, sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser"
+import { BrowserLocatorSchema, sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"

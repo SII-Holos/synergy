@@ -10,7 +10,7 @@ import { AgendaTriggerTool } from "./tools/agenda-trigger"
 import { AgendaLogsTool } from "./tools/agenda-logs"
 
 /**
- * Agenda domain tool registration. Loaded through src/product-registration.ts.
+ * Agenda domain tool registration. Loaded through src/registration.ts.
  */
 const runtimeState = RuntimeContext.state(() => ({
   registered: false,

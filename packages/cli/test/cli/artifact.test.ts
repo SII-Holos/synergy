@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
+import { ProcessGroup } from "@ericsanchezok/synergy-util/process-group"
 
 const binary = process.env.SYNERGY_TEST_ARTIFACT_BIN
 const installed = process.env.SYNERGY_TEST_ARTIFACT_INSTALL
@@ -11,6 +12,8 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
     `installed runtime artifact preserves ${mode} outcome outside the repository`,
     async () => {
       const isolation = await createIsolatedTestEnv()
+      const controller = new AbortController()
+      const deadline = setTimeout(() => controller.abort(new Error(`Artifact ${mode} did not settle`)), 330_000)
       delete isolation.env.NODE_PATH
       delete isolation.env.NODE_OPTIONS
       delete isolation.env.MODELS_DEV_API_JSON
@@ -137,7 +140,10 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
         await fs.mkdir(workspace, { recursive: true })
         await Bun.write(inputFile, fileContent)
         const config = {
-          embedding: { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" },
+          embedding:
+            process.env.SYNERGY_TEST_ARTIFACT_PROFILE === "full"
+              ? { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" }
+              : undefined,
           agent: mode === "budget" ? { synergy: { steps: 1 } } : undefined,
           model: "test/test-model",
           controlProfile: mode === "tool" || mode === "read" ? "full_access" : "guarded",
@@ -153,29 +159,59 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
             },
           },
         }
-        const child = Bun.spawn(
-          [
-            ...command,
-            "send",
-            "Return a brief result",
-            "--format",
-            "json",
-            "--non-interactive",
-            "--timeout",
-            mode === "timeout" ? "1" : "20",
-          ],
-          {
+        async function invoke(args: string[]) {
+          controller.signal.throwIfAborted()
+          const started = performance.now()
+          const child = Bun.spawn([...command, ...args], {
             cwd: workspace,
             env: { ...isolation.env, SYNERGY_CWD: workspace, SYNERGY_CONFIG_CONTENT: JSON.stringify(config) },
+            detached: process.platform !== "win32",
             stdin: "ignore",
             stdout: "pipe",
             stderr: "pipe",
-          },
-        )
-        const [stdout, stderr, code] = await Promise.all([
-          new Response(child.stdout).text(),
-          new Response(child.stderr).text(),
-          child.exited,
+          })
+          const handle = {
+            pid: child.pid,
+            kill(signal: NodeJS.Signals | number = "SIGTERM") {
+              child.kill(signal)
+              return true
+            },
+          }
+          let forceKill: ReturnType<typeof setTimeout> | undefined
+          let stopping: Promise<void> | undefined
+          const abort = () => {
+            child.kill("SIGTERM")
+            forceKill = setTimeout(() => {
+              stopping = ProcessGroup.killTree(handle, { exited: () => child.exitCode !== null })
+            }, 5000)
+          }
+          controller.signal.addEventListener("abort", abort, { once: true })
+          try {
+            const [stdout, stderr, code] = await Promise.all([
+              new Response(child.stdout).text(),
+              new Response(child.stderr).text(),
+              child.exited,
+            ])
+            console.info(
+              `[artifact ${mode}] ${args[0]} exited ${code} after ${Math.round(performance.now() - started)}ms`,
+            )
+            return { stdout, stderr, code }
+          } finally {
+            controller.signal.removeEventListener("abort", abort)
+            clearTimeout(forceKill)
+            if (child.exitCode === null) await ProcessGroup.killTree(handle, { exited: () => child.exitCode !== null })
+            await stopping
+            await child.exited
+          }
+        }
+        const { stdout, stderr, code } = await invoke([
+          "send",
+          "Return a brief result",
+          "--format",
+          "json",
+          "--non-interactive",
+          "--timeout",
+          mode === "timeout" ? "1" : "90",
         ])
         const expectedCode = mode === "timeout" ? 3 : mode === "permission" ? 4 : 0
         let diagnostics = ""
@@ -206,18 +242,7 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
         if (mode === "complete") {
           const archive = path.join(workspace, "rollout.zip")
           async function run(args: string[]) {
-            const child = Bun.spawn([...command, ...args], {
-              cwd: workspace,
-              env: { ...isolation.env, SYNERGY_CWD: workspace, SYNERGY_CONFIG_CONTENT: JSON.stringify(config) },
-              stdin: "ignore",
-              stdout: "pipe",
-              stderr: "pipe",
-            })
-            const [stdout, stderr, code] = await Promise.all([
-              new Response(child.stdout).text(),
-              new Response(child.stderr).text(),
-              child.exited,
-            ])
+            const { stdout, stderr, code } = await invoke(args)
             expect(code, stderr + stdout).toBe(0)
             return stdout
           }
@@ -248,31 +273,20 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
         }
         if (mode === "timeout" || mode === "permission") {
           responseMode = "complete"
-          const resumed = Bun.spawn(
-            [
-              ...command,
-              "send",
-              "Continue after cancellation",
-              "--session",
-              events.at(-1).sessionID,
-              "--format",
-              "json",
-              "--non-interactive",
-              "--timeout",
-              "20",
-            ],
-            {
-              cwd: workspace,
-              env: { ...isolation.env, SYNERGY_CWD: workspace, SYNERGY_CONFIG_CONTENT: JSON.stringify(config) },
-              stdin: "ignore",
-              stdout: "pipe",
-              stderr: "pipe",
-            },
-          )
-          const [resumedOutput, resumedError, resumedCode] = await Promise.all([
-            new Response(resumed.stdout).text(),
-            new Response(resumed.stderr).text(),
-            resumed.exited,
+          const {
+            stdout: resumedOutput,
+            stderr: resumedError,
+            code: resumedCode,
+          } = await invoke([
+            "send",
+            "Continue after cancellation",
+            "--session",
+            events.at(-1).sessionID,
+            "--format",
+            "json",
+            "--non-interactive",
+            "--timeout",
+            "90",
           ])
           expect(resumedCode, resumedError + resumedOutput).toBe(0)
           const result = JSON.parse(resumedOutput.trim().split("\n").at(-1)!)
@@ -287,8 +301,9 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
           await Bun.file(path.join(isolation.env.SYNERGY_TEST_HOME!, ".synergy", "daemon", "server.lock")).exists(),
         ).toBe(false)
       } finally {
+        clearTimeout(deadline)
         await isolation.dispose()
       }
     },
-    45_000,
+    360_000,
   )

@@ -3,7 +3,7 @@ import {
   BROWSER_PROTOCOL_VERSION,
   BrowserEventSchema,
   type BrowserEvent as BrowserProtocolEvent,
-} from "@ericsanchezok/synergy-browser"
+} from "@ericsanchezok/synergy-browser-core"
 import { SyncSequencer } from "@ericsanchezok/synergy-harness/bus/sequencer"
 import { BrowserOwner } from "./owner.js"
 

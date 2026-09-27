@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite"
 import { existsSync } from "node:fs"
 import path from "node:path"
+import { nativeAsset } from "@ericsanchezok/synergy-util/native-assets"
 
 let initialized = false
 export function initializeSqliteEngine() {
@@ -9,7 +10,9 @@ export function initializeSqliteEngine() {
     const packaged = path.resolve(path.dirname(process.execPath), "../libsqlite3.dylib")
     const moduleEngine = path.resolve(import.meta.dirname, "../libsqlite3.dylib")
     const source = path.resolve(import.meta.dirname, "../../.artifacts/sqlite/libsqlite3.dylib")
-    const candidates = [moduleEngine, packaged, source]
+    const candidates = [nativeAsset("libsqlite3.dylib", import.meta.url), moduleEngine, packaged, source].filter(
+      (file): file is string => Boolean(file),
+    )
     // Source development can use a verified Homebrew engine; packaged builds
     // include their own engine and never depend on machine-wide libraries.
     if (existsSync(path.resolve(import.meta.dirname, "../../script/build-sqlite.ts")))

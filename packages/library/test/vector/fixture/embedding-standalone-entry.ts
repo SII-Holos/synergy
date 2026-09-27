@@ -1,4 +1,4 @@
-import { verifyStandaloneEmbeddingRuntime } from "../../../src/vector/embedding-runtime"
+import { main } from "../../../src/vector/runtime-check"
 
-await verifyStandaloneEmbeddingRuntime()
+await main()
 console.log("standalone embedding runtime ready")

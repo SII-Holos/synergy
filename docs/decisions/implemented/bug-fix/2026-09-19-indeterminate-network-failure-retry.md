@@ -18,7 +18,7 @@ Bun 自带的 BoringSSL 在无法把 TLS 校验失败映射成原因码时抛出
 
 [会话重试](../../../../packages/harness/src/session/retry.ts) 的 `retryable()` 由返回 `string | undefined` 改为返回 `{ message, maxAttempts } | undefined`，让事实与预算各自归位：分类器只回答事实，预算仍由调用方持有。`category === "tls-verification"` 使用六额外次尝试与三十秒退避上限（退避上限与通用瞬时失败持平，尝试预算仍保持更窄），其余情形保持十次与三十秒。未知错误分支增加字符串兜底，仅凭文本无法还原对象时按同一受限预算处理。`AgentCall` 继续只判断 `!== undefined`，其预算仍由调用方 `input.retries` 决定，既有分工不变。预算随后按实证校准放宽：一次持续约八十秒的端点故障中，同一连接连续六次尝试全部失败后自愈，期间无任何配置变化，说明该类抖动的恢复窗口是分钟级而非秒级，最初两次尝试的窗口覆盖不足。
 
-[网页抓取](../../../../packages/runtime-local/src/tools/webfetch.ts) 在自身既有的三次尝试与总截止时间内接纳该类别。
+[网页抓取](../../../../packages/local-runtime/src/tools/webfetch.ts) 在自身既有的三次尝试与总截止时间内接纳该类别。
 
 [端到端证据](../../../../packages/harness/src/session/message-v2.ts) 在错误元数据中新增 `networkKind`、`category` 与 `endpointHost`。端点主机名由控制面从既有连接身份来源派生（与 `providerRetryKey` 同源的 `options.baseURL ?? model.api?.url`，取其 host），因此不需要扩展 worker 错误帧，也不改变协议版本。只记录 host，path 与 query 不进入持久化元数据。
 

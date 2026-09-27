@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser"
+import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserEvent } from "../src/event"
 import type { BrowserOwner } from "../src/owner"

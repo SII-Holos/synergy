@@ -15,7 +15,7 @@ import { readRuntimeStats } from "@ericsanchezok/synergy-harness/lifecycle"
 import { PolicyWorker } from "@ericsanchezok/synergy-harness/enforcement/policy-worker"
 import { pluginRuntimeManager } from "@ericsanchezok/synergy-plugin-host/plugin/runtime"
 import { BrowserRuntime } from "@ericsanchezok/synergy-browser-runtime/runtime"
-import { McpSupervisor } from "@ericsanchezok/synergy-agent-integrations/mcp/supervisor"
+import { McpSupervisor } from "@ericsanchezok/synergy-mcp/supervisor"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
 import { SessionMemoryPressure } from "@ericsanchezok/synergy-harness/session/memory-pressure"
 

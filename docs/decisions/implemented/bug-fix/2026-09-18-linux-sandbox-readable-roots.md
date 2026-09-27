@@ -8,7 +8,7 @@ On Linux, the helper-backed sandbox compiled its permission profile from a share
 
 ## Decision
 
-`LinuxBackend.prepare` (`packages/runtime-local/src/sandbox/linux.ts`) owns platform mount reality:
+`LinuxBackend.prepare` (`packages/local-runtime/src/sandbox/linux.ts`) owns platform mount reality:
 
 - All readable roots — workspace, `runtimeReadRoots`/defaults, extra read roots, and network config roots — are deduplicated and existence-filtered at wrapper preparation, the same invariant protected paths already follow.
 - `/lib` and `/lib64` are added when present so dynamically linked children can load their interpreter. Restricted mode still excludes `/etc`; it stays in the full-network branch only.
@@ -35,7 +35,7 @@ On Linux, the helper-backed sandbox compiled its permission profile from a share
 
 ## Consequences
 
-Linux `autonomous` Bash now works on a stock Ubuntu 24.04 host once the operator allows bwrap's user namespace (an environment fix outside this repository — an AppArmor profile granting `/usr/bin/bwrap` `userns`), and on any host without macOS-specific paths. macOS behavior is unchanged: Seatbelt ignores nonexistent subpaths and consumes an unchanged profile. Added test coverage lives in `packages/runtime-local/test/sandbox/linux-readable-roots.test.ts`, including a real end-to-end execution that skips honestly where the host has no helper or blocks user namespaces. Remaining known gap: sandbox readiness still probes only `bwrap --version` and sysctls, so an environment that blocks namespace creation passes readiness while execution fails; a functional bwrap probe and exec-time failure classification into `SandboxBlocked` diagnostics are future work.
+Linux `autonomous` Bash now works on a stock Ubuntu 24.04 host once the operator allows bwrap's user namespace (an environment fix outside this repository — an AppArmor profile granting `/usr/bin/bwrap` `userns`), and on any host without macOS-specific paths. macOS behavior is unchanged: Seatbelt ignores nonexistent subpaths and consumes an unchanged profile. Added test coverage lives in `packages/local-runtime/test/sandbox/linux-readable-roots.test.ts`, including a real end-to-end execution that skips honestly where the host has no helper or blocks user namespaces. Remaining known gap: sandbox readiness still probes only `bwrap --version` and sysctls, so an environment that blocks namespace creation passes readiness while execution fails; a functional bwrap probe and exec-time failure classification into `SandboxBlocked` diagnostics are future work.
 
 A separate discovery recorded here because it constrains tests and docs: the helper's controlled-tmp bind shadows every host path under `/tmp`, including a workspace that lives there, so sandboxed execution requires the workspace to sit outside `/tmp` — production workspaces always do, and the end-to-end test mirrors that by staging its fixture under the runtime tmp root.
 

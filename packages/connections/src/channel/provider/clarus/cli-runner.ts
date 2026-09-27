@@ -50,9 +50,11 @@ function sourceEntry(): string | undefined {
   }
 }
 
-export function resolveClarusCliEntry(execPath = process.execPath): string {
-  const packaged = path.resolve(path.dirname(fsSync.realpathSync(execPath)), "..", PACKAGED_ENTRY)
-  if (fsSync.existsSync(packaged)) return packaged
+export function resolveClarusCliEntry(execPath?: string): string {
+  if (execPath) {
+    const packaged = path.resolve(path.dirname(fsSync.realpathSync(execPath)), "..", PACKAGED_ENTRY)
+    if (fsSync.existsSync(packaged)) return packaged
+  }
   const source = sourceEntry()
   if (source && fsSync.existsSync(source)) return source
   throw new Error("The bundled Holos CLI runtime is unavailable")

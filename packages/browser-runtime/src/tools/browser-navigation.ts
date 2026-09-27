@@ -1,5 +1,5 @@
 import z from "zod"
-import { BrowserBackendResultSchema } from "@ericsanchezok/synergy-browser"
+import { BrowserBackendResultSchema } from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatSettleSummary, withUnknownOutcomeGuidance } from "./browser-shared"
 import { BrowserOwner } from "../owner"

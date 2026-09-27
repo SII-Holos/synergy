@@ -24,7 +24,7 @@ The first message runs Library recall, whose default local embedding path lazily
 
 ## Guardrails added
 
-- The [builder](../../packages/runtime-local/script/build-watcher.ts) shares the system C++ runtime; the [decision](../decisions/implemented/bug-fix/2026-09-12-linux-watcher-shared-cpp-runtime.md) records alternatives and target requirements.
+- The [builder](../../packages/local-runtime/script/build-watcher.ts) shares the system C++ runtime; the [decision](../decisions/implemented/bug-fix/2026-09-12-linux-watcher-shared-cpp-runtime.md) records alternatives and target requirements.
 - The [native suite](../../test/script/watcher-native.test.ts) requires real recursive ignores, both ONNX load orders, post-load events and interrupted-poll recovery under Bun.
 - [Helper CI](../../.github/workflows/build-helpers.yml) validates glibc x64 and arm64 before uploading bindings; [general CI](../../.github/workflows/ci.yml) also exercises the suite.
 - The [development Skill](../../.synergy/skill/develop-synergy/SKILL.md) routes watcher changes through the compiled regression suite.

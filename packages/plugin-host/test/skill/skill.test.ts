@@ -4,8 +4,8 @@ import path from "path"
 import { Plugin } from "@ericsanchezok/synergy-plugin-host/plugin"
 import { registerPluginSkillSource } from "@ericsanchezok/synergy-plugin-host/plugin/skill-source"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { Skill } from "@ericsanchezok/synergy-runtime-local/skill"
-import { BUILTIN_SKILLS } from "@ericsanchezok/synergy-runtime-local/skill/builtin"
+import { Skill } from "@ericsanchezok/synergy-local-runtime/skill"
+import { BUILTIN_SKILLS } from "@ericsanchezok/synergy-local-runtime/skill/builtin"
 import { SkillSourceProfile } from "@ericsanchezok/synergy-harness/instruction/source-profile"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -275,8 +275,8 @@ describe.serial("skill discovery", () => {
       expect(creator.references ?? {}).toEqual({})
 
       for (const root of [
-        path.resolve(import.meta.dir, "@ericsanchezok/synergy-runtime-local/skill/builtin/skill-creator"),
-        path.resolve(import.meta.dir, "@ericsanchezok/synergy-runtime-local/skill/builtin/synergy-skill-creator"),
+        path.resolve(import.meta.dir, "@ericsanchezok/synergy-local-runtime/skill/builtin/skill-creator"),
+        path.resolve(import.meta.dir, "@ericsanchezok/synergy-local-runtime/skill/builtin/synergy-skill-creator"),
       ]) {
         await expect(Bun.file(path.join(root, "scripts/init-skill.ts")).exists()).resolves.toBe(false)
         await expect(Bun.file(path.join(root, "scripts/package-skill.ts")).exists()).resolves.toBe(false)

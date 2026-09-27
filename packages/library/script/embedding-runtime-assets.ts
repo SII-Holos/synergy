@@ -11,6 +11,19 @@ import {
 const SOURCE_FILES = [EMBEDDING_RUNTIME_MODULE, EMBEDDING_RUNTIME_WASM] as const
 export const EMBEDDING_RUNTIME_REQUIRED_PATHS = SOURCE_FILES.map((file) => `${EMBEDDING_RUNTIME_PATH}/${file}`)
 
+export async function buildEmbeddingModule(output: string) {
+  const result = await Bun.build({
+    entrypoints: [path.join(import.meta.dir, "embedding-module.ts")],
+    outdir: path.join(output, "vector"),
+    naming: "packaged-embedding.js",
+    target: "bun",
+    conditions: ["browser"],
+    plugins: [standaloneEmbeddingBuildPlugin()],
+  })
+  if (!result.success) throw new Error(result.logs.map((log) => log.message).join("\n"))
+  await stageEmbeddingRuntimeAssets({ runtimeDir: output })
+}
+
 export async function stageEmbeddingRuntimeAssets(options: {
   runtimeDir: string
   onnxRuntimeWebDir?: string

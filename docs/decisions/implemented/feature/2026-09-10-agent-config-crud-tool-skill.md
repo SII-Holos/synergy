@@ -18,7 +18,7 @@ Agent 定义只能靠用户手改配置文件（`.synergy/agent/*.md` 或 `60-ag
 - JSONC create 与 disable 都遵循显式或当前 Scope；项目 JSONC 覆盖全局 markdown 时，由项目层承担 describe/update/remove，避免改动全局定义；update 的 disable 标记参与图校验，禁用成功返回明确结果；markdown 的 `prompt: null` 清空正文。内置覆盖和重新启用也执行完整字段校验。
 - **写入校验**：Zod schema + `model` 必须两半非空（`openai/`、`/gpt-5` 拒绝）+ 跨 Agent 引用检查（`visibleTo` 每项必须匹配现有 agent 名或任一 agent 声明的 `delegationGroups` 身份）+ **宿主图完整性**（对 create/update/disable/delete 后的整个 prospective 图做可达性检查：改动若使其他 agent 的 `visibleTo` 全部失配——如删掉它依赖的 delegation group、禁用它唯一可见的 agent——拒绝并点名受影响者；本来就不可达的 agent 保持既有加载期 warn 不阻塞）。
 - **`default_agent` 显式语义**（`agent.ts`）：`Agent.defaultAgent()` 过滤 subagent-only/hidden/不存在目标，`log.warn` 显式警告后回退 `synergy`，`synergy` 本身被禁用时回退到任意可用可见 primary——没有可见 primary 时明确报错，绝不返回解析不到的字面量。`AgentConfig.setDefault` 在写入侧前置拒绝。`Agent.state()` 加载期对未解析 `visibleTo` 引用逐条 warn（兜住手改文件路径）。
-- **`agent_config` 工具**（runtime-local，默认折叠组 `agent-config`）：discriminatedUnion 包 `input` 的动作式单工具；execute 接受 `ctx` 并把 `ctx.abort` 传给服务（取消后不再落盘/刷新）；describe 的模型可见 output 与 describe/create/update 的 metadata 携带 resolved agent 的有界投影（字段 + prompt 预览 + 前 20 条权限规则）；taxonomy `platform.config` stateful。
+- **`agent_config` 工具**（local-runtime，默认折叠组 `agent-config`）：discriminatedUnion 包 `input` 的动作式单工具；execute 接受 `ctx` 并把 `ctx.abort` 传给服务（取消后不再落盘/刷新）；describe 的模型可见 output 与 describe/create/update 的 metadata 携带 resolved agent 的有界投影（字段 + prompt 预览 + 前 20 条权限规则）；taxonomy `platform.config` stateful。
 - **执法门分类**（`enforcement/gate.ts` + `util/capability.ts`）：`agent_config` 按动作分类——`list`/`describe` 为可绕过 `config:read`，其余动作为不可绕过 `config:write`（guarded 会话改 agent/权限/controlProfile/默认 agent 需审批）。
 - **`agent-manage` 内置 skill**：对话式流程（收集需求 → describe 查冲突 → 摘要确认 → 写入 → 提议 set_default → describe 验证），字段参考（含 null 语义、图校验、分层 disable、插件边界）下沉 `references/fields.txt`。
 - **CLI 收敛**：`synergy agent create` 保留交互式 LLM 生成，持久化改走 `AgentConfig.create`——一条当前代码路径。
@@ -34,7 +34,7 @@ Agent 定义只能靠用户手改配置文件（`.synergy/agent/*.md` 或 `60-ag
 ## Consequences
 
 - 对话、CLI、手改文件三条路径共享同一套校验与刷新语义；手改路径至少有加载期 warn 兜底。
-- `default_agent: "developer"`（subagent）这类原本"意外可用"的配置现在会回退 `synergy` 并告警——有意的行为收紧，product-runtime 旧测试已随契约更新。
+- `default_agent: "developer"`（subagent）这类原本"意外可用"的配置现在会回退 `synergy` 并告警——有意的行为收紧，presets 旧测试已随契约更新。
 - 无持久 schema 变更、无迁移；markdown/jsonc 写的都是既有格式，单 PR 可整体回滚。
 - guarded 会话中通过 `agent_config` 写 agent 定义触发 `config:write` 审批（不可绕过）；读动作（list/describe）保持免审批。
 - re-enable 会把 disable 标记从 overlay 中整体移除（而非写 `disable: false`），markdown 上方的空 overlay 自动消失，独立的空 JSONC 定义保留，避免残留条目在 delete 后复活空白 agent。
