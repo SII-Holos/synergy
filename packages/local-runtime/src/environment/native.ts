@@ -71,6 +71,7 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
           target,
           directory: path.join(path.dirname(filename(request)), request.requestID),
           coordinator,
+          files: { acquire: WorkspaceAccess.hostClaim },
           sandbox: SandboxHost,
           runtime: {
             shell: Shell.acceptable(),

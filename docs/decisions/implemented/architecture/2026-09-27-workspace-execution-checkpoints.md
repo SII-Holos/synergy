@@ -34,6 +34,8 @@ Formatter commands carry canonical file and byte-version preconditions to the Ex
 
 Workspace services start from catalog identity and binding generation, including logical backends without a controller directory. The Executor observes its own mounted tree and exposes a bounded epoch/version cursor; restarting a subscription changes its epoch. File panels poll existing views without acquiring Environment uses or allocating compute, invalidate their caches on catalog or observation changes, and drain polling on Workspace disposal. Catalog head and mount changes increment the same revision and publish committed events. Branch discovery uses the selected Environment and resynchronizes after view changes.
 
+Plugin Host callbacks carry the invocation's canonical resource selection across IPC and resolve each current file view without replacing its binding generation. Shell calls use the common Environment process path and prepare containment before policy evaluation. Native file-host claims inherit the caller's logical reservation, but retain their own durable physical writer; otherwise a completed shell's task reservation would deadlock a following file mutation in the same invocation. Remote execution hosts continue to own their physical admission without Agent task state.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

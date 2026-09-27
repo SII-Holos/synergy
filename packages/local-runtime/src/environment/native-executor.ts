@@ -33,7 +33,7 @@ interface NativeExecutorOptions {
   acquire?: (command: ExecutionProtocol.Command, signal: AbortSignal) => Promise<WorkspaceAccess.Lease>
   maxOutputBytes?: number
   runAs?: { uid: number; gid: number }
-  files?: { materializationRoot: string; allowedRoots?: string[] }
+  files?: { materializationRoot?: string; allowedRoots?: string[]; acquire?: WorkspaceAccess.Host["acquire"] }
   runtime?: Pick<ExecutionProtocol.Description, "shell" | "directory" | "env">
   sandbox?: SandboxHost.Host
   inputsRoot?: string
@@ -83,6 +83,7 @@ export class NativeExecutor implements Executor {
       materializationRoot: options.files?.materializationRoot ?? path.join(options.directory, "views"),
       allowedRoots: options.files?.allowedRoots,
       coordinator: options.coordinator,
+      acquire: options.files?.acquire,
       owner: options.runAs,
       executionWriter: async (id, root) => {
         const status = await this.required(id)

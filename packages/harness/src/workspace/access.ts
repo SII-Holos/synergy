@@ -441,6 +441,35 @@ export namespace WorkspaceAccess {
     return provider.contendedProcesses()
   }
 
+  export async function hostClaim(
+    input: Omit<ClaimInput, "owner" | "ancestors" | "parentClaim" | "useRoots">,
+  ): Promise<Lease> {
+    return inTask(async (task) => {
+      let lease: Lease | undefined
+      try {
+        await ExecutionCapacity.wait(async () => {
+          const writes = input.kind !== "use" && (input.roots === null || input.roots.length > 0)
+          const parent = retirement.getStore()
+          if (writes && parent?.task !== task) await reserve(task, input.roots, input.signal, false)
+          lease = await host().acquire({
+            ...input,
+            owner: task.owner,
+            ancestors: task.ancestors,
+            parentClaim: parent?.task === task ? parent.lease.id : writes ? task.id : undefined,
+            useRoots: [...task.useRoots],
+            signal: input.signal ? AbortSignal.any([input.signal, task.signal]) : task.signal,
+          })
+        })
+        input.signal?.throwIfAborted()
+        await validate(task)
+        return lease!
+      } catch (error) {
+        await lease?.release()
+        throw error
+      }
+    }, input.signal)
+  }
+
   export async function pin(signal?: AbortSignal): Promise<Lease> {
     const workspace = ScopeContext.current.workspace
     if (!workspace?.id) throw new Error("A resolved Workspace is required for file resources")

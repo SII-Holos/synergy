@@ -339,7 +339,7 @@ test("plugin file services reject absent Workspaces, protected files and physica
           expect(await Bun.file(path.join(outside.path, "file.txt")).exists()).toBe(false)
           expect(await invoke(".git/config")).toMatchObject({ message: expect.stringContaining("Git metadata") })
           await Session.updateWorkspace(session.id, null)
-          expect(await invoke("file.txt")).toMatchObject({ message: expect.stringContaining("workspace is required") })
+          expect(await invoke("file.txt")).toMatchObject({ message: expect.stringContaining("requires a Workspace") })
           expect(await Bun.file(path.join(tmp.path, "file.txt")).exists()).toBe(false)
         } finally {
           await manager.stop(manifest.id)

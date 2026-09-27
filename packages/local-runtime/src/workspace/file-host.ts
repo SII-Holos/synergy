@@ -12,6 +12,7 @@ import { SensitivePathPolicy } from "@ericsanchezok/synergy-harness/enforcement/
 import { NativeFileEntry } from "../file/entry-core"
 import { NativeFileMutation } from "../file/mutation-core"
 import { WorkspaceCoordinator } from "./coordinator"
+import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { NativeWorkspaceTree } from "./tree"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 import { FileWatcherBinding } from "../file/watcher-binding"
@@ -54,11 +55,16 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       directory: string
       materializationRoot: string
       coordinator: WorkspaceCoordinator
+      acquire?: WorkspaceAccess.Host["acquire"]
       allowedRoots?: string[]
       owner?: { uid: number; gid: number }
       executionWriter?(id: string, root: string): Promise<void>
     },
   ) {}
+
+  private acquire(input: Parameters<WorkspaceCoordinator["acquire"]>[0]) {
+    return this.options.acquire ? this.options.acquire(input) : this.options.coordinator.acquire(input)
+  }
 
   private filename(kind: string, id: string) {
     return path.join(this.options.directory, kind, createHash("sha256").update(id).digest("hex"))
@@ -108,7 +114,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         if (!allowed.some((parent) => this.contains(parent, root)))
           throw new Error("Workspace path is not an allowed mount")
       }
-      const claim = await this.options.coordinator.acquire({
+      const claim = await this.acquire({
         id: `mount:${input.id}`,
         owner: input.id,
         ancestors: [],
@@ -504,24 +510,22 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         if (!this.options.executionWriter) throw new Error("Execution checkpoint is unavailable")
         await this.options.executionWriter(executionID, mount.path)
       } else if (!receipt.claim) {
-        const lease = await this.options.coordinator
-          .acquire({
-            id: `checkpoint:${id}`,
-            owner: id,
-            ancestors: [],
-            roots: [mount.path],
-            kind: "process",
-            retainAfterExit: true,
-            durable: true,
-            signal: this.shutdown.signal,
-          })
-          .catch(async (error: unknown) => {
-            receipt.failure = WorkspaceErrors.failure(error)
-            receipt.error = error instanceof Error ? error.message : "Workspace write admission failed"
-            receipt.released = true
-            await this.persist("checkpoints", id, receipt)
-            throw error
-          })
+        const lease = await this.acquire({
+          id: `checkpoint:${id}`,
+          owner: id,
+          ancestors: [],
+          roots: [mount.path],
+          kind: "process",
+          retainAfterExit: true,
+          durable: true,
+          signal: this.shutdown.signal,
+        }).catch(async (error: unknown) => {
+          receipt.failure = WorkspaceErrors.failure(error)
+          receipt.error = error instanceof Error ? error.message : "Workspace write admission failed"
+          receipt.released = true
+          await this.persist("checkpoints", id, receipt)
+          throw error
+        })
         receipt.claim = lease.recovery
         await this.persist("checkpoints", id, receipt)
       } else await this.options.coordinator.validateRetention(receipt.claim, mount.path)
@@ -601,7 +605,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       const receipt = MountReceipt.parse(await this.receipt("mounts", reference.id))
       if (receipt.detached) return
       const mount = await this.required(reference)
-      const lease = await this.options.coordinator.acquire({
+      const lease = await this.acquire({
         id: `detach:${reference.id}`,
         owner: reference.id,
         ancestors: [],
