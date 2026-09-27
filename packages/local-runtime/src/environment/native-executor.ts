@@ -16,6 +16,8 @@ import { NativeWorkspaceFiles } from "../workspace/file-host"
 import type { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import type { SandboxExecutionWrapper } from "@ericsanchezok/synergy-harness/sandbox/types"
 import { ExecutionInputs } from "./inputs"
+import { NativeFileMutation } from "../file/mutation-core"
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 
 const Receipt = z.object({
   status: ExecutionProtocol.Status,
@@ -211,6 +213,7 @@ export class NativeExecutor implements Executor {
 
   private async launch(command: ExecutionProtocol.Command, operation: Operation) {
     let timer: ReturnType<typeof setTimeout> | undefined
+    let streams: Promise<unknown> | undefined
     try {
       operation.lease = this.options.acquire
         ? await this.options.acquire(command, operation.abort.signal)
@@ -229,6 +232,17 @@ export class NativeExecutor implements Executor {
       const lease = operation.lease
       if (!lease.recovery) throw new Error("Executor requires a durable Workspace claim")
       await this.persist(operation)
+      for (const condition of command.preconditions ?? []) {
+        if (!path.isAbsolute(condition.path) || !path.isAbsolute(condition.canonical))
+          throw new Error("Execution file preconditions require absolute target paths")
+        await this.options.coordinator.validateRetention(lease.recovery, path.dirname(condition.canonical))
+        if (
+          (await NativeFileMutation.canonical(condition.path)) !== condition.canonical ||
+          ((await NativeFileMutation.snapshot(condition.canonical, operation.abort.signal))?.version ?? null) !==
+            condition.version
+        )
+          throw new NativeFileMutation.ConflictError()
+      }
       if (command.capture?.length) {
         operation.status.before = []
         for (const reference of command.capture) {
@@ -260,7 +274,7 @@ export class NativeExecutor implements Executor {
         },
       })
       const owned = operation.owned
-      const streams = Promise.all([
+      streams = Promise.all([
         this.capture(operation, "stdout", owned.child.stdout),
         this.capture(operation, "stderr", owned.child.stderr),
       ])
@@ -295,15 +309,31 @@ export class NativeExecutor implements Executor {
           state: operation.cancelled ? "cancelled" : "exited",
           exitCode: operation.cancelled ? null : 1,
           error: operation.cancelled ? undefined : error instanceof Error ? error.message : String(error),
+          failure: operation.cancelled ? undefined : WorkspaceErrors.failure(error),
           treeDrained: true,
           streamsDrained: true,
         }
       } else {
-        await operation.owned?.stop().catch(() => {})
-        operation.status = {
-          ...operation.status,
-          state: "unknown",
-          error: error instanceof Error ? error.message : String(error),
+        try {
+          if (!operation.owned || !streams) throw new Error("Execution completion is unavailable")
+          await operation.owned.stop()
+          await streams
+          operation.status = {
+            ...operation.status,
+            state: operation.cancelled ? "cancelled" : "exited",
+            exitCode: operation.owned.child.exitCode,
+            signal: operation.owned.child.signalCode,
+            error: error instanceof Error ? error.message : String(error),
+            failure: WorkspaceErrors.failure(error),
+            treeDrained: true,
+            streamsDrained: true,
+          }
+        } catch {
+          operation.status = {
+            ...operation.status,
+            state: "unknown",
+            error: error instanceof Error ? error.message : String(error),
+          }
         }
       }
     } finally {

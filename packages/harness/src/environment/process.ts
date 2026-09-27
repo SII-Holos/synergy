@@ -7,12 +7,19 @@ import { WorkspaceMounts } from "../workspace/mount"
 import { Environment } from "."
 import { EnvironmentExecution } from "./execution"
 import { ExecutionProtocol } from "./executor"
+import { WorkspaceErrors } from "../workspace/errors"
 import type { EnvironmentResources } from "./resources"
 
 export namespace EnvironmentProcess {
   export const Error = NamedError.create(
     "EnvironmentProcessError",
-    z.object({ id: z.string(), environmentID: z.string(), stage: z.string(), message: z.string() }),
+    z.object({
+      id: z.string(),
+      environmentID: z.string(),
+      stage: z.string(),
+      message: z.string(),
+      failure: WorkspaceErrors.Failure.optional(),
+    }),
   )
   export interface Input {
     id: string
@@ -99,6 +106,7 @@ export namespace EnvironmentProcess {
         environmentID: environment!.id,
         stage,
         message: reason instanceof globalThis.Error ? reason.message : String(reason),
+        failure: WorkspaceErrors.failure(reason),
       })
       finished = true
       input.signal?.removeEventListener("abort", abort)
@@ -151,7 +159,10 @@ export namespace EnvironmentProcess {
         if (terminal && cursor >= info.status!.cursor) {
           stage = "saving"
           await EnvironmentExecution.complete(input.id, input.scopeID)
-          if (info.status!.error) throw new globalThis.Error(info.status!.error)
+          if (info.status!.error)
+            throw info.status!.failure
+              ? WorkspaceErrors.restore(info.status!.failure)
+              : new globalThis.Error(info.status!.error)
           finished = true
           input.signal?.removeEventListener("abort", abort)
           stdin.destroy()

@@ -30,6 +30,8 @@ File history records immutable before/after manifests under physical admission, 
 
 Language servers hold durable Environment executions instead of controller process claims. The Executor exposes cooperative contention in operation status so an idle client can retire without interrupting active queries. Unchanged status observations do not rewrite Agent Storage. Explicit commands avoid importing native installers or controller paths into a remote allocation; the same file view supplies protocol document contents.
 
+Formatter commands carry canonical file and byte-version preconditions to the Executor. Checking after physical admission prevents a queued formatter from overwriting a foreign edit. Confirmed failed process launches remain eligible for saving; a failed command alone is not evidence of uncertain physical completion.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

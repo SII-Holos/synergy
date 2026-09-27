@@ -3,6 +3,7 @@ import { z } from "zod"
 import { EnvironmentSchema } from "./schema"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "../workspace/protocol"
 import { WorkspaceTree } from "../workspace/tree"
+import { WorkspaceErrors } from "../workspace/errors"
 
 export namespace ExecutionProtocol {
   export const version = 1
@@ -100,6 +101,21 @@ export namespace ExecutionProtocol {
       timeoutMs: z.number().int().positive().max(86_400_000).optional(),
       sandboxID: z.string().uuid().optional(),
       cooperative: z.boolean().optional(),
+      preconditions: z
+        .array(
+          z
+            .object({
+              path: z.string().min(1),
+              canonical: z.string().min(1),
+              version: z
+                .string()
+                .regex(/^sha256:[a-f0-9]{64}$/)
+                .nullable(),
+            })
+            .strict(),
+        )
+        .max(1000)
+        .optional(),
       capture: z.array(WorkspaceProtocol.Reference).max(1000).optional(),
     })
     .strict()
@@ -124,6 +140,7 @@ export namespace ExecutionProtocol {
       treeDrained: z.boolean().default(false),
       streamsDrained: z.boolean().default(false),
       error: z.string().optional(),
+      failure: WorkspaceErrors.Failure.optional(),
       outputTruncated: z.boolean().optional(),
       effectsStarted: z.boolean().optional(),
       contended: z.boolean().optional(),

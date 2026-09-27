@@ -11,6 +11,8 @@ import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access
 import { FileMutation } from "@ericsanchezok/synergy-local-runtime/file/mutation"
 import { FormatterProcess } from "./process"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
+import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 
 export namespace Format {
   const log = Log.create({ service: "format" })
@@ -33,12 +35,14 @@ export namespace Format {
       const cfg = await readConfig()
 
       const formatters: Record<string, Formatter.Info> = {}
+      const configured = new Set<string>()
       if (cfg.formatter === false) {
         log.info("all formatters are disabled")
         return {
           ...lifecycle,
           enabled,
           formatters,
+          configured,
         }
       }
 
@@ -61,12 +65,14 @@ export namespace Format {
         result.enabled = async () => true
         result.name = name
         formatters[name] = result
+        configured.add(name)
       }
 
       return {
         ...lifecycle,
         enabled,
         formatters,
+        configured,
       }
     },
     async (state) => {
@@ -83,6 +89,12 @@ export namespace Format {
 
   async function isEnabled(item: Formatter.Info, signal?: AbortSignal) {
     const s = await state()
+    if (!FileView.native() && !s.configured.has(item.name)) return false
+    if (
+      EnvironmentResources.current()?.kind === "objects" ||
+      EnvironmentResources.current()?.selection?.environmentID === null
+    )
+      return false
     let status = s.enabled[item.name]
     if (status === undefined) {
       status = await item.enabled(signal)
@@ -121,6 +133,11 @@ export namespace Format {
   const subscription = WorkspaceState.create(
     () => {
       const unsub = WorkspaceEvents.subscribe(File.Event.Edited, async (payload) => {
+        if (
+          EnvironmentResources.current()?.kind === "objects" ||
+          EnvironmentResources.current()?.selection?.environmentID === null
+        )
+          return
         const s = await state()
         const file = payload.properties.file
         const formatting = WorkspaceAccess.withinTask(async () => {
@@ -134,12 +151,7 @@ export namespace Format {
                 command: item.command.map((value) => value.replaceAll("$FILE", target)),
                 environment: item.environment,
                 signal: s.controller.signal,
-                async beforeStart() {
-                  return (
-                    (await FileMutation.canonical(file)) === target &&
-                    ((await FileMutation.snapshot(target))?.version ?? null) === expectedVersion
-                  )
-                },
+                expectedFile: { path: FileView.resolve(file), canonical: target, version: expectedVersion },
               })
               if (!result) return
               expectedVersion = (await FileMutation.snapshot(target))?.version ?? null

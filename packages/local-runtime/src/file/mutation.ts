@@ -1,13 +1,37 @@
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { FileView } from "./view"
 import { NativeFileMutation } from "./mutation-core"
+import { createHash } from "node:crypto"
 
 export namespace FileMutation {
   export function readText(filename: string) {
     return FileView.native() ? NativeFileMutation.readText(filename) : FileView.file(filename).text()
   }
-  export const snapshot = NativeFileMutation.snapshot
-  export const canonical = NativeFileMutation.canonical
+  export async function snapshot(
+    filename: string,
+    signal?: AbortSignal,
+  ): ReturnType<typeof NativeFileMutation.snapshot> {
+    if (FileView.native()) return NativeFileMutation.snapshot(filename, signal)
+    const before = await FileView.stat(filename)
+    if (!before) return null
+    if (before.kind !== "file") throw new AccessDeniedError("Access denied: path is not a regular file")
+    const hash = createHash("sha256")
+    for (let offset = 0; offset < before.size; ) {
+      signal?.throwIfAborted()
+      const bytes = await FileView.bytes(filename, { offset, length: Math.min(before.size - offset, 4 * 1024 * 1024) })
+      if (!bytes.length) throw new ConflictError()
+      hash.update(bytes)
+      offset += bytes.length
+    }
+    if ((await FileView.stat(filename))?.entryVersion !== before.entryVersion) throw new ConflictError()
+    return {
+      version: `sha256:${hash.digest("hex")}`,
+      mode: before.mode | 0o100000,
+      size: before.size,
+      mtime: before.mtime,
+    }
+  }
+  export const canonical = FileView.canonical
   export const lockDirectory = NativeFileMutation.lockDirectory
   export const ConflictError = NativeFileMutation.ConflictError
   export const AccessDeniedError = NativeFileMutation.AccessDeniedError
