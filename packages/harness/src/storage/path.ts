@@ -7,6 +7,13 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const environment = (id: string) => ["environment", id]
+  export const environmentScope = (scopeID: string, id?: string) =>
+    id ? ["environment_scope", scopeID, id] : ["environment_scope", scopeID]
+  export const environmentBinding = (scopeID: string, ownerID: string) => ["environment_binding", scopeID, ownerID]
+  export const environmentActive = (id?: string) => (id ? ["environment_active", id] : ["environment_active"])
+  export const environmentUses = (id: string) => ["environment_use", id]
+  export const environmentUse = (id: string, useID: string) => [...environmentUses(id), useID]
   export const workspace = (id: string) => ["workspace", id]
   export const workspaceScope = (scopeID: string, id?: string) => ["workspace_scope", scopeID, ...(id ? [id] : [])]
   export const workspaceLocation = (scopeID: string, hostID: string, locationHash: string) => [
