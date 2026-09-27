@@ -14,4 +14,6 @@ Source workers launch this package’s `src/agent-worker.ts` through the harness
 
 Native execution belongs here: `process/pty`, `file/watcher`, and the macOS/Linux/Windows sandbox backends and helper sources. `registerLocalRuntime()` registers the sandbox host and the file-watcher startup contribution before commands or workers execute. Build sandbox helpers with `bun script/build-helper.ts`; Linux bwrap development setup uses `bash script/download-bwrap.sh`.
 
+Local Runtime registers a borrowed native Environment provider without allocating resources. `localRuntime({ environment: false })` omits it for embedded compositions that supply other providers. The native Executor shares process ownership and Workspace coordination with local tools; see [Environments](../../docs/architecture/environments.md). Validate it with `bun test test/environment test/workspace/coordinator.test.ts`.
+
 Coding reads and searches use shared display budgets; anchored edits return compact final-file previews with full UI diffs. See [workspace file architecture](../../docs/architecture/workspace-and-files.md). The fixed-input observation probe at `test/tools/coding-observation-probe.test.ts` can emit versioned UTF-8 byte measurements through `SYNERGY_OBSERVATION_REPORT`; it does not invoke a model or estimate token savings.

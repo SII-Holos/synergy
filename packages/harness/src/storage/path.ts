@@ -7,6 +7,13 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const environmentExecution = (scopeID: string, id: string) => ["environment_execution", scopeID, id]
+  export const environmentOutput = (scopeID: string, id: string, cursor: number) => [
+    "environment_output",
+    scopeID,
+    id,
+    String(cursor),
+  ]
   export const environment = (id: string) => ["environment", id]
   export const environmentScope = (scopeID: string, id?: string) =>
     id ? ["environment_scope", scopeID, id] : ["environment_scope", scopeID]

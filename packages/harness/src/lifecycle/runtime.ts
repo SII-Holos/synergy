@@ -1,6 +1,7 @@
 import { observeStorageMaintenance } from "../storage/maintenance-progress"
 import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { registerHarness } from "./register"
+import { EnvironmentProviders } from "../environment/provider"
 import { ProviderCatalog } from "../provider/catalog"
 import { ModelsCatalog, startModelCatalogRefresh } from "../provider/models"
 import { RuntimeContext, type RuntimeHost } from "./context"
@@ -221,6 +222,7 @@ export namespace RuntimeHandle {
         for (const stop of [() => AgentTurn.stop(), () => PolicyWorker.stop(), () => ToolScheduler.stop()])
           await cleanup(stop)
         await cleanup(() => ToolResolver.stop())
+        await cleanup(() => EnvironmentProviders.close())
         await cleanup(() => LoopJob.drainAll())
         await cleanup(() => Session.flushPartWrites())
         await cleanup(async () => {

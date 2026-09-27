@@ -5,6 +5,11 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./environment": "./src/environment/index.ts",
+    "./environment/provider": "./src/environment/provider.ts",
+    "./environment/schema": "./src/environment/schema.ts",
+    "./environment/executor": "./src/environment/executor.ts",
+    "./environment/execution": "./src/environment/execution.ts",
     "./session/snapshot-link": "./src/session/snapshot-link.ts",
     "./session/snapshot-restore": "./src/session/snapshot-restore.ts",
     "./session/snapshot": "./src/session/snapshot.ts",

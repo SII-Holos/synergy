@@ -18,10 +18,11 @@ import { registerCortexTools } from "@ericsanchezok/synergy-harness/cortex/tools
 import { registerCortexSessionRuntime } from "@ericsanchezok/synergy-harness/cortex/session-runtime"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerConfig } from "./config-schema"
+import { registerNativeEnvironment } from "./environment/native"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
-export function registerLocalRuntime(options: { workers?: boolean } = {}) {
+export function registerLocalRuntime(options: { workers?: boolean; environment?: boolean } = {}) {
   const state = registration()
   if (state.complete) return
   registerHarness()
@@ -36,6 +37,7 @@ export function registerLocalRuntime(options: { workers?: boolean } = {}) {
   registerLocalTools()
   registerInputTools()
   registerWorkspace()
+  if (options.environment !== false) registerNativeEnvironment()
   registerSkillDomain()
   registerCommandDomain()
   Command.registerActions()

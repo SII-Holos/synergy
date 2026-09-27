@@ -20,6 +20,7 @@ export namespace WorkspaceAccess {
     parentClaim?: string
     processID?: number
     retainAfterExit?: boolean
+    durable?: boolean
     cooperative?: boolean
     transient?: boolean
     signal?: AbortSignal
@@ -27,6 +28,7 @@ export namespace WorkspaceAccess {
   }
   export interface Lease {
     id: string
+    recovery?: { id: string; token: string }
     release(beforeRelease?: () => Promise<void>): Promise<void>
     bindProcess(processID: number, options?: { descendants?: boolean }): Promise<void>
   }
@@ -381,7 +383,7 @@ export namespace WorkspaceAccess {
   export async function process(
     roots: string[] | null,
     signal?: AbortSignal,
-    options?: { cooperative?: boolean; retainAfterExit?: boolean; transient?: boolean },
+    options?: { cooperative?: boolean; retainAfterExit?: boolean; transient?: boolean; durable?: boolean },
   ): Promise<Lease> {
     if (options?.cooperative && !host().contendedProcesses)
       throw new Error("This Runtime cannot monitor cooperative process contention")
@@ -399,6 +401,7 @@ export namespace WorkspaceAccess {
             ancestors: task.ancestors,
             kind: "process",
             retainAfterExit: !!observe || options?.retainAfterExit,
+            durable: options?.durable,
             cooperative: options?.cooperative,
             parentClaim: parent?.task === task ? parent.lease.id : writes ? task.id : undefined,
             transient: options?.transient || parent?.task === task,

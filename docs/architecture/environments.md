@@ -15,3 +15,11 @@ Every acquired use is persisted and blocks deallocation until released. Uses sur
 Environment providers are registered during Runtime composition and sealed before storage startup. Registration is isolated across Runtime instances. Structured records, owner bindings, uses and active indexes share [Agent Storage](agent-storage.md) transactions. External allocation, inspection and termination run outside retryable transactions.
 
 The [decision record](../decisions/implemented/architecture/2026-09-27-environment-allocation-identity.md) explains independent identity and reconciliation. Workspace authority remains defined by [Workspace and files](workspace-and-files.md).
+
+## Execution and saving
+
+`EnvironmentExecution` persists an operation identity, input digest and allocation target before dispatch. Repeated submissions inspect the existing operation. Different inputs for an occupied operation identity fail. A missing executor receipt produces an unknown result, not a repeated command. Cancellation is persisted before transmission and requires executor confirmation.
+
+The versioned Executor protocol carries command, PTY, input, cancellation, status and cursor-based output operations. An exit becomes eligible for saving only after native tree and stream drainage are confirmed. Output is copied into Agent Storage artifacts before the caller's checkpoint is published. Saving failure retains the use and physical writer; retries invoke the checkpoint rather than execution. A saved result precedes executor release, and lost release acknowledgements can be retried independently.
+
+Local Runtime registers the borrowed `native` provider. `localRuntime({ environment: false })` omits that provider. The native executor uses `OwnedProcess` and the existing Workspace coordinator. Its private receipt spool stores operation status and output, not Sessions or Agent configuration. Durable process claims survive the executor owner and require their recovery reference for release. The coordinator upgrades its host-local ledger to version 2 under its existing lock when the first durable claim is admitted; older readers reject this version rather than dropping retention metadata. The Agent Storage schema is unchanged.

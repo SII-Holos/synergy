@@ -1,5 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 import { EnvironmentSchema } from "./schema"
+import type { Executor } from "./executor"
 
 export interface EnvironmentRequest {
   environmentID: string
@@ -11,11 +12,14 @@ export interface EnvironmentRequest {
 export interface EnvironmentProvider {
   readonly id: string
   readonly ownership?: "borrowed" | "managed"
+  validateSpec?(spec: EnvironmentSchema.Info["spec"]): EnvironmentSchema.Info["spec"]
   allocate(request: EnvironmentRequest): Promise<EnvironmentSchema.Allocation>
   inspect(
     request: EnvironmentRequest,
   ): Promise<{ state: "ready"; allocation: EnvironmentSchema.Allocation } | { state: "absent" } | { state: "unknown" }>
   deallocate(request: EnvironmentRequest): Promise<void>
+  connect?(request: EnvironmentRequest, target: EnvironmentSchema.Target): Promise<Executor>
+  close?(): Promise<void>
 }
 
 export namespace EnvironmentProviders {
@@ -39,5 +43,11 @@ export namespace EnvironmentProviders {
 
   export function list() {
     return [...providers().values()].map(({ id, ownership }) => ({ id, ownership: ownership ?? "managed" }))
+  }
+
+  export async function close() {
+    const results = await Promise.allSettled([...providers().values()].map((provider) => provider.close?.()))
+    const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+    if (errors.length) throw new AggregateError(errors, "Environment provider shutdown failed")
   }
 }

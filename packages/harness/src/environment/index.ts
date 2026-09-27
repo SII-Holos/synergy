@@ -46,6 +46,7 @@ export namespace Environment {
     idleTimeoutMs?: number
   }): Promise<Info> {
     const provider = EnvironmentProviders.get(input.provider)
+    input = { ...input, spec: provider.validateSpec?.(input.spec) ?? input.spec }
     const now = Date.now()
     const candidate = Info.parse({
       id: `env_${randomUUID().replaceAll("-", "")}`,

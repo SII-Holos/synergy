@@ -31,11 +31,12 @@ const Claim = z.object({
   processTree: OwnedTree.Reference.optional(),
   finalizer: z.object({ pid: z.number().int().positive(), startIdentity: z.string() }).optional(),
   finalizing: z.boolean().optional(),
+  durable: z.boolean().optional(),
   cooperative: z.boolean().optional(),
   transient: z.boolean().optional(),
   state: z.enum(["waiting", "active"]),
 })
-const Ledger = z.object({ version: z.literal(1), claims: z.array(Claim) })
+const Ledger = z.object({ version: z.union([z.literal(1), z.literal(2)]), claims: z.array(Claim) })
 type Claim = z.infer<typeof Claim>
 type Ledger = z.infer<typeof Ledger>
 
@@ -49,6 +50,7 @@ export interface WorkspaceClaimInput {
   parentClaim?: string
   processID?: number
   retainAfterExit?: boolean
+  durable?: boolean
   cooperative?: boolean
   transient?: boolean
   signal?: AbortSignal
@@ -185,12 +187,14 @@ export class WorkspaceCoordinator {
         const ledger = raw === undefined ? { version: 1 as const, claims: [] } : Ledger.parse(JSON.parse(raw))
         const alive = await Promise.all(
           ledger.claims.map(
-            async (claim) => (await this.alive(claim)) || (!!claim.finalizer && (await this.alive(claim.finalizer))),
+            async (claim) =>
+              claim.durable || (await this.alive(claim)) || (!!claim.finalizer && (await this.alive(claim.finalizer))),
           ),
         )
         const retired = ledger.claims.filter((_claim, index) => !alive[index])
         ledger.claims = ledger.claims.filter((_claim, index) => alive[index])
         const result = await fn(ledger)
+        if (ledger.claims.some((claim) => claim.durable)) ledger.version = 2
         const serialized = JSON.stringify(ledger)
         if (raw !== serialized) await AtomicFile.writeJsonAtomic(filename, serialized, { durable: true, private: true })
         for (const claim of retired) {
@@ -214,6 +218,8 @@ export class WorkspaceCoordinator {
       throw new Error("Invalid Workspace admission timeout")
     if (input.retainAfterExit && input.kind !== "process")
       throw new Error("Only process claims can retain finalization ownership")
+    if (input.durable && (input.kind !== "process" || !input.retainAfterExit))
+      throw new Error("Durable claims require retained process ownership")
     if (input.cooperative && input.kind !== "process")
       throw new Error("Only process claims support cooperative retirement")
     const finalizerIdentity = input.retainAfterExit ? await processStartIdentity(process.pid) : undefined
@@ -267,6 +273,7 @@ export class WorkspaceCoordinator {
       parentClaim: input.parentClaim,
       cooperative: input.cooperative,
       transient: input.transient,
+      durable: input.durable,
       roots,
       useRoots,
       pid,
@@ -369,15 +376,28 @@ export class WorkspaceCoordinator {
         throw new WorkspaceBusyError("Workspace is busy; coordination admission timed out")
       throw error
     }
+    return this.lease(request.id, request.token, input.durable)
+  }
+
+  async recover(reference: { id: string; token: string }) {
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (claim && !claim.durable) throw new Error("Workspace claim is not recoverable")
+    })
+    return this.lease(reference.id, reference.token, true)
+  }
+
+  private lease(id: string, token: string, durable?: boolean) {
     let releasing: Promise<void> | undefined
     return {
-      id: request.id,
+      id,
+      recovery: durable ? { id, token } : undefined,
       release: (beforeRelease?: () => Promise<void>) =>
-        (releasing ??= this.release(request.id, request.token, beforeRelease).finally(() => {
+        (releasing ??= this.release(id, token, beforeRelease).finally(() => {
           releasing = undefined
         })),
       bindProcess: (processID: number, options?: { descendants?: boolean }) =>
-        this.bindProcess(request.id, request.token, processID, options),
+        this.bindProcess(id, token, processID, options),
     }
   }
 
