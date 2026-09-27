@@ -36,7 +36,7 @@ test.skipIf(!image)(
             command: "/bin/sh",
             args: [
               "-c",
-              'id -u; printf docker; test -z "$SYNERGY_EXECUTION_TOKEN"; test "$(sed -n "s/^CapEff:[[:space:]]*//p" /proc/self/status)" = 0000000000000000',
+              'id -u; mkdir -p /workspaces/.scratch/outside /workspaces/.scratch/.aws /workspaces/.scratch/selected; printf secret > /workspaces/.scratch/.aws/credentials; printf ordinary > /workspaces/.scratch/outside/readable; printf docker; test -z "$SYNERGY_EXECUTION_TOKEN"; test "$(sed -n "s/^CapEff:[[:space:]]*//p" /proc/self/status)" = 0000000000000000',
             ],
             cwd: "/tmp",
             env: {},
@@ -49,6 +49,70 @@ test.skipIf(!image)(
         }
         expect(operation.status?.exitCode).toBe(0)
         await EnvironmentExecution.complete(operation.id, "scope", async () => ({ backend: "none" }))
+        const executor = await EnvironmentExecution.connect(operation)
+        const wrapper = await executor.prepareSandbox!({
+          command: "/usr/bin/python3",
+          args: [
+            "-c",
+            `
+from pathlib import Path
+import socket
+Path("allowed").write_text("contained")
+assert Path("/workspaces/.scratch/outside/readable").read_text() == "ordinary"
+try:
+    Path("/workspaces/.scratch/outside/denied").write_text("escape")
+    raise AssertionError("write escaped Workspace")
+except OSError:
+    pass
+try:
+    Path("/workspaces/.scratch/.aws/credentials").read_text()
+    raise AssertionError("credential was readable")
+except OSError:
+    pass
+try:
+    socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    raise AssertionError("restricted network socket opened")
+except PermissionError:
+    pass
+assert not Path("/proc/1/environ").read_bytes().find(b"SYNERGY_EXECUTION_TOKEN=") >= 0
+print(Path("allowed").read_text(), end="")
+`,
+          ],
+          workspace: "/workspaces/.scratch/selected",
+          sandboxMode: "workspace_write",
+          networkMode: "restricted",
+        })
+        expect(wrapper.sandboxed).toBe(true)
+        let sandboxed = await EnvironmentExecution.start({
+          id: "sandboxed",
+          scopeID: "scope",
+          environmentID: environment.id,
+          command: {
+            command: wrapper.command,
+            args: wrapper.args,
+            cwd: "/workspaces/.scratch/selected",
+            env: { PATH: "/usr/bin:/bin" },
+            writableRoots: wrapper.writeFootprint?.kind === "roots" ? wrapper.writeFootprint.roots : null,
+          },
+        })
+        for (let i = 0; sandboxed.state !== "exited" && i < 300; i++) {
+          await Bun.sleep(20)
+          sandboxed = await EnvironmentExecution.reconcile(sandboxed.id, "scope")
+        }
+        const sandboxOutput = (await EnvironmentExecution.output(sandboxed.id, "scope"))
+          .filter((chunk) => chunk.stream === "stdout")
+          .map((chunk) => Buffer.from(chunk.data, "base64").toString())
+          .join("")
+        if (sandboxOutput !== "contained")
+          throw new Error(
+            (await EnvironmentExecution.output(sandboxed.id, "scope"))
+              .map((chunk) => Buffer.from(chunk.data, "base64").toString())
+              .join(""),
+          )
+        expect(sandboxOutput).toBe("contained")
+        expect(sandboxed.status?.exitCode).toBe(0)
+        await EnvironmentExecution.complete(sandboxed.id, "scope")
+        await executor.releaseSandbox!(wrapper.id)
         await Environment.deallocate(environment.id, { scopeID: "scope" })
         const output = await EnvironmentExecution.output(operation.id, "scope")
         expect(

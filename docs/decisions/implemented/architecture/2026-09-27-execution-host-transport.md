@@ -14,6 +14,8 @@ The Docker provider uses Docker Engine's authenticated API for the same lifecycl
 
 The image contains only the executor and native process owner. Its privileged supervisor keeps private credentials and receipts; commands run as UID 1000 with a separate environment. Read-only root storage, resource limits, private temporary storage and capability reduction constrain the container. Remote listener deployment requires TLS.
 
+Docker command containment reuses the Linux profile compiler and helper inside the image. Nested user and PID namespaces require namespace syscalls and an outer procfs without locked child mounts. The provider retains Moby’s remaining seccomp policy, read-only sysfs, capability reduction and separate command UID; it does not enable privileged mode or grant SYS_ADMIN. This increases the namespace-related kernel surface compared with Docker’s default profile. The source and license of the pinned profile live beside its adapter. A host that forbids unprivileged namespaces rejects contained execution instead of silently bypassing policy.
+
 ## Alternatives considered
 
 **Run an Agent Runtime in every container.** This duplicates model configuration, business storage and lifecycle recovery in disposable compute. The executor owns only resource-local execution facts.

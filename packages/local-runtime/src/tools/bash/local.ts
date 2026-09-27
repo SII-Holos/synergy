@@ -405,7 +405,7 @@ export namespace LocalBashBackend {
       const workspaceRoot = resources.directory!
       const controlledRoot = controlledTempRoot(workspaceRoot, ctx.sessionID)
       try {
-        fs.mkdirSync(controlledRoot, { recursive: true })
+        if (resources.executor?.localPID) fs.mkdirSync(controlledRoot, { recursive: true })
         sandboxEnv.TMPDIR = controlledRoot
         sandboxEnv.TMP = controlledRoot
         sandboxEnv.TEMP = controlledRoot

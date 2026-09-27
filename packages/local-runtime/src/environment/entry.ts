@@ -4,6 +4,7 @@ import { EnvironmentSchema } from "@ericsanchezok/synergy-harness/environment/sc
 import { ExecutionHost } from "./host"
 import { NativeExecutor } from "./native-executor"
 import { WorkspaceCoordinator } from "../workspace/coordinator"
+import { executionSandbox } from "./sandbox"
 
 export async function startExecutionHost() {
   const target = EnvironmentSchema.Target.parse(JSON.parse(process.env.SYNERGY_EXECUTION_TARGET ?? "null"))
@@ -18,6 +19,12 @@ export async function startExecutionHost() {
     directory: `${directory}/receipts`,
     coordinator: new WorkspaceCoordinator({ directory: `${directory}/claims` }),
     runAs: { uid: 1000, gid: 1000 },
+    sandbox: executionSandbox({
+      home: scratch,
+      directory: "/run/synergy-sandbox",
+      helper: "/opt/synergy/bin/synergy-sandbox-linux",
+      protectedRoots: [directory, "/root"],
+    }),
     runtime: {
       shell: "/bin/bash",
       directory: scratch,
@@ -36,14 +43,20 @@ export async function startExecutionHost() {
   })
   const cert = process.env.SYNERGY_EXECUTION_CERT
   const key = process.env.SYNERGY_EXECUTION_KEY
-  const host = ExecutionHost.listen({
-    executor,
-    target,
-    token,
-    listen: { hostname: "0.0.0.0", port: 7443 },
-    tls: cert && key ? { cert, key } : undefined,
-    allowInsecure: !cert && !key,
-  })
+  let host: ReturnType<typeof ExecutionHost.listen>
+  try {
+    host = ExecutionHost.listen({
+      executor,
+      target,
+      token,
+      listen: { hostname: "0.0.0.0", port: 7443 },
+      tls: cert && key ? { cert, key } : undefined,
+      allowInsecure: !cert && !key,
+    })
+  } catch (error) {
+    await executor.close()
+    throw error
+  }
   let stopping: Promise<void> | undefined
   const stop = () =>
     (stopping ??= (async () => {

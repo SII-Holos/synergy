@@ -24,6 +24,10 @@ export async function buildExecutionHost(input: { image: string }) {
     recursive: true,
     filter: (filename) => path.basename(filename) !== "target",
   })
+  await fs.cp(path.join(owner, "src/sandbox/helper-linux"), path.join(directory, "sandbox"), {
+    recursive: true,
+    filter: (filename) => path.basename(filename) !== "target",
+  })
   await fs.copyFile(path.join(owner, "execution-host.Dockerfile"), path.join(directory, "Dockerfile"))
   const child = Bun.spawn(["docker", "build", "--tag", input.image, directory], {
     stdout: "inherit",

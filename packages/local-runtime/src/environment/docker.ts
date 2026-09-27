@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto"
 import { z } from "zod"
+import { executionSeccomp } from "./seccomp"
 import path from "node:path"
 import {
   EnvironmentProviders,
@@ -184,13 +185,18 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
               ReadonlyRootfs: true,
               CapDrop: ["ALL"],
               CapAdd: ["SETUID", "SETGID", "KILL", "CHOWN", "FOWNER", "DAC_OVERRIDE"],
-              SecurityOpt: ["no-new-privileges:true"],
+              SecurityOpt: ["no-new-privileges:true", `seccomp=${JSON.stringify(executionSeccomp())}`],
+              // Child proc overmounts lock the outer procfs and prevent unprivileged nested PID namespaces.
+              // User commands have no capabilities; the command sandbox creates its own procfs.
+              MaskedPaths: ["/sys/firmware", "/sys/devices/virtual/powercap"],
+              ReadonlyPaths: ["/sys"],
               Memory: spec.memoryBytes,
               NanoCpus: Math.round(spec.cpus * 1e9),
               PidsLimit: spec.pids,
               Tmpfs: {
                 "/tmp": "rw,nosuid,nodev,size=256m",
                 "/var/lib/synergy-executor": "rw,nosuid,nodev,noexec,mode=0700,size=512m",
+                "/run/synergy-sandbox": "rw,nosuid,nodev,noexec,mode=0711,size=16m",
               },
               PortBindings: { "7443/tcp": [{ HostIp: publishHostIP, HostPort: "" }] },
               Mounts: [
