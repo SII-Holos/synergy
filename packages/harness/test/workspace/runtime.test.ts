@@ -68,3 +68,33 @@ test("Workspace services share a generation and isolate sibling directories", as
     expect(disposed).toHaveLength(3)
   })
 })
+
+test("logical Workspace state has no filesystem prerequisite and remains owned by its Runtime", async () => {
+  await using first = await testRuntime()
+  await using second = await testRuntime()
+  const disposed: string[] = []
+  const state = WorkspaceState.create(
+    () => ({ id: crypto.randomUUID() }),
+    async (value) => {
+      disposed.push(value.id)
+    },
+  )
+  const workspace = { id: "wsp_logical", generation: 1, scopeID: "scope" }
+  await first.run(() =>
+    WorkspaceState.provide(workspace, async () => {
+      const value = state()
+      expect(state()).toBe(value)
+      expect(WorkspaceState.provide({ ...workspace, generation: 2 }, state)).not.toBe(value)
+      await second.run(async () => {
+        expect(() => state()).toThrow("another Runtime")
+        const other = WorkspaceState.provide(workspace, state)
+        expect(other).not.toBe(value)
+        await WorkspaceState.disposeWorkspace(workspace.id)
+        expect(disposed).toEqual([other.id])
+      })
+      expect(state()).toBe(value)
+      await WorkspaceState.disposeWorkspace(workspace.id)
+      expect(disposed).toContain(value.id)
+    }),
+  )
+})

@@ -18,6 +18,7 @@ export namespace WorkspaceMounts {
     directory?: string
   }
   const attaching = RuntimeContext.state(() => new Map<string, Promise<WorkspaceCatalog.Info>>())
+  const detaching = RuntimeContext.state(() => new Map<string, Promise<void>>())
 
   export function register() {
     Environment.registerResourceOwner("workspace", beforeDeallocate)
@@ -129,6 +130,67 @@ export namespace WorkspaceMounts {
     if (!info.activeMount)
       throw new WorkspaceCatalog.Unavailable({ workspaceID: info.id, message: "Workspace has no active mount" })
     return { id: info.activeMount.id, workspaceID: info.id, generation: info.activeMount.generation }
+  }
+
+  export async function detach(input: { workspaceID: string; scopeID: string }) {
+    const key = JSON.stringify([input.scopeID, input.workspaceID])
+    const pending = detaching().get(key)
+    if (pending) return pending
+    const task = detachView(input)
+    detaching().set(key, task)
+    try {
+      await task
+    } finally {
+      detaching().delete(key)
+    }
+  }
+
+  async function detachView(input: { workspaceID: string; scopeID: string }) {
+    let info = await WorkspaceCatalog.get(input.workspaceID, input.scopeID)
+    const mount = info.activeMount
+    if (!mount) return
+    const useID = `detach:${mount.id}`
+    const use = await Environment.acquire(mount.target.environmentID, {
+      scopeID: input.scopeID,
+      useID,
+      capabilities: ["files"],
+    })
+    try {
+      info = await Storage.transaction(async () => {
+        const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
+        assertMount(latest, info)
+        if ((await Environment.uses(mount.target.environmentID)).some((held) => held.id !== useID))
+          throw new Environment.Busy({
+            environmentID: mount.target.environmentID,
+            message: "Environment is busy; release active resource users before detaching",
+          })
+        await Environment.assertTarget(mount.target, input.scopeID)
+        const next = WorkspaceCatalog.Info.parse({
+          ...latest,
+          activeMount: { ...latest.activeMount!, state: "saving" },
+          updatedAt: Date.now(),
+        })
+        await Storage.write(StoragePath.workspace(info.id), next)
+        return next
+      })
+    } catch (error) {
+      await use.release()
+      throw error
+    }
+    const files = await connect(info)
+    if (info.backend?.provider === "objects") {
+      const checkpoint = await files.checkpoint({ id: checkpointID("detach", mount.id), mount: reference(info) })
+      info = await save(info, files, checkpoint)
+    }
+    await files.detach(reference(info))
+    await Storage.transaction(async () => {
+      const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
+      assertMount(latest, info)
+      await Environment.assertTarget(mount.target, input.scopeID)
+      await Storage.write(StoragePath.workspace(info.id), { ...latest, activeMount: undefined, updatedAt: Date.now() })
+      await Storage.remove(StoragePath.workspaceEnvironment(mount.target.environmentID, info.id))
+      await Environment.releaseUse(mount.target, input.scopeID, useID)
+    })
   }
 
   export async function connect(info: WorkspaceCatalog.Info, releasing?: Environment.Info): Promise<WorkspaceFileHost> {

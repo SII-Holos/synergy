@@ -96,7 +96,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         owner: input.id,
         ancestors: [],
         roots: [root],
-        kind: "exclusive",
+        kind: input.source.kind === "directory" ? "use" : "exclusive",
         signal: this.shutdown.signal,
       })
       try {

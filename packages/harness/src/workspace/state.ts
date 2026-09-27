@@ -5,8 +5,20 @@ import { State } from "../scope/state"
 export namespace WorkspaceState {
   const records = RuntimeContext.state(() => new Map<string, string>())
 
+  const identity = RuntimeContext.createAsyncContext<{
+    runtime: RuntimeContext.Instance
+    workspace: { id: string; generation: number; scopeID: string }
+  }>()
+
+  export function provide<T>(workspace: { id: string; generation: number; scopeID: string }, fn: () => T): T {
+    return identity.run({ runtime: RuntimeContext.current(), workspace }, fn)
+  }
+
   export function key() {
-    const workspace = ScopeContext.current.workspace
+    const selected = identity.getStore()
+    if (selected && selected.runtime !== RuntimeContext.current())
+      throw new Error("Workspace state belongs to another Runtime")
+    const workspace = selected?.workspace ?? ScopeContext.current.workspace
     if (!workspace?.id || workspace.generation === undefined)
       throw new Error("A resolved Workspace is required for file resources")
     const key = JSON.stringify(["workspace", workspace.id, workspace.generation])

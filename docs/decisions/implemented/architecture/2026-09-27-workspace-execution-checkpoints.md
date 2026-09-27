@@ -16,6 +16,8 @@ Environment resource owners drain Workspace views before provider deallocation. 
 
 The common process facade binds stream completion to this durable completion path. Physical exit remains observable, but presentation drainage cannot complete a command while checkpoint publication is pending. An explicitly empty compiled write footprint skips Workspace publication; nonempty footprints retain the complete selected root. Target runtime descriptions supply execution paths and shell settings without forwarding controller credentials.
 
+Interactive terminals and user shell commands share the durable process facade. A terminal transport disconnect is a presentation event and leaves physical ownership intact. Explicit detachment retains the same identity through checkpoint failure and acknowledgement retry; a directory rebind must finish detachment before changing the physical binding. Logical Workspace cache selection does not require a local directory projection.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

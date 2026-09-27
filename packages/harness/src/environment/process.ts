@@ -177,6 +177,7 @@ export namespace EnvironmentProcess {
           void stream().catch(fail)
           if (!(await running.promise)) {
             const info = await EnvironmentExecution.get(input.id, input.scopeID)
+            if (info.status?.error) await completed.promise
             if (info.status?.state === "cancelled" && info.status.effectsStarted === false)
               throw input.signal?.reason ?? new globalThis.Error("Execution cancelled before activation")
           }

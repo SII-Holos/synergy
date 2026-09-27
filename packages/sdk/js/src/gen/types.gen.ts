@@ -5681,10 +5681,11 @@ export type Pty = {
   command: string
   args: Array<string>
   cwd: string
-  workspaceID: string
-  workspaceGeneration: number
+  environmentID: string
+  workspaceID?: string
+  workspaceGeneration?: number
   status: "running" | "exited"
-  pid: number
+  pid?: number
 }
 
 export type ConfigIssue = {
@@ -10556,17 +10557,11 @@ export type EventProviderAuthUpdated = {
   }
 }
 
-export type EventInstallationUpdated = {
-  type: "installation.updated"
+export type EventConfigUpdated = {
+  type: "config.updated"
   properties: {
-    version: string
-  }
-}
-
-export type EventInstallationUpdateAvailable = {
-  type: "installation.update-available"
-  properties: {
-    version: string
+    scope: "global" | "project"
+    changedFields: Array<string>
   }
 }
 
@@ -10581,6 +10576,20 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "session" | "always" | "reject"
+  }
+}
+
+export type EventInstallationUpdated = {
+  type: "installation.updated"
+  properties: {
+    version: string
+  }
+}
+
+export type EventInstallationUpdateAvailable = {
+  type: "installation.update-available"
+  properties: {
+    version: string
   }
 }
 
@@ -10613,14 +10622,6 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
   }
 }
 
@@ -11194,15 +11195,15 @@ export type Event =
   | EventScopeUpdated
   | EventScopeRemoved
   | EventProviderAuthUpdated
-  | EventInstallationUpdated
-  | EventInstallationUpdateAvailable
+  | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventInstallationUpdated
+  | EventInstallationUpdateAvailable
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventConfigUpdated
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted

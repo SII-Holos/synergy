@@ -10,6 +10,13 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
+import { testRuntime as localRuntime } from "../support/runtime"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Pty } from "../../src/process/pty"
+import { shell } from "../../src/session/shell"
+
 const image = process.env.SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE
 
 test.skipIf(!image)(
@@ -223,6 +230,14 @@ test.skipIf(!image)(
         await expect(WorkspaceContent.read(selection, "source")).rejects.toThrow("active mount")
         failUploads = false
         await EnvironmentExecution.complete(operation.id, "scope")
+        failUploads = true
+        await expect(WorkspaceMounts.detach(selection)).rejects.toThrow("object store unavailable")
+        expect((await WorkspaceCatalog.get(workspace.id, "scope")).activeMount?.state).toBe("saving")
+        await expect(Environment.deallocate(environment.id, { scopeID: "scope" })).rejects.toMatchObject({
+          name: "EnvironmentBusy",
+        })
+        failUploads = false
+        await WorkspaceMounts.detach(selection)
         await Environment.deallocate(environment.id, { scopeID: "scope" })
         expect(await WorkspaceContent.read(selection, "result")).toEqual(new TextEncoder().encode("initialchanged"))
         const restored = await WorkspaceMounts.attach({ ...selection, environmentID: environment.id })
@@ -239,6 +254,105 @@ test.skipIf(!image)(
         const current = await Environment.get(environment.id, "scope")
         if (current.allocation) await provider.deallocate(Environment.requestOf(current))
       }
+    })
+  },
+  120_000,
+)
+
+test.skipIf(!image)(
+  "session terminals and user shell share the selected Docker Environment and recoverable Workspace",
+  async () => {
+    const provider = dockerEnvironment({
+      endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
+    })
+    await using runtime = await localRuntime({
+      register() {
+        EnvironmentProviders.register(provider)
+        WorkspaceBlobs.register("fixture", {
+          put: (hash, bytes) => Storage.writeBinary(["test_workspace_blob", hash], bytes),
+          get: (hash) => Storage.readBinary(["test_workspace_blob", hash]),
+        })
+      },
+    })
+    await runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: null,
+        async fn() {
+          const scopeID = ScopeContext.current.scope.id
+          const environment = await Environment.bind({
+            scopeID,
+            ownerID: "terminal",
+            provider: "docker",
+            spec: { image: image! },
+          })
+          const workspace = await WorkspaceCatalog.create({
+            scopeID,
+            backend: { provider: "objects", spec: { blobStore: "fixture" } },
+          })
+          const selection = { scopeID, workspaceID: workspace.id }
+          const session = await Session.create({ workspaceID: workspace.id, environmentID: environment.id })
+          try {
+            const terminal = await Pty.create({
+              sessionID: session.id,
+              command: "/usr/bin/python3",
+              args: [
+                "-u",
+                "-c",
+                "import sys; from pathlib import Path; value=sys.stdin.readline(); Path('result').write_text(value); print('保存完成')",
+              ],
+            })
+            expect(terminal.pid).toBeUndefined()
+            expect(terminal.environmentID).toBe(environment.id)
+            expect(terminal.workspaceID).toBe(workspace.id)
+            const connection = Pty.connect(terminal.id, { readyState: 1, send() {}, close() {} })!
+            connection.onClose()
+            await expect(Environment.deallocate(environment.id, { scopeID })).rejects.toMatchObject({
+              name: "EnvironmentBusy",
+            })
+            await Pty.update(terminal.id, { size: { cols: 120, rows: 35 } })
+            const closed = Promise.withResolvers<void>()
+            let output = ""
+            Pty.connect(terminal.id, {
+              readyState: 1,
+              send(data) {
+                output += data
+              },
+              close: closed.resolve,
+            })
+            Pty.write(terminal.id, "terminal-content\n")
+            await closed.promise
+            expect(output).toContain("保存完成")
+            await WorkspaceMounts.detach(selection)
+            expect(new TextDecoder().decode(await WorkspaceContent.read(selection, "result"))).toBe(
+              "terminal-content\n",
+            )
+            const response = await shell({
+              sessionID: session.id,
+              agent: "synergy",
+              model: { providerID: "test", modelID: "test" },
+              command: "cat result; printf shell-content >> result",
+            })
+            expect(
+              response.parts.some(
+                (part) =>
+                  part.type === "tool" &&
+                  part.state.status === "completed" &&
+                  part.state.output === "terminal-content\n",
+              ),
+            ).toBe(true)
+            await Environment.deallocate(environment.id, { scopeID })
+            expect(new TextDecoder().decode(await WorkspaceContent.read(selection, "result"))).toBe(
+              "terminal-content\nshell-content",
+            )
+          } finally {
+            await Pty.removeForSession(session.id)
+            const current = await Environment.get(environment.id, scopeID)
+            if (current.allocation) await provider.deallocate(Environment.requestOf(current))
+          }
+        },
+      })
     })
   },
   120_000,

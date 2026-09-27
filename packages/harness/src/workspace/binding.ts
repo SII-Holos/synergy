@@ -8,6 +8,7 @@ import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { WorkspaceAccess } from "./access"
 import { WorkspaceLocation } from "./location"
+import { WorkspaceMounts } from "./mount"
 import type { Workspace } from "../session/workspace-schema"
 
 export namespace WorkspaceBinding {
@@ -101,6 +102,8 @@ export namespace WorkspaceBinding {
     if (!path.isAbsolute(input.path))
       throw new WorkspaceCatalog.Invalid({ message: "Workspace location must be absolute", workspaceID: id })
     const previous = await WorkspaceCatalog.get(id, input.scopeID)
+    if (previous.revision !== input.expectedRevision)
+      throw new WorkspaceCatalog.BindingChanged({ message: "Workspace changed before rebinding", workspaceID: id })
     const source = WorkspaceLocation.source()
     const hostID = await source.hostID()
     const target = await source.identify(input.path)
@@ -110,6 +113,7 @@ export namespace WorkspaceBinding {
         ? [previous.binding.path]
         : []),
     ]
+    if (previous.activeMount) await WorkspaceMounts.detach({ workspaceID: id, scopeID: input.scopeID })
     return WorkspaceAccess.exclusive(
       roots,
       async () => {

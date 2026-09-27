@@ -43732,6 +43732,9 @@
           "cwd": {
             "type": "string"
           },
+          "environmentID": {
+            "type": "string"
+          },
           "workspaceID": {
             "type": "string",
             "pattern": "^wsp_.*"
@@ -43749,7 +43752,7 @@
             "type": "number"
           }
         },
-        "required": ["id", "title", "command", "args", "cwd", "workspaceID", "workspaceGeneration", "status", "pid"]
+        "required": ["id", "title", "command", "args", "cwd", "environmentID", "status"]
       },
       "ConfigIssue": {
         "type": "object",
@@ -58403,40 +58406,28 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.installation.updated": {
+      "Event.config.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "installation.updated"
+            "const": "config.updated"
           },
           "properties": {
             "type": "object",
             "properties": {
-              "version": {
-                "type": "string"
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
-            "required": ["version"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.installation.update-available": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "installation.update-available"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "version": {
-                "type": "string"
-              }
-            },
-            "required": ["version"]
+            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -58476,6 +58467,44 @@
               }
             },
             "required": ["sessionID", "requestID", "reply"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.installation.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.installation.update-available": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "installation.update-available"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["version"]
           }
         },
         "required": ["type", "properties"]
@@ -58564,32 +58593,6 @@
               }
             },
             "required": ["sessionID", "messageID", "partID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
           }
         },
         "required": ["type", "properties"]
@@ -60223,16 +60226,19 @@
             "$ref": "#/components/schemas/Event.provider.auth.updated"
           },
           {
-            "$ref": "#/components/schemas/Event.installation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.installation.update-available"
+            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.permission.asked"
           },
           {
             "$ref": "#/components/schemas/Event.permission.replied"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.installation.update-available"
           },
           {
             "$ref": "#/components/schemas/Event.message.updated"
@@ -60245,9 +60251,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.message.part.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
           },
           {
             "$ref": "#/components/schemas/Event.session.input.progress"
