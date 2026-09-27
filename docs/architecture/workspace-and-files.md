@@ -8,6 +8,16 @@ The Harness Workspace catalog owns a stable ID and a versioned local binding. Se
 
 Owner-local migrations upgrade old embedded Session directories before navigation or other current projections read them, preserving activity and unrelated owner metadata. Transcript and Rollout archives include referenced Workspace metadata. Imported bindings remain unavailable until explicitly rebound, even if their historical path exists locally; import does not convey filesystem authority.
 
+## Storage backends and content
+
+The Workspace catalog records its backend independently of its local directory binding. The central `20260927-workspace-storage-backend` migration identifies existing directories without changing IDs, physical identities, binding generations or historical metadata. Content revision is distinct from catalog revision and binding generation. Object-backed Workspaces select a Runtime-registered blob store by ID; provider credentials remain in the composing host.
+
+`WorkspaceContent` reads and edits dormant object-backed files without allocating an Environment. Files use SHA-256 addressed chunks, and an immutable manifest records regular files, directories, modes and contained symbolic links. Publication uploads bytes and the manifest outside the Agent Storage transaction, then compares the prior content revision, binding generation and active mount identity before advancing the head and retaining its revision record. Failed uploads and stale writers leave the head unchanged. Imported records cannot authorize reads or writes.
+
+An active mount excludes dormant-manifest access: callers must use the live view rather than return older saved files. The native tree implementation captures bounded chunks, detects source changes, and materializes a validated tree through a private staging directory. It verifies hashes before publishing into an empty destination. Special files and escaping links fail explicitly. Directory mutations share the same atomic byte-version publisher inside the existing physical Workspace claim.
+
+Local Runtime supplies S3 and OSS blob adapters. S3 uses Bun's bundled SigV4 client; OSS uses the official SDK with OSS V4 signing. Both verify returned object hashes and bound reads. See [the content storage decision](../decisions/implemented/architecture/2026-09-27-workspace-content-manifests.md).
+
 A local binding without a verified physical directory identity cannot authorize execution or file access. Migration retains a missing directory's historical path; creating a new directory at that path or registering it again does not authorize the old binding. Explicit rebinding verifies the directory and advances the generation. See [unverified directory bindings](../decisions/implemented/bug-fix/2026-09-23-unverified-workspace-directory-bindings.md).
 
 ## Scope Runtime Services

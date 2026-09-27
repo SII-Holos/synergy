@@ -6,8 +6,19 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import type { Workspace } from "../session/workspace-schema"
 import type { StoreTransaction } from "../storage/transactional-store"
+import { WorkspaceTree } from "./tree"
+import { EnvironmentSchema } from "../environment/schema"
 
 export namespace WorkspaceCatalog {
+  export const Backend = z.object({ provider: z.string().min(1), spec: z.record(z.string(), z.json()) })
+  export const Content = z.object({ revision: z.number().int().nonnegative(), manifest: WorkspaceTree.Hash.nullable() })
+  export const Mount = z.object({
+    id: z.string(),
+    generation: z.number().int().positive(),
+    target: EnvironmentSchema.Target,
+    path: z.string(),
+    state: z.enum(["preparing", "active", "saving", "unavailable"]),
+  })
   export const Binding = z.object({
     state: z.enum(["bound", "unbound"]),
     hostID: z.string().min(1),
@@ -22,6 +33,10 @@ export namespace WorkspaceCatalog {
       type: z.string().min(1),
       revision: z.number().int().positive(),
       binding: Binding,
+      backend: Backend.optional(),
+      content: Content.optional(),
+      mountGeneration: z.number().int().nonnegative().optional(),
+      activeMount: Mount.optional(),
       importedFrom: z.object({ workspaceID: z.string(), hostID: z.string() }).optional(),
       metadata: z.record(z.string(), z.unknown()),
       sharedWritableWorkspaceIDs: z.array(z.string()),
@@ -95,6 +110,8 @@ export namespace WorkspaceCatalog {
       type: input.type,
       revision: 1,
       binding: { state: "bound", hostID: input.hostID, path: input.path, physicalID: input.physicalID, generation: 1 },
+      backend: { provider: "directory", spec: {} },
+      content: { revision: 0, manifest: null },
       metadata: input.metadata ?? {},
       sharedWritableWorkspaceIDs: [],
       lifecycle: "active",
@@ -121,6 +138,62 @@ export namespace WorkspaceCatalog {
       await Storage.write(scopeKey(candidate.scopeID, candidate.id), candidate.id)
       for (const key of locations(candidate)) await Storage.write(key, candidate.id)
       return candidate
+    })
+  }
+
+  export async function create(input: {
+    scopeID: string
+    backend: z.infer<typeof Backend>
+    metadata?: Record<string, unknown>
+  }): Promise<Info> {
+    const info = Info.parse({
+      id: `wsp_${randomUUID().replaceAll("-", "")}`,
+      scopeID: input.scopeID,
+      type: input.backend.provider,
+      revision: 1,
+      binding: { state: "bound", hostID: "provider", path: null, generation: 1 },
+      backend: input.backend,
+      content: { revision: 0, manifest: null },
+      metadata: input.metadata ?? {},
+      sharedWritableWorkspaceIDs: [],
+      lifecycle: "active",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    })
+    return Storage.transaction(async () => {
+      await Storage.write(recordKey(info.id), info)
+      await Storage.write(scopeKey(info.scopeID, info.id), info.id)
+      return info
+    })
+  }
+
+  export async function publishContent(previous: Info, manifest: string): Promise<Info> {
+    WorkspaceTree.Hash.parse(manifest)
+    return Storage.transaction(async () => {
+      const latest = await get(previous.id, previous.scopeID)
+      if (latest.lifecycle !== "active" || latest.binding.state !== "bound")
+        throw new Unavailable({ workspaceID: latest.id, message: "Workspace has no active storage authority" })
+      if (
+        latest.binding.generation !== previous.binding.generation ||
+        latest.content?.revision !== previous.content?.revision ||
+        latest.activeMount?.id !== previous.activeMount?.id ||
+        latest.activeMount?.generation !== previous.activeMount?.generation
+      )
+        throw new BindingChanged({ workspaceID: latest.id, message: "Workspace changed before checkpoint publication" })
+      const next = Info.parse({
+        ...latest,
+        content: { revision: (latest.content?.revision ?? 0) + 1, manifest },
+        updatedAt: Date.now(),
+      })
+      await Storage.write(StoragePath.workspaceContent(next.id, next.content!.revision), {
+        ...next.content,
+        workspaceID: next.id,
+        scopeID: next.scopeID,
+        generation: next.binding.generation,
+        createdAt: next.updatedAt,
+      })
+      await Storage.write(recordKey(next.id), next)
+      return next
     })
   }
 
@@ -164,6 +237,8 @@ export namespace WorkspaceCatalog {
       ...source,
       id,
       binding: { ...source.binding, state: "unbound" },
+      activeMount: undefined,
+      mountGeneration: undefined,
       importedFrom: source.importedFrom ?? { workspaceID: source.id, hostID: source.binding.hostID },
       sharedWritableWorkspaceIDs: [],
       lifecycle: "active",
@@ -171,7 +246,7 @@ export namespace WorkspaceCatalog {
   }
 
   export async function writeImported(info: Info, tx: StoreTransaction) {
-    if (info.binding.state !== "unbound" || info.sharedWritableWorkspaceIDs.length)
+    if (info.binding.state !== "unbound" || info.sharedWritableWorkspaceIDs.length || info.activeMount)
       throw new Invalid({ message: "Imported Workspace cannot carry local authority", workspaceID: info.id })
     if ((await tx.readMany([recordKey(info.id)]))[0] !== undefined)
       throw new BindingChanged({ message: "Workspace identity was occupied during import", workspaceID: info.id })
@@ -237,6 +312,8 @@ export namespace WorkspaceCatalog {
           physicalID: input.physicalID,
           generation: previous.binding.generation + 1,
         },
+        backend: { provider: "directory", spec: {} },
+        activeMount: undefined,
       })
       const keys = locations(next)
       const conflicts = await Storage.readMany<string>(keys)

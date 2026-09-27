@@ -12,6 +12,7 @@ import { registerSearchFailureAnalyzer } from "../tool/search-guard"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { RuntimeContext } from "./context"
 import { Environment } from "../environment"
+import { registerWorkspaceMigrations } from "../workspace/migration"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -23,6 +24,7 @@ export function registerHarness() {
   registerSessionMigrations()
   registerObservabilityMigrations()
   registerStorageMigrations()
+  registerWorkspaceMigrations()
   Environment.registerRecovery()
   registerSessionResolver()
   registerSummaryJob()

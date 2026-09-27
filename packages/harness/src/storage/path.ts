@@ -32,6 +32,11 @@ export namespace StoragePath {
   export const environmentUses = (id: string) => ["environment_use", id]
   export const environmentUse = (id: string, useID: string) => [...environmentUses(id), useID]
   export const workspace = (id: string) => ["workspace", id]
+  export const workspaceContent = (id: string, revision?: number) => [
+    "workspace_content",
+    id,
+    ...(revision === undefined ? [] : [String(revision)]),
+  ]
   export const workspaceScope = (scopeID: string, id?: string) => ["workspace_scope", scopeID, ...(id ? [id] : [])]
   export const workspaceLocation = (scopeID: string, hostID: string, locationHash: string) => [
     "workspace_location",

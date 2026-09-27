@@ -5,6 +5,8 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./workspace/tree": "./src/workspace/tree.ts",
+    "./workspace/content": "./src/workspace/content.ts",
     "./environment": "./src/environment/index.ts",
     "./environment/provider": "./src/environment/provider.ts",
     "./environment/schema": "./src/environment/schema.ts",
