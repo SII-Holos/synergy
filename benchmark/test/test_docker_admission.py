@@ -270,7 +270,7 @@ async def test_unsupported_docker_endpoint_fails_before_pressure_wait_or_lease(
     assert type(error.value).__name__ == "DockerEndpointError"
     assert endpoint not in str(error.value)
     assert pool.active == 0
-    assert list(tmp_path.glob("*.json")) == []
+    assert list((tmp_path / "leases").glob("*.json")) == []
 
 
 async def test_transient_docker_sample_failure_recovers_through_pressure_queue():

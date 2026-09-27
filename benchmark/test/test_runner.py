@@ -73,6 +73,47 @@ async def test_unsupported_docker_endpoint_blocks_remaining_trials_before_model_
     assert result["infrastructure_error"]["type"] == "DockerEndpointError"
 
 
+@pytest.mark.parametrize(
+    ("kind", "blocked"),
+    [
+        ("DockerEndpointError", True),
+        ("ResourcePressureError", True),
+        ("ResourceRecordingError", True),
+        ("ValueError", False),
+    ],
+)
+async def test_native_trial_resource_errors_retain_their_shape_and_stop_dispatch(tmp_path, kind, blocked):
+    from pier.models.trial.result import ExceptionInfo
+
+    from synergy_bench.docker_resources import DockerEndpointError
+    from synergy_bench.evidence import collect_evidence
+    from synergy_bench.monitor import ResourceRecordingError
+    from synergy_bench.resources import ResourcePressureError
+    from synergy_bench.runner import DispatchStopped
+
+    errors = {
+        error.__name__: error
+        for error in [DockerEndpointError, ResourcePressureError, ResourceRecordingError, ValueError]
+    }
+    native = ExceptionInfo.from_exception(errors[kind]("fixture failure")).model_dump(mode="json")
+    plan = {"schedule": [{"pair": "p", "variant": "A"}, {"pair": "p", "variant": "B"}], "concurrency": 1}
+    attempted = []
+
+    async def execute(item, attempt):
+        attempted.append(item["variant"])
+        return collect_evidence(attempt / "native", {"exception_info": native})
+
+    if blocked:
+        with pytest.raises(DispatchStopped):
+            await execute_plan(tmp_path, plan, execute)
+    else:
+        await execute_plan(tmp_path, plan, execute)
+    assert attempted == (["A"] if blocked else ["A", "B"])
+    assert read_json(tmp_path / "state.json")["status"] == ("blocked" if blocked else "completed")
+    result = read_json(tmp_path / "trials/0000/attempt-001/evidence.json")
+    assert result["infrastructure_error"] == native
+
+
 async def test_exception_keeps_paid_wire_evidence_and_original_terminal(tmp_path):
     plan = {"schedule": [{"pair": "p", "variant": "A"}], "concurrency": 1}
 
