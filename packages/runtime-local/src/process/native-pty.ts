@@ -1,5 +1,5 @@
 import { dlopen, FFIType, ptr } from "bun:ffi"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { Readable, Writable } from "node:stream"
 
@@ -15,9 +15,16 @@ export namespace NativePty {
         : "libsynergy_pty.so"
   }
 
+  export function libc(): "glibc" | "musl" {
+    if (process.platform !== "linux") return "glibc"
+    if (typeof SYNERGY_LIBC === "string") return SYNERGY_LIBC === "musl" ? "musl" : "glibc"
+    return /\/(?:[^\s]+\/)*ld-musl-[^/\s]+\.so\.1(?=\s|$)/m.test(readFileSync("/proc/self/maps", "utf8"))
+      ? "musl"
+      : "glibc"
+  }
+
   export function libraryPath() {
-    const libc = typeof SYNERGY_LIBC === "string" ? SYNERGY_LIBC : "glibc"
-    const target = `${process.platform}-${process.arch}${process.platform === "linux" ? `-${libc}` : ""}`
+    const target = `${process.platform}-${process.arch}${process.platform === "linux" ? `-${libc()}` : ""}`
     const name = filename()
     const candidates = [
       path.resolve(import.meta.dir, "../../.artifacts/pty", target, name),

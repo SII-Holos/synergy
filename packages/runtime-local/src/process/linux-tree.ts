@@ -1,10 +1,11 @@
-import { dlopen, ptr, read } from "bun:ffi"
+import { dlopen } from "bun:ffi"
 import fs from "node:fs"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { z } from "zod"
+import { NativePty } from "./native-pty"
 
 export namespace LinuxTree {
   export const Reference = z.object({
@@ -25,22 +26,21 @@ export namespace LinuxTree {
   let self: Reference | undefined
   function initialize() {
     if (process.platform !== "linux") throw new Error("Linux process ownership is unavailable")
-    const mapped = fs.readFileSync("/proc/self/maps", "utf8")
-    const library = mapped.match(/\/(?:[^\s]+\/)*ld-musl-[^/\s]+\.so\.1(?=\s|$)/m)?.[0] ?? "libc.so.6"
-    return dlopen(library, {
-      prctl: { args: ["i32", "u64", "u64", "u64", "u64"], returns: "i32" },
-      waitpid: { args: ["i32", "ptr", "i32"], returns: "i32" },
-      syscall: { args: ["i64", "i64", "i64", "i64", "i64"], returns: "i64" },
-      close: { args: ["i32"], returns: "i32" },
-      __errno_location: { args: [], returns: "ptr" },
-    }).symbols
+    try {
+      return dlopen(NativePty.libraryPath(), {
+        synergy_linux_subreaper: { args: [], returns: "i32" },
+        synergy_linux_waitpid: { args: [], returns: "i32" },
+        synergy_linux_pidfd_open: { args: ["i32"], returns: "i32" },
+        synergy_linux_pidfd_signal: { args: ["i32", "i32"], returns: "i32" },
+        synergy_linux_close: { args: ["i32"], returns: "i32" },
+      }).symbols
+    } catch (cause) {
+      throw new Error("Native Linux process library is unavailable; run bun dev prepare or reinstall the runtime", {
+        cause,
+      })
+    }
   }
   const runtime = () => (native ??= initialize())
-  const errno = () => {
-    const pointer = runtime().__errno_location()
-    if (!pointer) throw new Error("Cannot read Linux process status")
-    return read.i32(pointer)
-  }
   const boot = () => fs.readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim()
   function status(pid: number) {
     try {
@@ -108,7 +108,8 @@ export namespace LinuxTree {
   // Reparenting keeps double-forked, detached and empty-environment descendants waitable by this worker.
   export function initializeWorker(directory: string) {
     if (self) throw new Error("Linux process worker is already initialized")
-    if (runtime().prctl(36, 1, 0, 0, 0) !== 0) throw new Error(`Cannot initialize Linux subreaper: ${errno()}`)
+    const result = runtime().synergy_linux_subreaper()
+    if (result < 0) throw new Error(`Cannot initialize Linux subreaper: ${-result}`)
     const own = status(process.pid)
     const owner = status(process.ppid)
     if (!own || !owner) throw new Error("Cannot identify Linux process ownership")
@@ -157,12 +158,11 @@ export namespace LinuxTree {
   // ECHILD after reaping all child kinds is the completion proof; /proc enumeration is only used for signals.
   export function drained() {
     current()
-    const value = new Int32Array(1)
     for (let count = 0; count < 65536; count++) {
-      const result = runtime().waitpid(-1, ptr(value), 1 | 0x40000000)
+      const result = runtime().synergy_linux_waitpid()
       if (result > 0) continue
       if (result === 0) return false
-      const code = errno()
+      const code = -result
       if (code === 10) return true
       if (code !== 4) throw new Error(`Cannot verify Linux descendant completion: ${code}`)
     }
@@ -176,18 +176,18 @@ export namespace LinuxTree {
   // Provenance: https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html
   // A pidfd pins the signal target while its parent/start identity is verified, avoiding PID-reuse races.
   function signal(pid: number, valid: () => boolean, value: number) {
-    const descriptor = Number(runtime().syscall(434, pid, 0, 0, 0))
+    const descriptor = runtime().synergy_linux_pidfd_open(pid)
     if (descriptor < 0) {
-      const code = errno()
+      const code = -descriptor
       if (code === 3) return
       throw new Error(`Cannot open Linux process descriptor: ${code}`)
     }
     try {
       if (!valid()) return
-      if (Number(runtime().syscall(424, descriptor, value, 0, 0)) !== 0 && errno() !== 3)
-        throw new Error(`Cannot signal Linux process descriptor: ${errno()}`)
+      const result = runtime().synergy_linux_pidfd_signal(descriptor, value)
+      if (result < 0 && result !== -3) throw new Error(`Cannot signal Linux process descriptor: ${-result}`)
     } finally {
-      runtime().close(descriptor)
+      runtime().synergy_linux_close(descriptor)
     }
   }
   export function terminate(reference: Reference) {
@@ -219,6 +219,7 @@ export namespace LinuxTree {
     fs.rmSync(validateDirectory(reference.receipt), { recursive: true, force: true })
   }
   export async function start(command: string[], directory: string) {
+    runtime()
     try {
       signal(process.pid, () => true, 0)
     } catch (cause) {
