@@ -86,33 +86,6 @@ describe("terminal unavailability is a declared driver contract", () => {
       // fallback listener that no driver ever invokes.
       await expect(store.snapshot((tx) => tx.read(["record"]))).rejects.toBe(received[0])
     }))
-
-  test.skipIf(!process.env.SYNERGY_TEST_POSTGRES_URL)(
-    "PostgreSQL declares the signal as unimplemented instead of omitting it",
-    () =>
-      runtime.run(async () => {
-        const namespace = crypto.randomUUID()
-        const store = await TransactionalStore.open({
-          backend: "postgres",
-          namespace,
-          url: process.env.SYNERGY_TEST_POSTGRES_URL!,
-        })
-        stores.push(store)
-        const postgres = driver(store)
-        expect(typeof postgres.onUnavailable).toBe("function")
-
-        // A pool has no single-worker wedge, so no condition here terminalises the
-        // Handle and the listener is never invoked: an ordinary write both succeeds
-        // and leaves the subscription untouched.
-        const received: Error[] = []
-        const stop = postgres.onUnavailable((error) => received.push(error))
-        expect(typeof stop).toBe("function")
-        await store.write(["record"], { value: 1 })
-        expect(await store.read<{ value: number }>(["record"])).toEqual({ value: 1 })
-        expect(received).toEqual([])
-        stop()
-      }),
-  )
 })
 
 afterRuntimeTests(() => runtime.close())

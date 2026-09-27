@@ -1,3 +1,4 @@
+import { restoreDistribution } from "./distributions"
 import { cp, mkdir, readFile, rm } from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "../../packages/testing/src/env"
@@ -144,8 +145,9 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
       ]
     case "postgres":
       return [
-        test(task.id, ["test/storage"], "packages/harness", {
+        test(task.id, task.files!, "packages/harness", {
           SYNERGY_REQUIRE_POSTGRES_TESTS: "1",
+          SYNERGY_TEST_STORAGE_BACKEND: "postgres",
           SYNERGY_TEST_POSTGRES_URL: "postgres://postgres:storage-ci-only@127.0.0.1:5432/synergy_storage_test",
         }),
       ]
@@ -278,31 +280,36 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
           { SYNERGY_ROLLOUT_LONG_STREAM: "1", SYNERGY_CI_TIMING: "1" },
         ),
       ]
-    case "artifacts":
-      if (task.variant === "core")
+    case "artifacts": {
+      const owner = task.profile === "core" ? "cli" : "presets"
+      const scenarioPrefix = "installed runtime artifact preserves "
+      const scenarios = task.scenarios?.map((name) =>
+        name.slice(scenarioPrefix.length).replace(" outcome outside the repository", ""),
+      )
+      if (task.variant === "binary")
         return [
-          test("watcher-native", ["--config", "/dev/null", ...task.files!]),
-          bun("core-build", ["packages/cli/script/build.ts", "--single", "--skip-install"], undefined, {
-            SYNERGY_BUILD_TARGETS: "linux-x64",
-            SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
+          ...(task.files?.length ? [test("watcher-native", ["--config", "/dev/null", ...task.files])] : []),
+          test("installed-behavior", ["test/cli/artifact.test.ts"], "packages/cli", {
+            SYNERGY_TEST_ARTIFACT_PROFILE: task.profile!,
+            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, `packages/${owner}/dist/synergy-linux-x64/bin/synergy`),
+            SYNERGY_TEST_ARTIFACT_SCENARIOS: JSON.stringify(scenarios),
           }),
-          test("core-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-            SYNERGY_TEST_ARTIFACT_PROFILE: "core",
-            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/cli/dist/synergy-linux-x64/bin/synergy"),
-          }),
-          bun("core-pack", ["script/pack-workspace.ts", "packages/cli", path.join(root, OUTPUT, "core-packages")]),
-          bun("core-install", ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")]),
         ]
-      if (task.variant === "full")
+      if (task.variant === "package")
         return [
-          bun("product-build", ["packages/presets/script/build.ts", "--single", "--skip-install"], undefined, {
-            SYNERGY_BUILD_TARGETS: "linux-x64",
-            SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
-          }),
-          test("product-installed", ["test/cli/artifact.test.ts"], "packages/cli", {
-            SYNERGY_TEST_ARTIFACT_PROFILE: "full",
-            SYNERGY_TEST_ARTIFACT_BIN: path.join(root, "packages/presets/dist/synergy-linux-x64/bin/synergy"),
-          }),
+          bun(
+            "core-install",
+            ["script/package-install-check.ts", path.join(root, OUTPUT, "core-packages")],
+            undefined,
+            {
+              SYNERGY_TEST_ARTIFACT_PROFILE: "core",
+              SYNERGY_TEST_ARTIFACT_SCENARIOS: JSON.stringify(scenarios),
+              SYNERGY_TEST_ARTIFACT_JUNIT: path.join(root, OUTPUT, "raw", task.id, "installed.xml"),
+            },
+          ),
+        ]
+      if (task.variant === "composition")
+        return [
           bun("product-composition", [
             "script/runtime-composition-check.ts",
             path.join(root, "packages/presets/dist/modules-packages"),
@@ -312,7 +319,8 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             path.join(root, "packages/presets/dist/modules-packages"),
           ]),
         ]
-      throw new Error(`Unknown installed runtime profile: ${task.variant}`)
+      throw new Error(`Unknown installed runtime control: ${task.id}`)
+    }
   }
 }
 
@@ -461,6 +469,14 @@ export async function executeUnit(plan: Plan, id: string, root = ROOT) {
   const unit = plan.units.find((entry) => entry.id === id)
   const ids = unit?.tasks ?? (id === "benchmark-prepare" && plan.selected.includes(id) ? [id] : undefined)
   if (!ids) throw new Error(`Unknown execution unit: ${id}`)
+  const profiles = [
+    ...new Set(
+      ids
+        .map((id) => plan.tasks.find((task) => task.id === id)!.profile)
+        .filter((profile): profile is "core" | "full" => !!profile),
+    ),
+  ]
+  for (const profile of profiles) await restoreDistribution(root, plan, profile)
   const failures = []
   for (const taskID of ids) {
     const result = await executeTask(plan.tasks.find((entry) => entry.id === taskID)!, plan, root)

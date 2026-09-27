@@ -4,10 +4,11 @@ import path from "node:path"
 import { PackedLegacyImporter } from "../../src/storage/packed-import"
 import { PackedBackup } from "../../src/storage/packed-backup"
 import { TransactionalStore } from "../../src/storage/transactional-store"
+import { storageTestOptions } from "../support/storage-backends"
 import { Storage } from "../../src/storage/storage"
 import { afterAll as afterRuntimeTests } from "bun:test"
-import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+import { storageTestRuntime } from "../support/storage-runtime"
+const runtime = await storageTestRuntime()
 
 async function fixture() {
   const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "packed-import-"))
@@ -16,9 +17,7 @@ async function fixture() {
   await fs.mkdir(dataRoot)
   const namespace = crypto.randomUUID()
   const store = await TransactionalStore.open(
-    process.env.SYNERGY_TEST_POSTGRES_URL
-      ? { backend: "postgres", namespace, url: process.env.SYNERGY_TEST_POSTGRES_URL }
-      : { backend: "sqlite", namespace, filename: path.join(root, "target.sqlite") },
+    storageTestOptions({ namespace, filename: path.join(root, "target.sqlite") }),
   )
   async function write(relative: string, value: unknown) {
     const filename = path.join(dataRoot, relative)

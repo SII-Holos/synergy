@@ -8,6 +8,8 @@ Installed acceptance combines native watcher validation, core and full builds, b
 
 ## Decision
 
+两组构建执行布局由 [PR 反馈决策](2026-09-27-pr-ci-feedback.md) 的独立 producer 与五个消费任务部分取代；本记录的 core/full 独立输入、完整验收目标与作业预算要求继续适用。
+
 The catalog exposes independent core and full artifact tasks. Core owns its watcher check, distribution build and behavior suite, workspace pack and clean tarball suite. Full owns its distribution build and behavior suite, component compositions and installation lifecycle. The existing nine commands execute once across the two recipes, with unchanged arguments, assertions and deadlines. Both retain the verified shared native prerequisites and isolated task environments.
 
 Full builds its own workspace dependency closure, including CLI modules, before constructing its module archives and distribution. Its component and installation consumers use those archives in fresh directories outside the repository. It requires neither a core distribution nor an installed Home from the core control. Shared CI preparation continues to validate SDK, Plugin and native assets; it cannot substitute for either distribution build.

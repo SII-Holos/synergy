@@ -34,12 +34,10 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       sandbox: ${{ steps.plan.outputs.sandbox }}
       benchmark: ${{ steps.plan.outputs.benchmark }}
+      core: ${{ steps.plan.outputs.core }}
+      full: ${{ steps.plan.outputs.full }}
       contracts: ${{ steps.plan.outputs.contracts }}
       contracts_count: ${{ steps.plan.outputs.contracts_count }}
-      docker-external: ${{ steps.plan.outputs.docker-external }}
-      docker-external_count: ${{ steps.plan.outputs.docker-external_count }}
-      docker-ready: ${{ steps.plan.outputs.docker-ready }}
-      docker-ready_count: ${{ steps.plan.outputs.docker-ready_count }}
       linux: ${{ steps.plan.outputs.linux }}
       linux_count: ${{ steps.plan.outputs.linux_count }}
       docker: ${{ steps.plan.outputs.docker }}
@@ -58,14 +56,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/ci-setup
-      - name: Load admission evidence when affected mode is requested
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CI_FORCE_FULL: ${{ vars.SYNERGY_CI_FORCE_FULL }}
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$CI_FORCE_FULL" != 1 ] && [ "$(bun -e 'console.log((await Bun.file("script/ci/rollout.json").json()).mode)')" = affected ]; then
-            bun script/ci.ts history
-          fi
       - name: Resolve exact revisions and plan
         id: plan
         env:
@@ -97,7 +87,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     outputs:
       cache_hit: ${{ steps.cache.outputs.cache-hit }}
     env:
@@ -107,6 +97,10 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
       - uses: ./.github/actions/ci-setup
       - name: Resolve build toolchain identity
         id: build-key
@@ -131,6 +125,27 @@ jobs:
         with:
           name: ci-build-${{ github.run_attempt }}
           path: .artifacts/ci/build.tar
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - name: Prepare selected distributions
+        if: needs.plan.outputs.core == 'true' || needs.plan.outputs.full == 'true'
+        run: bun script/ci.ts prepare-distributions
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: needs.plan.outputs.core == 'true'
+        with:
+          name: ci-distribution-core-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions/core.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: needs.plan.outputs.full == 'true'
+        with:
+          name: ci-distribution-full-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions/full.tar.zst
+          compression-level: 0
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 3
@@ -252,6 +267,22 @@ jobs:
         run: |
           tar -xf .artifacts/ci/build.tar -C .artifacts/ci
           bun script/ci.ts restore
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.core
+        with:
+          name: ci-distribution-core-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions
+      - name: Unpack core distribution
+        if: matrix.core
+        run: tar --zstd -xf .artifacts/ci/distributions/core.tar.zst -C .artifacts/ci/distributions
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.full
+        with:
+          name: ci-distribution-full-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions
+      - name: Unpack full distribution
+        if: matrix.full
+        run: tar --zstd -xf .artifacts/ci/distributions/full.tar.zst -C .artifacts/ci/distributions
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: "true"
@@ -271,130 +302,15 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 7
-  docker-external:
-    name: docker-external (${{ matrix.id }})
-    needs: [plan]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker-external_count != '0' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.docker-external) }}
-    env:
-      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ needs.plan.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: ci-plan-${{ github.run_attempt }}
-          path: .artifacts/ci
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - uses: ./.github/actions/ci-setup
-        with:
-          dependencies: "false"
-          browser: ${{ matrix.browser }}
-          desktop: ${{ matrix.desktop }}
-          sandbox: ${{ matrix.sandbox }}
-          policy: ${{ matrix.policy }}
-      - name: Execute planned tasks
-        env:
-          CI_UNIT: ${{ matrix.id }}
-        run: bun script/ci.ts run --unit "$CI_UNIT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
-          path: .artifacts/ci/results
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
-      - name: Collect bounded benchmark evidence
-        if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/benchmark-evidence
-          include-hidden-files: true
-          retention-days: 7
-  docker-ready:
-    name: docker-ready (${{ matrix.id }})
-    needs: [plan, benchmark-prepare]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker-ready_count != '0' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include: ${{ fromJSON(needs.plan.outputs.docker-ready) }}
-    env:
-      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          ref: ${{ needs.plan.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: ci-plan-${{ github.run_attempt }}
-          path: .artifacts/ci
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: "1.3.14"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: ci-benchmark-prepared-${{ github.run_attempt }}
-          path: .artifacts/ci
-      - name: Unpack read-only benchmark input
-        shell: bash
-        run: tar --zstd -xf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci
-      - uses: ./.github/actions/ci-setup
-        with:
-          dependencies: "false"
-          browser: ${{ matrix.browser }}
-          desktop: ${{ matrix.desktop }}
-          sandbox: ${{ matrix.sandbox }}
-          policy: ${{ matrix.policy }}
-      - name: Execute planned tasks
-        env:
-          CI_UNIT: ${{ matrix.id }}
-        run: bun script/ci.ts run --unit "$CI_UNIT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
-          path: .artifacts/ci/results
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
-      - name: Collect bounded benchmark evidence
-        if: always()
-        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
-        with:
-          name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/benchmark-evidence
-          include-hidden-files: true
-          retention-days: 7
   docker:
     name: docker (${{ matrix.id }})
-    needs: [plan, benchmark-prepare, docker-external]
+    needs: [plan, benchmark-prepare]
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 3
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.docker) }}
     env:
@@ -412,10 +328,12 @@ jobs:
         with:
           bun-version: "1.3.14"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.benchmark
         with:
           name: ci-benchmark-prepared-${{ github.run_attempt }}
           path: .artifacts/ci
       - name: Unpack read-only benchmark input
+        if: matrix.benchmark
         shell: bash
         run: tar --zstd -xf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci
       - uses: ./.github/actions/ci-setup
@@ -593,20 +511,7 @@ jobs:
   all-checks-passed:
     name: All checks passed
     if: always()
-    needs:
-      [
-        plan,
-        prepare,
-        benchmark-prepare,
-        contracts,
-        linux,
-        docker-external,
-        docker-ready,
-        docker,
-        postgres,
-        windows,
-        macos,
-      ]
+    needs: [plan, prepare, benchmark-prepare, contracts, linux, docker, postgres, windows, macos]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

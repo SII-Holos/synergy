@@ -16,14 +16,89 @@ from synergy_bench.catalog import tree_digest
 from synergy_bench.evaluator import freeze_evaluator, recorded_environment
 from synergy_bench.prepare import BENCHMARK, evaluator_identity
 from synergy_bench.process import run_process
-from synergy_bench.runner import verify_terminal
 from synergy_bench.source import git
 from synergy_bench.storage import atomic_json, read_json
 
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit native Docker matrix")
 
 
-async def fixture_provider(request, *, command_prefix="", input_tokens=None, force_tool=None, observation_turn=None):
+def fixture_profiles(protocol, base_url, *, long_session=False, unattended=False):
+    return {
+        name: {
+            "model": name,
+            "protocol": protocol,
+            "base_url": base_url,
+            "api_key_env": "BENCH_FIXTURE_KEY",
+            "context_window": 1048576 if unattended else 1000000 if long_session else 32000,
+            "max_output_tokens": 131072 if unattended else 393216 if long_session else 2048,
+            "parameters": {"thinking": {"type": "enabled"}, "reasoning_effort": "low", "temperature": 1}
+            if unattended
+            else {"enable_thinking": False}
+            if protocol == "chat-completions"
+            else {"reasoning": {"effort": "none"}},
+        }
+        for name in ("fixture-one", "fixture-two")
+    }
+
+
+def assert_equivalent_profiles(profiles):
+    conditions = [{key: value for key, value in profile.items() if key != "model"} for profile in profiles.values()]
+    assert conditions and all(value == conditions[0] for value in conditions), "Fixture execution conditions differ"
+
+
+def assert_fixture_models(manifest, model):
+    actual = {call["model"]["modelID"] for snapshot in manifest["snapshots"] for call in snapshot["calls"]}
+    assert actual == {model}, f"Native model identity differs: {actual} != {model}"
+
+
+def assert_fixture_usage(usage, model, *, minimum_requests):
+    attempts = usage["attempts"]
+    assert attempts >= minimum_requests, "Native request count stopped before the control completed"
+    inputs = {"fixture-one": 100, "fixture-two": 200}[model]
+    for field, count in {"input": inputs, "output": 10, "total": inputs + 10, "cacheRead": 40, "reasoning": 0}.items():
+        assert usage["tokens"][field] == {
+            "known": attempts * count,
+            "unknown": 0,
+            "total": attempts * count,
+        }, f"Native {field} usage differs from the deterministic provider"
+
+
+def assert_native_control(records, *, tool_turns, bun_jit, observations):
+    completed = {
+        event["part"]["callID"]: event["part"]
+        for event in records
+        if event.get("type") == "tool_use" and event["part"]["state"]["status"] == "completed"
+    }
+    assert len(completed) >= tool_turns, "Native tool roundtrips stopped before the control completed"
+    outputs = [part["state"]["output"] for part in completed.values() if part["tool"] == "bash"]
+    for phase in ["start", "end"]:
+        evidence = [output for output in outputs if f"BENCH_NATIVE_PHASE={phase}" in output]
+        assert evidence, f"Missing {phase} native process evidence"
+        for kind in ["WRAPPER", "CLI"]:
+            assert all(
+                set(re.findall(rf"^BENCH_SYNERGY_{kind}_BUN_JSC_useJIT=(\S+)$", output, re.MULTILINE))
+                == {str(int(bun_jit))}
+                for output in evidence
+            ), f"Native {phase} {kind} JIT setting differs"
+    if observations:
+        assert {"bash", "view_file", "revise_file"} <= {part["tool"] for part in completed.values()}
+        verified = {
+            int(turn)
+            for output in outputs
+            for turn in re.findall(r"^BENCH_OBSERVATION_VERIFIED=(\d+)$", output, re.MULTILINE)
+        }
+        assert verified == set(range(3, tool_turns, 4)), "Missing verified file edits"
+
+
+async def fixture_provider(
+    request,
+    *,
+    command_prefix="",
+    input_tokens=None,
+    force_tool=None,
+    observation_turn=None,
+    observation_directory="/app",
+):
     body = await request.json()
     responses = request.path.endswith("/responses")
     messages = body["input"] if responses else body["messages"]
@@ -68,26 +143,28 @@ async def fixture_provider(request, *, command_prefix="", input_tokens=None, for
         field = next((key for key in ["command", "cmd", "code"] if key in properties), "command")
         args[field] = ["sh", "-c", command] if properties.get(field, {}).get("type") == "array" else command
         if observation_turn is not None:
+            observation_file = observation_directory + "/observation.txt"
             phase = observation_turn % 4
             if phase in (1, 2):
                 name = "view_file" if phase == 1 else "revise_file"
                 selected = next(tool for tool in functions if tool["name"].split("__")[-1] == name)
                 namespace = selected.get("namespace")
                 if phase == 1:
-                    args = {"filePath": "/app/observation.txt", "limit": 32}
+                    args = {"filePath": observation_file, "limit": 32}
                 else:
                     headers = re.findall(r"\[[^\]\n]*observation\.txt#([A-Za-z0-9]+)\]", json.dumps(messages))
                     assert headers, "Native view_file did not return an anchored snapshot"
-                    args = {"input": f"[/app/observation.txt#{headers[-1]}]\nSWAP 1..1:\n+changed {observation_turn}"}
+                    args = {"input": f"[{observation_file}#{headers[-1]}]\nSWAP 1..1:\n+changed {observation_turn}"}
             else:
                 script = (
                     "from pathlib import Path; memory=bytearray(8*1024**2); "
-                    "Path('/app/observation.txt').write_text(''.join("
+                    f"Path({observation_file!r}).write_text(''.join("
                     "f'row {i} '+('中😀'*128)+'\\n' for i in range(500))); "
-                    "Path('/app/marker').write_text('verified')"
+                    f"Path({(observation_directory + '/marker')!r}).write_text('verified')"
                     if phase == 0
                     else "from pathlib import Path; "
-                    "assert Path('/app/observation.txt').read_text().startswith('changed ')"
+                    f"assert Path({observation_file!r}).read_text().startswith('changed {observation_turn - 1}\\n'); "
+                    f"print('BENCH_OBSERVATION_VERIFIED={observation_turn}')"
                 )
                 command = command_prefix + shlex.join(["python3", "-c", script])
                 args[field] = command
@@ -252,13 +329,9 @@ async def test_native_matrix_uses_restricted_egress_and_two_independent_models(t
     await run_native_matrix(tmp_path, monkeypatch, protocol)
 
 
-@pytest.mark.parametrize("model", ["fixture-one", "fixture-two"])
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
-@pytest.mark.parametrize("tool_turns", [1, 120], ids=["short", "long"])
 @pytest.mark.parametrize("bun_jit", [False, True], ids=["jitless", "jit"])
-async def test_synergy_long_sessions_preserve_native_tools_and_usage(
-    tmp_path, monkeypatch, protocol, tool_turns, bun_jit, model
-):
+async def test_synergy_long_sessions_preserve_native_tools_and_usage(tmp_path, monkeypatch, protocol, bun_jit):
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
         pytest.skip("Synergy long-session control belongs to the Synergy native matrix")
     await run_native_matrix(
@@ -266,9 +339,26 @@ async def test_synergy_long_sessions_preserve_native_tools_and_usage(
         monkeypatch,
         protocol,
         long_session=True,
-        tool_turns=tool_turns,
+        tool_turns=120,
         bun_jit=bun_jit,
-        models=(model,),
+        models=("fixture-one",),
+    )
+
+
+@pytest.mark.parametrize(
+    ("bun_jit", "protocol", "model"),
+    [
+        pytest.param(True, "chat-completions", "fixture-one", id="jit-chat-completions-fixture-one"),
+        pytest.param(True, "responses", "fixture-two", id="jit-responses-fixture-two"),
+        pytest.param(False, "chat-completions", "fixture-two", id="jitless-chat-completions-fixture-two"),
+        pytest.param(False, "responses", "fixture-one", id="jitless-responses-fixture-one"),
+    ],
+)
+async def test_synergy_native_semantics(tmp_path, monkeypatch, bun_jit, protocol, model):
+    if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
+        pytest.skip("Synergy native semantics belong to the Synergy native matrix")
+    await run_native_matrix(
+        tmp_path, monkeypatch, protocol, long_session=True, tool_turns=4, bun_jit=bun_jit, models=(model,)
     )
 
 
@@ -285,6 +375,7 @@ async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeyp
         bun_jit=True,
         task_home=True,
         empty_stop=empty_stop,
+        models=("fixture-one",) if empty_stop else ("fixture-one", "fixture-two"),
     )
 
 
@@ -305,6 +396,8 @@ async def run_native_matrix(
     unattended=False,
     models=("fixture-one", "fixture-two"),
 ):
+    from synergy_bench.runner import verify_terminal
+
     create_matrix_suite(tmp_path, task_home=task_home)
 
     native_probe = shlex.join(
@@ -344,6 +437,15 @@ async def run_native_matrix(
             if isinstance(message, dict)
         )
         probe = "BENCHMARK_TOOL_" in json.dumps(messages)
+        phase = "start" if count == 0 else "end" if count == tool_turns - 1 else None
+        process_evidence = (
+            (f"printf 'BENCH_NATIVE_PHASE={phase}\\n'; " if long_session and phase else "")
+            + 'printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
+            + native_probe
+            + "; "
+            if not long_session or probe or phase
+            else ""
+        )
         if empty_stop and not probe and count >= tool_turns:
             return web.Response(
                 text='data: {"id":"empty-stop","object":"chat.completion.chunk","created":0,'
@@ -376,9 +478,7 @@ async def run_native_matrix(
         )
         return await fixture_provider(
             request,
-            command_prefix='printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
-            + native_probe
-            + "; "
+            command_prefix=process_evidence
             + environment_check
             + (
                 shlex.join(
@@ -438,22 +538,11 @@ async def run_native_matrix(
             if kind in harnesses:
                 harnesses[kind + "-jitless"] = {**harnesses[kind], "bun_jit": False}
     monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture-key-private")
-    profiles = {
-        name: {
-            "model": name,
-            "protocol": protocol,
-            "base_url": f"http://127.0.0.1:{provider.addresses[0][1]}/v1",
-            "api_key_env": "BENCH_FIXTURE_KEY",
-            "context_window": 1048576 if unattended else 1000000 if long_session else 32000,
-            "max_output_tokens": 131072 if unattended else 393216 if long_session else 2048,
-            "parameters": {"thinking": {"type": "enabled"}, "reasoning_effort": "low", "temperature": 1}
-            if unattended
-            else {"enable_thinking": False}
-            if protocol == "chat-completions"
-            else {"reasoning": {"effort": "none"}},
-        }
-        for name in models
-    }
+    profiles = fixture_profiles(
+        protocol, f"http://127.0.0.1:{provider.addresses[0][1]}/v1", long_session=long_session, unattended=unattended
+    )
+    assert_equivalent_profiles(profiles)
+    profiles = {name: profiles[name] for name in models}
     config = {
         "version": 2,
         "suite": "suite.json",
@@ -512,6 +601,8 @@ async def run_native_matrix(
                     identity = read_json(attempt / "trial.json")
                     harness = identity["harness"]
                     identities.add((harness, identity["model"]))
+                    if long_session and not empty_stop:
+                        assert_fixture_usage(result["wire_usage"], identity["model"], minimum_requests=tool_turns + 1)
                     if harness.endswith(("-jitless", "-jit")):
                         options = read_json(attempt / "inputs/options.json")
                         enabled = harness.endswith("-jit")
@@ -526,20 +617,10 @@ async def run_native_matrix(
                             assert "BENCH_JIT=0" in events
                         if long_session:
                             records = [json.loads(line) for line in events.splitlines()]
-                            completed = {
-                                event["part"]["callID"]
-                                for event in records
-                                if event.get("type") == "tool_use" and event["part"]["state"]["status"] == "completed"
-                            }
-                            assert len(completed) >= tool_turns
+                            assert_native_control(
+                                records, tool_turns=tool_turns, bun_jit=bun_jit, observations=not task_home
+                            )
                             assert result["wire_usage"]["attempts"] >= tool_turns + 1
-                            if tool_turns >= 4:
-                                assert {"bash", "view_file", "revise_file"} <= {
-                                    event["part"]["tool"]
-                                    for event in records
-                                    if event.get("type") == "tool_use"
-                                    and event["part"]["state"]["status"] == "completed"
-                                }
             assert identities == {(harness, model) for harness in harnesses for model in profiles}
             return results
 
@@ -584,9 +665,7 @@ async def run_native_matrix(
                         assert terminal["accounting"]["summary"]["attempts"] > 1
                 identity = read_json(archive_path.parents[2] / "trial.json")
                 if long_session and identity["harness"].startswith("synergy-"):
-                    assert {
-                        call["model"]["modelID"] for snapshot in manifest["snapshots"] for call in snapshot["calls"]
-                    } == {profiles[identity["model"]]["model"]}
+                    assert_fixture_models(manifest, profiles[identity["model"]]["model"])
                 attempts = [attempt for snapshot in manifest["snapshots"] for attempt in snapshot["attempts"]]
                 assert attempts
                 assert all(
