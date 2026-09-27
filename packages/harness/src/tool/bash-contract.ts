@@ -26,7 +26,7 @@ export interface BashSandboxPrepareInput {
 
 export type BashSandboxPrepare = (
   input: BashSandboxPrepareInput,
-) => Promise<SandboxExecutionWrapper & { cleanup?: () => Promise<void> }>
+) => Promise<SandboxExecutionWrapper & { id?: string; intentDigest?: string; cleanup?: () => Promise<void> }>
 
 export const MAX_METADATA_LENGTH = 30_000
 

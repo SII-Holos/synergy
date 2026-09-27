@@ -81,7 +81,10 @@ export namespace EnvironmentResources {
         skipReason: "Selected Environment has no sandbox",
       }
     const wrapper = await executor.prepareSandbox(input)
-    return { ...wrapper, cleanup: () => executor.releaseSandbox!(wrapper.id) }
+    const intentDigest = createHash("sha256")
+      .update(JSON.stringify(ExecutionProtocol.SandboxInput.parse(input)))
+      .digest("hex")
+    return { ...wrapper, intentDigest, cleanup: () => executor.releaseSandbox!(wrapper.id) }
   }
 
   export async function resolve(input: Selection & { needs: Needs; signal?: AbortSignal }): Promise<Resolved> {

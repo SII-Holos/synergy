@@ -15,10 +15,13 @@ import { NativePty } from "../process/native-pty"
 import { NativeWorkspaceFiles } from "../workspace/file-host"
 import type { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 import type { SandboxExecutionWrapper } from "@ericsanchezok/synergy-harness/sandbox/types"
+import { ExecutionInputs } from "./inputs"
 
 const Receipt = z.object({
   status: ExecutionProtocol.Status,
   released: z.boolean(),
+  sandboxID: z.string().uuid().optional(),
+  sandbox: ExecutionProtocol.Sandbox.omit({ id: true }).extend({ tempPath: z.string().optional() }).optional(),
   claim: z.object({ id: z.string(), token: z.string() }).optional(),
 })
 interface NativeExecutorOptions {
@@ -31,6 +34,7 @@ interface NativeExecutorOptions {
   files?: { materializationRoot: string; allowedRoots?: string[] }
   runtime?: Pick<ExecutionProtocol.Description, "shell" | "directory" | "env">
   sandbox?: SandboxHost.Host
+  inputsRoot?: string
 }
 type Operation = {
   status: ExecutionProtocol.Status
@@ -42,6 +46,7 @@ type Operation = {
   finished?: Promise<void>
   writes: Promise<void>
   bytes: number
+  sandboxID?: string
 }
 
 export class NativeExecutor implements Executor {
@@ -54,8 +59,14 @@ export class NativeExecutor implements Executor {
   private accepting = true
   private readonly description: ExecutionProtocol.Description
   private readonly sandboxes = new Map<string, SandboxExecutionWrapper>()
+  private readonly inputs: ExecutionInputs
 
   private constructor(private readonly options: NativeExecutorOptions) {
+    this.inputs = new ExecutionInputs({
+      directory: options.directory,
+      root: options.inputsRoot,
+      separateUser: Boolean(options.runAs),
+    })
     this.description = ExecutionProtocol.Description.parse({
       target: options.target,
       platform: process.platform,
@@ -104,6 +115,18 @@ export class NativeExecutor implements Executor {
     return structuredClone(this.description)
   }
 
+  async prepareInputs(input: ExecutionProtocol.Inputs) {
+    if (!this.accepting) throw new Error("Executor is closing")
+    return this.inputs.prepare(input)
+  }
+
+  async discardInputs(id: string) {
+    return this.inputs.discard(id, async () => {
+      const receipt = await this.read(id)
+      if (receipt && !receipt.released) throw new Error("Execution inputs are retained until saving completes")
+    })
+  }
+
   localPID(id: string) {
     return this.operations.get(id)?.owned?.child.pid
   }
@@ -126,6 +149,8 @@ export class NativeExecutor implements Executor {
   }
 
   async releaseSandbox(id: string) {
+    if ([...this.operations.values()].some((operation) => operation.sandboxID === id && !operation.released))
+      throw new Error("Execution sandbox is retained until saving completes")
     const wrapper = this.sandboxes.get(id)
     if (!wrapper) return
     this.options.sandbox?.cleanupWrapper(wrapper)
@@ -144,7 +169,7 @@ export class NativeExecutor implements Executor {
       this.assertDigest(result, request.digest)
       return result
     }
-    const start = this.prepare(request)
+    const start = this.inputs.admit(request.id, () => this.prepare(request))
     this.starting.set(request.id, start)
     try {
       return await start
@@ -173,6 +198,7 @@ export class NativeExecutor implements Executor {
       released: false,
       writes: Promise.resolve(),
       bytes: 0,
+      sandboxID: request.command.sandboxID,
     }
     this.operations.set(request.id, operation)
     await this.persist(operation)
@@ -380,15 +406,20 @@ export class NativeExecutor implements Executor {
       await operation.lease?.release()
       operation.released = true
       await this.persist(operation)
+      if (operation.sandboxID) await this.releaseSandbox(operation.sandboxID)
+      await this.discardInputs(id)
       return
     }
     const receipt = await this.read(id)
-    if (!receipt || receipt.released) return
-    if (receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
+    if (!receipt) return
+    if (!receipt.released && receipt.claim) await (await this.options.coordinator.recover(receipt.claim)).release()
     await AtomicFile.writeJsonAtomic(this.filename(id), JSON.stringify({ ...receipt, released: true }), {
       private: true,
       durable: true,
     })
+    if (receipt.sandboxID) await this.releaseSandbox(receipt.sandboxID)
+    if (receipt.sandbox) this.options.sandbox?.cleanupWrapper(receipt.sandbox)
+    await this.discardInputs(id)
   }
 
   async close() {
@@ -401,7 +432,11 @@ export class NativeExecutor implements Executor {
       )
       this.stopped.resolve()
       await files
-      for (const id of this.sandboxes.keys()) await this.releaseSandbox(id)
+      for (const id of this.sandboxes.keys()) {
+        if ([...this.operations.values()].some((operation) => operation.sandboxID === id && !operation.released))
+          continue
+        await this.releaseSandbox(id)
+      }
       await this.lock
       const failed = results.find((result) => result.status === "rejected")
       if (failed?.status === "rejected") throw failed.reason
@@ -416,7 +451,13 @@ export class NativeExecutor implements Executor {
     const write = operation.writes.then(() =>
       AtomicFile.writeJsonAtomic(
         this.filename(operation.status.id),
-        JSON.stringify({ status: operation.status, released: operation.released, claim: operation.lease?.recovery }),
+        JSON.stringify({
+          status: operation.status,
+          released: operation.released,
+          claim: operation.lease?.recovery,
+          sandboxID: operation.sandboxID,
+          sandbox: operation.sandboxID ? this.sandboxes.get(operation.sandboxID) : undefined,
+        }),
         { private: true, durable: true },
       ),
     )

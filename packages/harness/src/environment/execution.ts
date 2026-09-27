@@ -20,6 +20,7 @@ export namespace EnvironmentExecution {
       target: Environment.Target,
       workspaces: z.array(WorkspaceProtocol.Reference.extend({ readOnly: z.boolean().optional() })).optional(),
       digest: z.string(),
+      intentDigest: z.string().length(64).optional(),
       state: z.enum(["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]),
       status: ExecutionProtocol.Status.optional(),
       saved: z.record(z.string(), JsonValue).optional(),
@@ -64,6 +65,7 @@ export namespace EnvironmentExecution {
     scopeID: string
     environmentID: string
     command: ExecutionProtocol.Command
+    intentDigest?: string
     workspaces?: WorkspaceProtocol.Reference[]
     signal?: AbortSignal
   }): Promise<Info> {
@@ -73,7 +75,7 @@ export namespace EnvironmentExecution {
     const previous = pending().get(key)
     if (previous) {
       const info = await previous
-      verifyInput(info, input.environmentID, digest, input.workspaces)
+      verifyInput(info, input.environmentID, digest, input.workspaces, input.intentDigest)
       return info
     }
     const promise = submit({ ...input, id, digest })
@@ -90,13 +92,14 @@ export namespace EnvironmentExecution {
     scopeID: string
     environmentID: string
     command: ExecutionProtocol.Command
+    intentDigest?: string
     workspaces?: WorkspaceProtocol.Reference[]
     digest: string
     signal?: AbortSignal
   }) {
     const [existing] = await Storage.readMany<Info>([StoragePath.environmentExecution(input.scopeID, input.id)])
     if (existing) {
-      verifyInput(existing, input.environmentID, input.digest, input.workspaces)
+      verifyInput(existing, input.environmentID, input.digest, input.workspaces, input.intentDigest)
       return ["completed", "saved", "unsaved", "exited"].includes(existing.state)
         ? existing
         : reconcile(input.id, input.scopeID)
@@ -140,6 +143,7 @@ export namespace EnvironmentExecution {
             ...(input.command.writableRoots?.length === 0 ? { readOnly: true } : {}),
           })),
           digest: input.digest,
+          intentDigest: input.intentDigest,
           state: "submitted",
           outputCursor: 0,
           createdAt: now,
@@ -324,10 +328,16 @@ export namespace EnvironmentExecution {
     })
   }
 
-  function verifyInput(info: Info, environmentID: string, digest: string, workspaces?: WorkspaceProtocol.Reference[]) {
+  function verifyInput(
+    info: Info,
+    environmentID: string,
+    digest: string,
+    workspaces?: WorkspaceProtocol.Reference[],
+    intentDigest?: string,
+  ) {
     if (
       info.target.environmentID !== environmentID ||
-      info.digest !== digest ||
+      (info.intentDigest ? info.intentDigest !== intentDigest : Boolean(intentDigest) || info.digest !== digest) ||
       JSON.stringify((info.workspaces ?? []).map((reference) => WorkspaceProtocol.Reference.parse(reference))) !==
         JSON.stringify(workspaces ?? [])
     )

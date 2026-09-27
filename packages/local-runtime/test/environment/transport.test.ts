@@ -31,6 +31,14 @@ test("authenticated execution transport uses the native handler and replays outp
   expect(description.target).toEqual(target)
   expect(description.platform).toBe(process.platform)
   expect(description.env).not.toHaveProperty("SYNERGY_EXECUTION_TOKEN")
+  const staged = await remote.prepareInputs({
+    id: "operation",
+    files: [{ name: "note.md", data: Buffer.from("A remote note").toString("base64") }],
+  })
+  expect(await Bun.file(staged.paths["note.md"]).text()).toBe("A remote note")
+  await expect(
+    remote.prepareInputs({ id: "operation", files: [{ name: "note.md", data: "b3RoZXI=" }] }),
+  ).rejects.toThrow("different input")
   expect((await fetch(new URL("/v1/status", host.url))).status).toBe(401)
   const mount = await remote.files.mount({
     id: "files",
@@ -59,6 +67,7 @@ test("authenticated execution transport uses the native handler and replays outp
   }
   const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
   await remote.start(request)
+  await expect(remote.discardInputs(request.id)).rejects.toThrow("retained")
   let status = await remote.status(request.id)
   for (let attempt = 0; status && !ExecutionProtocol.terminal(status) && attempt < 400; attempt++) {
     await Bun.sleep(10)
@@ -78,6 +87,7 @@ test("authenticated execution transport uses the native handler and replays outp
   expect(replay).toContain("event: status")
   expect(replay).not.toContain(`id: ${chunks[0].cursor}\n`)
   await remote.release(request.id)
+  expect(await Bun.file(staged.paths["note.md"]).exists()).toBe(false)
 }, 30_000)
 
 test.skipIf(process.platform === "win32")(

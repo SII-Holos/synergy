@@ -59,6 +59,21 @@ export namespace ExecutionHost {
             return Response.json(await input.executor.describe())
           }
           if (request.method === "GET" && url.pathname === "/v1/openapi.json") return Response.json(openAPI())
+          if (url.pathname === "/v1/inputs" && request.method === "POST") {
+            if (!input.executor.prepareInputs)
+              return Response.json({ error: "Input staging unavailable" }, { status: 404 })
+            return Response.json(
+              await input.executor.prepareInputs(ExecutionProtocol.Inputs.parse(await request.json())),
+            )
+          }
+          if (url.pathname.startsWith("/v1/inputs/") && request.method === "DELETE") {
+            if (!input.executor.discardInputs)
+              return Response.json({ error: "Input staging unavailable" }, { status: 404 })
+            await input.executor.discardInputs(
+              ExecutionProtocol.ID.parse(decodeURIComponent(url.pathname.slice("/v1/inputs/".length))),
+            )
+            return Response.json(true)
+          }
           if (url.pathname === "/v1/sandbox" && request.method === "POST") {
             if (!input.executor.prepareSandbox)
               return Response.json({ error: "Sandbox preparation unavailable" }, { status: 404 })
@@ -326,6 +341,13 @@ export namespace ExecutionHost {
       security: [{ bearerAuth: [] }],
       components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } },
       paths: {
+        "/v1/inputs": action("Stage immutable execution inputs", ExecutionProtocol.Inputs),
+        "/v1/inputs/{id}": {
+          delete: {
+            summary: "Discard unsubmitted or released execution inputs",
+            responses: { "200": { description: "Released" } },
+          },
+        },
         "/v1/sandbox": action("Prepare target sandbox containment", ExecutionProtocol.SandboxInput),
         "/v1/sandbox/{id}": {
           delete: { summary: "Release target sandbox preparation", responses: { "200": { description: "Released" } } },

@@ -141,6 +141,47 @@ test("failed checkpoint retains the use and retries saving without re-executing"
   })
 })
 
+test("compiler artifacts may change on replay while the original command intent remains fenced", async () => {
+  const f = fixture()
+  await using runtime = await testRuntime({
+    register() {
+      EnvironmentProviders.register({
+        id: "fixture",
+        async allocate(request) {
+          return { id: request.requestID, capabilities: ["exec"] }
+        },
+        async inspect() {
+          return { state: "unknown" }
+        },
+        async deallocate() {},
+        async connect() {
+          return f.executor
+        },
+      })
+    },
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
+    const input = {
+      scopeID: "scope",
+      environmentID: environment.id,
+      id: "compiled",
+      command,
+      intentDigest: "a".repeat(64),
+    }
+    const original = await EnvironmentExecution.start(input)
+    expect(
+      (await EnvironmentExecution.start({ ...input, command: { ...command, args: ["new-profile"] } })).digest,
+    ).toBe(original.digest)
+    await expect(EnvironmentExecution.start({ ...input, intentDigest: "b".repeat(64) })).rejects.toThrow(
+      "different input",
+    )
+    await expect(EnvironmentExecution.start({ ...input, intentDigest: undefined })).rejects.toThrow("different input")
+    expect(f.starts()).toBe(1)
+    await EnvironmentExecution.complete(input.id, "scope", async () => ({}))
+  })
+})
+
 test.each(["ack-lost", "unknown", "release-lost"] as const)(
   "restart reconciles %s without repeating execution",
   async (failure) => {

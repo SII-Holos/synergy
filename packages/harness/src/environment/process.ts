@@ -19,6 +19,7 @@ export namespace EnvironmentProcess {
     scopeID: string
     resources: EnvironmentResources.Resolved
     command: ExecutionProtocol.Command
+    intentDigest?: string
     signal?: AbortSignal
   }
 
@@ -170,6 +171,7 @@ export namespace EnvironmentProcess {
             scopeID: input.scopeID,
             environmentID: environment!.id,
             command,
+            intentDigest: input.intentDigest,
             workspaces,
             signal: input.signal,
           })

@@ -64,6 +64,10 @@ test.skipIf(!image)(
         expect(operation.status?.exitCode).toBe(0)
         await EnvironmentExecution.complete(operation.id, "scope", async () => ({ backend: "none" }))
         const executor = await EnvironmentExecution.connect(operation)
+        const inputs = await executor.prepareInputs!({
+          id: "sandboxed",
+          files: [{ name: "note.md", data: Buffer.from("reviewed note").toString("base64") }],
+        })
         const wrapper = await executor.prepareSandbox!({
           command: "/usr/bin/python3",
           args: [
@@ -71,6 +75,12 @@ test.skipIf(!image)(
             `
 from pathlib import Path
 import socket
+assert Path(${JSON.stringify(inputs.paths["note.md"])}).read_text() == "reviewed note"
+try:
+    Path(${JSON.stringify(inputs.paths["note.md"])}).write_text("changed")
+    raise AssertionError("staged input was writable")
+except OSError:
+    pass
 Path("allowed").write_text("contained")
 assert Path("/workspaces/.scratch/outside/readable").read_text() == "ordinary"
 try:
@@ -95,6 +105,7 @@ print(Path("allowed").read_text(), end="")
           workspace: "/workspaces/.scratch/selected",
           sandboxMode: "workspace_write",
           networkMode: "restricted",
+          extraReadRoots: Object.values(inputs.paths),
         })
         expect(wrapper.sandboxed).toBe(true)
         let sandboxed = await EnvironmentExecution.start({
@@ -104,6 +115,7 @@ print(Path("allowed").read_text(), end="")
           command: {
             command: wrapper.command,
             args: wrapper.args,
+            sandboxID: wrapper.id,
             cwd: "/workspaces/.scratch/selected",
             env: { PATH: "/usr/bin:/bin" },
             writableRoots: wrapper.writeFootprint?.kind === "roots" ? wrapper.writeFootprint.roots : null,

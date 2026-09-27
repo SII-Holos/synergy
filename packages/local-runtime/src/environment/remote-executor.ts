@@ -24,6 +24,12 @@ export class RemoteExecutor implements Executor {
   async describe() {
     return ExecutionProtocol.Description.parse(await this.request("GET", "/v1/runtime"))
   }
+  async prepareInputs(input: ExecutionProtocol.Inputs) {
+    return ExecutionProtocol.PreparedInputs.parse(await this.request("POST", "/v1/inputs", input))
+  }
+  async discardInputs(id: string) {
+    await this.request("DELETE", `/v1/inputs/${encodeURIComponent(ExecutionProtocol.ID.parse(id))}`)
+  }
   async prepareSandbox(input: ExecutionProtocol.SandboxInput) {
     return ExecutionProtocol.Sandbox.parse(await this.request("POST", "/v1/sandbox", input))
   }

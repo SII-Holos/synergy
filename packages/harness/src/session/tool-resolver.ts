@@ -34,6 +34,7 @@ import { SandboxHost } from "../sandbox/host"
 import { approvablePath, formatExplanationForModel } from "../sandbox/explain"
 import { SandboxSessionApproval } from "../sandbox/session-approval"
 import type { BashSandboxPrepare } from "../tool/bash-contract"
+import { ExecutionProtocol } from "../environment/executor"
 import type { ResolvedProfile } from "../control-profile/types"
 import { EnforcementError } from "../enforcement/errors"
 import { Config } from "../config/config"
@@ -1745,7 +1746,11 @@ export namespace ToolResolver {
                       })
                       const options = {
                         command: resources?.runtime?.shell ?? "/bin/sh",
-                        args: ["-c", input.command],
+                        args: ExecutionProtocol.shellArgs(
+                          resources?.runtime?.shell ?? "/bin/sh",
+                          resources?.runtime?.platform ?? process.platform,
+                          input.command,
+                        ),
                         workspace: workspace ?? "",
                         sandboxMode: sandbox.mode,
                         extraReadRoots: [

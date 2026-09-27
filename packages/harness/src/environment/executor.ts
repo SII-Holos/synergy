@@ -66,6 +66,28 @@ export namespace ExecutionProtocol {
     .min(1)
     .max(256)
     .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$/)
+  export const Inputs = z
+    .object({
+      id: ID,
+      files: z
+        .array(
+          z
+            .object({
+              name: z
+                .string()
+                .min(1)
+                .max(128)
+                .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]*$/),
+              data: z.string().max(12_000_000),
+            })
+            .strict(),
+        )
+        .max(16),
+    })
+    .strict()
+  export type Inputs = z.infer<typeof Inputs>
+  export const PreparedInputs = z.object({ paths: z.record(z.string(), z.string()), digest: z.string().length(64) })
+  export type PreparedInputs = z.infer<typeof PreparedInputs>
   export const Command = z
     .object({
       command: z.string().min(1).max(32768),
@@ -75,6 +97,7 @@ export namespace ExecutionProtocol {
       writableRoots: z.array(z.string()).nullable(),
       pty: z.object({ cols: z.number().int().min(1).max(65535), rows: z.number().int().min(1).max(65535) }).optional(),
       timeoutMs: z.number().int().positive().max(86_400_000).optional(),
+      sandboxID: z.string().uuid().optional(),
     })
     .strict()
     .meta({ ref: "EnvironmentCommand" })
@@ -125,9 +148,19 @@ export namespace ExecutionProtocol {
   export function terminal(status: Status) {
     return (status.state === "exited" || status.state === "cancelled") && status.treeDrained && status.streamsDrained
   }
+
+  export function shellArgs(shell: string, platform: string, command: string): string[] {
+    const name = shell.split(/[\\/]/).at(-1)?.toLowerCase()
+    if (platform === "win32" && ["cmd", "cmd.exe"].includes(name ?? "")) return ["/d", "/s", "/c", `"${command}"`]
+    if (platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(name ?? ""))
+      return ["-NoProfile", "-Command", command]
+    return ["-c", command]
+  }
 }
 
 export interface Executor {
+  prepareInputs?(input: ExecutionProtocol.Inputs): Promise<ExecutionProtocol.PreparedInputs>
+  discardInputs?(id: string): Promise<void>
   prepareSandbox?(input: ExecutionProtocol.SandboxInput): Promise<ExecutionProtocol.Sandbox>
   releaseSandbox?(id: string): Promise<void>
   /** Direct native adapters only; remote process IDs must never become controller OS identities. */

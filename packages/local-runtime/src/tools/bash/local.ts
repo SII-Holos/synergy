@@ -29,9 +29,11 @@ import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-
 import path from "node:path"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
 import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
+import { StringDecoder } from "node:string_decoder"
+import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -234,6 +236,9 @@ export namespace LocalBashBackend {
   ): Promise<BashResult> {
     const shell = resources.runtime!.shell
     const platform = resources.runtime!.platform
+    const executionID = createHash("sha256")
+      .update(JSON.stringify([ScopeContext.current.scope.id, ctx.sessionID, ctx.messageID, ctx.callID || randomUUID()]))
+      .digest("hex")
     log.info("bash tool using shell", { shell })
 
     const cwd = params.workdir || resources.directory!
@@ -446,6 +451,10 @@ export namespace LocalBashBackend {
       command: params.command,
       references: virtualFileReferences,
       scopeID: ScopeContext.current.scope.id,
+      executor: resources.executor!,
+      executionID,
+      shell,
+      platform,
     })
     let executionCommand = materialized.command
     executionCommand = withLinuxChildOomPreference(executionCommand, platform)
@@ -457,7 +466,9 @@ export namespace LocalBashBackend {
     let denialSession: DenialLoggerSession | null = null
     using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
     let artifactsCleaned = false
-    const cleanupExecutionArtifacts = () => {
+    let dispatched = false
+    const cleanupExecutionArtifacts = (saved = false) => {
+      if (dispatched && !saved) return
       if (artifactsCleaned) return
       artifactsCleaned = true
       // Audit drainage remains owned by the foreground execution scope, including early returns.
@@ -465,7 +476,7 @@ export namespace LocalBashBackend {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
       void sandboxWrapper?.cleanup?.().catch((error) => log.warn("sandbox cleanup failed", { error }))
-      materialized.cleanup()
+      void materialized.cleanup().catch((error) => log.warn("execution input cleanup failed", { error }))
     }
 
     try {
@@ -550,14 +561,15 @@ export namespace LocalBashBackend {
     }
 
     let sawOutput = false
-    const append = (chunk: Buffer) => {
+    const decoders = { stdout: new StringDecoder("utf8"), stderr: new StringDecoder("utf8") }
+    const append = (channel: RolloutProcess.Channel, chunk: Buffer) => {
       if (!sawOutput) {
         sawOutput = true
         void trace("bash.first_output", {
           bytes: chunk.length,
         })
       }
-      ProcessRegistry.appendOutput(regProc, chunk.toString())
+      ProcessRegistry.appendOutput(regProc, decoders[channel].write(chunk))
       scheduleMetadata()
     }
 
@@ -566,25 +578,35 @@ export namespace LocalBashBackend {
     try {
       if (sandboxWrapper?.skipReason && sandboxFallback === "deny")
         throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
-      const shellName = path.win32.basename(shell).toLowerCase()
-      const args =
-        platform === "win32" && ["cmd", "cmd.exe"].includes(shellName)
-          ? ["/d", "/s", "/c", `"${executionCommand}"`]
-          : platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(shellName)
-            ? ["-NoProfile", "-Command", executionCommand]
-            : ["-c", executionCommand]
+      const args = ExecutionProtocol.shellArgs(shell, platform, executionCommand)
       const invocation =
         sandboxWrapper && !sandboxWrapper.skipReason
           ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
           : { command: shell, args }
-      const id = createHash("sha256")
-        .update(JSON.stringify([ScopeContext.current.scope.id, ctx.sessionID, ctx.messageID, ctx.callID || regProc.id]))
+      const intentDigest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            command: executionCommand,
+            shell,
+            cwd,
+            env: Object.fromEntries(Object.entries(sandboxEnv).sort(([a], [b]) => a.localeCompare(b))),
+            inputs: materialized.digest,
+            sandbox: sandboxWrapper?.intentDigest ?? sandboxWrapper,
+          }),
+        )
         .digest("hex")
       owned = await EnvironmentProcess.prepare({
-        id,
+        id: executionID,
+        intentDigest,
         scopeID: ScopeContext.current.scope.id,
         resources,
-        command: { ...invocation, cwd, env: sandboxEnv, writableRoots: sandboxWriteRoots(sandboxWrapper) },
+        command: {
+          ...invocation,
+          cwd,
+          env: sandboxEnv,
+          writableRoots: sandboxWriteRoots(sandboxWrapper),
+          sandboxID: sandboxWrapper?.id,
+        },
         signal: ctx.abort,
       })
       child = owned.child
@@ -688,7 +710,7 @@ export namespace LocalBashBackend {
     const receive = (channel: RolloutProcess.Channel, chunk: Buffer) => {
       if (recordingFailure) return
       if (!evidence) {
-        append(chunk)
+        append(channel, chunk)
         return
       }
       const stream = channel === "stdout" ? child.stdout : child.stderr
@@ -697,7 +719,7 @@ export namespace LocalBashBackend {
       outputPending = outputPending
         .then(async () => {
           await evidence!.append(channel, chunk)
-          append(chunk)
+          append(channel, chunk)
         })
         .catch((error: unknown) => {
           recordingFailure ??= error instanceof Error ? error : new Error(String(error))
@@ -718,6 +740,7 @@ export namespace LocalBashBackend {
       finalized = true
       exited = true
       cleanupAllTimers()
+      for (const decoder of Object.values(decoders)) ProcessRegistry.appendOutput(regProc, decoder.end())
       if (metadataDirty) flushMetadata()
       const exitSignal = timedOut ? "SIGTERM" : signal
       ProcessRegistry.markStdioClosed(regProc, { drainTimedOut })
@@ -731,7 +754,7 @@ export namespace LocalBashBackend {
         ProcessRegistry.remove(regProc.id)
       }
       releaseChildReferences()
-      cleanupExecutionArtifacts()
+      cleanupExecutionArtifacts(true)
       void trace("bash.child.close", {
         exitCode: code,
         exitSignal: signal,
@@ -785,6 +808,7 @@ export namespace LocalBashBackend {
     ProcessRegistry.trackClosure(regProc, closing)
     if (owned) {
       try {
+        dispatched = true
         await owned.activate()
         regProc.pid = child.pid
         if (denialSession && child.pid) denialSession.adoptPid(child.pid)

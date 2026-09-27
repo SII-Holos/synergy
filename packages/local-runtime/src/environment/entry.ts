@@ -19,6 +19,7 @@ export async function startExecutionHost() {
     directory: `${directory}/receipts`,
     coordinator: new WorkspaceCoordinator({ directory: `${directory}/claims` }),
     runAs: { uid: 1000, gid: 1000 },
+    inputsRoot: "/run/synergy-sandbox/inputs",
     sandbox: executionSandbox({
       home: scratch,
       directory: "/run/synergy-sandbox",

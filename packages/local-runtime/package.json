@@ -56,6 +56,7 @@
     "./skill/manifest": "./src/skill/manifest.ts",
     "./workspace/worktree": "./src/workspace/worktree.ts",
     "./workspace/process": "./src/workspace/process.ts",
+    "./workspace/coordinator": "./src/workspace/coordinator.ts",
     "./workspace/relocation": "./src/workspace/relocation.ts",
     "./index": "./src/index.ts",
     "./register": "./src/register.ts",
