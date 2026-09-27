@@ -22,10 +22,12 @@ Native Workspace coordination owns canonical-root overlap and process identity f
 
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
-First-party native integrations use the declared `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports for native process ownership, byte-version validation and preservation of native symbolic-link kinds and exclusive file publication. Snapshot capture and restore share the Harness link encoding through the registered native link Host. They must still acquire Workspace claims before activation; the process module does not infer a writable footprint.
+Use public `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports. Preserve byte versions, native link kinds and exclusive publication. Snapshots use Harness link encoding. Acquire Workspace claims before activation; process ownership does not infer writable roots.
 
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
 
 Native release preparation builds and uploads each PTY target with its verified receipt. Build identity includes the PTY builder, native sources and libc target; shared CI preparation transfers the complete PTY output alongside watcher assets.
 
 Use `file/view` for selected Workspace paths and bounded content reads.
+
+`environment/profiles` owns global profiles and local/S3/OSS factories. Snapshot settings, fail closed, and keep external mounts read-only. Test `test/environment/profiles.test.ts`; `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` enables Docker integration.

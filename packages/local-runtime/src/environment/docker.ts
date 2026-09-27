@@ -37,7 +37,10 @@ export const DockerEnvironmentSpec = z
                 (value) => path.posix.normalize(value) === value && !value.includes("\0"),
                 "Mount target must be a normalized absolute path",
               ),
-            readOnly: z.boolean().default(false),
+            readOnly: z
+              .literal(true)
+              .default(true)
+              .describe("External mounts are read-only; writable files use a coordinated Workspace"),
           })
           .strict(),
       )

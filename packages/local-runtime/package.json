@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./environment/profiles": "./src/environment/profiles.ts",
     "./workspace/blob-store": "./src/workspace/blob-store.ts",
     "./environment/docker": "./src/environment/docker.ts",
     "./environment/host": "./src/environment/host.ts",

@@ -38,6 +38,8 @@ Plugin Host callbacks carry the invocation's canonical resource selection across
 
 ## Alternatives considered
 
+Product resource profiles snapshot storage locations and execution settings into their existing durable records. Composition registers provider factories before sealing; loading configuration never mutates the provider registry. Only secret references remain indirect so credentials can rotate independently of storage identity. The resource domain is global-only and fails closed: quarantining an invalid remote default into empty configuration could otherwise choose the native host. Uncoordinated external Docker mounts are read-only; mutable Workspace views retain one writer and checkpoint owner.
+
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.
 
 **Keep inspecting a deleted native receipt.** Supervisor cleanup legitimately removes temporary process resources. Completion is verified before cleanup and carried in the coordinator's durable record instead of treating an absent receipt as proof.

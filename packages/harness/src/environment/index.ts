@@ -67,13 +67,13 @@ export namespace Environment {
     if (input.environmentID) return share(input.environmentID, input)
     const existing = await binding(input.scopeID, input.ownerID)
     if (existing) return existing
-    const selection = EnvironmentProviders.defaultSelection()
+    const selection = await EnvironmentProviders.resolveDefault()
     if (!selection) return undefined
     const sharedOwner =
       selection.reuse === "scope"
-        ? ["default", "scope", input.scopeID]
+        ? ["default", "scope", input.scopeID, selection.provider, canonical(selection.spec)]
         : selection.reuse === "workspace" && input.workspaceID
-          ? ["default", "workspace", input.workspaceID]
+          ? ["default", "workspace", input.workspaceID, selection.provider, canonical(selection.spec)]
           : undefined
     const environment = await bind({
       ...input,

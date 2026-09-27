@@ -76,7 +76,10 @@ for (const providerID of ["native", "docker"] as const)
     async () => {
       const docker =
         providerID === "docker"
-          ? dockerEnvironment({ endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock" })
+          ? dockerEnvironment({
+              id: "fixture-docker",
+              endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
+            })
           : undefined
       await using runtime = await testRuntime({
         register() {
@@ -108,7 +111,7 @@ for (const providerID of ["native", "docker"] as const)
             const environment = await Environment.bind({
               scopeID: scope.id,
               ownerID: "plugin",
-              provider: providerID,
+              provider: docker?.id ?? providerID,
               spec: docker ? { image: image! } : {},
             })
             const session = await Session.create({ workspaceID: workspace.id, environmentID: environment.id })

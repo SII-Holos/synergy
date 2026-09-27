@@ -21,6 +21,7 @@ import { registerConfig } from "./config-schema"
 import { registerNativeEnvironment } from "./environment/native"
 import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { WorkspaceCoordinator } from "./workspace/coordinator"
+import { ResourceProfiles } from "./environment/profiles"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -45,6 +46,7 @@ export function registerLocalRuntime(
   if (options.environment !== false) {
     registerNativeEnvironment({ coordinator })
     EnvironmentProviders.setDefault({ provider: "native", spec: {}, reuse: "scope" })
+    ResourceProfiles.register()
   }
   registerSkillDomain()
   registerCommandDomain()

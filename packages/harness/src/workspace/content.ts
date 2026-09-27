@@ -14,15 +14,25 @@ export interface BlobStore {
 }
 
 export namespace WorkspaceBlobs {
-  const stores = RuntimeContext.state(() => new Map<string, BlobStore>())
+  type Factory = (settings: Record<string, unknown>) => BlobStore
+  const stores = RuntimeContext.state(() => new Map<string, { factory: Factory; cache: Map<string, BlobStore> }>())
   export function register(id: string, store: BlobStore) {
+    registerFactory(id, () => store)
+  }
+  export function registerFactory(id: string, factory: Factory) {
     RuntimeContext.assertCompositionOpen("Workspace blob stores")
     if (stores().has(id)) throw new Error(`Duplicate Workspace blob store: ${id}`)
-    stores().set(id, store)
+    stores().set(id, { factory, cache: new Map() })
   }
-  export function get(id: string) {
-    const store = stores().get(id)
-    if (!store) throw new Error(`Workspace blob store is unavailable: ${id}`)
+  export function get(id: string, settings: Record<string, unknown> = {}) {
+    const entry = stores().get(id)
+    if (!entry) throw new Error(`Workspace blob store is unavailable: ${id}`)
+    const key = JSON.stringify(settings)
+    const cached = entry.cache.get(key)
+    if (cached) return cached
+    const store = entry.factory(settings)
+    entry.cache.set(key, store)
+    while (entry.cache.size > 32) entry.cache.delete(entry.cache.keys().next().value!)
     return store
   }
 }
@@ -31,7 +41,9 @@ export namespace WorkspaceContent {
   const cache = RuntimeContext.state(
     () => [] as Array<{ store: BlobStore; hash: string; bytes: number; tree: WorkspaceTree.Manifest }>,
   )
-  export const Spec = z.object({ blobStore: z.string().min(1) }).strict()
+  export const Spec = z
+    .object({ blobStore: z.string().min(1), settings: z.record(z.string(), z.unknown()).optional() })
+    .strict()
   export type Selection = { workspaceID: string; scopeID: string; generation?: number }
 
   export async function resolve(input: Selection, mounted = false) {
@@ -48,7 +60,8 @@ export namespace WorkspaceContent {
         workspaceID: info.id,
         message: "Read and write this Workspace through its active mount",
       })
-    const store = WorkspaceBlobs.get(Spec.parse(info.backend.spec).blobStore)
+    const spec = Spec.parse(info.backend.spec)
+    const store = WorkspaceBlobs.get(spec.blobStore, spec.settings)
     return { info, store }
   }
 

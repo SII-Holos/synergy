@@ -2907,6 +2907,95 @@ export type WorktreeConfig = {
   janitor?: boolean
 }
 
+export type ResourcesConfig = {
+  /**
+   * Environment profile selected for new Sessions; null disables automatic selection
+   */
+  defaultEnvironment?: string | null
+  environments?: {
+    [key: string]:
+      | {
+          provider: "native"
+          spec?: {
+            [key: string]: never
+          }
+          idleTimeoutMs?: number
+          reuse?: "session" | "workspace" | "scope"
+        }
+      | {
+          provider: "docker"
+          spec: {
+            image: string
+            memoryBytes?: number
+            cpus?: number
+            pids?: number
+            mounts?: Array<{
+              type: "bind" | "volume"
+              source: string
+              target: string
+              /**
+               * External mounts are read-only; writable files use a coordinated Workspace
+               */
+              readOnly?: true
+            }>
+            host: {
+              endpoint: string
+              engineTLS?: {
+                certRef: string
+                keyRef: string
+                caRef?: string
+              }
+              executionHostname?: string
+              publishHostIP?: string
+              executionTLS?: {
+                certRef: string
+                keyRef: string
+                caRef?: string
+              }
+            }
+          }
+          idleTimeoutMs?: number
+          reuse?: "session" | "workspace" | "scope"
+        }
+  }
+  stores?: {
+    [key: string]:
+      | {
+          provider: "local"
+          spec: {
+            namespace?: string
+          }
+        }
+      | {
+          provider: "s3"
+          spec: {
+            bucket: string
+            region: string
+            endpoint?: string
+            prefix?: string
+            /**
+             * Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON
+             */
+            credentialsRef: string
+          }
+        }
+      | {
+          provider: "oss"
+          spec: {
+            bucket: string
+            region: string
+            endpoint?: string
+            prefix?: string
+            /**
+             * Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON
+             */
+            credentialsRef: string
+            cname?: boolean
+          }
+        }
+  }
+}
+
 export type MemoryConfig = {
   /**
    * Enable agent-initiated memory curation via chronicler (default: true)
@@ -4808,6 +4897,7 @@ export type Config = {
   }
   skills?: SkillsConfig
   worktree?: WorktreeConfig
+  resources?: ResourcesConfig
   library?: LibraryConfig
   embedding?: EmbeddingConfig
   rerank?: RerankConfig
@@ -5752,6 +5842,7 @@ export type ConfigDomainSummary = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -5810,6 +5901,7 @@ export type ConfigExportResult = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -5870,6 +5962,7 @@ export type ConfigDomainImportDomainPlan = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -5925,6 +6018,7 @@ export type ConfigDomainImportPlanInput = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -6010,6 +6104,7 @@ export type ConfigImportRevisionConflictError = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -6043,6 +6138,7 @@ export type ConfigDomainImportApplyInput = {
     | "permissions"
     | "runtime"
     | "storage"
+    | "resources"
     | "skills"
     | "worktree"
     | "library"
@@ -10526,17 +10622,17 @@ export type HolosAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 
-export type EventWorkspaceUpdated = {
-  type: "workspace.updated"
-  properties: WorkspaceInfo
-}
-
 export type EventScopeRuntimeDisposed = {
   type: "scope.runtime.disposed"
   properties: {
     scopeID: string
     directory?: string
   }
+}
+
+export type EventWorkspaceUpdated = {
+  type: "workspace.updated"
+  properties: WorkspaceInfo
 }
 
 export type EventProviderAuthUpdated = {
@@ -11192,8 +11288,8 @@ export type EventRuntimeReloaded = {
 }
 
 export type Event =
-  | EventWorkspaceUpdated
   | EventScopeRuntimeDisposed
+  | EventWorkspaceUpdated
   | EventProviderAuthUpdated
   | EventConfigUpdated
   | EventInstallationUpdated
@@ -14066,6 +14162,7 @@ export type ConfigDomainGetData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14118,6 +14215,7 @@ export type ConfigDomainUpdateData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14170,6 +14268,7 @@ export type ConfigDomainOpenData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14230,6 +14329,7 @@ export type ConfigExportData = {
       | "permissions"
       | "runtime"
       | "storage"
+      | "resources"
       | "skills"
       | "worktree"
       | "library"
@@ -14249,6 +14349,7 @@ export type ConfigExportData = {
           | "permissions"
           | "runtime"
           | "storage"
+          | "resources"
           | "skills"
           | "worktree"
           | "library"

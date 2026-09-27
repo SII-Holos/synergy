@@ -42,6 +42,10 @@ A confirmed missing allocation with a retained live Workspace view remains unava
 
 ## Execution transport and Docker
 
+The global `resources` configuration domain supplies named Environment and object-storage profiles. The product registers native and configured Docker providers, plus local-object, S3 and OSS factories during composition. Selection copies non-secret settings into durable resource records; subsequent profile edits affect new resources, not existing storage locations or allocations. Credentials and TLS keys are Secret Vault references resolved by their owner. Malformed resource configuration fails closed and is not quarantined into an implicit native default. Project configuration cannot override execution hosts or storage authority.
+
+The built-in `native` profile remains the default. `defaultEnvironment: null` disables automatic execution selection. Docker profiles default to Session reuse, while native uses Scope reuse; an explicit profile can choose Session, Workspace or Scope reuse. Defining or selecting a profile never starts compute. External Docker bind mounts and named volumes are read-only inputs; writable files use the coordinated Workspace view.
+
 The Execution Host serves the same Executor over authenticated Unix sockets or HTTPS. Every request carries the allocation target; stale generations fail before dispatch. HTTP controls submission, inspection, cancellation and save acknowledgement. SSE carries cursor-based replay. WebSocket output frames contain a stream discriminator, a big-endian cursor and binary bytes; clients send binary stdin or JSON resize/end controls. Disconnect does not cancel execution. Transport credentials are private control-plane secrets and never enter command environments.
 
 Sandbox preparation and cleanup belong to the selected Executor. The control plane sends policy inputs and receives the target compiler's containment verdict and write footprint. Temporary profile paths remain private to that host; cleanup uses an opaque preparation ID. Native providers delegate to the registered OS sandbox host. An Executor with no sandbox implementation reports unavailable containment.

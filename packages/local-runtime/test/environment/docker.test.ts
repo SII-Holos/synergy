@@ -30,6 +30,7 @@ test.skipIf(!image)(
   "Docker compute starts on demand, preserves output and runs commands without host credentials",
   async () => {
     const provider = dockerEnvironment({
+      id: "fixture-docker",
       endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
     })
     await using runtime = await testRuntime({ register: () => EnvironmentProviders.register(provider) })
@@ -37,7 +38,7 @@ test.skipIf(!image)(
       const environment = await Environment.bind({
         scopeID: "scope",
         ownerID: "session",
-        provider: "docker",
+        provider: provider.id,
         spec: { image: image! },
       })
       expect(environment.state).toBe("idle")
@@ -179,6 +180,7 @@ test.skipIf(!image)(
   async () => {
     let failUploads = false
     const provider = dockerEnvironment({
+      id: "fixture-docker",
       endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
     })
     await using runtime = await testRuntime({
@@ -197,7 +199,7 @@ test.skipIf(!image)(
       const environment = await Environment.bind({
         scopeID: "scope",
         ownerID: "session",
-        provider: "docker",
+        provider: provider.id,
         spec: { image: image! },
       })
       const workspace = await WorkspaceCatalog.create({
@@ -289,6 +291,7 @@ test.skipIf(!image)(
   "session terminals and user shell share the selected Docker Environment and recoverable Workspace",
   async () => {
     const provider = dockerEnvironment({
+      id: "fixture-docker",
       endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
     })
     await using runtime = await localRuntime({
@@ -310,7 +313,7 @@ test.skipIf(!image)(
           const environment = await Environment.bind({
             scopeID,
             ownerID: "terminal",
-            provider: "docker",
+            provider: provider.id,
             spec: { image: image! },
           })
           const workspace = await WorkspaceCatalog.create({
@@ -454,6 +457,7 @@ test.skipIf(!image)(
   "restarting the controller saves an existing Docker result without executing it again",
   async () => {
     const provider = dockerEnvironment({
+      id: "fixture-docker",
       endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
     })
     await using home = await runtimeHome()
@@ -470,7 +474,12 @@ test.skipIf(!image)(
     try {
       await first.run(async () => {
         environmentID = (
-          await Environment.bind({ scopeID: "scope", ownerID: "restart", provider: "docker", spec: { image: image! } })
+          await Environment.bind({
+            scopeID: "scope",
+            ownerID: "restart",
+            provider: provider.id,
+            spec: { image: image! },
+          })
         ).id
         workspaceID = (
           await WorkspaceCatalog.create({

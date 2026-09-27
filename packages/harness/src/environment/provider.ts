@@ -32,7 +32,10 @@ export interface EnvironmentProvider {
 
 export namespace EnvironmentProviders {
   const providers = RuntimeContext.state(() => new Map<string, EnvironmentProvider>())
-  const defaults = RuntimeContext.state(() => ({ selection: undefined as Default | undefined }))
+  const defaults = RuntimeContext.state(() => ({
+    selection: undefined as Default | undefined,
+    resolve: undefined as (() => Promise<Default | undefined>) | undefined,
+  }))
   export interface Default {
     provider: string
     spec: EnvironmentSchema.Info["spec"]
@@ -52,6 +55,16 @@ export namespace EnvironmentProviders {
 
   export function defaultSelection(): Default | undefined {
     return structuredClone(defaults().selection)
+  }
+
+  export function setDefaultResolver(resolve: () => Promise<Default | undefined>) {
+    RuntimeContext.assertCompositionOpen("Default Environment resolver")
+    if (defaults().resolve) throw new Error("Default Environment resolver is already registered")
+    defaults().resolve = resolve
+  }
+
+  export async function resolveDefault(): Promise<Default | undefined> {
+    return defaults().resolve ? defaults().resolve!() : defaultSelection()
   }
 
   export function register(provider: EnvironmentProvider) {
