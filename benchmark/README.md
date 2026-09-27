@@ -6,6 +6,8 @@
 
 需要 POSIX 宿主（Linux、macOS 或 WSL）、Python 3.12、uv、Docker Linux containers 和源码声明的 Bun 版本。首次准备下载不可变输入和依赖，后续复用缓存。编辑 [A/B 配置](configs/ab.yaml) 的独立模型端点、协议、模型名和凭据环境变量引用。
 
+Docker 资源采样要求本机 Unix 端点，包括 Docker Desktop 的本机 context。TCP、SSH 和 Windows named pipe 端点会在首次资源采样时立即报错并停止后续派发；错误不包含端点地址。临时断连或过期采样仍进入现有压力队列，恢复有效采样后可继续准入。
+
 当前 DeepSeek `0.1.5-rc.1` 的准备配方固定同版 Web bundle，避免宽松依赖范围选中缺少已发布子包的 `rc.3`。覆盖项和解析后的 lock 都进入产物身份；其他显式版本不继承此例外。升级该版本时重新验收并移除例外，见[依赖固定决策](../docs/decisions/implemented/bug-fix/2026-09-22-pin-deepseek-native-web-bundle.md)。
 
 ```bash

@@ -21,7 +21,7 @@ import psutil
 
 from .cache import cache_lock
 from .config import Resources
-from .docker_resources import DockerSnapshot, DockerStats
+from .docker_resources import DockerEndpointError, DockerSnapshot, DockerStats
 from .prepare import command
 from .storage import atomic_json, read_json
 
@@ -397,6 +397,8 @@ class ResourcePool:
                 if self.sampler:
                     try:
                         self._snapshot = await self.sampler.snapshot()
+                    except DockerEndpointError:
+                        raise
                     except (
                         OSError,
                         ValueError,

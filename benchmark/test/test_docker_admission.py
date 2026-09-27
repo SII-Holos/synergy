@@ -242,6 +242,52 @@ async def test_missing_or_stale_daemon_samples_never_become_free_memory(tmp_path
     assert pool.active == 0
 
 
+@pytest.mark.parametrize(
+    "endpoint", ["tcp://127.0.0.1:2375", "ssh://example.invalid", "npipe:////./pipe/docker_engine"]
+)
+@pytest.mark.parametrize("context", [False, True])
+async def test_unsupported_docker_endpoint_fails_before_pressure_wait_or_lease(
+    tmp_path, monkeypatch, endpoint, context
+):
+    import json
+
+    from synergy_bench.docker_resources import DockerStats
+
+    monkeypatch.setenv("DOCKER_HOST", "unix:///unused.sock" if context else endpoint)
+    if context:
+        monkeypatch.setenv("DOCKER_CONTEXT", "unsupported-fixture")
+        monkeypatch.setattr("synergy_bench.docker_resources.command", lambda *args, **kwargs: json.dumps(endpoint))
+    else:
+        monkeypatch.delenv("DOCKER_CONTEXT", raising=False)
+    pool = ResourcePool(Capacity(4, 1000), 4, sampler=DockerStats(), shared_directory=tmp_path)
+
+    def wait(reason):
+        pytest.fail("Unsupported endpoints must not enter the pressure queue")
+
+    with pytest.raises(ValueError, match="local Docker Unix endpoint") as error:
+        async with pool.reserve(Request(1, 100), on_wait=wait, project="sb-unsupported"):
+            pytest.fail("Unsupported endpoints must not admit work")
+    assert type(error.value).__name__ == "DockerEndpointError"
+    assert endpoint not in str(error.value)
+    assert pool.active == 0
+    assert list(tmp_path.glob("*.json")) == []
+
+
+async def test_transient_docker_sample_failure_recovers_through_pressure_queue():
+    import time
+    from unittest.mock import AsyncMock
+
+    from synergy_bench.docker_resources import DockerSnapshot
+
+    sampler = SimpleNamespace(snapshot=AsyncMock(side_effect=[OSError("unavailable"), DockerSnapshot(time.time(), [])]))
+    pool = ResourcePool(Capacity(4, 1000), 4, sampler=sampler)
+    reasons = []
+    async with pool.reserve(Request(1, 100), on_wait=reasons.append):
+        assert pool.active == 1
+    assert reasons == ["docker_sample_unavailable"]
+    assert pool.active == 0
+
+
 async def test_old_shared_lease_cannot_silently_disappear(tmp_path):
     from synergy_bench.resources import ResourcePressureError
     from synergy_bench.storage import atomic_json

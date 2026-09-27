@@ -12,6 +12,10 @@ import aiohttp
 from .prepare import command
 
 
+class DockerEndpointError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class DockerSnapshot:
     captured_at: float
@@ -56,7 +60,7 @@ class DockerStats:
                 )
                 self._endpoint = json.loads(value)
         if not isinstance(self._endpoint, str) or not self._endpoint.startswith("unix://"):
-            raise ValueError("Resource sampling requires the local Docker Unix endpoint")
+            raise DockerEndpointError("Resource sampling requires the local Docker Unix endpoint")
         return self._endpoint
 
     async def snapshot(self) -> DockerSnapshot:
