@@ -84,9 +84,9 @@ export namespace Tool {
   ) {
     const resources = ctx.resources
     const run = async () => {
-      if (!required) return fn()
       const selected = resources?.workspace
       const workspace = ScopeContext.current.workspace
+      if (!required && !selected) return fn()
       if (!workspace && !selected)
         throw new Scope.WorkspaceRequiredError({
           message: "This tool requires a Workspace.",
@@ -96,7 +96,11 @@ export namespace Tool {
       const execute = () =>
         workspace && (!selected || (selected.id === workspace.id && selected.binding.path === resources?.directory))
           ? WorkspaceRuntime.withUse(ScopeContext.current.scope, workspace, ctx.sessionID, fn)
-          : fn()
+          : WorkspaceRuntime.ensure(ScopeContext.current.scope, {
+              id: selected!.id,
+              generation: selected!.binding.generation,
+              scopeID: selected!.scopeID,
+            }).then(fn)
       return selected
         ? WorkspaceState.provide(
             { id: selected.id, generation: selected.binding.generation, scopeID: selected.scopeID },

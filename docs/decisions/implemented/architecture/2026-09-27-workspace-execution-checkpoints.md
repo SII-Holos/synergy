@@ -32,6 +32,8 @@ Language servers hold durable Environment executions instead of controller proce
 
 Formatter commands carry canonical file and byte-version preconditions to the Executor. Checking after physical admission prevents a queued formatter from overwriting a foreign edit. Confirmed failed process launches remain eligible for saving; a failed command alone is not evidence of uncertain physical completion.
 
+Workspace services start from catalog identity and binding generation, including logical backends without a controller directory. The Executor observes its own mounted tree and exposes a bounded epoch/version cursor; restarting a subscription changes its epoch. File panels poll existing views without acquiring Environment uses or allocating compute, invalidate their caches on catalog or observation changes, and drain polling on Workspace disposal. Catalog head and mount changes increment the same revision and publish committed events. Branch discovery uses the selected Environment and resynchronizes after view changes.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

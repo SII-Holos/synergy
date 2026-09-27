@@ -11,7 +11,7 @@ export interface ExecutorConnection {
 
 export class ExecutionConnection {
   constructor(private readonly connection: ExecutorConnection) {}
-  async send(method: string, route: string, body?: unknown, binary = false) {
+  async send(method: string, route: string, body?: unknown, binary = false, signal?: AbortSignal) {
     const response = await fetch(new URL(route, this.connection.url), {
       method,
       unix: this.connection.unix,
@@ -27,7 +27,7 @@ export class ExecutionConnection {
           : binary && body instanceof Uint8Array
             ? new Uint8Array(body)
             : JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.any([AbortSignal.timeout(30_000), ...(signal ? [signal] : [])]),
       redirect: "error",
     })
     if (response.status === 404) return undefined
@@ -62,8 +62,8 @@ export class ExecutionConnection {
     }
     return response
   }
-  async json(method: string, route: string, body?: unknown): Promise<unknown> {
-    const response = await this.send(method, route, body)
+  async json(method: string, route: string, body?: unknown, signal?: AbortSignal): Promise<unknown> {
+    const response = await this.send(method, route, body, false, signal)
     return response?.json()
   }
 }

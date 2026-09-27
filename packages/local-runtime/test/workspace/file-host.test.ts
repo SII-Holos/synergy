@@ -218,8 +218,10 @@ test("a completed directory mutation retries only its failed checkpoint after a 
     readOnly: false,
     source: { kind: "materialized", manifest },
   })
-  host.putBlob = async () => {
-    throw new Error("checkpoint interrupted")
+  const put = host.putBlob.bind(host)
+  host.putBlob = async (hash, bytes) => {
+    if (await fs.stat(path.join(mount.path, "folder")).catch(() => undefined)) throw new Error("checkpoint interrupted")
+    await put(hash, bytes)
   }
   const input = { id: "mkdir", mount, change: { kind: "mkdir" as const, path: "folder" } }
   await expect(host.mutate(input)).rejects.toThrow("checkpoint interrupted")

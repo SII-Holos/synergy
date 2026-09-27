@@ -1,8 +1,11 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { parseArgs } from "node:util"
+import { buildWatcher } from "./build-watcher"
 
-export async function buildExecutionHost(input: { image: string }) {
+export async function buildExecutionHost(input: { image: string; arch?: string }) {
+  const arch = input.arch ?? process.arch
+  if (arch !== "x64" && arch !== "arm64") throw new Error("Execution Host supports x64 and arm64 Linux images")
   const owner = path.resolve(import.meta.dir, "..")
   const directory = path.join(owner, ".artifacts", "execution-host")
   await fs.rm(directory, { recursive: true, force: true })
@@ -29,10 +32,14 @@ export async function buildExecutionHost(input: { image: string }) {
     filter: (filename) => path.basename(filename) !== "target",
   })
   await fs.copyFile(path.join(owner, "execution-host.Dockerfile"), path.join(directory, "Dockerfile"))
-  const child = Bun.spawn(["docker", "build", "--tag", input.image, directory], {
-    stdout: "inherit",
-    stderr: "inherit",
-  })
+  await fs.copyFile(await buildWatcher({ arch, libc: "glibc" }), path.join(directory, "watcher.node"))
+  const child = Bun.spawn(
+    ["docker", "build", "--platform", `linux/${arch === "x64" ? "amd64" : "arm64"}`, "--tag", input.image, directory],
+    {
+      stdout: "inherit",
+      stderr: "inherit",
+    },
+  )
   if ((await child.exited) !== 0) throw new Error("Execution Host image build failed")
   return input.image
 }
@@ -40,7 +47,7 @@ export async function buildExecutionHost(input: { image: string }) {
 if (import.meta.main) {
   const { values } = parseArgs({
     args: process.argv.slice(2),
-    options: { image: { type: "string", default: "synergy-execution-host:development" } },
+    options: { image: { type: "string", default: "synergy-execution-host:development" }, arch: { type: "string" } },
   })
-  await buildExecutionHost({ image: values.image })
+  await buildExecutionHost({ image: values.image, arch: values.arch })
 }

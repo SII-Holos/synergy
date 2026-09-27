@@ -2,6 +2,9 @@ import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { BusEvent } from "../bus/bus-event"
+import { Bus } from "../bus"
+import { Scope } from "../scope"
+import { ScopeContext } from "../scope/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import type { Workspace } from "../session/workspace-schema"
@@ -50,6 +53,11 @@ export namespace WorkspaceCatalog {
     .meta({ ref: "WorkspaceInfo" })
   export type Info = z.infer<typeof Info>
   export const Event = { Updated: BusEvent.define("workspace.updated", Info) }
+  export async function publishUpdated(info: Info) {
+    const scope = await Scope.fromID(info.scopeID)
+    if (!scope) return
+    await ScopeContext.provide({ scope, workspace: null, fn: () => Bus.publish(Event.Updated, info) })
+  }
   export const Invalid = NamedError.create(
     "WorkspaceInvalid",
     z.object({ message: z.string(), workspaceID: z.string() }),
@@ -165,6 +173,7 @@ export namespace WorkspaceCatalog {
     return Storage.transaction(async () => {
       await Storage.write(recordKey(info.id), info)
       await Storage.write(scopeKey(info.scopeID, info.id), info.id)
+      await publishUpdated(info)
       return info
     })
   }
@@ -203,6 +212,7 @@ export namespace WorkspaceCatalog {
       }
       const next = Info.parse({
         ...latest,
+        revision: latest.revision + 1,
         content: { revision: (latest.content?.revision ?? 0) + 1, manifest },
         updatedAt: Date.now(),
       })
@@ -214,6 +224,7 @@ export namespace WorkspaceCatalog {
         createdAt: next.updatedAt,
       })
       await Storage.write(recordKey(next.id), next)
+      await publishUpdated(next)
       return next
     })
   }

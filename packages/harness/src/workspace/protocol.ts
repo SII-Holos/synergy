@@ -11,6 +11,8 @@ export namespace WorkspaceProtocol {
     .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$/)
   export const Reference = z.object({ id: ID, workspaceID: ID, generation: z.number().int().positive() })
   export type Reference = z.infer<typeof Reference>
+  export const Observation = z.object({ epoch: z.string().uuid(), version: z.number().int().nonnegative() })
+  export type Observation = z.infer<typeof Observation>
   export const MountInput = Reference.extend({
     readOnly: z.boolean().default(false),
     source: z.discriminatedUnion("kind", [
@@ -119,6 +121,7 @@ export namespace WorkspaceProtocol {
   export const Request = z.discriminatedUnion("action", [
     z.object({ action: z.literal("mount"), input: MountInput }),
     z.object({ action: z.literal("inspect"), mount: Reference }),
+    z.object({ action: z.literal("observe"), mount: Reference }),
     z.object({ action: z.literal("detach"), mount: Reference }),
     z.object({ action: z.literal("read"), input: ReadInput }),
     z.object({
@@ -146,6 +149,7 @@ export namespace WorkspaceProtocol {
 export interface WorkspaceFileHost {
   mount(input: WorkspaceProtocol.MountInput): Promise<WorkspaceProtocol.Mount>
   inspect(mount: WorkspaceProtocol.Reference): Promise<WorkspaceProtocol.Mount | undefined>
+  observe?(mount: WorkspaceProtocol.Reference, signal?: AbortSignal): Promise<WorkspaceProtocol.Observation>
   detach(mount: WorkspaceProtocol.Reference): Promise<void>
   stat(mount: WorkspaceProtocol.Reference, path: string, follow?: boolean): Promise<WorkspaceProtocol.Item | undefined>
   canonical(mount: WorkspaceProtocol.Reference, path: string, follow: boolean): Promise<string>

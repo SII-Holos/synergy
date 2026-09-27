@@ -181,6 +181,8 @@ A Linux scan that stalls rather than failing (typically a network-filesystem sub
 
 Workspace events enter one per-Workspace drain that deduplicates paths, processes one batch at a time, bounds pending paths, and updates the file index without resolving Git status. Git-status reads share one in-flight build and perform at most one follow-up build when invalidated during that work. VCS branch refreshes run only for the dedicated Git `HEAD` event, not for ordinary file changes. If the watcher queue overflows, the backend invalidates its caches and emits one `file.watcher.updated` event with `resync: true`; the File context refreshes the root, expanded directories, and active document. `SYNERGY_DISABLE_FILEWATCHER=1` remains a diagnostic escape hatch. Refocus, refresh, and directory expansion still validate state, so correctness does not depend on lossless per-file delivery.
 
+Logical Workspace services use catalog identity and binding generation without projecting a controller path. Mounted views expose an observation epoch and monotonic version from the execution host's native watcher; the execution image includes the verified Linux binding. Observation polls existing mounts without holding Environment uses, so a file panel cannot allocate compute or prevent idle reclamation. Content publication, attachment, detachment and observation changes invalidate file caches and emit a Workspace resync, including branch refresh. A new subscription epoch forces a refresh after listener recovery. Catalog changes increment their revision and publish events in the same business transaction.
+
 ## Classic and Anchored Coding Tools
 
 Synergy supports ordinary file tools and an anchored coding harness. The anchored family uses:

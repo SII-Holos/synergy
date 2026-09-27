@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks"
 import { RuntimeContext } from "../lifecycle/context"
 import { ScopeStartup } from "../scope/startup"
 import { WorkspaceBinding } from "./binding"
+import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceState } from "./state"
 import { WorkspaceAccess } from "./access"
 import { SessionWorkspaceRuntime } from "../session/workspace-runtime"
@@ -50,9 +51,22 @@ export namespace WorkspaceRuntime {
     disposing: new Map<string, Promise<void>>(),
   }))
 
-  export async function ensure(scope: Scope, workspace: Workspace): Promise<void> {
+  export async function ensure(
+    scope: Scope,
+    workspace: Workspace | { id: string; generation: number; scopeID: string },
+  ): Promise<void> {
     if (!workspace.id) throw new Error("Workspace must be registered before starting file resources")
-    await WorkspaceBinding.validate(workspace.id, scope.id, workspace.generation)
+    if ("path" in workspace) await WorkspaceBinding.validate(workspace.id, scope.id, workspace.generation)
+    else {
+      const info = await WorkspaceCatalog.get(workspace.id, scope.id)
+      if (info.binding.generation !== workspace.generation)
+        throw new WorkspaceCatalog.BindingChanged({ workspaceID: workspace.id, message: "Workspace binding changed" })
+      if (info.lifecycle !== "active" || info.binding.state !== "bound")
+        throw new WorkspaceCatalog.Unavailable({
+          workspaceID: workspace.id,
+          message: "Workspace has no active storage authority",
+        })
+    }
     const current = state()
     await current.disposing.get(scope.id)
     if (current.stopped) throw new Error("Workspace runtime is stopping")

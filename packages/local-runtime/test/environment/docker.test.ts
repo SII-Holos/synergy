@@ -221,6 +221,8 @@ test.skipIf(!image)(
         expect(resolved.runtime?.shell).toBe("/bin/bash")
         expect(resolved.runtime?.env).not.toHaveProperty("SYNERGY_EXECUTION_TOKEN")
         await resolved.release()
+        const observed = await WorkspaceMounts.connect(mounted)
+        const before = await observed.observe!(WorkspaceMounts.reference(mounted))
         const target = mounted.activeMount!.path
         let operation = await EnvironmentExecution.start({
           id: "transform",
@@ -240,6 +242,11 @@ test.skipIf(!image)(
           operation = await EnvironmentExecution.reconcile(operation.id, "scope")
         }
         expect(operation.status?.exitCode).toBe(0)
+        const observationDeadline = Date.now() + 5000
+        while ((await observed.observe!(WorkspaceMounts.reference(mounted))).version === before.version) {
+          if (Date.now() > observationDeadline) throw new Error("Docker Workspace observation did not advance")
+          await Bun.sleep(20)
+        }
         failUploads = true
         await expect(EnvironmentExecution.complete(operation.id, "scope")).rejects.toThrow("object store unavailable")
         expect((await EnvironmentExecution.get(operation.id, "scope")).state).toBe("unsaved")

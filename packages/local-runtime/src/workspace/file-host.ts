@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import { constants } from "node:fs"
 import path from "node:path"
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
@@ -14,6 +14,15 @@ import { NativeFileMutation } from "../file/mutation-core"
 import { WorkspaceCoordinator } from "./coordinator"
 import { NativeWorkspaceTree } from "./tree"
 import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
+import { FileWatcherBinding } from "../file/watcher-binding"
+// @ts-ignore
+import { createWrapper } from "@parcel/watcher/wrapper"
+import type { AsyncSubscription } from "@parcel/watcher"
+import { FileWatcherEvents } from "../file/watcher-events"
+
+// Executor observation also runs without an Agent Runtime; the kernel watch budget is process-wide.
+const observationGate = FileWatcherEvents.createSerialQueue()
+let observationCapacityTripped = false
 
 const MountReceipt = z.object({
   input: WorkspaceProtocol.MountInput,
@@ -39,6 +48,7 @@ type Receipt = z.infer<typeof Receipt>
 export class NativeWorkspaceFiles implements WorkspaceFileHost {
   private readonly pending = new Map<string, Promise<unknown>>()
   private readonly shutdown = new AbortController()
+  private readonly observations = new Map<string, WorkspaceProtocol.Observation & { watcher: AsyncSubscription }>()
   constructor(
     private readonly options: {
       directory: string
@@ -158,6 +168,50 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     const mount = await this.inspect(reference)
     if (!mount) throw new Error("Workspace mount is unavailable")
     return mount
+  }
+  async observe(reference: WorkspaceProtocol.Reference, signal?: AbortSignal) {
+    signal?.throwIfAborted()
+    return this.serial(`mount:${reference.id}`, async () => {
+      const mount = await this.required(reference)
+      let current = this.observations.get(mount.id)
+      if (!current) {
+        const observation = { epoch: randomUUID(), version: 0 }
+        const native = createWrapper(FileWatcherBinding.load()) as typeof import("@parcel/watcher")
+        const watcher = await observationGate(async () => {
+          if (observationCapacityTripped) throw FileWatcherEvents.linuxInotifyCapacityError()
+          return native
+            .subscribe(
+              mount.path,
+              (error) => {
+                observation.version++
+                if (FileWatcherEvents.isLinuxInotifyTerminalError(error)) observationCapacityTripped = true
+                if (error && this.observations.get(mount.id)?.watcher === watcher) {
+                  this.observations.delete(mount.id)
+                  void watcher.unsubscribe().catch(() => {})
+                }
+              },
+              {
+                ignore: [
+                  ...FileWatcherEvents.workspaceSubscriptionIgnores([]).filter(
+                    (pattern) => pattern !== ".git" && pattern !== "**/.git/**",
+                  ),
+                  ".git/objects",
+                  "**/.git/objects/**",
+                  ".git/logs",
+                  "**/.git/logs/**",
+                ],
+              },
+            )
+            .catch((error) => {
+              if (FileWatcherEvents.isLinuxInotifyTerminalError(error)) observationCapacityTripped = true
+              throw error
+            })
+        })
+        current = Object.assign(observation, { watcher })
+        this.observations.set(mount.id, current)
+      }
+      return { epoch: current.epoch, version: current.version }
+    })
   }
   private contains(root: string, value: string) {
     const relative = path.relative(root, value)
@@ -557,6 +611,8 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       })
       try {
         await this.required(reference)
+        await this.observations.get(reference.id)?.watcher.unsubscribe()
+        this.observations.delete(reference.id)
         if (receipt.input.source.kind === "materialized") await fs.rm(mount.path, { recursive: true })
         await this.persist("mounts", reference.id, { ...receipt, detached: true })
       } finally {
@@ -586,5 +642,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
   async close() {
     this.shutdown.abort(new Error("Workspace file host is closing"))
     await Promise.allSettled(this.pending.values())
+    await Promise.all([...this.observations.values()].map((current) => current.watcher.unsubscribe()))
+    this.observations.clear()
   }
 }

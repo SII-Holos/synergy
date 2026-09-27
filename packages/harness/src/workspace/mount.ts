@@ -55,11 +55,14 @@ export namespace WorkspaceMounts {
         if (!Environment.sameTarget(info.activeMount.target, Environment.targetOf(environment)))
           throw new Error("Workspace allocation requires reconciliation")
         retained = true
-        await Storage.write(StoragePath.workspace(info.id), {
+        const next = WorkspaceCatalog.Info.parse({
           ...info,
+          revision: info.revision + 1,
           activeMount: { ...info.activeMount, state: "unavailable" },
           updatedAt: Date.now(),
         })
+        await Storage.write(StoragePath.workspace(info.id), next)
+        await WorkspaceCatalog.publishUpdated(next)
       })
     }
     return retained
@@ -112,6 +115,7 @@ export namespace WorkspaceMounts {
         const generation = (previous.mountGeneration ?? 0) + 1
         const next = WorkspaceCatalog.Info.parse({
           ...previous,
+          revision: previous.revision + 1,
           mountGeneration: generation,
           activeMount: {
             id: `mount_${randomUUID().replaceAll("-", "")}`,
@@ -124,6 +128,7 @@ export namespace WorkspaceMounts {
         })
         await Environment.retainUse(use.target, input.scopeID, useID)
         await Storage.write(StoragePath.workspace(next.id), next)
+        await WorkspaceCatalog.publishUpdated(next)
         await Storage.write(StoragePath.workspaceEnvironment(input.environmentID, next.id), next.scopeID)
         return next
       })
@@ -165,10 +170,12 @@ export namespace WorkspaceMounts {
       await Environment.assertTarget(active.target, info.scopeID)
       const next = WorkspaceCatalog.Info.parse({
         ...latest,
+        revision: latest.revision + 1,
         activeMount: { ...latest.activeMount!, path: result.path, state: "active" },
         updatedAt: Date.now(),
       })
       await Storage.write(StoragePath.workspace(info.id), next)
+      await WorkspaceCatalog.publishUpdated(next)
       await Environment.releaseUse(active.target, info.scopeID, useID)
       return next
     })
@@ -217,11 +224,13 @@ export namespace WorkspaceMounts {
         await Environment.assertTarget(mount.target, input.scopeID)
         const next = WorkspaceCatalog.Info.parse({
           ...latest,
+          revision: latest.revision + 1,
           activeMount: { ...latest.activeMount!, state: "saving" },
           updatedAt: Date.now(),
         })
         await Environment.retainUse(use.target, input.scopeID, useID)
         await Storage.write(StoragePath.workspace(info.id), next)
+        await WorkspaceCatalog.publishUpdated(next)
         return next
       })
     } catch (error) {
@@ -238,7 +247,14 @@ export namespace WorkspaceMounts {
       const latest = await WorkspaceCatalog.get(info.id, input.scopeID)
       assertMount(latest, info)
       await Environment.assertTarget(mount.target, input.scopeID)
-      await Storage.write(StoragePath.workspace(info.id), { ...latest, activeMount: undefined, updatedAt: Date.now() })
+      const next = WorkspaceCatalog.Info.parse({
+        ...latest,
+        revision: latest.revision + 1,
+        activeMount: undefined,
+        updatedAt: Date.now(),
+      })
+      await Storage.write(StoragePath.workspace(info.id), next)
+      await WorkspaceCatalog.publishUpdated(next)
       await Storage.remove(StoragePath.workspaceEnvironment(mount.target.environmentID, info.id))
       await Environment.releaseUse(mount.target, input.scopeID, useID)
     })
@@ -386,11 +402,14 @@ export namespace WorkspaceMounts {
       await Storage.transaction(async () => {
         const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
         assertMount(latest, info)
-        await Storage.write(StoragePath.workspace(info.id), {
+        const next = WorkspaceCatalog.Info.parse({
           ...latest,
+          revision: latest.revision + 1,
           activeMount: undefined,
           updatedAt: Date.now(),
         })
+        await Storage.write(StoragePath.workspace(info.id), next)
+        await WorkspaceCatalog.publishUpdated(next)
         await Storage.remove(key)
       })
     }

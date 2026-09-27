@@ -7,6 +7,8 @@ import { WorkspaceCatalog } from "../../src/workspace/catalog"
 import { Session } from "../../src/session"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
+import { Tool } from "../../src/tool/tool"
+import { EnvironmentResources } from "../../src/environment/resources"
 
 test("Workspace services share a generation and isolate sibling directories", async () => {
   const started: string[] = []
@@ -97,4 +99,44 @@ test("logical Workspace state has no filesystem prerequisite and remains owned b
       expect(disposed).toContain(value.id)
     }),
   )
+})
+
+test("logical Workspace startup runs once through tools and Scope routes without a local projection", async () => {
+  const started: string[] = []
+  await using runtime = await testRuntime({
+    register() {
+      ScopeStartup.register({
+        name: "logical-service",
+        phase: "surface",
+        owner: "workspace",
+        init() {
+          expect(ScopeContext.current.workspace).toBeNull()
+          started.push(WorkspaceState.key())
+        },
+      })
+    },
+  })
+  await runtime.run(async () => {
+    await using fixture = await tmpdir()
+    const scope = await fixture.scope()
+    const workspace = await WorkspaceCatalog.create({ scopeID: scope.id, backend: { provider: "objects", spec: {} } })
+    const selection = { scopeID: scope.id, workspaceID: workspace.id, needs: { workspace: true } }
+    await using resources = await EnvironmentResources.resolve(selection)
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: async () => {
+        await Tool.withWorkspace(false, { resources }, async () => {})
+        await Tool.withWorkspace(true, { resources }, async () => {})
+      },
+    })
+    expect(started).toHaveLength(1)
+    await WorkspaceState.provide({ id: workspace.id, scopeID: scope.id, generation: 1 }, () =>
+      EnvironmentResources.provide(resources, "request", () =>
+        ScopeRuntime.provide({ scope, workspace: null, fn: () => {} }),
+      ),
+    )
+    expect(started).toHaveLength(1)
+    await ScopeRuntime.dispose(scope.id)
+  })
 })

@@ -252,6 +252,9 @@ export namespace ExecutionHost {
         return files.mount(request.input)
       case "inspect":
         return (await files.inspect(request.mount)) ?? null
+      case "observe":
+        if (!files.observe) throw new Error("Workspace observation is unavailable")
+        return files.observe(request.mount)
       case "detach":
         await files.detach(request.mount)
         return true

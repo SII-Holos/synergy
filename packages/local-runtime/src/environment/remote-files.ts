@@ -5,8 +5,13 @@ import { ExecutionConnection } from "./connection"
 
 export class RemoteWorkspaceFiles implements WorkspaceFileHost {
   constructor(private readonly connection: ExecutionConnection) {}
-  private async request(request: WorkspaceProtocol.Request) {
-    const result = await this.connection.json("POST", "/v1/workspaces", WorkspaceProtocol.Request.parse(request))
+  private async request(request: WorkspaceProtocol.Request, signal?: AbortSignal) {
+    const result = await this.connection.json(
+      "POST",
+      "/v1/workspaces",
+      WorkspaceProtocol.Request.parse(request),
+      signal,
+    )
     if (result === undefined) throw new Error("Workspace transport is unavailable")
     return result
   }
@@ -15,6 +20,9 @@ export class RemoteWorkspaceFiles implements WorkspaceFileHost {
   }
   async inspect(mount: WorkspaceProtocol.Reference) {
     return WorkspaceProtocol.Mount.nullable().parse(await this.request({ action: "inspect", mount })) ?? undefined
+  }
+  async observe(mount: WorkspaceProtocol.Reference, signal?: AbortSignal) {
+    return WorkspaceProtocol.Observation.parse(await this.request({ action: "observe", mount }, signal))
   }
   async detach(mount: WorkspaceProtocol.Reference) {
     await this.request({ action: "detach", mount })
