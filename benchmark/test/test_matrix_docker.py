@@ -552,7 +552,10 @@ async def run_native_matrix(
                 assert child["parent"] == child["child"] == parent["interaction"]
                 assert child["question_disabled"] is True
         assert len(results) == len(profiles) * len(harnesses)
-        assert all((result["execution"] or {}).get("outcome") == "completed" for result in results), results
+        expected_outcome = "failed" if empty_stop else "completed"
+        assert all((result["execution"] or {}).get("outcome") == expected_outcome for result in results), results
+        if empty_stop:
+            assert all((result["execution"] or {}).get("exit_code") == 2 for result in results), results
         assert all((result["verifier"] or {}).get("rewards") == {"reward": 1.0} for result in results), results
         assert all(result["evidence"]["valid"] for result in results), results
         assert all(result["reconciliation"]["status"] != "mismatch" for result in results), results
@@ -565,6 +568,20 @@ async def run_native_matrix(
             for archive_path in root.glob("trials/*/attempt-*/*/agent/rollout.zip"):
                 with zipfile.ZipFile(archive_path) as archive:
                     manifest = json.loads(archive.read("manifest.json"))
+                    if empty_stop:
+                        transcript = json.loads(archive.read("transcript.json"))
+                        session = next(
+                            session
+                            for session in transcript["sessions"]
+                            if session["info"]["id"] == transcript["rootSessionID"]
+                        )
+                        terminal = session["messages"][-1]["info"]
+                        assert terminal["role"] == "assistant"
+                        assert terminal["finish"] == "error"
+                        assert terminal["error"]["name"] == "APIError"
+                        assert terminal["error"]["data"]["metadata"]["code"] == "empty_response"
+                        assert terminal["error"]["data"]["isRetryable"] is True
+                        assert terminal["accounting"]["summary"]["attempts"] > 1
                 identity = read_json(archive_path.parents[2] / "trial.json")
                 if long_session and identity["harness"].startswith("synergy-"):
                     assert {
@@ -581,7 +598,7 @@ async def run_native_matrix(
                 for file in root.glob("trials/*/attempt-*/evidence.json"):
                     result = read_json(file)
                     bodies = [path.read_bytes() for path in (file.parent / "wire").glob("*/response.bin")]
-                    assert any(b'"empty-stop"' in body for body in bodies)
+                    assert sum(b'"empty-stop"' in body for body in bodies) > 1
                     assert result["wire_usage"]["attempts"] >= tool_turns + 1
 
         await asyncio.to_thread(check_native_transport)
