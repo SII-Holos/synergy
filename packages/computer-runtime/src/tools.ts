@@ -16,8 +16,14 @@ import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { supportsImageMediaType } from "@ericsanchezok/synergy-harness/provider/image-capability"
 import { computerBroker } from "./broker"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
 
 async function execute(ctx: Tool.Context, command: ComputerCommand): Promise<Tool.ExecutionResult> {
+  return SessionWorkspaceRuntime.withBinding(ctx.sessionID, () => executeSelected(ctx, command), ctx.abort)
+}
+
+async function executeSelected(ctx: Tool.Context, command: ComputerCommand): Promise<Tool.ExecutionResult> {
   const agent = await Agent.get(ctx.agent)
   const profile = await Session.resolveEffectiveControlProfile({
     sessionID: ctx.sessionID,
@@ -25,6 +31,13 @@ async function execute(ctx: Tool.Context, command: ComputerCommand): Promise<Too
   })
   if (profile !== "full_access")
     throw new ComputerError("computer_full_access_required", "Computer Use requires Full Access mode.")
+  const session = await Session.get(ctx.sessionID)
+  const environment = session.environmentID ? await Environment.get(session.environmentID, session.scope.id) : undefined
+  if (environment?.provider !== "native")
+    throw new ComputerError(
+      "computer_environment_unavailable",
+      "Computer Use requires the native Environment and local Synergy Desktop.",
+    )
   const { info } = await MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID })
   const semantics = MessageV2.deriveSemantics([{ info, parts: [] }])[0]!.info
   const owner = createHash("sha256")

@@ -75,6 +75,9 @@ export namespace SessionWorkspaceRuntime {
     if (current.provider) throw new Error("Session workspace runtime is already registered")
     current.provider = provider
   }
+  export async function beforeEnvironmentTransition(session: Info) {
+    for (const transition of state().transitions.values()) await transition(session, session.workspace)
+  }
   export async function releaseSession(session: Pick<Info, "id" | "scope" | "workspace">) {
     await state().provider?.releaseSession(session)
   }

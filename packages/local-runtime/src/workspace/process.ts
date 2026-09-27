@@ -51,6 +51,8 @@ export namespace WorktreeProcess {
       const remote = !EnvironmentResources.localFiles()
       if (remote && (!resources?.runtime || !resources.workspace))
         throw new Error("Workspace command requires a live Environment")
+      if (remote && (typeof input.command === "function" || input.beforeStart))
+        throw new Error("Remote Workspace commands cannot run controller preparation callbacks")
       if (!remote) {
         const acquire = () => WorkspaceAccess.process(input.roots, signal, { transient: input.metadata })
         lease = input.metadata ? await WorkspaceAccess.observeWrites(undefined, acquire) : await acquire()

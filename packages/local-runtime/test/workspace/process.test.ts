@@ -55,3 +55,62 @@ async function waitUntil(fn: () => Promise<boolean>) {
     await Bun.sleep(20)
   }
 }
+
+test("logical Workspaces cannot run worktree preparation callbacks on the controller", async () => {
+  const { EnvironmentResources } = await import("@ericsanchezok/synergy-harness/environment/resources")
+  const { WorkspaceCatalog } = await import("@ericsanchezok/synergy-harness/workspace")
+  const { Worktree } = await import("../../src/workspace/worktree")
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const workspace = await WorkspaceCatalog.create({
+          scopeID: ScopeContext.current.scope.id,
+          backend: { provider: "objects", spec: { blobStore: "local", settings: { namespace: "fixture" } } },
+        })
+        await using resources = await EnvironmentResources.resolve({
+          scopeID: workspace.scopeID,
+          workspaceID: workspace.id,
+          needs: { workspace: true },
+        })
+        const before = await fs.readdir(tmp.path)
+        await expect(
+          EnvironmentResources.provide(resources, "worktree", () =>
+            Worktree.create({ name: "remote", bind: false, baseRef: "current" }),
+          ),
+        ).rejects.toThrow("native directory Workspace")
+        expect(await fs.readdir(tmp.path)).toEqual(before)
+      },
+    })
+  })
+})
+
+test("a remote Session cannot create a native worktree through its project Scope", async () => {
+  const { Environment } = await import("@ericsanchezok/synergy-harness/environment")
+  const { Session } = await import("@ericsanchezok/synergy-harness/session")
+  const { Worktree } = await import("../../src/workspace/worktree")
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const remote = await Environment.bind({
+          scopeID: ScopeContext.current.scope.id,
+          ownerID: "remote",
+          provider: "docker",
+          spec: { host: { endpoint: "unix:///absent.sock" }, image: "executor:test" },
+        })
+        const session = await Session.create({ environmentID: remote.id })
+        const before = await fs.readdir(tmp.path)
+        await expect(
+          Worktree.create({ sessionID: session.id, name: "remote", bind: false, baseRef: "current" }),
+        ).rejects.toThrow("native Environment")
+        expect(await fs.readdir(tmp.path)).toEqual(before)
+        expect((await Environment.get(remote.id, session.scope.id)).state).toBe("idle")
+      },
+    })
+  })
+})

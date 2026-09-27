@@ -968,6 +968,7 @@ export namespace Session {
         : undefined
       if (workspace?.activeMount && workspace.activeMount.target.environmentID === session.environmentID)
         await WorkspaceMounts.detach({ scopeID: session.scope.id, workspaceID: workspace.id })
+      await SessionWorkspaceRuntime.beforeEnvironmentTransition(session)
       return Storage.transaction(async () => {
         SessionManager.assertIdle(sessionID)
         await Environment.changeBinding({ scopeID: session.scope.id, ownerID: session.id, ...selection })

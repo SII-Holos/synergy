@@ -85,8 +85,8 @@ export namespace Tool {
     const resources = ctx.resources
     const run = async () => {
       const selected = resources?.workspace
-      const workspace = ScopeContext.current.workspace
       if (!required && !selected) return fn()
+      const workspace = ScopeContext.current.workspace
       if (!workspace && !selected)
         throw new Scope.WorkspaceRequiredError({
           message: "This tool requires a Workspace.",

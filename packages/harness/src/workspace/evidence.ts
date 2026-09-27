@@ -1,8 +1,6 @@
 import { z } from "zod"
 import { RuntimeContext } from "../lifecycle/context"
-import { Config } from "../config/config"
 import { Identifier } from "../id/id"
-import { Snapshot } from "../session/snapshot"
 import { MessageV2 } from "../session/message-v2"
 import { Storage } from "../storage/storage"
 import type { WorkspaceCatalog } from "./catalog"
@@ -33,7 +31,7 @@ export namespace WorkspaceEvidence {
       !current ||
       current.runtime !== RuntimeContext.current() ||
       workspace.backend?.provider !== "objects" ||
-      (await Config.current()).snapshot === false
+      (await (await import("../config/config")).Config.current()).snapshot === false
     )
       return
     if (current.owner.scopeID !== workspace.scopeID) throw new Error("Workspace evidence belongs to another Scope")
@@ -95,6 +93,7 @@ export namespace WorkspaceEvidence {
     before: string | null,
     after: string | null,
   ) {
+    const { Snapshot } = await import("../session/snapshot")
     const message = await MessageV2.get({ sessionID: reference.sessionID, messageID: reference.messageID }).catch(
       (error) => {
         if (error instanceof Storage.NotFoundError) return undefined
