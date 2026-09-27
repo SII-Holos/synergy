@@ -191,7 +191,11 @@ export namespace WorkspaceContent {
     const change = WorkspaceProtocol.Change.parse(raw)
     const { info, store } = await resolve(input)
     const tree = await manifest(info, store)
-    const from = WorkspaceTree.resolve(tree, "path" in change ? change.path : change.from, false)
+    const from = WorkspaceTree.resolve(
+      tree,
+      "path" in change ? change.path : change.kind === "import" ? change.to : change.from,
+      false,
+    )
     if (protectSensitive) protectedPath(from.path)
     const entries = new Map(tree.entries.map((entry) => [entry.path, entry]))
     const conflict = () => new WorkspaceErrors.ConflictError()
@@ -207,7 +211,20 @@ export namespace WorkspaceContent {
       }
       for (const name of missing) entries.set(name, { kind: "directory", path: name, mode: 0o755 })
     }
-    if (change.kind === "mkdir") {
+    if (change.kind === "import") {
+      if (from.entry) throw conflict()
+      const bytes = WorkspaceTree.verify(
+        change.manifest,
+        await store.get(change.manifest, WorkspaceTree.manifestBytes),
+        WorkspaceTree.manifestBytes,
+      )
+      const incoming = WorkspaceTree.importEntries(JSON.parse(new TextDecoder().decode(bytes)), from.path)
+      for (const entry of incoming) {
+        if (protectSensitive) protectedPath(entry.path)
+        entries.set(entry.path, entry)
+      }
+      parents(from.path, true)
+    } else if (change.kind === "mkdir") {
       if (from.entry) throw conflict()
       parents(from.path, change.createParents ?? false)
       entries.set(from.path, { kind: "directory", path: from.path, mode: change.mode ?? 0o755 })

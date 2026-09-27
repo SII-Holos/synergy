@@ -26,6 +26,8 @@ Classic and anchored file tools consume a selected file view. The native adapter
 
 ## Consequences
 
+Cross-backend imports use the same immutable manifests and mutation receipts. A private source capture preserves version evidence before transfer; the destination verifies every chunk and refuses overwrites. This costs temporary storage during transfer but does not assign controller paths to remote mounts or establish a second authoritative file tree.
+
 File browsing and search consume the selected view without requiring a native directory projection. Object searches pass verified file bytes to the existing Ripgrep parser rather than create a second filesystem copy or allocate an Environment. Bounded caches retain verified immutable manifests by store and content hash; publishing a different head changes the selected cache entry. Physical live views still bypass dormant content access entirely.
 
 Interrupted uploads may leave unreferenced immutable objects; ordinary operations never delete them. A backend-specific retention process can collect them after proving they are unreferenced. Blob credentials belong to Runtime composition rather than Workspace metadata. Object storage restores file state, not process memory or container root filesystem changes. OSS uses its own official V4 implementation rather than assuming S3 signing compatibility.

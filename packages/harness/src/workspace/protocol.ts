@@ -59,6 +59,7 @@ export namespace WorkspaceProtocol {
   })
   export type WriteInput = z.infer<typeof WriteInput>
   export const Change = z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("import"), to: WorkspaceTree.Path, manifest: WorkspaceTree.Hash }),
     z.object({
       kind: z.literal("mkdir"),
       path: WorkspaceTree.Path,

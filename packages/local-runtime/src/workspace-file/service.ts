@@ -16,6 +16,9 @@ import { WorkspaceFileRead, likelyBinaryByExtension } from "./read"
 import { WorkspaceFileStatus } from "./status"
 import { isPathContained } from "@ericsanchezok/synergy-harness/util/path-contain"
 import { SensitivePathPolicy } from "@ericsanchezok/synergy-harness/enforcement/sensitive-path"
+import os from "node:os"
+import { NativeFileEntry } from "../file/entry-core"
+import { NativeWorkspaceTree } from "../workspace/tree"
 
 const DEFAULT_CHILDREN_LIMIT = 200
 const NODE_CONCURRENCY = 16
@@ -267,12 +270,45 @@ export namespace WorkspaceFileService {
     },
     signal?: AbortSignal,
   ) {
-    if (!FileView.native()) throw new Error("File imports require an explicit Workspace transfer")
     const from = await FileEntry.canonical(input.from)
     const source = await FileEntry.inspect(from)
     if (!source) throw new NotFoundError("Import source is unavailable")
     await input.validateSource(from)
     const to = resolve(input.to, { followFinalSymlink: false })
+    if (!FileView.native())
+      return WorkspaceAccess.withinTask(
+        () =>
+          entryOperation(async () => {
+            await WorkspaceAccess.reserveWrite([path.dirname(from)], signal)
+            await validateEntry(to, "write")
+            if (await FileView.stat(to)) throw new WriteConflictError()
+            const staging = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-transfer-"))
+            await fs.chmod(staging, 0o700)
+            try {
+              await NativeFileEntry.copy({
+                from,
+                to: path.join(staging, "entry"),
+                expectedVersion: source.version,
+                signal,
+                async validate(target, operation) {
+                  if (operation === "write") {
+                    if (!isPathContained(staging, target, { followFinalSymlink: false }))
+                      throw new AccessDeniedError("Transfer staging escaped its owner")
+                    return
+                  }
+                  if (!isPathContained(from, target, { followFinalSymlink: false }))
+                    throw new AccessDeniedError("Import source escaped its owner")
+                  await input.validateSource(target)
+                },
+              })
+              await FileView.importTree(to, (store) => NativeWorkspaceTree.capture(staging, store, signal), signal)
+              return await changedEntry(to)
+            } finally {
+              await fs.rm(staging, { recursive: true, force: true })
+            }
+          }),
+        signal,
+      )
     return WorkspaceAccess.withinTask(
       () =>
         entryOperation(async () => {

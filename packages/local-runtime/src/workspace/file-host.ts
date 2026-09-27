@@ -343,7 +343,41 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           },
         }
         const change = input.change
-        if (change.kind === "mkdir") {
+        if (change.kind === "import") {
+          const tree = WorkspaceTree.Manifest.parse(
+            JSON.parse(new TextDecoder().decode(await this.getBlob(change.manifest, WorkspaceTree.manifestBytes))),
+          )
+          const target = await NativeFileEntry.canonical(absolute(change.to))
+          await options.validate!(target, "write")
+          for (const entry of WorkspaceTree.importEntries(tree, change.to))
+            await options.validate!(absolute(entry.path), "write")
+          if (await NativeFileEntry.inspect(target)) throw new NativeFileMutation.ConflictError()
+          const stagingRoot = path.join(this.options.directory, "imports")
+          await fs.mkdir(stagingRoot, { recursive: true, mode: 0o700 })
+          const staging = await fs.realpath(await fs.mkdtemp(path.join(stagingRoot, "transfer-")))
+          try {
+            const content = path.join(staging, "content")
+            await NativeWorkspaceTree.materialize(content, tree, this.blobs(), { signal: this.shutdown.signal })
+            const source = path.join(content, "entry")
+            const entry = await NativeFileEntry.inspect(source)
+            if (!entry) throw new Error("Transfer has no source entry")
+            const parent = path.dirname(target)
+            if (!(await NativeFileEntry.inspect(parent)))
+              await NativeFileEntry.mkdir({ path: parent, createParents: true, ...options })
+            await NativeFileEntry.copy({
+              from: source,
+              to: target,
+              expectedVersion: entry.version,
+              ...options,
+              validate: async (filename, operation) => {
+                if (operation === "read" && this.contains(content, filename)) return
+                await options.validate!(filename, operation)
+              },
+            })
+          } finally {
+            await fs.rm(staging, { recursive: true, force: true })
+          }
+        } else if (change.kind === "mkdir") {
           await NativeFileEntry.mkdir({ ...change, path: absolute(change.path), ...options })
         } else if (change.kind === "remove")
           await NativeFileEntry.remove({ ...change, path: absolute(change.path), ...options })

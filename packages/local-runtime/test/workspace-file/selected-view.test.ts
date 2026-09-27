@@ -10,6 +10,9 @@ import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { WorkspaceFileService as Files } from "../../src/workspace-file/service"
 import { FileView } from "../../src/file/view"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import fs from "node:fs/promises"
+import path from "node:path"
 
 test("file workbench edits and browses dormant and live views without a controller directory", async () => {
   await using runtime = await testRuntime({
@@ -25,6 +28,12 @@ test("file workbench edits and browses dormant and live views without a controll
       scope: Scope.home(),
       workspace: null,
       fn: async () => {
+        await using source = await tmpdir()
+        const sourceDirectory = path.join(source.path, "source")
+        await fs.mkdir(sourceDirectory)
+        const large = Buffer.alloc(9 * 1024 * 1024, "x")
+        await Bun.write(path.join(sourceDirectory, "large.bin"), large)
+        await Bun.write(path.join(sourceDirectory, "note.txt"), "transferred")
         const workspace = await WorkspaceCatalog.create({
           scopeID: Scope.home().id,
           backend: { provider: "objects", spec: { blobStore: "fixture" } },
@@ -47,6 +56,30 @@ test("file workbench edits and browses dormant and live views without a controll
             () =>
               EnvironmentResources.provide(resources, live ? "live" : "dormant", async () => {
                 const directory = live ? "live" : "dormant"
+                const validateSource = async (filename: string) => {
+                  if (!filename.startsWith(sourceDirectory)) throw new Error("source escaped")
+                }
+                await Files.importEntry({ from: sourceDirectory, to: `${directory}-import/tree`, validateSource })
+                expect(new TextDecoder().decode(await FileView.bytes(`${directory}-import/tree/note.txt`))).toBe(
+                  "transferred",
+                )
+                expect(await FileView.bytes(`${directory}-import/tree/large.bin`)).toEqual(large)
+                expect(
+                  await FileView.bytes(
+                    `${directory}-import/tree/large.bin`,
+                    { offset: 1, length: 5 * 1024 * 1024 },
+                    5 * 1024 * 1024,
+                  ),
+                ).toEqual(large.subarray(1, 5 * 1024 * 1024 + 1))
+                await expect(
+                  Files.importEntry({ from: sourceDirectory, to: `${directory}-import/tree`, validateSource }),
+                ).rejects.toBeInstanceOf(Files.WriteConflictError)
+                await Bun.write(path.join(sourceDirectory, ".env"), "secret")
+                await expect(
+                  Files.importEntry({ from: sourceDirectory, to: `${directory}-protected`, validateSource }),
+                ).rejects.toThrow("protected")
+                expect(await FileView.stat(`${directory}-protected`)).toBeUndefined()
+                await fs.unlink(path.join(sourceDirectory, ".env"))
                 await Files.createDirectory({ path: directory, createParents: true })
                 const written = await Files.write({
                   path: `${directory}/file.txt`,

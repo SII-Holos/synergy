@@ -2,7 +2,7 @@ import path from "node:path"
 import fs from "node:fs/promises"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
-import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
+import { WorkspaceContent, type BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
@@ -165,10 +165,29 @@ export namespace FileView {
     const info = await selected()
     const name = relative(filename)
     if (!info.activeMount) {
-      if (range && range.length <= WorkspaceTree.chunkBytes)
-        return (await WorkspaceContent.readRange(selection(info), name, range.offset, range.length)).bytes
-      const data = await WorkspaceContent.read(selection(info), name, maximumBytes)
-      return range ? data.subarray(range.offset, range.offset + range.length) : data
+      if (!range) return WorkspaceContent.read(selection(info), name, maximumBytes)
+      if (range.length > maximumBytes) throw new Error("Workspace file exceeds the read limit")
+      const first = await WorkspaceContent.readRange(
+        selection(info),
+        name,
+        range.offset,
+        Math.min(range.length, WorkspaceTree.chunkBytes),
+      )
+      const length = Math.min(range.length, Math.max(0, first.size - range.offset))
+      const result = new Uint8Array(length)
+      result.set(first.bytes)
+      for (let offset = first.bytes.length; offset < length; ) {
+        const next = await WorkspaceContent.readRange(
+          selection(info),
+          name,
+          range.offset + offset,
+          Math.min(length - offset, WorkspaceTree.chunkBytes),
+        )
+        if (next.version !== first.version || !next.bytes.length) throw new NativeFileMutation.ConflictError()
+        result.set(next.bytes, offset)
+        offset += next.bytes.length
+      }
+      return result
     }
     const files = await WorkspaceMounts.connect(info)
     const mount = WorkspaceMounts.reference(info)
@@ -225,6 +244,23 @@ export namespace FileView {
       existed: expectedVersion !== null,
       contentVersion: `sha256:${WorkspaceTree.hash(data)}`,
     }
+  }
+
+  export async function importTree(
+    filename: string,
+    capture: (store: BlobStore) => Promise<WorkspaceTree.Manifest>,
+    signal?: AbortSignal,
+  ) {
+    const info = await selected()
+    const files = info.activeMount ? await WorkspaceMounts.connect(info) : undefined
+    const store: BlobStore = files
+      ? { get: (hash, limit) => files.getBlob(hash, limit), put: (hash, bytes) => files.putBlob(hash, bytes) }
+      : (await WorkspaceContent.resolve(selection(info))).store
+    const tree = await capture(store)
+    const bytes = WorkspaceTree.encode(tree)
+    const manifest = WorkspaceTree.hash(bytes)
+    await store.put(manifest, bytes)
+    await mutate({ kind: "import", to: relative(filename), manifest }, signal, true)
   }
 
   export async function mutate(change: WorkspaceProtocol.Change, signal?: AbortSignal, protectSensitive?: boolean) {

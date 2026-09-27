@@ -3,6 +3,20 @@ import path from "node:path"
 import { z } from "zod"
 
 export namespace WorkspaceTree {
+  export function importEntries(raw: unknown, destination: string): Entry[] {
+    Path.parse(destination)
+    const tree = Manifest.parse(raw)
+    if (!tree.entries.some((entry) => entry.path === "entry")) throw new Error("Transfer has no root entry")
+    for (const entry of tree.entries) {
+      if (entry.path !== "entry" && !entry.path.startsWith("entry/"))
+        throw new Error("Transfer entry escaped its source")
+      if (entry.kind === "symlink") {
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(entry.path), entry.target))
+        if (target !== "entry" && !target.startsWith("entry/")) throw new Error("Transfer link escaped its source")
+      }
+    }
+    return tree.entries.map((entry) => ({ ...entry, path: destination + entry.path.slice("entry".length) }))
+  }
   export const chunkBytes = 4 * 1024 * 1024
   export const manifestBytes = 64 * 1024 * 1024
   export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
