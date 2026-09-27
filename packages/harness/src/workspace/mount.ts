@@ -10,6 +10,7 @@ import { WorkspaceTree } from "./tree"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "./protocol"
 import { StorageRecovery } from "../storage/recovery"
 import { Log } from "../util/log"
+import { WorkspaceEvidence } from "./evidence"
 
 export namespace WorkspaceMounts {
   export type Selection = {
@@ -264,10 +265,14 @@ export namespace WorkspaceMounts {
     scopeID: string
     target: Environment.Target
     workspaces?: (WorkspaceProtocol.Reference & { readOnly?: boolean })[]
-    status?: { effectsStarted?: boolean }
+    status?: { effectsStarted?: boolean; before?: (WorkspaceProtocol.Reference & { manifest: string })[] }
+    evidence?: { workspaceID: string; reference: WorkspaceEvidence.Reference }[]
   }) {
     const saved: Record<string, { revision: number; manifest: string | null }> = {}
-    if (input.status?.effectsStarted === false) return saved
+    if (input.status?.effectsStarted === false) {
+      for (const item of input.evidence ?? []) await WorkspaceEvidence.incomplete(item.reference)
+      return saved
+    }
     for (const reference of input.workspaces ?? []) {
       if (reference.readOnly) continue
       const info = await WorkspaceCatalog.get(reference.workspaceID, input.scopeID)
@@ -287,7 +292,14 @@ export namespace WorkspaceMounts {
         mount: WorkspaceProtocol.Reference.parse(reference),
         executionID: input.id,
       })
-      const published = await save(info, files, checkpoint)
+      const evidence = input.evidence?.find((item) => item.workspaceID === info.id)?.reference
+      const before = input.status?.before?.find(
+        (item) => item.id === reference.id && item.generation === reference.generation,
+      )?.manifest
+      if (evidence && !before) throw new Error("Execution has no physical Workspace baseline")
+      const published = await save(info, files, { ...checkpoint, beforeManifest: before }, (saved) =>
+        WorkspaceEvidence.finish(evidence, saved, before ?? null, checkpoint.manifest),
+      )
       if (published.content) saved[info.id] = published.content
     }
     return saved
@@ -297,6 +309,7 @@ export namespace WorkspaceMounts {
     info: WorkspaceCatalog.Info,
     files: WorkspaceFileHost,
     checkpoint: WorkspaceProtocol.Checkpoint,
+    beforeRelease?: (workspace: WorkspaceCatalog.Info) => Promise<void>,
   ) {
     if (JSON.stringify(checkpoint.mount) !== JSON.stringify(reference(info)))
       throw new Error("Workspace checkpoint belongs to another mount")
@@ -305,6 +318,7 @@ export namespace WorkspaceMounts {
       return info
     }
     if (!checkpoint.manifest) throw new Error("Object-backed Workspace checkpoint has no manifest")
+    if (checkpoint.beforeManifest) await preserveManifest(info, files, checkpoint.beforeManifest)
     const bytes = WorkspaceTree.verify(
       checkpoint.manifest,
       await files.getBlob(checkpoint.manifest, WorkspaceTree.manifestBytes),
@@ -320,8 +334,21 @@ export namespace WorkspaceMounts {
       latest.content?.manifest === checkpoint.manifest
         ? latest
         : await WorkspaceCatalog.publishContent(info, checkpoint.manifest)
+    await beforeRelease?.(result)
     await files.acknowledge(checkpoint.id)
     return result
+  }
+
+  async function preserveManifest(info: WorkspaceCatalog.Info, files: WorkspaceFileHost, manifest: string) {
+    const bytes = WorkspaceTree.verify(
+      manifest,
+      await files.getBlob(manifest, WorkspaceTree.manifestBytes),
+      WorkspaceTree.manifestBytes,
+    )
+    const tree = WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(bytes)))
+    const { store } = await WorkspaceContent.resolve({ workspaceID: info.id, scopeID: info.scopeID }, true)
+    await transfer(tree, { get: (hash, size) => files.getBlob(hash, size) }, store)
+    await store.put(manifest, bytes)
   }
 
   async function transfer(

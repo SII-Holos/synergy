@@ -6,6 +6,7 @@ import { WorkspaceTree } from "./tree"
 import { SensitivePathPolicy } from "../enforcement/sensitive-path"
 import { WorkspaceErrors } from "./errors"
 import { WorkspaceProtocol } from "./protocol"
+import { SnapshotLink } from "../session/snapshot-link"
 
 export interface BlobStore {
   put(hash: string, bytes: Uint8Array): Promise<void>
@@ -211,7 +212,47 @@ export namespace WorkspaceContent {
       }
       for (const name of missing) entries.set(name, { kind: "directory", path: name, mode: 0o755 })
     }
-    if (change.kind === "import") {
+    if (change.kind === "replace") {
+      if (
+        (from.entry ? WorkspaceTree.entryVersion(from.entry, info.content?.revision) : null) !== change.expectedVersion
+      )
+        throw conflict()
+      if (from.entry?.kind === "directory" || (from.entry?.kind === "file" && !(from.entry.mode & 0o222)))
+        throw new WorkspaceErrors.AccessDeniedError("Workspace entry cannot be replaced")
+      if (
+        change.expectedContentVersion !== undefined &&
+        (from.entry?.kind !== "file" || `sha256:${from.entry.hash}` !== change.expectedContentVersion)
+      )
+        throw conflict()
+      const data = Buffer.from(change.data, "base64")
+      if (data.toString("base64") !== change.data || data.length > WorkspaceProtocol.writeBytes)
+        throw new Error("Invalid replacement bytes")
+      parents(from.path, true)
+      if (change.mode === "120000")
+        entries.set(from.path, {
+          kind: "symlink",
+          path: from.path,
+          mode: 0o777,
+          target: SnapshotLink.decode(data).target,
+        })
+      else {
+        const chunks = []
+        for (let offset = 0; offset < data.length; offset += WorkspaceTree.chunkBytes) {
+          const bytes = data.subarray(offset, offset + WorkspaceTree.chunkBytes)
+          const hash = WorkspaceTree.hash(bytes)
+          await store.put(hash, bytes)
+          chunks.push({ hash, size: bytes.length })
+        }
+        entries.set(from.path, {
+          kind: "file",
+          path: from.path,
+          mode: change.mode === "100755" ? 0o755 : 0o644,
+          hash: WorkspaceTree.hash(data),
+          size: data.length,
+          chunks,
+        })
+      }
+    } else if (change.kind === "import") {
       if (from.entry) throw conflict()
       const bytes = WorkspaceTree.verify(
         change.manifest,

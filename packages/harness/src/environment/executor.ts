@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto"
 import { z } from "zod"
 import { EnvironmentSchema } from "./schema"
-import type { WorkspaceFileHost } from "../workspace/protocol"
+import { WorkspaceProtocol, type WorkspaceFileHost } from "../workspace/protocol"
+import { WorkspaceTree } from "../workspace/tree"
 
 export namespace ExecutionProtocol {
   export const version = 1
@@ -98,6 +99,7 @@ export namespace ExecutionProtocol {
       pty: z.object({ cols: z.number().int().min(1).max(65535), rows: z.number().int().min(1).max(65535) }).optional(),
       timeoutMs: z.number().int().positive().max(86_400_000).optional(),
       sandboxID: z.string().uuid().optional(),
+      capture: z.array(WorkspaceProtocol.Reference).max(1000).optional(),
     })
     .strict()
     .meta({ ref: "EnvironmentCommand" })
@@ -123,6 +125,7 @@ export namespace ExecutionProtocol {
       error: z.string().optional(),
       outputTruncated: z.boolean().optional(),
       effectsStarted: z.boolean().optional(),
+      before: z.array(WorkspaceProtocol.Reference.extend({ manifest: WorkspaceTree.Hash })).optional(),
     })
     .meta({ ref: "EnvironmentExecutionStatus" })
   export type Status = z.infer<typeof Status>

@@ -23,7 +23,12 @@ export namespace WorkspaceProtocol {
   export type Mount = z.infer<typeof Mount>
   export const CheckpointInput = z.object({ id: ID, mount: Reference, executionID: ID.optional() })
   export type CheckpointInput = z.infer<typeof CheckpointInput>
-  export const Checkpoint = z.object({ id: ID, mount: Reference, manifest: WorkspaceTree.Hash.nullable() })
+  export const Checkpoint = z.object({
+    id: ID,
+    mount: Reference,
+    manifest: WorkspaceTree.Hash.nullable(),
+    beforeManifest: WorkspaceTree.Hash.optional(),
+  })
   export type Checkpoint = z.infer<typeof Checkpoint>
   export const CheckpointStatus = z.object({
     id: ID,
@@ -59,6 +64,14 @@ export namespace WorkspaceProtocol {
   })
   export type WriteInput = z.infer<typeof WriteInput>
   export const Change = z.discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("replace"),
+      path: WorkspaceTree.Path,
+      data: z.string().max(writeBytes * 1.34),
+      mode: z.enum(["100644", "100755", "120000"]),
+      expectedVersion: z.string().nullable(),
+      expectedContentVersion: z.string().optional(),
+    }),
     z.object({ kind: z.literal("import"), to: WorkspaceTree.Path, manifest: WorkspaceTree.Hash }),
     z.object({
       kind: z.literal("mkdir"),

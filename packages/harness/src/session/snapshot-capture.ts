@@ -8,6 +8,8 @@ import { RuntimeContext } from "../lifecycle/context"
 import { SnapshotLink } from "./snapshot-link"
 import { SnapshotGit } from "./snapshot-git"
 import type { SnapshotStore } from "./snapshot-store"
+import { WorkspaceTree } from "../workspace/tree"
+import type { BlobStore } from "../workspace/content"
 
 export namespace SnapshotCapture {
   const MAX_FILE_BYTES = 2 * 1024 * 1024
@@ -107,7 +109,8 @@ export namespace SnapshotCapture {
     )
   }
 
-  export async function refresh(operation: SnapshotStore.Operation, signal?: AbortSignal) {
+  export type Content = { tree: WorkspaceTree.Manifest; store: BlobStore }
+  export async function refresh(operation: SnapshotStore.Operation, signal?: AbortSignal, content?: Content) {
     const controller = new AbortController()
     const forward = () => controller.abort(signal?.reason)
     signal?.addEventListener("abort", forward, { once: true })
@@ -117,16 +120,16 @@ export namespace SnapshotCapture {
       60_000,
     )
     try {
-      return await refreshImpl(operation, controller.signal)
+      return await refreshImpl(operation, controller.signal, content)
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener("abort", forward)
     }
   }
 
-  async function refreshImpl(operation: SnapshotStore.Operation, abort: AbortSignal) {
+  async function refreshImpl(operation: SnapshotStore.Operation, abort: AbortSignal, content?: Content) {
     abort.throwIfAborted()
-    const root = await fs.realpath(operation.workspace)
+    const root = content ? "" : await fs.realpath(operation.workspace)
     const run = (args: string[], input?: string) =>
       SnapshotGit.run(
         ["git", "--git-dir", operation.repository, ...args],
@@ -155,7 +158,7 @@ export namespace SnapshotCapture {
     }
     const caseResult = await run(["config", "--bool", "--get", "core.ignorecase"])
     if (![0, 1].includes(caseResult.exitCode)) throw new Error(`Cannot read snapshot case policy: ${caseResult.stderr}`)
-    const ignorecase = caseResult.text.trim() === "true"
+    const ignorecase = !content && caseResult.text.trim() === "true"
     const globalResult = await run(["config", "--path", "--get", "core.excludesfile"])
     if (![0, 1].includes(globalResult.exitCode))
       throw new Error(`Cannot read snapshot ignore policy: ${globalResult.stderr}`)
@@ -164,10 +167,12 @@ export namespace SnapshotCapture {
       globalResult.text.trim() ||
       path.join(env.XDG_CONFIG_HOME || path.join(env.HOME || os.homedir(), ".config"), "git", "ignore")
     const initial: Rule[] = []
-    const globalPath = await fs.realpath(globalFile).catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined
-      throw error
-    })
+    const globalPath = content
+      ? undefined
+      : await fs.realpath(globalFile).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT" || error.code === "ENOTDIR") return undefined
+          throw error
+        })
     if (globalPath) {
       const globalRules = await read(globalPath, await fs.lstat(globalPath), abort)
       if (!globalRules) throw new Error("Snapshot global ignore file exceeds limit")
@@ -261,8 +266,67 @@ export namespace SnapshotCapture {
       if (path.relative(root, await fs.realpath(absolute)) !== relative.split("/").join(path.sep))
         throw new Error("Snapshot directory changed while reading")
     }
+    const readContent = async (entry: WorkspaceTree.Entry) => {
+      if (entry.kind !== "file" || entry.size > MAX_FILE_BYTES) return undefined
+      const bytes = new Uint8Array(entry.size)
+      let offset = 0
+      for (const chunk of entry.chunks) {
+        abort.throwIfAborted()
+        const data = WorkspaceTree.verify(chunk.hash, await content!.store.get(chunk.hash, chunk.size), chunk.size)
+        if (data.length !== chunk.size) throw new Error("Snapshot content chunk is incomplete")
+        bytes.set(data, offset)
+        offset += data.length
+      }
+      return Buffer.from(WorkspaceTree.verify(entry.hash, bytes, MAX_FILE_BYTES))
+    }
+    const visitContent = async (
+      relative: string,
+      inherited: Rule[],
+      ignoredParent: boolean,
+      depth: number,
+    ): Promise<void> => {
+      abort.throwIfAborted()
+      if (depth > MAX_DEPTH) throw new Error("Snapshot directory depth exceeds limit")
+      const rules = [...inherited]
+      const children = WorkspaceTree.children(content!.tree, relative)
+      const ignored = children.find((entry) => path.posix.basename(entry.path) === ".gitignore")
+      if (ignored?.kind === "file") {
+        const bytes = await readContent(ignored)
+        if (!bytes) throw new Error("Snapshot ignore file exceeds limit")
+        rules.push({
+          prefix: relative ? relative + "/" : "",
+          matcher: ignore({ ignorecase: false }).add(bytes.toString("utf8")),
+        })
+      }
+      for (const entry of children) {
+        abort.throwIfAborted()
+        if (++count > MAX_ENTRIES) throw new Error("Snapshot entry count exceeds limit")
+        const name = path.posix.basename(entry.path)
+        if (EXCLUDED_DIRS.has(name) || EXCLUDED_EXTENSIONS.has(path.posix.extname(name).toLowerCase())) continue
+        let excluded = ignoredParent
+        if (!ignoredParent)
+          for (const rule of rules) {
+            const match = rule.matcher.test(
+              entry.path.slice(rule.prefix.length) + (entry.kind === "directory" ? "/" : ""),
+            )
+            if (match.ignored) excluded = true
+            else if (match.unignored) excluded = false
+          }
+        if (entry.kind === "directory") {
+          if (!excluded || parents.has(entry.path)) await visitContent(entry.path, rules, excluded, depth + 1)
+        } else if (!excluded || previous.has(entry.path)) {
+          if (entry.kind === "symlink")
+            await retain(entry.path, "120000", SnapshotLink.encode({ target: entry.target }))
+          else {
+            const bytes = await readContent(entry)
+            if (bytes) await retain(entry.path, entry.mode & 0o111 ? "100755" : "100644", bytes)
+          }
+        }
+      }
+    }
     try {
-      await visit("", initial, false, 0)
+      if (content) await visitContent("", [], false, 0)
+      else await visit("", initial, false, 0)
       await flush()
       const updates: string[] = []
       for (const name of previous.keys()) if (!current.has(name)) updates.push(`0 ${"0".repeat(40)}\t${name}\0`)

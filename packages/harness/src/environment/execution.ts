@@ -11,6 +11,7 @@ import { WorkspaceMounts } from "../workspace/mount"
 import { JsonValue } from "../util/json-value"
 import { StorageRecovery } from "../storage/recovery"
 import { Log } from "../util/log"
+import { WorkspaceEvidence } from "../workspace/evidence"
 
 export namespace EnvironmentExecution {
   export const Info = z
@@ -19,6 +20,7 @@ export namespace EnvironmentExecution {
       scopeID: z.string(),
       target: Environment.Target,
       workspaces: z.array(WorkspaceProtocol.Reference.extend({ readOnly: z.boolean().optional() })).optional(),
+      evidence: z.array(z.object({ workspaceID: z.string(), reference: WorkspaceEvidence.Reference })).optional(),
       digest: z.string(),
       intentDigest: z.string().length(64).optional(),
       state: z.enum(["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]),
@@ -70,6 +72,39 @@ export namespace EnvironmentExecution {
     signal?: AbortSignal
   }): Promise<Info> {
     const id = ExecutionProtocol.ID.parse(input.id)
+    if (input.command.writableRoots?.length !== 0) {
+      const mounted = (await WorkspaceCatalog.list(input.scopeID)).filter(
+        (info) => info.activeMount?.target.environmentID === input.environmentID,
+      )
+      const roots = input.command.writableRoots
+      const affected = mounted.filter((info) => {
+        if (roots === null) return true
+        const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/$/, "").toLowerCase()
+        const mount = normalize(info.activeMount!.path)
+        return roots.some((root) => {
+          const candidate = normalize(root)
+          return candidate === mount || candidate.startsWith(mount + "/") || mount.startsWith(candidate + "/")
+        })
+      })
+      const workspaces = [
+        ...new Map(
+          [...(input.workspaces ?? []), ...affected.map(WorkspaceMounts.reference)].map((reference) => [
+            reference.id,
+            reference,
+          ]),
+        ).values(),
+      ].sort((a, b) => a.id.localeCompare(b.id))
+      input = {
+        ...input,
+        workspaces,
+        command: {
+          ...input.command,
+          capture: workspaces,
+          writableRoots:
+            roots === null ? null : [...new Set([...roots, ...affected.map((info) => info.activeMount!.path)])],
+        },
+      }
+    }
     const digest = ExecutionProtocol.digest(input.command)
     const key = JSON.stringify([input.scopeID, id])
     const previous = pending().get(key)
@@ -116,6 +151,7 @@ export namespace EnvironmentExecution {
     try {
       const info = await Storage.transaction(async () => {
         await Environment.assertTarget(use.target, input.scopeID)
+        const evidence: NonNullable<Info["evidence"]> = []
         for (const workspace of input.workspaces ?? []) {
           const info = await WorkspaceCatalog.get(workspace.workspaceID, input.scopeID)
           const mount = info.activeMount
@@ -132,12 +168,17 @@ export namespace EnvironmentExecution {
             })
           if (input.command.writableRoots?.length && !input.command.writableRoots.includes(mount.path))
             throw new Error("Execution must retain the Workspace root through checkpoint publication")
+          if (input.command.writableRoots?.length !== 0) {
+            const reference = await WorkspaceEvidence.begin(info)
+            if (reference) evidence.push({ workspaceID: info.id, reference })
+          }
         }
         const now = Date.now()
         const info = Info.parse({
           id: input.id,
           scopeID: input.scopeID,
           target: use.target,
+          evidence,
           workspaces: input.workspaces?.map((reference) => ({
             ...reference,
             ...(input.command.writableRoots?.length === 0 ? { readOnly: true } : {}),

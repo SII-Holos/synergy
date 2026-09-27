@@ -26,6 +26,8 @@ Directory creation, copy, move and removal use the same operation record and che
 
 The file workbench resolves physical aliases at the execution host and carries protected-path enforcement into the admitted mutation. Controller preflight alone cannot protect a directory whose descendants change before admission. A known pre-effect rejection releases its durable use immediately and preserves its structured failure for identical retries. Transport errors without a confirmed rejection retain the original recovery rules.
 
+File history records immutable before/after manifests under physical admission, including every mounted view covered by an execution write footprint. Evidence references belong to durable operations and can finish after a save failure or controller restart. Snapshot storage retains its existing Git object format while logical Workspace-relative paths survive allocation relocation. Restore uses conditional file operations, preserving multi-Workspace attribution even when names match. A failed history publication retains execution ownership instead of reporting a complete write with missing evidence.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

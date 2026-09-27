@@ -226,6 +226,14 @@ export class NativeExecutor implements Executor {
       const lease = operation.lease
       if (!lease.recovery) throw new Error("Executor requires a durable Workspace claim")
       await this.persist(operation)
+      if (command.capture?.length) {
+        operation.status.before = []
+        for (const reference of command.capture) {
+          const manifest = await this.files.captureBefore(reference, lease.recovery)
+          if (manifest) operation.status.before.push({ ...reference, manifest })
+        }
+        await this.persist(operation)
+      }
       operation.owned = await OwnedProcess.prepare({
         command: this.options.runAs ? "/usr/bin/setpriv" : command.command,
         args: this.options.runAs

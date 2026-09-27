@@ -13,6 +13,7 @@ import { NativeFileEntry } from "../file/entry-core"
 import { NativeFileMutation } from "../file/mutation-core"
 import { WorkspaceCoordinator } from "./coordinator"
 import { NativeWorkspaceTree } from "./tree"
+import { SnapshotLink } from "@ericsanchezok/synergy-harness/session/snapshot-link"
 
 const MountReceipt = z.object({
   input: WorkspaceProtocol.MountInput,
@@ -31,6 +32,7 @@ const Receipt = z.object({
   effectCompleted: z.boolean().default(false),
   error: z.string().optional(),
   failure: WorkspaceErrors.Failure.optional(),
+  beforeManifest: WorkspaceTree.Hash.optional(),
 })
 type Receipt = z.infer<typeof Receipt>
 
@@ -343,7 +345,40 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           },
         }
         const change = input.change
-        if (change.kind === "import") {
+        if (change.kind === "replace") {
+          const target = absolute(change.path)
+          const content = Buffer.from(change.data, "base64")
+          if (content.toString("base64") !== change.data || content.length > WorkspaceProtocol.writeBytes)
+            throw new Error("Invalid replacement bytes")
+          if (
+            change.expectedContentVersion !== undefined &&
+            (await NativeFileMutation.snapshot(target))?.version !== change.expectedContentVersion
+          )
+            throw new NativeFileMutation.ConflictError()
+          if (change.mode === "120000")
+            WorkspaceTree.Manifest.parse({
+              version: 1,
+              entries: [
+                ...change.path
+                  .split("/")
+                  .slice(0, -1)
+                  .map((_, index, parts) => ({
+                    path: parts.slice(0, index + 1).join("/"),
+                    kind: "directory",
+                    mode: 0o755,
+                  })),
+                { path: change.path, kind: "symlink", mode: 0o777, target: SnapshotLink.decode(content).target },
+              ],
+            })
+          await NativeFileEntry.replace({
+            path: target,
+            content,
+            expectedVersion: change.expectedVersion,
+            mode: change.mode,
+            createParents: true,
+            ...options,
+          })
+        } else if (change.kind === "import") {
           const tree = WorkspaceTree.Manifest.parse(
             JSON.parse(new TextDecoder().decode(await this.getBlob(change.manifest, WorkspaceTree.manifestBytes))),
           )
@@ -438,6 +473,10 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       } else await this.options.coordinator.validateRetention(receipt.claim, mount.path)
       try {
         if (mutate && !receipt.effectCompleted) {
+          if (!receipt.effectStarted && !receipt.beforeManifest) {
+            receipt.beforeManifest = await this.captureBefore(reference, receipt.claim!)
+            await this.persist("checkpoints", id, receipt)
+          }
           await mutate(mount, receipt, async () => {
             if (receipt.effectStarted) return
             receipt.effectStarted = true
@@ -464,10 +503,21 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         manifest = WorkspaceTree.hash(bytes)
         await this.putBlob(manifest, bytes)
       }
-      const checkpoint = { id, mount: reference, manifest }
+      const checkpoint = { id, mount: reference, manifest, beforeManifest: receipt.beforeManifest }
       await this.persist("checkpoints", id, { ...receipt, checkpoint })
       return checkpoint
     })
+  }
+  async captureBefore(reference: WorkspaceProtocol.Reference, claim: { id: string; token: string }) {
+    const mount = await this.required(reference)
+    const source = MountReceipt.parse(await this.receipt("mounts", reference.id)).input.source
+    if (source.kind !== "materialized") return undefined
+    await this.options.coordinator.validateRetention(claim, mount.path)
+    const tree = await NativeWorkspaceTree.capture(mount.path, this.blobs(), this.shutdown.signal)
+    const bytes = WorkspaceTree.encode(tree)
+    const manifest = WorkspaceTree.hash(bytes)
+    await this.putBlob(manifest, bytes)
+    return manifest
   }
   async acknowledge(id: string) {
     await this.serial(`checkpoint:${id}`, async () => {

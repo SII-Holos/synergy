@@ -5142,6 +5142,7 @@ export type SnapshotWorkspace = {
   id: string
   generation: number
   root: string
+  pathKind?: "workspace"
 }
 
 export type FileDiff = {
@@ -10538,19 +10539,6 @@ export type EventScopeRuntimeDisposed = {
   }
 }
 
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
-    directory?: string
-  }
-}
-
 export type EventProviderAuthUpdated = {
   type: "provider.auth.updated"
   properties: {
@@ -10563,20 +10551,6 @@ export type EventConfigUpdated = {
   properties: {
     scope: "global" | "project"
     changedFields: Array<string>
-  }
-}
-
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
-
-export type EventPermissionReplied = {
-  type: "permission.replied"
-  properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -10623,6 +10597,33 @@ export type EventMessagePartRemoved = {
     sessionID: string
     messageID: string
     partID: string
+  }
+}
+
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+    directory?: string
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -11193,18 +11194,18 @@ export type EventRuntimeReloaded = {
 export type Event =
   | EventWorkspaceUpdated
   | EventScopeRuntimeDisposed
-  | EventScopeUpdated
-  | EventScopeRemoved
   | EventProviderAuthUpdated
   | EventConfigUpdated
-  | EventPermissionAsked
-  | EventPermissionReplied
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
+  | EventScopeUpdated
+  | EventScopeRemoved
+  | EventPermissionAsked
+  | EventPermissionReplied
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
