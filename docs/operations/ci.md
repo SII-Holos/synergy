@@ -10,6 +10,8 @@
 
 PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计算反向依赖闭包，执行 GitHub 合并提交，计划分别记录三个 SHA。Desktop 显式依赖嵌入的 Web 与 Runtime。新增未登记 workspace、根锁文件、工具链、共享测试设施、CI 规则和未知路径升级全量。只有明确白名单中的说明文档与 Skill 描述可选 policy，代码混合改动仍按代码计算影响；包内 Markdown 按程序输入处理。单独的 Pi/OpenCode observer 改动选择公共 benchmark 契约与该 native harness；共享协议、准备与调度改动选择全部 harness。
 
+变更路径从 base/head 的共同祖先比较到 head；base 独有更新不计作 PR 修改。依赖图使用当前两侧快照，使主线新增使用者仍可被选中。重命名的旧、新路径和删除文件均参与影响分析。
+
 普通包运行完整 suite；PostgreSQL 与长流任务另从实际测试入口追踪两侧输入。跨 workspace 输入包含生产和测试依赖；无法解析的别名、动态导入或资源使该任务对代码改动保守选中。输入图完整时才允许跳过未触及的昂贵任务。
 
 ## 任务和报告

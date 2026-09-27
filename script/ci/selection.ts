@@ -1,4 +1,20 @@
+import { execFileSync } from "node:child_process"
 import type { Task, WorkspaceInput, TaskInputs } from "./plan"
+
+export function changedFiles(root: string, base: string, head: string): string[] {
+  if (![base, head].every((sha) => /^[a-f0-9]{40}$/.test(sha)))
+    throw new Error("CI requires exact base and head revisions")
+  // Base-only updates are not PR changes; retain both paths of a rename for ownership analysis.
+  return execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", `${base}...${head}`], {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 128 * 1024 * 1024,
+    stdio: ["pipe", "pipe", "pipe"],
+  })
+    .split("\0")
+    .filter(Boolean)
+    .sort()
+}
 
 export function documentation(file: string): boolean {
   return /^(README(?:\.[a-zA-Z-]+)?\.md|CONTRIBUTING\.md|LICENSE(?:\.md)?|docs\/.*\.md|\.synergy\/skill\/[^/]+\/(?:SKILL\.md|agents\/openai\.yaml))$/.test(

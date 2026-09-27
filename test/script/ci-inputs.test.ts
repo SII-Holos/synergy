@@ -4,7 +4,7 @@ import { cp, mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { taskInputs } from "../../script/ci/inputs"
-import { workspaceInputs } from "../../script/ci/catalog"
+import { changedFiles, workspaceInputs } from "../../script/ci/catalog"
 import { createPlan, type Task, type WorkspaceInput } from "../../script/ci/plan"
 
 test("integration inputs follow both revisions, resources and unresolved dynamic imports", async () => {
@@ -249,6 +249,42 @@ test("the execution CLI can start on Docker workers without node_modules", async
     ])
     expect({ code, stderr }).toEqual({ code: 0, stderr: "" })
     expect(stdout).toContain("Usage: bun script/ci.ts")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("a PR behind its base excludes unrelated base updates from its changed paths", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-pr-diff-"))
+  const git = (...args: string[]) =>
+    execFileSync("git", args, {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "CI Fixture",
+        GIT_AUTHOR_EMAIL: "ci@fixture.test",
+        GIT_COMMITTER_NAME: "CI Fixture",
+        GIT_COMMITTER_EMAIL: "ci@fixture.test",
+      },
+    }).trim()
+  try {
+    git("init", "--quiet")
+    await Bun.write(path.join(root, "packages/core/src/value.ts"), "export const value = 1")
+    git("add", ".")
+    git("commit", "--quiet", "-m", "common base")
+    const ancestor = git("rev-parse", "HEAD")
+    await Bun.write(path.join(root, ".github/workflows/ci.yml"), "base-only policy update")
+    git("add", ".")
+    git("commit", "--quiet", "-m", "base advances")
+    const base = git("rev-parse", "HEAD")
+    git("switch", "--quiet", "-c", "fixture-pr", ancestor)
+    await rm(path.join(root, "packages/core/src/value.ts"))
+    await Bun.write(path.join(root, "packages/core/src/renamed.ts"), "export const value = 1")
+    git("add", ".")
+    git("commit", "--quiet", "-m", "PR renames an input")
+    const head = git("rev-parse", "HEAD")
+    expect(changedFiles(root, base, head)).toEqual(["packages/core/src/renamed.ts", "packages/core/src/value.ts"])
   } finally {
     await rm(root, { recursive: true, force: true })
   }

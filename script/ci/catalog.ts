@@ -5,6 +5,7 @@ import { loadManifest } from "../coverage-check"
 import { collectTests } from "../../packages/testing/script/batches"
 import { type Task, type WorkspaceInput } from "./plan"
 import { workspaces } from "../workspace-manifest"
+export { changedFiles } from "./selection"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
 export const OUTPUT = ".artifacts/ci"
@@ -90,17 +91,6 @@ export async function workspaceInputs(root: string, revision: string): Promise<W
     dependencies: entry.dependencies.filter((name) => byName.has(name)),
     testDependencies: [...new Set(entry.testDependencies)].filter((name) => byName.has(name)).sort(),
   }))
-}
-
-export function changedFiles(root: string, base: string, head: string): string[] {
-  if (![base, head].every((sha) => /^[a-f0-9]{40}$/.test(sha)))
-    throw new Error("CI requires exact base and head revisions")
-  // --no-renames includes both the removed and added ownership paths.
-  return git(root, ["diff", "--name-only", "--no-renames", "-z", base, head])
-    .toString()
-    .split("\0")
-    .filter(Boolean)
-    .sort()
 }
 
 export async function catalog(root = ROOT): Promise<Task[]> {
