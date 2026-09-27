@@ -8,7 +8,6 @@ import { ScopeContext } from "../scope/context"
 import { Bus } from "../bus"
 import { WorkspaceAccess } from "./access"
 import { WorkspaceLocation } from "./location"
-import { WorkspaceMounts } from "./mount"
 import type { Workspace } from "../session/workspace-schema"
 
 export namespace WorkspaceBinding {
@@ -113,6 +112,7 @@ export namespace WorkspaceBinding {
         ? [previous.binding.path]
         : []),
     ]
+    const { WorkspaceMounts } = await import("./mount")
     const detached = previous.activeMount
       ? await WorkspaceMounts.detach({
           workspaceID: id,
