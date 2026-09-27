@@ -16,7 +16,7 @@ PR 默认使用 affected。主线 push、既有每日冷运行、手动 full 和
 
 PostgreSQL 16/17/18 只执行明确登记的 PG 能力入口，缺失 URL 或 backend 选择错误必须失败。SQLite 完整 suite 保留。Storage 测试使用实际存储引擎所需的轻量 fixture；三种 30 MiB、30720 个 checkpoint 的流压测保留真实 RuntimeHandle、清理与删除路径。不能把没有加载的服务算作性能收益，也不能降低负载换取更快结果。
 
-现有 Linux prepare 按 core/full 各构建一次，分开发布绑定计划、SHA、run、attempt、Bun 和 ABI 的只读分发产物；消费前核对完整文件清单、摘要和模式。五个安装任务分别验证 core binary、core tarball、full 的两组行为及 full 组合与安装生命周期。每个场景仍用独立 Home，单个进程共享只读产物副本。full 构建与组合验收不依赖 core 产物，安装、升级、移除、managed/attach 以及输入字节校验不减少。此处取代 [独立安装控制](2026-09-27-independent-installed-runtime-controls.md) 的两组构建执行布局，保留独立结果与时限。
+现有 Linux prepare 按 core/full 各构建一次，分开发布绑定计划、SHA、run、attempt、Bun 和 ABI 的只读分发产物；跨 job 解包显式保留归档模式，避免消费者 umask 改写执行权限；消费前核对完整文件清单、摘要和模式。五个安装任务分别验证 core binary、core tarball、full 的两组行为及 full 组合与安装生命周期。每个场景仍用独立 Home，单个进程共享只读产物副本。full 构建与组合验收不依赖 core 产物，安装、升级、移除、managed/attach 以及输入字节校验不减少。此处取代 [独立安装控制](2026-09-27-independent-installed-runtime-controls.md) 的两组构建执行布局，保留独立结果与时限。
 
 Docker 使用统一、最长任务优先的三并发矩阵，每个任务保持独立执行结果。准备物下载由实际依赖生成的 matrix 标志决定；只选外部 harness 时不准备或下载 Synergy 产物。完整矩阵等待 benchmark preparation 后统一调度，接受短准备等待以消除分段队列对第三个槽位的限制。普通 Linux 仍是一个直接启动的 contract worker 加五个 build worker；本决策不调整 runner 配置。
 

@@ -237,7 +237,7 @@ jobs:
           path: .artifacts/ci/distributions
       - name: Unpack core distribution
         if: matrix.core
-        run: tar --zstd -xf .artifacts/ci/distributions/core.tar.zst -C .artifacts/ci/distributions
+        run: tar --zstd -xpf .artifacts/ci/distributions/core.tar.zst -C .artifacts/ci/distributions
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: matrix.full
         with:
@@ -245,7 +245,7 @@ jobs:
           path: .artifacts/ci/distributions
       - name: Unpack full distribution
         if: matrix.full
-        run: tar --zstd -xf .artifacts/ci/distributions/full.tar.zst -C .artifacts/ci/distributions
+        run: tar --zstd -xpf .artifacts/ci/distributions/full.tar.zst -C .artifacts/ci/distributions
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: ${{ matrix.pool != 'docker' }}

@@ -101,7 +101,7 @@ export async function restoreDistribution(root: string, plan: Plan, profile: Pro
       throw new Error("Unowned distribution path")
     const file = path.join(directory, entry.path)
     if ((await fileHash(file)) !== entry.sha256 || ((await stat(file)).mode & 0o777) !== entry.mode)
-      throw new Error("Distribution bytes or permissions changed")
+      throw new Error(`Distribution bytes or permissions changed: ${entry.path}`)
   }
   for (const prefix of prefixes) await rm(path.join(root, prefix), { recursive: true, force: true })
   for (const entry of manifest.files) {
