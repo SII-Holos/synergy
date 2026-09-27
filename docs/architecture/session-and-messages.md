@@ -302,6 +302,8 @@ Managed Asset and media files are Runtime resources, independent of a session's 
 
 Attachment preparation settles all sibling operations before publishing a message or reporting failure. Missing, invalid or unprocessable attachments park the complete original input with a safe filename-based reason; no partial message reaches the model. Failed steer/context inputs are parked without aborting the active root. Storage pressure, cancellation and evidence-recording failures retain their existing classifications. Scheduling progress identifies the exact message and inbox item, and exhausting its preparation retries parks only that item before driving other runnable work. See the [attachment preparation decision](../decisions/implemented/bug-fix/2026-09-28-workspace-independent-attachments.md).
 
+Text uploads retain UTF-8 replacement decoding for invalid byte sequences, with the original bytes stored in the attachment. Encoding detection is not part of preparation; legacy text bytes do not reject the whole input.
+
 ### Assistant context usage
 
 Assistant messages may include an optional `contextUsage` snapshot for the completed provider call. The snapshot is additive message data, not a separate storage record or session aggregate.

@@ -10,6 +10,8 @@ Uploaded files belong to Runtime-managed storage, but input preparation routed t
 
 Managed attachments use one byte preparation path with canonical Asset/media containment checks. Native file references retain their Workspace requirement and read evidence. Automatic policy handles text, documents, images and other media, while explicit model policy takes precedence and presentation metadata survives normalization. Document extraction keeps the existing parser limits; this change does not add audio transcription or video interpretation.
 
+Text uploads keep the existing UTF-8 replacement behavior for invalid byte sequences, and retain the original bytes. Strict UTF-8 validation would reject previously accepted legacy text files without improving the managed-resource boundary, so encoding detection or stricter validation is outside this repair.
+
 Preparation failure rejects the whole input. Sibling preparation settles before the error propagates; the original inbox payload remains available for correction or retry, with a filename-based error instead of private source details. Invalid steer/context delivery is parked independently of the active root. Scheduling failures retain message/item identity, and exhausted preparation retries advance to other runnable work without parking unrelated input for a provider failure.
 
 ## Alternatives considered

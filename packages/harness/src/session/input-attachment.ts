@@ -57,7 +57,7 @@ export async function prepareManagedAttachment(
   if (!shouldExtractAttachmentText(part)) return [attachment]
   const policy = Attachment.policy({ filename: part.filename, filepath: localPath, mime: part.mime })
   const text = Attachment.isText(part.mime)
-    ? new TextDecoder("utf-8", { fatal: true }).decode(bytes)
+    ? new TextDecoder("utf-8").decode(bytes)
     : policy.extractText
       ? await Attachment.extractTextFromFile(localPath)
       : undefined

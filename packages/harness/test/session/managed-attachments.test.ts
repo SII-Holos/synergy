@@ -30,6 +30,32 @@ const fixtures = [
   { filename: "trace.bin", mime: "application/octet-stream", bytes: Buffer.from([0, 1, 2, 255]) },
 ]
 
+test("text uploads retain replacement decoding for legacy byte sequences", () =>
+  runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const bytes = Buffer.concat([Buffer.from("LEGACY_CONTENT,"), Buffer.from([0xe9]), Buffer.from("\nEND")])
+        for (const mime of ["text/plain", "text/csv"]) {
+          const filename = mime === "text/plain" ? "legacy.txt" : "legacy.csv"
+          const id = await Asset.write(bytes, mime, filename)
+          for (const url of [`asset://${id}`, `data:${mime};base64,${bytes.toString("base64")}`]) {
+            const session = await Session.create({ workspace: null })
+            const message = await createUserMessage({
+              sessionID: session.id,
+              model,
+              parts: [{ type: "attachment", url, filename, mime }],
+            })
+            expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("LEGACY_CONTENT,�\\nEND")
+            const attachment = message.parts.find((part) => part.type === "attachment")!
+            expect(await Bun.file(attachment.localPath!).bytes()).toEqual(new Uint8Array(bytes))
+          }
+        }
+      },
+    }),
+  ))
+
 test("content policy without embedded text still extracts uploaded and inline text", () =>
   runtime.run(() =>
     ScopeContext.provide({
