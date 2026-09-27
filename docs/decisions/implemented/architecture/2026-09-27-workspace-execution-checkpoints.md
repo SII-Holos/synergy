@@ -20,6 +20,8 @@ Interactive terminals and user shell commands share the durable process facade. 
 
 An indexed set of unfinished operations makes startup recovery independent of conversation replay and bounds periodic maintenance by active work. A versioned migration creates this index for existing execution records. The Runtime drains maintenance before closing process and Workspace owners. A confirmed lost live view remains unavailable even when a committed manifest exists, because restoring that manifest would silently discard later writes.
 
+Mounted file writes use the same intent-before-dispatch ordering. Their core operation record carries the immutable write input, digest, view generation and allocation target. Recovery only resumes a known receipt, and cannot repeat a mutation after uncertain effects. Admission becomes durable in the same transaction as its owning intent so a crash before dispatch does not strand an unowned use.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.

@@ -239,7 +239,10 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
           throw new Error("Invalid Workspace file bytes")
         const target = await this.target(mount, input.path)
         const current = await NativeFileMutation.snapshot(target)
-        if (receipt.effectStarted && current?.version === `sha256:${WorkspaceTree.hash(bytes)}`) return
+        if (receipt.effectStarted) {
+          if (current?.version === `sha256:${WorkspaceTree.hash(bytes)}`) return
+          throw new Error("Workspace write outcome is unknown; the mutation cannot be repeated")
+        }
         if ((current?.version ?? null) !== input.expectedVersion) throw new NativeFileMutation.ConflictError()
         await start()
         await NativeFileMutation.write(

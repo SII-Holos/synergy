@@ -1,3 +1,4 @@
+import { WorkspaceOperations } from "../workspace/operations"
 import { registerConfigMigrations } from "../config/migration"
 import { registerScopeMigrations } from "../scope/migration"
 import { registerSessionMigrations } from "../session/migration"
@@ -32,6 +33,7 @@ export function registerHarness() {
   Environment.registerRecovery()
   WorkspaceMounts.register()
   EnvironmentExecution.registerRecovery()
+  WorkspaceOperations.register()
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

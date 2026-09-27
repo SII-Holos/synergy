@@ -105,6 +105,7 @@ export namespace EnvironmentExecution {
     const use = await Environment.acquire(input.environmentID, {
       scopeID: input.scopeID,
       useID: useID(input.scopeID, input.id),
+      kind: "admission",
       capabilities: [input.command.pty ? "pty" : "exec"],
       signal: input.signal,
     })
@@ -144,6 +145,7 @@ export namespace EnvironmentExecution {
           createdAt: now,
           updatedAt: now,
         })
+        await Environment.retainUse(use.target, input.scopeID, useID(input.scopeID, input.id))
         await write(info)
         return info
       })

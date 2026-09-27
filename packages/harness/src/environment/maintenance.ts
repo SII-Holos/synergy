@@ -1,3 +1,4 @@
+import { WorkspaceOperations } from "../workspace/operations"
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
@@ -47,6 +48,7 @@ export namespace EnvironmentMaintenance {
       }
     }
     await EnvironmentExecution.recover()
+    await WorkspaceOperations.recover()
     await WorkspaceMounts.recover()
     for (const scopeID of scopes) await Environment.reclaimIdle(scopeID, now)
   }

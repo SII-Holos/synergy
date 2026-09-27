@@ -179,6 +179,17 @@ export namespace Environment {
     )
   }
 
+  export async function retainUse(target: Target, scopeID: string, useID: string) {
+    await Storage.transaction(async () => {
+      await assertTarget(target, scopeID)
+      const key = StoragePath.environmentUse(target.environmentID, useID)
+      const [use] = await Storage.readMany<EnvironmentSchema.Use>([key])
+      if (!use || !sameTarget(use.target, target))
+        throw new Stale({ environmentID: target.environmentID, message: "Environment admission is unavailable" })
+      await Storage.write(key, { ...use, kind: "operation", ownerEpoch: undefined })
+    })
+  }
+
   export async function releaseUse(target: Target, scopeID: string, useID: string) {
     await Storage.transaction(async () => {
       const info = await get(target.environmentID, scopeID)

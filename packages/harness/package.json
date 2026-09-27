@@ -6,6 +6,7 @@
   "license": "MIT",
   "exports": {
     "./environment/process": "./src/environment/process.ts",
+    "./workspace/operations": "./src/workspace/operations.ts",
     "./workspace/tree": "./src/workspace/tree.ts",
     "./workspace/protocol": "./src/workspace/protocol.ts",
     "./workspace/mount": "./src/workspace/mount.ts",

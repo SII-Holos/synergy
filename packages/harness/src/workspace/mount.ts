@@ -85,6 +85,7 @@ export namespace WorkspaceMounts {
     const use = await Environment.acquire(input.environmentID, {
       scopeID: input.scopeID,
       useID,
+      kind: "admission",
       capabilities: ["files"],
     })
     let info: WorkspaceCatalog.Info
@@ -104,6 +105,7 @@ export namespace WorkspaceMounts {
               workspaceID: previous.id,
               message: "Workspace is already mounted in another allocation",
             })
+          await Environment.retainUse(use.target, input.scopeID, useID)
           return previous
         }
         const generation = (previous.mountGeneration ?? 0) + 1
@@ -119,6 +121,7 @@ export namespace WorkspaceMounts {
           },
           updatedAt: Date.now(),
         })
+        await Environment.retainUse(use.target, input.scopeID, useID)
         await Storage.write(StoragePath.workspace(next.id), next)
         await Storage.write(StoragePath.workspaceEnvironment(input.environmentID, next.id), next.scopeID)
         return next
@@ -198,6 +201,7 @@ export namespace WorkspaceMounts {
     const use = await Environment.acquire(mount.target.environmentID, {
       scopeID: input.scopeID,
       useID,
+      kind: "admission",
       capabilities: ["files"],
     })
     try {
@@ -215,6 +219,7 @@ export namespace WorkspaceMounts {
           activeMount: { ...latest.activeMount!, state: "saving" },
           updatedAt: Date.now(),
         })
+        await Environment.retainUse(use.target, input.scopeID, useID)
         await Storage.write(StoragePath.workspace(info.id), next)
         return next
       })
