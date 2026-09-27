@@ -61,6 +61,18 @@ synergy web --attach http://localhost:4097
 
 `web` does not start a server. It verifies `/global/health`, verifies that the target serves the Web application, and opens the authenticated attach URL. The default target is `http://localhost:4096`.
 
+## Workspace and Environment resources
+
+`synergy workspace` and `synergy environment` operate on an existing server through the generated SDK. Supply `--attach` and `--scope`; these commands do not open local Agent storage or acquire its writer lock. Results are JSON; HTTP errors retain their structured payload and set a nonzero exit status. Set `SYNERGY_SERVER_TOKEN` for authenticated servers, or select another variable with `--token-env`.
+
+Use `environment profiles`, `environment list`, `environment inspect`, and `workspace list` to inspect resources without starting compute. `environment create <profile> --request-id <stable-id>` selects a profile; reuse the request ID when reconciling a response that was lost. Session selection, reclamation and detachment require the observed IDs or revisions shown by inspection. `recover` reconciles an existing operation and retries saving; it never resubmits its command.
+
+```bash
+synergy environment profiles --attach http://localhost:4096 --scope home
+synergy workspace create files --name Research --attach http://localhost:4096 --scope home
+synergy environment create worker --request-id research-compute --attach http://localhost:4096 --scope home
+```
+
 ## One-off Work with `send`
 
 ```bash
