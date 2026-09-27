@@ -9,7 +9,7 @@ import { LinuxTree } from "./linux-tree"
 import { WindowsJob } from "./windows-job"
 import { OwnedProtocol } from "./owned-protocol"
 import { NativePty } from "./native-pty"
-import type { Writable } from "node:stream"
+import { forwardOwnedInput } from "./owned-input"
 
 export async function runOwnedProcessWorker(filename: string) {
   if (process.platform === "win32") WindowsJob.detachConsole()
@@ -67,12 +67,8 @@ export async function runOwnedProcessWorker(filename: string) {
   let terminal: ReturnType<typeof NativePty.spawn> | undefined
   let activationReceived = false
   const received = Promise.withResolvers<void>()
-  let receivedInput = 0
   let inputEnd: number | undefined
-  let commandInput: Writable | undefined
-  const finishInput = () => {
-    if (inputEnd === receivedInput) commandInput?.end()
-  }
+  let endInput: ReturnType<typeof forwardOwnedInput> | undefined
   const activated = new Promise<void>((resolve, reject) => {
     OwnedProtocol.messages(
       control,
@@ -85,7 +81,7 @@ export async function runOwnedProcessWorker(filename: string) {
           received.resolve()
         } else if (message.type === "stdin-end" && inputEnd === undefined) {
           inputEnd = message.bytes
-          finishInput()
+          endInput?.(inputEnd)
         } else if (message.type === "resize" && terminal) terminal.resize(message.cols, message.rows)
         else throw new Error("Invalid native process control state")
       },
@@ -120,17 +116,11 @@ export async function runOwnedProcessWorker(filename: string) {
           })
     const drained = [output, error].map((socket) => new Promise<void>((resolve) => socket.once("finish", resolve)))
     void exited.catch(() => {})
-    commandInput = child.stdin
-    input.pipe(child.stdin, { end: false })
-    input.on("data", (chunk: Buffer) => {
-      receivedInput += chunk.length
-      finishInput()
-    })
-    finishInput()
+    endInput = forwardOwnedInput(input, child.stdin)
+    if (inputEnd !== undefined) endInput(inputEnd)
     child.stdout.pipe(output)
     if ("stderr" in child) child.stderr.pipe(error)
     else error.end()
-    child.stdin.on("error", () => input.destroy())
     if (!("exited" in child)) await once(child, "spawn")
     OwnedProtocol.send(control, { type: "ready", pid: child.pid })
     OwnedProtocol.send(control, { type: "stage", stage: "launched" })
