@@ -155,6 +155,10 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
       const token = await credential(request, true)
       let container = await engine.inspect(name(request))
       if (!container) {
+        const host = z
+          .object({ SecurityOptions: z.array(z.string()).optional() })
+          .parse(await (await engine.request("GET", "/info")).json())
+        const apparmor = host.SecurityOptions?.some((option) => option.split(",")[0] === "name=apparmor")
         await engine.request("POST", "/volumes/create", { Name: `${name(request)}-files`, Labels: labels(request) })
         await inspectVolume(request)
         const network = await engine.request(
@@ -188,7 +192,11 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
               ReadonlyRootfs: true,
               CapDrop: ["ALL"],
               CapAdd: ["SETUID", "SETGID", "KILL", "CHOWN", "FOWNER", "DAC_OVERRIDE"],
-              SecurityOpt: ["no-new-privileges:true", `seccomp=${JSON.stringify(executionSeccomp())}`],
+              SecurityOpt: [
+                "no-new-privileges:true",
+                `seccomp=${JSON.stringify(executionSeccomp())}`,
+                ...(apparmor ? ["apparmor=synergy-execution-v1"] : []),
+              ],
               // Child proc overmounts lock the outer procfs and prevent unprivileged nested PID namespaces.
               // User commands have no capabilities; the command sandbox creates its own procfs.
               MaskedPaths: ["/sys/firmware", "/sys/devices/virtual/powercap"],

@@ -22,6 +22,7 @@ test("real Environment lifecycle verification builds its image and cannot silent
   expect(executionQueue(unit, tasks)).toBe("docker-external")
   const recipe = await commands(task!, plan)
   expect(recipe[0]!.args).toContain("install")
+  expect(recipe.some((entry) => entry.args.includes("apparmor_parser"))).toBe(true)
   expect(recipe.some((entry) => entry.args.includes("packages/local-runtime/script/build-execution-host.ts"))).toBe(
     true,
   )

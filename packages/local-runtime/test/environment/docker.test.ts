@@ -118,6 +118,16 @@ test.skipIf(!image)(
           operation = await EnvironmentExecution.reconcile(operation.id, "scope")
         }
         expect(operation.status?.exitCode).toBe(0)
+        if (process.env.SYNERGY_TEST_DOCKER_APPARMOR === "1") {
+          const list = Bun.spawn(["docker", "ps", "-q", "--filter", `label=io.synergy.environment=${environment.id}`], {
+            stdout: "pipe",
+          })
+          const id = (await new Response(list.stdout).text()).trim()
+          expect(await list.exited).toBe(0)
+          const inspect = Bun.spawn(["docker", "inspect", "--format", "{{.AppArmorProfile}}", id], { stdout: "pipe" })
+          expect((await new Response(inspect.stdout).text()).trim()).toBe("synergy-execution-v1")
+          expect(await inspect.exited).toBe(0)
+        }
         await EnvironmentExecution.complete(operation.id, "scope", async () => ({ backend: "none" }))
         const executor = await EnvironmentExecution.connect(operation)
         const inputs = await executor.prepareInputs!({
