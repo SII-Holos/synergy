@@ -8,6 +8,9 @@ import { Global } from "../global"
 import type { MessageV2 } from "../session/message-v2"
 import { AttachmentTextExtraction } from "./text-extraction"
 import { Asset } from "../asset/asset"
+import { Scope } from "../scope"
+import { ScopeContext } from "../scope/context"
+import { isPathContained } from "../util/path-contain"
 
 const LOCAL_MEDIA_MIME_PREFIXES = ["image/", "audio/", "video/"]
 
@@ -82,22 +85,22 @@ export namespace Attachment {
       }
     }
 
-    if (AttachmentTextExtraction.supported(target.filepath ?? target.filename ?? "")) {
-      return {
-        kind: "document",
-        extractText: true,
-        keepBinary: false,
-        saveLocal: false,
-        model: { mode: "summary", summary: attachmentSummary(target, mime) },
-      }
-    }
-
     if (LOCAL_MEDIA_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix))) {
       return {
         kind: "media",
         extractText: false,
         keepBinary: true,
         saveLocal: true,
+        model: { mode: "summary", summary: attachmentSummary(target, mime) },
+      }
+    }
+
+    if (AttachmentTextExtraction.supported(target.filepath ?? target.filename ?? "")) {
+      return {
+        kind: "document",
+        extractText: true,
+        keepBinary: false,
+        saveLocal: false,
         model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
@@ -141,6 +144,23 @@ export namespace Attachment {
     // e.g. application/ld+json, application/vnd.api+json, application/atom+xml
     if (TEXT_SUFFIXES.some((suffix) => mime.endsWith(suffix))) return true
     return false
+  }
+
+  export async function resolveLocalPath(value: string): Promise<{ filepath: string; managed: boolean }> {
+    const context = ScopeContext.current
+    const filepath = path.isAbsolute(value) ? path.resolve(value) : path.resolve(context.directory, value)
+    const root = [Global.Path.assets, Global.Path.media].find((root) => isPathContained(root, filepath))
+    if (root) {
+      const [canonicalRoot, canonicalFile] = await Promise.all([fs.realpath(root), fs.realpath(filepath)])
+      if (!isPathContained(canonicalRoot, canonicalFile)) throw new Error("Attachment path escapes its managed root")
+      return { filepath: canonicalFile, managed: true }
+    }
+    if (!context.workspace)
+      throw new Scope.WorkspaceRequiredError({
+        message: "This file requires a local workspace. Upload it as an attachment instead.",
+        scopeID: context.scope.id,
+      })
+    return { filepath, managed: false }
   }
 
   export function decodeDataUrl(url: string) {
