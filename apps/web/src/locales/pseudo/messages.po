@@ -22148,6 +22148,14 @@ msgid "workspace.dialog.choose"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.createStored"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.description"
 msgstr ""
 
@@ -22165,6 +22173,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.name"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -22216,6 +22228,10 @@ msgid "workspace.dialog.sharingEmpty"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.store"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.title"
 msgstr ""
 
@@ -22245,6 +22261,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.location.planned"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.location.stored"
 msgstr ""
 
 #. js-lingui-explicit-id

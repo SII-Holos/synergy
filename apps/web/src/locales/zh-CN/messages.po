@@ -22148,8 +22148,16 @@ msgid "workspace.dialog.choose"
 msgstr "使用此 Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.create"
+msgstr "创建 Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.createStored"
+msgstr "创建存储型 Workspace"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.description"
-msgstr "选择此会话的工作目录。项目、设置和对话保持不变。"
+msgstr "选择此会话的文件 Workspace。项目、设置和对话保持不变。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.directory"
@@ -22157,7 +22165,7 @@ msgstr "本地目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.empty"
-msgstr "没有匹配的 Workspace。添加一个已有目录即可开始。"
+msgstr "没有匹配的 Workspace。可添加目录或创建存储型 Workspace。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
@@ -22168,8 +22176,12 @@ msgid "workspace.dialog.loading"
 msgstr "正在加载 Workspace…"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.name"
+msgstr "Workspace 名称"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.none"
-msgstr "不使用本地文件"
+msgstr "不使用 Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
@@ -22209,11 +22221,15 @@ msgstr "允许额外写入的 Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharingDescription"
-msgstr "此 Workspace 中的会话也可以写入所选目录。共享权限直接生效，不会继承其他 Workspace 的共享权限。"
+msgstr "此 Workspace 中的会话也可以写入所选 Workspace。共享权限直接生效，不会传递。"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharingEmpty"
-msgstr "添加另一个目录后即可共享写入权限。"
+msgstr "添加另一个 Workspace 后即可共享写入权限。"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.store"
+msgstr "存储配置"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.title"
@@ -22221,7 +22237,7 @@ msgstr "选择 Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.unavailable"
-msgstr "不可用，请选择本地目录重新绑定"
+msgstr "Workspace 不可用"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.directory"
@@ -22229,7 +22245,7 @@ msgstr "本地目录"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.explanation"
-msgstr "文件操作和命令使用当前会话的工作目录。已打开的文件保留原来的工作区归属。"
+msgstr "文件归属于此 Workspace，命令在所选 Environment 中运行。已打开的文件仍保留原 Workspace 归属。"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.home"
@@ -22248,5 +22264,9 @@ msgid "workspace.location.planned"
 msgstr "待准备独立工作区"
 
 #. js-lingui-explicit-id
+msgid "workspace.location.stored"
+msgstr "存储型 Workspace"
+
+#. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
-msgstr "目录不可用"
+msgstr "Workspace 不可用"

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
-import type { SessionWorkspaceSelection, WorkspaceInfo } from "@ericsanchezok/synergy-sdk/client"
+import type { ResourceProfiles, SessionWorkspaceSelection, WorkspaceInfo } from "@ericsanchezok/synergy-sdk/client"
 import { useLingui } from "@lingui/solid"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -38,6 +38,11 @@ export function DialogWorkspace(props: {
   const [selected, setSelected] = createSignal<string | null>(initial ?? null)
   const [sharing, setSharing] = createSignal<string[]>([])
   const [sharingRevision, setSharingRevision] = createSignal<number>()
+  const [stores, setStores] = createSignal<ResourceProfiles["stores"]>([])
+  const [storeProfile, setStoreProfile] = createSignal("")
+  const [workspaceName, setWorkspaceName] = createSignal("")
+  const label = (item: WorkspaceInfo) =>
+    item.binding.path ?? (typeof item.metadata.name === "string" ? item.metadata.name : item.id)
   const [search, setSearch] = createSignal("")
   const [bindingPath, setBindingPath] = createSignal("")
   const [bindingRevision, setBindingRevision] = createSignal<number>()
@@ -46,11 +51,11 @@ export function DialogWorkspace(props: {
   const [error, setError] = createSignal("")
   const record = createMemo(() => records.data.find((item) => item.id === selected()))
   const available = (item: WorkspaceInfo) =>
-    item.lifecycle === "active" && item.binding.state === "bound" && !!item.binding.path && !!item.binding.physicalID
+    item.lifecycle === "active" &&
+    item.binding.state === "bound" &&
+    (item.backend?.provider === "objects" || (!!item.binding.path && !!item.binding.physicalID))
   const filtered = createMemo(() =>
-    records.data.filter((item) =>
-      `${item.binding.path ?? item.id} ${item.id}`.toLowerCase().includes(search().toLowerCase()),
-    ),
+    records.data.filter((item) => `${label(item)} ${item.id}`.toLowerCase().includes(search().toLowerCase())),
   )
   const sharingDirty = createMemo(() => {
     const current = record()
@@ -103,6 +108,16 @@ export function DialogWorkspace(props: {
   }
   onMount(() => {
     void reload()
+    void client.environment
+      .profiles({ scopeID }, options)
+      .then((result) => {
+        if (controller.signal.aborted) return
+        setStores(result.data.stores)
+        setStoreProfile(result.data.stores[0]?.name ?? "")
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(requestErrorMessage(error, _(copy.failed)))
+      })
   })
   onCleanup(sdk.event.on("workspace.updated", (event) => upsert(structuredClone(event.properties))))
 
@@ -117,6 +132,19 @@ export function DialogWorkspace(props: {
       const result = await client.workspace.register({ scopeID, path }, options)
       upsert(result.data)
       if (!controller.signal.aborted) select(result.data.id)
+    })
+  const createStored = () =>
+    perform(async () => {
+      if (!storeProfile() || !workspaceName().trim()) return
+      const result = await client.workspace.createObjects(
+        { scopeID, profile: storeProfile(), name: workspaceName().trim() },
+        options,
+      )
+      upsert(result.data)
+      if (!controller.signal.aborted) {
+        select(result.data.id)
+        setWorkspaceName("")
+      }
     })
   const saveSharing = () =>
     perform(async () => {
@@ -171,6 +199,36 @@ export function DialogWorkspace(props: {
             {_(copy.reload)}
           </Button>
         </div>
+        <Show when={stores().length}>
+          <details>
+            <summary class="cursor-pointer text-base font-medium">{_(copy.createStored)}</summary>
+            <div class="flex flex-col gap-2 pt-2">
+              <TextField
+                label={_(copy.name)}
+                value={workspaceName()}
+                onChange={setWorkspaceName}
+                disabled={pending()}
+              />
+              <fieldset disabled={pending()} class="flex flex-wrap gap-2">
+                <legend class="text-small text-text-weak">{_(copy.store)}</legend>
+                <For each={stores()}>
+                  {(profile) => (
+                    <Button
+                      variant={profile.name === storeProfile() ? "secondary" : "ghost"}
+                      aria-pressed={profile.name === storeProfile()}
+                      onClick={() => setStoreProfile(profile.name)}
+                    >
+                      {profile.name}
+                    </Button>
+                  )}
+                </For>
+              </fieldset>
+              <Button onClick={createStored} disabled={pending() || !storeProfile() || !workspaceName().trim()}>
+                {_(copy.create)}
+              </Button>
+            </div>
+          </details>
+        </Show>
         <Show when={loading()}>
           <p role="status">{_(copy.loading)}</p>
         </Show>
@@ -193,7 +251,7 @@ export function DialogWorkspace(props: {
                 class="h-auto justify-start whitespace-normal break-all text-left"
               >
                 <span>
-                  {item.binding.path ?? item.id}
+                  {label(item)}
                   <Show when={!available(item)}>
                     <span class="block text-small text-text-weak">{_(copy.unavailable)}</span>
                   </Show>
@@ -222,7 +280,7 @@ export function DialogWorkspace(props: {
                           )
                         }
                       >
-                        {item.binding.path ?? item.id}
+                        {label(item)}
                       </Checkbox>
                     )}
                   </For>
@@ -234,35 +292,37 @@ export function DialogWorkspace(props: {
                   </Button>
                 </fieldset>
               </Show>
-              <details>
-                <summary class="cursor-pointer text-base font-medium">{_(copy.rebind)}</summary>
-                <div class="flex flex-col gap-2 pt-2">
-                  <p class="text-small text-text-weak">{_(copy.rebindDescription)}</p>
-                  <TextField
-                    label={_(copy.rebindPath)}
-                    value={bindingPath()}
-                    onChange={editBinding}
-                    disabled={pending()}
-                  />
-                  <div class="flex gap-2">
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        perform(async () => {
-                          const value = await pick()
-                          if (value) editBinding(value)
-                        })
-                      }
+              <Show when={current().backend?.provider !== "objects"}>
+                <details>
+                  <summary class="cursor-pointer text-base font-medium">{_(copy.rebind)}</summary>
+                  <div class="flex flex-col gap-2 pt-2">
+                    <p class="text-small text-text-weak">{_(copy.rebindDescription)}</p>
+                    <TextField
+                      label={_(copy.rebindPath)}
+                      value={bindingPath()}
+                      onChange={editBinding}
                       disabled={pending()}
-                    >
-                      {_(copy.pick)}
-                    </Button>
-                    <Button onClick={rebind} disabled={pending() || !bindingPath().trim() || sharingDirty()}>
-                      {_(copy.applyBinding)}
-                    </Button>
+                    />
+                    <div class="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          perform(async () => {
+                            const value = await pick()
+                            if (value) editBinding(value)
+                          })
+                        }
+                        disabled={pending()}
+                      >
+                        {_(copy.pick)}
+                      </Button>
+                      <Button onClick={rebind} disabled={pending() || !bindingPath().trim() || sharingDirty()}>
+                        {_(copy.applyBinding)}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </details>
+                </details>
+              </Show>
             </>
           )}
         </Show>

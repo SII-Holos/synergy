@@ -22148,6 +22148,14 @@ msgid "workspace.dialog.choose"
 msgstr "Use Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.create"
+msgstr "Create Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.createStored"
+msgstr "Create stored Workspace"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.description"
 msgstr "Choose where this session works. Its project, settings and conversation stay the same."
 
@@ -22157,7 +22165,7 @@ msgstr "Local directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.empty"
-msgstr "No matching Workspaces. Add an existing directory to get started."
+msgstr "No matching Workspaces. Add a directory or create a stored Workspace."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
@@ -22168,8 +22176,12 @@ msgid "workspace.dialog.loading"
 msgstr "Loading Workspaces…"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.name"
+msgstr "Workspace name"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.none"
-msgstr "No local files"
+msgstr "No Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
@@ -22209,11 +22221,15 @@ msgstr "Additional writable Workspaces"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharingDescription"
-msgstr "Sessions in this Workspace may also write to the selected directories. Sharing applies directly and is not inherited."
+msgstr "Sessions in this Workspace may also write to the selected Workspaces. Sharing applies directly and is not inherited."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharingEmpty"
-msgstr "Add another directory to share write access."
+msgstr "Add another Workspace to share write access."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.store"
+msgstr "Storage profile"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.title"
@@ -22221,7 +22237,7 @@ msgstr "Choose Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.unavailable"
-msgstr "Unavailable — choose a local directory to rebind"
+msgstr "Workspace unavailable"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.directory"
@@ -22229,7 +22245,7 @@ msgstr "Local directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.explanation"
-msgstr "File operations and commands use this session's working directory. Open files keep their original Workspace."
+msgstr "Files belong to this Workspace. Commands run in the selected Environment. Open files keep their original Workspace."
 
 #. js-lingui-explicit-id
 msgid "workspace.location.home"
@@ -22248,5 +22264,9 @@ msgid "workspace.location.planned"
 msgstr "Worktree pending"
 
 #. js-lingui-explicit-id
+msgid "workspace.location.stored"
+msgstr "Stored Workspace"
+
+#. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
-msgstr "Directory unavailable"
+msgstr "Workspace unavailable"
