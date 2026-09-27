@@ -20,6 +20,75 @@ const ERROR: i32 = -1;
 const EOF: i32 = -2;
 const FULL: i32 = -3;
 
+// Provenance: https://man7.org/linux/man-pages/man3/errno.3.html and
+// https://man7.org/linux/man-pages/man2/prctl.2.html
+// Capture errno before returning through FFI: even successful runtime work may change it.
+// Variadic numeric arguments use machine-word widths. Nonnegative results succeed; negatives encode errno.
+#[cfg(target_os = "linux")]
+fn linux_result(result: libc::c_long) -> i32 {
+    if result < 0 {
+        return unsafe { -*libc::__errno_location() };
+    }
+    i32::try_from(result).unwrap_or(-libc::EOVERFLOW)
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn synergy_linux_subreaper() -> i32 {
+    linux_result(
+        unsafe {
+            libc::prctl(
+                libc::PR_SET_CHILD_SUBREAPER,
+                1 as libc::c_ulong,
+                0 as libc::c_ulong,
+                0 as libc::c_ulong,
+                0 as libc::c_ulong,
+            )
+        }
+        .into(),
+    )
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn synergy_linux_waitpid() -> i32 {
+    linux_result(
+        unsafe { libc::waitpid(-1, std::ptr::null_mut(), libc::WNOHANG | libc::__WALL) }.into(),
+    )
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn synergy_linux_pidfd_open(pid: i32) -> i32 {
+    linux_result(unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_open,
+            libc::c_long::from(pid),
+            0 as libc::c_long,
+        )
+    })
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn synergy_linux_pidfd_signal(descriptor: i32, signal: i32) -> i32 {
+    linux_result(unsafe {
+        libc::syscall(
+            libc::SYS_pidfd_send_signal,
+            libc::c_long::from(descriptor),
+            libc::c_long::from(signal),
+            std::ptr::null::<libc::siginfo_t>(),
+            0 as libc::c_long,
+        )
+    })
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub extern "C" fn synergy_linux_close(descriptor: i32) -> i32 {
+    linux_result(unsafe { libc::close(descriptor) }.into())
+}
+
 #[derive(Deserialize)]
 struct Input {
     command: String,

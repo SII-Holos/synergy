@@ -87,6 +87,57 @@ def recipe_links(source: Path, dependencies: dict[str, str]) -> dict[str, str]:
     return {name: packages[name] for name in sorted(dependencies)}
 
 
+def source_recipe(source: Path, *, image_id: str, protocol: str, links: dict[str, str]) -> str:
+    link_commands = []
+    for name, relative in links.items():
+        link_path = Path("/opt/synergy/runtime/node_modules") / name
+        linked = Path("/opt/synergy/source") / relative
+        link_commands.extend(
+            [
+                shlex.join(["mkdir", "-p", str(link_path.parent)]),
+                shlex.join(["ln", "-s", os.path.relpath(linked, link_path.parent), str(link_path)]),
+            ]
+        )
+    native = ""
+    if protocol == "synergy-rollout-v1":
+        native = (
+            "FROM node:22.14.0-bullseye AS native\n"
+            "COPY --from=source /opt/synergy /opt/synergy\n"
+            "WORKDIR /opt/synergy/source\n"
+            "RUN /opt/synergy/bin/bun packages/local-runtime/script/build-watcher.ts --local\n"
+        )
+        pty = (source / "packages/local-runtime/script/build-pty.ts").is_file()
+        if pty:
+            native += (
+                "FROM rust:1.94.0-bookworm AS native_pty\n"
+                "COPY --from=source /opt/synergy /opt/synergy\n"
+                "WORKDIR /opt/synergy/source\n"
+                "RUN /opt/synergy/bin/bun packages/local-runtime/script/build-pty.ts\n"
+            )
+        native += (
+            "FROM source\n"
+            "COPY --from=native /opt/synergy/source/packages/local-runtime/.artifacts/watcher "
+            "/opt/synergy/source/packages/local-runtime/.artifacts/watcher\n"
+        )
+        if pty:
+            native += (
+                "COPY --from=native_pty /opt/synergy/source/packages/local-runtime/.artifacts/pty "
+                "/opt/synergy/source/packages/local-runtime/.artifacts/pty\n"
+            )
+    prepare_entry = "session-prepare.mjs" if protocol == "synergy-session-v1" else "prepare.ts"
+    return (
+        f"FROM {image_id} AS source\nUSER root\nWORKDIR /opt/synergy/source\n"
+        "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
+        "RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked "
+        "bun install --frozen-lockfile --network-concurrency 16\n"
+        "COPY source/ ./\n"
+        "COPY runtime/ /opt/synergy/runtime/\n"
+        f"RUN {' && '.join(link_commands)}\n"
+        "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
+        f"RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/{prepare_entry}\n" + native
+    )
+
+
 def command(args: list[str], log: Path | None = None, *, timeout: float = 1800) -> str:
     if log:
         with log.open("a") as stream:
@@ -268,39 +319,8 @@ def prepare_source(
                         shutil.copyfile(manifest, destination)
                 shutil.copytree(stage / "source" / "patches", manifests / "patches")
                 links = recipe_links(stage / "source", identity["recipe_dependencies"])
-                link_commands = []
-                for name, relative in links.items():
-                    link_path = Path("/opt/synergy/runtime/node_modules") / name
-                    linked = Path("/opt/synergy/source") / relative
-                    link_commands.extend(
-                        [
-                            shlex.join(["mkdir", "-p", str(link_path.parent)]),
-                            shlex.join(["ln", "-s", os.path.relpath(linked, link_path.parent), str(link_path)]),
-                        ]
-                    )
-                native_watcher = (
-                    "FROM node:22.14.0-bullseye AS native\n"
-                    "COPY --from=source /opt/synergy /opt/synergy\n"
-                    "WORKDIR /opt/synergy/source\n"
-                    "RUN /opt/synergy/bin/bun packages/local-runtime/script/build-watcher.ts --local\n"
-                    "FROM source\n"
-                    "COPY --from=native /opt/synergy/source/packages/local-runtime/.artifacts/watcher "
-                    "/opt/synergy/source/packages/local-runtime/.artifacts/watcher\n"
-                    if protocol == "synergy-rollout-v1"
-                    else ""
-                )
-                prepare_entry = "session-prepare.mjs" if protocol == "synergy-session-v1" else "prepare.ts"
                 (stage / "Dockerfile").write_text(
-                    f"FROM {image_id} AS source\nUSER root\nWORKDIR /opt/synergy/source\n"
-                    "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
-                    "RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked "
-                    "bun install --frozen-lockfile --network-concurrency 16\n"
-                    "COPY source/ ./\n"
-                    "COPY runtime/ /opt/synergy/runtime/\n"
-                    f"RUN {' && '.join(link_commands)}\n"
-                    "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
-                    f"RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/{prepare_entry}\n"
-                    + native_watcher
+                    source_recipe(stage / "source", image_id=image_id, protocol=protocol, links=links)
                 )
                 image = f"synergy-bench:{artifact_id}"
                 container = f"synergy-bench-prepare-{uuid.uuid4().hex[:16]}"

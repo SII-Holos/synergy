@@ -37,6 +37,21 @@ async function inputs(root: string) {
   await Bun.write(path.join(root, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
 }
 
+test("build identity invalidates native process artifacts when their implementation changes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-native-"))
+  try {
+    await inputs(root)
+    for (const file of ["Cargo.toml", "Cargo.lock", "src/lib.rs"]) {
+      const source = path.join(root, "packages/local-runtime/src/process/native-pty", file)
+      const before = await buildIdentity(root)
+      await Bun.write(source, `changed native input: ${file}`)
+      expect(await buildIdentity(root)).not.toBe(before)
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("build identity follows newly added transitive workspace inputs", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-graph-"))
   try {
@@ -105,6 +120,10 @@ test("build reuse validates inputs, bytes, modes and complete inventory before r
     await expect(restoreBuild(root)).rejects.toThrow("changed")
     expect(await Bun.file(path.join(root, plugin)).text()).toBe("leave intact on rejection")
     await Bun.write(path.join(bundle, plugin), "verified plugin")
+    await Bun.write(path.join(bundle, pty), "tampered native library")
+    await expect(restoreBuild(root)).rejects.toThrow("changed")
+    expect(await Bun.file(path.join(root, plugin)).text()).toBe("leave intact on rejection")
+    await Bun.write(path.join(bundle, pty), "verified PTY")
     await chmod(path.join(bundle, watcher), 0o644)
     await expect(restoreBuild(root)).rejects.toThrow("changed")
     await chmod(path.join(bundle, watcher), 0o755)

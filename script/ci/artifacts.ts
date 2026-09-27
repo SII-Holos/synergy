@@ -18,6 +18,7 @@ export const BUILD_INPUTS = [
   "packages/local-runtime/package.json",
   "packages/local-runtime/script/build-watcher.ts",
   "packages/local-runtime/script/build-pty.ts",
+  "packages/local-runtime/src/process/native-pty.ts",
   "packages/util/src/native-assets.ts",
   "tsconfig.json",
 ]
@@ -124,12 +125,11 @@ export async function buildIdentity(root = ROOT): Promise<string> {
 
 export async function buildCacheIdentity(root = ROOT): Promise<string> {
   const toolchain = [process.env.ImageVersion ?? "local"]
-  if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1")
-    for (const [command, args] of [
-      ["rustc", ["-vV"]],
-      ["cc", ["--version"]],
-    ] as const)
-      toolchain.push(execFileSync(command, [...args], { encoding: "utf8" }).trim())
+  for (const [command, args] of [
+    ["rustc", ["-vV"]],
+    ["cc", ["--version"]],
+  ] as const)
+    toolchain.push(execFileSync(command, [...args], { encoding: "utf8" }).trim())
   return createHash("sha256")
     .update(await buildIdentity(root))
     .update(JSON.stringify(toolchain))
