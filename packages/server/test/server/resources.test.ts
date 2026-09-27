@@ -150,6 +150,15 @@ test("recovery APIs retain unfinished ownership, enforce Scope and retry saving 
     expect(
       (await post(`/environment/${environment.id}/execution/saved-once/recover`, {}, foreignScope.id)).status,
     ).toBe(404)
+    expect(
+      (
+        await post(
+          `/session/${session.id}/environment`,
+          { environmentID: null, expectedEnvironmentID: environment.id },
+          foreignScope.id,
+        )
+      ).status,
+    ).toBe(404)
     fail = false
     const recovered = await post(`/environment/${environment.id}/execution/saved-once/recover`)
     expect(recovered.status).toBe(200)

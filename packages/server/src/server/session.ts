@@ -35,6 +35,7 @@ import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout
 import { RolloutSchema } from "@ericsanchezok/synergy-harness/session/rollout/schema"
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { BusyError } from "@ericsanchezok/synergy-harness/session/error"
@@ -441,7 +442,13 @@ export const SessionRoute = () =>
       }),
       validator("param", z.object({ sessionID: Identifier.schema("session") })),
       validator("json", Session.EnvironmentSelection),
-      async (c) => c.json(await Session.updateEnvironment(c.req.valid("param").sessionID, c.req.valid("json"))),
+      async (c) => {
+        const sessionID = c.req.valid("param").sessionID
+        const session = await Session.get(sessionID)
+        if (session.scope.id !== ScopeContext.current.scope.id)
+          throw new Storage.NotFoundError({ message: "Session not found in this Scope" })
+        return c.json(await Session.updateEnvironment(sessionID, c.req.valid("json")))
+      },
     )
     .delete(
       "/:sessionID",

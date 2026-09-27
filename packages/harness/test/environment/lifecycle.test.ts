@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test, spyOn } from "bun:test"
 import { Environment } from "../../src/environment"
 import { EnvironmentProviders, type EnvironmentProvider } from "../../src/environment/provider"
 import { Storage } from "../../src/storage/storage"
@@ -269,3 +269,21 @@ test("Runtime maintenance reclaims idle managed compute and preserves active and
     await active.release()
   })
 }, 30_000)
+
+test("Environment event snapshots have a strictly increasing update watermark", async () => {
+  const { host } = provider()
+  await using runtime = await testRuntime({ register: () => EnvironmentProviders.register(host) })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({ scopeID: "scope", ownerID: "clock", provider: "fixture", spec: {} })
+    const clock = spyOn(Date, "now").mockReturnValue(environment.updatedAt + 10)
+    try {
+      const use = await Environment.acquire(environment.id, { scopeID: "scope", useID: "work", capabilities: ["exec"] })
+      const ready = await Environment.get(environment.id, "scope")
+      await use.release()
+      const released = await Environment.deallocate(environment.id, { scopeID: "scope" })
+      expect(released.updatedAt).toBeGreaterThan(ready.updatedAt)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+})

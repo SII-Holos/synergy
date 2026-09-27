@@ -61,9 +61,14 @@ export namespace ResourceProfiles {
 
   export async function list(): Promise<z.infer<typeof Summary>> {
     const settings = await config()
+    const available = new Set(EnvironmentProviders.list().map((provider) => provider.id))
+    const profiles = Object.entries({ native, ...settings.environments }).filter(([, profile]) =>
+      available.has(profile.provider),
+    )
+    const selected = settings.defaultEnvironment === undefined ? "native" : settings.defaultEnvironment
     return {
-      defaultEnvironment: settings.defaultEnvironment === undefined ? "native" : settings.defaultEnvironment,
-      environments: Object.entries({ native, ...settings.environments }).map(([name, profile]) => ({
+      defaultEnvironment: profiles.some(([name]) => name === selected) ? selected : null,
+      environments: profiles.map(([name, profile]) => ({
         name,
         provider: profile.provider,
         reuse: profile.reuse ?? "session",
@@ -146,12 +151,14 @@ export namespace ResourceProfiles {
     }
   }
 
-  export function register() {
-    EnvironmentProviders.register(configuredDocker())
-    EnvironmentProviders.setDefaultResolver(async () => {
-      const name = (await config()).defaultEnvironment
-      return name === null ? undefined : environment(name ?? "native")
-    })
+  export function register(options: { environment?: boolean } = {}) {
+    if (options.environment !== false) {
+      EnvironmentProviders.register(configuredDocker())
+      EnvironmentProviders.setDefaultResolver(async () => {
+        const name = (await config()).defaultEnvironment
+        return name === null ? undefined : environment(name ?? "native")
+      })
+    }
     WorkspaceBlobs.registerFactory("local", localStore)
     for (const kind of ["s3", "oss"] as const)
       WorkspaceBlobs.registerFactory(kind, (settings) => {

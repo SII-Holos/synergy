@@ -229,7 +229,7 @@ export namespace Environment {
       if (!sameTarget(use.target, target))
         throw new Stale({ environmentID: info.id, message: "Environment use belongs to another allocation" })
       await Storage.remove(key)
-      await Storage.write(StoragePath.environment(info.id), { ...info, lastUsedAt: Date.now() })
+      await write({ ...info, lastUsedAt: Date.now() })
     })
   }
 
@@ -398,7 +398,7 @@ export namespace Environment {
   }
 
   async function write(info: Info) {
-    const next = Info.parse({ ...info, updatedAt: Date.now() })
+    const next = Info.parse({ ...info, updatedAt: Math.max(Date.now(), info.updatedAt + 1) })
     await Storage.write(StoragePath.environment(info.id), next)
     await publishUpdated(next)
     return next

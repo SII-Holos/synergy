@@ -9,6 +9,34 @@ import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 
+test("API-only composition retains stored Workspaces and advertises no execution profiles", async () => {
+  const { testRuntime: harnessRuntime } = await import("@ericsanchezok/synergy-harness/test/support/runtime")
+  const { registerLocalRuntime } = await import("../../src/register")
+  const { testWorkspaceCoordinator } = await import("../support/runtime")
+  await using runtime = await harnessRuntime({
+    composition: {
+      register: () => registerLocalRuntime({ environment: false, workspaceCoordinator: testWorkspaceCoordinator() }),
+    },
+  })
+  await runtime.run(async () => {
+    await Config.updateGlobal({ resources: { stores: { files: { provider: "local", spec: { namespace: "api" } } } } })
+    expect(await ResourceProfiles.list()).toMatchObject({
+      defaultEnvironment: null,
+      environments: [],
+      stores: [{ name: "files", provider: "local" }],
+    })
+    const workspace = await ResourceProfiles.createWorkspace({ scopeID: "home", profile: "files" })
+    await WorkspaceContent.write(
+      { scopeID: "home", workspaceID: workspace.id },
+      { path: "api.txt", data: new TextEncoder().encode("api"), expectedVersion: null },
+    )
+    expect(
+      new TextDecoder().decode(await WorkspaceContent.read({ scopeID: "home", workspaceID: workspace.id }, "api.txt")),
+    ).toBe("api")
+    expect(await Environment.select({ scopeID: "home", ownerID: "api" })).toBeUndefined()
+  })
+})
+
 test("product resource profiles create durable selections without allocating compute", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {

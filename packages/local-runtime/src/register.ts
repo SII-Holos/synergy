@@ -46,8 +46,8 @@ export function registerLocalRuntime(
   if (options.environment !== false) {
     registerNativeEnvironment({ coordinator })
     EnvironmentProviders.setDefault({ provider: "native", spec: {}, reuse: "scope" })
-    ResourceProfiles.register()
   }
+  ResourceProfiles.register({ environment: options.environment })
   registerSkillDomain()
   registerCommandDomain()
   Command.registerActions()
