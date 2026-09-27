@@ -1,5 +1,7 @@
 # Workspace and File Operations
 
+Additional writable directory sharing uses verified native directory bindings. Object-backed Workspaces do not advertise that directory permission action; their files use the selected Environment view and its captured write set.
+
 Local Runtime owns native filesystem subscriptions in `packages/local-runtime/src/file/watcher.ts` and declares each subscription's Scope or Workspace owner in startup. Harness owns generic Scope, storage and file contracts; importing Harness alone does not start a native watcher.
 
 Synergy keeps project ownership (`Scope`) separate from durable files (`Workspace`) and compute (`Environment`). A Session can select a native directory, managed worktree or object-backed Workspace without changing its owning Scope, config, Notes or session index.

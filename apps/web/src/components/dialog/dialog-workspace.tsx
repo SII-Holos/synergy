@@ -64,6 +64,7 @@ export function DialogWorkspace(props: {
     return !!current && [...sharing()].sort().join("\n") !== [...current.sharedWritableWorkspaceIDs].sort().join("\n")
   })
   const options = { signal: controller.signal, throwOnError: true as const }
+  const shareable = (item: WorkspaceInfo) => available(item) && !!item.binding.path && !!item.binding.physicalID
   onCleanup(() => controller.abort())
   createEffect(() => {
     if (sdk.scopeID !== scopeID || sdk.client !== client) dialog.close()
@@ -298,11 +299,11 @@ export function DialogWorkspace(props: {
                   </Button>
                 </div>
               </Show>
-              <Show when={available(current())}>
+              <Show when={shareable(current())}>
                 <fieldset class="flex flex-col gap-2" disabled={pending()}>
                   <legend class="text-base font-medium">{_(copy.sharing)}</legend>
                   <p class="text-small text-text-weak">{_(copy.sharingDescription)}</p>
-                  <For each={records.data.filter((item) => item.id !== current().id && available(item))}>
+                  <For each={records.data.filter((item) => item.id !== current().id && shareable(item))}>
                     {(item) => (
                       <Checkbox
                         checked={sharing().includes(item.id)}
@@ -316,7 +317,7 @@ export function DialogWorkspace(props: {
                       </Checkbox>
                     )}
                   </For>
-                  <Show when={!records.data.some((item) => item.id !== current().id && available(item))}>
+                  <Show when={!records.data.some((item) => item.id !== current().id && shareable(item))}>
                     <p class="text-small text-text-weak">{_(copy.sharingEmpty)}</p>
                   </Show>
                   <Button onClick={saveSharing} disabled={pending() || !sharingDirty()}>

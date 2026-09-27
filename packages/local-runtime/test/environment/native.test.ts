@@ -7,6 +7,62 @@ import { registerNativeEnvironment } from "../../src/environment/native"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+
+test("native physical admission rejects a writable object view omitted from saved-result ownership", async () => {
+  await using temporary = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(temporary.path, "claims") })
+  await using runtime = await testRuntime({
+    register() {
+      WorkspaceAccess.register(coordinator)
+      registerNativeEnvironment({ coordinator })
+    },
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "native", spec: {} })
+    const foreign = await Environment.bind({ scopeID: "other", ownerID: "other", provider: "native", spec: {} })
+    const workspace = await WorkspaceCatalog.create({
+      scopeID: "other",
+      backend: { provider: "objects", spec: { blobStore: "unused" } },
+    })
+    await Storage.write(["workspace", workspace.id], {
+      ...workspace,
+      activeMount: {
+        id: "foreign-view",
+        generation: 1,
+        target: { environmentID: foreign.id, allocationID: "retained", generation: 1 },
+        path: temporary.path,
+        state: "active",
+        readOnly: false,
+      },
+    })
+    await Storage.write(["workspace_environment", foreign.id, workspace.id], "other")
+    const marker = path.join(temporary.path, "should-not-run")
+    let execution = await EnvironmentExecution.start({
+      id: "foreign-write",
+      scopeID: "scope",
+      environmentID: environment.id,
+      command: {
+        command: process.execPath,
+        args: ["-e", `await Bun.write(${JSON.stringify(marker)}, 'wrong')`],
+        cwd: temporary.path,
+        env: {},
+        writableRoots: null,
+      },
+    })
+    for (let i = 0; execution.state !== "exited" && i < 300; i++) {
+      await Bun.sleep(10)
+      execution = await EnvironmentExecution.reconcile(execution.id, "scope")
+    }
+    expect(execution.status?.effectsStarted).toBe(false)
+    expect(execution.status?.error).toContain("saved-result ownership")
+    expect(await Bun.file(marker).exists()).toBe(false)
+    await EnvironmentExecution.complete(execution.id, "scope")
+    expect(await Environment.uses(environment.id)).toEqual([])
+    await Storage.remove(["workspace_environment", foreign.id, workspace.id])
+  })
+}, 10000)
 
 test("native provider uses the durable execution path and saves output outside its allocation", async () => {
   await using temporary = await tmpdir()

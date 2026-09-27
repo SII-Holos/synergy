@@ -55,6 +55,7 @@ export namespace WorkspaceMounts {
         if (!Environment.sameTarget(info.activeMount.target, Environment.targetOf(environment)))
           throw new Error("Workspace allocation requires reconciliation")
         retained = true
+        if (info.activeMount.state === "unavailable") return
         const next = WorkspaceCatalog.Info.parse({
           ...info,
           revision: info.revision + 1,

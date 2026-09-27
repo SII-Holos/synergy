@@ -148,7 +148,7 @@ test("lost file views recover a separate saved copy with the observed revision",
   await page.getByRole("button", { name: "Recover saved copy", exact: true }).click()
   await page.getByRole("button", { name: "Recovered", exact: true }).waitFor()
   expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
-  expect(await page.evaluate("window.fixture.rows[4].activeMount.state")).toBe("unavailable")
+  expect(await page.evaluate<string>("window.fixture.rows[4].activeMount.state")).toBe("unavailable")
   expect(errors).toEqual([])
 }, 20_000)
 
@@ -225,6 +225,7 @@ test("stored Workspaces can be selected and created without a directory picker",
   await page.getByRole("button", { name: "Research", exact: true }).click()
   expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
   expect(await page.getByText("Change local binding", { exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Save sharing", exact: true }).count()).toBe(0)
   await page.getByRole("button", { name: "Use Workspace", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({

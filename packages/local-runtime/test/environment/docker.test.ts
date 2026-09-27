@@ -27,6 +27,61 @@ import { shell } from "../../src/session/shell"
 const image = process.env.SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE
 
 test.skipIf(!image)(
+  "a deleted Docker allocation marks its live view unavailable while retaining saved files and staging",
+  async () => {
+    const provider = dockerEnvironment({
+      id: "lost-docker",
+      endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
+    })
+    await using runtime = await testRuntime({
+      register() {
+        EnvironmentProviders.register(provider)
+        WorkspaceBlobs.register("fixture", {
+          put: (hash, bytes) => Storage.writeBinary(["lost_blobs", hash], bytes),
+          get: (hash) => Storage.readBinary(["lost_blobs", hash]),
+        })
+      },
+    })
+    await runtime.run(async () => {
+      const environment = await Environment.bind({
+        scopeID: "scope",
+        ownerID: "lost",
+        provider: provider.id,
+        spec: { image: image! },
+      })
+      const workspace = await WorkspaceCatalog.create({
+        scopeID: "scope",
+        backend: { provider: "objects", spec: { blobStore: "fixture" } },
+      })
+      const selection = { workspaceID: workspace.id, scopeID: "scope" }
+      await WorkspaceContent.write(selection, { path: "saved", data: new Uint8Array([1]), expectedVersion: null })
+      try {
+        const mounted = await WorkspaceMounts.attach({ ...selection, environmentID: environment.id })
+        const list = Bun.spawn(["docker", "ps", "-aq", "--filter", `label=io.synergy.environment=${environment.id}`], {
+          stdout: "pipe",
+        })
+        const id = (await new Response(list.stdout).text()).trim()
+        expect(await list.exited).toBe(0)
+        expect(id).not.toBe("")
+        const remove = Bun.spawn(["docker", "rm", "-f", id], { stdout: "ignore", stderr: "pipe" })
+        expect(await remove.exited).toBe(0)
+        expect((await Environment.reconcile(environment.id, "scope")).state).toBe("unavailable")
+        const lost = await WorkspaceCatalog.get(workspace.id, "scope")
+        expect(lost.activeMount?.state).toBe("unavailable")
+        expect(lost.content).toEqual(mounted.content)
+        await Environment.reconcile(environment.id, "scope")
+        expect((await WorkspaceCatalog.get(workspace.id, "scope")).revision).toBe(lost.revision)
+        await expect(WorkspaceContent.read(selection, "saved")).rejects.toThrow("active mount")
+      } finally {
+        const current = await Environment.get(environment.id, "scope")
+        if (current.allocation) await provider.deallocate(Environment.requestOf(current))
+      }
+    })
+  },
+  30000,
+)
+
+test.skipIf(!image)(
   "Docker compute starts on demand, preserves output and runs commands without host credentials",
   async () => {
     const provider = dockerEnvironment({

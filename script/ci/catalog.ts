@@ -146,6 +146,13 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     task("smoke", "smoke", 40, ["packages/presets", "packages/server"]),
     task("sandbox", "sandbox", 100, ["packages/local-runtime"], { prerequisites: ["sandbox"] }),
     task(
+      "execution-environment",
+      "environment",
+      300,
+      ["packages/harness", "packages/local-runtime", "packages/server"],
+      { pool: "docker" },
+    ),
+    task(
       "windows",
       "windows",
       450,
@@ -271,6 +278,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
                 "artifacts",
                 "desktop",
                 "sandbox",
+                "environment",
                 "postgres",
                 "rollout",
                 "web",

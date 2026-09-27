@@ -236,8 +236,13 @@ export function dockerEnvironment(options: DockerEnvironmentOptions): Environmen
     },
     async inspect(request) {
       const container = await engine.inspect(name(request))
-      if (!container)
+      if (!container) {
+        const [receipt] = await Storage.readMany([
+          StoragePath.environmentAllocationReceipt(providerID, request.requestID),
+        ])
+        if (receipt) return { state: "absent" }
         return { state: (await inspectVolume(request)) || (await inspectNetwork(request)) ? "pending" : "absent" }
+      }
       assertOwned(request, container)
       if (container.State.Status === "created") return { state: "pending" }
       if (!container.State.Running) return { state: "unknown" }
