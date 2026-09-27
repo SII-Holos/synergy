@@ -18529,6 +18529,7 @@ export type WorkspaceFilesChildrenData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path?: string
     limit?: number
     cursor?: string
@@ -18583,6 +18584,7 @@ export type WorkspaceFilesReadData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path: string
     range?: string
     offset?: number
@@ -18638,6 +18640,7 @@ export type WorkspaceFilesStatData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path: string
   }
   url: "/workspace/files/stat"
@@ -18688,6 +18691,7 @@ export type WorkspaceFilesSearchData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     query: string
     kind?: "files" | "content" | "symbol"
     limit?: number
@@ -18724,6 +18728,7 @@ export type WorkspaceFilesStatusData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/status"
 }
@@ -18754,6 +18759,7 @@ export type WorkspaceFilesContentData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
     path: string
   }
   url: "/workspace/files/content"
@@ -18802,6 +18808,7 @@ export type WorkspaceFilesWriteData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/write"
 }
@@ -18848,6 +18855,7 @@ export type WorkspaceFilesCreateDirectoryData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/directory"
 }
@@ -18896,6 +18904,7 @@ export type WorkspaceFilesCopyData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/copy"
 }
@@ -18942,6 +18951,7 @@ export type WorkspaceFilesMoveData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/move"
 }
@@ -18988,6 +18998,7 @@ export type WorkspaceFilesRemoveData = {
     scopeID?: string
     workspaceID: string
     workspaceGeneration: number
+    environmentID?: string
   }
   url: "/workspace/files/delete"
 }

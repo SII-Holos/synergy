@@ -22,6 +22,8 @@ A local binding without a verified physical directory identity cannot authorize 
 
 The file-view facade resolves classic and anchored reads and edits from the selected logical Workspace. A dormant object view reads verified immutable chunks; an active view uses its recorded Executor file host. Reads carry exact content versions across bounded ranges. File evidence and edit events select the logical Workspace generation without inventing a local directory. Controller configuration reload applies only to local files. Entry inspection and mutation share the native implementation used by both the local adapters and Execution Host.
 
+Workspace file routes resolve logical IDs and binding generations independently of native directory projections. Read-only search enumerates the selected view, applies ordered Workspace ignore rules and explicit globs, and supplies verified bytes to Ripgrep through standard input. Regular expressions retain Ripgrep semantics without materializing another filesystem or starting compute. Native scans use the same engine directly; Workspace ignore files apply independently of Git repository initialization. Search has entry, depth, time and output bounds, and incomplete content searches report their failure. Runtime-local manifest caches retain at most eight verified immutable manifests within a 64 MiB encoded-byte budget; content hashes select indexed entries and directory children without changing the live-view fence.
+
 ## Scope Runtime Services
 
 A project `ScopeRuntime` starts Scope configuration, commands, recovery and plugin services lazily. `WorkspaceRuntime` starts file services once per Workspace binding generation:

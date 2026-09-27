@@ -66,6 +66,8 @@ For reusable native processes, trace idle lifetime separately from active reques
 
 For Environment-backed files, follow `EnvironmentResources` through the file view and owning Executor. Never infer a local directory from a logical Workspace ID. Exercise dormant object edits, attachment to a live view, persisted publication, and reads after detachment; controller filesystem aliases must not influence remote authorization. Local test coordinators must use the fixture’s private claim directory, including external blockers used by restoration tests.
 
+Distinguish internal content parsers from user command execution: an internal search process may consume verified Workspace bytes on the Agent host, but cannot use the controller filesystem as the selected view. Verify identical regex behavior, ignore precedence, bounds and cancellation without allocating compute for dormant object searches.
+
 ## Component composition changes
 
 Trace each selected package through its `./component` factory, configuration, reload handlers, service disposal and lazy HTTP/CLI adapters. Required dependencies must be explicit; optional ordering must not install a peer. Reuse Harness lifecycle ownership and test two Runtime instances, failure cleanup, role-specific worker readiness and a reduced HTTP schema. CLI helpers belong to shared terminal primitives or Local Runtime host adapters; authoring tools remain optional. Update package exports, the release catalog, test/coverage inventories and clean-directory install checks together.

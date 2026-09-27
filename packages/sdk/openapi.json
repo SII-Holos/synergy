@@ -15098,6 +15098,14 @@
           },
           {
             "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -15251,6 +15259,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           {
             "in": "query",
@@ -15421,6 +15437,14 @@
           },
           {
             "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -15546,6 +15570,14 @@
           },
           {
             "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "query",
             "schema": {
               "type": "string"
@@ -15660,6 +15692,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Get workspace file status",
@@ -15730,6 +15770,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           {
             "in": "query",
@@ -15849,6 +15897,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Write workspace file",
@@ -15968,6 +16024,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Create a Workspace directory",
@@ -16086,6 +16150,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Copy a Workspace file or directory without replacing the destination",
@@ -16204,6 +16276,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Move a Workspace file or directory without replacing the destination",
@@ -16322,6 +16402,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Permanently remove a Workspace file or directory",

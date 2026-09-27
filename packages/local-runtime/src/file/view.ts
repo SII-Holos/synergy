@@ -40,9 +40,9 @@ export namespace FileView {
     return WorkspaceTree.Path.parse(api.normalize(candidate).replaceAll(api.sep, "/").replace(/\/$/, ""))
   }
 
-  export function resolve(filename: string): string {
-    if (native()) return path.isAbsolute(filename) ? path.normalize(filename) : path.resolve(directory(), filename)
-    const name = relative(filename)
+  export function resolve(filename: string, base = directory()): string {
+    if (native()) return path.isAbsolute(filename) ? path.normalize(filename) : path.resolve(base, filename)
+    const name = relative(paths().isAbsolute(filename) ? filename : paths().join(base, filename))
     return directory() ? paths().join(directory(), name) : name
   }
 
@@ -146,10 +146,9 @@ export namespace FileView {
     const tree = await WorkspaceContent.manifest(info, store)
     const directory = WorkspaceTree.resolve(tree, name)
     if (directory.path && directory.entry?.kind !== "directory") throw new Error("Workspace path is not a directory")
-    const prefix = directory.path ? `${directory.path}/` : ""
-    return tree.entries
-      .filter((entry) => entry.path.startsWith(prefix) && !entry.path.slice(prefix.length).includes("/"))
-      .map((entry) => item(info, entry, name ? `${name}/${path.posix.basename(entry.path)}` : entry.path))
+    return WorkspaceTree.children(tree, directory.path).map((entry) =>
+      item(info, entry, name ? `${name}/${path.posix.basename(entry.path)}` : entry.path),
+    )
   }
 
   export async function bytes(

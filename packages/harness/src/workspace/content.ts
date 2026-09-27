@@ -27,6 +27,9 @@ export namespace WorkspaceBlobs {
 }
 
 export namespace WorkspaceContent {
+  const cache = RuntimeContext.state(
+    () => [] as Array<{ store: BlobStore; hash: string; bytes: number; tree: WorkspaceTree.Manifest }>,
+  )
   export const Spec = z.object({ blobStore: z.string().min(1) }).strict()
   export type Selection = { workspaceID: string; scopeID: string; generation?: number }
 
@@ -50,12 +53,32 @@ export namespace WorkspaceContent {
 
   export async function manifest(info: WorkspaceCatalog.Info, store: BlobStore): Promise<WorkspaceTree.Manifest> {
     if (!info.content?.manifest) return { version: 1, entries: [] }
+    const entries = cache()
+    const index = entries.findIndex((entry) => entry.store === store && entry.hash === info.content!.manifest)
+    if (index !== -1) {
+      const cached = entries.splice(index, 1)[0]!
+      entries.push(cached)
+      return cached.tree
+    }
     const bytes = WorkspaceTree.verify(
       info.content.manifest,
       await store.get(info.content.manifest, WorkspaceTree.manifestBytes),
       WorkspaceTree.manifestBytes,
     )
-    return WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(bytes)))
+    const tree = WorkspaceTree.Manifest.parse(JSON.parse(new TextDecoder().decode(bytes)))
+    for (const entry of tree.entries) {
+      if (entry.kind === "file") {
+        for (const chunk of entry.chunks) Object.freeze(chunk)
+        Object.freeze(entry.chunks)
+      }
+      Object.freeze(entry)
+    }
+    Object.freeze(tree.entries)
+    Object.freeze(tree)
+    entries.push({ store, hash: info.content.manifest, bytes: bytes.length, tree })
+    while (entries.length > 8 || entries.reduce((total, entry) => total + entry.bytes, 0) > WorkspaceTree.manifestBytes)
+      entries.shift()
+    return tree
   }
 
   export async function read(

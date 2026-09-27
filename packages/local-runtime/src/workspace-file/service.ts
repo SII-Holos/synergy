@@ -71,7 +71,13 @@ export namespace WorkspaceFileService {
   export function resolve(input = "", options?: { followFinalSymlink?: boolean }) {
     if (isControlPath(input)) throw new AccessDeniedError("Path contains control characters")
     const cleaned = stripFileProtocol(input)
-    if (!FileView.native()) return FileView.resolve(cleaned)
+    if (!FileView.native()) {
+      try {
+        return FileView.resolve(cleaned)
+      } catch {
+        throw new AccessDeniedError("Access denied: path escapes workspace")
+      }
+    }
     const workspace = root()
     const absolute = path.resolve(workspace, cleaned || ".")
     if (!isPathContained(workspace, absolute, options)) {
@@ -81,7 +87,13 @@ export namespace WorkspaceFileService {
   }
 
   export function relative(input: string) {
-    if (!FileView.native()) return FileView.relative(input)
+    if (!FileView.native()) {
+      try {
+        return FileView.relative(input)
+      } catch {
+        throw new AccessDeniedError("Access denied: path escapes workspace")
+      }
+    }
     const absolute = path.isAbsolute(input) ? path.resolve(input) : resolve(input)
     if (!isPathContained(root(), absolute, { followFinalSymlink: false }))
       throw new AccessDeniedError("Access denied: path escapes workspace")
@@ -537,6 +549,12 @@ export namespace WorkspaceFileService {
       },
     })
     WorkspaceFileStatus.invalidate()
+    WorkspaceFileIndexer.invalidate()
+    await WorkspaceEvents.publish(FileWatcherEvent.Updated, {
+      file: displayRelative(absolute),
+      event: result.existed ? "changed" : "added",
+      parent: displayRelative(FileView.dirname(absolute)),
+    })
     return { path: displayRelative(absolute), ...result }
   }
 }

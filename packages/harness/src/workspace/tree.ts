@@ -63,6 +63,29 @@ export namespace WorkspaceTree {
       }
     })
   export type Manifest = z.infer<typeof Manifest>
+  const indexes = new WeakMap<Manifest, { entries: Map<string, Entry>; children: Map<string, Entry[]> }>()
+  function index(manifest: Manifest) {
+    const previous = indexes.get(manifest)
+    if (previous) return previous
+    const entries = new Map(manifest.entries.map((entry) => [entry.path, entry]))
+    const children = new Map<string, Entry[]>()
+    for (const entry of manifest.entries) {
+      const parent = path.posix.dirname(entry.path)
+      const key = parent === "." ? "" : parent
+      const values = children.get(key) ?? []
+      values.push(entry)
+      children.set(key, values)
+    }
+    const result = { entries, children }
+    if (Object.isFrozen(manifest) && Object.isFrozen(manifest.entries)) {
+      for (const values of children.values()) Object.freeze(values)
+      indexes.set(manifest, result)
+    }
+    return result
+  }
+  export function children(manifest: Manifest, directory: string): readonly Entry[] {
+    return index(manifest).children.get(directory) ?? []
+  }
 
   export function resolve(
     manifest: Manifest,
@@ -70,7 +93,7 @@ export namespace WorkspaceTree {
     followFinal = true,
   ): { path: string; entry: Entry | undefined } {
     if (filename) Path.parse(filename)
-    const entries = new Map(manifest.entries.map((entry) => [entry.path, entry]))
+    const entries = index(manifest).entries
     for (let links = 0; links <= 40; links++) {
       const parts = filename.split("/")
       let redirected = false

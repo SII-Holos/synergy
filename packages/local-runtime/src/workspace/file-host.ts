@@ -165,7 +165,8 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     if (relative) WorkspaceTree.Path.parse(relative)
     const requested = path.join(mount.path, ...relative.split("/"))
     const target = await NativeFileMutation.canonical(requested)
-    if (!this.contains(mount.path, target)) throw new Error("Workspace path escapes its mount")
+    if (!this.contains(mount.path, target))
+      throw new NativeFileMutation.AccessDeniedError("Workspace path escapes its mount")
     return target
   }
 
@@ -263,7 +264,8 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         ? await this.target(mount, relative)
         : await NativeFileEntry.canonical(requested)
       : mount.path
-    if (!this.contains(mount.path, target)) throw new Error("Workspace path escapes its mount")
+    if (!this.contains(mount.path, target))
+      throw new NativeFileMutation.AccessDeniedError("Workspace path escapes its mount")
     const entry = await NativeFileEntry.inspect(target)
     if (!entry) return
     return {

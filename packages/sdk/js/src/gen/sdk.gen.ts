@@ -1516,6 +1516,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path?: string
       limit?: number
       cursor?: string
@@ -1533,6 +1534,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursor" },
@@ -1564,6 +1566,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path: string
       range?: string
       offset?: number
@@ -1582,6 +1585,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
             { in: "query", key: "range" },
             { in: "query", key: "offset" },
@@ -1610,6 +1614,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1623,6 +1628,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
           ],
         },
@@ -1646,6 +1652,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       query: string
       kind?: "files" | "content" | "symbol"
       limit?: number
@@ -1664,6 +1671,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "query" },
             { in: "query", key: "kind" },
             { in: "query", key: "limit" },
@@ -1696,6 +1704,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1708,6 +1717,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
           ],
         },
       ],
@@ -1734,6 +1744,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1747,6 +1758,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
           ],
         },
@@ -1774,6 +1786,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileWriteFileInput?: WorkspaceFileWriteFileInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1787,6 +1800,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileWriteFileInput", map: "body" },
           ],
         },
@@ -1815,6 +1829,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileCreateDirectoryInput?: WorkspaceFileCreateDirectoryInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1828,6 +1843,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileCreateDirectoryInput", map: "body" },
           ],
         },
@@ -1858,6 +1874,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileCopyInput?: WorkspaceFileCopyInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1871,6 +1888,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileCopyInput", map: "body" },
           ],
         },
@@ -1897,6 +1915,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileMoveInput?: WorkspaceFileMoveInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1910,6 +1929,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileMoveInput", map: "body" },
           ],
         },
@@ -1936,6 +1956,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileDeleteInput?: WorkspaceFileDeleteInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1949,6 +1970,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileDeleteInput", map: "body" },
           ],
         },

@@ -4,8 +4,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Ripgrep } from "../file/ripgrep"
 
 import DESCRIPTION from "./grep.txt"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import path from "path"
+import { FileView } from "../file/view"
 import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
 
 const MAX_LINE_LENGTH = 2000
@@ -35,18 +34,14 @@ export const GrepTool = Tool.define(
         },
       })
 
-      const searchPath = params.path
-        ? path.isAbsolute(params.path)
-          ? params.path
-          : path.resolve(ScopeContext.current.directory, params.path)
-        : ScopeContext.current.directory
+      const searchPath = FileView.resolve(params.path ?? ".")
 
       const matches: Array<{ path: string; lineNum: number; lineText: string }> = []
       let truncated = false
       let truncatedReason: ProcessOutput.LimitReason | "max_matches" | undefined
       try {
         for await (const match of Ripgrep.matches({
-          cwd: ScopeContext.current.directory,
+          cwd: FileView.directory(),
           pattern: params.pattern,
           paths: [searchPath],
           glob: params.include ? [params.include] : undefined,
