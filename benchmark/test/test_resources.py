@@ -107,6 +107,58 @@ def test_nonfinite_resource_requests_cannot_wait_forever():
             Request(cpus, 1024)
 
 
+@pytest.mark.parametrize("shared", [False, True])
+@pytest.mark.parametrize("sampled", [False, True])
+@pytest.mark.parametrize("held,candidate", [([0.66, 1.12], 0.22), ([0.1] * 19, 0.1)])
+async def test_fractional_boundary_admits_exact_capacity_and_rejects_excess(tmp_path, shared, sampled, held, candidate):
+    import time
+    from contextlib import AsyncExitStack
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from synergy_bench.docker_resources import DockerSnapshot
+
+    def pool():
+        return ResourcePool(
+            Capacity(2, 1000),
+            32,
+            shared_directory=tmp_path if shared else None,
+            sampler=SimpleNamespace(snapshot=AsyncMock(return_value=DockerSnapshot(time.time(), [])))
+            if sampled
+            else None,
+            pressure_timeout_seconds=0.01,
+        )
+
+    contender = pool()
+    async with asyncio.timeout(2), AsyncExitStack() as stack:
+        for cpus in held:
+            owner = pool() if shared else contender
+            await stack.enter_async_context(owner.reserve(Request(cpus, 10)))
+        async with contender.reserve(Request(candidate, 10)):
+            blocked = asyncio.Event()
+            reasons = []
+
+            def waiting(reason):
+                reasons.append(reason)
+                blocked.set()
+
+            async def excess():
+                async with contender.reserve(Request(0.01, 1), on_wait=waiting):
+                    pytest.fail("full capacity must not admit additional work")
+
+            task = asyncio.create_task(excess())
+            try:
+                await blocked.wait()
+                assert reasons == ["cpu_budget"]
+            finally:
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+    async with contender.reserve(Request(2, 1000)):
+        assert contender.active == 1
+    assert not list(tmp_path.glob("leases/*.json"))
+
+
 async def test_permanent_external_pressure_fails_instead_of_queueing_forever():
     pool = ResourcePool(Capacity(4, 4096), 2, admission=lambda request: False, pressure_timeout_seconds=0.02)
     with pytest.raises(ValueError, match="pressure"):

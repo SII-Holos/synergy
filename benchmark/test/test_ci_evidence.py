@@ -4,6 +4,21 @@ import os
 import pytest
 
 from synergy_bench.ci_evidence import collect
+from synergy_bench.resources import Capacity, ResourcePool
+from synergy_bench.scheduling import PhaseResources
+
+
+def test_collection_retains_recorded_admission_reasons_without_private_inputs(tmp_path):
+    root, output = tmp_path / "source", tmp_path / "output"
+    run = root / "integration/run"
+    scheduler = PhaseResources(ResourcePool(Capacity(2, 100), 2), run)
+    scheduler.record("queued", "sb-test", phase="preparation", reason="build_resources")
+    scheduler.record("pressure", "sb-test", phase="preparation", reason="cpu_budget")
+    (run / "plan.json").write_text('{"private":"input"}')
+    assert collect(root, output, ["integration"]) == {"copied": 1, "errors": []}
+    retained = output / "integration/run/scheduling.json"
+    assert json.loads(retained.read_text()) == {"version": 1, "events": scheduler.events}
+    assert not (output / "integration/run/plan.json").exists()
 
 
 def test_matrix_collection_excludes_private_homes_unknown_files_and_symlinks(tmp_path):
