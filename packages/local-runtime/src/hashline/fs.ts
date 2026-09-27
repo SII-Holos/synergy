@@ -1,3 +1,4 @@
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 /**
@@ -101,7 +102,7 @@ export class InMemoryFilesystem extends Filesystem {
 
 export class BunFilesystem extends Filesystem {
   override async readText(path: string): Promise<string> {
-    const file = Bun.file(path)
+    const file = FileView.file(path)
     if (!(await file.exists())) throw new NotFoundError(path)
     return FileMutation.readText(path)
   }
@@ -122,6 +123,6 @@ export class BunFilesystem extends Filesystem {
   }
 
   override async exists(path: string): Promise<boolean> {
-    return Bun.file(path).exists()
+    return FileView.file(path).exists()
   }
 }

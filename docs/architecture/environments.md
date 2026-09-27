@@ -14,7 +14,7 @@ Every acquired use is persisted and blocks deallocation until released. Physical
 
 Default selection has an explicit Session, Workspace or Scope reuse policy. The local preset shares one borrowed native Environment per Scope so independent Sessions can use the same live Workspace. Embedded compositions choose their own policy; Harness does not infer users, tenants or billing groups.
 
-`EnvironmentResources` resolves declared file and execution needs. API-only operations resolve no physical resources. Dormant object-backed files and local directory access do not allocate compute. Execution obtains the target's platform, shell, scratch directory and filtered environment from the Executor, then attaches the selected Workspace. An active view must remain on its recorded target. Backend incompatibility fails before allocation; missing authority never falls back to a controller path.
+`EnvironmentResources` resolves declared file and execution needs. API-only operations resolve no physical resources. Dormant object-backed files and local directory access do not allocate compute. Execution obtains the target's platform, shell, scratch directory and filtered environment from the Executor, then attaches the selected Workspace. An active view must remain on its recorded target. File-tool availability follows the logical Workspace selection. Path authorization uses that target’s path namespace, with final symlink containment enforced by its file host; controller filesystem aliases cannot authorize remote paths. Backend incompatibility fails before allocation; missing authority never falls back to a controller path.
 
 ## Ownership
 

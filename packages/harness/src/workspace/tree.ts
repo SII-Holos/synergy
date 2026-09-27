@@ -64,6 +64,31 @@ export namespace WorkspaceTree {
     })
   export type Manifest = z.infer<typeof Manifest>
 
+  export function resolve(
+    manifest: Manifest,
+    filename: string,
+    followFinal = true,
+  ): { path: string; entry: Entry | undefined } {
+    if (filename) Path.parse(filename)
+    const entries = new Map(manifest.entries.map((entry) => [entry.path, entry]))
+    for (let links = 0; links <= 40; links++) {
+      const parts = filename.split("/")
+      let redirected = false
+      for (let index = 0; index < parts.length; index++) {
+        const name = parts.slice(0, index + 1).join("/")
+        const entry = entries.get(name)
+        if (entry?.kind !== "symlink" || (!followFinal && index === parts.length - 1)) continue
+        filename = path.posix.join(path.posix.dirname(name), entry.target, ...parts.slice(index + 1))
+        if (filename === ".") filename = ""
+        if (filename) Path.parse(filename)
+        redirected = true
+        break
+      }
+      if (!redirected) return { path: filename, entry: entries.get(filename) }
+    }
+    throw new Error("Workspace symbolic link cycle")
+  }
+
   export function hash(bytes: Uint8Array) {
     return createHash("sha256").update(bytes).digest("hex")
   }

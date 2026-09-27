@@ -19,6 +19,11 @@ export class RemoteWorkspaceFiles implements WorkspaceFileHost {
   async detach(mount: WorkspaceProtocol.Reference) {
     await this.request({ action: "detach", mount })
   }
+  async stat(mount: WorkspaceProtocol.Reference, path: string, follow?: boolean) {
+    return (
+      WorkspaceProtocol.Item.nullable().parse(await this.request({ action: "stat", mount, path, follow })) ?? undefined
+    )
+  }
   async read(input: WorkspaceProtocol.ReadInput) {
     return WorkspaceProtocol.Read.parse(await this.request({ action: "read", input }))
   }

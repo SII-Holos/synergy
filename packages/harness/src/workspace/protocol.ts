@@ -32,6 +32,8 @@ export namespace WorkspaceProtocol {
   })
   export type CheckpointStatus = z.infer<typeof CheckpointStatus>
   export const ReadInput = z.object({
+    offset: z.number().int().nonnegative().optional(),
+    expectedVersion: z.string().optional(),
     mount: Reference,
     path: WorkspaceTree.Path,
     maximumBytes: z.number().int().nonnegative().max(WorkspaceTree.chunkBytes).default(WorkspaceTree.chunkBytes),
@@ -53,7 +55,9 @@ export namespace WorkspaceProtocol {
   })
   export type WriteInput = z.infer<typeof WriteInput>
   export const Item = z.object({
-    path: WorkspaceTree.Path,
+    path: z.union([WorkspaceTree.Path, z.literal("")]),
+    entryVersion: z.string(),
+    ctime: z.number(),
     kind: z.enum(["file", "directory", "symlink"]),
     size: z.number().nonnegative(),
     mode: z.number(),
@@ -65,6 +69,12 @@ export namespace WorkspaceProtocol {
     z.object({ action: z.literal("inspect"), mount: Reference }),
     z.object({ action: z.literal("detach"), mount: Reference }),
     z.object({ action: z.literal("read"), input: ReadInput }),
+    z.object({
+      action: z.literal("stat"),
+      mount: Reference,
+      path: z.union([WorkspaceTree.Path, z.literal("")]),
+      follow: z.boolean().optional(),
+    }),
     z.object({ action: z.literal("list"), mount: Reference, path: z.union([WorkspaceTree.Path, z.literal("")]) }),
     z.object({ action: z.literal("write"), input: WriteInput }),
     z.object({ action: z.literal("checkpoint"), input: CheckpointInput }),
@@ -78,6 +88,7 @@ export interface WorkspaceFileHost {
   mount(input: WorkspaceProtocol.MountInput): Promise<WorkspaceProtocol.Mount>
   inspect(mount: WorkspaceProtocol.Reference): Promise<WorkspaceProtocol.Mount | undefined>
   detach(mount: WorkspaceProtocol.Reference): Promise<void>
+  stat(mount: WorkspaceProtocol.Reference, path: string, follow?: boolean): Promise<WorkspaceProtocol.Item | undefined>
   read(input: WorkspaceProtocol.ReadInput): Promise<WorkspaceProtocol.Read>
   list(mount: WorkspaceProtocol.Reference, path: string): Promise<WorkspaceProtocol.Item[]>
   write(input: WorkspaceProtocol.WriteInput): Promise<WorkspaceProtocol.Checkpoint>

@@ -64,6 +64,8 @@ When changing file-history capture, trace physical write admission separately fr
 
 For reusable native processes, trace idle lifetime separately from active requests. An unconfined LSP may still write after a query finishes; retain its native claim until tree exit and retire idle clients when the shared coordinator reports contention. Preserve diagnostics and lazy restart, serialize multiple matching servers, and verify concurrent query cancellation, queued startup disposal, installers/probes and temporary-data cleanup with real processes. Reusing a logical task reservation must not bypass physical admission or create an invisible cooperative waiter.
 
+For Environment-backed files, follow `EnvironmentResources` through the file view and owning Executor. Never infer a local directory from a logical Workspace ID. Exercise dormant object edits, attachment to a live view, persisted publication, and reads after detachment; controller filesystem aliases must not influence remote authorization. Local test coordinators must use the fixture’s private claim directory, including external blockers used by restoration tests.
+
 ## Component composition changes
 
 Trace each selected package through its `./component` factory, configuration, reload handlers, service disposal and lazy HTTP/CLI adapters. Required dependencies must be explicit; optional ordering must not install a peer. Reuse Harness lifecycle ownership and test two Runtime instances, failure cleanup, role-specific worker readiness and a reduced HTTP schema. CLI helpers belong to shared terminal primitives or Local Runtime host adapters; authoring tools remain optional. Update package exports, the release catalog, test/coverage inventories and clean-directory install checks together.

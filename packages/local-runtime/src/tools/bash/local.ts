@@ -343,13 +343,15 @@ export namespace LocalBashBackend {
       await trace("attachment.discovery.start", {
         outputChars: result.output.length,
       })
-      const attachments = await AttachmentDiscovery.discover({
-        output: result.output,
-        cwd,
-        sessionID: ctx.sessionID,
-        messageID: ctx.messageID,
-        tool: "bash",
-      })
+      const attachments = await EnvironmentResources.provide(resources, "attachment-discovery", () =>
+        AttachmentDiscovery.discover({
+          output: result.output,
+          cwd,
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          tool: "bash",
+        }),
+      )
         .then(async (items) => {
           await trace("attachment.discovery.end", {
             attachmentCount: items.length,

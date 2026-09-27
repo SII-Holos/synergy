@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { Bus } from "../bus"
 import type { BusEvent } from "../bus/bus-event"
-import { ScopeContext } from "../scope/context"
+import { WorkspaceState } from "./state"
 
 export namespace WorkspaceEvents {
   export const Fields = {
@@ -11,7 +11,7 @@ export namespace WorkspaceEvents {
   const Reference = z.object(Fields)
 
   export function identity() {
-    const workspace = ScopeContext.current.workspace
+    const workspace = WorkspaceState.current()
     if (!workspace?.id || workspace.generation === undefined)
       throw new Error("A resolved Workspace is required for file events")
     return { workspaceID: workspace.id, workspaceGeneration: workspace.generation }

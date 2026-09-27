@@ -1517,7 +1517,7 @@ export namespace ToolResolver {
       })
     }
 
-    for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
+    for (const item of await ToolRegistry.tools(input.model.providerID, input.agent, input.session?.workspaceID)) {
       let schema: JSONSchema7
       try {
         schema = ProviderTransform.schema(input.model, registryInputSchema(item) as any, {
@@ -1598,14 +1598,14 @@ export namespace ToolResolver {
                   !linkExecution && (item.requiresWorkspace !== false || item.requiresExecution)
                     ? ScopeContext.current.workspace
                     : null
-                if (item.requiresExecution && !linkExecution) {
+                if ((item.requiresExecution || item.requiresWorkspace) && !linkExecution) {
                   resources = await EnvironmentResources.select({
                     scopeID: ScopeContext.current.scope.id,
                     ownerID: ctx.sessionID,
                     environmentID: ctx.environmentID,
                     workspaceID: runtimeInput.session?.workspaceID ?? workspaceInfo?.id,
                     workspaceGeneration: workspaceInfo?.generation,
-                    needs: { execution: item.requiresExecution },
+                    needs: { execution: item.requiresExecution, workspace: item.requiresWorkspace },
                     signal: ctx.abort,
                   })
                   ctx.resources = resources
@@ -1619,18 +1619,32 @@ export namespace ToolResolver {
                 // session-effective profile (session > agent config) so full_access sessions
                 // bypass the guard as documented (issue #1006).
                 ;(ctx.extra as any).controlProfile = profileId
-                const synergyRoot = Global.Path.root
-                const trustedRoots =
-                  resources && resources.environment?.provider !== "native"
-                    ? []
-                    : await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
+                const localFiles =
+                  !resources ||
+                  resources.kind === "native" ||
+                  (resources.environment?.provider === "native" &&
+                    resources.workspace?.backend?.provider === "directory")
+                const pathMode = localFiles
+                  ? "native"
+                  : resources?.kind === "objects"
+                    ? "relative"
+                    : resources?.runtime?.platform === "win32"
+                      ? "win32"
+                      : "posix"
+                const synergyRoot = localFiles ? Global.Path.root : undefined
+                const trustedRoots = !localFiles
+                  ? []
+                  : await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                 const gate = await EnforcementGate.create(
                   await configureGateOptions({
                     activeWorkspace: workspace,
+                    pathMode,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                    originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                    originalCheckout: localFiles ? (workspaceInfo as any)?.originalCheckout : undefined,
                     profileId,
-                    readRoots: [synergyRoot, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)],
+                    readRoots: localFiles
+                      ? [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)]
+                      : [],
                     trustedRoots,
                     synergyRoot,
                     sessionKey: runtimeInput.session?.id,
@@ -1737,7 +1751,7 @@ export namespace ToolResolver {
                         extraReadRoots: [
                           ...new Set([
                             ...(sandboxPolicy?.fileSystem.readableRoots ?? []),
-                            synergyRoot,
+                            ...(synergyRoot ? [synergyRoot] : []),
                             ...trustedRoots,
                             ...extRoots,
                             ...input.extraReadRoots,

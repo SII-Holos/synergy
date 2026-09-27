@@ -63,7 +63,7 @@ export namespace WorkspaceContent {
     WorkspaceTree.Path.parse(filename)
     const { info, store } = await resolve(input)
     const tree = await manifest(info, store)
-    const entry = tree.entries.find((entry) => entry.path === filename)
+    const entry = WorkspaceTree.resolve(tree, filename).entry
     if (!entry || entry.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
     if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || entry.size > maximumBytes)
       throw new Error("Workspace file exceeds the read limit")
@@ -78,6 +78,35 @@ export namespace WorkspaceContent {
     return WorkspaceTree.verify(entry.hash, bytes, maximumBytes)
   }
 
+  export async function readRange(input: Selection, filename: string, offset: number, length: number) {
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(length) ||
+      length < 0 ||
+      length > WorkspaceTree.chunkBytes
+    )
+      throw new Error("Invalid Workspace read range")
+    const { info, store } = await resolve(input)
+    const tree = await manifest(info, store)
+    const entry = WorkspaceTree.resolve(tree, filename).entry
+    if (!entry || entry.kind !== "file") throw new Error("Workspace file is absent or is not a regular file")
+    const bytes = new Uint8Array(Math.min(length, Math.max(0, entry.size - offset)))
+    let start = 0
+    for (const chunk of entry.chunks) {
+      const end = start + chunk.size
+      if (end > offset && start < offset + bytes.length) {
+        const data = WorkspaceTree.verify(chunk.hash, await store.get(chunk.hash, chunk.size), chunk.size)
+        if (data.length !== chunk.size) throw new Error("Workspace file chunk is incomplete")
+        const from = Math.max(offset, start)
+        const to = Math.min(offset + bytes.length, end)
+        bytes.set(data.subarray(from - start, to - start), from - offset)
+      }
+      start = end
+    }
+    return { bytes, version: `sha256:${entry.hash}`, size: entry.size, mode: entry.mode }
+  }
+
   export async function write(
     input: Selection,
     change: { path: string; data: Uint8Array; expectedVersion: string | null; mode?: number },
@@ -85,7 +114,10 @@ export namespace WorkspaceContent {
     WorkspaceTree.Path.parse(change.path)
     const { info, store } = await resolve(input)
     const tree = await manifest(info, store)
-    const previous = tree.entries.find((entry) => entry.path === change.path)
+    const resolved = WorkspaceTree.resolve(tree, change.path)
+    change = { ...change, path: WorkspaceTree.Path.parse(resolved.path) }
+    const previous = resolved.entry
+    if (previous && !(previous.mode & 0o222)) throw new Error("Workspace file is read-only")
     if (
       (previous && previous.kind !== "file") ||
       (previous?.kind === "file" ? `sha256:${previous.hash}` : null) !== change.expectedVersion

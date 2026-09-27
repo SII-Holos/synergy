@@ -14,6 +14,8 @@ Uploads precede publication. The existing Agent Storage transaction compares bin
 
 Materialization verifies every file and chunk in an isolated staging directory and publishes only into an empty destination. Native capture checks source identities and metadata before returning a manifest. The existing atomic file publisher is shared with standalone execution hosts while Workspace claim admission stays with its owner.
 
+Classic and anchored file tools consume a selected file view. The native adapter retains existing physical admission and history hooks; object and mounted views share logical identity, byte-version validation and edit evidence. Range reads retain a full-file content version and reject a changed file between ranges. Permission classification uses the target path namespace and the file host validates actual target symlinks. The controller cannot infer remote containment from its own filesystem.
+
 ## Alternatives considered
 
 **Treat S3 and OSS as mounted POSIX filesystems.** Filesystem emulation does not supply equivalent rename, locking and process-write semantics. Compute receives a real materialized filesystem, and persistence uses explicit checkpoints.

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto"
+import { randomUUID, createHash } from "node:crypto"
 import { Environment } from "."
 import { EnvironmentProviders } from "./provider"
 import { ExecutionProtocol, type Executor } from "./executor"
@@ -8,6 +8,37 @@ import { WorkspaceMounts } from "../workspace/mount"
 import { RuntimeContext } from "../lifecycle/context"
 
 export namespace EnvironmentResources {
+  const context = RuntimeContext.createAsyncContext<{
+    runtime: RuntimeContext.Instance
+    resources: Resolved
+    operationID: string
+    sequence: number
+  }>()
+  export function current() {
+    const value = context.getStore()
+    if (value && value.runtime !== RuntimeContext.current()) throw new Error("File resources belong to another Runtime")
+    return value?.resources
+  }
+  export function localFiles() {
+    const resources = current()
+    return (
+      !resources ||
+      resources.kind === "native" ||
+      (resources.environment?.provider === "native" &&
+        resources.workspace?.backend?.provider === "directory" &&
+        resources.directory === resources.workspace.binding.path)
+    )
+  }
+  export function provide<T>(resources: Resolved, operationID: string, fn: () => T): T {
+    return context.run({ runtime: RuntimeContext.current(), resources, operationID, sequence: 0 }, fn)
+  }
+  export function nextOperationID() {
+    const value = context.getStore()
+    current()
+    return `file_${createHash("sha256")
+      .update(JSON.stringify([value?.operationID ?? randomUUID(), value ? value.sequence++ : 0]))
+      .digest("hex")}`
+  }
   export interface Needs {
     workspace?: boolean
     execution?: "exec" | "pty"

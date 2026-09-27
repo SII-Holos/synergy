@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto"
+import { EnvironmentResources } from "../environment/resources"
+import { WorkspaceState } from "../workspace/state"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import type { RolloutProcess } from "../session/rollout/process"
@@ -76,18 +79,38 @@ export namespace Tool {
 
   export async function withWorkspace<T>(
     required: boolean | undefined,
-    ctx: { sessionID?: string },
+    ctx: { sessionID?: string; messageID?: string; callID?: string; resources?: EnvironmentResources.Resolved },
     fn: () => Promise<T>,
   ) {
-    if (!required) return fn()
-    const workspace = ScopeContext.current.workspace
-    if (!workspace)
-      throw new Scope.WorkspaceRequiredError({
-        message: "This tool requires a Workspace.",
-        scopeID: ScopeContext.current.scope.id,
-      })
-    const { WorkspaceRuntime } = await import("../workspace/runtime")
-    return WorkspaceRuntime.withUse(ScopeContext.current.scope, workspace, ctx.sessionID, fn)
+    const resources = ctx.resources
+    const run = async () => {
+      if (!required) return fn()
+      const selected = resources?.workspace
+      const workspace = ScopeContext.current.workspace
+      if (!workspace && !selected)
+        throw new Scope.WorkspaceRequiredError({
+          message: "This tool requires a Workspace.",
+          scopeID: ScopeContext.current.scope.id,
+        })
+      const { WorkspaceRuntime } = await import("../workspace/runtime")
+      const execute = () =>
+        workspace && (!selected || (selected.id === workspace.id && selected.binding.path === resources?.directory))
+          ? WorkspaceRuntime.withUse(ScopeContext.current.scope, workspace, ctx.sessionID, fn)
+          : fn()
+      return selected
+        ? WorkspaceState.provide(
+            { id: selected.id, generation: selected.binding.generation, scopeID: selected.scopeID },
+            execute,
+          )
+        : execute()
+    }
+    return resources
+      ? EnvironmentResources.provide(
+          resources,
+          JSON.stringify([ctx.sessionID, ctx.messageID, ctx.callID || randomUUID()]),
+          run,
+        )
+      : run()
   }
 
   export function validateAttachmentResult(
@@ -147,9 +170,9 @@ export namespace Tool {
         const toolInfo = { ...(init instanceof Function ? await init(initCtx) : init) }
         const execute = originalExecute ?? toolInfo.execute
         toolInfo.execute = async (args, ctx) => {
-          if (options?.requiresWorkspace && !ScopeContext.current.workspace)
+          if (options?.requiresWorkspace && !ctx.resources?.workspace && !ScopeContext.current.workspace)
             throw new Scope.WorkspaceRequiredError({
-              message: "This tool requires a local workspace.",
+              message: "This tool requires a Workspace.",
               scopeID: ScopeContext.current.scope.id,
             })
           let parsed: typeof args

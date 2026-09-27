@@ -20,6 +20,8 @@ Local Runtime supplies S3 and OSS blob adapters. S3 uses Bun's bundled SigV4 cli
 
 A local binding without a verified physical directory identity cannot authorize execution or file access. Migration retains a missing directory's historical path; creating a new directory at that path or registering it again does not authorize the old binding. Explicit rebinding verifies the directory and advances the generation. See [unverified directory bindings](../decisions/implemented/bug-fix/2026-09-23-unverified-workspace-directory-bindings.md).
 
+The file-view facade resolves classic and anchored reads and edits from the selected logical Workspace. A dormant object view reads verified immutable chunks; an active view uses its recorded Executor file host. Reads carry exact content versions across bounded ranges. File evidence and edit events select the logical Workspace generation without inventing a local directory. Controller configuration reload applies only to local files. Entry inspection and mutation share the native implementation used by both the local adapters and Execution Host.
+
 ## Scope Runtime Services
 
 A project `ScopeRuntime` starts Scope configuration, commands, recovery and plugin services lazily. `WorkspaceRuntime` starts file services once per Workspace binding generation:

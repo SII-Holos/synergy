@@ -7,6 +7,7 @@ import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "@ericsanchezok/synergy-harness/workspace/protocol"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
+import { NativeFileEntry } from "../file/entry-core"
 import { NativeFileMutation } from "../file/mutation-core"
 import { WorkspaceCoordinator } from "./coordinator"
 import { NativeWorkspaceTree } from "./tree"
@@ -174,31 +175,45 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     )
     try {
       const before = await file.stat({ bigint: true })
-      if (!before.isFile() || before.size > input.maximumBytes)
+      if (!before.isFile() || (input.offset === undefined && before.size > input.maximumBytes))
         throw new Error("Workspace file exceeds the read limit or is not regular")
-      const bytes = Buffer.alloc(input.maximumBytes + 1)
-      let size = 0
-      while (size < bytes.length) {
-        const read = await file.read(bytes, size, bytes.length - size, null)
-        if (!read.bytesRead) break
-        size += read.bytesRead
+      const offset = input.offset ?? 0
+      const bytes = Buffer.alloc(Math.min(input.maximumBytes, Math.max(0, Number(before.size) - offset)))
+      const buffer = Buffer.allocUnsafe(64 * 1024)
+      const hash = createHash("sha256")
+      let position = 0
+      while (position <= before.size) {
+        this.shutdown.signal.throwIfAborted()
+        const { bytesRead } = await file.read(
+          buffer,
+          0,
+          Math.min(buffer.length, Number(before.size) + 1 - position),
+          position,
+        )
+        if (!bytesRead) break
+        hash.update(buffer.subarray(0, bytesRead))
+        const from = Math.max(offset, position)
+        const to = Math.min(offset + bytes.length, position + bytesRead)
+        if (from < to) bytes.set(buffer.subarray(from - position, to - position), from - offset)
+        position += bytesRead
       }
       const after = await file.stat({ bigint: true })
+      const current = await fs.stat(target, { bigint: true })
       if (
-        size > input.maximumBytes ||
+        position !== Number(before.size) ||
         before.ctimeNs !== after.ctimeNs ||
         before.mtimeNs !== after.mtimeNs ||
         before.size !== after.size ||
+        before.ino !== current.ino ||
+        before.dev !== current.dev ||
+        after.ctimeNs !== current.ctimeNs ||
         (await this.target(mount, input.path)) !== target
       )
-        throw new Error("Workspace file changed while reading")
-      const data = bytes.subarray(0, size)
-      return {
-        data: data.toString("base64"),
-        version: `sha256:${WorkspaceTree.hash(data)}`,
-        size,
-        mode: Number(after.mode & 0o777n),
-      }
+        throw new NativeFileMutation.ConflictError()
+      const version = `sha256:${hash.digest("hex")}`
+      if (input.expectedVersion !== undefined && input.expectedVersion !== version)
+        throw new NativeFileMutation.ConflictError()
+      return { data: bytes.toString("base64"), version, size: position, mode: Number(after.mode & 0o777n) }
     } finally {
       await file.close()
     }
@@ -210,19 +225,38 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     if (names.length > 100_000) throw new Error("Workspace directory exceeds its listing limit")
     const result: WorkspaceProtocol.Item[] = []
     for (const name of names.sort()) {
-      const stat = await fs.lstat(path.join(directory, name))
-      if (!stat.isDirectory() && !stat.isFile() && !stat.isSymbolicLink()) continue
-      result.push(
-        WorkspaceProtocol.Item.parse({
-          path: relative ? `${relative}/${name}` : name,
-          kind: stat.isSymbolicLink() ? "symlink" : stat.isDirectory() ? "directory" : "file",
-          size: stat.size,
-          mode: stat.mode & 0o777,
-          mtime: stat.mtimeMs,
-        }),
-      )
+      const entry = await this.stat(reference, relative ? `${relative}/${name}` : name)
+      if (entry) result.push(entry)
     }
     return result
+  }
+
+  async stat(
+    reference: WorkspaceProtocol.Reference,
+    relative: string,
+    follow = false,
+  ): Promise<WorkspaceProtocol.Item | undefined> {
+    const mount = await this.required(reference)
+    if (relative) WorkspaceTree.Path.parse(relative)
+    const requested = path.join(mount.path, ...relative.split("/"))
+    const target = relative
+      ? follow
+        ? await this.target(mount, relative)
+        : await NativeFileEntry.canonical(requested)
+      : mount.path
+    if (!this.contains(mount.path, target)) throw new Error("Workspace path escapes its mount")
+    const entry = await NativeFileEntry.inspect(target)
+    if (!entry) return
+    if (entry.type === "unknown") throw new Error("Special filesystem entries are unavailable")
+    return {
+      path: relative,
+      entryVersion: entry.version,
+      kind: entry.type,
+      size: Number(entry.stat.size),
+      mode: Number(entry.stat.mode & 0o777n),
+      mtime: Number(entry.stat.mtimeNs) / 1e6,
+      ctime: Number(entry.stat.ctimeNs) / 1e6,
+    }
   }
 
   async write(raw: WorkspaceProtocol.WriteInput) {

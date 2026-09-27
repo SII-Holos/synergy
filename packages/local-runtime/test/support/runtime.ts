@@ -14,11 +14,13 @@ export function testRuntime(
     composition: {
       register() {
         registerLocalRuntime({
-          workspaceCoordinator: new WorkspaceCoordinator({
-            directory: path.join(RuntimeContext.current().host.root, "claims"),
-          }),
+          workspaceCoordinator: testWorkspaceCoordinator(),
         })
       },
     },
   })
+}
+
+export function testWorkspaceCoordinator() {
+  return new WorkspaceCoordinator({ directory: path.join(RuntimeContext.current().host.root, "claims") })
 }

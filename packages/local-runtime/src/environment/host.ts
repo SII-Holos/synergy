@@ -236,6 +236,8 @@ export namespace ExecutionHost {
       case "detach":
         await files.detach(request.mount)
         return true
+      case "stat":
+        return (await files.stat(request.mount, request.path, request.follow)) ?? null
       case "read":
         return files.read(request.input)
       case "list":

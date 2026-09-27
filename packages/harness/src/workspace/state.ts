@@ -14,11 +14,15 @@ export namespace WorkspaceState {
     return identity.run({ runtime: RuntimeContext.current(), workspace }, fn)
   }
 
-  export function key() {
+  export function current() {
     const selected = identity.getStore()
     if (selected && selected.runtime !== RuntimeContext.current())
       throw new Error("Workspace state belongs to another Runtime")
-    const workspace = selected?.workspace ?? ScopeContext.current.workspace
+    return selected?.workspace ?? ScopeContext.current.workspace
+  }
+
+  export function key() {
+    const workspace = current()
     if (!workspace?.id || workspace.generation === undefined)
       throw new Error("A resolved Workspace is required for file resources")
     const key = JSON.stringify(["workspace", workspace.id, workspace.generation])

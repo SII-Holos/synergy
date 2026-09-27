@@ -88,3 +88,32 @@ test("closing a file host cancels queued mutations without writing after shutdow
     await occupied.release()
   }
 })
+
+test("file view metadata and bounded ranges refer to the same content version", async () => {
+  await using tmp = await tmpdir()
+  const root = path.join(tmp.path, "workspace")
+  await fs.mkdir(root)
+  await Bun.write(path.join(root, "file"), "abcdef")
+  await fs.symlink("file", path.join(root, "link"))
+  const host = new NativeWorkspaceFiles({
+    directory: path.join(tmp.path, "receipts"),
+    materializationRoot: path.join(tmp.path, "views"),
+    coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+  })
+  const mount = { id: "mount", workspaceID: "workspace", generation: 1 }
+  await host.mount({ ...mount, readOnly: false, source: { kind: "directory", path: root } })
+  expect((await host.stat(mount, ""))?.kind).toBe("directory")
+  expect((await host.stat(mount, "link"))?.kind).toBe("symlink")
+  expect(await host.stat(mount, "absent")).toBeUndefined()
+  const first = await host.read({ mount, path: "file", offset: 1, maximumBytes: 2 })
+  expect(Buffer.from(first.data, "base64").toString()).toBe("bc")
+  expect(first.size).toBe(6)
+  const next = await host.read({ mount, path: "file", offset: 3, maximumBytes: 3, expectedVersion: first.version })
+  expect(Buffer.from(next.data, "base64").toString()).toBe("def")
+  await Bun.write(path.join(root, "file"), "changed")
+  await expect(
+    host.read({ mount, path: "file", offset: 0, maximumBytes: 2, expectedVersion: first.version }),
+  ).rejects.toThrow("changed")
+  await fs.symlink(tmp.path, path.join(root, "escape"))
+  await expect(host.stat(mount, "escape/file")).rejects.toThrow("escapes")
+})

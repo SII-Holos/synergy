@@ -1,3 +1,6 @@
+import { ViewFileTool } from "../../src/tools/view-file"
+import { EditTool } from "../../src/tools/edit"
+import { AttachTool } from "../../src/tools/attach"
 import { expect, test } from "bun:test"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
@@ -343,9 +346,41 @@ test.skipIf(!image)(
                   part.state.output === "terminal-content\n",
               ),
             ).toBe(true)
+            {
+              await using resources = await EnvironmentResources.resolve({
+                ...selection,
+                environmentID: environment.id,
+                needs: { workspace: true },
+              })
+              const context = {
+                sessionID: session.id,
+                messageID: "msg_files",
+                agent: "synergy",
+                abort: AbortSignal.any([]),
+                ask: async () => {},
+                metadata() {},
+                resources,
+              }
+              const read = await (
+                await ViewFileTool.init()
+              ).execute({ filePath: "result" }, { ...context, callID: "read" })
+              expect(read.output).toContain("shell-content")
+              await (
+                await EditTool.init()
+              ).execute(
+                { filePath: "result", oldString: "shell-content", newString: "edited-content" },
+                { ...context, callID: "edit" },
+              )
+              const attached = await (
+                await AttachTool.init()
+              ).execute({ file_path: "result" }, { ...context, callID: "attach" })
+              expect(await Bun.file(attached.attachments![0]!.localPath!).text()).toBe(
+                "terminal-content\nedited-content",
+              )
+            }
             await Environment.deallocate(environment.id, { scopeID })
             expect(new TextDecoder().decode(await WorkspaceContent.read(selection, "result"))).toBe(
-              "terminal-content\nshell-content",
+              "terminal-content\nedited-content",
             )
           } finally {
             await Pty.removeForSession(session.id)

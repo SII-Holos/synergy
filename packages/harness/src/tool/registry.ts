@@ -117,8 +117,8 @@ export namespace ToolRegistry {
     return (await ToolPluginSource.get()?.conditionEnabled(pluginId, condition)) ?? false
   }
 
-  async function enabled(tool: Tool.Info): Promise<boolean> {
-    if (tool.requiresWorkspace && !ScopeContext.current.workspace) return false
+  async function enabled(tool: Tool.Info, workspaceID?: string | null): Promise<boolean> {
+    if (tool.requiresWorkspace && !workspaceID && !ScopeContext.current.workspace) return false
     if (!tool.enabledWhen) return true
     if (tool.source?.type !== "plugin") return false
     return conditionEnabled(tool.source.pluginId, tool.enabledWhen)
@@ -264,11 +264,11 @@ export namespace ToolRegistry {
     return result
   }
 
-  export async function tools(providerID: string, agent?: Agent.Info) {
+  export async function tools(providerID: string, agent?: Agent.Info, workspaceID?: string | null) {
     const allTools = await all()
-    const tools = (await Promise.all(allTools.map(async (tool) => ((await enabled(tool)) ? tool : undefined)))).filter(
-      (tool): tool is Tool.Info => Boolean(tool),
-    )
+    const tools = (
+      await Promise.all(allTools.map(async (tool) => ((await enabled(tool, workspaceID)) ? tool : undefined)))
+    ).filter((tool): tool is Tool.Info => Boolean(tool))
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
       tools.map(async (t) => {

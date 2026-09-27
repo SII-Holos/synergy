@@ -68,3 +68,46 @@ test("content manifests reject traversal, duplicate paths, escaping links and mi
   ])
     expect(() => WorkspaceTree.Manifest.parse({ version: 1, entries })).toThrow()
 })
+
+test("bounded object reads follow contained links and only fetch intersecting chunks", async () => {
+  const reads: string[] = []
+  const blobs: BlobStore = {
+    put: (hash, bytes) => Storage.writeBinary(["test_blobs", hash], bytes),
+    get(hash) {
+      reads.push(hash)
+      return Storage.readBinary(["test_blobs", hash])
+    },
+  }
+  await using runtime = await testRuntime({ register: () => WorkspaceBlobs.register("fixture", blobs) })
+  await runtime.run(async () => {
+    let info = await WorkspaceCatalog.create({
+      scopeID: "scope",
+      backend: { provider: "objects", spec: { blobStore: "fixture" } },
+    })
+    const selection = { scopeID: info.scopeID, workspaceID: info.id }
+    const data = new Uint8Array(WorkspaceTree.chunkBytes + 16).fill(7)
+    data.fill(9, WorkspaceTree.chunkBytes)
+    info = await WorkspaceContent.write(selection, { path: "file", data, expectedVersion: null })
+    const tree = await WorkspaceContent.manifest(info, blobs)
+    info = await WorkspaceContent.publish(info, blobs, {
+      ...tree,
+      entries: [
+        ...tree.entries,
+        { path: "link", kind: "symlink", mode: 0o777, target: "file" },
+        { path: "cycle", kind: "symlink", mode: 0o777, target: "cycle" },
+      ],
+    })
+    reads.length = 0
+    const range = await WorkspaceContent.readRange(selection, "link", WorkspaceTree.chunkBytes + 2, 4)
+    expect([...range.bytes]).toEqual([9, 9, 9, 9])
+    expect(range.version).toBe(`sha256:${WorkspaceTree.hash(data)}`)
+    expect(reads).toHaveLength(2)
+    await expect(WorkspaceContent.read(selection, "cycle")).rejects.toThrow("cycle")
+    await WorkspaceContent.write(selection, { path: "link", data: new Uint8Array([1]), expectedVersion: range.version })
+    expect([...(await WorkspaceContent.read(selection, "file"))]).toEqual([1])
+    const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
+    expect((await WorkspaceContent.manifest(latest, blobs)).entries.find((entry) => entry.path === "link")?.kind).toBe(
+      "symlink",
+    )
+  })
+})
