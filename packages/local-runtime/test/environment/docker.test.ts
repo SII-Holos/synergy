@@ -10,6 +10,7 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
+import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { testRuntime as localRuntime } from "../support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -353,6 +354,84 @@ test.skipIf(!image)(
           }
         },
       })
+    })
+  },
+  120_000,
+)
+
+test.skipIf(!image)(
+  "restarting the controller saves an existing Docker result without executing it again",
+  async () => {
+    const provider = dockerEnvironment({
+      endpoint: process.env.SYNERGY_TEST_DOCKER_HOST ?? "unix:///var/run/docker.sock",
+    })
+    await using home = await runtimeHome()
+    const register = () => {
+      EnvironmentProviders.register(provider)
+      WorkspaceBlobs.register("fixture", {
+        put: (hash, bytes) => Storage.writeBinary(["test_workspace_blob", hash], bytes),
+        get: (hash) => Storage.readBinary(["test_workspace_blob", hash]),
+      })
+    }
+    const first = await testRuntime({ home: home.host.home, register })
+    let environmentID = "",
+      workspaceID = ""
+    try {
+      await first.run(async () => {
+        environmentID = (
+          await Environment.bind({ scopeID: "scope", ownerID: "restart", provider: "docker", spec: { image: image! } })
+        ).id
+        workspaceID = (
+          await WorkspaceCatalog.create({
+            scopeID: "scope",
+            backend: { provider: "objects", spec: { blobStore: "fixture" } },
+          })
+        ).id
+        await using resources = await EnvironmentResources.resolve({
+          scopeID: "scope",
+          environmentID,
+          workspaceID,
+          needs: { execution: "exec" },
+        })
+        let execution = await EnvironmentExecution.start({
+          id: "recover-result",
+          scopeID: "scope",
+          environmentID,
+          workspaces: [WorkspaceMounts.reference(resources.workspace!)],
+          command: {
+            command: "/bin/sh",
+            args: ["-c", "printf once >> result; printf completed"],
+            cwd: resources.directory!,
+            env: {},
+            writableRoots: [resources.directory!],
+          },
+        })
+        for (let attempt = 0; execution.state !== "exited" && attempt < 300; attempt++) {
+          await Bun.sleep(20)
+          execution = await EnvironmentExecution.reconcile(execution.id, "scope")
+        }
+        expect(execution.state).toBe("exited")
+      })
+    } finally {
+      await first.close()
+    }
+    await using second = await testRuntime({ home: home.host.home, register })
+    await second.run(async () => {
+      try {
+        expect((await EnvironmentExecution.get("recover-result", "scope")).state).toBe("completed")
+        expect(
+          (await EnvironmentExecution.output("recover-result", "scope"))
+            .map((chunk) => Buffer.from(chunk.data, "base64").toString())
+            .join(""),
+        ).toBe("completed")
+        await Environment.deallocate(environmentID, { scopeID: "scope" })
+        expect(new TextDecoder().decode(await WorkspaceContent.read({ workspaceID, scopeID: "scope" }, "result"))).toBe(
+          "once",
+        )
+      } finally {
+        const current = await Environment.get(environmentID, "scope")
+        if (current.allocation) await provider.deallocate(Environment.requestOf(current))
+      }
     })
   },
   120_000,

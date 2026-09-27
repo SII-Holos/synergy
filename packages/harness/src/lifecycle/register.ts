@@ -15,6 +15,7 @@ import { Environment } from "../environment"
 import { registerEnvironmentMigrations } from "../environment/migration"
 import { registerWorkspaceMigrations } from "../workspace/migration"
 import { WorkspaceMounts } from "../workspace/mount"
+import { EnvironmentExecution } from "../environment/execution"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -30,6 +31,7 @@ export function registerHarness() {
   registerEnvironmentMigrations()
   Environment.registerRecovery()
   WorkspaceMounts.register()
+  EnvironmentExecution.registerRecovery()
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

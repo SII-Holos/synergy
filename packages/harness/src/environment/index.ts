@@ -5,6 +5,7 @@ import { StoragePath } from "../storage/path"
 import { StorageRecovery } from "../storage/recovery"
 import { EnvironmentProviders, type EnvironmentRequest } from "./provider"
 import { EnvironmentSchema } from "./schema"
+import { Log } from "../util/log"
 
 export namespace Environment {
   export const Info = EnvironmentSchema.Info
@@ -17,11 +18,17 @@ export namespace Environment {
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const epoch = RuntimeContext.state(() => randomUUID())
   const consumers = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<void>>())
+  const lostResources = RuntimeContext.state(() => new Map<string, (info: Info) => Promise<boolean>>())
 
-  export function registerResourceOwner(name: string, release: (info: Info) => Promise<void>) {
+  export function registerResourceOwner(
+    name: string,
+    release: (info: Info) => Promise<void>,
+    lost?: (info: Info) => Promise<boolean>,
+  ) {
     RuntimeContext.assertCompositionOpen("Environment resource owners")
     if (consumers().has(name)) throw new Error(`Duplicate Environment resource owner: ${name}`)
     consumers().set(name, release)
+    if (lost) lostResources().set(name, lost)
   }
 
   async function releaseResources(info: Info) {
@@ -221,7 +228,11 @@ export namespace Environment {
         const released = await release(info.id, scopeID, now - info.idleTimeoutMs)
         if (released.state === "idle") reclaimed.push(info.id)
       } catch (error) {
-        if (!(error instanceof Busy)) throw error
+        if (!(error instanceof Busy))
+          Log.create({ service: "environment" }).warn("Idle Environment remains unreclaimed", {
+            environmentID: info.id,
+            error,
+          })
       }
     }
     return reclaimed
@@ -244,6 +255,9 @@ export namespace Environment {
     }
     if (status.state === "unknown") return updateAllocation(info, "unknown")
     if (status.state === "absent") {
+      let retained = false
+      for (const lost of lostResources().values()) retained = (await lost(info)) || retained
+      if (retained) return updateAllocation(info, "unknown")
       if ((await uses(id)).length) return updateAllocation(info, "unknown")
       return updateAllocation(info, undefined)
     }

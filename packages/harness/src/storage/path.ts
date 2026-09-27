@@ -18,6 +18,11 @@ export namespace StoragePath {
     requestID,
   ]
   export const environmentExecution = (scopeID: string, id: string) => ["environment_execution", scopeID, id]
+  export const environmentExecutionActive = (scopeID?: string, id?: string) => [
+    "environment_execution_active",
+    ...(scopeID ? [scopeID] : []),
+    ...(id ? [id] : []),
+  ]
   export const environmentOutput = (scopeID: string, id: string, cursor: number) => [
     "environment_output",
     scopeID,

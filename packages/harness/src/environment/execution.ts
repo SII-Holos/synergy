@@ -9,6 +9,8 @@ import { WorkspaceProtocol } from "../workspace/protocol"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { WorkspaceMounts } from "../workspace/mount"
 import { JsonValue } from "../util/json-value"
+import { StorageRecovery } from "../storage/recovery"
+import { Log } from "../util/log"
 
 export namespace EnvironmentExecution {
   export const Info = z
@@ -30,6 +32,24 @@ export namespace EnvironmentExecution {
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const finishing = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const connections = RuntimeContext.state(() => new Map<string, Promise<Executor>>())
+
+  export function registerRecovery() {
+    StorageRecovery.register("environment-execution", recover)
+  }
+
+  export async function recover() {
+    for (const key of await Storage.list(StoragePath.environmentExecutionActive())) {
+      try {
+        const info = await reconcile(key[2], key[1])
+        if (["exited", "unsaved", "saved"].includes(info.state)) await complete(info.id, info.scopeID)
+      } catch (error) {
+        Log.create({ service: "environment-execution" }).warn("Execution remains pending reconciliation", {
+          id: key[2],
+          error,
+        })
+      }
+    }
+  }
 
   export async function get(id: string, scopeID: string): Promise<Info> {
     const [record] = await Storage.readMany<unknown>([
@@ -253,6 +273,11 @@ export namespace EnvironmentExecution {
         message: "Provider does not expose an Executor",
       })
     const key = JSON.stringify([info.scopeID, info.target])
+    for (const cached of connections().keys()) {
+      const [scopeID, target] = JSON.parse(cached) as [string, Environment.Target]
+      if (scopeID === info.scopeID && target.environmentID === info.target.environmentID && cached !== key)
+        connections().delete(cached)
+    }
     let connection = connections().get(key)
     if (!connection) {
       connection = provider.connect(Environment.requestOf(environment), info.target)
@@ -333,6 +358,9 @@ export namespace EnvironmentExecution {
   async function write(info: Info) {
     const next = Info.parse({ ...info, updatedAt: Date.now() })
     await Storage.write(StoragePath.environmentExecution(info.scopeID, info.id), next)
+    const active = StoragePath.environmentExecutionActive(info.scopeID, info.id)
+    if (next.state === "completed") await Storage.remove(active)
+    else await Storage.write(active, true)
     return next
   }
 

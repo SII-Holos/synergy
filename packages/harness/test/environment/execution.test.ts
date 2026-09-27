@@ -140,3 +140,95 @@ test("failed checkpoint retains the use and retries saving without re-executing"
     expect(f.releases()).toBe(1)
   })
 })
+
+test.each(["ack-lost", "unknown", "release-lost"] as const)(
+  "restart reconciles %s without repeating execution",
+  async (failure) => {
+    const { runtimeHome } = await import("../support/runtime-home")
+    const f = fixture()
+    const provider = {
+      id: "fixture",
+      allocate: async (request: { requestID: string }) => ({ id: request.requestID, capabilities: ["exec"] }),
+      inspect: async (request: { requestID: string }) => ({
+        state: "ready" as const,
+        allocation: { id: request.requestID, capabilities: ["exec"] },
+      }),
+      async deallocate() {},
+      async connect() {
+        return f.executor
+      },
+    }
+    await using home = await runtimeHome()
+    const first = await testRuntime({ home: home.host.home, register: () => EnvironmentProviders.register(provider) })
+    let environmentID = ""
+    const release = f.executor.release.bind(f.executor)
+    try {
+      await first.run(async () => {
+        environmentID = (
+          await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
+        ).id
+        f.loseResponse()
+        await expect(
+          EnvironmentExecution.start({ id: "recover", scopeID: "scope", environmentID, command }),
+        ).rejects.toThrow("ack lost")
+        if (failure === "unknown") f.operations.delete("recover")
+        if (failure === "release-lost") {
+          await EnvironmentExecution.reconcile("recover", "scope")
+          f.executor.release = async () => {
+            throw new Error("release acknowledgement lost")
+          }
+          await expect(EnvironmentExecution.complete("recover", "scope")).rejects.toThrow(
+            "release acknowledgement lost",
+          )
+        }
+      })
+    } finally {
+      await first.close()
+    }
+    f.executor.release = release
+    await using second = await testRuntime({
+      home: home.host.home,
+      register: () => EnvironmentProviders.register(provider),
+    })
+    await second.run(async () => {
+      expect((await EnvironmentExecution.get("recover", "scope")).state).toBe(
+        failure === "unknown" ? "unknown" : "completed",
+      )
+      expect(f.starts()).toBe(1)
+      expect(await Environment.uses(environmentID)).toHaveLength(failure === "unknown" ? 1 : 0)
+    })
+  },
+)
+
+test("the active-operation migration indexes unfinished records and excludes completed history", async () => {
+  const { environmentMigrations } = await import("../../src/environment/migration")
+  const { Storage } = await import("../../src/storage/storage")
+  const f = fixture()
+  await using runtime = await testRuntime({
+    register: () =>
+      EnvironmentProviders.register({
+        id: "fixture",
+        allocate: async (request) => ({ id: request.requestID, capabilities: ["exec"] }),
+        inspect: async () => ({ state: "unknown" }),
+        async deallocate() {},
+        async connect() {
+          return f.executor
+        },
+      }),
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
+    for (const id of ["active", "done"])
+      await EnvironmentExecution.start({ id, scopeID: "scope", environmentID: environment.id, command })
+    await EnvironmentExecution.complete("done", "scope")
+    await Storage.remove(["environment_execution_active", "scope", "active"])
+    const migration = environmentMigrations.find((item) => item.id === "20260928-environment-active-executions")!
+    await migration.up(() => {})
+    await migration.up(() => {})
+    expect(await Storage.list(["environment_execution_active"])).toEqual([
+      ["environment_execution_active", "scope", "active"],
+    ])
+    await EnvironmentExecution.complete("active", "scope")
+    expect(await Storage.list(["environment_execution_active"])).toEqual([])
+  })
+})

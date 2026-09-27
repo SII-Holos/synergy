@@ -63,3 +63,39 @@ test("native directory and object Workspaces resolve through one lazy execution 
     )
   })
 }, 30_000)
+
+test("a missing live view never materializes its earlier manifest implicitly", async () => {
+  const { WorkspaceMounts } = await import("@ericsanchezok/synergy-harness/workspace/mount")
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  await using runtime = await testRuntime({
+    register() {
+      WorkspaceAccess.register(coordinator)
+      registerNativeEnvironment({ coordinator })
+      WorkspaceBlobs.register("fixture", {
+        put: (hash, bytes) => Storage.writeBinary(["fixture", hash], bytes),
+        get: (hash) => Storage.readBinary(["fixture", hash]),
+      })
+    },
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: "native", spec: {} })
+    const workspace = await WorkspaceCatalog.create({
+      scopeID: "scope",
+      backend: { provider: "objects", spec: { blobStore: "fixture" } },
+    })
+    const selection = { scopeID: "scope", workspaceID: workspace.id, environmentID: environment.id }
+    await WorkspaceContent.write(selection, {
+      path: "file",
+      data: new TextEncoder().encode("earlier"),
+      expectedVersion: null,
+    })
+    const mounted = await WorkspaceMounts.attach(selection)
+    const host = await WorkspaceMounts.connect(mounted)
+    await Bun.write(path.join(mounted.activeMount!.path, "file"), "unsaved")
+    await host.detach(WorkspaceMounts.reference(mounted))
+    await expect(WorkspaceMounts.attach(selection)).rejects.toThrow("earlier checkpoint")
+    await expect(WorkspaceContent.read(selection, "file")).rejects.toThrow("active mount")
+    expect(await Bun.file(path.join(mounted.activeMount!.path, "file")).exists()).toBe(false)
+  })
+}, 20_000)

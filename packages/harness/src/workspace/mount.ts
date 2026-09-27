@@ -8,6 +8,8 @@ import { WorkspaceCatalog } from "./catalog"
 import { WorkspaceContent, type BlobStore } from "./content"
 import { WorkspaceTree } from "./tree"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "./protocol"
+import { StorageRecovery } from "../storage/recovery"
+import { Log } from "../util/log"
 
 export namespace WorkspaceMounts {
   export type Selection = {
@@ -21,7 +23,45 @@ export namespace WorkspaceMounts {
   const detaching = RuntimeContext.state(() => new Map<string, Promise<void>>())
 
   export function register() {
-    Environment.registerResourceOwner("workspace", beforeDeallocate)
+    Environment.registerResourceOwner("workspace", beforeDeallocate, allocationLost)
+    StorageRecovery.register("workspace-mounts", recover)
+  }
+
+  export async function recover() {
+    for (const key of await Storage.list(["workspace_environment"])) {
+      const [scopeID] = await Storage.readMany<string>([key])
+      if (!scopeID) continue
+      try {
+        const info = await WorkspaceCatalog.get(key[2], scopeID)
+        if (info.activeMount?.state === "preparing")
+          await attach({ workspaceID: info.id, scopeID, environmentID: key[1], generation: info.binding.generation })
+        else if (info.activeMount?.state === "saving") await detach({ workspaceID: info.id, scopeID })
+      } catch (error) {
+        Log.create({ service: "workspace-mounts" }).warn("Workspace view remains pending reconciliation", {
+          workspaceID: key[2],
+          error,
+        })
+      }
+    }
+  }
+
+  async function allocationLost(environment: Environment.Info) {
+    let retained = false
+    for (const key of await Storage.list(StoragePath.workspaceEnvironment(environment.id))) {
+      await Storage.transaction(async () => {
+        const info = await WorkspaceCatalog.get(key[2], environment.scopeID)
+        if (!info.activeMount) return
+        if (!Environment.sameTarget(info.activeMount.target, Environment.targetOf(environment)))
+          throw new Error("Workspace allocation requires reconciliation")
+        retained = true
+        await Storage.write(StoragePath.workspace(info.id), {
+          ...info,
+          activeMount: { ...info.activeMount, state: "unavailable" },
+          updatedAt: Date.now(),
+        })
+      })
+    }
+    return retained
   }
 
   export async function attach(input: Selection): Promise<WorkspaceCatalog.Info> {
@@ -91,6 +131,11 @@ export namespace WorkspaceMounts {
     const active = info.activeMount!
     let result = await files.inspect(reference(info))
     if (!result) {
+      if (active.state !== "preparing")
+        throw new WorkspaceCatalog.Unavailable({
+          workspaceID: info.id,
+          message: "Workspace live view was lost; an earlier checkpoint cannot replace it implicitly",
+        })
       let source: WorkspaceProtocol.MountInput["source"]
       if (info.backend?.provider === "objects") {
         const { store } = await WorkspaceContent.resolve({ workspaceID: info.id, scopeID: info.scopeID }, true)

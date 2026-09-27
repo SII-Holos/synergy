@@ -4,6 +4,8 @@ import { WorkspaceCatalog } from "../workspace/catalog"
 import { SessionMigrationTarget } from "../migration/session-target"
 import { MigrationRegistry } from "../migration/registry"
 import type { Migration } from "../migration/types"
+import { StoragePath } from "../storage/path"
+import { EnvironmentExecution } from "./execution"
 
 export async function migrateSessionEnvironment(
   owner: { scopeID: string; sessionID: string },
@@ -41,6 +43,22 @@ export async function migrateSessionEnvironment(
 }
 
 export const environmentMigrations: Migration[] = [
+  {
+    id: "20260928-environment-active-executions",
+    scope: "global",
+    description: "Index unfinished Environment operations for receipt and checkpoint recovery",
+    async up(progress) {
+      const keys = await Storage.list(["environment_execution"])
+      for (let index = 0; index < keys.length; index++) {
+        await Storage.transaction(async () => {
+          const info = EnvironmentExecution.Info.parse(await Storage.read(keys[index]))
+          if (info.state !== "completed")
+            await Storage.write(StoragePath.environmentExecutionActive(info.scopeID, info.id), true)
+        })
+        progress(index + 1, keys.length)
+      }
+    },
+  },
   {
     id: "20260927-session-environment-binding",
     scope: "session",

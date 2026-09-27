@@ -18,6 +18,8 @@ The common process facade binds stream completion to this durable completion pat
 
 Interactive terminals and user shell commands share the durable process facade. A terminal transport disconnect is a presentation event and leaves physical ownership intact. Explicit detachment retains the same identity through checkpoint failure and acknowledgement retry; a directory rebind must finish detachment before changing the physical binding. Logical Workspace cache selection does not require a local directory projection.
 
+An indexed set of unfinished operations makes startup recovery independent of conversation replay and bounds periodic maintenance by active work. A versioned migration creates this index for existing execution records. The Runtime drains maintenance before closing process and Workspace owners. A confirmed lost live view remains unavailable even when a committed manifest exists, because restoring that manifest would silently discard later writes.
+
 ## Alternatives considered
 
 **Release the native claim before uploading.** Another writer could alter the snapshot, causing the recorded operation outcome and durable files to diverge. Checkpoint capture, transfer and head publication stay within retained ownership.
