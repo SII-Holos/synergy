@@ -160,7 +160,7 @@ def prepare_oracle(suite_path: Path, output: Path, cache: Path, *, concurrency: 
 
 
 async def run_oracle(root: Path) -> dict[str, Any]:
-    from .runner import audit_environment, progress, remove_environment
+    from .runner import DispatchStopped, audit_environment, dispatch_blocker, progress, remove_environment
 
     root = await asyncio.to_thread(root.resolve)
     with locked(root, create=False):
@@ -179,21 +179,15 @@ async def run_oracle(root: Path) -> dict[str, Any]:
         )
         rows: dict[str, Any] = {}
 
+        def blocker(attempt: Path, result: dict[str, Any]) -> str | None:
+            return dispatch_blocker(
+                attempt,
+                {"infrastructure_error": result.get("native_exception"), "cleanup": result.get("cleanup_error")},
+            )
+
         async def execute(index: int, task: dict[str, Any]) -> None:
             attempt = root / "oracles" / f"{index:04d}" / "attempt-001"
             file = attempt / "oracle.json"
-            if file.exists():
-                result = read_json(file)
-                trial = attempt / result["trial_directory"]
-                for name, expected in result["files"].items():
-                    path = trial / name
-                    if path.is_symlink() or not path.resolve().is_relative_to(trial.resolve()):
-                        raise ValueError("Oracle evidence path changed")
-                    with path.open("rb") as stream:
-                        if hashlib.file_digest(stream, "sha256").hexdigest() != expected["sha256"]:
-                            raise ValueError("Oracle evidence changed")
-                rows[task["id"]] = result
-                return
             resources = PhaseResources(pool, attempt)
             token = current_resources.set(resources)
             try:
@@ -260,8 +254,29 @@ async def run_oracle(root: Path) -> dict[str, Any]:
                     else not resources.leases
                 )
                 await resources.finish(resources_removed=removed)
+            if reason := blocker(attempt, result):
+                raise DispatchStopped(reason)
 
         try:
+            blocked = None
+            for index, task in enumerate(plan["tasks"]):
+                attempt = root / "oracles" / f"{index:04d}" / "attempt-001"
+                file = attempt / "oracle.json"
+                if not file.exists():
+                    continue
+                result = read_json(file)
+                trial = attempt / result["trial_directory"]
+                for name, expected in result["files"].items():
+                    path = trial / name
+                    if path.is_symlink() or not path.resolve().is_relative_to(trial.resolve()):
+                        raise ValueError("Oracle evidence path changed")
+                    with path.open("rb") as stream:
+                        if hashlib.file_digest(stream, "sha256").hexdigest() != expected["sha256"]:
+                            raise ValueError("Oracle evidence changed")
+                rows[task["id"]] = result
+                blocked = blocked or blocker(attempt, result)
+            if blocked:
+                raise DispatchStopped(blocked)
             width = plan["concurrency"]
             for offset in range(0, len(plan["tasks"]), width):
                 await asyncio.to_thread(
@@ -272,7 +287,9 @@ async def run_oracle(root: Path) -> dict[str, Any]:
                 )
                 async with asyncio.TaskGroup() as group:
                     for index in range(offset, min(offset + width, len(plan["tasks"]))):
-                        group.create_task(execute(index, plan["tasks"][index]))
+                        task = plan["tasks"][index]
+                        if task["id"] not in rows:
+                            group.create_task(execute(index, task))
         finally:
             report = {
                 "version": 1,

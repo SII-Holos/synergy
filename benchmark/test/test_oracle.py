@@ -1,3 +1,5 @@
+import pytest
+
 from synergy_bench.oracle import oracle_configuration, oracle_result
 
 
@@ -75,6 +77,259 @@ async def test_oracle_uses_stage_leases_and_retains_cleanup_failure_before_stopp
     finally:
         for scheduler in captured:
             await scheduler.finish(resources_removed=True)
+
+
+@pytest.fixture
+def oracle_audit(tmp_path, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from synergy_bench import oracle, runner
+    from synergy_bench.catalog import tree_digest
+    from synergy_bench.scheduling import current_resources
+    from synergy_bench.storage import atomic_json, digest
+
+    @asynccontextmanager
+    async def monitor(*args, **kwargs):
+        assert kwargs["scheduler"] is current_resources.get()
+        yield
+
+    def audit(root, ownership, agent):
+        atomic_json(ownership.parent / "cleanup.json", {"status": "completed", "resources_removed": True})
+
+    monkeypatch.setattr(oracle, "evaluator_identity", lambda: "fixture")
+    monkeypatch.setattr(oracle, "enforce_budget", lambda *args, **kwargs: None)
+    monkeypatch.setattr(oracle, "admission_for", lambda *args: None)
+    monkeypatch.setattr(oracle, "shared_pool_options", lambda *args: {})
+    monkeypatch.setattr(oracle, "ResourceMonitor", monitor)
+    monkeypatch.setattr(runner, "audit_environment", audit)
+
+    def prepare(*, count=2, concurrency=1):
+        tasks = []
+        for index in range(count):
+            task = tmp_path / f"task-{index:04d}"
+            task.mkdir()
+            tasks.append(
+                {
+                    "id": task.name,
+                    "local_path": str(task),
+                    "digest": tree_digest(task),
+                    "resources": {"cpus": 1, "memory_bytes": 1024**3},
+                }
+            )
+        root = tmp_path / "oracle-12345678"
+        atomic_json(root / "owner.json", {"kind": "synergy-benchmark-oracle", "version": 1})
+        plan = {
+            "evaluator": "fixture",
+            "host": {"capacity": {"cpus": 2, "memory_bytes": 4 * 1024**3}},
+            "concurrency": concurrency,
+            "cache": str(tmp_path / "cache"),
+            "platform": "linux/amd64",
+            "config": {"resources": {"cache_budget_gib": 1, "min_free_disk_gib": 0}},
+            "tasks": tasks,
+        }
+        atomic_json(root / "plan.json", {**plan, "digest": digest(plan)})
+        return root
+
+    return prepare
+
+
+@pytest.mark.parametrize("kind", ["DockerEndpointError", "ResourcePressureError", "ResourceRecordingError"])
+@pytest.mark.parametrize("delivery", ["raised", "native"])
+async def test_oracle_global_failures_stop_after_evidence_and_release(oracle_audit, monkeypatch, kind, delivery):
+    from types import SimpleNamespace
+
+    from pier.models.trial.result import ExceptionInfo
+
+    from synergy_bench import oracle
+    from synergy_bench.docker_resources import DockerEndpointError
+    from synergy_bench.monitor import ResourceRecordingError
+    from synergy_bench.resources import Request, ResourcePressureError
+    from synergy_bench.runner import DispatchStopped
+    from synergy_bench.scheduling import current_resources
+    from synergy_bench.storage import read_json
+
+    root = oracle_audit()
+    errors = {error.__name__: error for error in (DockerEndpointError, ResourcePressureError, ResourceRecordingError)}
+    schedulers = []
+
+    async def create(config):
+        scheduler = current_resources.get()
+        schedulers.append(scheduler)
+
+        async def run():
+            await scheduler.acquire(config.trial_name, Request(1, 1024**3))
+            error = errors[kind]("Fixture global resource failure")
+            if delivery == "raised":
+                raise error
+            native = {"exception_info": ExceptionInfo.from_exception(error).model_dump(mode="json")}
+            return SimpleNamespace(model_dump=lambda **kwargs: native)
+
+        return SimpleNamespace(run=run)
+
+    monkeypatch.setattr(oracle.BenchmarkTrial, "create", create)
+    with pytest.raises(ExceptionGroup) as raised:
+        await oracle.run_oracle(root)
+    assert raised.value.subgroup(DispatchStopped) is not None
+    assert len(schedulers) == 1
+    assert not schedulers[0].leases
+    assert schedulers[0].pool.active == 0
+    attempt = root / "oracles/0000/attempt-001"
+    retained = (attempt / "oracle.json").read_bytes()
+    result = read_json(attempt / "oracle.json")
+    assert result["native_exception"]["exception_type"] == kind
+    assert result["status"] == "failed"
+    assert read_json(attempt / "cleanup.json")["resources_removed"] is True
+    assert read_json(attempt / "scheduling.json")["events"][-1]["event"] == "released"
+    report = read_json(root / "oracle-report.json")
+    assert report["completed"] == 1
+    assert report["missing"] == ["task-0001"]
+    assert current_resources.get() is None
+
+    with pytest.raises(DispatchStopped):
+        await oracle.run_oracle(root)
+    assert len(schedulers) == 1
+    assert (attempt / "oracle.json").read_bytes() == retained
+    assert read_json(root / "oracle-report.json")["missing"] == ["task-0001"]
+
+
+@pytest.mark.parametrize("delivery", ["raised", "native"])
+async def test_oracle_task_failure_keeps_following_tasks_and_retained_evidence(oracle_audit, monkeypatch, delivery):
+    from types import SimpleNamespace
+
+    from pier.models.trial.result import ExceptionInfo
+
+    from synergy_bench import oracle
+    from synergy_bench.storage import read_json
+
+    root = oracle_audit()
+    started = []
+
+    async def create(config):
+        started.append(config.task.path.name)
+
+        async def run():
+            error = ValueError("Fixture task failure")
+            if delivery == "raised":
+                raise error
+            return SimpleNamespace(
+                model_dump=lambda **kwargs: {
+                    "exception_info": ExceptionInfo.from_exception(error).model_dump(mode="json")
+                }
+            )
+
+        return SimpleNamespace(run=run)
+
+    monkeypatch.setattr(oracle.BenchmarkTrial, "create", create)
+    report = await oracle.run_oracle(root)
+    assert started == ["task-0000", "task-0001"]
+    assert report["completed"] == 2
+    assert report["missing"] == []
+    assert all(row["native_exception"]["exception_type"] == "ValueError" for row in report["rows"])
+    retained = {file: file.read_bytes() for file in root.glob("oracles/*/attempt-001/oracle.json")}
+    assert await oracle.run_oracle(root) == read_json(root / "oracle-report.json")
+    assert started == ["task-0000", "task-0001"]
+    assert all(file.read_bytes() == content for file, content in retained.items())
+
+
+@pytest.mark.parametrize("kind", ["DockerEndpointError", "ResourcePressureError", "ResourceRecordingError", "cleanup"])
+async def test_oracle_retained_global_failure_prevents_any_new_dispatch(oracle_audit, monkeypatch, kind):
+    from types import SimpleNamespace
+
+    from synergy_bench import oracle
+    from synergy_bench.runner import DispatchStopped
+    from synergy_bench.storage import atomic_json, read_json
+
+    root = oracle_audit(count=3, concurrency=2)
+    plan = read_json(root / "plan.json")
+    retained = {}
+    for index in (1, 2):
+        trial = root / "oracles" / f"{index:04d}" / "attempt-001/native"
+        native = {"verifier_result": {"rewards": {"reward": 1}}}
+        if index == 1 and kind != "cleanup":
+            native["exception_info"] = {"exception_type": kind, "exception_message": "Retained global failure"}
+        atomic_json(trial / "result.json", native)
+        result = {**oracle_result(trial, native), "task": plan["tasks"][index]["id"]}
+        if index == 1 and kind == "cleanup":
+            result.update(status="failed", cleanup_error={"status": "failed", "resources_removed": False})
+        file = trial.parent / "oracle.json"
+        atomic_json(file, result)
+        retained[file] = file.read_bytes()
+    started = []
+
+    async def create(config):
+        started.append(config.task.path.name)
+
+        async def run():
+            return SimpleNamespace(model_dump=lambda **kwargs: {})
+
+        return SimpleNamespace(run=run)
+
+    monkeypatch.setattr(oracle.BenchmarkTrial, "create", create)
+    with pytest.raises(DispatchStopped):
+        await oracle.run_oracle(root)
+    assert started == []
+    report = read_json(root / "oracle-report.json")
+    assert report["completed"] == 2
+    assert {row["task"] for row in report["rows"]} == {"task-0001", "task-0002"}
+    assert report["missing"] == ["task-0000"]
+    assert all(file.read_bytes() == content for file, content in retained.items())
+
+
+async def test_oracle_global_failure_cancels_and_cleans_active_sibling(oracle_audit, monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+
+    from pier.models.trial.result import ExceptionInfo
+
+    from synergy_bench import oracle
+    from synergy_bench.resources import Request, ResourcePressureError
+    from synergy_bench.runner import DispatchStopped
+    from synergy_bench.scheduling import current_resources
+    from synergy_bench.storage import read_json
+
+    root = oracle_audit(count=3, concurrency=2)
+    sibling_started = asyncio.Event()
+    cancelled = asyncio.Event()
+    schedulers = []
+
+    async def create(config):
+        scheduler = current_resources.get()
+        schedulers.append(scheduler)
+
+        async def run():
+            await scheduler.acquire(config.trial_name, Request(1, 1024**3))
+            await scheduler.sample({config.trial_name: (1024**3, 0.25)})
+            if config.task.path.name == "task-0000":
+                await sibling_started.wait()
+                error = ResourcePressureError("Fixture shared pressure failure")
+                return SimpleNamespace(
+                    model_dump=lambda **kwargs: {
+                        "exception_info": ExceptionInfo.from_exception(error).model_dump(mode="json")
+                    }
+                )
+            sibling_started.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        return SimpleNamespace(run=run)
+
+    monkeypatch.setattr(oracle.BenchmarkTrial, "create", create)
+    async with asyncio.timeout(10):
+        with pytest.raises(ExceptionGroup) as raised:
+            await oracle.run_oracle(root)
+    assert raised.value.subgroup(DispatchStopped) is not None
+    assert cancelled.is_set()
+    assert len(schedulers) == 2
+    assert all(not scheduler.leases and scheduler.pool.active == 0 for scheduler in schedulers)
+    report = read_json(root / "oracle-report.json")
+    assert report["completed"] == 2
+    assert report["missing"] == ["task-0002"]
+    assert report["rows"][1]["native_exception"]["exception_type"] == "CancelledError"
+    assert all(read_json(scheduler.directory / "cleanup.json")["resources_removed"] is True for scheduler in schedulers)
+    assert current_resources.get() is None
 
 
 def test_oracle_uses_three_hours_for_both_stages_without_harness_or_inference(tmp_path):
