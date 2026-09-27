@@ -68,6 +68,8 @@ For reusable native processes, trace idle lifetime separately from active reques
 
 For Environment-backed files, follow `EnvironmentResources` through the file view and owning Executor. Never infer a local directory from a logical Workspace ID. Exercise dormant object edits, attachment to a live view, persisted publication, and reads after detachment; controller filesystem aliases must not influence remote authorization. Local test coordinators must use the fixture’s private claim directory, including external blockers used by restoration tests. Verify logical Workspace startup without a controller directory and file observation through allocation replacement; panels must neither allocate compute nor prevent idle reclamation.
 
+Trace API-only work through direct invocation, durable inbox dispatch, prompt assembly and the real model worker. A successful `SessionManager.run()` or isolated tool call does not prove those entry paths tolerate unavailable files. Verify that conversation input persists, file operations still reject the unavailable binding, and the selected Environment remains unallocated.
+
 Distinguish internal content parsers from user command execution: an internal search process may consume verified Workspace bytes on the Agent host, but cannot use the controller filesystem as the selected view. Verify identical regex behavior, ignore precedence, bounds and cancellation without allocating compute for dormant object searches.
 
 ## Component composition changes
