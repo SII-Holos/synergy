@@ -16,7 +16,7 @@ test.each(["", "null", "{}", "[]", '["tool","tool"]', '["unknown"]', '["read",1]
   },
 )
 
-test("artifact staging preserves an executable outside its source and rejects installation writes", async () => {
+test("artifact staging preserves installed modes when materializing an isolated runtime", async () => {
   const isolation = await createIsolatedTestEnv()
   const source = path.join(isolation.env.SYNERGY_TEST_ROOT!, "source")
   const binary = path.join(source, "bin", "synergy")
@@ -32,10 +32,12 @@ test("artifact staging preserves an executable outside its source and rejects in
     const [stdout, code] = await Promise.all([new Response(child.stdout).text(), child.exited])
     expect(code).toBe(0)
     expect(stdout.trim()).toBe("retained resource")
+    const runtime = path.join(isolation.env.SYNERGY_TEST_ROOT!, "runtime")
+    await fs.cp(path.dirname(path.dirname(staged.binary)), runtime, { recursive: true })
+    await Bun.write(path.join(runtime, "bin", "generation.json"), "{}")
     if (process.platform !== "win32") {
-      expect((await fs.stat(staged.binary)).mode & 0o222).toBe(0)
-      expect((await fs.stat(path.dirname(staged.binary))).mode & 0o222).toBe(0)
-      if (process.getuid?.() !== 0) await expect(fs.writeFile(staged.binary, "changed")).rejects.toThrow()
+      expect((await fs.stat(staged.binary)).mode & 0o777).toBe(0o755)
+      expect((await fs.stat(path.dirname(staged.binary))).mode & 0o200).toBe(0o200)
     }
   } finally {
     await staged.dispose()
@@ -63,3 +65,18 @@ test.skipIf(process.platform === "win32")(
     }
   },
 )
+
+test("artifact staging rejects changes to the shared installation", async () => {
+  const isolation = await createIsolatedTestEnv()
+  try {
+    const binary = path.join(isolation.env.SYNERGY_TEST_ROOT!, "source", "bin", "synergy")
+    await Bun.write(binary, "original executable")
+    const staged = await stageArtifactInstallation(binary)
+    await fs.chmod(staged.binary, 0o644)
+    await Bun.write(staged.binary, "modified executable")
+    await expect(staged.dispose()).rejects.toThrow("Shared artifact installation changed")
+    expect(await Bun.file(staged.binary).exists()).toBe(false)
+  } finally {
+    await isolation.dispose()
+  }
+})

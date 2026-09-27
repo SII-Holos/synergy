@@ -18,7 +18,7 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness 使用四个稳定哈希分区，特殊隔离文件保持独立进程。每批拥有独立的 Home、fixture 根和 Link Home，fixture 自己分配数据库与动态端口。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18、安装产物和三种 30 MiB 长流结果保持独立任务。原生 Workspace 任务生成本次 JUnit 与 lcov，依赖完整 Local Runtime suite 的覆盖率基线；required check 等待两个平台的计划结果并共同计算覆盖率。
 
-正式安装验收由 Linux prepare 分别构建 core/full，并各发布独立、只读的本次分发产物。五个消费任务覆盖 core binary、core tarball、full 两组行为和 full 组合与 CLI 安装、升级、移除、managed/attach 生命周期。full 不依赖 core 构建；消费者验证计划、提交、run、attempt、Bun、ABI、完整文件列表、字节摘要和文件模式。每个场景拥有独立 Home，同一进程仅共享只读发行树副本。
+正式安装验收由 Linux prepare 分别构建 core/full，并各发布独立、只读的本次分发产物。五个消费任务覆盖 core binary、core tarball、full 两组行为和 full 组合与 CLI 安装、升级、移除、managed/attach 生命周期。full 不依赖 core 构建；消费者验证计划、提交、run、attempt、Bun、ABI、完整文件列表、字节摘要和文件模式。每个场景拥有独立 Home，同一进程共享一份保持原始权限的发行树副本，结束时校验完整清单、字节和模式未改变。
 
 长会话矩阵固定 fixture-one，保留 JIT × 两协议的四个 120 轮组合；四个短语义组合覆盖两个 fixture model 与协议、JIT 的成对关系，实际验证工具写读修订、磁盘结果、usage 和归档身份。PostgreSQL 三版本仅执行登记的 PG 能力入口，SQLite 专用用例由普通 suite 覆盖；缺少 PG 配置必须失败。三种长流保留原始负载和真实 Runtime 清理。布局与测试取舍见 [PR 反馈决策](../decisions/implemented/testing/2026-09-27-pr-ci-feedback.md)。
 

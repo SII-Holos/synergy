@@ -1,4 +1,6 @@
 import fs from "node:fs/promises"
+import { createReadStream } from "node:fs"
+import { createHash } from "node:crypto"
 import path from "node:path"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 
@@ -28,32 +30,42 @@ export function artifactScenarios(selection?: string): Scenario[] {
 export async function stageArtifactInstallation(binary: string) {
   const isolation = await createIsolatedTestEnv()
   const directory = path.join(await fs.realpath(isolation.env.SYNERGY_TEST_ROOT!), "installation")
-  const modes: Array<{ file: string; mode: number }> = []
-  async function readonly(file: string): Promise<void> {
-    const stat = await fs.lstat(file)
-    if (stat.isSymbolicLink()) {
-      const target = await fs.realpath(file)
-      if (target !== directory && !target.startsWith(directory + path.sep))
-        throw new Error("Artifact installation symlink escapes its copied root")
-      return
+  async function inventory() {
+    const entries: Array<{ path: string; mode: number; content: string }> = []
+    async function visit(file: string): Promise<void> {
+      const stat = await fs.lstat(file)
+      const entry = { path: path.relative(directory, file), mode: stat.mode & 0o777, content: "directory" }
+      if (stat.isSymbolicLink()) {
+        const target = await fs.realpath(file)
+        if (target !== directory && !target.startsWith(directory + path.sep))
+          throw new Error("Artifact installation symlink escapes its copied root")
+        entry.content = "link:" + (await fs.readlink(file))
+      } else if (stat.isFile()) {
+        const digest = createHash("sha256")
+        for await (const chunk of createReadStream(file)) digest.update(chunk)
+        entry.content = digest.digest("hex")
+      } else if (!stat.isDirectory()) throw new Error("Unsupported artifact installation entry")
+      entries.push(entry)
+      if (stat.isDirectory()) for (const child of (await fs.readdir(file)).sort()) await visit(path.join(file, child))
     }
-    modes.push({ file, mode: stat.mode & 0o777 })
-    if (stat.isDirectory()) for (const child of await fs.readdir(file)) await readonly(path.join(file, child))
-    await fs.chmod(file, stat.mode & 0o555)
-  }
-  async function dispose() {
-    try {
-      for (const { file, mode } of modes) await fs.chmod(file, mode)
-    } finally {
-      await isolation.dispose()
-    }
+    await visit(directory)
+    return JSON.stringify(entries)
   }
   try {
     await fs.cp(path.dirname(path.dirname(binary)), directory, { recursive: true, verbatimSymlinks: true })
-    await readonly(directory)
-    return { binary: path.join(directory, "bin", path.basename(binary)), dispose }
+    const expected = await inventory()
+    return {
+      binary: path.join(directory, "bin", path.basename(binary)),
+      async dispose() {
+        try {
+          if ((await inventory()) !== expected) throw new Error("Shared artifact installation changed")
+        } finally {
+          await isolation.dispose()
+        }
+      },
+    }
   } catch (error) {
-    await dispose()
+    await isolation.dispose()
     throw error
   }
 }
