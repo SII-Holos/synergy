@@ -258,28 +258,64 @@ test("maintenance excludes another process and recovers its abandoned lease", ()
 
 test("exclusive maintenance waits for readers and excludes later readers", () =>
   runtime.run(async () => {
+    await using tmp = await tmpdir()
     const key = "snapshot-lease-" + crypto.randomUUID()
-    const events: string[] = []
+    const controller = new AbortController()
+    const options = { dataRoot: tmp.path, signal: controller.signal, timeoutMs: 5_000 }
+    await using first = await SnapshotLease.acquire(key, false, options)
+    const events = ["reader"]
     const entered = Promise.withResolvers<void>()
     const release = Promise.withResolvers<void>()
-    const first = SnapshotLease.use(key, false, async () => {
-      events.push("reader")
-      entered.resolve()
-      await release.promise
-    })
-    await entered.promise
-    const maintenance = SnapshotLease.use(key, true, async () => {
-      events.push("maintenance")
-    })
-    await Bun.sleep(100)
-    const later = SnapshotLease.use(key, false, async () => {
-      events.push("later")
-    })
-    await Bun.sleep(50)
-    expect(events).toEqual(["reader"])
-    release.resolve()
-    await Promise.all([first, maintenance, later])
-    expect(events).toEqual(["reader", "maintenance", "later"])
+    const maintenance = SnapshotLease.use(
+      key,
+      true,
+      async () => {
+        events.push("maintenance")
+        entered.resolve()
+        await release.promise
+      },
+      options,
+    )
+    let barrier: Promise<void> | undefined
+    let later: Promise<void> | undefined
+    try {
+      barrier = (async () => {
+        const file = Bun.file(path.join(tmp.path, ...StoragePath.snapshotLeases(key)) + ".json")
+        while (!(await file.json()).owners.some((owner: { exclusive: boolean }) => owner.exclusive)) {
+          controller.signal.throwIfAborted()
+          await Bun.sleep(10)
+        }
+      })()
+      await Promise.race([barrier, maintenance])
+      later = SnapshotLease.use(
+        key,
+        false,
+        async () => {
+          events.push("later")
+        },
+        options,
+      )
+      await expect(SnapshotLease.use(key, false, async () => {}, { ...options, timeoutMs: 50 })).rejects.toBeInstanceOf(
+        SnapshotLease.BusyError,
+      )
+      expect(events).toEqual(["reader"])
+      await first[Symbol.asyncDispose]()
+      await Promise.race([entered.promise, maintenance])
+      await expect(SnapshotLease.use(key, false, async () => {}, { ...options, timeoutMs: 50 })).rejects.toBeInstanceOf(
+        SnapshotLease.BusyError,
+      )
+      expect(events).toEqual(["reader", "maintenance"])
+      release.resolve()
+      await Promise.all([maintenance, later])
+      expect(events).toEqual(["reader", "maintenance", "later"])
+    } finally {
+      const settled = Promise.allSettled([maintenance, later, barrier])
+      controller.abort()
+      release.resolve()
+      await first[Symbol.asyncDispose]()
+      await settled
+    }
+    await SnapshotLease.use(key, true, async () => {}, { dataRoot: tmp.path })
   }))
 
 test("aborted exclusive acquisition releases its admission barrier", () =>

@@ -85,7 +85,7 @@ async def test_controlled_native_throughput_at_one_two_four_six(tmp_path, monkey
                 "initialize_seconds": time.monotonic() - prepare_started,
             }
             environment = recorded_environment(root, read_json(root / "plan.json")["evaluator"])
-            for phase in ["prewarm", "doctor", "resume"]:
+            for phase in ["resume"]:
                 started = time.monotonic()
                 code = await run_process(
                     [sys.executable, "-m", "synergy_bench.cli", phase, str(root)],
@@ -101,7 +101,9 @@ async def test_controlled_native_throughput_at_one_two_four_six(tmp_path, monkey
             assert len(results) == 12
             assert all(result["evidence"]["valid"] for result in results)
             assert all(result["verifier"]["rewards"] == {"reward": 1.0} for result in results)
-            assert all(result["resources"]["oom_events"] == 0 for result in results)
+            assert all(result["resources"]["observed_oom_events"] == 0 for result in results)
+            assert all(result["resources"]["oom_events"] is None for result in results)
+            assert all(result["resources"]["oom_coverage"] == "partial_live_stream" for result in results)
             builds = await asyncio.to_thread(lambda root=root: list(root.glob("**/compose/build-*.log")))
             pulls = await asyncio.to_thread(lambda root=root: list(root.glob("**/compose/pull-*.log")))
             row.update(tasks=12, tasks_per_minute=720 / row["resume_seconds"], builds=len(builds), pulls=len(pulls))

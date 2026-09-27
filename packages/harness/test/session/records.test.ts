@@ -8,7 +8,15 @@ import { Identifier } from "../../src/id/id"
 import { testRuntime } from "../support/runtime"
 import { tmpdir } from "../support/fixture"
 
-test("lists more Workspace-backed sessions than storage admission capacity", async () => {
+async function withRecords(
+  fn: (input: {
+    seed: Session.Info
+    workspace: WorkspaceCatalog.Info
+    records: Array<ReturnType<typeof SessionRecords.serialize> & { workspaceID: string }>
+    scopeID: string
+    directory: string
+  }) => Promise<void>,
+) {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
     await using files = await tmpdir()
@@ -37,40 +45,51 @@ test("lists more Workspace-backed sessions than storage admission capacity", asy
           }
           await Session.rebuildStorageIndexes(tx)
         })
-        const listed = []
-        for await (const session of Session.listAll()) listed.push(session)
-        expect(listed).toHaveLength(records.length + 1)
-        const byID = new Map(listed.map((session) => [session.id, session]))
-        for (const record of records) {
-          expect(byID.get(record.id)).toMatchObject({
-            title: record.title,
-            workspace: { id: record.workspaceID, path: files.path },
-          })
-        }
-        const page = await Session.list()
-        expect(page.data).toHaveLength(records.length + 1)
-        const search = await Session.list({ search: "Fixture Session" })
-        expect(search.data).toHaveLength(records.length)
-        await Storage.transaction(async (tx) => {
-          for (const record of records)
-            await Storage.write(["sessions", scope.id, record.id, "info"], { ...record, parentID: seed.id })
-          await Session.rebuildStorageIndexes(tx)
-        })
-        expect(await Session.children(seed.id)).toHaveLength(records.length)
-        expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
-        const keys = records.slice(0, 2).map((record) => ["sessions", scope.id, record.id, "info"])
-        await WorkspaceCatalog.rebind(workspace.id, {
-          scopeID: scope.id,
-          expectedRevision: workspace.revision,
-          hostID: "test",
-          path: `${files.path}/moved`,
-        })
-        expect((await SessionRecords.readMany(keys)).map((session) => session?.workspace?.path)).toEqual([
-          `${files.path}/moved`,
-          `${files.path}/moved`,
-        ])
+        await fn({ seed, workspace, records, scopeID: scope.id, directory: files.path })
       },
     })
+  })
+}
+
+test("lists more Workspace-backed parent sessions than storage admission capacity", async () => {
+  await withRecords(async ({ workspace, records, scopeID, directory }) => {
+    const listed = []
+    for await (const session of Session.listAll()) listed.push(session)
+    expect(listed).toHaveLength(records.length + 1)
+    const byID = new Map(listed.map((session) => [session.id, session]))
+    for (const record of records) {
+      expect(byID.get(record.id)).toMatchObject({
+        title: record.title,
+        workspace: { id: record.workspaceID, path: directory },
+      })
+    }
+    const page = await Session.list()
+    expect(page.data).toHaveLength(records.length + 1)
+    const search = await Session.list({ search: "Fixture Session" })
+    expect(search.data).toHaveLength(records.length)
+    const keys = records.slice(0, 2).map((record) => ["sessions", scopeID, record.id, "info"])
+    await WorkspaceCatalog.rebind(workspace.id, {
+      scopeID,
+      expectedRevision: workspace.revision,
+      hostID: "test",
+      path: `${directory}/moved`,
+    })
+    expect((await SessionRecords.readMany(keys)).map((session) => session?.workspace?.path)).toEqual([
+      `${directory}/moved`,
+      `${directory}/moved`,
+    ])
+  })
+}, 30_000)
+
+test("lists more Workspace-backed child sessions than storage admission capacity", async () => {
+  await withRecords(async ({ seed, records, scopeID }) => {
+    await Storage.transaction(async (tx) => {
+      for (const record of records)
+        await Storage.write(["sessions", scopeID, record.id, "info"], { ...record, parentID: seed.id })
+      await Session.rebuildStorageIndexes(tx)
+    })
+    expect(await Session.children(seed.id)).toHaveLength(records.length)
+    expect((await Session.childPage({ parentID: seed.id })).items).toHaveLength(records.length)
   })
 }, 30_000)
 

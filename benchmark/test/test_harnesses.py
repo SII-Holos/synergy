@@ -4,6 +4,35 @@ from synergy_bench.config import ModelProfile
 from synergy_bench.harnesses import PACKAGES, harness_configuration
 
 
+@pytest.mark.parametrize(
+    ("parameters", "reasoning"),
+    [
+        ({"enable_thinking": False}, False),
+        ({"enable_thinking": True}, True),
+        ({"thinking": {"type": "disabled"}}, False),
+        ({"thinking": {"type": "enabled"}}, True),
+        ({"reasoning_effort": "none"}, False),
+        ({"reasoning_effort": "high"}, True),
+        ({"reasoning": {"effort": "none"}}, False),
+        ({"reasoning": {"summary": "auto"}}, True),
+    ],
+)
+def test_synergy_reasoning_capability_and_helper_models_follow_the_profile(parameters, reasoning):
+    model = ModelProfile(
+        model="fixture",
+        protocol="responses" if "reasoning" in parameters else "chat-completions",
+        base_url="http://provider.invalid/v1",
+        api_key_env="KEY",
+        context_window=1000000,
+        max_output_tokens=8192,
+        parameters=parameters,
+    )
+    settings = harness_configuration("synergy", model, "http://gateway.invalid/v1", "/home/fixture")["config"]
+    assert settings["provider"]["benchmark"]["models"]["fixture"]["reasoning"] is reasoning
+    for role in ["nano", "mini", "mid", "thinking", "long_context", "creative", "vision"]:
+        assert settings[f"{role}_model"] == settings["model"] == "benchmark/fixture"
+
+
 @pytest.mark.parametrize("kind", ["synergy", "codex", "opencode", "pi", "deepseek"])
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 def test_native_configuration_keeps_model_axis_and_environment_credentials(kind, protocol):
@@ -39,8 +68,9 @@ def test_unknown_harness_fails_before_launch():
         harness_configuration("imaginary", model, "http://localhost:1/v1", "/home/fixture")
 
 
+@pytest.mark.parametrize("kind", ["synergy", "opencode"])
 @pytest.mark.parametrize("enabled", [None, False, True])
-def test_opencode_jit_controls_the_native_process_without_changing_model_or_tools(enabled):
+def test_bun_jit_controls_the_native_process_without_changing_model_or_tools(kind, enabled):
     model = ModelProfile(
         model="m",
         protocol="chat-completions",
@@ -49,8 +79,8 @@ def test_opencode_jit_controls_the_native_process_without_changing_model_or_tool
         context_window=32000,
         max_output_tokens=2000,
     )
-    baseline = harness_configuration("opencode", model, "http://localhost:1/v1", "/home/fixture")
-    actual = harness_configuration("opencode", model, "http://localhost:1/v1", "/home/fixture", bun_jit=enabled)
+    baseline = harness_configuration(kind, model, "http://localhost:1/v1", "/home/fixture")
+    actual = harness_configuration(kind, model, "http://localhost:1/v1", "/home/fixture", bun_jit=enabled)
     assert actual["files"] == baseline["files"]
     assert actual["argv"] == baseline["argv"]
     if enabled is None:

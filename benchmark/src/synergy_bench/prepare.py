@@ -34,14 +34,42 @@ def evaluator_identity(root: Path | None = None) -> dict[str, str]:
     }
 
 
-def synergy_runtime_digest(root: Path) -> str:
+SESSION_RUNTIME = {
+    "external.mjs",
+    "capture.mjs",
+    "native-outcome.mjs",
+    "session-capture.mjs",
+    "session-relay.mjs",
+    "session-prepare.mjs",
+    "session-entry.mjs",
+}
+
+
+def source_protocol(source: Path, commit: str | None) -> str:
+    if (source / "packages/runtime-local/package.json").is_file():
+        return "synergy-rollout-v1"
+    # Provenance: https://github.com/SII-Holos/synergy/tree/v3.0.22/packages/synergy
+    # This audited release predates compositions and native rollout exports.
+    manifest = source / "packages/synergy/package.json"
+    if commit == "024dd683e091d9fce3d1d26b79b2e188ce636b52" and manifest.is_file():
+        if read_json(manifest).get("name") == "synergy":
+            return "synergy-session-v1"
+    raise ValueError("Unsupported historical Synergy source; audit its native execution and export protocol first")
+
+
+def synergy_runtime_digest(root: Path, *, protocol: str = "synergy-rollout-v1") -> str:
     from .source import entry
 
     return digest(
         [
             entry(root, path.relative_to(root).as_posix())
             for path in sorted(root.rglob("*"))
-            if path.is_file() and (path.suffix == ".ts" or path.name == "deadline.mjs")
+            if path.is_file()
+            and (
+                path.suffix == ".ts"
+                or path.name == "deadline.mjs"
+                or (protocol == "synergy-session-v1" and path.name in SESSION_RUNTIME)
+            )
         ]
     )
 
@@ -57,6 +85,57 @@ def recipe_links(source: Path, dependencies: dict[str, str]) -> dict[str, str]:
         if version != "workspace:*" or name not in packages:
             raise ValueError(f"Recipe dependency is not provided by the measured workspace: {name}")
     return {name: packages[name] for name in sorted(dependencies)}
+
+
+def source_recipe(source: Path, *, image_id: str, protocol: str, links: dict[str, str]) -> str:
+    link_commands = []
+    for name, relative in links.items():
+        link_path = Path("/opt/synergy/runtime/node_modules") / name
+        linked = Path("/opt/synergy/source") / relative
+        link_commands.extend(
+            [
+                shlex.join(["mkdir", "-p", str(link_path.parent)]),
+                shlex.join(["ln", "-s", os.path.relpath(linked, link_path.parent), str(link_path)]),
+            ]
+        )
+    native = ""
+    if protocol == "synergy-rollout-v1":
+        native = (
+            "FROM node:22.14.0-bullseye AS native\n"
+            "COPY --from=source /opt/synergy /opt/synergy\n"
+            "WORKDIR /opt/synergy/source\n"
+            "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
+        )
+        pty = (source / "packages/runtime-local/script/build-pty.ts").is_file()
+        if pty:
+            native += (
+                "FROM rust:1.94.0-bookworm AS native_pty\n"
+                "COPY --from=source /opt/synergy /opt/synergy\n"
+                "WORKDIR /opt/synergy/source\n"
+                "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-pty.ts\n"
+            )
+        native += (
+            "FROM source\n"
+            "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
+            "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
+        )
+        if pty:
+            native += (
+                "COPY --from=native_pty /opt/synergy/source/packages/runtime-local/.artifacts/pty "
+                "/opt/synergy/source/packages/runtime-local/.artifacts/pty\n"
+            )
+    prepare_entry = "session-prepare.mjs" if protocol == "synergy-session-v1" else "prepare.ts"
+    return (
+        f"FROM {image_id} AS source\nUSER root\nWORKDIR /opt/synergy/source\n"
+        "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
+        "RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked "
+        "bun install --frozen-lockfile --network-concurrency 16\n"
+        "COPY source/ ./\n"
+        "COPY runtime/ /opt/synergy/runtime/\n"
+        f"RUN {' && '.join(link_commands)}\n"
+        "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
+        f"RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/{prepare_entry}\n" + native
+    )
 
 
 def command(args: list[str], log: Path | None = None, *, timeout: float = 1800) -> str:
@@ -173,9 +252,16 @@ def prepare_source(
         receipt = verify_prepared(path)
         if receipt["identity"]["platform"] != platform:
             raise ValueError("Prepared artifact platform mismatch")
-        if receipt["identity"]["runtime"] != synergy_runtime_digest(BENCHMARK / "runtime"):
+        if receipt["identity"]["runtime"] != synergy_runtime_digest(
+            BENCHMARK / "runtime", protocol=receipt["identity"].get("runtime_protocol", "synergy-rollout-v1")
+        ):
             raise ValueError("Prepared runtime recipe differs from this evaluator; prepare a new artifact")
-        if receipt["identity"]["recipe_dependencies"] != read_json(BENCHMARK / "package.json")["dependencies"]:
+        dependencies = (
+            {"synergy": "workspace:*"}
+            if receipt["identity"].get("runtime_protocol") == "synergy-session-v1"
+            else read_json(BENCHMARK / "package.json")["dependencies"]
+        )
+        if receipt["identity"]["recipe_dependencies"] != dependencies:
             raise ValueError("Prepared recipe dependencies changed")
         return path
     work = cache / "preparing"
@@ -183,14 +269,20 @@ def prepare_source(
     with tempfile.TemporaryDirectory(prefix="source-", dir=work) as temporary:
         stage = Path(temporary)
         receipt = freeze_source((base / source.path).resolve(), stage / "source", source.revision)
+        protocol = source_protocol(stage / "source", receipt.get("commit"))
+        if protocol == "synergy-session-v1" and not source.revision:
+            raise ValueError("Session-export releases require an explicit immutable source revision")
         manager = read_json(stage / "source" / "package.json").get("packageManager", "")
         if not re.fullmatch(r"bun@\d+\.\d+\.\d+", manager):
             raise ValueError("Source must pin its Bun packageManager version")
         version = manager.removeprefix("bun@")
         identity = {
             "source": receipt["digest"],
-            "runtime": synergy_runtime_digest(BENCHMARK / "runtime"),
-            "recipe_dependencies": read_json(BENCHMARK / "package.json")["dependencies"],
+            "runtime": synergy_runtime_digest(BENCHMARK / "runtime", protocol=protocol),
+            "runtime_protocol": protocol,
+            "recipe_dependencies": {"synergy": "workspace:*"}
+            if protocol == "synergy-session-v1"
+            else read_json(BENCHMARK / "package.json")["dependencies"],
             "bun": version,
             "platform": platform,
             "build": digest(Path(__file__).read_text()),
@@ -227,33 +319,8 @@ def prepare_source(
                         shutil.copyfile(manifest, destination)
                 shutil.copytree(stage / "source" / "patches", manifests / "patches")
                 links = recipe_links(stage / "source", identity["recipe_dependencies"])
-                link_commands = []
-                for name, relative in links.items():
-                    link_path = Path("/opt/synergy/runtime/node_modules") / name
-                    linked = Path("/opt/synergy/source") / relative
-                    link_commands.extend(
-                        [
-                            shlex.join(["mkdir", "-p", str(link_path.parent)]),
-                            shlex.join(["ln", "-s", os.path.relpath(linked, link_path.parent), str(link_path)]),
-                        ]
-                    )
                 (stage / "Dockerfile").write_text(
-                    f"FROM {image_id} AS source\nUSER root\nWORKDIR /opt/synergy/source\n"
-                    "COPY manifests/ ./\nENV HUSKY=0 ELECTRON_SKIP_BINARY_DOWNLOAD=1\n"
-                    "RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked "
-                    "bun install --frozen-lockfile --network-concurrency 16\n"
-                    "COPY source/ ./\n"
-                    "COPY runtime/ /opt/synergy/runtime/\n"
-                    f"RUN {' && '.join(link_commands)}\n"
-                    "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun\n"
-                    "RUN SYNERGY_HOME=/tmp/benchmark-prepare bun /opt/synergy/runtime/prepare.ts\n"
-                    "FROM node:22.14.0-bullseye AS native\n"
-                    "COPY --from=source /opt/synergy /opt/synergy\n"
-                    "WORKDIR /opt/synergy/source\n"
-                    "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local\n"
-                    "FROM source\n"
-                    "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
-                    "/opt/synergy/source/packages/runtime-local/.artifacts/watcher\n"
+                    source_recipe(stage / "source", image_id=image_id, protocol=protocol, links=links)
                 )
                 image = f"synergy-bench:{artifact_id}"
                 container = f"synergy-bench-prepare-{uuid.uuid4().hex[:16]}"
@@ -321,73 +388,3 @@ def prepare_source(
                 finally:
                     os.close(parent)
                 return target
-
-
-@measured("preflight")
-def preflight(artifact: Path, variant: dict[str, Any], directory: Path, platform: str, logs: Path) -> dict[str, Any]:
-    args = [
-        "docker",
-        "run",
-        "--rm",
-        "--platform",
-        platform,
-        "--network",
-        "none",
-        "-e",
-        "SYNERGY_HOME=/tmp/synergy-benchmark",
-        "-e",
-        "SYNERGY_CONFIG_CONTENT={}",
-        "-v",
-        f"{artifact / 'bundle'}:/opt/synergy:ro",
-        "-v",
-        f"{directory}:/inputs:ro",
-        read_json(artifact / "receipt.json")["base_image"],
-        "/opt/synergy/bin/bun",
-        "/opt/synergy/runtime/inspect.ts",
-        variant["runtime"],
-        "/inputs/config.json",
-    ]
-    args += [
-        "/inputs/experiment.json" if variant.get("experiment") else "",
-        variant["model"],
-        variant["agent"],
-        variant.get("variant") or "",
-    ]
-    for key in variant.get("env", {}):
-        args[2:2] = ["-e", f"{key}=benchmark-preflight"]
-    for key, value in {
-        "SYNERGY_CONFIG": "/inputs/config.json",
-        "SYNERGY_DISABLE_MODELS_FETCH": "1",
-        "SYNERGY_DISABLE_DEFAULT_PLUGINS": "1",
-        "SYNERGY_DISABLE_AUTOUPDATE": "1",
-        "MODELS_DEV_API_JSON": "/opt/synergy/source/packages/testing/fixtures/models-api.json",
-    }.items():
-        args[2:2] = ["-e", f"{key}={value}"]
-    logs.mkdir(parents=True, exist_ok=True)
-    args[2:2] = ["--cidfile", str(logs / "container.id")]
-    started = time.time()
-    timed_out = False
-    result = None
-    try:
-        with (logs / "stdout.log").open("w") as stdout, (logs / "stderr.log").open("w") as stderr:
-            result = subprocess.run(args, stdout=stdout, stderr=stderr, timeout=120)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-        raise
-    finally:
-        atomic_json(
-            logs / "process.json",
-            {
-                "started_at": started,
-                "ended_at": time.time(),
-                "timed_out": timed_out,
-                "exit_code": result.returncode if result is not None else None,
-            },
-        )
-        remove_owned_container(logs / "container.id")
-    if result.returncode == 2:
-        raise ValueError(f"Frozen runtime rejected the experiment; see {logs / 'stderr.log'}")
-    if result.returncode:
-        raise RuntimeError(f"Frozen runtime validation failed; see {logs / 'stderr.log'}")
-    capability: dict[str, Any] = read_json(logs / "stdout.log")
-    return capability

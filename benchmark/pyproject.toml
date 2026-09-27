@@ -34,6 +34,7 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 120
+extend-exclude = ["tasks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC"]

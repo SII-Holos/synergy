@@ -183,9 +183,23 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       task(`native-${variant}`, "benchmark-native", variant === "synergy" ? 580 : 330, [], {
         pool: "docker",
         variant,
+        selection: variant === "synergy" ? "not test_synergy_long_sessions" : "test_native_matrix",
         files: ["benchmark/test/test_matrix_docker.py"],
         needs: variant === "synergy" ? ["benchmark-prepare"] : [],
       }),
+    ),
+    ...["jit", "jitless"].flatMap((mode) =>
+      ["chat-completions", "responses"].flatMap((protocol) =>
+        ["fixture-one", "fixture-two"].map((model) =>
+          task(`native-synergy-${mode}-${protocol}-${model}`, "benchmark-native", 580, [], {
+            pool: "docker",
+            variant: "synergy",
+            selection: `test_synergy_long_sessions and ${mode === "jit" ? "not jitless" : "jitless"} and ${protocol} and ${model}`,
+            files: ["benchmark/test/test_matrix_docker.py"],
+            needs: ["benchmark-prepare"],
+          }),
+        ),
+      ),
     ),
     ...["completed", "cancelled", "failed"].map((variant) =>
       task(`rollout-${variant}`, "rollout", 320, ["packages/harness"], { variant }),

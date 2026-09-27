@@ -67,27 +67,6 @@ class SynergyAgent(BaseAgent):
         result = await environment.exec(f"{binary} --version", timeout_sec=30)
         if result.return_code:
             raise ValueError("Prepared runtime is not compatible with the task environment")
-        if self.settings.get("connectivity_url"):
-            script = (
-                "fetch(process.env.BENCH_CONNECTIVITY_URL,{signal:AbortSignal.timeout(10000)})"
-                ".then(r=>{console.log(r.status);if(r.status>=500||r.status===403)process.exitCode=1})"
-                ".catch(e=>{console.error(e.name,e.cause?.code??e.code??'unknown',String(e.cause?.message??e.message).replace(/agent:[^@]*@/g,'agent:<redacted>@'));process.exitCode=1})"
-            )
-            route = await environment.exec(
-                shlex.join([binary, "-e", script]),
-                env={
-                    **(environment.agent_process_env(None) or {}),
-                    "NODE_USE_ENV_PROXY": "1",
-                    "BENCH_CONNECTIVITY_URL": self.settings["connectivity_url"],
-                },
-                timeout_sec=15,
-            )
-            atomic_json(
-                self.logs_dir / "connectivity.json",
-                {"exit_code": route.return_code, "stdout": route.stdout, "stderr": route.stderr},
-            )
-            if route.return_code:
-                raise ValueError("Container cannot reach the benchmark gateway through its inference policy")
         containers = await asyncio.to_thread(
             command,
             [
@@ -149,7 +128,6 @@ class SynergyAgent(BaseAgent):
                 )
 
     async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
-        instruction = self.settings.get("probe_instruction") or instruction
         logs = environment.env_paths.agent_dir.as_posix()
         local = self.logs_dir / "instruction.md"
         local.write_text(instruction)
@@ -164,6 +142,7 @@ class SynergyAgent(BaseAgent):
                         else "/opt/synergy/node/bin/node",
                         "/opt/synergy/runtime/trial.ts"
                         if self.settings.get("harness", "synergy") == "synergy"
+                        and self.settings.get("runtime_protocol") != "synergy-session-v1"
                         else "/opt/synergy/runtime/external.mjs",
                         "/benchmark-input/options.json",
                         f"{logs}/instruction.md",
@@ -173,7 +152,11 @@ class SynergyAgent(BaseAgent):
                 )
                 # Pier 0.3.1 InstalledAgent._exec applies agent egress only to the agent process.
                 # Provenance and pinned dependency: benchmark/third_party/pier/NOTICE.
-                result = await environment.exec(invocation, env=environment.agent_process_env(None))
+                process_env = environment.agent_process_env(None)
+                bun_jit = self.settings.get("bun_jit")
+                if self.settings.get("harness", "synergy") == "synergy" and bun_jit is not None:
+                    process_env = {**(process_env or {}), "BUN_JSC_useJIT": str(int(bun_jit))}
+                result = await environment.exec(invocation, env=process_env)
                 if result.return_code:
                     raise NonZeroAgentExitCodeError(f"Synergy exited with code {result.return_code}")
         except asyncio.CancelledError:

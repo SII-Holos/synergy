@@ -1,8 +1,6 @@
 # Postmortems
 
-Incident write-ups: a bug reached a place it should not have (a real user, a merged PR, or a release), and the interesting part is _why our process let it through_, not just the one-line fix.
-
-A postmortem is a backward-looking record of a failure: what broke, the mechanism, why every safety net missed it, and the concrete guardrails added so the same class of bug fails loudly next time.
+Postmortems explain failures that reached users, merged code or releases: what broke, why safeguards missed it, and the guardrails added.
 
 ## When to write one
 
@@ -21,7 +19,7 @@ A bug that fails any of these criteria is a bug fix with tests, not a postmortem
 
 ## Format
 
-Each postmortem is a file named `NNNN-kebab-case-title.md`, numbered sequentially; the first future entry is `0001`. Use these sections:
+Name files `NNNN-kebab-case-title.md` using the next available number. Use these sections:
 
 - **Executive summary** — one short paragraph a busy reader can absorb in thirty seconds: what broke, the root cause in plain terms, why it escaped, and the durable lesson.
 - **Summary** — the full detail of the failure.
@@ -64,6 +62,7 @@ Add entries only for qualifying incidents.
 | 0020 | Managed startup maintenance outgrew Desktop progress | implemented | 2026-09-20 |
 
 | 0021 | A healthy SQLite worker was declared dead | implemented | 2026-09-20 |
+| 0022 | Benchmark admission and evidence defects | implemented | 2026-09-22 |
 
 | 0022 | Optional format rewrite blocked startup | implemented | 2026-09-21 |
 
@@ -85,6 +84,10 @@ Add entries only for qualifying incidents.
 
 | 0031 | [Concurrent Worktree retirement deadlock](0031-concurrent-worktree-retirement-deadlock.md) | implemented | 2026-09-23 |
 
+| 0023 | Benchmark exhausted Docker network addresses | implemented | 2026-09-23 |
+| 0024 | Benchmark observer imposed a stream idle timeout | implemented | 2026-09-23 |
+| 0025 | Benchmark verifier dependencies and missing results | implemented | 2026-09-23 |
+
 ## History rules
 
-Postmortems are current-history documents: they record what actually happened, they are never edited to hide mistakes, and guardrails that later become obsolete stay recorded as lessons.
+Preserve what happened, including mistakes and guardrails later replaced. Record subsequent corrections without rewriting the incident.

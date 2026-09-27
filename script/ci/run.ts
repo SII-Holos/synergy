@@ -255,13 +255,19 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
       ]
     case "benchmark-native":
       return [
-        pytest(task.files!, {
-          SYNERGY_BENCH_DOCKER: "1",
-          SYNERGY_BENCH_TEST_HARNESSES: task.variant!,
-          ...(task.variant === "synergy"
-            ? { SYNERGY_BENCH_NATIVE_ARTIFACTS: JSON.stringify({ synergy: benchmarkEnv.SYNERGY_BENCH_TEST_ARTIFACT }) }
-            : {}),
-        }),
+        pytest(
+          task.files!,
+          {
+            SYNERGY_BENCH_DOCKER: "1",
+            SYNERGY_BENCH_TEST_HARNESSES: task.variant!,
+            ...(task.variant === "synergy"
+              ? {
+                  SYNERGY_BENCH_NATIVE_ARTIFACTS: JSON.stringify({ synergy: benchmarkEnv.SYNERGY_BENCH_TEST_ARTIFACT }),
+                }
+              : {}),
+          },
+          task.selection ? ["-k", task.selection] : [],
+        ),
       ]
     case "rollout":
       return [

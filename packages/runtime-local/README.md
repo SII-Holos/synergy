@@ -13,3 +13,5 @@ Run `bun test test/client.test.ts` for the in-process Scope/event contract and `
 Source workers launch this package’s `src/agent-worker.ts` through the harness worker-entry registration. The full product registers its own entry; compiled executables dispatch the same composition through `__agent-turn-runner`.
 
 Native execution belongs here: `process/pty`, `file/watcher`, and the macOS/Linux/Windows sandbox backends and helper sources. `registerLocalRuntime()` registers the sandbox host and the file-watcher startup contribution before commands or workers execute. Build sandbox helpers with `bun script/build-helper.ts`; Linux bwrap development setup uses `bash script/download-bwrap.sh`.
+
+Coding reads and searches use shared display budgets; anchored edits return compact final-file previews with full UI diffs. See [workspace file architecture](../../docs/architecture/workspace-and-files.md). The fixed-input observation probe at `test/tools/coding-observation-probe.test.ts` can emit versioned UTF-8 byte measurements through `SYNERGY_OBSERVATION_REPORT`; it does not invoke a model or estimate token savings.

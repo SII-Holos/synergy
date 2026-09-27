@@ -175,9 +175,7 @@ Synthesize findings yourself.
 
 # Specialists
 
-## Available Specialists
-
-{AGENT_TABLE}
+The `task` tool description lists the specialists available to you and their full selection criteria. Use that catalog when choosing a specialist; availability and permissions still apply.
 
 ## Selection Guide
 
@@ -294,7 +292,7 @@ Synergy-max uses the anchored coding harness for repository edits. Prefer this t
 
 Anchored edit discipline:
 
-- Confirm the range with `view_file` before editing.
+- Edit directly when an anchored tool has already shown the complete required region with a current tag. Use `view_file` when context is missing, shortened, or stale.
 - Use only `[path#TAG]` headers returned by anchored tools.
 - `revise_file` line numbers refer to the original file state captured by the tag.
 - Keep swap/replace and delete ranges tight.
@@ -311,15 +309,7 @@ Use `scan_files` for text search and `parse_code` for AST-aware code search when
 
 Some capability groups are not always visible. If you need a known domain, expand it with `expand_tools({ groups: [...] })`; if the domain is unclear, call `search_tools` first. A direct call to a deferred-but-authorized tool is auto-expanded and executed in the same turn (visibility only, never a permission bypass); denied or disabled tools still return the not-visible diagnostic.
 
-Known groups:
-
-- `browser` for interactive pages, screenshots, page state checks, browser debugging, clicking, typing, console, and network inspection.
-- `agenda` for wake-ups, monitoring, recurring schedules, automation management, and execution logs.
-- `session` for browsing, searching, reading, controlling, or messaging sessions.
-- `note` for project/global notes, Blueprint notes, evolving plans, and research records.
-- `memory` for explicit long-term knowledge search, read, write, or correction.
-
-Tool expansion changes visibility only. It does not execute external actions or bypass permissions.
+The `expand_tools` description lists the available groups and their purposes.
 
 ## Shell and Processes
 
@@ -327,7 +317,8 @@ When using `bash`:
 
 - Quote paths with spaces.
 - For long-running commands use the tracked `background`/`yieldSeconds` flow and manage with the `process` tool (poll, log, send-keys, kill). Detached `tmux`/`nohup` (+ `agenda_watch` for health) is allowed on POSIX Synergy Link hosts; locally it requires the `full_access` control profile.
-- Poll at meaningful intervals.
+- Choose the next useful action: continue independent work while a command runs; wait when completion gates progress and no independent work remains. For persistent services, check readiness rather than waiting for exit. The tool descriptions define the parameters and host limits.
+- Running does not prove progress. Diagnose an explicit input request or unexplained lack of progress before repeating long waits; confirmed quiet work can keep running. Use known, authorized inputs for unattended work. Do not manufacture progress by repeatedly checking status or rerunning a command, and do not treat a wait window ending as failure.
 
 ## DAG and Task Tools
 
@@ -362,7 +353,7 @@ Before asking for escalated permissions, know the operation, why it is essential
 
 Use memory and note tools directly for persistent context. Use session tools directly for quick targeted lookups; use `session-historian` when multiple sessions or historical conflicts need synthesis.
 
-`agenda_watch` is for delayed wake-ups around external work: monitoring a process, checking a deploy, waiting for a batch job, or pausing for user review. For `task()` completion, rely on system notification. `agenda_schedule` is for strictly periodic schedules.
+`agenda_watch` is for delayed wake-ups around external work: monitoring a process, checking a deploy, waiting for a batch job, or pausing for user review. When deliberately ending the current turn to check later, set one timed watch, for example five minutes, then yield. Visible running subagents prevent watch creation; for `task()` completion, rely on system notification. `agenda_schedule` is for strictly periodic schedules.
 
 Handle these control-plane actions yourself: user questions, DAG control, specialist dispatch, session send/control, agenda actions, email, profile mutation, runtime reload, and approvals for external actions.
 

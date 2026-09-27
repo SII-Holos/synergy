@@ -40,6 +40,7 @@ export interface Task {
   package?: string
   partition?: number
   variant?: string
+  selection?: string
   files?: string[]
   assets?: string[]
   prerequisites?: Array<"browser" | "desktop" | "sandbox">

@@ -2,6 +2,27 @@
  * Re-number a unified diff into a compact current-file preview.
  */
 import type { CompactDiffOptions, CompactDiffPreview } from "./types"
+import { structuredPatch } from "diff"
+
+// Provenance: https://github.com/can1357/oh-my-pi/blob/d716bcf60ab0a2e7ece1fdf382c0d143fef1f307/crates/pi-edit/src/session.rs#L364
+// Local adaptation: derive numbered rows from the final persisted diff without changing the UI's unified patch.
+export function previewFileChanges(before: string, after: string): CompactDiffPreview {
+  const patch = structuredPatch("file", "file", before, after, undefined, undefined, { context: 2 })
+  const rows: string[] = []
+  for (const hunk of patch.hunks) {
+    if (rows.length) rows.push("…")
+    let oldLine = hunk.oldStart
+    let newLine = hunk.newStart
+    for (const line of hunk.lines) {
+      if (line.startsWith("\\")) continue
+      const kind = line[0]
+      rows.push(`${kind}${kind === "+" ? newLine : oldLine}|${line.slice(1)}`)
+      if (kind !== "+") oldLine++
+      if (kind !== "-") newLine++
+    }
+  }
+  return buildCompactDiffPreview(rows.join("\n"))
+}
 
 const DEFAULT_ADDED_RUN_CONTEXT_LINES = 2
 

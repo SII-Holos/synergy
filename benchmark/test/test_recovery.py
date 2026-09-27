@@ -35,6 +35,7 @@ def test_recovery_hands_private_files_back_without_changing_original(
     atomic_json(
         original / "evidence.json",
         {
+            "version": 5,
             "execution": {"session_id": "fixture-session", "run_id": "fixture-run"},
             "trial_directory": "retained",
             "evidence": {"recording": "failed"},
@@ -47,7 +48,12 @@ def test_recovery_hands_private_files_back_without_changing_original(
     before = (original / "evidence.json").read_bytes()
     atomic_json(
         root / "plan.json",
-        {"variants": {"A": {"artifact": str(artifact), "runtime": "core"}}, "config": {"platform": "linux/amd64"}},
+        {
+            "version": 4,
+            "result_version": 5,
+            "variants": {"A": {"artifact": str(artifact), "runtime": "core"}},
+            "config": {"platform": "linux/amd64"},
+        },
     )
     monkeypatch.setattr(recovery, "verify_prepared", lambda _: {"base_image": "python:3.12-slim-bookworm"})
     monkeypatch.setattr(recovery, "recipe_links", lambda *_: {})

@@ -18,7 +18,7 @@ async function run(args: string[], cwd: string, env?: Record<string, string | un
 export async function buildPty(options: Target = {}) {
   const os = options.os === "windows" ? "win32" : (options.os ?? process.platform)
   const arch = options.arch ?? process.arch
-  const libc = options.libc ?? "glibc"
+  const libc = options.libc ?? NativePty.libc()
   if (
     !["linux", "darwin", "win32"].includes(os) ||
     !["x64", "arm64"].includes(arch) ||

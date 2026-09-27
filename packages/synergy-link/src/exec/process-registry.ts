@@ -693,8 +693,8 @@ export class ProcessRegistry {
         `Command: ${record.command}\n` +
         `Status: running\n\n` +
         `Recent output:\n${record.tail || "(no output yet)"}\n\n` +
-        `Use process(action: \"poll\", processId: \"${record.processId}\", linkID: \"${linkID}\") to check status.\n` +
-        `Use process(action: \"log\", processId: \"${record.processId}\", linkID: \"${linkID}\") to get full output.\n` +
+        `Continue independent work if available. If completion gates the next action, use process(action: \"poll\", processId: \"${record.processId}\", linkID: \"${linkID}\", block: true).\n` +
+        `Use process(action: \"log\", processId: \"${record.processId}\", linkID: \"${linkID}\") when output can inform a decision. Running does not prove progress; see process guidance for diagnosis and service readiness.\n` +
         `Use process(action: \"kill\", processId: \"${record.processId}\", linkID: \"${linkID}\") to terminate.`,
     }
   }

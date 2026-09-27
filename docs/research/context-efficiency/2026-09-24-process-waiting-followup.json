@@ -1,0 +1,227 @@
+{
+  "source": "final sealed trajectories and published final report",
+  "experimental_code_unchanged": true,
+  "additional_model_calls": 0,
+  "tasks": [
+    {
+      "task": "terminal-bench-2.1/compile-compcert",
+      "requests": 53,
+      "main_requests": 49,
+      "main_total_tokens": 2301745,
+      "auxiliary_requests": 4,
+      "auxiliary_total_tokens": 12781,
+      "execution_seconds": 3436.313,
+      "request_union_seconds": 512.0218152999878,
+      "tool_union_seconds": 2763.5189990997314,
+      "uncovered_seconds": 160.77218556404114,
+      "compaction_parts": 0,
+      "main_input_first": 34328,
+      "main_input_second": 40937,
+      "main_input_last": 55622,
+      "main_input_max": 55622,
+      "main_system_variants": 1,
+      "initial_schema_count": 30,
+      "subsequent_schema_count": 36,
+      "schema_changes": 1,
+      "schema_stable_after_second": true,
+      "initial_schema_bytes": 106259,
+      "subsequent_schema_bytes": 134431,
+      "system_bytes_per_main_request": 44758,
+      "main_content_byte_sums": {
+        "system_bytes": 2193142,
+        "user_bytes": 102520,
+        "assistant_bytes": 65745,
+        "historical_reasoning_bytes": 285736,
+        "tool_result_bytes": 355132,
+        "tool_call_bytes": 342725,
+        "tool_schema_bytes": 6558947,
+        "other_content_bytes": 0
+      },
+      "main_schema_share_percent": 66.22558662723054,
+      "main_system_share_percent": 22.144120924718194,
+      "zero_cache_main_requests": 19,
+      "zero_cache_main_after_initial_two": 17,
+      "cache_zero_is_not_assumed_to_be_history_invalidation": true,
+      "initial_install_interval": {
+        "start": 1790224154.876,
+        "end": 1790226120.702,
+        "seconds": 1965.8259999752045,
+        "percent_of_solve": 57.20741969591258,
+        "seconds_until_first_diagnostic": 1361.8860001564026,
+        "blocking_polls": 7,
+        "blocking_seconds": 1742.047,
+        "requests_started_in_interval": 13,
+        "tokens_from_requests_started_in_interval": 556390,
+        "uncached_input_from_requests_started_in_interval": 295027,
+        "not_all_time_or_tokens_in_interval_proven_waste": true,
+        "endpoint_definition": "Initial apt tool start until process kill invocation starts; termination duration excluded."
+      },
+      "main_request_gap_observations": {
+        "at_least_60_seconds": {
+          "requests": 12,
+          "zero_cache_read": 10,
+          "median_gap_seconds": 257.8540576696396
+        },
+        "below_60_seconds": {
+          "requests": 36,
+          "zero_cache_read": 8,
+          "median_gap_seconds": 0.8625496625900269
+        }
+      },
+      "request_time_share_of_solve_percent": 14.900325299237519,
+      "tool_time_share_of_solve_percent": 80.42105009350811
+    },
+    {
+      "task": "terminal-bench-2.1/mailman",
+      "requests": 39,
+      "main_requests": 35,
+      "main_total_tokens": 1956716,
+      "auxiliary_requests": 4,
+      "auxiliary_total_tokens": 13006,
+      "execution_seconds": 707.36,
+      "request_union_seconds": 444.8052728176117,
+      "tool_union_seconds": 185.54599976539612,
+      "uncovered_seconds": 77.00872731208801,
+      "compaction_parts": 0,
+      "main_input_first": 34478,
+      "main_input_second": 42636,
+      "main_input_last": 67691,
+      "main_input_max": 67691,
+      "main_system_variants": 1,
+      "initial_schema_count": 30,
+      "subsequent_schema_count": 36,
+      "schema_changes": 1,
+      "schema_stable_after_second": true,
+      "initial_schema_bytes": 106259,
+      "subsequent_schema_bytes": 134431,
+      "system_bytes_per_main_request": 44758,
+      "main_content_byte_sums": {
+        "system_bytes": 1566530,
+        "user_bytes": 69203,
+        "assistant_bytes": 53083,
+        "historical_reasoning_bytes": 459727,
+        "tool_result_bytes": 1234566,
+        "tool_call_bytes": 315582,
+        "tool_schema_bytes": 4676913,
+        "other_content_bytes": 0
+      },
+      "main_schema_share_percent": 55.8397101868713,
+      "main_system_share_percent": 18.703486936583918,
+      "zero_cache_main_requests": 7,
+      "zero_cache_main_after_initial_two": 6,
+      "cache_zero_is_not_assumed_to_be_history_invalidation": true,
+      "main_request_gap_observations": {
+        "at_least_60_seconds": {
+          "requests": 0,
+          "zero_cache_read": 0,
+          "median_gap_seconds": null
+        },
+        "below_60_seconds": {
+          "requests": 34,
+          "zero_cache_read": 6,
+          "median_gap_seconds": 1.383669137954712
+        }
+      },
+      "request_time_share_of_solve_percent": 62.88244639470873,
+      "tool_time_share_of_solve_percent": 26.230773547471742
+    }
+  ],
+  "auxiliary_share_of_total_tokens_percent": 0.6019025976087286,
+  "largest_schemas": [
+    {
+      "tool": "task",
+      "bytes": 25752,
+      "exposures": 84,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "mcp__anysearch__search",
+      "bytes": 14491,
+      "exposures": 82,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "bash",
+      "bytes": 9250,
+      "exposures": 84,
+      "observed_invocations_in_group": 69
+    },
+    {
+      "tool": "dagwrite",
+      "bytes": 8014,
+      "exposures": 84,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "expand_tools",
+      "bytes": 7620,
+      "exposures": 84,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "process",
+      "bytes": 6417,
+      "exposures": 84,
+      "observed_invocations_in_group": 14
+    },
+    {
+      "tool": "revise_file",
+      "bytes": 5170,
+      "exposures": 84,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "mcp__anysearch__batch_search",
+      "bytes": 3935,
+      "exposures": 82,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "resolve_conflicts",
+      "bytes": 3671,
+      "exposures": 84,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "scan_files",
+      "bytes": 3347,
+      "exposures": 84,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "view_file",
+      "bytes": 3333,
+      "exposures": 84,
+      "observed_invocations_in_group": 0
+    },
+    {
+      "tool": "mcp__anysearch__get_sub_domains",
+      "bytes": 3076,
+      "exposures": 82,
+      "observed_invocations_in_group": 0
+    }
+  ],
+  "limitations": [
+    "Content-byte fractions are not provider token attribution or expected savings.",
+    "Cache-zero observations do not identify backend routing, cache TTL or invalidation causes.",
+    "Install interval contains real work as well as waiting; subtraction is not a predicted completion time.",
+    "Two task paths do not justify removing every uninvoked tool.",
+    "No history trimming, runtime change, new sampling or new provider request was performed."
+  ],
+  "source_evidence_sha256": {
+    "trajectory-final/analysis.json": "613ae7c51a61fbe2c2b7549aa4cc0ca8032f87f940f9983b262b93c0718a4396",
+    "waiting-final.json": "0fb38f0013bf7467f0fed2e360b3334987250be6f5441f46c1c159378908726e"
+  },
+  "published_final_report_sha256": "73ab28fe5080b170622342809eb18c731dbf99c199f311545bbd955127de51e9",
+  "reviewed_product_commit": "24b0d811637cca39f9531d934dc807739b663e7c",
+  "published_report_commit": "add4cf49a91ad60f227c8fe505c0bd80863c754b",
+  "recommendations_are_not_implemented": true,
+  "recommendations": [
+    "Prevent avoidable installer interaction through command-scoped native noninteractive flags; retain live error output.",
+    "Use one bounded diagnosis for prolonged unchanged output when there is no evidence of progress, then resume blocking when justified.",
+    "Align auto-background result guidance with the process description; keep process semantics and remote caps unchanged.",
+    "Preserve the primary command exit code and inspect failed assumptions before semantic retries; do not auto-replay commands.",
+    "Study concise stable tool descriptions and existing grouped discovery separately from the waiting change; retain editing and delegation.",
+    "Use free behavioral checks and targeted model validation first, then one stable-candidate 24-task coverage run for a broad claim; preserve historical baseline limitations."
+  ]
+}

@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from .results import RESULT_VERSION, require_current_plan
 from .storage import atomic_json, digest, read_json
 from .usage import normalize_usage
 
@@ -337,6 +338,8 @@ def analyze_attempt(
     relative = path.relative_to(root)
     group, trial = relative.parts[:2]
     evidence = read_json(path / "evidence.json") if (path / "evidence.json").exists() else {}
+    if evidence and evidence.get("version") != RESULT_VERSION:
+        raise ValueError("Unsupported benchmark result version")
     trial_data = read_json(path / "trial.json") if (path / "trial.json").exists() else {}
     base = {"group": group, "trial": trial, "attempt": path.name, "task": trial_data.get("task")}
     manifest, transcript = load_rollout(path)
@@ -542,6 +545,8 @@ def analyze_attempt(
         "peak_memory_bytes": resources.get("peak_memory_bytes"),
         "peak_cpu_percent": resources.get("peak_cpu_percent"),
         "oom_events": resources.get("oom_events"),
+        "observed_oom_events": resources.get("observed_oom_events", resources.get("oom_events")),
+        "oom_coverage": resources.get("oom_coverage"),
         "compaction_parts": sum(s["compaction_parts"] for s in sessions),
         "max_input": max((r["input"] or 0 for r in requests), default=0),
     }
@@ -572,6 +577,7 @@ def analyze_attempt(
 def analyze_run(root: Path) -> Row:
     root = root.resolve()
     plan = read_json(root / "plan.json")
+    require_current_plan(plan)
     tables: Row = {
         key: [] for key in ["attempts", "requests", "tools", "sessions", "messages", "calls", "tool_exposures"]
     }
@@ -580,7 +586,7 @@ def analyze_run(root: Path) -> Row:
     paths = sorted(
         {
             p.parent
-            for group in ["trials", "probes", "debug", "recoveries"]
+            for group in ["trials", "debug", "recoveries"]
             for p in (root / group).glob("*/attempt-*/*")
             if p.name in {"wire", "evidence.json", "trial.json"}
         }
@@ -605,7 +611,7 @@ def analyze_run(root: Path) -> Row:
     for schema in tables["schemas"]:
         schema["observed_invocations_in_group"] = group_tool_counts[(schema["group"], schema["tool"])]
     summary = {}
-    for group in ["trials", "probes", "debug", "recoveries"]:
+    for group in ["trials", "debug", "recoveries"]:
         attempts = [a for a in tables["attempts"] if a["group"] == group]
         rows = [r for r in tables["requests"] if r["group"] == group]
         summary[group] = {

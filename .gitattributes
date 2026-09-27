@@ -14,3 +14,8 @@
 *.woff binary
 *.woff2 binary
 *.zip binary
+
+# Preserve retained upstream trailing whitespace in versioned benchmark payloads.
+benchmark/tasks/local24-repro-v6/build-cython-ext/solution/solve.sh whitespace=-blank-at-eol
+benchmark/tasks/local24-repro-v6/mcmc-sampling-stan/instruction.md whitespace=-blank-at-eol
+benchmark/tasks/local24-repro-v6/mcmc-sampling-stan/solution/solve.sh whitespace=-blank-at-eol

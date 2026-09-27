@@ -33,8 +33,24 @@ async function inputs(root: string) {
   )
   await Bun.write(path.join(root, "packages/shared/src/index.ts"), "export const value = 1")
   await Bun.write(path.join(root, "packages/shared/dist/index.js"), "verified dependency")
+  await Bun.write(path.join(root, "packages/runtime-local/.artifacts/pty/library"), "verified PTY")
   await Bun.write(path.join(root, "packages/runtime-local/sandbox-assets/linux-x64/synergy-sandbox-linux"), "helper")
 }
+
+test("build identity invalidates native process artifacts when their implementation changes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-native-"))
+  try {
+    await inputs(root)
+    for (const file of ["Cargo.toml", "Cargo.lock", "src/lib.rs"]) {
+      const source = path.join(root, "packages/runtime-local/src/process/native-pty", file)
+      const before = await buildIdentity(root)
+      await Bun.write(source, `changed native input: ${file}`)
+      expect(await buildIdentity(root)).not.toBe(before)
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 test("build identity follows newly added transitive workspace inputs", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-graph-"))
@@ -88,11 +104,15 @@ test("build reuse validates inputs, bytes, modes and complete inventory before r
     await Bun.write(path.join(root, plugin), "verified plugin")
     await Bun.write(path.join(root, watcher), "verified watcher")
     await chmod(path.join(root, watcher), 0o755)
+    const pty = "packages/runtime-local/.artifacts/pty/native-library"
+    await Bun.write(path.join(root, pty), "verified PTY")
     await publishBuild(root)
+    await rm(path.join(root, pty))
     await Bun.write(path.join(root, plugin), "replaced output")
     await rm(path.join(root, "packages/shared/dist"), { recursive: true, force: true })
     await restoreBuild(root)
     expect(await Bun.file(path.join(root, plugin)).text()).toBe("verified plugin")
+    expect(await Bun.file(path.join(root, pty)).text()).toBe("verified PTY")
     expect(await Bun.file(path.join(root, "packages/shared/dist/index.js")).text()).toBe("verified dependency")
     const bundle = path.join(root, ".artifacts/ci/build")
     await Bun.write(path.join(root, plugin), "leave intact on rejection")
@@ -100,6 +120,10 @@ test("build reuse validates inputs, bytes, modes and complete inventory before r
     await expect(restoreBuild(root)).rejects.toThrow("changed")
     expect(await Bun.file(path.join(root, plugin)).text()).toBe("leave intact on rejection")
     await Bun.write(path.join(bundle, plugin), "verified plugin")
+    await Bun.write(path.join(bundle, pty), "tampered native library")
+    await expect(restoreBuild(root)).rejects.toThrow("changed")
+    expect(await Bun.file(path.join(root, plugin)).text()).toBe("leave intact on rejection")
+    await Bun.write(path.join(bundle, pty), "verified PTY")
     await chmod(path.join(bundle, watcher), 0o644)
     await expect(restoreBuild(root)).rejects.toThrow("changed")
     await chmod(path.join(bundle, watcher), 0o755)

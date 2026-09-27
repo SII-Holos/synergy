@@ -108,6 +108,18 @@ describe("generated catalog completeness", () => {
 })
 
 describe("parser behavior", () => {
+  test("multiline coercion preserves the public number type, optionality and description", () => {
+    const [field] = parseObjectFields(`
+      limit: z.coerce
+        .number()
+        .int()
+        .min(0)
+        .describe("Maximum lines")
+        .optional(),
+    `)
+    expect(field).toMatchObject({ name: "limit", type: "number", optional: true, description: "Maximum lines" })
+  })
+
   test("CLI source discovery follows lazy nested contributions without importing their runtime", async () => {
     const root = await fixture()
     const cli = path.join(root, "cli")

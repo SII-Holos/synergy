@@ -22,24 +22,32 @@ from pier.models.trial.config import AgentConfig, EnvironmentConfig, TaskConfig,
 from .background import background
 from .cache import cache_activity, enforce_budget, reference_run, release_run
 from .catalog import Suite, materialize, tree_digest
-from .config import ExperimentConfig, ModelProfile, load_config, resolve_plan
+from .config import TASK_TIMEOUT_SECONDS, ExperimentConfig, ModelProfile, load_config, resolve_plan
+from .dependency_proxy import (
+    current_dependency_proxy,
+    dependency_proxy,
+    dependency_proxy_identity,
+    proxy_from_environment,
+)
 from .engines import prepare_external
 from .evidence import collect_evidence
 from .gateway import Gateway, read_ledger
 from .harnesses import harness_configuration
 from .monitor import ResourceMonitor
 from .native_usage import attach_synergy_requests, native_accounting, reconcile_requests, reconcile_usage
-from .prepare import command, evaluator_identity, preflight, prepare_source, remove_owned_container, verify_prepared
+from .prepare import command, evaluator_identity, prepare_source, remove_owned_container, verify_prepared
 from .resources import (
     Capacity,
     Request,
     ResourcePool,
+    ResourcePressureError,
     admission_for,
     inspect_host,
     shared_pool_options,
-    with_runtime_overhead,
+    working_set_request,
 )
-from .results import RESULT_VERSION, AttemptResult
+from .results import PLAN_VERSION, RESULT_VERSION, AttemptResult, require_current_plan
+from .scheduling import PhaseResources, current_resources
 from .storage import atomic_json, digest, locked, read_json
 from .trial import BenchmarkTrial
 from .usage import aggregate_usage
@@ -49,8 +57,9 @@ def inspect_config(path: Path) -> tuple[ExperimentConfig, Suite, dict[str, Any]]
     config = load_config(path)
     suite = Suite.load((path.parent / config.suite).resolve())
     plan = {
-        "version": 3,
+        "version": PLAN_VERSION,
         "result_version": RESULT_VERSION,
+        "task_timeout_seconds": TASK_TIMEOUT_SECONDS,
         "config": config.model_dump(),
         "suite": suite.model_dump(),
         "schedule": resolve_plan(config, [task.model_dump() for task in suite.tasks]),
@@ -77,6 +86,7 @@ def progress(message: str) -> None:
 
 
 def validate_inputs(config: ExperimentConfig, base: Path) -> None:
+    proxy_from_environment(config.dependency_proxy_env)
     for variant in config.variants.values():
         for key, reference in variant.env.items():
             if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or not re.fullmatch(
@@ -152,7 +162,7 @@ def _initialize(path: Path) -> Path:
     config, suite, plan = inspect_config(path)
     base = path.parent
     validate_inputs(config, base)
-    progress("preflight: validating Docker and experiment inputs")
+    progress("prepare: validating Docker and experiment inputs")
     command(["docker", "info", "--format", "{{.ServerVersion}}"], timeout=30)
     cache = (base / config.cache).resolve()
     host = inspect_host(cache, config.resources)
@@ -182,6 +192,9 @@ def _initialize(path: Path) -> Path:
                 )
                 settings.update(generated["config"])
             settings = {"controlProfile": "full_access", **settings}
+            if variant.harness == "synergy":
+                permissions = settings.get("permission")
+                settings["permission"] = {**(permissions if isinstance(permissions, dict) else {}), "question": "deny"}
             for role in ["nano", "mini", "mid", "thinking", "long_context", "creative", "vision"]:
                 settings.setdefault(f"{role}_model", variant.model)
             atomic_json(inputs / "config.json", settings)
@@ -233,28 +246,12 @@ def _initialize(path: Path) -> Path:
                 and receipt["source"]["version"] != variant.package_version
             ):
                 raise ValueError("Prepared native artifact package version mismatch")
-            stage = "runtime-validation"
-            progress(f"preflight: resolving {name} / {variant.runtime} / {variant.model} offline")
-            capability = (
-                preflight(
-                    artifact,
-                    {
-                        **variant.model_dump(),
-                        **({"env": {"BENCH_GATEWAY_KEY": "BENCH_GATEWAY_KEY"}} if variant.model_profile else {}),
-                    },
-                    inputs,
-                    config.platform,
-                    root / "preparation" / name,
-                )
-                if variant.harness == "synergy"
-                else {"harness": variant.harness, "package": receipt["source"]}
-            )
             variants[name] = {
                 **variant.model_dump(),
+                "runtime_protocol": receipt["identity"].get("runtime_protocol"),
                 "artifact": str(artifact),
                 "artifact_id": receipt["id"],
                 "source_receipt": receipt["source"],
-                "composition": capability,
                 "inputs_digest": tree_digest(inputs),
             }
         stage = "tasks"
@@ -288,14 +285,18 @@ def _initialize(path: Path) -> Path:
                     "local_path": str(task_path),
                     "native_resources": resources,
                     "resources": asdict(
-                        with_runtime_overhead(Request(float(resources["cpus"]), int(resources["memory_bytes"])))
+                        working_set_request(Request(float(resources["cpus"]), int(resources["memory_bytes"])))
                     ),
                 }
-        concurrency = config.resources.max_concurrency if config.concurrency == "auto" else config.concurrency
-        pool = ResourcePool(Capacity(**host["capacity"]), concurrency)
-        for task_metadata in tasks.values():
-            pool.validate(Request(**task_metadata["resources"]))
-        plan.update({"host": host, "concurrency": concurrency, "cache": str(cache)})
+        concurrency = len(plan["schedule"]) if config.concurrency == "auto" else config.concurrency
+        plan.update(
+            {
+                "host": host,
+                "concurrency": concurrency,
+                "cache": str(cache),
+                "dependency_proxy": dependency_proxy_identity(config.dependency_proxy_env),
+            }
+        )
         plan.update({"variants": variants, "tasks": tasks})
         from .evaluator import freeze_evaluator
 
@@ -317,24 +318,33 @@ def _initialize(path: Path) -> Path:
     return root
 
 
-def startup_retryable(attempt: Path, result: dict[str, Any]) -> bool:
-    execution = result.get("execution") or {}
-    lifecycle = execution.get("lifecycle") or {}
-    wire = attempt / "wire"
-    return (
-        execution.get("outcome") == "timeout"
-        and lifecycle.get("timeout_stage") == "startup"
-        and "model_started_at" in lifecycle
-        and lifecycle["model_started_at"] is None
-        and lifecycle.get("marker_error") is None
-        and not result.get("infrastructure_error")
-        and (result.get("wire_usage") or {}).get("attempts") == 0
-        and (result.get("evidence") or {}).get("archive_valid") is True
-        and not {"cleanup_failed", "credential-cleanup_failed", "environment-cleanup_failed"}.intersection(
-            (result.get("evidence") or {}).get("issues", [])
-        )
-        and (not wire.exists() or not any(wire.iterdir()))
-    )
+class DispatchStopped(RuntimeError):
+    """Remaining cells cannot safely execute in this run."""
+
+
+async def refresh_report(root: Path) -> None:
+    from .report import write_report
+
+    if not (root / "plan.json").exists():
+        return
+    try:
+        await background(write_report, root, root / "reports" / "current")
+    except Exception as error:
+        progress(f"report: update failed ({type(error).__name__}); raw attempts are retained")
+
+
+def dispatch_blocker(attempt: Path, result: dict[str, Any]) -> str | None:
+    if (result.get("cleanup") or {}).get("resources_removed") is False:
+        return "Owned resources could not be removed or verified"
+    if any(row.get("http_status") == 401 for row in read_ledger(attempt / "wire")):
+        return "Provider rejected the configured credential (HTTP 401)"
+    error = result.get("infrastructure_error") or {}
+    kind = error.get("type") or error.get("exception_type")
+    if kind == "DockerEndpointError":
+        return "Benchmark requires a local Docker Unix endpoint"
+    if kind in {"ResourceRecordingError", "ResourcePressureError"}:
+        return "Shared resource conditions or durable resource recording failed"
+    return None
 
 
 async def execute_plan(
@@ -345,111 +355,212 @@ async def execute_plan(
     state_file = root / "state.json"
     state = read_json(state_file) if state_file.exists() else {"trials": {}}
     concurrency = plan["concurrency"]
-    capacity = plan.get("host", {}).get("capacity", {"cpus": concurrency, "memory_bytes": concurrency * 1024**3})
+    capacity = plan.get("host", {}).get(
+        "ceiling", plan.get("host", {}).get("capacity", {"cpus": concurrency, "memory_bytes": concurrency * 1024**3})
+    )
     pool = ResourcePool(
         Capacity(**capacity), concurrency, admission=admission_for(root, plan), **shared_pool_options(root, plan)
     )
-    pairs: dict[str, list[tuple[str, dict[str, Any]]]] = {}
-    for index, item in enumerate(plan["schedule"]):
-        pairs.setdefault(item["pair"], []).append((f"{index:04d}", item))
+    slots = asyncio.Semaphore(concurrency)
+    report_lock = asyncio.Lock()
+    active_resources: dict[str, PhaseResources] = {}
+    stopped = False
+    schedule = [(f"{index:04d}", item) for index, item in enumerate(plan["schedule"])]
 
-    async def pair(items: list[tuple[str, dict[str, Any]]]) -> None:
-        for trial_id, item in items:
-            request = Request(
-                **plan.get("tasks", {}).get(item.get("task"), {}).get("resources", {"cpus": 1, "memory_bytes": 1024**3})
-            )
-            while True:
-                queued = time.monotonic()
-                async with pool.reserve(request):
-                    previous = state["trials"].get(trial_id, {})
-                    prior_result = (
-                        root / "trials" / trial_id / f"attempt-{previous.get('attempt', 0):03d}" / "evidence.json"
+    def begin(trial_id: str, item: dict[str, Any], queued: float) -> tuple[Path, dict[str, Any]]:
+        attempt = root / "trials" / trial_id / "attempt-001"
+        attempt.mkdir(parents=True, exist_ok=False)
+        order = state.setdefault("dispatch_order", [])
+        current = {
+            "status": "running",
+            "attempt": 1,
+            "started": time.time(),
+            "queue_seconds": time.monotonic() - queued,
+            "reason": "planned_first_attempt",
+            "dispatch_sequence": len(order),
+        }
+        order.append(trial_id)
+        state["trials"][trial_id] = current
+        atomic_json(state_file, state)
+        atomic_json(attempt / "trial.json", {**item, **current})
+        progress(f"run: trial {trial_id} {item.get('task', '')} / {item['variant']} / {attempt.name}")
+        return attempt, current
+
+    async def execute_one(trial_id: str, item: dict[str, Any]) -> None:
+        nonlocal stopped
+        previous = state["trials"].get(trial_id)
+        retained = sorted((root / "trials" / trial_id).glob("attempt-*"))
+        if previous or retained:
+            if not previous:
+                previous = {"status": "interrupted", "attempt": int(retained[-1].name.removeprefix("attempt-"))}
+                state["trials"][trial_id] = previous
+            evidence = root / "trials" / trial_id / f"attempt-{previous['attempt']:03d}" / "evidence.json"
+            if previous["status"] in {"running", "interrupted"}:
+                try:
+                    terminal = read_json(evidence) if evidence.exists() else {}
+                except (ValueError, OSError):
+                    terminal = {}
+                previous["status"] = "completed" if terminal.get("attempt_status") == "completed" else "interrupted"
+            atomic_json(state_file, state)
+            return
+        queued = time.monotonic()
+        current = None
+        attempt = None
+        try:
+            async with slots:
+                if stopped:
+                    return
+                attempt, current = begin(trial_id, item, queued)
+                resources = PhaseResources(pool, attempt)
+                active_resources[trial_id] = resources
+                token = current_resources.set(resources)
+                try:
+                    result = await execute(item, attempt)
+                except asyncio.CancelledError as error:
+                    result = retain_failure(attempt, error)
+                    result["attempt_status"] = "interrupted"
+                    atomic_json(attempt / "evidence.json", result)
+                    current["status"] = "interrupted"
+                    raise
+                except Exception as error:
+                    result = retain_failure(attempt, error)
+                finally:
+                    current_resources.reset(token)
+                    cleanup_file = attempt / "cleanup.json"
+                    removed = (
+                        read_json(cleanup_file).get("resources_removed") is True
+                        if cleanup_file.exists()
+                        else not resources.leases
                     )
-                    if previous.get("status") in {"running", "interrupted"} and prior_result.exists():
-                        if read_json(prior_result).get("attempt_status") == "completed":
-                            previous["status"] = "completed"
-                            atomic_json(state_file, state)
-                    startup_retry = (
-                        previous.get("status") == "completed"
-                        and prior_result.exists()
-                        and previous.get("startup_attempt", 1) < 3
-                        and startup_retryable(prior_result.parent, read_json(prior_result))
-                    )
-                    if previous.get("status") == "completed" and not startup_retry:
-                        break
-                    if startup_retry:
-                        verify_terminal(prior_result.parent, read_json(prior_result))
-                    startup_attempt = (
-                        previous.get("startup_attempt", 1) + 1 if startup_retry else previous.get("startup_attempt", 1)
-                    )
-                    backoff = 2 ** (startup_attempt - 2) if startup_retry else 0
-                    number = previous.get("attempt", 0) + 1
-                    attempt = root / "trials" / trial_id / f"attempt-{number:03d}"
-                    attempt.mkdir(parents=True, exist_ok=False)
-                    current = {
-                        "status": "running",
-                        "attempt": number,
-                        "started": time.time(),
-                        "queue_seconds": time.monotonic() - queued,
-                        "reason": "retry_startup_timeout_before_model"
-                        if startup_retry
-                        else "resume_interrupted_attempt"
-                        if previous
-                        else "planned_first_attempt",
-                        "startup_attempt": startup_attempt,
-                        "backoff_seconds": backoff,
-                        "previous_attempt": previous.get("attempt"),
+                    await resources.finish(resources_removed=removed)
+                    active_resources.pop(trial_id, None)
+                result["attempt_status"] = "completed"
+                seal_attempt(attempt, result)
+                atomic_json(attempt / "evidence.json", result)
+                current["status"] = "completed"
+                if reason := dispatch_blocker(attempt, result):
+                    stopped = True
+                    raise DispatchStopped(reason)
+        except ResourcePressureError as error:
+            stopped = True
+            raise DispatchStopped(str(error)) from error
+        except ValueError as error:
+            if current is not None:
+                stopped = True
+                raise
+            attempt, current = begin(trial_id, item, queued)
+            retain_failure(attempt, error)
+            current["status"] = "completed"
+        except BaseException:
+            stopped = True
+            raise
+        finally:
+            if current is not None:
+                current["finished"] = time.time()
+                atomic_json(state_file, state)
+                progress(f"run: trial {trial_id} {current['status']}")
+        async with report_lock:
+            await refresh_report(root)
+
+    if state.get("status") == "blocked":
+        raise DispatchStopped("Run remains blocked: " + state.get("stop_reason", "inspect retained evidence"))
+    state["status"] = "running"
+    state.pop("stop_reason", None)
+    atomic_json(state_file, state)
+    progress_done = asyncio.Event()
+
+    async def track_progress() -> None:
+        last_summary = None
+        while True:
+            snapshot = progress_snapshot(root, plan, state, active_resources)
+            atomic_json(root / "progress.json", snapshot)
+            summary = {
+                key: snapshot[key] for key in ["completed", "active", "queued", "model_waiting", "resource_waiting"]
+            }
+            if summary != last_summary:
+                progress(f"progress: {json.dumps(summary, sort_keys=True)}")
+                last_summary = summary
+            if progress_done.is_set():
+                return
+            try:
+                async with asyncio.timeout(5):
+                    await progress_done.wait()
+            except TimeoutError:
+                pass
+
+    owner = asyncio.current_task()
+    tracker = asyncio.create_task(track_progress())
+    tracker.add_done_callback(
+        lambda task: owner.cancel() if not task.cancelled() and task.exception() and owner else None
+    )
+    try:
+        if concurrency == 1:
+            for trial_id, item in schedule:
+                await execute_one(trial_id, item)
+        else:
+            async with asyncio.TaskGroup() as group:
+                for trial_id, item in schedule:
+                    group.create_task(execute_one(trial_id, item))
+        state["status"] = "completed"
+    except BaseException as error:
+        state["status"] = "interrupted" if isinstance(error, asyncio.CancelledError) else "blocked"
+        state["stop_reason"] = str(error)
+        if isinstance(error, ExceptionGroup):
+            raise DispatchStopped(str(error.exceptions[0])) from error
+        raise
+    finally:
+        progress_done.set()
+        await tracker
+        atomic_json(state_file, state)
+        await refresh_report(root)
+
+
+def progress_snapshot(
+    root: Path, plan: dict[str, Any], state: dict[str, Any], resources: dict[str, PhaseResources]
+) -> dict[str, Any]:
+    requests = []
+    for scheduler in resources.values():
+        for file in (scheduler.directory / "wire").glob("*/request.json"):
+            try:
+                row = read_json(file)
+            except (OSError, ValueError):
+                continue
+            if row.get("status") == "dispatching":
+                requests.append(
+                    {
+                        "trial": scheduler.directory.parent.name,
+                        "seconds": time.time() - row["started_at"],
+                        "response_started": row.get("first_byte_at") is not None,
                     }
-                    state["trials"][trial_id] = current
-                    atomic_json(state_file, state)
-                    atomic_json(
-                        attempt / "trial.json",
-                        {
-                            **item,
-                            **{
-                                key: current[key]
-                                for key in [
-                                    "queue_seconds",
-                                    "reason",
-                                    "previous_attempt",
-                                    "startup_attempt",
-                                    "backoff_seconds",
-                                ]
-                            },
-                        },
-                    )
-                    progress(f"run: trial {trial_id} {item.get('task', '')} / {item['variant']} / {attempt.name}")
-                    try:
-                        if backoff:
-                            await asyncio.sleep(backoff)
-                        result = await execute(item, attempt)
-                        result["attempt_status"] = "completed"
-                        seal_attempt(attempt, result)
-                        atomic_json(attempt / "evidence.json", result)
-                        current["status"] = "completed"
-                    except asyncio.CancelledError:
-                        evidence = attempt / "evidence.json"
-                        current["status"] = (
-                            "completed"
-                            if evidence.exists() and read_json(evidence).get("attempt_status") == "completed"
-                            else "interrupted"
-                        )
-                        raise
-                    except Exception as error:
-                        result = retain_failure(attempt, error)
-                        result["attempt_status"] = "completed"
-                        atomic_json(attempt / "evidence.json", result)
-                        current["status"] = "completed"
-                    finally:
-                        current["finished"] = time.time()
-                        atomic_json(state_file, state)
-                        progress(f"run: trial {trial_id} {current['status']}")
-                    if startup_attempt >= 3 or not startup_retryable(attempt, result):
-                        break
-
-    async with asyncio.TaskGroup() as group:
-        for items in pairs.values():
-            group.create_task(pair(items))
+                )
+    active = sum(bool(scheduler.leases) for scheduler in resources.values())
+    completed = sum(row["status"] == "completed" for row in state["trials"].values())
+    reasons = {}
+    for identity, scheduler in resources.items():
+        if not scheduler.leases and scheduler.events:
+            latest = scheduler.events[-1]
+            if latest["event"] in {"queued", "pressure"}:
+                reasons[identity] = latest.get("reason", "resource_budget")
+    return {
+        "version": 1,
+        "at": time.time(),
+        "planned": len(plan["schedule"]),
+        "completed": completed,
+        "started": len(state["trials"]),
+        "active": active,
+        "queued": len(plan["schedule"]) - len(state["trials"]) + len(reasons),
+        "preparing_or_archiving": len(resources) - active - len(reasons),
+        "model_waiting": len(requests),
+        "resource_waiting": len(reasons),
+        "resource_wait_reasons": reasons,
+        "requests_waiting": requests,
+        "reserved": {
+            "memory_bytes": next(iter(resources.values())).pool._memory,
+            "cpus": next(iter(resources.values())).pool._cpus,
+        }
+        if resources
+        else None,
+    }
 
 
 async def execute_trial(
@@ -459,11 +570,15 @@ async def execute_trial(
     attempt: Path,
     *,
     debug: bool = False,
-    probe_instruction: str | None = None,
 ) -> dict[str, Any]:
     variant = plan["variants"][item["variant"]]
     if not variant.get("model_profile"):
-        return await _execute_trial(root, plan, item, attempt, debug=debug, probe_instruction=probe_instruction)
+        try:
+            return await _execute_trial(root, plan, item, attempt, debug=debug)
+        except BaseException as error:
+            await finish_cleanup(root, attempt, debug=debug)
+            retain_failure(attempt, error)
+            raise
     profile = ModelProfile.model_validate(variant["model_profile"])
     gateway = Gateway(profile, attempt / "wire", stream_timeout=plan["config"]["request_idle_timeout_seconds"])
     reference = "BENCH_GATEWAY_TOKEN_" + uuid.uuid4().hex.upper()
@@ -479,9 +594,9 @@ async def execute_trial(
                 debug=debug,
                 gateway=gateway,
                 reference=reference,
-                probe_instruction=probe_instruction,
             )
     except BaseException as error:
+        await finish_cleanup(root, attempt, debug=debug)
         retain_failure(attempt, error)
         raise
     finally:
@@ -489,22 +604,36 @@ async def execute_trial(
         file = attempt / "evidence.json"
         evidence = result or (read_json(file) if file.exists() else None)
         if evidence is not None:
-            evidence["wire_usage"] = aggregate_usage(read_ledger(attempt / "wire"))
-            evidence["reconciliation"] = reconcile_usage(evidence["wire_usage"], evidence.get("accounting"))
-            evidence["reconciliation"]["requests"] = reconcile_requests(
-                read_ledger(attempt / "wire"), evidence.get("accounting")
-            )
-            if evidence["reconciliation"]["requests"]["status"] == "mismatch":
-                evidence["reconciliation"]["status"] = "mismatch"
-            usage = evidence["wire_usage"]
-            evidence["evidence"]["usage"] = (
-                "unknown" if not usage["attempts"] else "partial" if usage["tokens"]["total"]["unknown"] else "complete"
-            )
+            collect_wire_usage(attempt, evidence)
             seal_attempt(attempt, evidence)
             if result is None:
                 atomic_json(file, evidence)
     assert result is not None
     return result
+
+
+def collect_wire_usage(attempt: Path, evidence: dict[str, Any]) -> None:
+    records = read_ledger(attempt / "wire")
+    usage = aggregate_usage(records)
+    evidence["wire_usage"] = usage
+    evidence["reconciliation"] = reconcile_usage(usage, evidence.get("accounting"))
+    evidence["reconciliation"]["requests"] = reconcile_requests(records, evidence.get("accounting"))
+    if evidence["reconciliation"]["requests"]["status"] == "mismatch":
+        evidence["reconciliation"]["status"] = "mismatch"
+    coverage = evidence["evidence"]
+    coverage["usage"] = (
+        "unknown" if not usage["attempts"] else "partial" if usage["tokens"]["total"]["unknown"] else "complete"
+    )
+    if usage.get("issues"):
+        coverage["valid"] = False
+        coverage["issues"] = sorted(set(coverage["issues"] + usage["issues"]))
+
+
+async def finish_cleanup(root: Path, attempt: Path, *, debug: bool = False) -> None:
+    ownership = attempt / "environment.json"
+    if not debug and ownership.exists() and not (attempt / "cleanup.json").exists():
+        project = read_json(ownership)["project"]
+        await background(audit_environment, root, ownership, attempt / project / "agent")
 
 
 def retain_failure(attempt: Path, error: BaseException) -> dict[str, Any]:
@@ -524,8 +653,7 @@ def retain_failure(attempt: Path, error: BaseException) -> dict[str, Any]:
         if isinstance(error, (asyncio.CancelledError, KeyboardInterrupt)) and not evidence.get("execution")
         else "completed"
     )
-    evidence["wire_usage"] = aggregate_usage(read_ledger(attempt / "wire"))
-    evidence["reconciliation"] = reconcile_usage(evidence["wire_usage"], evidence.get("accounting"))
+    collect_wire_usage(attempt, evidence)
     for field in ["resources", "stages"]:
         if (attempt / (field + ".json")).exists():
             evidence[field] = read_json(attempt / (field + ".json"))
@@ -543,7 +671,6 @@ def trial_configuration(
     debug: bool = False,
     gateway: Gateway | None = None,
     reference: str | None = None,
-    probe_instruction: str | None = None,
 ) -> tuple[TrialConfig, Path, str]:
     variant = plan["variants"][item["variant"]]
     task = plan["tasks"][item["task"]]
@@ -551,13 +678,13 @@ def trial_configuration(
     shutil.copytree(root / "inputs" / item["variant"], inputs)
     cleanup = plan["config"]["cleanup_seconds"]
     export_timeout = plan["config"]["export_timeout_seconds"]
-    configured_timeout = plan["config"]["timeout_seconds"]
-    timeout = (
-        120 if probe_instruction else task["agent_seconds"] if configured_timeout == "native" else configured_timeout
-    )
+    timeout = TASK_TIMEOUT_SECONDS
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
+        "harness": variant.get("harness", "synergy"),
+        "runtime_protocol": variant.get("runtime_protocol"),
         "config": "/benchmark-input/config.json",
+        "bun_jit": variant.get("bun_jit"),
         "experiment": "/benchmark-input/experiment.json" if variant["experiment"] else None,
         "timeout_seconds": timeout,
         "startup_timeout_seconds": plan["config"].get("startup_timeout_seconds", 120),
@@ -579,6 +706,10 @@ def trial_configuration(
             atomic_json(inputs / "config.json", settings)
         else:
             options.update({"native": native, "harness": variant["harness"]})
+    if variant.get("runtime_protocol") == "synergy-session-v1":
+        from .harnesses import session_configuration
+
+        options["native"] = session_configuration(read_json(inputs / "config.json"), options)
     atomic_json(inputs / "options.json", options)
     trial_name = f"sb-{root.name[-8:]}-{attempt.parent.parent.name}-{attempt.parent.name}-{attempt.name}"
     trial_dir = attempt / trial_name
@@ -608,20 +739,18 @@ def trial_configuration(
                 "settings": {
                     "artifact_id": variant["artifact_id"],
                     "harness": variant.get("harness", "synergy"),
+                    "runtime_protocol": variant.get("runtime_protocol"),
+                    "bun_jit": variant.get("bun_jit"),
                     "env": {"BENCH_GATEWAY_KEY": reference} if gateway else variant["env"],
                     "network_domains": [gateway.advertised] if gateway else variant["network_domains"],
                     "cleanup_seconds": cleanup,
                     "export_timeout_seconds": export_timeout,
                     "project": trial_name,
-                    "probe_instruction": probe_instruction,
-                    "connectivity_url": gateway.url
-                    if gateway and reference != "BENCH_PREWARM_UNDISPATCHABLE"
-                    else None,
                     "preparation_timeout_seconds": plan["config"]["preparation_timeout_seconds"],
                 }
             },
         ),
-        verifier=VerifierConfig(disable=bool(probe_instruction)),
+        verifier=VerifierConfig(override_timeout_sec=TASK_TIMEOUT_SECONDS),
         environment=EnvironmentConfig.model_validate(
             {
                 "import_path": "synergy_bench.environment:CachedDockerEnvironment",
@@ -633,6 +762,7 @@ def trial_configuration(
                     "benchmark_run": str(root),
                     "benchmark_platform": plan["config"]["platform"],
                     "inference_port": urlsplit(gateway.url).port if gateway else None,
+                    "dependency_proxy_url": current_dependency_proxy.get(),
                 },
             }
         ),
@@ -649,7 +779,6 @@ async def _execute_trial(
     debug: bool = False,
     gateway: Gateway | None = None,
     reference: str | None = None,
-    probe_instruction: str | None = None,
 ) -> dict[str, Any]:
     config, trial_dir, trial_name = trial_configuration(
         root,
@@ -659,26 +788,26 @@ async def _execute_trial(
         debug=debug,
         gateway=gateway,
         reference=reference,
-        probe_instruction=probe_instruction,
     )
     variant = plan["variants"][item["variant"]]
+    rollout = variant.get("harness", "synergy") == "synergy" and variant.get("runtime_protocol") != "synergy-session-v1"
     if gateway:
         gateway.execution_marker = trial_dir / "agent/model-started.json"
     trial = await BenchmarkTrial.create(config)
     try:
         try:
-            async with ResourceMonitor(attempt, trial_name):
+            async with ResourceMonitor(attempt, trial_name, scheduler=current_resources.get()):
                 result = await trial.run()
         finally:
             if not debug:
                 await background(audit_environment, root, attempt / "environment.json", trial_dir / "agent")
     except asyncio.CancelledError:
-        if variant.get("harness", "synergy") != "synergy":
+        if not rollout:
             accounting = await background(native_accounting, trial_dir / "agent", variant["harness"])
             if accounting is not None:
                 atomic_json(trial_dir / "agent/accounting.json", accounting)
         evidence = await background(collect_evidence, trial_dir, trial.result.model_dump(mode="json"))
-        if variant.get("harness", "synergy") == "synergy":
+        if rollout:
             evidence["accounting"] = await background(
                 attach_synergy_requests, trial_dir / "agent", evidence.get("accounting")
             )
@@ -686,14 +815,12 @@ async def _execute_trial(
         evidence["attempt_status"] = "completed" if evidence.get("execution") else "interrupted"
         atomic_json(attempt / "evidence.json", evidence)
         raise
-    if variant.get("harness", "synergy") != "synergy":
+    if not rollout:
         accounting = native_accounting(trial_dir / "agent", variant["harness"])
         if accounting is not None:
             atomic_json(trial_dir / "agent/accounting.json", accounting)
-    evidence = await background(
-        collect_evidence, trial_dir, result.model_dump(mode="json"), verification_required=not bool(probe_instruction)
-    )
-    if variant.get("harness", "synergy") == "synergy":
+    evidence = await background(collect_evidence, trial_dir, result.model_dump(mode="json"))
+    if rollout:
         evidence["accounting"] = await background(
             attach_synergy_requests, trial_dir / "agent", evidence.get("accounting")
         )
@@ -787,17 +914,25 @@ def remove_environment(root: Path, record: Path) -> None:
 
 def audit_environment(root: Path, ownership: Path, agent: Path) -> None:
     errors = []
+    removed = False
     try:
         remove_environment(root, ownership)
-        if environment_projects(root, ownership):
+        removed = not environment_projects(root, ownership)
+        if not removed:
             errors.append("residual_resources")
     except Exception as error:
         errors.append(type(error).__name__)
-    if errors:
-        file = agent / "environment-cleanup.json"
-        record: dict[str, Any] = read_json(file) if file.exists() else {"status": "failed", "errors": []}
-        record["errors"].extend(errors)
-        atomic_json(file, record)
+    for name in ["cleanup", "credential-cleanup", "environment-cleanup"]:
+        if (agent / f"{name}.json").exists():
+            errors.append(f"{name}_failed")
+    atomic_json(
+        ownership.parent / "cleanup.json",
+        {
+            "status": "failed" if not removed else "warning" if errors else "completed",
+            "resources_removed": removed,
+            "issues": errors,
+        },
+    )
 
 
 def seal_attempt(attempt: Path, result: dict[str, Any]) -> None:
@@ -806,9 +941,10 @@ def seal_attempt(attempt: Path, result: dict[str, Any]) -> None:
         for name in [
             "stages.json",
             "resources.json",
+            "resource-samples.jsonl",
+            "scheduling.json",
             "trial.json",
-            "probe.json",
-            "probe-intent.json",
+            "cleanup.json",
             "environment.json",
         ]
     ]
@@ -827,7 +963,7 @@ def seal_attempt(attempt: Path, result: dict[str, Any]) -> None:
 
 def verify_terminal(attempt: Path, result: dict[str, Any]) -> None:
     if result.get("version") != RESULT_VERSION:
-        raise ValueError("Historical attempt is read-only with this evaluator")
+        raise ValueError("Unsupported benchmark result version")
     AttemptResult.model_validate(result)
     for name, expected in result.get("sidecar_files", {}).items():
         file = attempt / name
@@ -929,11 +1065,8 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
         if not running:
             break
         await asyncio.sleep(0.2)
-    try:
-        await background(handoff_environment, root, ownership)
-        await background(remove_environment, root, ownership)
-    except Exception as error:
-        atomic_json(agent / "environment-cleanup.json", {"status": "failed", "errors": [type(error).__name__]})
+    await background(handoff_environment, root, ownership)
+    await background(audit_environment, root, ownership, agent)
     pier = {
         "exception_info": {"exception_type": "OrchestratorInterrupted", "exception_message": "No retained Pier result"}
     }
@@ -944,8 +1077,7 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
                 pier = observed
         except ValueError:
             pass
-    item = read_json(attempt / "trial.json") if (attempt / "trial.json").exists() else {}
-    evidence = await background(collect_evidence, trial, pier, verification_required=item.get("purpose") != "preflight")
+    evidence = await background(collect_evidence, trial, pier)
     if evidence["execution"] is None and terminal:
         evidence["execution"] = {
             "version": 2,
@@ -959,17 +1091,11 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
         }
         if evidence["accounting"] is None:
             evidence["accounting"] = (terminal.get("result") or {}).get("accounting")
-    if execution.get("harness") not in {None, "synergy"}:
+    if execution.get("harness") not in {None, "synergy"} or execution.get("runtime_protocol") == "synergy-session-v1":
         evidence["accounting"] = await background(native_accounting, agent, execution["harness"])
     else:
         evidence["accounting"] = await background(attach_synergy_requests, agent, evidence.get("accounting"))
-    evidence["wire_usage"] = aggregate_usage(read_ledger(attempt / "wire"))
-    evidence["reconciliation"] = reconcile_usage(evidence["wire_usage"], evidence.get("accounting"))
-    evidence["reconciliation"]["requests"] = reconcile_requests(
-        read_ledger(attempt / "wire"), evidence.get("accounting")
-    )
-    if evidence["reconciliation"]["requests"]["status"] == "mismatch":
-        evidence["reconciliation"]["status"] = "mismatch"
+    collect_wire_usage(attempt, evidence)
     for field in ["resources", "stages"]:
         if (attempt / (field + ".json")).exists():
             evidence[field] = read_json(attempt / (field + ".json"))
@@ -983,11 +1109,15 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
     return True
 
 
-async def resume(root: Path, *, debug_trial: str | None = None, maintenance: str | None = None) -> None:
-    await _resume(root, debug_trial=debug_trial, maintenance=maintenance)
+async def resume(root: Path, *, debug_trial: str | None = None) -> None:
+    try:
+        await _resume(root, debug_trial=debug_trial)
+    finally:
+        if debug_trial is None:
+            await refresh_report(root)
 
 
-async def _resume(root: Path, *, debug_trial: str | None = None, maintenance: str | None = None) -> None:
+async def _resume(root: Path, *, debug_trial: str | None = None) -> None:
     root = await asyncio.to_thread(root.resolve)
     with locked(root, create=False):
         if read_json(root / "owner.json") != {"kind": "synergy-benchmark-run", "version": 1}:
@@ -995,12 +1125,13 @@ async def _resume(root: Path, *, debug_trial: str | None = None, maintenance: st
         if not (root / "plan.json").exists():
             raise ValueError("Preparation did not complete; inspect preparation records and create a new run")
         plan = read_json(root / "plan.json")
-        if plan.get("version") != 3 or plan.get("result_version") != RESULT_VERSION:
-            raise ValueError("Historical experiment is read-only with this evaluator")
+        require_current_plan(plan)
         if plan["digest"] != digest({key: value for key, value in plan.items() if key != "digest"}):
             raise ValueError("Experiment plan changed")
         if plan["evaluator"] != evaluator_identity():
             raise ValueError("Evaluator changed; use the recorded evaluator revision to resume")
+        if plan.get("dependency_proxy") != dependency_proxy_identity(plan["config"].get("dependency_proxy_env")):
+            raise ValueError("Dependency proxy changed; use the frozen network configuration or a new experiment")
         progress("resume: verifying frozen artifacts, inputs and terminal evidence")
         for artifact in {variant["artifact"] for variant in plan["variants"].values()}:
             await background(verify_prepared, Path(artifact))
@@ -1014,49 +1145,51 @@ async def _resume(root: Path, *, debug_trial: str | None = None, maintenance: st
             if await background(tree_digest, Path(task["local_path"])) != task["digest"]:
                 raise ValueError(f"Task content changed: {task['id']}")
         os.environ["DOCKER_DEFAULT_PLATFORM"] = plan["config"]["platform"]
-        if (root / "state.json").exists():
-            for trial_id, state in read_json(root / "state.json")["trials"].items():
-                evidence_file = root / "trials" / trial_id / f"attempt-{state['attempt']:03d}" / "evidence.json"
+        state_file = root / "state.json"
+        state = read_json(state_file) if state_file.exists() else {"trials": {}}
+        for directory in sorted((root / "trials").glob("*/attempt-*")):
+            trial_id = directory.parent.name
+            if not trial_id.isdecimal() or int(trial_id) >= len(plan["schedule"]):
+                raise ValueError("Retained attempt is outside the frozen schedule")
+            state["trials"].setdefault(
+                trial_id, {"status": "interrupted", "attempt": int(directory.name.removeprefix("attempt-"))}
+            )
+        for trial_id, current in state["trials"].items():
+            attempt = root / "trials" / trial_id / f"attempt-{current['attempt']:03d}"
+            evidence_file = attempt / "evidence.json"
+            issues = []
+            result = {}
+            try:
                 if not evidence_file.exists():
-                    await reconcile_terminal(root, evidence_file.parent, plan)
-                    if state["status"] == "completed" and not evidence_file.exists():
-                        raise ValueError("Completed attempt has no retained terminal evidence")
+                    await reconcile_terminal(root, attempt, plan)
                 if evidence_file.exists():
-                    await background(verify_terminal, evidence_file.parent, read_json(evidence_file))
-                    ownership = evidence_file.parent / "environment.json"
-                    if ownership.exists():
-                        await background(remove_environment, root, ownership)
-                if state["status"] in {"running", "interrupted"}:
-                    attempt = root / "trials" / trial_id / f"attempt-{state['attempt']:03d}"
-                    terminal = attempt / "evidence.json"
-                    if terminal.exists() and read_json(terminal).get("attempt_status") == "completed":
-                        continue
-                    record = attempt / "environment.json"
-                    if record.exists():
-                        await asyncio.to_thread(remove_environment, root, record)
-        if maintenance is not None:
-            from .maintenance import doctor_plan, prewarm_plan
-
-            if maintenance == "prewarm":
-                await prewarm_plan(root, plan)
-            elif maintenance == "doctor":
-                await doctor_plan(root, plan)
-            else:
-                raise ValueError("Unknown maintenance operation")
-            return
-        if debug_trial is not None:
-            index = int(debug_trial)
-            if index < 0 or index >= len(plan["schedule"]):
-                raise ValueError("Unknown trial index")
-            item = plan["schedule"][index]
-            attempt = root / "debug" / f"{index:04d}" / f"attempt-{uuid.uuid4().hex[:8]}"
-            attempt.mkdir(parents=True)
-            atomic_json(attempt / "evidence.json", await execute_trial(root, plan, item, attempt, debug=True))
-            return
-        if plan["config"].get("version") == 2:
-            from .maintenance import doctor_plan, prewarm_plan
-
-            if not (root / "prewarm.json").exists() or read_json(root / "prewarm.json")["status"] != "completed":
-                await prewarm_plan(root, plan)
-            await doctor_plan(root, plan)
-        await execute_plan(root, plan, lambda item, attempt: execute_trial(root, plan, item, attempt))
+                    result = read_json(evidence_file)
+                    await background(verify_terminal, attempt, result)
+                else:
+                    issues.append("terminal_evidence_missing")
+            except (ValueError, OSError) as error:
+                issues.append(type(error).__name__ + ": " + str(error))
+            ownership = attempt / "environment.json"
+            if ownership.exists():
+                try:
+                    await background(handoff_environment, root, ownership)
+                    await background(remove_environment, root, ownership)
+                    if await background(environment_projects, root, ownership):
+                        raise DispatchStopped("Owned resources remain after recovery")
+                except Exception as error:
+                    raise DispatchStopped("Unable to verify cleanup of retained execution") from error
+            if issues:
+                atomic_json(attempt / "recovery.json", {"issues": issues, "model_calls": 0})
+            current["status"] = "completed" if result.get("attempt_status") == "completed" else "interrupted"
+        atomic_json(state_file, state)
+        async with dependency_proxy(plan["config"].get("dependency_proxy_env")):
+            if debug_trial is not None:
+                index = int(debug_trial)
+                if index < 0 or index >= len(plan["schedule"]):
+                    raise ValueError("Unknown trial index")
+                item = plan["schedule"][index]
+                attempt = root / "debug" / f"{index:04d}" / f"attempt-{uuid.uuid4().hex[:8]}"
+                attempt.mkdir(parents=True)
+                atomic_json(attempt / "evidence.json", await execute_trial(root, plan, item, attempt, debug=True))
+                return
+            await execute_plan(root, plan, lambda item, attempt: execute_trial(root, plan, item, attempt))

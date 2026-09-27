@@ -1,4 +1,5 @@
 import z from "zod"
+import { OutputBudget } from "./anchored-file"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Ripgrep } from "../file/ripgrep"
 
@@ -83,8 +84,21 @@ export const GrepTool = Tool.define(
 
       const outputLines = [`Found ${finalMatches.length} matches`]
 
+      const budget = new OutputBudget()
+      let displayedMatches = 0
       let currentFile = ""
       for (const match of finalMatches) {
+        const excerpt =
+          match.lineText.length > MAX_LINE_LENGTH
+            ? match.lineText.substring(0, MAX_LINE_LENGTH) + "... [line shortened]"
+            : match.lineText
+        const row = `  Line ${match.lineNum}: ${excerpt}`
+        if (!budget.take(`${currentFile !== match.path ? `${match.path}:\n` : ""}${row}`)) {
+          truncated = true
+          truncatedReason = "max_output_bytes"
+          break
+        }
+        displayedMatches++
         if (currentFile !== match.path) {
           if (currentFile !== "") {
             outputLines.push("")
@@ -92,13 +106,10 @@ export const GrepTool = Tool.define(
           currentFile = match.path
           outputLines.push(`${match.path}:`)
         }
-        const truncatedLineText =
-          match.lineText.length > MAX_LINE_LENGTH
-            ? match.lineText.substring(0, MAX_LINE_LENGTH) + "..."
-            : match.lineText
-        outputLines.push(`  Line ${match.lineNum}: ${truncatedLineText}`)
+        outputLines.push(row)
       }
 
+      outputLines[0] = `Found ${displayedMatches} matches`
       if (truncated) {
         outputLines.push("")
         outputLines.push("(Results are truncated. Consider using a more specific path or pattern.)")
@@ -107,7 +118,7 @@ export const GrepTool = Tool.define(
       return {
         title: params.pattern,
         metadata: {
-          matches: finalMatches.length,
+          matches: displayedMatches,
           truncated,
           truncatedReason,
         },

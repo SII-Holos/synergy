@@ -1,12 +1,12 @@
+import { afterAll as afterRuntimeTests } from "bun:test"
+import { testRuntime } from "../support/runtime"
+const runtime = await testRuntime()
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { FileSearchTool } from "../../src/tools/file-search"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { afterAll as afterRuntimeTests } from "bun:test"
-import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
 
 const ctx = {
   sessionID: "test-file-search",
@@ -19,6 +19,48 @@ const ctx = {
 }
 
 describe("tool.file_search", () => {
+  test("reports byte-budget omissions separately from the requested result limit", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "data.txt"), `needle ${"界".repeat(500)}\n`.repeat(40))
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const result = await (await FileSearchTool.init()).execute({ query: "needle", limit: 100 }, ctx)
+          expect(result.metadata.truncated).toBe(true)
+          expect(result.metadata.count).toBeLessThan(40)
+          expect(result.output).toContain("shared budget")
+          expect(result.output).not.toContain("result limit")
+          expect(Buffer.byteLength(result.output)).toBeLessThanOrEqual(50 * 1024)
+        },
+      })
+    }))
+
+  test("path matches cannot consume the entire budget before content evidence", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          for (let i = 0; i < 8; i++) await Bun.write(path.join(dir, `needle-${i}.txt`), "unrelated")
+          await Bun.write(path.join(dir, "implementation.ts"), "export const needle = 42")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const result = await (await FileSearchTool.init()).execute({ query: "needle", limit: 3 }, ctx)
+          expect(result.output).toContain("[content] implementation.ts")
+          expect(result.metadata.truncated).toBe(true)
+          expect(result.metadata.count).toBeLessThanOrEqual(3)
+          expect(result.output).toContain("result limit")
+          expect(result.output).not.toContain("shared budget")
+        },
+      })
+    }))
   test("returns fuzzy path matches with metadata", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({

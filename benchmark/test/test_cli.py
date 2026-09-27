@@ -72,42 +72,14 @@ def test_recovery_and_cleanup_cannot_cross_an_active_run_lock(tmp_path: Path) ->
         assert not (tmp_path / "run/recoveries").exists()
 
 
-def test_cli_declares_matrix_maintenance_commands(capsys, monkeypatch):
+def test_cli_declares_direct_execution_and_reporting_commands(capsys, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["synergy-bench", "--help"])
     with pytest.raises(SystemExit) as exit:
         cli.main()
     assert exit.value.code == 0
     output = capsys.readouterr().out
-    for command in ["doctor", "prewarm", "report", "compare", "cache", "normalize"]:
+    for command in ["run", "resume", "report", "compare", "cache"]:
         assert command in output
-
-
-@pytest.mark.parametrize("deadline", ["omitted", None, 60])
-def test_legacy_normalization_requires_explicit_model_binding(tmp_path, deadline):
-    from synergy_bench.config import ExperimentConfig, ModelProfile, normalize_legacy
-
-    legacy = {"version": 1, "suite": "suite.json", "variants": {"A": {"model": "old/m", "runtime": "full"}}}
-    if deadline != "omitted":
-        legacy["timeout_seconds"] = deadline
-    profiles = {
-        "m": ModelProfile(
-            model="m",
-            protocol="chat-completions",
-            base_url="https://provider.test/v1",
-            api_key_env="MODEL_KEY",
-            context_window=32000,
-            max_output_tokens=2048,
-        ).model_dump()
-    }
-    with pytest.raises(ValueError, match="binding"):
-        normalize_legacy(legacy, profiles, {}, tmp_path)
-    result = normalize_legacy(legacy, profiles, {"old/m": "m"}, tmp_path)
-    normalized = ExperimentConfig.model_validate(result)
-    assert normalized.version == 2
-    assert normalized.timeout_seconds == ("native" if deadline in ("omitted", None) else deadline)
-    assert normalized.harnesses["A"].runtime == "full"
-    assert normalized.models["m"].api_key_env == "MODEL_KEY"
-    assert list(normalized.variants) == ["A__m"]
 
 
 def test_compare_models_keeps_same_harness_and_uses_descriptive_groups(tmp_path, monkeypatch, capsys):

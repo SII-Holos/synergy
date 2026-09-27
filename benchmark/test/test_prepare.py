@@ -3,8 +3,37 @@ from pathlib import Path
 
 import pytest
 
-from synergy_bench.prepare import recipe_links
+from synergy_bench.prepare import recipe_links, source_recipe
 from synergy_bench.storage import atomic_json
+
+
+def test_session_export_release_uses_its_own_public_package_and_rejects_unknown_history(tmp_path):
+    from synergy_bench.prepare import source_protocol
+
+    atomic_json(tmp_path / "packages/synergy/package.json", {"name": "synergy"})
+    assert source_protocol(tmp_path, "024dd683e091d9fce3d1d26b79b2e188ce636b52") == "synergy-session-v1"
+    with pytest.raises(ValueError, match="Unsupported historical Synergy source"):
+        source_protocol(tmp_path, "unverified-history")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "external.mjs",
+        "capture.mjs",
+        "native-outcome.mjs",
+        "session-capture.mjs",
+        "session-relay.mjs",
+        "session-entry.mjs",
+    ],
+)
+def test_session_export_runtime_invalidates_when_an_executed_observer_changes(tmp_path, name):
+    from synergy_bench.prepare import synergy_runtime_digest
+
+    (tmp_path / name).write_text("first observer")
+    before = synergy_runtime_digest(tmp_path, protocol="synergy-session-v1")
+    (tmp_path / name).write_text("updated observer")
+    assert synergy_runtime_digest(tmp_path, protocol="synergy-session-v1") != before
 
 
 @pytest.mark.parametrize(
@@ -55,22 +84,87 @@ def test_recipe_resolves_public_names_without_a_benchmark_workspace(tmp_path: Pa
         recipe_links(tmp_path, {"@example/missing": "workspace:*"})
 
 
+@pytest.mark.parametrize(
+    ("protocol", "has_pty_builder", "native_stages"),
+    [
+        pytest.param("synergy-rollout-v1", True, ["native", "native_pty"], id="current-rollout"),
+        pytest.param("synergy-rollout-v1", False, ["native"], id="historical-rollout"),
+        pytest.param("synergy-session-v1", False, [], id="historical-session"),
+    ],
+)
+def test_source_recipe_prepares_native_assets_from_the_measured_source(
+    tmp_path: Path, protocol: str, has_pty_builder: bool, native_stages: list[str]
+) -> None:
+    source = tmp_path / "source"
+    atomic_json(source / "package.json", {"workspaces": {"packages": ["packages/*"]}})
+    atomic_json(source / "packages/recipe/package.json", {"name": "@example/recipe"})
+    builder = source / "packages/runtime-local/script/build-pty.ts"
+    if has_pty_builder:
+        builder.parent.mkdir(parents=True)
+        builder.write_text("await Bun.write('.artifacts/pty/fixture', 'built from the measured source')\n")
+    recipe = source_recipe(
+        source,
+        image_id="oven/bun@sha256:fixture",
+        protocol=protocol,
+        links=recipe_links(source, {"@example/recipe": "workspace:*"}),
+    )
+    stages = {
+        header: body.splitlines() for header, _, body in (part.partition("\n") for part in recipe.split("FROM ")[1:])
+    }
+    assert list(stages)[0] == "oven/bun@sha256:fixture AS source"
+    source_steps = stages["oven/bun@sha256:fixture AS source"]
+    assert "RUN mkdir -p /opt/synergy/bin && cp /usr/local/bin/bun /opt/synergy/bin/bun" in source_steps
+    assert (
+        "RUN mkdir -p /opt/synergy/runtime/node_modules/@example && "
+        "ln -s ../../../source/packages/recipe /opt/synergy/runtime/node_modules/@example/recipe" in source_steps
+    )
+    if not native_stages:
+        assert len(stages) == 1
+        assert source_steps[-1].endswith("/runtime/session-prepare.mjs")
+        return
+
+    assert source_steps[-1].endswith("/runtime/prepare.ts")
+    assert stages["node:22.14.0-bullseye AS native"] == [
+        "COPY --from=source /opt/synergy /opt/synergy",
+        "WORKDIR /opt/synergy/source",
+        "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-watcher.ts --local",
+    ]
+    expected_final = [
+        "COPY --from=native /opt/synergy/source/packages/runtime-local/.artifacts/watcher "
+        "/opt/synergy/source/packages/runtime-local/.artifacts/watcher"
+    ]
+    if has_pty_builder:
+        assert stages["rust:1.94.0-bookworm AS native_pty"] == [
+            "COPY --from=source /opt/synergy /opt/synergy",
+            "WORKDIR /opt/synergy/source",
+            "RUN /opt/synergy/bin/bun packages/runtime-local/script/build-pty.ts",
+        ]
+        expected_final.append(
+            "COPY --from=native_pty /opt/synergy/source/packages/runtime-local/.artifacts/pty "
+            "/opt/synergy/source/packages/runtime-local/.artifacts/pty"
+        )
+    assert stages["source"] == expected_final
+    assert len(stages) == len(native_stages) + 2
+
+
 @pytest.mark.parametrize("failure", [RuntimeError("injected build failure"), KeyboardInterrupt()])
 def test_preparation_failure_never_exposes_a_resumable_plan(tmp_path: Path, monkeypatch, failure) -> None:
     import yaml
+    from test_config import config
 
     from synergy_bench import runner
     from synergy_bench.prepare import BENCHMARK
     from synergy_bench.storage import read_json
 
+    monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture")
     path = tmp_path / "experiment.yaml"
     path.write_text(
         yaml.safe_dump(
             {
-                "version": 1,
+                **config(),
                 "suite": str(BENCHMARK / "suites/local-24.json"),
                 "output": "runs",
-                "variants": {"A": {"source": {"path": str(tmp_path)}, "model": "fixture/model"}},
+                "harnesses": {"A": {"source": {"path": str(tmp_path)}, "kind": "synergy"}},
             }
         )
     )

@@ -15,6 +15,14 @@ def test_official_subset_has_fixed_distinct_original_tasks() -> None:
     assert all(len(task.digest) == 64 for task in suite.tasks)
 
 
+@pytest.mark.parametrize("field", ["agent_seconds", "verifier_seconds"])
+def test_task_catalog_rejects_per_task_deadline_overrides(field):
+    suite = Suite.load(Path(__file__).parents[1] / "suites/local-24.json").model_dump()
+    suite["tasks"][0][field] = 900
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        Suite.model_validate(suite)
+
+
 def test_tree_digest_detects_verifier_and_mode_changes(tmp_path: Path) -> None:
     file = tmp_path / "test.sh"
     file.write_text("exit 0")

@@ -8,6 +8,55 @@ import { OwnedProcess } from "../../src/process/owned-process"
 
 const nativeTest = test.skipIf(process.platform !== "linux")
 
+async function errnoFixture(mode: string, jit = "0") {
+  await using directory = await tmpdir()
+  const child = Bun.spawn(
+    [process.execPath, path.join(import.meta.dir, "fixtures/linux-tree-errno.ts"), directory.path, mode],
+    { cwd: directory.path, env: { ...process.env, BUN_JSC_useJIT: jit }, stdout: "pipe", stderr: "pipe" },
+  )
+  const output = new Response(child.stdout).text()
+  const error = new Response(child.stderr).text()
+  const deadline = Promise.withResolvers<never>()
+  const timer = setTimeout(() => deadline.reject(new Error("Linux errno fixture did not finish")), 6000)
+  try {
+    const code = await Promise.race([child.exited, deadline.promise])
+    expect(code, await error).toBe(0)
+    return JSON.parse(await output)
+  } finally {
+    clearTimeout(timer)
+    if (child.exitCode === null) child.kill("SIGKILL")
+    await child.exited
+  }
+}
+
+for (const jit of ["0", "1"]) {
+  for (const children of ["empty", "held"]) {
+    nativeTest(
+      `Linux completion retains the kernel result across FFI return work (${jit}, ${children})`,
+      async () => {
+        expect(await errnoFixture(children, jit)).toEqual({ state: "exited", held: children === "held" })
+      },
+      10000,
+    )
+  }
+}
+
+nativeTest(
+  "incompatible Linux native libraries fail before command activation",
+  async () => {
+    expect(await errnoFixture("missing-symbols")).toEqual({ state: "unavailable" })
+  },
+  10000,
+)
+
+nativeTest(
+  "Linux pidfd errors retain their own errno across FFI return work",
+  async () => {
+    expect(await errnoFixture("pidfd-errors")).toEqual({ open: -22, signal: -9, close: -9 })
+  },
+  10000,
+)
+
 nativeTest(
   "a lost Linux supervisor preserves uncertainty after its escaped descendant exits",
   async () => {

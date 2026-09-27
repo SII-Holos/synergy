@@ -232,6 +232,8 @@ Local child-process completion has a separate output-drain boundary. The parent 
 
 macOS Bash uses an independent launchd job and resource coalition. The passive native worker connects through private, authenticated local streams; the Runtime records its coalition and boot identity before activating the command. Kernel task counters keep the Workspace claim alive through detached descendants, closed pipes and supervisor failure. An unconfined command takes host-wide write exclusion; a read-only compiler receipt permits concurrent writers while retaining the binding's lifecycle claim. Output drainage remains separate from process liveness. Cancellation terminates the owned coalition and bounds drainage of unread output; ordinary completion preserves all finite output.
 
+Native process input uses bounded forwarding and a declared final byte count. The worker ends child stdin only after every declared byte's destination write has completed; socket reception alone cannot authorize EOF. Failed destination writes close upstream input. See the [input drainage decision](../decisions/implemented/bug-fix/2026-09-27-drain-owned-process-input-before-eof.md).
+
 The native worker runs under the Runtime executable's own macOS permission identity. It does not inherit another application's TCC grants or add a Seatbelt profile to `full_access`; commands can still install their own sandbox. OS access failures remain ordinary runtime failures. Native worker entrypoints execute before global storage initialization in both core and full artifacts.
 
 ## Session and Workflow Restrictions
