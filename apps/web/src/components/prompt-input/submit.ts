@@ -80,6 +80,7 @@ import { handoffOptimisticMessage, isOptimisticMessagePending } from "@/context/
 type PromptSubmitInput = {
   props: Pick<
     PromptInputProps,
+    | "newSessionEnvironmentID"
     | "newSessionWorkspaceSelection"
     | "newSessionCanonicalDirectory"
     | "onNewSessionWorkspaceSelectionReset"
@@ -392,6 +393,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
       if (armedLightLoop && blueprintSlot) input.clearPendingLightLoop()
+      const environmentID = input.props.newSessionEnvironmentID
       const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
       const worktreeWorkspaceSelection = isWorktreeWorkspaceSelection(workspaceSelection)
         ? workspaceSelection
@@ -402,6 +404,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             mode,
             workspaceSelection,
             controlProfile: input.selectedControlProfile(),
+            environmentID,
             plan: armedPlan,
             lattice: armedLattice,
             lightLoop: armedLightLoop,
@@ -460,6 +463,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (!session && isNewSession) {
         session = await client.session
           .create({
+            environmentID,
             controlProfile: input.selectedControlProfile(),
             workspace: worktreeWorkspaceSelection ? undefined : workspaceSelection,
           })

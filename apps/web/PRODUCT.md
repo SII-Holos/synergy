@@ -327,3 +327,5 @@ Agenda opens on a series list with canonical pending and last-run-failed filters
 Remote Browser Retry checks server ownership and the existing page before resuming and reconnecting. Keep the address and error visible, disable repeated recovery attempts, and cancel obsolete recovery on session disposal. Retry does not create another page or replay user actions.
 
 Stored Workspaces use the same chooser, file tree and editor as directories. Show the Workspace name without implying a controller path. Creating a Workspace selects a storage profile; execution belongs to the independent Environment choice. Open file tabs retain their original Workspace identity across selection changes.
+
+The working-location menu exposes Environment selection independently from Workspace files. Choosing a profile does not start compute. Keep activity and recovery inside that chooser, preserve failed selections and new-session retry intent, and distinguish a result awaiting confirmation from one awaiting saving. Release saves files before reclaiming unused compute.

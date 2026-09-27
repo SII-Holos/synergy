@@ -10157,6 +10157,106 @@ msgid "diff.preview-truncated"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "environment.dialog.activeUses"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activityLoading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancelDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.existing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.none"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.operation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.profiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reconcile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recover"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recoverDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.release"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reload"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.state"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr ""
 

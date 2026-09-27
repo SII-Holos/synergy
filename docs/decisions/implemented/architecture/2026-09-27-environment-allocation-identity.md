@@ -27,3 +27,5 @@ The catalog uses the existing Agent Storage transactions. It does not introduce 
 ## Consequences
 
 API-only work can retain owner bindings without compute. Providers must support authoritative reconciliation and confirmed deallocation; providers lacking those guarantees fail closed. Unknown uses deliberately prevent automatic reclamation until their executor or an explicit recovery operation supplies physical completion evidence.
+
+Web and Desktop select Environments independently from Workspaces through the working-location menu. Opening the chooser reads the catalog and existing activity without allocating compute. Selection uses the observed Session binding, creation retries retain the original request ID, and new-session recovery restores its explicit choice. Recovery targets existing operation IDs; release compares allocation generation and remains blocked by active uses.

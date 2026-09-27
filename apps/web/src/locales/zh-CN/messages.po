@@ -10157,6 +10157,106 @@ msgid "diff.preview-truncated"
 msgstr "预览已截断"
 
 #. js-lingui-explicit-id
+msgid "environment.dialog.activeUses"
+msgstr "{count, plural, =0 {没有正在使用的操作} other {# 个操作正在使用}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activity"
+msgstr "执行活动"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activityLoading"
+msgstr "正在加载活动…"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancel"
+msgstr "取消执行"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancelDescription"
+msgstr "请求取消此操作并保存其更改。确认所有进程已停止可能需要一些时间。"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.choose"
+msgstr "使用此 Environment"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.close"
+msgstr "关闭"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.default"
+msgstr "使用配置的默认值"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.description"
+msgstr "选择命令运行的位置。仅在需要时启动计算资源，Workspace 文件独立存储。"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.details"
+msgstr "资源详情"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.empty"
+msgstr "此项目尚无 Environment。"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.existing"
+msgstr "已有 Environment"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.failed"
+msgstr "无法更新 Environment。请重新加载状态后重试。"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.loading"
+msgstr "正在加载 Environment…"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.none"
+msgstr "不使用执行 Environment"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.operation"
+msgstr "{state, select, submitted {已提交} running {运行中} cancel_requested {已请求取消} unknown {结果尚未确认} exited {正在保存结果} unsaved {需要重试保存} saved {正在完成} completed {已完成} other {需要恢复}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.profiles"
+msgstr "可用配置"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reconcile"
+msgstr "检查连接"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recover"
+msgstr "恢复结果"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recoverDescription"
+msgstr "恢复会检查原操作并重试保存结果，不会重复执行命令。"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.refresh"
+msgstr "刷新活动"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.release"
+msgstr "保存并释放计算资源"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reload"
+msgstr "重新加载"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.state"
+msgstr "{state, select, idle {未分配} allocating {正在启动} ready {已就绪} releasing {正在保存并释放} unavailable {需要恢复} other {不可用}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.title"
+msgstr "选择 Environment"
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "用于"
 

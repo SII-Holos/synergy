@@ -47,10 +47,12 @@ export interface PromptInputProps {
   readOnly?: boolean
   class?: string
   ref?: (el: HTMLDivElement) => void
+  newSessionEnvironmentID?: string | null
   newSessionWorkspaceSelection?: NewSessionWorkspaceSelection
   newSessionCanonicalDirectory?: string
   newSessionCurrentDirectory?: string
   newSessionCanCreateWorktree?: boolean
+  onNewSessionEnvironmentChange?: (environmentID: string | null | undefined) => void
   onNewSessionWorkspaceSelectionChange?: (selection: NewSessionWorkspaceSelection) => void
   onNewSessionWorkspaceSelectionReset?: () => void
   onNewSessionTransitionChange?: (input: {

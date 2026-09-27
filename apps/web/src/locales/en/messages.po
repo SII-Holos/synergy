@@ -10157,6 +10157,106 @@ msgid "diff.preview-truncated"
 msgstr "Preview truncated"
 
 #. js-lingui-explicit-id
+msgid "environment.dialog.activeUses"
+msgstr "{count, plural, =0 {No active uses} one {# active use} other {# active uses}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activity"
+msgstr "Execution activity"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activityLoading"
+msgstr "Loading activity…"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancel"
+msgstr "Cancel execution"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancelDescription"
+msgstr "Request cancellation of this execution and save its changes. It may take time to confirm that all processes have stopped."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.choose"
+msgstr "Use Environment"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.close"
+msgstr "Close"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.default"
+msgstr "Use configured default"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.description"
+msgstr "Choose where commands run. Compute starts only when needed; Workspace files are stored separately."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.details"
+msgstr "Resource details"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.empty"
+msgstr "No Environments in this project."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.existing"
+msgstr "Existing Environments"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.failed"
+msgstr "The Environment could not be updated. Reload its state and try again."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.loading"
+msgstr "Loading Environments…"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.none"
+msgstr "No execution Environment"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.operation"
+msgstr "{state, select, submitted {Submitted} running {Running} cancel_requested {Cancellation requested} unknown {Result unconfirmed} exited {Saving result} unsaved {Save needs retry} saved {Finishing} completed {Completed} other {Needs recovery}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.profiles"
+msgstr "Available profiles"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reconcile"
+msgstr "Check connection"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recover"
+msgstr "Recover result"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recoverDescription"
+msgstr "Recovery checks the original operation and retries saving its result. It does not repeat the command."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.refresh"
+msgstr "Refresh activity"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.release"
+msgstr "Save and release compute"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reload"
+msgstr "Reload"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.state"
+msgstr "{state, select, idle {Not allocated} allocating {Starting} ready {Ready} releasing {Saving and releasing} unavailable {Needs recovery} other {Unavailable}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.title"
+msgstr "Choose Environment"
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "for"
 

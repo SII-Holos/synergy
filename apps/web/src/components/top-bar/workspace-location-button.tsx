@@ -4,6 +4,7 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { environmentCopy } from "@/components/dialog/environment-dialog-copy"
 import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import type { workspaceLocation } from "./workspace-location"
 
@@ -11,6 +12,7 @@ export function WorkspaceLocationButton(props: {
   project: string
   location: ReturnType<typeof workspaceLocation>
   onChoose: () => void
+  onChooseEnvironment?: () => void
   disabled?: boolean
 }) {
   const { _ } = useLingui()
@@ -77,6 +79,18 @@ export function WorkspaceLocationButton(props: {
         >
           {_(workspaceCopy.title)}
         </Button>
+        <Show when={props.onChooseEnvironment}>
+          <Button
+            disabled={props.disabled}
+            variant="ghost"
+            onClick={() => {
+              setOpen(false)
+              props.onChooseEnvironment?.()
+            }}
+          >
+            {_(environmentCopy.title)}
+          </Button>
+        </Show>
       </div>
     </Popover>
   )
