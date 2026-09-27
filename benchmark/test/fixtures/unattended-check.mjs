@@ -10,25 +10,34 @@ const runtime = legacy
   : await (
       await import(root + "product-runtime/src/server/runtime-handle.ts")
     ).ProductRuntimeHandle.openTask({ mode: "oneshot", migrationOutput: "silent" })
-const audit = await Bun.file("/logs/agent/unattended.json").json()
-await withScopeContext("/app", async () => {
-  const parent = legacy ? await Session.get(audit.session_id) : await Session.create({ interaction: audit.interaction })
-  if (parent.interaction?.mode !== "unattended") throw new Error("Interactive parent session")
-  const child = await Session.create({ parentID: parent.id })
-  const stored = await Session.get(child.id)
-  if (stored.interaction?.mode !== "unattended") throw new Error("Interactive child session")
-  if (!PermissionNext.disabled(["question"], PermissionNext.sessionRuleset(stored)).has("question")) {
-    throw new Error("Child question catalog is interactive")
-  }
-  await Bun.write(
-    "/logs/agent/unattended-child.json",
-    JSON.stringify({
-      parent: parent.interaction,
-      child: stored.interaction,
-      question_disabled: true,
-      fixture_home: !legacy,
-    }),
-  )
-})
-await runtime?.close()
+async function check() {
+  const audit = await Bun.file("/logs/agent/unattended.json").json()
+  await withScopeContext("/app", async () => {
+    const parent = legacy
+      ? await Session.get(audit.session_id)
+      : await Session.create({ interaction: audit.interaction })
+    if (parent.interaction?.mode !== "unattended") throw new Error("Interactive parent session")
+    const child = await Session.create({ parentID: parent.id })
+    const stored = await Session.get(child.id)
+    if (stored.interaction?.mode !== "unattended") throw new Error("Interactive child session")
+    if (!PermissionNext.disabled(["question"], PermissionNext.sessionRuleset(stored)).has("question")) {
+      throw new Error("Child question catalog is interactive")
+    }
+    await Bun.write(
+      "/logs/agent/unattended-child.json",
+      JSON.stringify({
+        parent: parent.interaction,
+        child: stored.interaction,
+        question_disabled: true,
+        fixture_home: !legacy,
+      }),
+    )
+  })
+}
+try {
+  if (runtime) await runtime.run(check)
+  else await check()
+} finally {
+  await runtime?.close()
+}
 process.exit(0)

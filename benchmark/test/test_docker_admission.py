@@ -25,6 +25,52 @@ def environment(tmp_path, *, keep=False):
     )
 
 
+async def test_build_wait_records_its_resource_pressure_before_cancellation(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from synergy_bench.storage import read_json
+
+    env = environment(tmp_path)
+    pool = ResourcePool(Capacity(2, 8 * 1024**3), 2)
+    phases = PhaseResources(pool, tmp_path / "run")
+    pressure = asyncio.Event()
+    record = phases.record
+
+    def observe(event, project, **fields):
+        record(event, project, **fields)
+        if event == "pressure":
+            pressure.set()
+
+    monkeypatch.setattr(phases, "record", observe)
+    monkeypatch.setattr(env, "_image_id", AsyncMock(return_value=None))
+    compose = AsyncMock(side_effect=AssertionError("build must wait for its reservation"))
+    monkeypatch.setattr(env, "_compose_command", compose)
+    token = current_resources.set(phases)
+    try:
+        async with pool.reserve(Request(0.45, 1024), adaptive=True) as owner:
+            await owner.sample(1024, 1.02)
+            pending = asyncio.create_task(env._run_docker_compose_command(["build"]))
+            try:
+                await asyncio.wait_for(pressure.wait(), 2)
+                events = read_json(phases.directory / "scheduling.json")["events"]
+                assert any(
+                    event["event"] == "pressure"
+                    and event["project"] == env.session_id
+                    and event["phase"] == "preparation"
+                    and event["reason"] == "cpu_budget"
+                    for event in events
+                )
+                compose.assert_not_awaited()
+            finally:
+                pending.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await pending
+        async with pool.reserve(Request(2, 8 * 1024**3)):
+            assert pool.active == 1
+    finally:
+        current_resources.reset(token)
+
+
 async def test_compose_reserves_real_networks_before_starting_and_keeps_up_options(tmp_path, monkeypatch):
     env = environment(tmp_path)
     pool = ResourcePool(Capacity(2, 4 * 1024**3), 2)

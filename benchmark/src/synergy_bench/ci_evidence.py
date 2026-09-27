@@ -28,6 +28,7 @@ FILENAMES = {
     "export.json",
     "archive.json",
     "resources.json",
+    "scheduling.json",
     "export.log",
     "validation.log",
     "parent.log",

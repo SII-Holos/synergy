@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import AsyncExitStack
 
 import pytest
 
@@ -39,13 +40,98 @@ async def test_failed_shared_admission_releases_its_unstarted_reservation(tmp_pa
     def fail(lease):
         raise OSError("lease publication failed")
 
-    monkeypatch.setattr(pool.shared, "update", fail)
-    with pytest.raises(OSError):
-        async with pool.reserve(Request(1, 100), adaptive=True):
-            pytest.fail("failed publication must not dispatch")
+    with monkeypatch.context() as patch:
+        patch.setattr(pool.shared, "update", fail)
+        with pytest.raises(OSError):
+            async with pool.reserve(Request(1, 100), adaptive=True):
+                pytest.fail("failed publication must not dispatch")
     assert pool.active == 0
-    assert not pool._leases
     assert not list((tmp_path / "leases").glob("*.json"))
+    async with pool.reserve(Request(1, 100)):
+        assert pool.active == 1
+
+
+@pytest.mark.parametrize("shared", [False, True])
+@pytest.mark.parametrize("samples", [(1.02, 1.05), (1.0861225313283207, 1.0933401534526854)])
+async def test_released_adaptive_leases_restore_full_capacity(tmp_path, shared, samples):
+    pool = ResourcePool(
+        Capacity(2, 10 * 1024**3),
+        8,
+        shared_directory=tmp_path if shared else None,
+        pressure_timeout_seconds=0.01,
+    )
+    async with AsyncExitStack() as stack:
+        leases = []
+        for _ in samples:
+            lease = await stack.enter_async_context(pool.reserve(Request(0.45, 1024**3), adaptive=True))
+            await lease.sample(1024, 0.1)
+            leases.append(lease)
+        for lease, cpus in zip(leases, samples, strict=True):
+            await lease.sample(1024, cpus)
+    async with pool.reserve(Request(2, 10 * 1024**3)):
+        assert pool.active == 1
+    assert pool.active == 0
+    assert not list(tmp_path.glob("leases/*.json"))
+
+
+@pytest.mark.parametrize("shared", [False, True])
+async def test_releasing_one_lease_preserves_the_other_sampled_reservation(tmp_path, shared):
+    pool = ResourcePool(Capacity(2, 1000), 8, shared_directory=tmp_path if shared else None)
+    async with AsyncExitStack() as released:
+        first = await released.enter_async_context(pool.reserve(Request(0.45, 100), adaptive=True))
+        await first.sample(100, 0.1)
+        async with pool.reserve(Request(0.45, 100), adaptive=True) as second:
+            await first.sample(102, 1.02)
+            await second.sample(202, 1.05)
+            await released.aclose()
+            assert not pool.fits(Request(2, 1))
+            assert not pool.fits(Request(0.1, 748))
+            async with asyncio.timeout(2):
+                async with pool.reserve(Request(0.6875, 747)):
+                    assert pool.active == 2
+    async with pool.reserve(Request(2, 1000)):
+        assert pool.active == 1
+
+
+@pytest.mark.parametrize("shared", [False, True])
+async def test_cancelled_sampled_owner_returns_its_full_reservation(tmp_path, shared):
+    pool = ResourcePool(Capacity(2, 1000), 8, shared_directory=tmp_path if shared else None)
+    entered = asyncio.Event()
+
+    async def owner():
+        async with pool.reserve(Request(0.45, 100), adaptive=True) as lease:
+            await lease.sample(202, 1.05)
+            entered.set()
+            await asyncio.Future()
+
+    task = asyncio.create_task(owner())
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    async with pool.reserve(Request(2, 1000)):
+        assert pool.active == 1
+    assert not list(tmp_path.glob("leases/*.json"))
+
+
+async def test_shared_release_error_after_removal_does_not_retain_local_capacity(tmp_path, monkeypatch):
+    pool = ResourcePool(Capacity(2, 1000), 8, shared_directory=tmp_path)
+    release = pool.shared.release
+
+    def fail(key):
+        release(key)
+        raise OSError("lease release failed after removal")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(pool.shared, "release", fail)
+        with pytest.raises(OSError, match="after removal"):
+            async with pool.reserve(Request(0.45, 100), adaptive=True) as lease:
+                await lease.sample(202, 1.05)
+    assert not list(tmp_path.glob("leases/*.json"))
+    async with pool.reserve(Request(2, 1000)):
+        assert pool.active == 1
 
 
 def test_working_set_estimate_does_not_reserve_native_hard_limit():

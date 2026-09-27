@@ -74,13 +74,10 @@ class ResourceLease:
                 assert memory is not None and cpus is not None
                 self.last_memory = memory
                 self.peak_memory = max(self.peak_memory, memory)
-                updated = Request(
+                self.request = Request(
                     max(self.initial.cpus, cpus * 1.25),
                     max(self.initial.memory_bytes, math.ceil(self.peak_memory * 1.25)),
                 )
-                self.pool._cpus += updated.cpus - self.request.cpus
-                self.pool._memory += updated.memory_bytes - self.request.memory_bytes
-                self.request = updated
             if self.pool.shared:
                 self.pool.shared.update(self)
             self.pool._condition.notify_all()
@@ -101,6 +98,7 @@ class SharedResources:
         self.held: dict[str, int] = {}
         self.active = 0
         self.healthy = True
+        self._cpu_snapshot: tuple[float, ...] = ()
 
     def _rows(self) -> list[dict[str, Any]]:
         rows = []
@@ -142,7 +140,12 @@ class SharedResources:
             not row.get("adaptive") or (row.get("sampled_at") is not None and time.time() - row["sampled_at"] < 10)
             for row in rows
         )
+        self._cpu_snapshot = tuple(row["cpus"] for row in rows)
         return rows
+
+    def cpu_fits(self, request: Request, capacity: Capacity) -> bool:
+        # Eligibility uses individual sampled terms; acquire refreshes them under the budget lock.
+        return math.fsum((*self._cpu_snapshot, request.cpus)) <= capacity.cpus
 
     def update(self, lease: ResourceLease) -> None:
         with cache_lock(self.directory / "budget", timeout=5):
@@ -166,7 +169,7 @@ class SharedResources:
         with cache_lock(self.directory / "budget", timeout=5):
             rows = self._rows()
             return Capacity(
-                capacity.cpus - sum(row["cpus"] for row in rows),
+                capacity.cpus - math.fsum(self._cpu_snapshot),
                 capacity.memory_bytes
                 - (snapshot.memory_with_reservations(rows) if snapshot else sum(row["memory_bytes"] for row in rows)),
             )
@@ -184,7 +187,7 @@ class SharedResources:
             if (
                 not self.healthy
                 or (snapshot is not None and not snapshot.healthy)
-                or sum(row["cpus"] for row in rows) + request.cpus > capacity.cpus
+                or not self.cpu_fits(request, capacity)
                 or (snapshot.memory_with_reservations(rows) if snapshot else sum(row["memory_bytes"] for row in rows))
                 + request.memory_bytes
                 > capacity.memory_bytes
@@ -295,25 +298,35 @@ class ResourcePool:
         self.capacity = capacity
         self.concurrency = concurrency
         self.active = 0
-        self._cpus = 0.0
-        self._memory = 0
         self._condition = asyncio.Condition()
         self._queue: list[Waiting] = []
         self._leases: dict[str, ResourceLease] = {}
         self.wait_reason = "queue_priority"
 
+    @property
+    def _cpus(self) -> float:
+        return math.fsum(lease.request.cpus for lease in self._leases.values())
+
+    @property
+    def _memory(self) -> int:
+        return sum(lease.request.memory_bytes for lease in self._leases.values())
+
     def validate(self, request: Request) -> None:
         if request.cpus > self.capacity.cpus or request.memory_bytes > self.capacity.memory_bytes:
             raise ValueError(f"Task exceeds scheduler capacity: {asdict(request)} / {asdict(self.capacity)}")
+
+    def _cpu_fits(self, request: Request) -> bool:
+        return math.fsum(
+            [request.cpus, *(lease.request.cpus for lease in self._leases.values())]
+        ) <= self.capacity.cpus and (self.shared is None or self.shared.cpu_fits(request, self.capacity))
 
     def fits(self, request: Request) -> bool:
         return (
             all(lease.healthy for lease in self._leases.values())
             and (self.shared is None or self.shared.healthy)
             and self.active < self.concurrency
-            and self._cpus + request.cpus <= self.capacity.cpus
+            and self._cpu_fits(request)
             and self._memory + request.memory_bytes <= self.capacity.memory_bytes
-            and request.cpus <= self._available.cpus
             and request.memory_bytes <= self._available.memory_bytes
         )
 
@@ -349,7 +362,7 @@ class ResourcePool:
                 if self._memory + token.request.memory_bytes > self.capacity.memory_bytes
                 or token.request.memory_bytes > self._available.memory_bytes
                 else "cpu_budget"
-                if self._cpus + token.request.cpus > self.capacity.cpus or token.request.cpus > self._available.cpus
+                if not self._cpu_fits(token.request)
                 else "queue_priority_or_concurrency"
             )
             return False
@@ -401,16 +414,12 @@ class ResourcePool:
                         if head is not token:
                             head.bypasses += 1
                         self.active += 1
-                        self._cpus += request.cpus
-                        self._memory += request.memory_bytes
                         self._leases[shared_key] = lease
                         if self.shared:
                             try:
                                 self.shared.update(lease)
                             except BaseException:
                                 self.active -= 1
-                                self._cpus -= request.cpus
-                                self._memory -= request.memory_bytes
                                 self._leases.pop(shared_key)
                                 self.shared.release(shared_key)
                                 raise
@@ -442,8 +451,6 @@ class ResourcePool:
             finally:
                 async with self._condition:
                     self.active -= 1
-                    self._cpus -= lease.request.cpus
-                    self._memory -= lease.request.memory_bytes
                     self._leases.pop(shared_key)
                     self._condition.notify_all()
 

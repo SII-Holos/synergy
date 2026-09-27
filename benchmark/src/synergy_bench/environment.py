@@ -257,8 +257,8 @@ class CachedDockerEnvironment(DockerEnvironment):
                     "labels": {"org.synergy.benchmark.cache-key": digest(self._benchmark_identity)}
                 }
             atomic_json(self._mounts_compose_path, value)
+        scheduler = current_resources.get()
         if command_args[0] != "build":
-            scheduler = current_resources.get()
             if command_args[0] == "up":
                 await self._compose_command(["pull", "--ignore-buildable", "--policy", "missing"])
                 await self._admit_environment()
@@ -317,11 +317,14 @@ class CachedDockerEnvironment(DockerEnvironment):
                     async with queued(
                         build_slot(self._benchmark_cache, wait_seconds=None, limit=limit), self.session_id, "build_slot"
                     ):
-                        scheduler = current_resources.get()
                         if scheduler:
                             async with queued(
                                 scheduler.pool.reserve(
-                                    Request(2, 4 * 1024**3), priority=int("__verifier__" in self.session_id)
+                                    Request(2, 4 * 1024**3),
+                                    priority=int("__verifier__" in self.session_id),
+                                    on_wait=lambda reason: scheduler.record(
+                                        "pressure", self.session_id, phase="preparation", reason=reason
+                                    ),
                                 ),
                                 self.session_id,
                                 "build_resources",
