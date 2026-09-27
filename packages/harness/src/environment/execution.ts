@@ -23,6 +23,7 @@ export namespace EnvironmentExecution {
     .meta({ ref: "EnvironmentExecutionInfo" })
   export type Info = z.infer<typeof Info>
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
+  const finishing = RuntimeContext.state(() => new Map<string, Promise<Info>>())
 
   export async function get(id: string, scopeID: string): Promise<Info> {
     const [record] = await Storage.readMany<unknown>([
@@ -139,6 +140,19 @@ export namespace EnvironmentExecution {
     scopeID: string,
     checkpoint: (info: Info) => Promise<NonNullable<Info["saved"]>>,
   ): Promise<Info> {
+    const key = JSON.stringify([scopeID, id])
+    const current = finishing().get(key)
+    if (current) return current
+    const promise = finish(id, scopeID, checkpoint)
+    finishing().set(key, promise)
+    try {
+      return await promise
+    } finally {
+      finishing().delete(key)
+    }
+  }
+
+  async function finish(id: string, scopeID: string, checkpoint: (info: Info) => Promise<NonNullable<Info["saved"]>>) {
     let info = await get(id, scopeID)
     if (info.state === "completed") return info
     if (
@@ -261,7 +275,12 @@ export namespace EnvironmentExecution {
         })
       if (latest.state === "completed") return latest
       if (latest.state === "saved" && changes.state && changes.state !== "completed") return latest
-      if (["saved", "unsaved", "exited"].includes(latest.state) && changes.state === "running") return latest
+      if (
+        ["saved", "unsaved", "exited"].includes(latest.state) &&
+        changes.state &&
+        ["running", "unknown", "cancel_requested", "exited"].includes(changes.state)
+      )
+        return latest
       if (latest.state === "cancel_requested" && changes.state === "running")
         changes = { ...changes, state: "cancel_requested" }
       return write({ ...latest, ...changes })

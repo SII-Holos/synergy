@@ -110,4 +110,37 @@ describe("Environment lifecycle", () => {
       expect(() => EnvironmentProviders.get("fixture")).toThrow()
     })
   })
+
+  test("partially created allocations resume only their original unadmitted intent", async () => {
+    const { host, calls } = provider()
+    const allocate = host.allocate
+    let pending = true
+    let resumes = 0
+    host.allocate = async () => {
+      throw new Error("created resource, response lost")
+    }
+    host.inspect = async () => ({ state: "pending" })
+    host.resume = async (request) => {
+      resumes++
+      pending = false
+      return allocate(request)
+    }
+    await using runtime = await testRuntime({ register: () => EnvironmentProviders.register(host) })
+    await runtime.run(async () => {
+      const info = await Environment.bind({ scopeID: "scope", ownerID: "session", provider: "fixture", spec: {} })
+      await expect(
+        Environment.acquire(info.id, { scopeID: "scope", useID: "tool", capabilities: ["exec"] }),
+      ).rejects.toThrow("response lost")
+      const before = await Environment.get(info.id, "scope")
+      const use = await Environment.acquire(info.id, { scopeID: "scope", useID: "tool", capabilities: ["exec"] })
+      expect(pending).toBe(false)
+      expect(resumes).toBe(1)
+      expect(calls.allocate).toBe(1)
+      expect(use.target.allocationID).toBe(before.allocation!.requestID)
+      expect((await Environment.reconcile(info.id, "scope")).state).toBe("unavailable")
+      expect(resumes).toBe(1)
+      expect(await Environment.uses(info.id)).toHaveLength(1)
+      await use.release()
+    })
+  })
 })

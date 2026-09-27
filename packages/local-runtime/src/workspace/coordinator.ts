@@ -1,4 +1,4 @@
-import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceBusyError as BusyError } from "@ericsanchezok/synergy-harness/workspace/claim"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
@@ -8,7 +8,7 @@ import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identi
 import { retrySleep } from "@ericsanchezok/synergy-util/retry"
 import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
-import { FileMutation } from "../file/mutation"
+import { FileCoordination } from "../file/coordination"
 import { OwnedTree } from "../process/owned-tree"
 
 const Root = z.object({
@@ -57,7 +57,7 @@ export interface WorkspaceClaimInput {
   timeoutMs?: number
 }
 
-export const WorkspaceBusyError = WorkspaceAccess.BusyError
+export const WorkspaceBusyError = BusyError
 
 function contains(parent: string, child: string) {
   const relative = path.relative(parent, child)
@@ -130,7 +130,7 @@ export class WorkspaceCoordinator {
 
   private directory() {
     return (this.directoryPromise ??= (async () => {
-      if (!this.options.directory) return FileMutation.lockDirectory()
+      if (!this.options.directory) return FileCoordination.lockDirectory()
       const directory = this.options.directory
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })
       const stat = await fs.lstat(directory)
@@ -245,7 +245,7 @@ export class WorkspaceCoordinator {
         ? null
         : await Promise.all(
             [...new Set(values)].map(async (root) => {
-              let canonical = await FileMutation.canonical(root)
+              let canonical = await FileCoordination.canonical(root)
               if (process.platform === "win32") canonical = canonical.toLowerCase()
               const parents: string[] = []
               for (let parent = path.dirname(canonical); parent !== canonical; parent = path.dirname(parent)) {

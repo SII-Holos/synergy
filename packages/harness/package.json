@@ -23,6 +23,7 @@
     "./workspace/state": "./src/workspace/state.ts",
     "./workspace/events": "./src/workspace/events.ts",
     "./workspace/access": "./src/workspace/access.ts",
+    "./workspace/claim": "./src/workspace/claim.ts",
     "./workspace/file-import": "./src/workspace/file-import.ts",
     "./storage/sqlite-worker": "./src/storage/sqlite-worker.ts",
     "./storage/bootstrap": "./src/storage/bootstrap.ts",

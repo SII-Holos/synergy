@@ -16,7 +16,13 @@ export interface EnvironmentProvider {
   allocate(request: EnvironmentRequest): Promise<EnvironmentSchema.Allocation>
   inspect(
     request: EnvironmentRequest,
-  ): Promise<{ state: "ready"; allocation: EnvironmentSchema.Allocation } | { state: "absent" } | { state: "unknown" }>
+  ): Promise<
+    | { state: "ready"; allocation: EnvironmentSchema.Allocation }
+    | { state: "absent" }
+    | { state: "unknown" }
+    | { state: "pending" }
+  >
+  resume?(request: EnvironmentRequest): Promise<EnvironmentSchema.Allocation>
   deallocate(request: EnvironmentRequest): Promise<void>
   connect?(request: EnvironmentRequest, target: EnvironmentSchema.Target): Promise<Executor>
   close?(): Promise<void>

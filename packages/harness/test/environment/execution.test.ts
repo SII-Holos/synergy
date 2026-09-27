@@ -123,7 +123,18 @@ test("failed checkpoint retains the use and retries saving without re-executing"
     expect((await EnvironmentExecution.get("operation", "scope")).state).toBe("unsaved")
     expect(f.releases()).toBe(0)
     expect(await Environment.uses(environment.id)).toHaveLength(1)
-    await EnvironmentExecution.complete("operation", "scope", async () => ({ revision: "saved-2" }))
+    let saves = 0
+    const checkpoint = async () => {
+      saves++
+      await Bun.sleep(10)
+      return { revision: "saved-2" }
+    }
+    const results = await Promise.all([
+      EnvironmentExecution.complete("operation", "scope", checkpoint),
+      EnvironmentExecution.complete("operation", "scope", checkpoint),
+    ])
+    expect(results[0]).toEqual(results[1])
+    expect(saves).toBe(1)
     expect((await EnvironmentExecution.get("operation", "scope")).state).toBe("completed")
     expect(f.starts()).toBe(1)
     expect(f.releases()).toBe(1)

@@ -2,10 +2,10 @@ import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access
 import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import { constants } from "node:fs"
-import os from "node:os"
 import path from "node:path"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { retry } from "@ericsanchezok/synergy-util/retry"
+import { FileCoordination } from "./coordination"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 
 export namespace FileMutation {
@@ -18,46 +18,9 @@ export namespace FileMutation {
       super("File changed on disk; read it again before writing")
     }
   }
-  export class AccessDeniedError extends Error {
-    override name = "WorkspaceFileAccessDeniedError"
-  }
-
-  export async function canonical(input: string): Promise<string> {
-    const absolute = path.resolve(input)
-    try {
-      return await fs.realpath(absolute)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error
-      const stat = await fs.lstat(absolute).catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== "ENOENT") throw error
-      })
-      if (stat?.isSymbolicLink())
-        throw new AccessDeniedError("Access denied: a dangling symbolic link cannot be written")
-      const parent = path.dirname(absolute)
-      if (parent === absolute) throw error
-      return path.join(await canonical(parent), path.basename(absolute))
-    }
-  }
-
-  export async function lockDirectory() {
-    // Runtime-specific temporary directories must not split native exclusion on the same host.
-    // userInfo reads the OS profile rather than environment overrides: https://nodejs.org/api/os.html#osuserinfooptions
-    const directory =
-      process.platform === "win32"
-        ? path.join(os.userInfo().homedir, ".synergy-file-locks")
-        : path.join("/tmp", `synergy-file-locks-${process.getuid!()}`)
-    await fs.mkdir(directory, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "EEXIST") throw error
-    })
-    const stat = await fs.lstat(directory)
-    if (
-      !stat.isDirectory() ||
-      stat.isSymbolicLink() ||
-      (process.getuid && (stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0))
-    )
-      throw new AccessDeniedError("Filesystem lock directory has an invalid owner or access mode")
-    return directory
-  }
+  export const AccessDeniedError = FileCoordination.AccessDeniedError
+  export const canonical = FileCoordination.canonical
+  export const lockDirectory = FileCoordination.lockDirectory
 
   export async function snapshot(input: string, signal?: AbortSignal) {
     const flags = constants.O_RDONLY | (process.platform === "win32" ? 0 : constants.O_NONBLOCK | constants.O_NOFOLLOW)

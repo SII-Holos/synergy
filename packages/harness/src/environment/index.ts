@@ -148,16 +148,21 @@ export namespace Environment {
   }
 
   export async function deallocate(id: string, input: { scopeID: string }) {
+    return release(id, input.scopeID)
+  }
+
+  async function release(id: string, scopeID: string, idleBefore?: number) {
     const info = await Storage.transaction(async () => {
-      const info = await get(id, input.scopeID)
+      const info = await get(id, scopeID)
       if (info.state === "idle") return info
+      if (idleBefore !== undefined && info.lastUsedAt > idleBefore) return info
       if (info.state !== "ready")
         throw new Unavailable({ environmentID: id, message: "Reconcile the Environment before releasing it" })
       if ((await uses(id)).length)
         throw new Busy({ environmentID: id, message: "Environment still has active or unreconciled uses" })
       return write({ ...info, state: "releasing" })
     })
-    if (info.state === "idle") return info
+    if (info.state !== "releasing") return info
     await EnvironmentProviders.get(info.provider).deallocate(requestOf(info))
     return updateAllocation(info, undefined)
   }
@@ -167,8 +172,8 @@ export namespace Environment {
     for (const info of await list(scopeID)) {
       if (info.ownership !== "managed" || info.state !== "ready" || now - info.lastUsedAt < info.idleTimeoutMs) continue
       try {
-        await deallocate(info.id, { scopeID })
-        reclaimed.push(info.id)
+        const released = await release(info.id, scopeID, now - info.idleTimeoutMs)
+        if (released.state === "idle") reclaimed.push(info.id)
       } catch (error) {
         if (!(error instanceof Busy)) throw error
       }
@@ -180,6 +185,16 @@ export namespace Environment {
     const info = await get(id, scopeID)
     if (!info.allocation) return info
     const status = await EnvironmentProviders.get(info.provider).inspect(requestOf(info))
+    if (status.state === "pending") {
+      const provider = EnvironmentProviders.get(info.provider)
+      if (info.state === "releasing") {
+        await provider.deallocate(requestOf(info))
+        return updateAllocation(info, undefined)
+      }
+      if (info.state !== "allocating" || !provider.resume || (await uses(id)).length)
+        return updateAllocation(info, "unknown")
+      return updateAllocation(info, await provider.resume(requestOf(info)))
+    }
     if (status.state === "unknown") return updateAllocation(info, "unknown")
     if (status.state === "absent") {
       if ((await uses(id)).length) return updateAllocation(info, "unknown")
@@ -262,6 +277,8 @@ export namespace Environment {
       return write({
         ...current,
         state: allocation === "unknown" ? "unavailable" : allocation ? "ready" : "idle",
+        lastUsedAt:
+          allocation && allocation !== "unknown" && current.state === "allocating" ? Date.now() : current.lastUsedAt,
         allocation:
           allocation === "unknown"
             ? current.allocation
@@ -293,7 +310,7 @@ export namespace Environment {
   }
 
   export function sameTarget(a: Target, b: Target) {
-    return a.environmentID === b.environmentID && a.generation === b.generation && a.allocationID === b.allocationID
+    return EnvironmentSchema.sameTarget(a, b)
   }
 
   function canonical(value: Info["spec"] | Info["spec"][string]): string {

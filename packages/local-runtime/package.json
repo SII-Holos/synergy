@@ -5,6 +5,10 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./environment/docker": "./src/environment/docker.ts",
+    "./environment/host": "./src/environment/host.ts",
+    "./environment/remote-executor": "./src/environment/remote-executor.ts",
+    "./environment/native-executor": "./src/environment/native-executor.ts",
     "./question": "./src/question/index.ts",
     "./skill": "./src/skill/index.ts",
     "./command/command": "./src/command/command.ts",
@@ -101,6 +105,7 @@
     "./reload": "./src/reload.ts"
   },
   "scripts": {
+    "build:execution-host": "bun script/build-execution-host.ts",
     "typecheck": "tsgo --noEmit",
     "test": "bun script/build-pty.ts && bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/local-runtime",

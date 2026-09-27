@@ -4,7 +4,7 @@ import type { Readable } from "node:stream"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
-import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentSchema } from "@ericsanchezok/synergy-harness/environment/schema"
 import { ExecutionProtocol, type Executor } from "@ericsanchezok/synergy-harness/environment/executor"
 import type { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceCoordinator } from "../workspace/coordinator"
@@ -17,11 +17,12 @@ const Receipt = z.object({
   claim: z.object({ id: z.string(), token: z.string() }).optional(),
 })
 interface NativeExecutorOptions {
-  target: Environment.Target
+  target: EnvironmentSchema.Target
   directory: string
   coordinator: WorkspaceCoordinator
   acquire?: (command: ExecutionProtocol.Command, signal: AbortSignal) => Promise<WorkspaceAccess.Lease>
   maxOutputBytes?: number
+  runAs?: { uid: number; gid: number }
 }
 type Operation = {
   status: ExecutionProtocol.Status
@@ -124,8 +125,17 @@ export class NativeExecutor implements Executor {
       const lease = operation.lease
       await this.persist(operation)
       operation.owned = await OwnedProcess.prepare({
-        command: command.command,
-        args: command.args,
+        command: this.options.runAs ? "/usr/bin/setpriv" : command.command,
+        args: this.options.runAs
+          ? [
+              `--reuid=${this.options.runAs.uid}`,
+              `--regid=${this.options.runAs.gid}`,
+              "--clear-groups",
+              "--",
+              command.command,
+              ...command.args,
+            ]
+          : command.args,
         cwd: command.cwd,
         env: command.env,
         signal: operation.abort.signal,
@@ -331,8 +341,9 @@ export class NativeExecutor implements Executor {
     return path.join(this.options.directory, key, chunk ? `${chunk}.json` : "receipt.json")
   }
 
-  private assertTarget(target: Environment.Target) {
-    if (!Environment.sameTarget(target, this.options.target)) throw new Error("Execution belongs to another allocation")
+  private assertTarget(target: EnvironmentSchema.Target) {
+    if (!EnvironmentSchema.sameTarget(target, this.options.target))
+      throw new Error("Execution belongs to another allocation")
   }
 
   private assertDigest(status: ExecutionProtocol.Status, digest: string) {

@@ -10,6 +10,9 @@ export namespace EnvironmentSchema {
     })
     .meta({ ref: "EnvironmentTarget" })
   export type Target = z.infer<typeof Target>
+  export function sameTarget(a: Target, b: Target) {
+    return a.environmentID === b.environmentID && a.generation === b.generation && a.allocationID === b.allocationID
+  }
   export const Allocation = z.object({ id: z.string().min(1), capabilities: z.array(z.string()) })
   export type Allocation = z.infer<typeof Allocation>
   export const Info = z

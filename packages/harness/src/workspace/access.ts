@@ -5,11 +5,10 @@ import { ExecutionCapacity } from "../session/execution-capacity"
 import type { Workspace } from "../session/workspace-schema"
 import { WorkspaceBinding } from "./binding"
 import path from "node:path"
+import { WorkspaceBusyError } from "./claim"
 
 export namespace WorkspaceAccess {
-  export class BusyError extends Error {
-    override name = "WorkspaceBusyError"
-  }
+  export const BusyError = WorkspaceBusyError
   export interface ClaimInput {
     id: string
     owner: string
