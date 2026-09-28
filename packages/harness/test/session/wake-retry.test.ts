@@ -5,6 +5,8 @@ import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
+import { SessionInputProgress } from "../../src/session/input-progress"
+import { SessionInputStatus } from "../../src/session/input-status"
 import { createUserMessage } from "../../src/session/input"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -75,6 +77,53 @@ describe("session wake retry", () => {
       await Bun.sleep(30)
       expect(loop.mock.calls.length).toBe(MAX_ATTEMPTS)
     }))
+
+  test("exhausted materialization retries park only that task and automatically drive the next one", () =>
+    runtime.run(async () => {
+      fastDelays()
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const bad = await SessionInbox.enqueueUser({ sessionID: session.id, parts: [{ type: "text", text: "bad" }] })
+          const good = await SessionInbox.enqueueUser({
+            sessionID: session.id,
+            model: { providerID: "test", modelID: "test" },
+            parts: [{ type: "text", text: "good" }],
+          })
+          let attempts = 0
+          let completed = false
+          spyOn(SessionInvoke, "repairAfterAbort").mockResolvedValue(false)
+          spyOn(SessionInvoke, "loop").mockImplementation((async () => {
+            const item = await SessionInbox.peekTask(session.id)
+            if (item?.id === bad.id) {
+              attempts++
+              expect((await SessionInputStatus.get({ sessionID: session.id, messageID: good.messageID })).state).toBe(
+                "accepted",
+              )
+              return SessionInputProgress.run(
+                { sessionID: session.id, messageID: bad.messageID, itemID: bad.id },
+                async () => {
+                  throw new Error("preparation unavailable")
+                },
+              )
+            }
+            expect(item?.id).toBe(good.id)
+            await SessionInbox.materializeNextTask(session.id)
+            completed = true
+            return {} as never
+          }) as unknown as typeof SessionInvoke.loop)
+          SessionManager.scheduleWake(session.id, "test")
+          await waitFor(() => completed)
+          expect(attempts).toBe(MAX_ATTEMPTS)
+          expect((await SessionInbox.getStored(session.id, bad.id)).status).toBe("failed")
+          expect((await SessionInputStatus.get({ sessionID: session.id, messageID: good.messageID })).canonical).toBe(
+            true,
+          )
+        },
+      })
+    }))
   test("scheduleWake abandons the chain immediately on a permanent worktree failure", () =>
     runtime.run(async () => {
       fastDelays()
@@ -130,7 +179,7 @@ describe("session wake retry", () => {
       await waitFor(() => loop.mock.calls.length === 2)
       expect(attempts).toBe(2)
     }))
-  test("a drained InvalidUrlError does not strand the task queued behind it", () =>
+  test("a parked invalid steer does not interrupt materialization of the task queued behind it", () =>
     runtime.run(async () => {
       fastDelays()
       await using tmp = await tmpdir({ git: true })
@@ -165,7 +214,6 @@ describe("session wake retry", () => {
               const steerItems = await SessionInbox.peekSteer(session.id)
               expect(steerItems.length).toBe(1)
               for (const item of steerItems) await SessionInbox.materializeItem(item, root.info.id)
-              return {} as never
             }
             expect((await SessionInbox.peekSteer(session.id)).length).toBe(0)
             const task = await SessionInbox.peekTask(session.id)
@@ -179,7 +227,7 @@ describe("session wake retry", () => {
 
           SessionManager.scheduleWake(session.id, "test")
           await waitFor(() => committed)
-          expect(attempts).toBe(2)
+          expect(attempts).toBe(1)
           expect((await SessionInbox.list(session.id)).some((item) => item.status === "failed")).toBe(true)
           expect(await SessionInbox.peekTask(session.id)).toBeUndefined()
         },
