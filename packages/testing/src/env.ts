@@ -27,6 +27,8 @@ export async function createIsolatedTestEnv(): Promise<{
 
   const env: Record<string, string | undefined> = { ...process.env }
   delete env.SYNERGY_HOME
+  // Bun's watchdog propagates to descendants and preempts the ownership protocol under test.
+  delete env.BUN_FEATURE_FLAG_NO_ORPHANS
   env.SYNERGY_TEST_HOME = home
   env.SYNERGY_TEST_ROOT = fixtures
   env.SYNERGY_LINK_HOME = path.join(fixtures, "link")

@@ -160,6 +160,8 @@ Use the [benchmark workspace](../../../benchmark/README.md) for model-backed tas
 
 ## Run Core Suites Through the Orchestrators
 
+Do not pass `--no-orphans` to a test batch or inherit `BUN_FEATURE_FLAG_NO_ORPHANS` into its environment. Bun propagates this watchdog through nested Bun processes, killing intentionally detached work and recovery supervisors before their owning implementation can settle them. Keep explicit fixture cleanup and process-drain assertions; a runner's automatic kill is not evidence that product ownership worked. The shared runner's detached-process regression verifies the interval after launcher exit and before the fixture releases its worker.
+
 Run `packages/harness` tests through the package scripts, never a raw `bun test --coverage --parallel`:
 
 ```bash
