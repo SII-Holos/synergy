@@ -8,11 +8,19 @@ export async function exportRollout(input: {
   runtime: string
   identity?: { sessionID: string; runID: string }
   timeoutSeconds: number
+  validationTimeoutSeconds?: number
 }) {
   const started_at = Date.now()
   const output = path.join(input.logs, "rollout.zip")
   const record = path.join(input.logs, "export.json")
-  const base = { version: 1, started_at, output, timeout_seconds: input.timeoutSeconds }
+  const validationTimeoutSeconds = input.validationTimeoutSeconds ?? 300
+  const base = {
+    version: 1,
+    started_at,
+    output,
+    timeout_seconds: input.timeoutSeconds,
+    validation_timeout_seconds: validationTimeoutSeconds,
+  }
   await atomicJSON(record, { ...base, status: "running" })
   try {
     if (!input.identity) throw new Error("No session/run identity available for export")
@@ -33,9 +41,8 @@ export async function exportRollout(input: {
       log: path.join(input.logs, "export.log"),
       timeoutMs: input.timeoutSeconds * 1000,
     })
-    const remaining = started_at + input.timeoutSeconds * 1000 - Date.now()
     const validation =
-      result.exit_code === 0 && !result.timed_out && remaining > 0
+      result.exit_code === 0 && !result.timed_out
         ? await runProcess({
             command: [
               process.execPath,
@@ -46,7 +53,7 @@ export async function exportRollout(input: {
             ],
             env: input.env,
             log: path.join(input.logs, "validation.log"),
-            timeoutMs: remaining,
+            timeoutMs: validationTimeoutSeconds * 1000,
           })
         : null
     const status =

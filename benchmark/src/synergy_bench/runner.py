@@ -678,6 +678,7 @@ def trial_configuration(
     shutil.copytree(root / "inputs" / item["variant"], inputs)
     cleanup = plan["config"]["cleanup_seconds"]
     export_timeout = plan["config"]["export_timeout_seconds"]
+    validation_timeout = plan["config"].get("archive_validation_timeout_seconds", 300)
     timeout = TASK_TIMEOUT_SECONDS
     options = {
         **{key: variant[key] for key in ["runtime", "model", "agent", "variant"]},
@@ -691,6 +692,7 @@ def trial_configuration(
         "execution_marker": "/logs/agent/model-started.json" if gateway else None,
         "cleanup_seconds": cleanup,
         "export_timeout_seconds": export_timeout,
+        "archive_validation_timeout_seconds": validation_timeout,
     }
     if gateway:
         native = harness_configuration(
@@ -734,7 +736,12 @@ def trial_configuration(
         agent=AgentConfig(
             import_path="synergy_bench.agent:SynergyAgent",
             model_name=variant["model"],
-            override_timeout_sec=timeout + options["startup_timeout_seconds"] + cleanup + export_timeout + 15,
+            override_timeout_sec=timeout
+            + options["startup_timeout_seconds"]
+            + cleanup
+            + export_timeout
+            + validation_timeout
+            + 15,
             kwargs={
                 "settings": {
                     "artifact_id": variant["artifact_id"],
@@ -745,6 +752,7 @@ def trial_configuration(
                     "network_domains": [gateway.advertised] if gateway else variant["network_domains"],
                     "cleanup_seconds": cleanup,
                     "export_timeout_seconds": export_timeout,
+                    "archive_validation_timeout_seconds": validation_timeout,
                     "project": trial_name,
                     "preparation_timeout_seconds": plan["config"]["preparation_timeout_seconds"],
                 }
@@ -1038,7 +1046,9 @@ async def reconcile_terminal(root: Path, attempt: Path, plan: dict[str, Any]) ->
     if not (agent / "execution.json").exists() and not (agent / "finished").exists() and not terminal:
         return False
     progress(f"resume: reconciling retained terminal for {attempt.parent.name} without model execution")
-    budget = plan["config"]["export_timeout_seconds"] + 15
+    budget = (
+        plan["config"]["export_timeout_seconds"] + plan["config"].get("archive_validation_timeout_seconds", 300) + 15
+    )
     execution = {}
     if (agent / "execution.json").exists():
         try:

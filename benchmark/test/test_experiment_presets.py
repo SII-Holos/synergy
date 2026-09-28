@@ -65,7 +65,12 @@ def test_formal_deadline_reaches_both_launchers(tmp_path, protocol):
     assert trial.environment.kwargs["dependency_proxy_url"] == "http://host.docker.internal:12345"
     assert read_json(attempt / "inputs/options.json")["timeout_seconds"] == 10800
     assert trial.agent.override_timeout_sec == (
-        10800 + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
+        10800
+        + config.startup_timeout_seconds
+        + config.cleanup_seconds
+        + config.export_timeout_seconds
+        + config.archive_validation_timeout_seconds
+        + 15
     )
     assert not trial.verifier.disable
     assert trial.verifier.override_timeout_sec == 10800
@@ -128,7 +133,12 @@ def test_all_presets_use_three_hours_for_both_execution_stages(tmp_path, path, n
         assert trial.agent.kwargs["settings"]["bun_jit"] == variant.bun_jit
         assert (
             trial.agent.override_timeout_sec
-            == expected + config.startup_timeout_seconds + config.cleanup_seconds + config.export_timeout_seconds + 15
+            == expected
+            + config.startup_timeout_seconds
+            + config.cleanup_seconds
+            + config.export_timeout_seconds
+            + config.archive_validation_timeout_seconds
+            + 15
         )
         assert trial.verifier.override_timeout_sec == 10800
         assert not trial.verifier.disable

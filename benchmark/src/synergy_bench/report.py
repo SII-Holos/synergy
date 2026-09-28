@@ -172,6 +172,7 @@ def report_data(root: Path, *, category: str = "trials") -> dict[str, Any]:
             "request_idle_timeout_seconds",
             "cleanup_seconds",
             "export_timeout_seconds",
+            "archive_validation_timeout_seconds",
             "preparation_timeout_seconds",
             "resources",
         ]

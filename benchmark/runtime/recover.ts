@@ -6,6 +6,7 @@ const result = await exportRollout({
   runtime: request.runtime,
   identity: request.identity,
   timeoutSeconds: request.timeout_seconds,
+  validationTimeoutSeconds: request.validation_timeout_seconds,
   env: {
     ...process.env,
     SYNERGY_HOME: "/recovery/home",

@@ -234,6 +234,7 @@ class ExperimentConfig(StrictModel):
     cache: str = ".artifacts/benchmark/cache"
     cleanup_seconds: int = Field(default=60, ge=10, le=600)
     export_timeout_seconds: int = Field(default=300, ge=1, le=3600)
+    archive_validation_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     preparation_timeout_seconds: int = Field(default=1800, ge=1, le=7200)
     startup_timeout_seconds: int = Field(default=120, ge=1, le=1800)
     request_idle_timeout_seconds: Annotated[int, Field(gt=0, strict=True)] | None = None

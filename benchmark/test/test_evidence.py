@@ -201,6 +201,63 @@ def test_partial_suite_keeps_actual_starts_separate_from_missing_results(tmp_pat
     assert result["missing_results"] == [{"source": "verifier/ctrf.json", "count": 1}]
 
 
+def test_numbered_case_drift_and_timeout_placeholders_are_reconciled_without_changing_reward(tmp_path):
+    from synergy_bench.evidence import grading_evidence
+    from synergy_bench.storage import atomic_json
+
+    atomic_json(
+        tmp_path / "verifier/ctrf.json",
+        {
+            "results": {
+                "tests": [
+                    {
+                        "name": "[p2p] suite.test_rule[ruleset321-same-case]",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    },
+                    {
+                        "name": "[f2p] pkg.TestSlow",
+                        "status": "failed",
+                        "message": "missing from report (test did not run or produced no result — see raw output)",
+                    },
+                    {"name": "[f2p] pkg.TestActual", "status": "failed", "message": "assertion failed"},
+                ]
+            }
+        },
+    )
+    reports = tmp_path / "verifier/reports"
+    reports.mkdir()
+    (reports / "base.xml").write_text(
+        '<testsuite tests="1"><testcase classname="suite" name="test_rule[ruleset337-same-case]"/></testsuite>'
+    )
+    (tmp_path / "verifier/run.log").write_text(
+        '{"Action":"run","Package":"pkg","Test":"TestSlow"}\n'
+        '{"Action":"output","Package":"pkg","Test":"TestSlow","Output":"panic: test timed out after 3m0s\\n"}\n'
+    )
+    result = grading_evidence(
+        tmp_path,
+        {
+            "exception_info": {"exception_type": "VerifierTimeoutError"},
+            "verifier_result": {"rewards": {"reward": 0}},
+        },
+    )
+    reconciliation = result["test_reconciliation"]
+    assert result["raw_rewards"] == {"reward": 0}
+    assert reconciliation["actual_failed"] == ["[f2p] pkg.TestActual"]
+    assert reconciliation["renumbered"] == [
+        {
+            "expected": "[p2p] suite.test_rule[ruleset321-same-case]",
+            "observed": "suite.test_rule[ruleset337-same-case]",
+            "status": "passed",
+        }
+    ]
+    assert reconciliation["unresolved_missing"] == ["[f2p] pkg.TestSlow"]
+    assert reconciliation["started_without_result"] == ["[f2p] pkg.TestSlow"]
+    assert reconciliation["not_started"] == []
+    assert reconciliation["timed_out_tests"] == ["pkg.TestSlow"]
+    assert reconciliation["verifier_timed_out"] is True
+
+
 def test_private_runtime_home_is_not_public_evidence(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "agent/home"
     vault = home / ".synergy/data/auth/secret-vault.json"

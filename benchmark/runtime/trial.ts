@@ -140,6 +140,7 @@ const exported = await exportRollout({
   runtime: options.runtime,
   identity,
   timeoutSeconds: options.export_timeout_seconds,
+  validationTimeoutSeconds: options.archive_validation_timeout_seconds,
 })
 await Bun.write(path.join(logs, "finished"), "\n")
 process.exit(exported.status === "completed" ? exitCode : 1)

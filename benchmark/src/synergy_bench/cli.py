@@ -14,7 +14,7 @@ from .catalog import Suite
 from .evaluator import recorded_environment
 from .evidence import summarize
 from .prepare import BENCHMARK, remove_owned_container
-from .recovery import recover_export
+from .recovery import recover_archive_validation, recover_export
 from .report import paired_compare, report_data, write_report
 from .results import PLAN_VERSION, RESULT_VERSION, require_current_plan
 from .runner import initialize, inspect_config, remove_environment, resume
@@ -97,6 +97,14 @@ def main() -> None:
     recovery.add_argument("--trial", required=True)
     recovery.add_argument("--attempt", type=int, default=1)
     recovery.add_argument("--timeout", type=int, default=300)
+    validation_recovery = sub.add_parser(
+        "recover-archive-validation",
+        help="Validate the original retained ZIP after a validation timeout, without re-export or model calls",
+    )
+    validation_recovery.add_argument("run", type=Path)
+    validation_recovery.add_argument("--trial", required=True)
+    validation_recovery.add_argument("--attempt", type=int, default=1)
+    validation_recovery.add_argument("--timeout", type=int, default=300)
     report = sub.add_parser("report", help="Read current-format evidence without executing it")
     report.add_argument("run", type=Path)
     report.add_argument("--output", type=Path)
@@ -232,6 +240,10 @@ def main() -> None:
             if args.timeout < 1 or args.timeout > 3600:
                 raise ValueError("Export timeout must be between 1 and 3600 seconds")
             result = recover_export(args.run, args.trial, args.attempt, timeout=args.timeout)
+            emit(result)
+            raise SystemExit(0 if result["status"] == "completed" else 1)
+        elif args.command == "recover-archive-validation":
+            result = recover_archive_validation(args.run, args.trial, args.attempt, timeout=args.timeout)
             emit(result)
             raise SystemExit(0 if result["status"] == "completed" else 1)
         elif args.command == "clean":
