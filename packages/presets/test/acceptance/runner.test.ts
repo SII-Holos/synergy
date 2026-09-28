@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { makePlan, execute, report, type Driver } from "../../script/acceptance/runner"
+import { makePlan, execute, report, validateFreeze, type Driver } from "../../script/acceptance/runner"
 import { atomicJSON, digest, sealEvidence, type AcceptanceCase } from "../../script/acceptance/evidence"
 
 const scenario: AcceptanceCase = {
@@ -20,6 +20,47 @@ const scenario: AcceptanceCase = {
   checks: [{ evidence: "physical.json", pointer: ["effects"], equals: 1 }],
 }
 const source = "a".repeat(40)
+
+test("a frozen artifact directory includes nested bytes, inventory and internal links", async () => {
+  await using tmp = await tmpdir()
+  const artifact = path.join(tmp.path, "artifact")
+  await fs.mkdir(path.join(artifact, "assets"), { recursive: true })
+  const file = path.join(artifact, "assets/app.js")
+  await Bun.write(file, "original")
+  await fs.symlink("assets/app.js", path.join(artifact, "entry"))
+  const plan = await makePlan({
+    source,
+    directory: path.join(tmp.path, "run"),
+    cases: [scenario],
+    inputs: [{ name: "web", path: artifact }],
+  })
+  await validateFreeze(plan)
+  await Bun.write(file, "modified")
+  await expect(validateFreeze(plan)).rejects.toThrow("Frozen input changed")
+  await Bun.write(file, "original")
+  await Bun.write(path.join(artifact, "extra.js"), "extra")
+  await expect(validateFreeze(plan)).rejects.toThrow("Frozen input changed")
+  await fs.unlink(path.join(artifact, "extra.js"))
+  await fs.unlink(path.join(artifact, "entry"))
+  await expect(validateFreeze(plan)).rejects.toThrow("Frozen input changed")
+})
+
+test("artifact freezing rejects links to a dependency outside the declared installation", async () => {
+  await using tmp = await tmpdir()
+  const artifact = path.join(tmp.path, "artifact")
+  await fs.mkdir(artifact)
+  await Bun.write(path.join(tmp.path, "outside"), "checkout dependency")
+  await fs.symlink("../outside", path.join(artifact, "external"))
+  await expect(
+    makePlan({
+      source,
+      directory: path.join(tmp.path, "run"),
+      cases: [scenario],
+      inputs: [{ name: "install", path: artifact }],
+    }),
+  ).rejects.toThrow("outside the frozen artifact")
+})
+
 async function setup(root: string) {
   const input = path.join(root, "artifact")
   await Bun.write(input, "immutable")

@@ -241,7 +241,7 @@ export const cases: AcceptanceCase[] = [
       "Pause/continue/cancel and submit new input",
       "Switch resources and inspect persisted state",
     ],
-    fault: "Pause/cancel and binding switch during active input",
+    fault: "Pause/cancel during active input, followed by resource selection",
     expected: [
       "Attachment and draft preserved",
       "UI matches stored state",

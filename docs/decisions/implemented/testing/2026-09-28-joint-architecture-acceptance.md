@@ -48,11 +48,13 @@ Resource cycling invokes the existing public summarization action only after obs
 
 The local entry checks the shared native reservation inventory before dispatching model requests. It refuses existing writers, including exited but deliberately retained durable claims, without modifying their ledger. Failure cleanup must run in the process's owning Runtime context; otherwise a fixture can retain its finalization claim and contaminate a later host-wide writer experiment. Recovery uses verified operation ownership and the original claim reference, never a wholesale ledger reset.
 
-## Alternatives considered
+Artifact directories are frozen recursively, including executable bits and internal symbolic links; dependencies outside the selected directory are rejected. This binds production Web chunks, the Desktop shell, Electron resources and installed closures instead of only an entry file. Product drivers serve the explicit Web artifact from an isolated full server on an alternate port, use an independent Desktop user directory, and operate the real composer and resource dialogs. Pause and cancellation require physical process exit as well as stored state. Web recovery crosses actual WebSocket interruption, refresh, a pending command, an uploaded draft and synthetic multi-page history; the seeded history is kept separate from model accounting.
 
 Browser action timing is checked with the controller's injected monotonic clock: after the requested deadline, it must stop polling and dispatch no input. The real Chromium contract independently verifies the blocking overlay and absence of clicks. Its former two-second end-to-end wall-clock assertion also counted unrelated CDP scheduling under CI instrumentation and did not isolate the action deadline.
 
 The shared test executor does not enable Bun's inherited no-orphans watchdog. Bun 1.4.2 exports that mode to nested processes and defaults Linux children to parent-death termination ([upstream implementation](https://github.com/oven-sh/bun/blob/bun-v1.4.2/src/io/ParentDeathWatchdog.rs)). This changes the behavior under test: a detached child dies before its owner reclaims it, and a recovery supervisor can be killed before writing its drainage receipt. A failing batch-level behavioral regression establishes the launcher-exit/worker-release boundary; removing the policy preserves explicit fixture cleanup, assertions, reports and test selection. Isolated environments also remove an inherited watchdog flag. Test success must come from product lifecycle handling, not runner termination.
+
+## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.
 

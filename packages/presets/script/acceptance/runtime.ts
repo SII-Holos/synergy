@@ -59,12 +59,22 @@ export async function acceptanceRuntime(
   try {
     const prepared = await prepareRuntime(directory, settings, gateway)
     home = prepared.home
+    let port = 0
+    if (options.webAppDirectory) {
+      const reservation = Bun.serve({
+        hostname: "127.0.0.1",
+        port: 0,
+        fetch: () => new Response(null, { status: 503 }),
+      })
+      port = reservation.port!
+      await reservation.stop(true)
+    }
     runtime = options.http
       ? await PresetRuntimeHandle.open({
           host: prepared.host,
-          mode: "oneshot",
+          mode: options.webAppDirectory ? "server" : "oneshot",
           storage: options.storage,
-          network: { hostname: "127.0.0.1", port: 0 },
+          network: { hostname: "127.0.0.1", port },
           webAppDirectory: options.webAppDirectory,
         })
       : await PresetRuntimeHandle.openTask({ host: prepared.host, mode: "oneshot", storage: options.storage })

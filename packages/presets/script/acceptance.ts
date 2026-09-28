@@ -59,6 +59,14 @@ export async function main(args: string[]) {
       { name: "dependencies", path: path.join(root, "bun.lock") },
       ...(settings.chromium ? [{ name: "chromium", path: settings.chromium }] : []),
       ...(settings.postgres ? [{ name: "postgres-connection", path: settings.postgres.urlFile }] : []),
+      ...Object.entries(settings.artifacts ?? {}).flatMap(([name, value]) =>
+        typeof value === "string"
+          ? [{ name: `artifact-${name}`, path: value }]
+          : [
+              { name: `artifact-${name}`, path: value.directory },
+              ...("electronDirectory" in value ? [{ name: "artifact-electron", path: value.electronDirectory }] : []),
+            ],
+      ),
       ...Object.entries(settings.remote ?? {}).flatMap(([kind, value]) =>
         typeof value === "object"
           ? Object.entries(value).map(([name, file]) => ({ name: `${kind}-${name}`, path: file }))
@@ -103,6 +111,8 @@ export async function main(args: string[]) {
     const { remoteLoss } = await import("./acceptance/remote-loss")
     const { sharedDelegation } = await import("./acceptance/shared-delegation")
     const { resourceCycles } = await import("./acceptance/resource-cycles")
+    const { desktopInput } = await import("./acceptance/product-ui")
+    const { webReconnect } = await import("./acceptance/product-web")
     await execute(
       plan,
       {
@@ -112,6 +122,8 @@ export async function main(args: string[]) {
         "storage-sqlite": persistence(settings),
         "fault-model-stream": modelStream(settings),
         "shared-delegation": sharedDelegation(settings),
+        ...(settings.artifacts?.web && settings.artifacts.desktop ? { "desktop-input": desktopInput(settings) } : {}),
+        ...(settings.artifacts?.web && settings.chromium ? { "web-reconnect": webReconnect(settings) } : {}),
         ...(settings.postgres ? { "storage-postgres": persistence(settings) } : {}),
         ...(settings.remote
           ? {

@@ -22,6 +22,8 @@ Verify experience states through the persisted reward status and generated DTO, 
 
 ## Preserve State and API Ownership
 
+Ordinary uploaded attachments leave model preparation policy to the server. Do not manufacture an explicit summary or exclusion policy from MIME type: that can suppress text and document extraction. Verify the actual composer payload through preparation and a provider request, including a random identifier present only inside the uploaded bytes; upload success and a file card alone do not prove delivery.
+
 For optional components, use `useGlobalSDK().capabilities` and the built-in surface requirements. Test a core server and one selected component, including eager resources and reconnecting to a different selection. Keep plugin-owned surfaces independent of the built-in map; configuration field ownership still comes from `/config/domains`.
 
 Observer targets delivered by asynchronous mount callbacks must be reactive element signals, with cleanup on unmount. Verify late mount and replacement against rendered layout or computed CSS properties instead of asserting implementation strings.

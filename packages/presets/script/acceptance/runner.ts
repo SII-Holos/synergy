@@ -3,6 +3,7 @@ import path from "node:path"
 import { z } from "zod"
 import { AcceptanceCase, Result, atomicJSON, digest, sealEvidence, verifyResult, type Evidence } from "./evidence"
 import { readRequests } from "./provider"
+import { artifactDigest } from "./artifacts"
 
 const inputSchema = z
   .object({ name: z.string().min(1), path: z.string(), sha256: z.string().regex(/^[a-f0-9]{64}$/) })
@@ -41,7 +42,7 @@ export async function makePlan(input: {
     declared.map(async (entry) => ({
       name: entry.name,
       path: await fs.realpath(entry.path),
-      sha256: digest(new Uint8Array(await Bun.file(entry.path).arrayBuffer())),
+      sha256: await artifactDigest(entry.path),
     })),
   )
   const body = PlanBody.parse({
@@ -74,8 +75,7 @@ export async function validateFreeze(plan: Plan, source = plan.source) {
   if (digest(JSON.stringify(body)) !== expected) throw new Error("Plan was changed after freezing")
   if (source !== plan.source) throw new Error("Frozen source changed")
   for (const input of plan.inputs) {
-    if (digest(new Uint8Array(await Bun.file(input.path).arrayBuffer())) !== input.sha256)
-      throw new Error(`Frozen input changed: ${input.name}`)
+    if ((await artifactDigest(input.path)) !== input.sha256) throw new Error(`Frozen input changed: ${input.name}`)
   }
 }
 

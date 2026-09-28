@@ -1,6 +1,6 @@
 # Postmortems
 
-Postmortems explain failures that reached users, merged code or releases: what broke, why safeguards missed it, and the guardrails added.
+Postmortems explain escaped failures, their causes, missed safeguards and added guardrails.
 
 ## When to write one
 
@@ -91,6 +91,8 @@ Add entries only for qualifying incidents.
 | 0032 | [Workspace-free attachment preparation](0032-workspace-free-attachment-preparation.md) | implemented | 2026-09-28 |
 
 | 0033 | [Completed terminal blocked Runtime shutdown](0033-completed-terminal-blocked-runtime-shutdown.md) | implemented | 2026-09-28 |
+
+| 0034 | [Composer uploads suppressed attachment content](0034-composer-upload-suppressed-content.md) | implemented | 2026-09-28 |
 
 ## History rules
 

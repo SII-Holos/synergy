@@ -94,7 +94,7 @@ describe("prompt attachment image preview grouping", () => {
 })
 
 describe("prompt attachment submit parts", () => {
-  test("keeps image uploads as provider-file asset attachments", () => {
+  test("preserves image uploads without overriding the server's model policy", () => {
     const part = createUploadedAttachmentInputPart({
       type: "attachment",
       id: "part-image",
@@ -106,23 +106,30 @@ describe("prompt attachment submit parts", () => {
     })
 
     expect(part.url).toBe("asset://photo.jpg")
-    expect(part.model).toEqual({ mode: "provider-file", summary: "photo.jpg (image/jpeg)" })
+    expect(part).not.toHaveProperty("model")
     expect(part.metadata).toEqual({ thumbnail: { url: "asset://photo.thumb.webp" } })
     expect(part.presentation).toEqual({ renderer: "thumbnail", size: "small", crop: true })
     expect(JSON.stringify(part)).not.toContain("data:")
   })
 
-  test("keeps non-image uploads as summary asset attachments", () => {
+  test.each([
+    ["notes.txt", "text/plain;charset=utf-8"],
+    ["data.json", "application/json"],
+    ["report.pdf", "application/pdf"],
+    ["report.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  ])("lets the server prepare uploaded %s content", (filename, mime) => {
     const part = createUploadedAttachmentInputPart({
       type: "attachment",
       id: "part-doc",
-      filename: "notes.txt",
-      mime: "text/plain",
-      url: "asset://notes.txt",
+      filename,
+      mime,
+      url: `asset://${filename}`,
     })
 
-    expect(part.url).toBe("asset://notes.txt")
-    expect(part.model).toEqual({ mode: "summary", summary: "notes.txt (text/plain)" })
+    expect(part.url).toBe(`asset://${filename}`)
+    expect(part.filename).toBe(filename)
+    expect(part.mime).toBe(mime)
+    expect(part).not.toHaveProperty("model")
     expect(JSON.stringify(part)).not.toContain("data:")
   })
 })

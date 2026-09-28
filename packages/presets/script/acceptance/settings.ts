@@ -20,6 +20,22 @@ export const Settings = z
       .strict()
       .optional(),
     chromium: z.string().optional(),
+    artifacts: z
+      .object({
+        web: z.string().optional(),
+        desktop: z
+          .object({ directory: z.string(), entry: z.string(), electronDirectory: z.string(), executable: z.string() })
+          .strict()
+          .optional(),
+        core: z.string().optional(),
+        full: z.string().optional(),
+        previous: z
+          .object({ directory: z.string(), source: z.string().regex(/^[a-f0-9]{40}$/) })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
 export type Settings = z.infer<typeof Settings>
