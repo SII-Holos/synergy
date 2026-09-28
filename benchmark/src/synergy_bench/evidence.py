@@ -85,15 +85,15 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
                 )
                 observed = len(reported) - missing
                 for test in reported:
-                    name = test.get("name")
-                    if not isinstance(name, str):
+                    test_name = test.get("name")
+                    if not isinstance(test_name, str):
                         continue
                     if test.get("status") == "failed" and str(test.get("message", "")).startswith(
                         "missing from report ("
                     ):
-                        missing_names.append(name)
+                        missing_names.append(test_name)
                     elif test.get("status") == "failed":
-                        actual_failed.append(name)
+                        actual_failed.append(test_name)
                 if missing:
                     missing_results.append({"source": file.relative_to(trial).as_posix(), "count": missing})
             elif file.suffix in {".txt", ".log", ".jsonl"}:
