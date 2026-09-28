@@ -46,6 +46,8 @@ Shared-delegation acceptance blocks actual child writers behind an owned coopera
 
 Resource cycling invokes the existing public summarization action only after observing a new substantial Bash history with managed/inline attachments and completed delegation. Two committed non-mechanical model summaries must retain all random identifiers. Three subsequent controller deaths and compute replacements must preserve the single side effect and support recall with tools disabled. A separate Runtime keeps a physical heartbeat process and its own model conversation alive throughout. The observer records RSS, descriptors, connections, process trees, disk growth and Docker statistics, and verifies reclamation of owned processes, uses, containers, volumes and networks. This is explicit product compaction over real history; it does not claim that the provider's full context capacity was exhausted. Three recovery cycles establish the declared bounded observation, not an indefinite memory-leak proof.
 
+The local entry checks the shared native reservation inventory before dispatching model requests. It refuses existing writers, including exited but deliberately retained durable claims, without modifying their ledger. Failure cleanup must run in the process's owning Runtime context; otherwise a fixture can retain its finalization claim and contaminate a later host-wide writer experiment. Recovery uses verified operation ownership and the original claim reference, never a wholesale ledger reset.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.

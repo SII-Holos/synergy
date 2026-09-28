@@ -85,6 +85,8 @@ export async function main(args: string[]) {
     await validateCatalog(settings)
     process.env.MODELS_DEV_API_JSON = settings.modelCatalog
     process.env.SYNERGY_DISABLE_MODELS_FETCH = "1"
+    const { assertNativeAcceptanceReady } = await import("./acceptance/native-preflight")
+    await atomicJSON(path.join(directory, `native-preflight-${Date.now()}.json`), await assertNativeAcceptanceReady())
     const { attachments } = await import("./acceptance/attachments")
     const driver = attachments(settings)
     const { remoteFault } = await import("./acceptance/remote")
