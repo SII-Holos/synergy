@@ -88,11 +88,13 @@ export async function main(args: string[]) {
     const driver = attachments(settings)
     const { remoteFault } = await import("./acceptance/remote")
     const { media } = await import("./acceptance/media")
+    const { objects } = await import("./acceptance/objects")
     await execute(
       plan,
       {
         ...Object.fromEntries(["home", "project", "workspace"].map((kind) => [`attachments-${kind}`, driver])),
         ...Object.fromEntries(["attachment-policy", "vision-child"].map((id) => [id, media(settings)])),
+        ...Object.fromEntries(["fault-publication-ack", "object-protocols"].map((id) => [id, objects(settings)])),
         ...(settings.remote
           ? Object.fromEntries(["fault-command-crash", "fault-save-crash"].map((id) => [id, remoteFault(settings)]))
           : {}),

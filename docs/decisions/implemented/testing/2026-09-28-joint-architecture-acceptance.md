@@ -22,6 +22,8 @@ Attachment recognition exposes only the declared input channel: direct recogniti
 
 Catalog selection occurs before importing the source Runtime graph because its models macro runs during module loading. The selected file lives outside Runtime's disposable cache: fresh startup can clear that cache, and a restart must still resolve the same catalog-only model. A subprocess regression exercises actual controller death, fresh imports and a normal post-recovery model call to verify this distinction.
 
+Object publication acceptance uploads actual bytes before interrupting the metadata transaction, checks the old readable head after rollback, and drops the caller's result after a successful commit. Reconciliation must preserve the committed head and reject a stale second publication. S3 and OSS run through their actual signing adapters against isolated protocol endpoints backed by ordinary files; access denial, missing objects, corruption and truncation must preserve the published manifest and retain attributable errors. These endpoints establish adapter behavior, not deployment acceptance for either cloud vendor.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.
