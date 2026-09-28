@@ -95,6 +95,7 @@ export async function main(args: string[]) {
     const { apiLazy } = await import("./acceptance/api-lazy")
     const { acknowledgements } = await import("./acceptance/acknowledgements")
     const { executionDrain } = await import("./acceptance/execution-drain")
+    const { cancellations } = await import("./acceptance/cancellation")
     await execute(
       plan,
       {
@@ -111,6 +112,7 @@ export async function main(args: string[]) {
               ),
               "api-lazy": apiLazy(settings),
               "execution-drain": executionDrain(settings),
+              "fault-cancel-phases": cancellations(settings),
               ...Object.fromEntries(
                 ["fault-allocation-ack", "fault-release-ack"].map((id) => [id, acknowledgements(settings)]),
               ),

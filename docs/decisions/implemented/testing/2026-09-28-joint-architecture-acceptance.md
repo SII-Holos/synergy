@@ -34,6 +34,8 @@ Fault-stage checkpoints seal immutable observations before continuing. An except
 
 Remote terminal acceptance uses the generated SDK and actual WebSockets to disconnect and reconnect quiet work, resize the terminal, drain a background child's Unicode output and independently compare physical, saved and replacement-container bytes. Idle sweeping must refuse live work and reclaim it only after drainage and saving. A normal model task reads the restored files, and Runtime shutdown must drain all HTTP and WebSocket work before the scenario returns. Fault checkpoints retain completed stages even if that final shutdown fails.
 
+Cancellation runs the same four stages against native and remote execution. A cooperative writer permits an observable queued claim; cancellation must leave that writer alive and the waiting command unstarted. Separate stages stop after resource acquisition, while a parent and descendant are running, and after physical exit with unread output. Raw claim ledgers, physical process trees and file/output hashes independently verify no premature execution, orphan or truncated result. An expected preactivation cancellation error is accepted only when the durable operation independently reaches completed with verified drainage.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.
