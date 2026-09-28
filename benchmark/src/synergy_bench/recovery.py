@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from .catalog import tree_digest
 from .prepare import BENCHMARK, command, evaluator_identity, recipe_links, remove_owned_container, verify_prepared
 from .results import RESULT_VERSION, require_current_plan
 from .storage import atomic_json, locked, read_json
@@ -147,6 +148,15 @@ def recover_archive_validation(root: Path, trial: str, attempt: int, *, timeout:
         variant = plan["variants"][read_json(original / "trial.json")["variant"]]
         artifact = Path(variant["artifact"])
         receipt = verify_prepared(artifact)
+        frozen = root / "evaluator"
+        recorded = read_json(root / "evaluator.json")
+        if (
+            frozen.is_symlink()
+            or not frozen.is_dir()
+            or recorded.get("identity") != plan.get("evaluator")
+            or tree_digest(frozen) != recorded.get("snapshot_digest")
+        ):
+            raise ValueError("Original evaluator snapshot changed")
         target = root / "recoveries" / f"validation-{int(trial):04d}-{attempt:03d}-{uuid.uuid4().hex[:8]}"
         target.mkdir(parents=True, mode=0o700)
         metadata = {
@@ -156,14 +166,16 @@ def recover_archive_validation(root: Path, trial: str, attempt: int, *, timeout:
             "started_at": time.time(),
             "original_evidence_sha256": hashlib.sha256(evidence_file.read_bytes()).hexdigest(),
             "archive_sha256": checksum,
-            "validation_evaluator": evaluator_identity(),
+            "recovery_evaluator": evaluator_identity(),
+            "validation_evaluator": recorded["identity"],
+            "validation_snapshot_digest": recorded["snapshot_digest"],
             "model_calls": 0,
         }
         atomic_json(target / "recovery.json", metadata)
         try:
-            shutil.copytree(BENCHMARK / "runtime", target / "runtime", ignore=shutil.ignore_patterns("node_modules"))
+            shutil.copytree(frozen / "runtime", target / "runtime", ignore=shutil.ignore_patterns("node_modules"))
             for name, relative in recipe_links(
-                artifact / "bundle/source", read_json(BENCHMARK / "package.json")["dependencies"]
+                artifact / "bundle/source", read_json(frozen / "package.json")["dependencies"]
             ).items():
                 link = target / "runtime/node_modules" / name
                 link.parent.mkdir(parents=True, exist_ok=True)

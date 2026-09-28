@@ -19,7 +19,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 
 ## Preserve execution and evidence
 
-1. Write a failing behavioral regression before changing lifecycle, protocol, usage or scoring behavior. Use the native verifier and the fixed three-hour execution budget. Preparation, execution, export, archive validation and cleanup have separate deadlines. A validation timeout may be resumed only against the byte-identical retained ZIP, with a separate receipt and no model replay; preserve the original evidence and reward.
+1. Write a failing behavioral regression before changing lifecycle, protocol, usage or scoring behavior. Use the native verifier and the fixed three-hour execution budget. Preparation, execution, export, archive validation and cleanup have separate deadlines. A validation timeout may be resumed only against the byte-identical retained ZIP with the run's frozen verifier and dependency map, with a separate receipt and no model replay; preserve the original evidence and reward.
    Preserve Pier's `AgentTimeoutError` when an outer deadline interrupts execution; its native exception type determines whether artifact collection and verification continue. Validate this with a real timed-out native oracle and a completed verifier.
 2. Keep native prompts, tools, loops and compaction. A protocol bridge converts messages and streams; it must not create an agent loop or silently drop unsupported controls.
    Compare sealed source inventories by canonical path and content, not traversal order; retain the receipt's original digest and reject any byte, mode, link, or path change.

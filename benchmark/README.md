@@ -35,7 +35,7 @@ bun bench cache /absolute/path/to/cache --collect
 bun bench clean /absolute/path/to/run
 ```
 
-`debug` 创建独立 attempt；`recover-export` 在 retained Home 副本中重新导出；`recover-archive-validation` 仅对原验证超时的同一份 ZIP 续验，结果另存为派生记录。两者均不调用模型、不替换原评分或失败状态。`clean` 明确删除指定实验的证据及所属容器、网络和卷，并释放缓存引用。所有操作遵循实验所有权锁，不执行全局 Docker prune。
+`debug` 创建独立 attempt；`recover-export` 在 retained Home 副本中重新导出；`recover-archive-validation` 使用原运行中冻结的验证器，仅对原验证超时的同一份 ZIP 续验，结果另存为派生记录。两者均不调用模型、不替换原评分或失败状态。`clean` 明确删除指定实验的证据及所属容器、网络和卷，并释放缓存引用。所有操作遵循实验所有权锁，不执行全局 Docker prune。
 
 ## 配置与实验条件
 

@@ -1,7 +1,10 @@
 import hashlib
 from pathlib import Path
 
+import pytest
+
 from synergy_bench import recovery
+from synergy_bench.catalog import tree_digest
 from synergy_bench.storage import atomic_json
 
 
@@ -15,12 +18,19 @@ def test_validation_recovery_uses_exact_retained_archive_without_export_or_evide
     archive = agent / "rollout.zip"
     archive.write_bytes(b"frozen archive")
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
+    frozen = root / "evaluator"
+    (frozen / "runtime").mkdir(parents=True)
+    (frozen / "runtime/verify.ts").write_text("frozen validator")
+    atomic_json(frozen / "package.json", {"dependencies": {"@old/runtime": "workspace:*"}})
+    identity = {"fixture": "original-evaluator"}
+    atomic_json(root / "evaluator.json", {"identity": identity, "snapshot_digest": tree_digest(frozen)})
     atomic_json(root / "owner.json", {"kind": "synergy-benchmark-run", "version": 1})
     atomic_json(
         root / "plan.json",
         {
             "version": 4,
             "result_version": 5,
+            "evaluator": identity,
             "variants": {"A": {"artifact": str(artifact), "runtime": "core"}},
             "config": {"platform": "linux/amd64"},
         },
@@ -38,7 +48,11 @@ def test_validation_recovery_uses_exact_retained_archive_without_export_or_evide
     )
     before = (original / "evidence.json").read_bytes()
     monkeypatch.setattr(recovery, "verify_prepared", lambda _: {"base_image": "fixture-image"})
-    monkeypatch.setattr(recovery, "recipe_links", lambda *_: {})
+    def frozen_recipe(source, dependencies):
+        assert dependencies == {"@old/runtime": "workspace:*"}
+        return {}
+
+    monkeypatch.setattr(recovery, "recipe_links", frozen_recipe)
 
     def verify(command, log=None, timeout=None):
         assert command.count("-v") >= 2
@@ -55,8 +69,12 @@ def test_validation_recovery_uses_exact_retained_archive_without_export_or_evide
     assert result["status"] == "completed"
     assert result["model_calls"] == 0
     assert result["validation_evaluator"]
+    assert result["validation_evaluator"] == identity
     assert (original / "evidence.json").read_bytes() == before
     assert archive.read_bytes() == b"frozen archive"
+    (frozen / "runtime/verify.ts").write_text("changed validator")
+    with pytest.raises(ValueError, match="Original evaluator snapshot changed"):
+        recovery.recover_archive_validation(root, "0", 1, timeout=60)
 
 
 def test_validation_recovery_rejects_changed_archive(tmp_path):
@@ -76,7 +94,5 @@ def test_validation_recovery_rejects_changed_archive(tmp_path):
             "files": {"agent/rollout.zip": {"sha256": "0" * 64, "bytes": 7}},
         },
     )
-    import pytest
-
     with pytest.raises(ValueError, match="archive hash"):
         recovery.recover_archive_validation(root, "0", 1)
