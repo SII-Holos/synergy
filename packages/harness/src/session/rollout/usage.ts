@@ -141,7 +141,11 @@ export namespace RolloutUsage {
       result.input.cacheWrite = 0
       result.input.uncached = difference(result.input.total, result.input.cacheRead)
       result.output.reasoning = count(usage.thoughtsTokenCount)
-      result.output.total = sum(count(usage.candidatesTokenCount), result.output.reasoning)
+      // The reported aggregate includes prompt, candidate output and thinking.
+      // https://ai.google.dev/api/generate-content#UsageMetadata
+      result.output.total =
+        sum(count(usage.candidatesTokenCount), result.output.reasoning) ??
+        difference(count(usage.totalTokenCount), result.input.total)
     }
     return validate(result, count(usage.total_tokens ?? usage.totalTokenCount))
   }
@@ -214,7 +218,7 @@ export namespace RolloutUsage {
     const reasoning = count(usage.reasoningTokens)
     // The locked Google SDK maps candidatesTokenCount and thoughtsTokenCount separately.
     const output = google
-      ? (difference(count(usage.totalTokens), input) ?? sum(count(usage.outputTokens), reasoning))
+      ? (sum(count(usage.outputTokens), reasoning) ?? difference(count(usage.totalTokens), input))
       : count(usage.outputTokens)
     if (input === null && output === null) return null
     const exclusiveInput =

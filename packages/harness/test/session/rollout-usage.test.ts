@@ -153,3 +153,24 @@ test("Google SDK fallback leaves output unknown when thinking and aggregate are 
   expect(usage!.output.total).toBeNull()
   expect(usage!.complete).toBe(false)
 })
+
+test("Google wire usage retains exact output from the reported aggregate without inventing a thinking split", () => {
+  const usage = RolloutUsage.normalize("google", {
+    promptTokenCount: 100,
+    candidatesTokenCount: 20,
+    totalTokenCount: 200,
+  })
+  expect(usage.input.total).toBe(100)
+  expect(usage.output).toEqual({ total: 100, reasoning: null })
+  expect(usage.input.cacheRead).toBeNull()
+})
+
+test("Google SDK fallback rejects conflicting complete output components and aggregate", () => {
+  const usage = RolloutUsage.normalizeSdk(
+    { inputTokens: 100, outputTokens: 20, reasoningTokens: 80, totalTokens: 150 },
+    "@ai-sdk/google",
+  )
+  expect(usage!.issues).toContain("total_mismatch")
+  expect(usage!.input.total).toBeNull()
+  expect(usage!.output.total).toBeNull()
+})
