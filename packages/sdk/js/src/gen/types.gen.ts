@@ -12491,6 +12491,10 @@ export type GlobalStatsUsageClearResponses = {
     removed: number
     activeRetained: number
     newerRetained: number
+    /**
+     * Owner-level gaps retained because the clear selects a specific run
+     */
+    unattributedRetained: number
     revision: number
   }
 }

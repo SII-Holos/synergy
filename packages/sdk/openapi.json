@@ -574,7 +574,7 @@
       "delete": {
         "operationId": "global.stats.usageClear",
         "summary": "Clear explicitly scoped terminal usage records",
-        "description": "Requires an explicit Scope, session or time range and the summary revision to clear through. Active and newer records are retained. Cleared identities cannot be restored by a rebuild.",
+        "description": "Requires an explicit Scope, session or time range and the summary revision to clear through. Active and newer records are retained. Run-filtered clears also retain unattributed owner-level gaps. Cleared identities cannot be restored by a rebuild.",
         "responses": {
           "200": {
             "description": "Cleared and retained record counts",
@@ -592,11 +592,15 @@
                     "newerRetained": {
                       "type": "number"
                     },
+                    "unattributedRetained": {
+                      "description": "Owner-level gaps retained because the clear selects a specific run",
+                      "type": "number"
+                    },
                     "revision": {
                       "type": "number"
                     }
                   },
-                  "required": ["removed", "activeRetained", "newerRetained", "revision"]
+                  "required": ["removed", "activeRetained", "newerRetained", "unattributedRetained", "revision"]
                 }
               }
             }

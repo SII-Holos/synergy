@@ -132,11 +132,13 @@ export namespace UsageQuery {
     record.kind === "attempt" ? (record.timing?.sentAt ?? record.started) : record.started
   const scopeKey = (owner: UsageSchema.Owner) => `${owner.scopeID}:${UsageLedger.ownerKey(owner)}`
   const runKey = (owner: UsageSchema.Owner, runID: string) => `${scopeKey(owner)}:${runID}`
+  type Selection = { runs: Set<string>; owners: Set<string>; roots: Set<string> }
 
-  async function related(filter: z.output<typeof UsageSchema.Filter>) {
-    if ((!filter.sessionID && !filter.runID) || !filter.includeDescendants) return undefined
+  async function related(filter: z.output<typeof UsageSchema.Filter>): Promise<Selection | undefined> {
+    if ((!filter.sessionID && !filter.runID) || (!filter.includeDescendants && !filter.runID)) return undefined
     const runs: UsageSchema.Link[] = []
     const selected = new Set<string>()
+    const owners = new Set<string>()
     for await (const row of Storage.records<UsageSchema.Link>({
       kind: "usage_link",
       scopeID: filter.scopeID,
@@ -146,9 +148,13 @@ export namespace UsageQuery {
       if (
         (!filter.sessionID || (record.owner.kind === "session" && record.owner.sessionID === filter.sessionID)) &&
         (!filter.runID || record.runID === filter.runID)
-      )
+      ) {
         selected.add(runKey(record.owner, record.runID))
+        owners.add(scopeKey(record.owner))
+      }
     }
+    const result = { runs: selected, owners, roots: new Set(owners) }
+    if (!filter.includeDescendants) return result
     let changed = true
     while (changed) {
       changed = false
@@ -166,17 +172,19 @@ export namespace UsageQuery {
             : [...selected].some((key) => key.startsWith(`${scopeKey(owner)}:`)))
         if (!linked) continue
         selected.add(runKey(record.owner, record.runID))
+        owners.add(scopeKey(record.owner))
         changed = true
       }
     }
-    return selected
+    return result
   }
-  function matches(record: UsageSchema.Record, filter: z.output<typeof UsageSchema.Filter>, related?: Set<string>) {
+  function matches(record: UsageSchema.Record, filter: z.output<typeof UsageSchema.Filter>, selection?: Selection) {
     if (filter.scopeID && record.owner.scopeID !== filter.scopeID) return false
     const direct =
       (!filter.sessionID || (record.owner.kind === "session" && record.owner.sessionID === filter.sessionID)) &&
-      (!filter.runID || record.runID === filter.runID || record.kind === "gap")
-    if (!direct && !related?.has(runKey(record.owner, record.runID))) return false
+      (!filter.runID || (record.kind !== "gap" && record.runID === filter.runID))
+    const gap = record.kind === "gap" && selection?.owners.has(scopeKey(record.owner))
+    if (!direct && !gap && !selection?.runs.has(runKey(record.owner, record.runID))) return false
     if (filter.kind && record.kind !== filter.kind) return false
     const time = stamp(record)
     if ((filter.from !== undefined && time < filter.from) || (filter.to !== undefined && time >= filter.to))
@@ -202,7 +210,9 @@ export namespace UsageQuery {
   }
   export async function* scan(input: UsageSchema.Filter = {}, after?: string[]) {
     const filter = validate(input)
-    const descendants = await related(filter)
+    yield* scanSelected(filter, await related(filter), after)
+  }
+  async function* scanSelected(filter: z.output<typeof UsageSchema.Filter>, selection?: Selection, after?: string[]) {
     let cursor = after
     for (;;) {
       const batch = await Storage.query<{ key: string[] }>({
@@ -216,8 +226,7 @@ export namespace UsageQuery {
       })
       if (!batch.length) return
       const values = await Storage.readMany<UsageSchema.Record>(batch.map((row) => row.value.key))
-      for (const value of values)
-        if (value && matches(value, filter, descendants)) yield UsageSchema.Record.parse(value)
+      for (const value of values) if (value && matches(value, filter, selection)) yield UsageSchema.Record.parse(value)
       cursor = batch.at(-1)!.key
     }
   }
@@ -353,7 +362,12 @@ export namespace UsageQuery {
         }
     return summary
   }
-  export function summarize(records: UsageSchema.Record[], input: UsageSchema.Filter = {}, revision = 0): Summary {
+  export function summarize(
+    records: UsageSchema.Record[],
+    input: UsageSchema.Filter = {},
+    revision = 0,
+    rootOwners?: ReadonlySet<string>,
+  ): Summary {
     const scope = validate(input)
     const zone = timezone(scope)
     const computedAt = Date.now()
@@ -521,9 +535,12 @@ export namespace UsageQuery {
       .toSorted((a, b) => stamp(b) - stamp(a) || b.index - a.index)[0]
     const limit = primary?.model.limits ? (ModelLimit.usableInput(primary.model.limits) ?? null) : null
     const tokens = primary?.usage?.input.total ?? null
+    const roots =
+      rootOwners ??
+      new Set(records.filter((record) => record.runID === scope.runID).map((record) => scopeKey(record.owner)))
     const own = (record: UsageSchema.Record) =>
       (!scope.sessionID || (record.owner.kind === "session" && record.owner.sessionID === scope.sessionID)) &&
-      (!scope.runID || record.runID === scope.runID)
+      (!scope.runID || record.runID === scope.runID || (record.kind === "gap" && roots.has(scopeKey(record.owner))))
     return Summary.parse({
       version: 1,
       revision,
@@ -654,9 +671,11 @@ export namespace UsageQuery {
           if (phase.elapsedMs !== null) phase.elapsedMs = Math.max(0, phase.elapsedMs + now - result.computedAt)
         result.computedAt = now
       } else {
+        const filter = validate(input)
+        const selection = await related(filter)
         const records: UsageSchema.Record[] = []
-        for await (const record of scan(input)) records.push(record)
-        result = summarize(records, input, revision)
+        for await (const record of scanSelected(filter, selection)) records.push(record)
+        result = summarize(records, input, revision, selection?.roots)
         cache().delete(key)
         cache().set(key, structuredClone(result))
         if (cache().size > 32) cache().delete(cache().keys().next().value!)

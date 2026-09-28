@@ -121,6 +121,65 @@ test("journal gaps are retained and prohibit claiming complete usage", () =>
     expect(result.accounting.tokens.total.total).toBeNull()
   }))
 
+async function gapOwners() {
+  const scopeID = crypto.randomUUID()
+  const owner = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+  const child = { ...owner, sessionID: crypto.randomUUID() }
+  const unrelated = { kind: "operation" as const, scopeID, operationID: crypto.randomUUID() }
+  const runID = crypto.randomUUID()
+  const childRunID = crypto.randomUUID()
+  for (const [current, run] of [
+    [owner, runID],
+    [child, childRunID],
+    [unrelated, crypto.randomUUID()],
+  ] as const) {
+    await RolloutLedger.beginRun(current, run)
+    await RolloutLedger.finishRun(current, run, "completed")
+  }
+  await Storage.transaction(async () => {
+    await UsageLedger.link(child, childRunID, { owner, runID, messageID: "parent-message" })
+    for (const current of [owner, child, unrelated]) await UsageLedger.captureGap(current, 1, Date.now())
+  })
+  return { scopeID, owner, child, unrelated, runID }
+}
+
+test("run queries retain only their owners' gaps and include descendant gaps when selected", () =>
+  runtime.run(async () => {
+    const { scopeID, owner, child, runID } = await gapOwners()
+    for (const scope of [{ runID }, { scopeID, runID }, { scopeID, sessionID: owner.sessionID, runID }]) {
+      for (const includeDescendants of [true, false]) {
+        const result = await UsageQuery.records({ ...scope, includeDescendants, kind: "gap" })
+        expect(result.items).toHaveLength(includeDescendants ? 2 : 1)
+        expect(result.items.map((record) => record.owner)).toEqual(
+          expect.arrayContaining(includeDescendants ? [owner, child] : [owner]),
+        )
+        const summary = await UsageQuery.summary({ ...scope, includeDescendants })
+        expect(summary.accounting.journalGaps).toBe(includeDescendants ? 2 : 1)
+        expect(summary.own.journalGaps).toBe(1)
+        expect(summary.descendants.journalGaps).toBe(includeDescendants ? 1 : 0)
+        expect(summary.accounting.tokens.total.total).toBeNull()
+      }
+    }
+    expect((await UsageQuery.summary({ scopeID, sessionID: owner.sessionID })).accounting.journalGaps).toBe(2)
+    for (const missing of [crypto.randomUUID(), "unattributed"])
+      expect((await UsageQuery.records({ scopeID, runID: missing, kind: "gap" })).items).toHaveLength(0)
+  }))
+
+test("run clears preserve unattributed owner gaps and unrelated execution evidence", () =>
+  runtime.run(async () => {
+    const { scopeID, owner, runID } = await gapOwners()
+    const before = await UsageQuery.records({ scopeID })
+    const cleared = await UsageLedger.clear({ scopeID, runID }, before.revision)
+    expect(cleared.removed).toBe(2)
+    expect(cleared.unattributedRetained).toBe(2)
+    expect((await UsageQuery.records({ scopeID, kind: "gap" })).items).toHaveLength(3)
+    expect((await UsageQuery.summary({ scopeID, runID })).accounting.journalGaps).toBe(2)
+    expect((await UsageQuery.summary({ scopeID, runID })).own.journalGaps).toBe(1)
+    const session = await UsageLedger.clear({ scopeID, sessionID: owner.sessionID }, await UsageLedger.revision())
+    expect(session.unattributedRetained).toBe(0)
+    expect((await UsageQuery.records({ scopeID, kind: "gap" })).items).toHaveLength(1)
+  }))
+
 test("time indexes are half-open and source transaction rollback leaves no usage", () =>
   runtime.run(async () => {
     const { owner } = await invocation()

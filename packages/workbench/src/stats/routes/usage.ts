@@ -21,6 +21,7 @@ const Cleared = z.object({
   removed: z.number(),
   activeRetained: z.number(),
   newerRetained: z.number(),
+  unattributedRetained: z.number().describe("Owner-level gaps retained because the clear selects a specific run"),
   revision: z.number(),
 })
 const response = (schema: z.ZodType, description: string) => ({
@@ -86,7 +87,7 @@ export const UsageRoute = () =>
         operationId: "global.stats.usageClear",
         summary: "Clear explicitly scoped terminal usage records",
         description:
-          "Requires an explicit Scope, session or time range and the summary revision to clear through. Active and newer records are retained. Cleared identities cannot be restored by a rebuild.",
+          "Requires an explicit Scope, session or time range and the summary revision to clear through. Active and newer records are retained. Run-filtered clears also retain unattributed owner-level gaps. Cleared identities cannot be restored by a rebuild.",
         responses: response(Cleared, "Cleared and retained record counts"),
       }),
       validator("json", Clear),

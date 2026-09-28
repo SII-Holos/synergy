@@ -998,7 +998,7 @@ export class Stats extends HeyApiClient {
   /**
    * Clear explicitly scoped terminal usage records
    *
-   * Requires an explicit Scope, session or time range and the summary revision to clear through. Active and newer records are retained. Cleared identities cannot be restored by a rebuild.
+   * Requires an explicit Scope, session or time range and the summary revision to clear through. Active and newer records are retained. Run-filtered clears also retain unattributed owner-level gaps. Cleared identities cannot be restored by a rebuild.
    */
   public usageClear<ThrowOnError extends boolean = false>(
     parameters?: {

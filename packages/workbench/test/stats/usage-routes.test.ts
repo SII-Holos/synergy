@@ -58,6 +58,6 @@ test("usage API pages compact records, enforces cursor filters and validates cle
     expect((await clear({ scopeID }, summary.revision + 100)).status).toBe(400)
     const removed = await clear({ scopeID }, summary.revision)
     expect(removed.status).toBe(200)
-    expect((await removed.json()).activeRetained).toBe(1)
+    expect(await removed.json()).toMatchObject({ activeRetained: 1, unattributedRetained: 0 })
     expect((await app.request("/global/stats/usage/rebuild", { method: "POST" })).status).toBe(200)
   }))

@@ -42,6 +42,8 @@ Source precedence is recorded attempt usage, recoverable raw response usage, SDK
 
 Clearing usage requires a Scope/session/time selection and the revision observed by the caller. Active and newer records are retained. Cleared IDs suppress later replay, rebuild, and Home import; clearing a parent call also suppresses its late attempts. Relationship metadata remains so active descendants keep their ancestry. Conversation deletion alone does not clear usage. Rebuild repairs indexes and missing capture without repricing or restoring explicitly cleared facts.
 
+Journal gaps identify their session or operation owner but cannot identify a run. Run-scoped queries include gaps only from owners of selected runs and selected descendants; unrelated owners' gaps do not affect those totals. Gap records keep `runID: "unattributed"` and represent owner-level uncertainty, not consumption assigned to that run. A run-filtered clear preserves these shared gaps and returns `unattributedRetained`; clearing them requires an owner or time selection without a run filter.
+
 ## Query contract
 
 Workbench exposes these routes under the existing global authentication boundary:

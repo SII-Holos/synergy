@@ -473,7 +473,8 @@ export namespace UsageLedger {
     const { UsageQuery } = await import("./query")
     let removed = 0,
       activeRetained = 0,
-      newerRetained = 0
+      newerRetained = 0,
+      unattributedRetained = 0
     for await (const record of UsageQuery.scan(filter))
       await Storage.transaction(async () => {
         const current = await optional<UsageSchema.Record>(key(record))
@@ -486,13 +487,17 @@ export namespace UsageLedger {
           newerRetained++
           return
         }
+        if (filter.runID && current.kind === "gap") {
+          unattributedRetained++
+          return
+        }
         await Storage.write(StoragePath.usageSuppressed(current.id), { version: 1, through, clearedAt: Date.now() })
         await Storage.remove(key(current))
         await Storage.remove(timeKey(current))
         await Storage.write(StoragePath.usageState(), { version: 1, revision: (await revision()) + 1 })
         removed++
       })
-    return { removed, activeRetained, newerRetained, revision: await revision() }
+    return { removed, activeRetained, newerRetained, unattributedRetained, revision: await revision() }
   }
   export async function reconcileTransfer(tx: StoreTransaction) {
     const [state] = await tx.readMany<{ revision: number }>([StoragePath.usageState()])
