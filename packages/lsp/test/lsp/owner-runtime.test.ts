@@ -10,7 +10,9 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { Log } from "@ericsanchezok/synergy-harness/util/log"
 const runtime = await testRuntime()
+await runtime.run(() => Log.init({ print: true, level: "DEBUG" }))
 
 test("configured LSP owner serves real protocol queries and releases its processes on reload", () =>
   runtime.run(async () => {
@@ -175,8 +177,8 @@ test(
   15000,
 )
 
-test(
-  "multiple matching LSP servers answer sequentially without retaining a competing idle writer",
+test.each([1, 2, 3, 4, 5])(
+  "multiple matching LSP servers answer sequentially without retaining a competing idle writer (%i)",
   () =>
     runtime.run(async () => {
       const disabled = Object.fromEntries(Object.values(LSPServer).map((server) => [server.id, { disabled: true }]))
@@ -325,8 +327,8 @@ test(
   15000,
 )
 
-test(
-  "cancelling the first startup does not poison another query sharing its startup promise",
+test.each([1, 2, 3, 4, 5])(
+  "cancelling the first startup does not poison another query sharing its startup promise (%i)",
   () =>
     runtime.run(async () => {
       const disabled = Object.fromEntries(Object.values(LSPServer).map((server) => [server.id, { disabled: true }]))
