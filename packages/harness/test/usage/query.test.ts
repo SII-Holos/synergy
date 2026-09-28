@@ -73,6 +73,19 @@ test("cache uses all input and reasoning is not additive", () => {
   expect(summary.context).toMatchObject({ inputTokens: 1000, ratio: 0.5 })
 })
 
+test("journal gaps retain uncertainty without counting as legacy evidence", () => {
+  const summary = UsageQuery.summarize([
+    ...facts(),
+    { ...base, id: "legacy-tool", source: "legacy", kind: "tool", tool: "read", durationMs: 1 },
+    { ...base, id: "gap", source: "legacy", kind: "gap", runID: "unattributed", sequence: 1 },
+  ])
+  expect(summary.coverage.legacy).toBe(1)
+  expect(summary.coverage.records).toBe(4)
+  expect(summary.accounting.journalGaps).toBe(1)
+  expect(summary.accounting.tokens.total.known).toBe(1500)
+  expect(summary.accounting.tokens.total.total).toBeNull()
+})
+
 test("request-day attribution respects IANA timezones rather than call or session creation", () => {
   const records = facts({ started: Date.parse("2026-09-27T16:30:00Z") })
   expect(UsageQuery.summarize(records, { timezone: "Asia/Shanghai" }).daily.map((day) => day.date)).toEqual([

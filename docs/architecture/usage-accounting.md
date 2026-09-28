@@ -44,6 +44,8 @@ Clearing usage requires a Scope/session/time selection and the revision observed
 
 Journal gaps identify their session or operation owner but cannot identify a run. Run-scoped queries include gaps only from owners of selected runs and selected descendants; unrelated owners' gaps do not affect those totals. Gap records keep `runID: "unattributed"` and represent owner-level uncertainty, not consumption assigned to that run. A run-filtered clear preserves these shared gaps and returns `unattributedRetained`; clearing them requires an owner or time selection without a run filter.
 
+A run-filtered query or clear follows descendants only through recorded parent run IDs at every edge. An owner-only link or a null parent run ID cannot establish membership in one particular run, even when that owner has another selected run. Session-wide selection still follows those owner relationships. Journal gaps remain part of record counts and accounting uncertainty but do not count as legacy evidence coverage.
+
 ## Query contract
 
 Workbench exposes these routes under the existing global authentication boundary:
