@@ -28,6 +28,8 @@ Persistence acceptance runs the full composition with an owned SQLite or Postgre
 
 Model stream faults match an observable foreground request and are armed once per stage, so an auxiliary request or empty tool-argument delta cannot consume the intended injection. Argument interruption forwards an actual incomplete frame while preserving both upstream and delivered bytes. After a completed tool result, the recorder interrupts the next provider response; the same session must continue without repeating the physical append. Recorder shutdown drains accounting, and client cancellation remains cancelled even when the upstream reader reports end-of-stream after abort.
 
+API resource acceptance calls an ordinary HTTP business endpoint, an actual MCP server and a normally built/installed plugin in its own process. External Docker observations must show no allocation across unselected compute, selected idle compute and unavailable Workspace cases. The first Bash operation must create exactly one allocation and save matching bytes before reclamation. A subsequent API call must work without reallocating; an independent process-parent observation verifies the plugin process boundary.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.

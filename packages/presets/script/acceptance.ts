@@ -92,6 +92,7 @@ export async function main(args: string[]) {
     const { objects } = await import("./acceptance/objects")
     const { persistence } = await import("./acceptance/persistence")
     const { modelStream } = await import("./acceptance/model-stream")
+    const { apiLazy } = await import("./acceptance/api-lazy")
     await execute(
       plan,
       {
@@ -102,7 +103,12 @@ export async function main(args: string[]) {
         "fault-model-stream": modelStream(settings),
         ...(settings.postgres ? { "storage-postgres": persistence(settings) } : {}),
         ...(settings.remote
-          ? Object.fromEntries(["fault-command-crash", "fault-save-crash"].map((id) => [id, remoteFault(settings)]))
+          ? {
+              ...Object.fromEntries(
+                ["fault-command-crash", "fault-save-crash"].map((id) => [id, remoteFault(settings)]),
+              ),
+              "api-lazy": apiLazy(settings),
+            }
           : {}),
       },
       {
