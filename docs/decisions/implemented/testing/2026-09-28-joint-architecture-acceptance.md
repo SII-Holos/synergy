@@ -36,6 +36,8 @@ Remote terminal acceptance uses the generated SDK and actual WebSockets to disco
 
 Cancellation runs the same four stages against native and remote execution. A cooperative writer permits an observable queued claim; cancellation must leave that writer alive and the waiting command unstarted. Separate stages stop after resource acquisition, while a parent and descendant are running, and after physical exit with unread output. Raw claim ledgers, physical process trees and file/output hashes independently verify no premature execution, orphan or truncated result. An expected preactivation cancellation error is accepted only when the durable operation independently reaches completed with verified drainage.
 
+Permission acceptance invokes registered tools through the existing public tool-invocation boundary in all three control profiles on native and remote targets. The observer reads the actual protected-file path before rejecting a pending request, then checks the final bytes independently. Symlinks, native authorized external writes, remote mount containment, an actual read-only Docker volume and unsupported Browser/Computer selections retain their distinct permission or runtime outcomes. The controller's sentinel must remain absent after the selected remote allocation stops. A successful command in a Linux sandbox's private temporary filesystem does not establish a write to the allocation's original temporary directory.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.
