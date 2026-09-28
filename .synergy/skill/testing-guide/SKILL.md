@@ -69,6 +69,8 @@ For retirement changes, overlap cleanup in independent repositories and include 
 
 For process-backed write evidence, test the interval after native exit but before archive completion: an overlapping writer must remain excluded, disjoint roots must proceed, and finalizer failure or Runtime death must not leave a completed process permanently occupied.
 
+Inject native control-socket resets both before and after the completion receipt. Preserve exact output and exit status after acknowledged completion; a lost supervisor must still report uncertain ownership and retain its claim, with any earlier transport failure preserved as a cause. Test dropped WebSocket output and terminal-status frames separately, including cursor replay after the connection closes.
+
 Windows shell regressions must explicitly select `cmd` when testing its quoting contract; the runner's default can resolve to another interpreter. Cover a quoted executable with multiple quoted arguments, and report early command exit before waiting for a descendant readiness marker.
 
 Await native-I/O rejection before applying a synchronous error matcher in Windows tests. Capture the rejection through `await promise.then(() => undefined, (error: unknown) => error)`, then assert its type and content; an unexpected resolution must still fail. Bun's asynchronous `toThrow` matcher can block database progress on Windows; see [Bun issue 19130](https://github.com/oven-sh/bun/issues/19130). Preserve the real operation and its deadlines when changing the assertion.
