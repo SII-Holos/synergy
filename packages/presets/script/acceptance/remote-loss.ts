@@ -35,7 +35,7 @@ export function remoteLoss(input: unknown): Driver {
       transport: unknown[] = []
     for (const kind of ["network", "host", "container"] as const) {
       const directory = path.join(context.directory, kind)
-      await using host = await acceptanceRuntime(directory, settings)
+      await using host = await acceptanceRuntime(directory, settings, { recordingDirectory: context.directory })
       await host.runtime.run(() =>
         ScopeContext.provide({
           scope: Scope.home(),

@@ -2,6 +2,31 @@ import { expect, test } from "bun:test"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { recordedProvider, readRequests } from "../../script/acceptance/provider"
+import { acceptanceRuntime } from "../../script/acceptance/runtime"
+import { fixtureSettings } from "./support"
+
+test("isolated Runtime variants retain requests in one scenario ledger", async () => {
+  await using tmp = await tmpdir()
+  using upstream = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => Response.json({ usage: { prompt_tokens: 7, completion_tokens: 2 } }),
+  })
+  const settings = await fixtureSettings(tmp.path, upstream.url.toString())
+  for (const variant of ["first", "second"]) {
+    await using host = await acceptanceRuntime(path.join(tmp.path, variant), settings, { recordingDirectory: tmp.path })
+    const response = await fetch(`${host.recorder.url}/chat/completions`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${host.recorder.token}` },
+      body: JSON.stringify({ model: "model" }),
+    })
+    expect(response.status).toBe(200)
+    await response.text()
+  }
+  const ledger = await readRequests(tmp.path)
+  expect(ledger).toHaveLength(2)
+  expect(ledger.every((entry) => entry.status === "completed" && entry.usage?.input === 7)).toBe(true)
+})
 
 test("provider capture preserves actual bytes and records every auxiliary request without credentials", async () => {
   await using tmp = await tmpdir()

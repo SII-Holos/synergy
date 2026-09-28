@@ -46,10 +46,10 @@ export async function prepareRuntime(directory: string, settings: Settings, gate
 export async function acceptanceRuntime(
   directory: string,
   settings: Settings,
-  options: { storage?: RuntimeStorage; http?: boolean; webAppDirectory?: string } = {},
+  options: { storage?: RuntimeStorage; http?: boolean; webAppDirectory?: string; recordingDirectory?: string } = {},
 ) {
   const gateway = await recordedProvider({
-    directory,
+    directory: options.recordingDirectory ?? directory,
     provider: settings.providerID,
     upstream: settings.upstream,
     apiKey: (await Bun.file(settings.apiKeyFile).text()).trim(),

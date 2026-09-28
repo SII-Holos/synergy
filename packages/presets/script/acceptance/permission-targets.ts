@@ -52,10 +52,11 @@ export function permissionTargets(input: unknown): Driver {
     ])
     for (const target of ["native", "remote"] as const) {
       const directory = path.join(context.directory, target)
-      await using host = await acceptanceRuntime(directory, {
-        ...settings,
-        config: { ...settings.config, smartAllow: false },
-      })
+      await using host = await acceptanceRuntime(
+        directory,
+        { ...settings, config: { ...settings.config, smartAllow: false } },
+        { recordingDirectory: context.directory },
+      )
       await host.runtime.run(() =>
         ScopeContext.provide({
           scope: Scope.home(),

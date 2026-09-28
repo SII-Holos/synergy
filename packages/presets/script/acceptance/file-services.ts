@@ -49,7 +49,7 @@ export function fileServices(input: unknown): Driver {
     if (!(await buildPluginProject(plugin))) throw new Error("File service plugin build failed")
     for (const target of ["native", "remote"] as const) {
       const directory = path.join(context.directory, target)
-      await using host = await acceptanceRuntime(directory, settings)
+      await using host = await acceptanceRuntime(directory, settings, { recordingDirectory: context.directory })
       await host.runtime.run(() =>
         ScopeContext.provide({
           scope: Scope.home(),

@@ -29,7 +29,7 @@ export function cancellations(input: unknown, targets: Target[] = ["native", "re
     let unexpectedEffects = 0
     for (const target of targets) {
       const directory = path.join(context.directory, target)
-      await using host = await acceptanceRuntime(directory, settings)
+      await using host = await acceptanceRuntime(directory, settings, { recordingDirectory: context.directory })
       await host.runtime.run(() =>
         ScopeContext.provide({
           scope: Scope.home(),
