@@ -2,6 +2,8 @@
 
 The Runtime owns an explicit transactional Agent Storage Handle independently of Scope directories. It completes database upgrade and recovery before admission, then drains and closes owned storage during shutdown. See [Agent storage](agent-storage.md) for authority, ownership, engine and file-commit boundaries.
 
+[Environments](environments.md) own independently allocated compute destinations and durable usage records. Runtime and Session creation do not allocate an Environment.
+
 ## Runtime Model
 
 A process may host multiple independent Runtime instances. Each instance has an immutable `RuntimeHost` (`home`, `root`, environment), an explicitly selected composition, and an owned or borrowed Storage Handle. One writing Runtime owns a Home at a time. Harness can run without an HTTP server; a server composition exposes its instance to multiple clients and project contexts. The runtime is not bound to the launch directory: scoped operations select a `scopeID` or directory, and each session persists its own Scope and workspace binding.
@@ -203,7 +205,7 @@ GET responses produced inside a Scope advertise the current event watermark thro
 
 `SessionManager.run()` restores both the persisted Scope and workspace before executing a session loop. Code reached through a session should use `ScopeContext.current` rather than process working-directory assumptions.
 
-Execution-context checks reject sessions whose Scope or workspace cannot be used safely. This is especially important for:
+Execution-context checks reject a mismatched persisted selection. Physical availability is checked when an operation uses the resource, so a missing directory does not block API-only work. Resource checks cover:
 
 - restored sessions whose project directory disappeared
 - worktree sessions

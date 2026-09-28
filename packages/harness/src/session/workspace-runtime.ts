@@ -55,9 +55,13 @@ export namespace SessionWorkspaceRuntime {
     state().transitions.set(id, transition)
   }
 
-  export async function beforeTransition(session: Info, workspace: Info["workspace"]) {
+  export async function beforeTransition(
+    session: Info,
+    workspace: Info["workspace"],
+    workspaceID = workspace?.id ?? null,
+  ) {
     if (
-      session.workspaceID === (workspace?.id ?? null) &&
+      session.workspaceID === workspaceID &&
       session.workspace?.generation === workspace?.generation &&
       session.workspace?.path === workspace?.path
     )
@@ -70,6 +74,9 @@ export namespace SessionWorkspaceRuntime {
     RuntimeContext.assertCompositionOpen("Session workspace runtime")
     if (current.provider) throw new Error("Session workspace runtime is already registered")
     current.provider = provider
+  }
+  export async function beforeEnvironmentTransition(session: Info) {
+    for (const transition of state().transitions.values()) await transition(session, session.workspace)
   }
   export async function releaseSession(session: Pick<Info, "id" | "scope" | "workspace">) {
     await state().provider?.releaseSession(session)

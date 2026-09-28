@@ -28,6 +28,8 @@ import { WorkspaceFileService } from "../workspace-file/service"
 import { WorkspaceFileStatus } from "../workspace-file/status"
 import { FileWatcherEvents } from "./watcher-events"
 import { FileWatcherBinding } from "./watcher-binding"
+import { FileView } from "./view"
+import { RemoteFileWatcher } from "./remote-watcher"
 
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
@@ -508,6 +510,7 @@ export namespace FileWatcher {
     if (Flag.SYNERGY_DISABLE_FILEWATCHER) {
       return
     }
+    if (!FileView.native()) return RemoteFileWatcher.init(publishWorkspaceResync)
     if (!bindingAvailable()) return
     if (ScopeContext.current.workspace) await workspaceState()
     else await scopeState()

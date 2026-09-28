@@ -80,6 +80,7 @@ describe("new-session recovery actions", () => {
   test("restores the complete new-session request before optional auto-submit", () => {
     const source = {
       ...recovery(),
+      environmentID: "env_remote",
       plan: true,
       lattice: { mode: "collaborative" as const, maxModelCalls: 12 },
       lightLoop: true,
@@ -100,6 +101,7 @@ describe("new-session recovery actions", () => {
       setDraft: (value) => (restored.draft = value),
       setMode: (value) => (restored.mode = value),
       setWorkspaceSelection: (value) => (restored.workspaceSelection = value),
+      setEnvironment: (value) => (restored.environmentID = value),
       setControlProfile: (value) => (restored.controlProfile = value),
       setPlan: (value) => (restored.plan = value),
       setLattice: (value) => (restored.lattice = value),
@@ -115,6 +117,7 @@ describe("new-session recovery actions", () => {
       draft: source.draft,
       mode: source.mode,
       workspaceSelection: source.workspaceSelection,
+      environmentID: source.environmentID,
       controlProfile: source.controlProfile,
       plan: source.plan,
       lattice: source.lattice,

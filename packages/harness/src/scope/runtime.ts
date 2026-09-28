@@ -6,6 +6,7 @@ import { ScopeContext } from "./context"
 import { ScopedState } from "./scoped-state"
 import { ScopeStartup } from "./startup"
 import { WorkspaceRuntime } from "../workspace/runtime"
+import { WorkspaceState } from "../workspace/state"
 
 export namespace ScopeRuntime {
   type StartingListener = (scope: Scope.Project) => void
@@ -77,7 +78,7 @@ export namespace ScopeRuntime {
     return ScopeContext.provide({
       ...input,
       fn: async () => {
-        const workspace = ScopeContext.current.workspace
+        const workspace = WorkspaceState.current()
         if (input.ensure !== false && workspace) await WorkspaceRuntime.ensure(input.scope, workspace)
         return input.fn()
       },

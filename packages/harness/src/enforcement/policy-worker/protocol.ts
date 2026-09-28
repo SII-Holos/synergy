@@ -3,6 +3,7 @@ import z from "zod"
 import type { ClassifyResult, PluginToolCapabilityMap } from "../gate"
 
 export interface PolicyClassificationContext {
+  pathMode?: "native" | "relative" | "posix" | "win32"
   activeWorkspace: string | null
   workspaceType: string
   registeredMcpTools: string[]
@@ -22,7 +23,7 @@ export interface PolicyClassificationInput {
 }
 
 export namespace PolicyWorkerProtocol {
-  export const VERSION = 3
+  export const VERSION = 4
   export const REQUEST_MAX_BYTES = 16 * 1024 * 1024
   export const REQUEST_CHUNK_BYTES = 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024
@@ -46,6 +47,7 @@ export namespace PolicyWorkerProtocol {
 
   const ClassificationContextSchema = z
     .object({
+      pathMode: z.enum(["native", "relative", "posix", "win32"]).optional(),
       activeWorkspace: z.string().nullable(),
       workspaceType: z.string(),
       registeredMcpTools: z.array(z.string()),

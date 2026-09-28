@@ -9,6 +9,32 @@ function request(roots: string[] | null, owner: string = randomUUID()) {
   return { id: randomUUID(), owner, kind: "task" as const, roots, ancestors: [] }
 }
 
+test("a durable writer survives its owner and is released only with its saved recovery reference", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const root = path.join(tmp.path, "work")
+  const reference = path.join(tmp.path, "reference.json")
+  const fixture = path.join(tmp.path, "owner.ts")
+  await Bun.write(
+    fixture,
+    `
+    import { WorkspaceCoordinator } from ${JSON.stringify(new URL("../../src/workspace/coordinator.ts", import.meta.url).href)};
+    const coordinator = new WorkspaceCoordinator({ directory: ${JSON.stringify(directory)} });
+    const lease = await coordinator.acquire({ ...${JSON.stringify(request([root]))}, kind: 'process', retainAfterExit: true, durable: true });
+    await Bun.write(${JSON.stringify(reference)}, JSON.stringify(lease.recovery));
+  `,
+  )
+  const owner = Bun.spawn([process.execPath, "run", fixture], { stdout: "pipe", stderr: "pipe" })
+  const errors = new Response(owner.stderr).text()
+  await new Response(owner.stdout).text()
+  expect(await owner.exited, await errors).toBe(0)
+  const coordinator = new WorkspaceCoordinator({ directory })
+  await expect(coordinator.acquire({ ...request([root]), timeoutMs: 50 })).rejects.toThrow("busy")
+  await (await coordinator.recover(await Bun.file(reference).json())).release()
+  await (await coordinator.acquire({ ...request([root]), timeoutMs: 1000 })).release()
+  expect(await coordinator.inspect()).toHaveLength(0)
+})
+
 test("a cooperative process reports waiting writers across coordinators without releasing a live process", async () => {
   await using tmp = await tmpdir()
   const directory = path.join(tmp.path, "locks")

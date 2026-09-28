@@ -2,7 +2,7 @@ import { dlopen, ptr, read } from "bun:ffi"
 import { getSystemErrorName } from "node:util"
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { FileMutation } from "./mutation"
+import { NativeFileMutation as FileMutation } from "./mutation-core"
 
 export namespace FileRename {
   let move: ((from: string, to: string) => void) | undefined

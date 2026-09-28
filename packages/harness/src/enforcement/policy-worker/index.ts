@@ -34,6 +34,7 @@ export namespace PolicyWorker {
   export function context(options: GateOptions): PolicyClassificationContext {
     return {
       activeWorkspace: options.activeWorkspace,
+      pathMode: options.pathMode,
       workspaceType: options.workspaceType,
       registeredMcpTools: [...(options.registeredMcpTools ?? [])],
       registeredPluginTools: [...(options.registeredPluginTools ?? [])],

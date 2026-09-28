@@ -185,6 +185,26 @@ import type {
   CortexListResponses,
   CortexOutputErrors,
   CortexOutputResponses,
+  EnvironmentActivityErrors,
+  EnvironmentActivityResponses,
+  EnvironmentCancelExecutionErrors,
+  EnvironmentCancelExecutionResponses,
+  EnvironmentCreateErrors,
+  EnvironmentCreateResponses,
+  EnvironmentGetErrors,
+  EnvironmentGetResponses,
+  EnvironmentListErrors,
+  EnvironmentListResponses,
+  EnvironmentProfilesErrors,
+  EnvironmentProfilesResponses,
+  EnvironmentReconcileErrors,
+  EnvironmentReconcileResponses,
+  EnvironmentRecoverExecutionErrors,
+  EnvironmentRecoverExecutionResponses,
+  EnvironmentRecoverFileErrors,
+  EnvironmentRecoverFileResponses,
+  EnvironmentReleaseErrors,
+  EnvironmentReleaseResponses,
   EventReplayErrors,
   EventReplayResponses,
   EventSubscribeErrors,
@@ -615,6 +635,7 @@ import type {
   SessionDeleteResponses,
   SessionDiffErrors,
   SessionDiffResponses,
+  SessionEnvironmentSelection,
   SessionExportDownloadErrors,
   SessionExportDownloadResponses,
   SessionExportEstimateErrors,
@@ -672,6 +693,8 @@ import type {
   SessionRunResultResponses,
   SessionSelectWorkspaceErrors,
   SessionSelectWorkspaceResponses,
+  SessionSetEnvironmentErrors,
+  SessionSetEnvironmentResponses,
   SessionSetModelSelectionErrors,
   SessionSetModelSelectionResponses,
   SessionShellErrors,
@@ -763,6 +786,12 @@ import type {
   WorkflowSessionUpdateLightloopErrors,
   WorkflowSessionUpdateLightloopResponses,
   WorkflowSetInput,
+  WorkspaceCreateObjectsErrors,
+  WorkspaceCreateObjectsResponses,
+  WorkspaceDetachErrors,
+  WorkspaceDetachResponses,
+  WorkspaceExportSavedErrors,
+  WorkspaceExportSavedResponses,
   WorkspaceFileCopyInput,
   WorkspaceFileCreateDirectoryInput,
   WorkspaceFileDeleteInput,
@@ -790,10 +819,18 @@ import type {
   WorkspaceFilesWriteErrors,
   WorkspaceFilesWriteResponses,
   WorkspaceFileWriteFileInput,
+  WorkspaceImportSavedErrors,
+  WorkspaceImportSavedResponses,
   WorkspaceListErrors,
   WorkspaceListResponses,
+  WorkspaceOperationsErrors,
+  WorkspaceOperationsResponses,
   WorkspaceRebindErrors,
   WorkspaceRebindResponses,
+  WorkspaceRecoverOperationErrors,
+  WorkspaceRecoverOperationResponses,
+  WorkspaceRecoverSavedErrors,
+  WorkspaceRecoverSavedResponses,
   WorkspaceRegisterErrors,
   WorkspaceRegisterResponses,
   WorkspaceSetSharingErrors,
@@ -1516,6 +1553,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path?: string
       limit?: number
       cursor?: string
@@ -1533,6 +1571,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursor" },
@@ -1564,6 +1603,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path: string
       range?: string
       offset?: number
@@ -1582,6 +1622,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
             { in: "query", key: "range" },
             { in: "query", key: "offset" },
@@ -1610,6 +1651,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1623,6 +1665,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
           ],
         },
@@ -1646,6 +1689,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       query: string
       kind?: "files" | "content" | "symbol"
       limit?: number
@@ -1664,6 +1708,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "query" },
             { in: "query", key: "kind" },
             { in: "query", key: "limit" },
@@ -1696,6 +1741,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1708,6 +1754,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
           ],
         },
       ],
@@ -1734,6 +1781,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       path: string
     },
     options?: Options<never, ThrowOnError>,
@@ -1747,6 +1795,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { in: "query", key: "path" },
           ],
         },
@@ -1774,6 +1823,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileWriteFileInput?: WorkspaceFileWriteFileInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1787,6 +1837,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileWriteFileInput", map: "body" },
           ],
         },
@@ -1815,6 +1866,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileCreateDirectoryInput?: WorkspaceFileCreateDirectoryInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1828,6 +1880,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileCreateDirectoryInput", map: "body" },
           ],
         },
@@ -1858,6 +1911,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileCopyInput?: WorkspaceFileCopyInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1871,6 +1925,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileCopyInput", map: "body" },
           ],
         },
@@ -1897,6 +1952,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileMoveInput?: WorkspaceFileMoveInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1910,6 +1966,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileMoveInput", map: "body" },
           ],
         },
@@ -1936,6 +1993,7 @@ export class Files extends HeyApiClient {
       scopeID?: string
       workspaceID: string
       workspaceGeneration: number
+      environmentID?: string
       workspaceFileDeleteInput?: WorkspaceFileDeleteInput
     },
     options?: Options<never, ThrowOnError>,
@@ -1949,6 +2007,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "scopeID" },
             { in: "query", key: "workspaceID" },
             { in: "query", key: "workspaceGeneration" },
+            { in: "query", key: "environmentID" },
             { key: "workspaceFileDeleteInput", map: "body" },
           ],
         },
@@ -2483,6 +2542,7 @@ export class Session extends HeyApiClient {
       id?: string
       controlProfile?: "guarded" | "autonomous" | "full_access"
       workspace?: SessionWorkspaceSelection
+      environmentID?: string | null
       completionNotice?: {
         silent?: boolean
       }
@@ -2502,6 +2562,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "id" },
             { in: "body", key: "controlProfile" },
             { in: "body", key: "workspace" },
+            { in: "body", key: "environmentID" },
             { in: "body", key: "completionNotice" },
           ],
         },
@@ -2776,6 +2837,47 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/dag",
       ...options,
       ...params,
+    })
+  }
+
+  /**
+   * Change an idle Session's Environment selection
+   */
+  public setEnvironment<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      sessionEnvironmentSelection?: SessionEnvironmentSelection
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionEnvironmentSelection", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionSetEnvironmentResponses,
+      SessionSetEnvironmentErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/environment",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -7197,6 +7299,7 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
+        | "resources"
         | "skills"
         | "worktree"
         | "library"
@@ -7247,6 +7350,7 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
+        | "resources"
         | "skills"
         | "worktree"
         | "library"
@@ -7304,6 +7408,7 @@ export class Domain extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
+        | "resources"
         | "skills"
         | "worktree"
         | "library"
@@ -7562,6 +7667,7 @@ export class Config extends HeyApiClient {
         | "permissions"
         | "runtime"
         | "storage"
+        | "resources"
         | "skills"
         | "worktree"
         | "library"
@@ -7581,6 +7687,7 @@ export class Config extends HeyApiClient {
             | "permissions"
             | "runtime"
             | "storage"
+            | "resources"
             | "skills"
             | "worktree"
             | "library"
@@ -9741,6 +9848,275 @@ export class Skill extends HeyApiClient {
 
 export class Workspace extends HeyApiClient {
   /**
+   * Export the observed saved Workspace version without live authority
+   */
+  public exportSaved<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "expectedRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      WorkspaceExportSavedResponses,
+      WorkspaceExportSavedErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/{workspaceID}/export",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Import saved files as a new Workspace in a chosen storage profile
+   */
+  public importSaved<ThrowOnError extends boolean = false>(
+    parameters: {
+      directory?: string
+      scopeID?: string
+      profile: string
+      name?: string
+      file?: Blob | File
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "profile" },
+            { in: "query", key: "name" },
+            { in: "body", key: "file" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceImportSavedResponses,
+      WorkspaceImportSavedErrors,
+      ThrowOnError
+    >({
+      ...formDataBodySerializer,
+      url: "/workspace/import",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": null,
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Copy the last saved files into a new Workspace without clearing unknown live work
+   */
+  public recoverSaved<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision?: number
+      profile?: string
+      name?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedRevision" },
+            { in: "body", key: "profile" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceRecoverSavedResponses,
+      WorkspaceRecoverSavedErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/{workspaceID}/recover-saved",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Create a durable Workspace from an object-storage profile
+   */
+  public createObjects<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      profile?: string
+      name?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "profile" },
+            { in: "body", key: "name" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceCreateObjectsResponses,
+      WorkspaceCreateObjectsErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/objects",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List unfinished Workspace file operations
+   */
+  public operations<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<WorkspaceOperationsResponses, WorkspaceOperationsErrors, ThrowOnError>({
+      url: "/workspace/{workspaceID}/operations",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Retry reconciliation of an existing Workspace operation
+   */
+  public recoverOperation<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      operationID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "path", key: "operationID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkspaceRecoverOperationResponses,
+      WorkspaceRecoverOperationErrors,
+      ThrowOnError
+    >({
+      url: "/workspace/{workspaceID}/operations/{operationID}/recover",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save and detach an idle Workspace view
+   */
+  public detach<ThrowOnError extends boolean = false>(
+    parameters: {
+      workspaceID: string
+      directory?: string
+      scopeID?: string
+      expectedRevision?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "workspaceID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<WorkspaceDetachResponses, WorkspaceDetachErrors, ThrowOnError>({
+      url: "/workspace/{workspaceID}/detach",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * List Workspaces in a Scope
    */
   public list<ThrowOnError extends boolean = false>(
@@ -9884,6 +10260,340 @@ export class Workspace extends HeyApiClient {
   }
 
   files = new Files({ client: this.client })
+}
+
+export class Environment extends HeyApiClient {
+  /**
+   * List configured Workspace and Environment profiles
+   */
+  public profiles<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<EnvironmentProfilesResponses, EnvironmentProfilesErrors, ThrowOnError>({
+      url: "/environment/profiles",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * List Environments in a Scope
+   */
+  public list<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<EnvironmentListResponses, EnvironmentListErrors, ThrowOnError>({
+      url: "/environment",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Select an Environment profile without allocating compute
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      profile?: string
+      requestID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "profile" },
+            { in: "body", key: "requestID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<EnvironmentCreateResponses, EnvironmentCreateErrors, ThrowOnError>({
+      url: "/environment",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get an Environment
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "environmentID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<EnvironmentGetResponses, EnvironmentGetErrors, ThrowOnError>({
+      url: "/environment/{environmentID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Inspect retained Environment work without allocating compute
+   */
+  public activity<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "environmentID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<EnvironmentActivityResponses, EnvironmentActivityErrors, ThrowOnError>({
+      url: "/environment/{environmentID}/activity",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Reconcile the current Environment allocation
+   */
+  public reconcile<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "environmentID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnvironmentReconcileResponses,
+      EnvironmentReconcileErrors,
+      ThrowOnError
+    >({
+      url: "/environment/{environmentID}/reconcile",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save attached Workspaces and reclaim unused compute
+   */
+  public release<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+      directory?: string
+      scopeID?: string
+      expectedGeneration?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "environmentID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "expectedGeneration" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<EnvironmentReleaseResponses, EnvironmentReleaseErrors, ThrowOnError>({
+      url: "/environment/{environmentID}/release",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Inspect an existing execution and retry saving without repeating its command
+   */
+  public recoverExecution<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+      operationID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "environmentID" },
+            { in: "path", key: "operationID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnvironmentRecoverExecutionResponses,
+      EnvironmentRecoverExecutionErrors,
+      ThrowOnError
+    >({
+      url: "/environment/{environmentID}/execution/{operationID}/recover",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Request cancellation of existing physical execution
+   */
+  public cancelExecution<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+      operationID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "environmentID" },
+            { in: "path", key: "operationID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnvironmentCancelExecutionResponses,
+      EnvironmentCancelExecutionErrors,
+      ThrowOnError
+    >({
+      url: "/environment/{environmentID}/execution/{operationID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Recover an existing Workspace mutation without repeating uncertain effects
+   */
+  public recoverFile<ThrowOnError extends boolean = false>(
+    parameters: {
+      environmentID: string
+      operationID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "environmentID" },
+            { in: "path", key: "operationID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      EnvironmentRecoverFileResponses,
+      EnvironmentRecoverFileErrors,
+      ThrowOnError
+    >({
+      url: "/environment/{environmentID}/file/{operationID}/recover",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class Embedding extends HeyApiClient {
@@ -11621,6 +12331,348 @@ export class Asset extends HeyApiClient {
   }
 }
 
+export class Browser extends HeyApiClient {
+  /**
+   * Create a Browser viewer ticket
+   *
+   * Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.
+   */
+  public createViewerTicket<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserViewerTicketRequest?: BrowserViewerTicketRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserViewerTicketRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BrowserCreateViewerTicketResponses,
+      BrowserCreateViewerTicketErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/webrtc/ticket",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Create a Browser annotation
+   *
+   * Attach user feedback to a coordinate on the active Browser page.
+   */
+  public createAnnotation<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserAnnotationRequest?: BrowserAnnotationRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserAnnotationRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BrowserCreateAnnotationResponses,
+      BrowserCreateAnnotationErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/annotations",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read Browser diagnostics
+   *
+   * Read bounded console, network, element, asset, or download diagnostics for the active page.
+   */
+  public diagnostics<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserDiagnosticsRequest?: BrowserDiagnosticsRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserDiagnosticsRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BrowserDiagnosticsResponses, BrowserDiagnosticsErrors, ThrowOnError>({
+      url: "/{directory}/browser/diagnostics",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get Browser session state
+   *
+   * Read the browser session descriptor without creating, resuming, or navigating a page.
+   */
+  public session<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BrowserSessionResponses, BrowserSessionErrors, ThrowOnError>({
+      url: "/{directory}/browser/session",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Control the Browser workspace
+   *
+   * Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.
+   */
+  public control<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserControlRequest?: BrowserControlRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserControlRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BrowserControlResponses, BrowserControlErrors, ThrowOnError>({
+      url: "/{directory}/browser/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Host extends HeyApiClient {
+  /**
+   * Connect the authenticated native Computer host
+   */
+  public broker<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<unknown, ComputerHostBrokerErrors, ThrowOnError>({
+      url: "/computer/host/broker",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Computer extends HeyApiClient {
+  host = new Host({ client: this.client })
+}
+
 export class Plugin extends HeyApiClient {
   /**
    * List plugin theme contributions across all enabled scopes
@@ -12372,348 +13424,6 @@ export class Registry extends HeyApiClient {
   }
 
   plugins = new Plugins({ client: this.client })
-}
-
-export class Browser extends HeyApiClient {
-  /**
-   * Create a Browser viewer ticket
-   *
-   * Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.
-   */
-  public createViewerTicket<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserViewerTicketRequest?: BrowserViewerTicketRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserViewerTicketRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      BrowserCreateViewerTicketResponses,
-      BrowserCreateViewerTicketErrors,
-      ThrowOnError
-    >({
-      url: "/{directory}/browser/webrtc/ticket",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Create a Browser annotation
-   *
-   * Attach user feedback to a coordinate on the active Browser page.
-   */
-  public createAnnotation<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserAnnotationRequest?: BrowserAnnotationRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserAnnotationRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      BrowserCreateAnnotationResponses,
-      BrowserCreateAnnotationErrors,
-      ThrowOnError
-    >({
-      url: "/{directory}/browser/annotations",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Read Browser diagnostics
-   *
-   * Read bounded console, network, element, asset, or download diagnostics for the active page.
-   */
-  public diagnostics<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserDiagnosticsRequest?: BrowserDiagnosticsRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserDiagnosticsRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BrowserDiagnosticsResponses, BrowserDiagnosticsErrors, ThrowOnError>({
-      url: "/{directory}/browser/diagnostics",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get Browser session state
-   *
-   * Read the browser session descriptor without creating, resuming, or navigating a page.
-   */
-  public session<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<BrowserSessionResponses, BrowserSessionErrors, ThrowOnError>({
-      url: "/{directory}/browser/session",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Control the Browser workspace
-   *
-   * Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.
-   */
-  public control<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserControlRequest?: BrowserControlRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserControlRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BrowserControlResponses, BrowserControlErrors, ThrowOnError>({
-      url: "/{directory}/browser/control",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class Host extends HeyApiClient {
-  /**
-   * Connect the authenticated native Computer host
-   */
-  public broker<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<unknown, ComputerHostBrokerErrors, ThrowOnError>({
-      url: "/computer/host/broker",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Computer extends HeyApiClient {
-  host = new Host({ client: this.client })
 }
 
 export class Voice extends HeyApiClient {
@@ -13704,9 +14414,9 @@ export class SynergyClient extends HeyApiClient {
 
   worktree = new Worktree({ client: this.client })
 
-  vcs = new Vcs({ client: this.client })
-
   session = new Session({ client: this.client })
+
+  vcs = new Vcs({ client: this.client })
 
   part = new Part({ client: this.client })
 
@@ -13724,6 +14434,8 @@ export class SynergyClient extends HeyApiClient {
 
   workspace = new Workspace({ client: this.client })
 
+  environment = new Environment({ client: this.client })
+
   library = new Library({ client: this.client })
 
   note = new Note({ client: this.client })
@@ -13738,15 +14450,15 @@ export class SynergyClient extends HeyApiClient {
 
   asset = new Asset({ client: this.client })
 
+  browser = new Browser({ client: this.client })
+
+  computer = new Computer({ client: this.client })
+
   plugin = new Plugin({ client: this.client })
 
   api = new Api({ client: this.client })
 
   registry = new Registry({ client: this.client })
-
-  browser = new Browser({ client: this.client })
-
-  computer = new Computer({ client: this.client })
 
   voice = new Voice({ client: this.client })
 

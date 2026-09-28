@@ -121,15 +121,19 @@ test("retirement writes reuse their native exclusion and reject late reservation
     const timer = setTimeout(() => controller.abort(new Error("Retirement fixture deadline")), 1000)
     try {
       await WorkspaceAccess.maintenance(
-        () =>
-          WorkspaceAccess.retire([directory.path], async () => {
-            await FileMutation.write({
-              path: path.join(directory.path, "owned.txt"),
-              content: "owned",
-              expectedVersion: null,
-            })
-            await expect(WorkspaceAccess.reserveWrite(null)).rejects.toThrow("before retirement")
-            await expect(WorkspaceAccess.handoff(async () => {})).rejects.toThrow("retirement")
+        async () =>
+          ScopeContext.provide({
+            scope: await directory.scope(),
+            fn: () =>
+              WorkspaceAccess.retire([directory.path], async () => {
+                await FileMutation.write({
+                  path: path.join(directory.path, "owned.txt"),
+                  content: "owned",
+                  expectedVersion: null,
+                })
+                await expect(WorkspaceAccess.reserveWrite(null)).rejects.toThrow("before retirement")
+                await expect(WorkspaceAccess.handoff(async () => {})).rejects.toThrow("retirement")
+              }),
           }),
         { signal: controller.signal },
       )

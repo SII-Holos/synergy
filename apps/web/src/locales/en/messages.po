@@ -10157,6 +10157,106 @@ msgid "diff.preview-truncated"
 msgstr "Preview truncated"
 
 #. js-lingui-explicit-id
+msgid "environment.dialog.activeUses"
+msgstr "{count, plural, =0 {No active uses} one {# active use} other {# active uses}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activity"
+msgstr "Execution activity"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activityLoading"
+msgstr "Loading activity…"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancel"
+msgstr "Cancel execution"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancelDescription"
+msgstr "Request cancellation of this execution and save its changes. It may take time to confirm that all processes have stopped."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.choose"
+msgstr "Use Environment"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.close"
+msgstr "Close"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.default"
+msgstr "Use configured default"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.description"
+msgstr "Choose where commands run. Compute starts only when needed; Workspace files are stored separately."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.details"
+msgstr "Resource details"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.empty"
+msgstr "No Environments in this project."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.existing"
+msgstr "Existing Environments"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.failed"
+msgstr "The Environment could not be updated. Reload its state and try again."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.loading"
+msgstr "Loading Environments…"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.none"
+msgstr "No execution Environment"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.operation"
+msgstr "{state, select, submitted {Submitted} running {Running} cancel_requested {Cancellation requested} unknown {Result unconfirmed} exited {Saving result} unsaved {Save needs retry} saved {Finishing} completed {Completed} other {Needs recovery}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.profiles"
+msgstr "Available profiles"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reconcile"
+msgstr "Check connection"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recover"
+msgstr "Recover result"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recoverDescription"
+msgstr "Recovery checks the original operation and retries saving its result. It does not repeat the command."
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.refresh"
+msgstr "Refresh activity"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.release"
+msgstr "Save and release compute"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reload"
+msgstr "Reload"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.state"
+msgstr "{state, select, idle {Not allocated} allocating {Starting} ready {Ready} releasing {Saving and releasing} unavailable {Needs recovery} other {Unavailable}}"
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.title"
+msgstr "Choose Environment"
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr "for"
 
@@ -22148,6 +22248,14 @@ msgid "workspace.dialog.choose"
 msgstr "Use Workspace"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.create"
+msgstr "Create Workspace"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.createStored"
+msgstr "Create stored Workspace"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.description"
 msgstr "Choose where this session works. Its project, settings and conversation stay the same."
 
@@ -22157,7 +22265,7 @@ msgstr "Local directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.empty"
-msgstr "No matching Workspaces. Add an existing directory to get started."
+msgstr "No matching Workspaces. Add a directory or create a stored Workspace."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.failed"
@@ -22168,8 +22276,12 @@ msgid "workspace.dialog.loading"
 msgstr "Loading Workspaces…"
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.name"
+msgstr "Workspace name"
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.none"
-msgstr "No local files"
+msgstr "No Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.pick"
@@ -22186,6 +22298,14 @@ msgstr "All sessions using this Workspace will use the new directory. Existing f
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindPath"
 msgstr "New local directory"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.recoverDescription"
+msgstr "Create a separate Workspace from the last saved files. Unsaved changes remain on the original. Destination storage profile:"
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.recoverSaved"
+msgstr "Recover saved copy"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.register"
@@ -22209,11 +22329,15 @@ msgstr "Additional writable Workspaces"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharingDescription"
-msgstr "Sessions in this Workspace may also write to the selected directories. Sharing applies directly and is not inherited."
+msgstr "Sessions in this Workspace may also write to the selected Workspaces. Sharing applies directly and is not inherited."
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharingEmpty"
-msgstr "Add another directory to share write access."
+msgstr "Add another Workspace to share write access."
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.store"
+msgstr "Storage profile"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.title"
@@ -22221,7 +22345,7 @@ msgstr "Choose Workspace"
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.unavailable"
-msgstr "Unavailable — choose a local directory to rebind"
+msgstr "Workspace unavailable"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.directory"
@@ -22229,7 +22353,7 @@ msgstr "Local directory"
 
 #. js-lingui-explicit-id
 msgid "workspace.location.explanation"
-msgstr "File operations and commands use this session's working directory. Open files keep their original Workspace."
+msgstr "Files belong to this Workspace. Commands run in the selected Environment. Open files keep their original Workspace."
 
 #. js-lingui-explicit-id
 msgid "workspace.location.home"
@@ -22248,5 +22372,9 @@ msgid "workspace.location.planned"
 msgstr "Worktree pending"
 
 #. js-lingui-explicit-id
+msgid "workspace.location.stored"
+msgstr "Stored Workspace"
+
+#. js-lingui-explicit-id
 msgid "workspace.location.unavailable"
-msgstr "Directory unavailable"
+msgstr "Workspace unavailable"

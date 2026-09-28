@@ -1,9 +1,8 @@
-import type { BunFile } from "bun"
+import { FileView } from "../file/view"
+import { FileAttachment } from "../file/attachment"
 import z from "zod"
 import path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
 import type { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { supportsImageMediaType } from "@ericsanchezok/synergy-harness/provider/image-capability"
 
@@ -18,14 +17,14 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   ".svg": "image/svg+xml",
 }
 
-const DESCRIPTION = `Load a local image file into the current model context for direct visual inspection.
+const DESCRIPTION = `Load an image file from the selected Workspace into the current model context for direct visual inspection.
 
 Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated plot, screenshot, diagram, rendered page, or visual artifact. The tool does not analyze the image with a separate model; it attaches the image so the current model can see it on the next model step.
 
 Use look_at instead when view_image is unavailable or the active model does not support the image's format. Use attach only when the user should receive or inspect the file.`
 
 const parameters = z.object({
-  filePath: z.string().describe("Absolute path to the local image file to load into the current model context"),
+  filePath: z.string().describe("Path to the Workspace image file to load into the current model context"),
 })
 
 interface ViewImageMetadata {
@@ -46,11 +45,9 @@ export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>(
     description: DESCRIPTION,
     parameters,
     async execute(params, ctx) {
-      const filepath = path.isAbsolute(params.filePath)
-        ? params.filePath
-        : path.join(ScopeContext.current.directory, params.filePath)
+      const filepath = FileView.resolve(params.filePath)
       const filename = path.basename(filepath)
-      const file = Bun.file(filepath)
+      const file = FileView.file(filepath)
 
       if (!(await file.exists())) {
         return {
@@ -128,7 +125,7 @@ export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>(
           preview,
         },
         attachments: [
-          await Attachment.toPart({
+          await FileAttachment.toPart({
             filepath,
             mime: mimeType,
             filename,
@@ -150,7 +147,7 @@ function inferImageMimeType(filepath: string, fileType: string): string {
   return IMAGE_MIME_BY_EXTENSION[path.extname(filepath).toLowerCase()] ?? (fileType || "application/octet-stream")
 }
 
-async function isValidImageFile(file: BunFile, mimeType: string): Promise<boolean> {
+async function isValidImageFile(file: ReturnType<typeof FileView.file>, mimeType: string): Promise<boolean> {
   const bytes = new Uint8Array(await file.slice(0, 4100).arrayBuffer())
   if (mimeType === "image/png") return startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   if (mimeType === "image/jpeg") return startsWith(bytes, [0xff, 0xd8, 0xff])

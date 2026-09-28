@@ -1,3 +1,4 @@
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { z } from "zod"
@@ -34,7 +35,7 @@ export const SaveFileTool = Tool.define(
       return FileTime.withLock(
         filePath,
         async () => {
-          const file = Bun.file(filePath)
+          const file = FileView.file(filePath)
           const exists = await file.exists()
           const oldContent = exists ? await FileMutation.readText(filePath) : ""
           const previousConflict = detectConflicts(oldContent)

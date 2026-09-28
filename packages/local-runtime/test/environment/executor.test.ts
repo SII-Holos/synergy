@@ -1,0 +1,162 @@
+import { expect, test } from "bun:test"
+import path from "node:path"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
+import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
+import { NativeExecutor } from "../../src/environment/native-executor"
+import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+
+test("native executor deduplicates effects, drains output and retains the writer until saved", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const target = { environmentID: "native", allocationID: "allocation", generation: 1 }
+  await using executor = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
+  const marker = path.join(tmp.path, "effect")
+  const command = {
+    command: process.execPath,
+    args: [
+      "-e",
+      `await Bun.write(${JSON.stringify(marker)}, "one"); process.stdout.write("output"); process.stderr.write("error")`,
+    ],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [tmp.path],
+  }
+  const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
+  await Promise.all([executor.start(request), executor.start(request)])
+  let status = await executor.status(request.id)
+  for (let attempt = 0; status && !ExecutionProtocol.terminal(status) && attempt < 400; attempt++) {
+    await Bun.sleep(10)
+    status = await executor.status(request.id)
+  }
+  expect(status?.state).toBe("exited")
+  expect(status?.exitCode).toBe(0)
+  const chunks = await executor.output(request.id, 0, 128)
+  expect(
+    chunks
+      .filter((chunk) => chunk.stream === "stdout")
+      .map((chunk) => Buffer.from(chunk.data, "base64").toString())
+      .join(""),
+  ).toBe("output")
+  expect(
+    chunks
+      .filter((chunk) => chunk.stream === "stderr")
+      .map((chunk) => Buffer.from(chunk.data, "base64").toString())
+      .join(""),
+  ).toBe("error")
+  expect(await coordinator.inspect()).toHaveLength(1)
+  await executor.close()
+  await using recovered = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
+  expect((await recovered.status(request.id))?.state).toBe("exited")
+  await recovered.release(request.id)
+  expect(await coordinator.inspect()).toHaveLength(0)
+  await Bun.write(marker, "changed")
+  await recovered.start(request)
+  expect(await Bun.file(marker).text()).toBe("changed")
+}, 30_000)
+
+test("cancel before dispatch remains cancelled and changed inputs or generations are rejected", async () => {
+  await using tmp = await tmpdir()
+  const target = { environmentID: "native", allocationID: "allocation", generation: 1 }
+  await using executor = await NativeExecutor.open({
+    target,
+    directory: path.join(tmp.path, "receipts"),
+    coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") }),
+  })
+  const command = {
+    command: process.execPath,
+    args: ["-e", "throw new Error('must not run')"],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [],
+  }
+  const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
+  await executor.cancel(request.id, request.digest)
+  expect((await executor.start(request)).state).toBe("cancelled")
+  await expect(executor.start({ ...request, target: { ...target, generation: 2 } })).rejects.toThrow("allocation")
+  const changed = { ...command, args: ["-e", ""] }
+  await expect(
+    executor.start({ ...request, command: changed, digest: ExecutionProtocol.digest(changed) }),
+  ).rejects.toThrow("different input")
+})
+
+test("execution validates committed file bytes after physical admission and does not replay a rejected command", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  const target = { environmentID: "native", allocationID: "allocation", generation: 1 }
+  await using executor = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
+  const file = path.join(tmp.path, "source")
+  await Bun.write(file, "before")
+  const blocker = await coordinator.acquire({
+    id: "other-writer",
+    owner: "other",
+    ancestors: [],
+    kind: "operation",
+    roots: [tmp.path],
+  })
+  const command = {
+    command: process.execPath,
+    args: ["-e", "await Bun.write('source', 'stale formatting')"],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [tmp.path],
+    preconditions: [
+      {
+        path: file,
+        canonical: file,
+        version: `sha256:${new Bun.CryptoHasher("sha256").update("before").digest("hex")}`,
+      },
+    ],
+  }
+  const request = { id: "conditional", target, command, digest: ExecutionProtocol.digest(command) }
+  try {
+    await executor.start(request)
+    const deadline = Date.now() + 10000
+    while (!(await coordinator.inspect()).some((claim) => claim.state === "waiting")) {
+      if (Date.now() > deadline) throw new Error("Command never queued")
+      await Bun.sleep(10)
+    }
+    await Bun.write(file, "foreign write")
+  } finally {
+    await blocker.release()
+  }
+  let status = await executor.status(request.id)
+  for (let i = 0; !ExecutionProtocol.terminal(status!) && i < 400; i++) {
+    await Bun.sleep(10)
+    status = await executor.status(request.id)
+  }
+  expect(status?.effectsStarted).toBe(false)
+  expect(status?.failure?.name).toBe("WorkspaceFileWriteConflictError")
+  expect(await Bun.file(file).text()).toBe("foreign write")
+  await executor.release(request.id)
+  await Bun.write(file, "before")
+  expect((await executor.start(request)).failure?.name).toBe("WorkspaceFileWriteConflictError")
+  expect(await Bun.file(file).text()).toBe("before")
+  expect(await coordinator.inspect()).toEqual([])
+}, 15000)
+
+test("a failed launch with verified process and stream drainage remains saveable", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  const target = { environmentID: "native", allocationID: "allocation", generation: 1 }
+  await using executor = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
+  const command = {
+    command: path.join(tmp.path, "missing-executable"),
+    args: [],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [tmp.path],
+  }
+  await executor.start({ id: "missing", target, command, digest: ExecutionProtocol.digest(command) })
+  let status = await executor.status("missing")
+  for (let i = 0; !ExecutionProtocol.terminal(status!) && i < 400; i++) {
+    await Bun.sleep(10)
+    status = await executor.status("missing")
+  }
+  expect(status?.state).toBe("exited")
+  expect(status?.error).toBeDefined()
+  expect(status?.treeDrained).toBe(true)
+  expect(status?.streamsDrained).toBe(true)
+  expect(await coordinator.inspect()).toHaveLength(1)
+  await executor.release("missing")
+  expect(await coordinator.inspect()).toEqual([])
+}, 15000)

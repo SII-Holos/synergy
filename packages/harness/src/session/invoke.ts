@@ -344,7 +344,6 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
-        await Session.assertWorkspaceAvailable(input.sessionID)
         const message = await createUserMessage(input)
         if (input.ephemeralTools?.length) {
           instanceState.ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
@@ -385,7 +384,6 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
-        await Session.assertWorkspaceAvailable(input.sessionID)
         const item = await SessionInbox.getStored(input.sessionID, input.itemID)
         const message = await SessionInbox.materializeItem(item)
         if (!message || message.info.role !== "user") {
@@ -528,7 +526,6 @@ export namespace SessionInvoke {
     lease: SessionManager.LoopLease,
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
-    await Session.assertWorkspaceAvailable(sessionID)
     ContinuationKernel.init()
     for (const kind of WorkflowPromptRegistry.kinds()) WorkflowPromptRegistry.get(kind)?.init?.()
     const abort = lease.signal

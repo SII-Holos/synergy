@@ -21,11 +21,14 @@ beforeAll(async () => {
     const record = (id, p, state="bound") => ({id,scopeID:"scope",type:"directory",revision:1,binding:{hostID:"host",path:p,generation:1,state,physicalID:state==="bound" ? "physical:"+id : undefined},metadata:{},sharedWritableWorkspaceIDs:[],lifecycle:"active",createdAt:1,updatedAt:1})
     const rows=[record("wsp_a","/first"),record("wsp_b","/second"),record("wsp_history","/foreign","unbound"),record("wsp_unverified","/unverified")]
     delete rows[3].binding.physicalID
+    rows.push({...record("wsp_objects",null), backend:{provider:"objects",spec:{}},type:"objects",metadata:{name:"Research"}})
     const listeners = new Set()
     const requests=[]
     const h=window.fixture={ requests, rows, selected:[], fail:false, pick:"/new", emit(record){listeners.forEach(fn=>fn({properties:record}))} }
-    export const useSDK=()=>({scopeID:"scope",client:{workspace:{
+    export const useSDK=()=>({scopeID:"scope",client:{environment:{async profiles(){return {data:{defaultEnvironment:"native",environments:[],stores:[{name:"local",provider:"local"}]}}}},workspace:{
+      async createObjects(input){requests.push({kind:"objects",...input});const next={...record("wsp_created",null),type:"objects",backend:{provider:"objects",spec:{}},metadata:{name:input.name}}; rows.push(next);return {data:next}},
       async list(){return {data:structuredClone(rows)}},
+      async recoverSaved(input){requests.push({kind:"recover-saved",...input});if(h.fail)throw new Error("Workspace changed before recovery");const next={...rows.find(row=>row.id===input.workspaceID),id:"wsp_recovered",activeMount:undefined,metadata:{name:"Recovered"}};rows.push(next);return {data:next}},
       async register(input){requests.push({kind:"register",...input});const next=record("wsp_new",input.path);rows.push(next);return {data:next}},
       async setSharing(input){requests.push({kind:"share",...input});if(h.fail)throw new Error("Workspace changed before sharing");const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.sharedWritableWorkspaceIDs=input.workspaceIDs;return {data:structuredClone(row)}},
       async rebind(input){requests.push({kind:"rebind",...input});const row=rows.find(row=>row.id===input.workspaceID);row.revision++;row.binding={...row.binding,state:"bound",path:input.path,physicalID:"physical:"+row.id,generation:row.binding.generation+1};return {data:structuredClone(row)}}},
@@ -121,6 +124,34 @@ test("selecting a Workspace preserves Scope and reports busy failures without di
   expect(errors).toEqual([])
 }, 20_000)
 
+test("lost file views recover a separate saved copy with the observed revision", async () => {
+  await open()
+  await page.evaluate(
+    "window.fixture.rows[4].activeMount={state:'unavailable'};window.fixture.emit(window.fixture.rows[4])",
+  )
+  await page
+    .getByRole("button", { name: /Research/ })
+    .first()
+    .click()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
+  await page.evaluate("window.fixture.emit({...window.fixture.rows[4],revision:2});window.fixture.fail=true")
+  await page.getByRole("button", { name: "Recover saved copy", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "recover-saved",
+    workspaceID: "wsp_objects",
+    expectedRevision: 1,
+    profile: "local",
+  })
+  await page.evaluate("window.fixture.fail=false")
+  await page.getByRole("button", { name: "Reload", exact: true }).click()
+  await page.getByRole("button", { name: "Recover saved copy", exact: true }).click()
+  await page.getByRole("button", { name: "Recovered", exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
+  expect(await page.evaluate<string>("window.fixture.rows[4].activeMount.state")).toBe("unavailable")
+  expect(errors).toEqual([])
+}, 20_000)
+
 test("sharing keeps its original revision after an external update and new directories can be selected", async () => {
   await open()
   await page.locator('[data-slot="checkbox-checkbox-label"]').filter({ hasText: "/second" }).click()
@@ -151,7 +182,7 @@ test("unbound history needs an explicit rebind and Escape returns focus", async 
   await open()
   await page.getByRole("button", { name: /\/foreign/ }).click()
   expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
-  await page.locator("summary").click()
+  await page.getByText("Change local binding", { exact: true }).click()
   await page.getByLabel("New local directory", { exact: true }).fill("/rebound")
   await page.evaluate("window.fixture.emit({...window.fixture.rows[2],revision:2})")
   await page.getByRole("button", { name: "Rebind Workspace", exact: true }).click()
@@ -176,7 +207,7 @@ test("a bound directory without a verified identity requires rebind before selec
   await page.getByRole("button", { name: /\/unverified/ }).click()
   expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isDisabled()).toBe(true)
   expect(await page.getByRole("button", { name: "Save sharing", exact: true }).count()).toBe(0)
-  await page.locator("summary").click()
+  await page.getByText("Change local binding", { exact: true }).click()
   await page.getByLabel("New local directory", { exact: true }).fill("/verified")
   await page.getByRole("button", { name: "Rebind Workspace", exact: true }).click()
   await page.getByRole("button", { name: "/verified", exact: true }).waitFor()
@@ -186,5 +217,33 @@ test("a bound directory without a verified identity requires rebind before selec
     kind: "select",
     sessionWorkspaceSelection: { mode: "workspace", workspaceID: "wsp_unverified", workspaceGeneration: 2 },
   })
+  expect(errors).toEqual([])
+}, 20_000)
+
+test("stored Workspaces can be selected and created without a directory picker", async () => {
+  await open()
+  await page.getByRole("button", { name: "Research", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Use Workspace", exact: true }).isEnabled()).toBe(true)
+  expect(await page.getByText("Change local binding", { exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Save sharing", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Use Workspace", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "select",
+    sessionWorkspaceSelection: { mode: "workspace", workspaceID: "wsp_objects", workspaceGeneration: 1 },
+  })
+  await page.locator("#open").click()
+  await page.getByText("Create stored Workspace", { exact: true }).click()
+  await page.getByLabel("Workspace name", { exact: true }).fill("Experiment")
+  await page.getByRole("button", { name: "Create Workspace", exact: true }).click()
+  await page.getByRole("button", { name: "Experiment", exact: true }).waitFor()
+  expect(await page.evaluate("window.fixture.requests.at(-1)")).toMatchObject({
+    kind: "objects",
+    profile: "local",
+    name: "Experiment",
+  })
+  expect(
+    await page.evaluate(() => (window as any).fixture.requests.some((r: { kind: string }) => r.kind === "register")),
+  ).toBe(false)
   expect(errors).toEqual([])
 }, 20_000)

@@ -42,6 +42,7 @@ export function startPolicyWorker() {
     const context = input.context
     const gate = await EnforcementGate.create({
       activeWorkspace: context.activeWorkspace,
+      pathMode: context.pathMode,
       workspaceType: context.workspaceType,
       profileId: "guarded",
       registeredMcpTools: new Set(context.registeredMcpTools),

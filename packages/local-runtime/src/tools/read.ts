@@ -1,13 +1,13 @@
+import { FileAttachment } from "../file/attachment"
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 import z from "zod"
-import * as fs from "fs"
 import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { ToolLspSource } from "@ericsanchezok/synergy-harness/tool/lsp-source"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import DESCRIPTION from "./read.txt"
 import { OutputBudget } from "./anchored-file"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
 
 const DEFAULT_READ_LIMIT = 2000
@@ -28,11 +28,8 @@ export const ReadTool = Tool.define(
         .optional(),
     }),
     async execute(params, ctx) {
-      let filepath = params.filePath
-      if (!path.isAbsolute(filepath)) {
-        filepath = path.join(ScopeContext.current.directory, filepath)
-      }
-      const title = path.relative(ScopeContext.current.directory, filepath)
+      const filepath = FileView.resolve(params.filePath)
+      const title = FileView.display(filepath)
 
       await ctx.ask({
         permission: "read",
@@ -40,12 +37,12 @@ export const ReadTool = Tool.define(
         metadata: {},
       })
 
-      const file = Bun.file(filepath)
+      const file = FileView.file(filepath)
       if (!(await file.exists())) {
         const dir = path.dirname(filepath)
         const base = path.basename(filepath)
 
-        const dirEntries = fs.readdirSync(dir)
+        const dirEntries = (await FileView.list(dir === "." ? "" : dir)).map((entry) => path.basename(entry.path))
         const suggestions = dirEntries
           .filter(
             (entry) =>
@@ -63,7 +60,7 @@ export const ReadTool = Tool.define(
 
       const filePolicy = Attachment.policy({ filepath, mime: file.type })
       if (filePolicy.extractText) {
-        const text = await Attachment.extractTextFromFile(filepath)
+        const text = await FileAttachment.extractText(filepath, file.type)
         const lines = text.split("\n")
         const limit = params.limit ?? DEFAULT_READ_LIMIT
         const offset = params.offset ?? 0
@@ -105,7 +102,7 @@ export const ReadTool = Tool.define(
 
         const attachments = filePolicy.keepBinary
           ? [
-              await Attachment.toPart({
+              await FileAttachment.toPart({
                 filepath,
                 mime: "application/pdf",
                 sessionID: ctx.sessionID,
@@ -190,7 +187,7 @@ export const ReadTool = Tool.define(
   { requiresWorkspace: true },
 )
 
-async function isBinaryFile(filepath: string, file: Bun.BunFile): Promise<boolean> {
+async function isBinaryFile(filepath: string, file: ReturnType<typeof FileView.file>): Promise<boolean> {
   const ext = path.extname(filepath).toLowerCase()
   // binary check for common non-text extensions
   switch (ext) {

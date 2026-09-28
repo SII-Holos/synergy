@@ -634,7 +634,6 @@ export namespace SessionInbox {
   }
 
   export async function enqueueUser(input: InvokeInput, options?: { mode: "task" | "steer" }): Promise<Item> {
-    await Session.assertWorkspaceAvailable(input.sessionID)
     const messageID = input.messageID ?? Identifier.ascending("message")
     const itemID = stableDeliveryItemID(input.sessionID, `user:${messageID}`)
     const { messageID: _queuedMessageID, ...queuedInput } = input

@@ -1168,6 +1168,191 @@
       },
       "additionalProperties": false
     },
+    "resources": {
+      "ref": "ResourcesConfig",
+      "type": "object",
+      "properties": {
+        "defaultEnvironment": {
+          "description": "Environment profile selected for new Sessions; null disables automatic selection",
+          "anyOf": [{ "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" }, { "type": "null" }]
+        },
+        "environments": {
+          "type": "object",
+          "propertyNames": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "const": "native" },
+                  "spec": { "default": {}, "type": "object", "properties": {}, "additionalProperties": false },
+                  "idleTimeoutMs": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "reuse": { "type": "string", "enum": ["session", "workspace", "scope"] }
+                },
+                "required": ["provider", "spec"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "const": "docker" },
+                  "spec": {
+                    "type": "object",
+                    "properties": {
+                      "image": { "type": "string", "minLength": 1 },
+                      "memoryBytes": {
+                        "default": 1073741824,
+                        "type": "integer",
+                        "minimum": 67108864,
+                        "maximum": 9007199254740991
+                      },
+                      "cpus": { "default": 1, "type": "number", "exclusiveMinimum": 0, "maximum": 256 },
+                      "pids": { "default": 256, "type": "integer", "minimum": 16, "maximum": 65536 },
+                      "mounts": {
+                        "default": [],
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "type": { "type": "string", "enum": ["bind", "volume"] },
+                            "source": { "type": "string", "minLength": 1 },
+                            "target": { "type": "string", "pattern": "^\\/.*" },
+                            "readOnly": {
+                              "description": "External mounts are read-only; writable files use a coordinated Workspace",
+                              "default": true,
+                              "type": "boolean",
+                              "const": true
+                            }
+                          },
+                          "required": ["type", "source", "target", "readOnly"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "host": {
+                        "type": "object",
+                        "properties": {
+                          "endpoint": { "type": "string", "format": "uri" },
+                          "engineTLS": {
+                            "type": "object",
+                            "properties": {
+                              "certRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+                              "keyRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+                              "caRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+                            },
+                            "required": ["certRef", "keyRef"],
+                            "additionalProperties": false
+                          },
+                          "executionHostname": { "type": "string", "minLength": 1 },
+                          "publishHostIP": { "type": "string", "minLength": 1 },
+                          "executionTLS": {
+                            "type": "object",
+                            "properties": {
+                              "certRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+                              "keyRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+                              "caRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+                            },
+                            "required": ["certRef", "keyRef"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": ["endpoint"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["image", "memoryBytes", "cpus", "pids", "mounts", "host"],
+                    "additionalProperties": false
+                  },
+                  "idleTimeoutMs": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                  "reuse": { "type": "string", "enum": ["session", "workspace", "scope"] }
+                },
+                "required": ["provider", "spec"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        },
+        "stores": {
+          "type": "object",
+          "propertyNames": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$" },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "const": "local" },
+                  "spec": {
+                    "type": "object",
+                    "properties": {
+                      "namespace": {
+                        "default": "default",
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$"
+                      }
+                    },
+                    "required": ["namespace"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["provider", "spec"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "const": "s3" },
+                  "spec": {
+                    "type": "object",
+                    "properties": {
+                      "bucket": { "type": "string", "minLength": 1 },
+                      "region": { "type": "string", "minLength": 1 },
+                      "endpoint": { "type": "string", "format": "uri" },
+                      "prefix": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]*$" },
+                      "credentialsRef": {
+                        "description": "Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON",
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      }
+                    },
+                    "required": ["bucket", "region", "credentialsRef"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["provider", "spec"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "const": "oss" },
+                  "spec": {
+                    "type": "object",
+                    "properties": {
+                      "bucket": { "type": "string", "minLength": 1 },
+                      "region": { "type": "string", "minLength": 1 },
+                      "endpoint": { "type": "string", "format": "uri" },
+                      "prefix": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]*$" },
+                      "credentialsRef": {
+                        "description": "Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON",
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 256
+                      },
+                      "cname": { "type": "boolean" }
+                    },
+                    "required": ["bucket", "region", "credentialsRef"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["provider", "spec"],
+                "additionalProperties": false
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "mcp": {
       "description": "MCP (Model Context Protocol) server configurations",
       "type": "object",

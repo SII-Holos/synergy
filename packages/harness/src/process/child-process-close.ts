@@ -54,7 +54,7 @@ export namespace ChildProcessClose {
           finish({ ...exit, drainTimedOut: false })
           return
         }
-        scheduleDrainTimeout()
+        if (!child.completion) scheduleDrainTimeout()
       }
       const scheduleDrainTimeout = () => {
         drainTimer = setTimeout(() => {

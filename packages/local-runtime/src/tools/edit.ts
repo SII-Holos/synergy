@@ -1,3 +1,4 @@
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 // the approaches in this edit tool are sourced from
@@ -6,13 +7,11 @@ import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events
 // https://github.com/cline/cline/blob/main/evals/diff-edits/diff-apply/diff-06-26-25.ts
 
 import { z } from "zod"
-import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "../file/index"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SnapshotSchema } from "@ericsanchezok/synergy-harness/session/snapshot-schema"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
@@ -42,10 +41,8 @@ export const EditTool = Tool.define(
         throw new Error("oldString and newString must be different")
       }
 
-      const filePath = path.isAbsolute(params.filePath)
-        ? params.filePath
-        : path.join(ScopeContext.current.directory, params.filePath)
-      const displayPath = path.relative(ScopeContext.current.directory, filePath)
+      const filePath = FileView.resolve(params.filePath)
+      const displayPath = FileView.display(filePath)
 
       let diff = ""
       let contentOld = ""
@@ -78,11 +75,11 @@ export const EditTool = Tool.define(
               file: filePath,
               contentVersion: written.contentVersion,
             })
-            FileTime.read(ctx.sessionID, filePath, await Bun.file(filePath).bytes())
+            FileTime.read(ctx.sessionID, filePath, await FileView.file(filePath).bytes())
             return
           }
 
-          const file = Bun.file(filePath)
+          const file = FileView.file(filePath)
           const stats = await file.stat().catch(() => {})
           if (!stats) throw new Error(`File ${filePath} not found`)
           if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)

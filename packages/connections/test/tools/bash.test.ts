@@ -1,3 +1,4 @@
+import { $ } from "bun"
 import type { SynergyLinkBash, SynergyLinkProcess, SynergyLinkSession } from "@ericsanchezok/synergy-link-protocol"
 import { SynergyLinkRemoteError } from "@ericsanchezok/synergy-connections/remote/client"
 import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
@@ -20,6 +21,18 @@ import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+async function worktreeFixture() {
+  const fixture = await tmpdir({
+    git: true,
+    init: async (directory) => {
+      const workspace = path.join(directory, "worktree")
+      await $`git worktree add --detach ${workspace} HEAD`.quiet().cwd(directory)
+      return workspace
+    },
+  })
+  return { ...fixture, path: fixture.extra, originalCheckout: fixture.path }
+}
 
 const inProject = <T>(fn: () => T) => runtime.run(() => withProjectScope(async () => fn()))
 
@@ -880,8 +893,8 @@ describe("tool.bash metadata throttling", () => {
 describe("tool.bash workspace boundary enforcement", () => {
   test("direct backend does not enforce worktree original-checkout boundary", () =>
     inProject(async () => {
-      await using tmp = await tmpdir({ git: true })
-      const originalCheckout = "/tmp"
+      await using tmp = await worktreeFixture()
+      const originalCheckout = tmp.originalCheckout
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -908,7 +921,7 @@ describe("tool.bash workspace boundary enforcement", () => {
 
   test("workdir inside active workspace does not trigger boundary rejection", () =>
     inProject(async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await worktreeFixture()
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -936,8 +949,8 @@ describe("tool.bash workspace boundary enforcement", () => {
 
   test("does not emit external_directory directly when command traverses toward original checkout", () =>
     inProject(async () => {
-      await using tmp = await tmpdir({ git: true })
-      const originalCheckout = path.resolve(tmp.path, "..", "original-checkout")
+      await using tmp = await worktreeFixture()
+      const originalCheckout = tmp.originalCheckout
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -970,7 +983,7 @@ describe("tool.bash workspace boundary enforcement", () => {
 
   test("does not emit external_directory directly when workdir is outside active workspace", () =>
     inProject(async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await worktreeFixture()
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -1006,7 +1019,7 @@ describe("tool.bash workspace boundary enforcement", () => {
 
   test("local bash backend leaves workspace validation to ToolResolver gate", () =>
     inProject(async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await worktreeFixture()
 
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -1014,7 +1027,7 @@ describe("tool.bash workspace boundary enforcement", () => {
           type: "git_worktree",
           path: tmp.path,
           scopeID: (await tmp.scope()).id,
-          originalCheckout: "/tmp/original-checkout-" + Math.random().toString(36).slice(2),
+          originalCheckout: tmp.originalCheckout,
         },
         fn: async () => {
           const bash = await BashTool.init()

@@ -1,5 +1,6 @@
 import { ConfigDomain } from "@ericsanchezok/synergy-harness/config/domain"
-import z from "zod"
+import { z } from "zod"
+import { ResourcesConfig } from "./environment/profile-schema"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 export const SkillsCompatibility = z
   .object({
@@ -48,6 +49,7 @@ export type WorktreeConfig = z.infer<typeof WorktreeConfig>
 export const ConfigShape = {
   skills: SkillsConfig,
   worktree: WorktreeConfig,
+  resources: ResourcesConfig,
 }
 
 export type ConfigValues = z.output<z.ZodObject<typeof ConfigShape>>
@@ -62,6 +64,18 @@ const contribution: ConfigExtensions.Contribution = { shape: ConfigShape }
 export function registerConfig() {
   ConfigExtensions.register("local-runtime", contribution)
   for (const domain of [
+    {
+      id: "resources",
+      filename: "135-resources.jsonc",
+      label: "Workspaces and Environments",
+      ownedKeys: ["resources"],
+      mergePolicy: "replace-domain",
+      reloadTargets: ["config"],
+      uiSection: "resources",
+      importable: false,
+      globalOnly: true,
+      failClosed: true,
+    },
     {
       id: "skills",
       filename: "55-skills.jsonc",

@@ -267,6 +267,7 @@ const BaseInfo = z.preprocess(
     working: WorkingInfo.optional(),
     workspace: Workspace.nullable(),
     workspaceID: z.string().nullable().optional(),
+    environmentID: z.string().min(1).nullable().optional(),
     workspaceError: z.string().optional(),
     workflow: z
       .object({
