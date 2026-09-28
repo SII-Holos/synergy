@@ -9,6 +9,10 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
 
+## Local Joint Acceptance
+
+Use Presets' opt-in `bun run acceptance --help` for cross-domain local experiments. Declare risks, preconditions, operations, observable fault barriers and independent oracles before running. Freeze a clean source revision, dependency lock, model catalog/configuration and artifact inventories with `plan --case <ids|all> --out <private-directory> --settings <settings.json> --input <name=artifact>`. Keep model credentials in explicitly selected private files outside the repository; never copy an entire personal Home. `run --out <directory>` executes only declared cases. `resume` preserves prior attempts; repeating a failed or interrupted case requires `--retry <ids> --reason <explanation>` and creates another attempt. `report` rejects missing, changed or incomplete evidence and keeps model quality separate from system correctness. Review all three evidence classes: product, external physical state and transport. A script that exits successfully without triggering the target behavior is uncovered. Preserve request journals independently of scenario success, including auxiliary calls, retries, cancellation and unknown usage. Never combine different frozen revisions into one acceptance verdict.
+
 ## Define the Invariant First
 
 When a dedicated CI task activates opt-in tests, declare its mandatory scenario names in the verification catalog. Verify the actual JUnit report rejects skipped or missing scenarios; process exit status cannot prove that an external capability was exercised. Cover both source and test-only changes in affected planning.

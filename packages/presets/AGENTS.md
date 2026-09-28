@@ -13,6 +13,8 @@ Own complete-product source composition, cross-domain data commands and integrat
 
 Run `bun run typecheck`, affected tests and `bun run test:coverage` from this package. The shared testing orchestrator injects a positive isolated-home marker into every child; never use raw parallel coverage. Model fixtures belong to `packages/testing/fixtures/models-api.json`.
 
+`script/acceptance.ts` owns opt-in local joint acceptance through `plan/run/resume/report`; its behavioral regressions live in `test/acceptance`. Keep real-provider calls outside CI, retain failed attempts and unknown accounting, and require independently verified evidence before reporting coverage.
+
 Run manual startup and CLI checks with an isolated `SYNERGY_HOME` using `develop-synergy`. Never restart or modify the active instance. For releases, verify full assets and an installed tarball outside the repository; source resolution alone cannot prove the package is complete.
 
 Review the owning Skill for CLI, persistence, execution, API, Browser or Channel changes. Regenerate API contracts with the root `./script/generate.ts` and command documentation with `bun script/gen/gen-cli-reference.ts` when those public contracts change.

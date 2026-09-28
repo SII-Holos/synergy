@@ -24,6 +24,7 @@
     "./component": "./src/component.ts"
   },
   "scripts": {
+    "acceptance": "bun script/acceptance.ts",
     "typecheck": "tsgo --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/presets dist/modules",

@@ -10,11 +10,19 @@ Individually passing architecture changes do not establish that attachments, inp
 
 The CI Environment task declares its seven mandatory physical scenarios in the verification plan. The shared JUnit verifier requires each scenario to pass exactly once and rejects missing, skipped, failed, duplicate or changed evidence. A behavioral planning regression covers Environment source changes, Docker test changes and attachment preparation changes, including installed-runtime verification.
 
+Presets owns an opt-in local acceptance entry with explicit scenario selection and `plan`, `run`, `resume` and `report` commands. Plans bind a clean source revision, input hashes, fault barriers and independent oracles. Product state, external observations and transport evidence are hashed separately. A missing driver or untriggered barrier is uncovered; an interrupted attempt without a result is unknown. Resuming does not silently repeat either a successful or unsuccessful experiment. Explicit retries retain the original attempt and their reason.
+
+A recording provider proxy preserves request/response bodies and journals each request before forwarding it. The journal outlives an individual Runtime or failed driver, so auxiliary calls, retries, cancellations and unknown usage remain accountable. Credentials never enter request evidence. Fixture-provider tests exercise the same capture and Runtime paths without contacting paid providers in CI. Raw experiment data stays outside the repository; exported summaries contain source identity, scenario outcomes and aggregate known/unknown usage.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.
 
 **Add a second Environment report parser.** The CI scenario verifier already validates report hashes and actual JUnit results. Reusing it keeps the acceptance rule identical across installed-runtime and Environment jobs.
+
+**Treat model-reported success as acceptance.** A model can report success without completing a file write, child task or recovery operation. Independent byte, count and state oracles remain authoritative; deliberately corrupted counterexamples verify that the evidence checker rejects false positives.
+
+**Replay failed experiments automatically.** A repeated model call can hide the original failure and its cost. Explicit attempt history makes retries reviewable and prevents results from different versions being combined.
 
 ## Consequences
 
