@@ -302,27 +302,6 @@ export function remoteLoss(input: unknown): Driver {
                   restored.State.StartedAt !== before.State.StartedAt
                 )
                   throw new Error("Network recovery replaced the original allocation")
-                const executor = await EnvironmentExecution.connect({
-                  scopeID: "home",
-                  target: resources.runtime!.target,
-                })
-                await until(
-                  async () => {
-                    try {
-                      return await executor.health()
-                    } catch (error) {
-                      transport.push({
-                        kind,
-                        at: Date.now(),
-                        barrier: "execution-host-reconnecting",
-                        error: String(error),
-                      })
-                      return undefined
-                    }
-                  },
-                  (health) => health !== undefined && Environment.sameTarget(health.target, resources.runtime!.target),
-                  settings.deadlineMs,
-                )
                 const reconciledExecutions = []
                 for (const execution of await EnvironmentExecution.listActive("home")) {
                   if (execution.target.environmentID !== environment.id) continue
