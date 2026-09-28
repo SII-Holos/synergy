@@ -99,6 +99,7 @@ export async function main(args: string[]) {
     const { permissionTargets } = await import("./acceptance/permission-targets")
     const { fileServices } = await import("./acceptance/file-services")
     const { remoteLoss } = await import("./acceptance/remote-loss")
+    const { sharedDelegation } = await import("./acceptance/shared-delegation")
     await execute(
       plan,
       {
@@ -107,6 +108,7 @@ export async function main(args: string[]) {
         ...Object.fromEntries(["fault-publication-ack", "object-protocols"].map((id) => [id, objects(settings)])),
         "storage-sqlite": persistence(settings),
         "fault-model-stream": modelStream(settings),
+        "shared-delegation": sharedDelegation(settings),
         ...(settings.postgres ? { "storage-postgres": persistence(settings) } : {}),
         ...(settings.remote
           ? {
