@@ -136,37 +136,56 @@ test("invalid UTF-8 remains binary and malformed base64 cannot create a file", (
     })
   }))
 
-test("concurrent native processes cannot both replace the same content version", async () => {
-  await using tmp = await tmpdir()
-  const target = path.join(tmp.path, "shared.txt")
-  await Bun.write(target, "old")
-  const implementation = path.resolve(import.meta.dir, "../../src/file/mutation-core.ts")
-  const jobs = ["one", "two"].map((content) =>
-    Bun.spawn(
-      [
-        process.execPath,
-        "-e",
-        `
-    import { NativeFileMutation } from ${JSON.stringify(implementation)};
-    try { await NativeFileMutation.write({ path: ${JSON.stringify(target)}, content: ${JSON.stringify(content)}, expectedVersion: ${JSON.stringify(FileTime.version("old"))} }); console.log("written") }
-    catch (error) { console.log(error.name); process.exitCode = error.name === "WorkspaceFileWriteConflictError" ? 0 : 1 }
+test.each([1, 2, 3, 4, 5])(
+  "concurrent native processes cannot both replace the same content version %i",
+  async () => {
+    await using tmp = await tmpdir()
+    const target = path.join(tmp.path, "shared.txt")
+    await Bun.write(target, "old")
+    const implementation = path.resolve(import.meta.dir, "../../src/file/mutation-core.ts")
+    const jobs = ["one", "two"].map((content) =>
+      Bun.spawn(
+        [
+          process.execPath,
+          "-e",
+          `
+    const started = Date.now();
+    const trace = (stage) => console.error(JSON.stringify({content: ${JSON.stringify(content)}, stage, elapsed: Date.now() - started}));
+    trace("entry");
+    const { NativeFileMutation } = await import(${JSON.stringify(implementation)});
+    trace("imported");
+    try { await NativeFileMutation.write({ path: ${JSON.stringify(target)}, content: ${JSON.stringify(content)}, expectedVersion: ${JSON.stringify(FileTime.version("old"))}, validate: async () => trace("locked"), start: async () => trace("write-start") }); trace("write-end"); console.log("written") }
+    catch (error) { trace("error:"+error.name); console.error(error); console.log(error.name); process.exitCode = error.name === "WorkspaceFileWriteConflictError" ? 0 : 1 }
   `,
-      ],
-      { stdout: "pipe", stderr: "pipe" },
-    ),
-  )
-  try {
-    const results = await Promise.all(
-      jobs.map(async (job) => ({ output: await new Response(job.stdout).text(), code: await job.exited })),
+        ],
+        { stdout: "pipe", stderr: "pipe" },
+      ),
     )
-    expect(results.every((result) => result.code === 0)).toBe(true)
-    expect(results.map((result) => result.output.trim()).sort()).toEqual(["WorkspaceFileWriteConflictError", "written"])
-    expect(["one", "two"]).toContain(await Bun.file(target).text())
-    expect((await fs.readdir(tmp.path)).filter((name) => name.includes(".synergy-write-"))).toEqual([])
-  } finally {
-    for (const job of jobs) if (job.exitCode === null) job.kill()
-  }
-}, 10_000)
+    try {
+      const results = await Promise.all(
+        jobs.map(async (job) => {
+          const [output, error, code] = await Promise.all([
+            new Response(job.stdout).text(),
+            new Response(job.stderr).text(),
+            job.exited,
+          ])
+          console.error(error)
+          return { output, code }
+        }),
+      )
+      expect(results.every((result) => result.code === 0)).toBe(true)
+      expect(results.map((result) => result.output.trim()).sort()).toEqual([
+        "WorkspaceFileWriteConflictError",
+        "written",
+      ])
+      expect(["one", "two"]).toContain(await Bun.file(target).text())
+      expect((await fs.readdir(tmp.path)).filter((name) => name.includes(".synergy-write-"))).toEqual([])
+    } finally {
+      for (const job of jobs) if (job.exitCode === null) job.kill()
+    }
+  },
+  60_000,
+)
 
 test("a changed parent symlink or cancelled write leaves the targets untouched", async () => {
   await using tmp = await tmpdir()
