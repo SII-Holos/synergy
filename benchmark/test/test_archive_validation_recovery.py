@@ -54,6 +54,7 @@ def test_validation_recovery_uses_exact_retained_archive_without_export_or_evide
     result = recovery.recover_archive_validation(root, "0", 1, timeout=60)
     assert result["status"] == "completed"
     assert result["model_calls"] == 0
+    assert result["validation_evaluator"]
     assert (original / "evidence.json").read_bytes() == before
     assert archive.read_bytes() == b"frozen archive"
 

@@ -8,7 +8,7 @@ import pytest
 from synergy_bench.catalog import tree_digest
 from synergy_bench.prepare import bundle_digest, verify_prepared
 from synergy_bench.source import entry
-from synergy_bench.storage import atomic_json, digest
+from synergy_bench.storage import atomic_json, digest, read_json
 
 
 def prepared(root: Path) -> Path:
@@ -77,6 +77,24 @@ def test_inventory_hashes_streamed_bytes_and_preserves_legacy_digests(tmp_path):
     assert (
         inventory.files["bin/bun"]["sha256"] == hashlib.sha256((artifact / "bundle/bin/bun").read_bytes()).hexdigest()
     )
+
+
+def test_prepared_source_accepts_component_sorted_receipt_with_identical_bytes(tmp_path):
+    artifact = prepared(tmp_path)
+    source = artifact / "bundle/source"
+    (source / "context/locale").mkdir(parents=True)
+    (source / "context/locale/controller.ts").write_text("controller")
+    (source / "context/locale-config.ts").write_text("config")
+    files = [
+        entry(source, file.relative_to(source).as_posix())
+        for file in sorted(source.rglob("*"))
+        if (file.is_file() or file.is_symlink()) and "node_modules" not in file.parts
+    ]
+    receipt = read_json(artifact / "receipt.json")
+    receipt["source"] = {"files": files, "digest": digest(files)}
+    receipt["bundle_digest"] = bundle_digest(artifact / "bundle")
+    atomic_json(artifact / "receipt.json", receipt)
+    verify_prepared(artifact)
 
 
 def test_excluded_directory_symlinks_preserve_the_legacy_tree_identity(tmp_path):

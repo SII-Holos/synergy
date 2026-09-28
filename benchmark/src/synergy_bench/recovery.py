@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from .prepare import BENCHMARK, command, recipe_links, remove_owned_container, verify_prepared
+from .prepare import BENCHMARK, command, evaluator_identity, recipe_links, remove_owned_container, verify_prepared
 from .results import RESULT_VERSION, require_current_plan
 from .storage import atomic_json, locked, read_json
 
@@ -156,6 +156,7 @@ def recover_archive_validation(root: Path, trial: str, attempt: int, *, timeout:
             "started_at": time.time(),
             "original_evidence_sha256": hashlib.sha256(evidence_file.read_bytes()).hexdigest(),
             "archive_sha256": checksum,
+            "validation_evaluator": evaluator_identity(),
             "model_calls": 0,
         }
         atomic_json(target / "recovery.json", metadata)
