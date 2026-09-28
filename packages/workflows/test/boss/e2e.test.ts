@@ -17,6 +17,25 @@ async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   return ScopeContext.provide({ scope, fn })
 }
 
+function holdWorkers(...ids: string[]) {
+  const leases = ids.map((id) => {
+    const lease = SessionManager.acquire(id)
+    if (!lease) throw new Error("Expected idle test worker")
+    return lease
+  })
+  return {
+    async [Symbol.asyncDispose]() {
+      for (const lease of leases) {
+        await SessionInbox.removeByModes(lease.sessionID, ["task", "steer", "context"])
+        await SessionManager.release(lease, { requestNextWork: false })
+        await SessionManager.wake(lease.sessionID)
+        SessionManager.unregisterRuntime(lease.sessionID)
+      }
+      await SessionManager.drain()
+    },
+  }
+}
+
 describe("Boss Mode end-to-end", () => {
   test("human speaks to the boss; boss spawns three workers, assigns tasks, workers report, tree reflects everything", () =>
     runtime.run(async () => {
@@ -30,6 +49,7 @@ describe("Boss Mode end-to-end", () => {
         const code = await BossService.spawn(boss.id, { role: "code" })
         const review = await BossService.spawn(boss.id, { role: "review", agent: "synergy-max" })
         const research = await BossService.spawn(boss.id, { role: "research" })
+        await using workers = holdWorkers(boss.id, code.id, review.id, research.id)
 
         // Boss assigns one task per worker.
         await BossService.assign(boss.id, { sessionID: code.id, taskID: "t-1", task: "Implement the widget" })
@@ -37,6 +57,8 @@ describe("Boss Mode end-to-end", () => {
         await BossService.assign(boss.id, { sessionID: research.id, taskID: "t-3", task: "Research the widget" })
 
         // Each worker has exactly one runnable task inbox item.
+        await SessionManager.wake(code.id)
+        await SessionManager.drain()
         expect(await SessionInbox.list(code.id)).toHaveLength(1)
         expect(await SessionInbox.list(review.id)).toHaveLength(1)
         expect(await SessionInbox.list(research.id)).toHaveLength(1)
@@ -73,7 +95,9 @@ describe("Boss Mode end-to-end", () => {
         await WorkflowSessionService.enableBoss(boss.id)
         const code = await BossService.spawn(boss.id, { role: "code" })
         const sub = await BossService.spawn(code.id, { role: "lint" })
+        await using workers = holdWorkers(code.id, sub.id)
         await BossService.assign(code.id, { sessionID: sub.id, taskID: "s-1", task: "Lint the widget" })
+        await SessionManager.wake(sub.id)
 
         // The intermediate worker reports its sub-worker's outcome upward.
         await BossService.report(sub.id, { summary: "Lint clean", status: "completed" })
@@ -97,8 +121,11 @@ describe("Boss Mode end-to-end", () => {
         await WorkflowSessionService.enableBoss(boss.id)
         const worker = await BossService.spawn(boss.id, { role: "code" })
 
+        await using workers = holdWorkers(worker.id)
+
         const first = await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it" })
         const second = await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it again" })
+        await SessionManager.wake(worker.id)
         expect(first.created).toBe(true)
         expect(second.created).toBe(false)
         expect(second.itemID).toBe(first.itemID)
@@ -112,24 +139,30 @@ describe("Boss Mode end-to-end", () => {
         const boss = await Session.create({})
         await WorkflowSessionService.enableBoss(boss.id)
         const worker = await BossService.spawn(boss.id, { role: "code" })
-        await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Persist me" })
+        SessionManager.closeAdmission()
+        try {
+          await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Persist me" })
 
-        // Simulate a process restart: drop the in-memory runtime so the next
-        // access re-reads from storage.
-        for (const sessionID of [boss.id, worker.id]) {
-          SessionManager.unregisterRuntime(sessionID)
+          // Simulate a process restart: drop the in-memory runtime so the next
+          // access re-reads from storage.
+          for (const sessionID of [boss.id, worker.id]) {
+            SessionManager.unregisterRuntime(sessionID)
+          }
+
+          // The worker's pending task is still runnable from storage.
+          const runnable = await SessionInbox.list(worker.id)
+          expect(runnable).toHaveLength(1)
+          expect(runnable[0].mode).toBe("task")
+
+          // The tree still derives correctly after the reset.
+          const tree = await BossService.status(boss.id)
+          expect(tree.sessionID).toBe(boss.id)
+          expect(tree.children).toHaveLength(1)
+          expect(tree.children[0].currentTask).toMatchObject({ taskID: "t-1", taskTitle: "Persist me" })
+        } finally {
+          await SessionInbox.removeByModes(worker.id, ["task", "steer", "context"])
+          SessionManager.openAdmission()
         }
-
-        // The worker's pending task is still runnable from storage.
-        const runnable = await SessionInbox.list(worker.id)
-        expect(runnable).toHaveLength(1)
-        expect(runnable[0].mode).toBe("task")
-
-        // The tree still derives correctly after the reset.
-        const tree = await BossService.status(boss.id)
-        expect(tree.sessionID).toBe(boss.id)
-        expect(tree.children).toHaveLength(1)
-        expect(tree.children[0].currentTask).toMatchObject({ taskID: "t-1", taskTitle: "Persist me" })
       })
     }))
 

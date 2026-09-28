@@ -116,13 +116,16 @@ describe("plugin shell.run Host Service", () => {
       await using tmp = await tmpdir({ git: true, config: { controlProfile: "guarded" } })
       const scope = await tmp.scope()
 
-      await expect(
-        invoke({
-          directory: tmp.path,
-          scopeId: scope.id,
-          params: { command: ["sudo", "--version"] },
-        }),
-      ).rejects.toBeInstanceOf(EnforcementError.PolicyDenied)
+      const failure = await invoke({
+        directory: tmp.path,
+        scopeId: scope.id,
+        params: { command: ["sudo", "--version"] },
+      }).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(failure).toBeInstanceOf(EnforcementError.PolicyDenied)
+      expect(failure).toMatchObject({ kind: "policy_denied", profileId: "guarded", permanent: true })
     }))
 
   test("applies the resolved workspace sandbox policy to autonomous shell execution", () =>
