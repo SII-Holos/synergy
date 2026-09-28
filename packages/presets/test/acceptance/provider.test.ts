@@ -83,3 +83,96 @@ test("a started but unfinished request is retained as unknown after recorder los
     { id: "unfinished", status: "unknown", usage: null },
   ])
 })
+
+test("an armed argument fault ignores auxiliary requests and empty deltas, then preserves an incomplete delivered frame", async () => {
+  await using tmp = await tmpdir()
+  using upstream = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () =>
+      new Response(
+        [
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":""}}]}}]}\n\n',
+          'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"command\\":\\"echo done\\"}"}}]}}]}\n\n',
+          "data: [DONE]\n\n",
+        ].join(""),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+  })
+  const triggered: string[] = []
+  await using gateway = await recordedProvider({
+    directory: tmp.path,
+    upstream: upstream.url.toString(),
+    apiKey: "fixture",
+    provider: "fixture",
+  })
+  gateway.arm({
+    stage: "during-tool-arguments",
+    matches: (body) => body.model === "main",
+    onTriggered: (stage) => {
+      triggered.push(stage)
+    },
+  })
+  const send = (model: string) =>
+    fetch(`${gateway.url}/chat/completions`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${gateway.token}` },
+      body: JSON.stringify({ model, stream: true }),
+    })
+  expect(await (await send("auxiliary")).text()).toContain("[DONE]")
+  expect(triggered).toEqual([])
+  const response = await send("main")
+  const reader = response.body!.getReader()
+  let prefix = ""
+  try {
+    for (;;) {
+      const next = await reader.read()
+      if (next.done) break
+      prefix += new TextDecoder().decode(next.value)
+    }
+  } catch {}
+  expect(triggered).toEqual(["during-tool-arguments"])
+  expect(prefix).toContain('"arguments":"')
+  expect(prefix).not.toContain("[DONE]")
+  expect(prefix.trim().endsWith("}")).toBe(false)
+  const ledger = await readRequests(tmp.path)
+  const failed = ledger.find((entry) => entry.model === "main")!
+  expect(failed.status).toBe("failed")
+  expect(await Bun.file(path.join(tmp.path, "requests", failed.id, "delivered.bin")).text()).toBe(prefix)
+})
+
+test("client cancellation is recorded as cancelled and recorder disposal drains accounting", async () => {
+  await using tmp = await tmpdir()
+  using upstream = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'))
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+  })
+  const gateway = await recordedProvider({
+    directory: tmp.path,
+    upstream: upstream.url.toString(),
+    apiKey: "fixture",
+    provider: "fixture",
+  })
+  const abort = new AbortController()
+  const response = await fetch(`${gateway.url}/chat/completions`, {
+    method: "POST",
+    signal: abort.signal,
+    headers: { authorization: `Bearer ${gateway.token}` },
+    body: '{"model":"main"}',
+  })
+  const reader = response.body!.getReader()
+  expect((await reader.read()).done).toBe(false)
+  abort.abort()
+  await reader.cancel().catch(() => {})
+  await gateway[Symbol.asyncDispose]()
+  expect(await readRequests(tmp.path)).toEqual([expect.objectContaining({ status: "cancelled", usage: null })])
+})

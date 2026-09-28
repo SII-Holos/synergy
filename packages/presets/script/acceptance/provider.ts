@@ -3,7 +3,8 @@ import path from "node:path"
 import { ModelRequest, atomicJSON } from "./evidence"
 
 type Stage = "before-bytes" | "during-tool-arguments" | "after-tool-result"
-type Body = { model?: string; messages?: Array<{ role?: string }> }
+type Body = { model?: string; messages?: Array<{ role?: string; content?: unknown }>; tools?: unknown[] }
+type Fault = { stage: Stage; matches?: (body: Body) => boolean; onTriggered: (stage: Stage) => void | Promise<void> }
 
 function usageOf(value: unknown): ModelRequest["usage"] {
   if (typeof value !== "object" || value === null || !("usage" in value)) return null
@@ -46,18 +47,19 @@ export async function recordedProvider(options: {
   upstream: string
   apiKey: string
   provider: string
-  fault?: { stage: Stage; onTriggered: (stage: Stage) => void | Promise<void> }
+  fault?: Fault
 }) {
   const endpoint = new URL(options.upstream.endsWith("/") ? options.upstream : options.upstream + "/")
   if (endpoint.protocol !== "https:" && !["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname))
     throw new Error("Live provider capture requires HTTPS")
   const token = crypto.randomUUID()
-  const active = new Set<AbortController>()
-  let triggered = false
-  async function trigger(stage: Stage) {
-    if (triggered || options.fault?.stage !== stage) return false
-    triggered = true
-    await options.fault.onTriggered(stage)
+  const active = new Map<AbortController, Promise<void>>()
+  let fault = options.fault
+  async function trigger(stage: Stage, body: Body) {
+    if (fault?.stage !== stage || (fault.matches && !fault.matches(body))) return false
+    const selected = fault
+    fault = undefined
+    await selected.onTriggered(stage)
     return true
   }
   const server = Bun.serve({
@@ -79,19 +81,28 @@ export async function recordedProvider(options: {
       await atomicJSON(path.join(directory, "request.json"), record)
       await Bun.write(path.join(directory, "request.bin"), bytes, { mode: 0o600 })
       const controller = new AbortController()
-      active.add(controller)
+      const settled = Promise.withResolvers<void>()
+      active.set(controller, settled.promise)
       const abort = () => controller.abort(request.signal.reason)
       request.signal.addEventListener("abort", abort, { once: true })
       const handle = await fs.open(path.join(directory, "response.bin"), "wx", 0o600)
+      const delivered = await fs.open(path.join(directory, "delivered.bin"), "wx", 0o600)
+      let deliveredBytes = 0
+      let injected = false
       let finishing: Promise<void> | undefined
       function finish(status: ModelRequest["status"]) {
         return (finishing ??= (async () => {
-          record.status = status
-          await handle.sync()
-          await handle.close()
-          await atomicJSON(path.join(directory, "request.json"), record)
-          active.delete(controller)
-          request.signal.removeEventListener("abort", abort)
+          try {
+            record.status = status
+            await handle.sync()
+            await delivered.sync()
+            await atomicJSON(path.join(directory, "request.json"), record)
+          } finally {
+            await Promise.allSettled([handle.close(), delivered.close()])
+            active.delete(controller)
+            request.signal.removeEventListener("abort", abort)
+            settled.resolve()
+          }
         })())
       }
       try {
@@ -108,9 +119,11 @@ export async function recordedProvider(options: {
           requestID: upstream.headers.get("x-request-id") ?? upstream.headers.get("request-id"),
         })
         const afterTool = body.messages?.some((message) => message.role === "tool") ?? false
-        if ((await trigger("before-bytes")) || (afterTool && (await trigger("after-tool-result")))) {
+        if ((await trigger("before-bytes", body)) || (afterTool && (await trigger("after-tool-result", body)))) {
+          injected = true
           controller.abort()
           await upstream.body?.cancel().catch(() => {})
+          await delivered.write("Acceptance transport fault")
           await finish("failed")
           return new Response("Acceptance transport fault", { status: 502 })
         }
@@ -136,7 +149,7 @@ export async function recordedProvider(options: {
                       /* A non-JSON failure body has unknown usage. */
                     }
                   }
-                  await finish(upstream.ok ? "completed" : "failed")
+                  await finish(controller.signal.aborted ? "cancelled" : upstream.ok ? "completed" : "failed")
                   target.close()
                   return
                 }
@@ -156,19 +169,37 @@ export async function recordedProvider(options: {
                       continue
                     }
                     record.usage = usageOf(value) ?? record.usage
-                    if (
-                      line.includes('"tool_calls"') &&
-                      line.includes('"arguments"') &&
-                      (await trigger("during-tool-arguments"))
-                    )
-                      throw new Error("Acceptance tool-argument transport fault")
+                    const argument = /"arguments"\s*:\s*"((?:\\.|[^"\\])+?)"/.exec(line)
+                    if (line.includes('"tool_calls"') && argument && (await trigger("during-tool-arguments", body))) {
+                      injected = true
+                      const captured = Buffer.from(await Bun.file(path.join(directory, "response.bin")).arrayBuffer())
+                      const lineStart = captured.lastIndexOf(Buffer.from(line))
+                      if (lineStart < 0) throw new Error("Recorded tool frame has no byte position")
+                      const opening = argument.index + argument[0].length - argument[1]!.length - 1
+                      const cut =
+                        lineStart +
+                        Buffer.byteLength(line.slice(0, opening)) +
+                        Math.max(1, Math.floor(Buffer.byteLength(argument[1]!) / 2))
+                      const prefix = captured.subarray(deliveredBytes, cut)
+                      await delivered.write(prefix)
+                      deliveredBytes += prefix.length
+                      target.enqueue(prefix)
+                      controller.abort()
+                      await reader.cancel().catch(() => {})
+                      await finish("failed")
+                      target.close()
+                      return
+                    }
                   }
                 }
+                await delivered.write(chunk.value)
+                deliveredBytes += chunk.value.length
                 target.enqueue(chunk.value)
               } catch (error) {
+                const cancelled = controller.signal.aborted && !injected
                 controller.abort(error)
                 await reader.cancel(error).catch(() => {})
-                await finish("failed")
+                await finish(cancelled ? "cancelled" : "failed")
                 target.error(error)
               }
             })()
@@ -194,9 +225,15 @@ export async function recordedProvider(options: {
   return {
     url: `http://127.0.0.1:${server.port}/v1`,
     token,
+    arm(selected: Fault) {
+      if (fault) throw new Error("An earlier provider fault has not triggered")
+      fault = selected
+    },
     async [Symbol.asyncDispose]() {
-      for (const controller of active) controller.abort()
+      const settling = [...active.values()]
+      for (const controller of active.keys()) controller.abort()
       await server.stop(true)
+      await Promise.all(settling)
     },
   }
 }

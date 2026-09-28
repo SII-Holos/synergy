@@ -58,6 +58,7 @@ export async function main(args: string[]) {
       { name: "provider-credential", path: settings.apiKeyFile },
       { name: "dependencies", path: path.join(root, "bun.lock") },
       ...(settings.chromium ? [{ name: "chromium", path: settings.chromium }] : []),
+      ...(settings.postgres ? [{ name: "postgres-connection", path: settings.postgres.urlFile }] : []),
       ...Object.entries(settings.remote ?? {}).flatMap(([kind, value]) =>
         typeof value === "object"
           ? Object.entries(value).map(([name, file]) => ({ name: `${kind}-${name}`, path: file }))
@@ -89,12 +90,17 @@ export async function main(args: string[]) {
     const { remoteFault } = await import("./acceptance/remote")
     const { media } = await import("./acceptance/media")
     const { objects } = await import("./acceptance/objects")
+    const { persistence } = await import("./acceptance/persistence")
+    const { modelStream } = await import("./acceptance/model-stream")
     await execute(
       plan,
       {
         ...Object.fromEntries(["home", "project", "workspace"].map((kind) => [`attachments-${kind}`, driver])),
         ...Object.fromEntries(["attachment-policy", "vision-child"].map((id) => [id, media(settings)])),
         ...Object.fromEntries(["fault-publication-ack", "object-protocols"].map((id) => [id, objects(settings)])),
+        "storage-sqlite": persistence(settings),
+        "fault-model-stream": modelStream(settings),
+        ...(settings.postgres ? { "storage-postgres": persistence(settings) } : {}),
         ...(settings.remote
           ? Object.fromEntries(["fault-command-crash", "fault-save-crash"].map((id) => [id, remoteFault(settings)]))
           : {}),

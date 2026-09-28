@@ -368,7 +368,7 @@ export const cases: AcceptanceCase[] = [
       barriers: [...barriers],
       factors: ["remote-execution", id, "recovery"],
       facts,
-      ...(["command-crash", "save-crash"].includes(id) ? { bytes: { "effects.txt": "once\n" } } : {}),
+      ...(["command-crash", "save-crash", "model-stream"].includes(id) ? { bytes: { "effects.txt": "once\n" } } : {}),
     }),
   ),
   scenario({

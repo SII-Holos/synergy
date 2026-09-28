@@ -15,6 +15,10 @@ export const Settings = z
     config: z.record(z.string(), z.json()),
     deadlineMs: z.number().int().positive().default(600_000),
     remote: RemoteLab.optional(),
+    postgres: z
+      .object({ urlFile: z.string().min(1) })
+      .strict()
+      .optional(),
     chromium: z.string().optional(),
   })
   .strict()

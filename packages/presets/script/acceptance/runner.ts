@@ -205,7 +205,7 @@ export async function execute(
       const recorded = await readRequests(directory)
       if (recorded.length) result.requests = recorded
       for (const request of recorded) {
-        for (const file of ["request.json", "request.bin", "response.json", "response.bin"]) {
+        for (const file of ["request.json", "request.bin", "response.json", "response.bin", "delivered.bin"]) {
           const relative = `requests/${request.id}/${file}`
           if (await Bun.file(path.join(directory, relative)).exists())
             result.evidence.push(await sealEvidence(directory, relative, "transport"))

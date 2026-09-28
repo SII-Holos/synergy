@@ -2,6 +2,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
+import type { RuntimeStorage } from "@ericsanchezok/synergy-harness/lifecycle"
 import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
 import { recordedProvider } from "./provider"
 import { atomicJSON } from "./evidence"
@@ -42,23 +43,26 @@ export async function prepareRuntime(directory: string, settings: Settings, gate
   return { home, host, config }
 }
 
-export async function acceptanceRuntime(directory: string, settings: Settings) {
+export async function acceptanceRuntime(directory: string, settings: Settings, storage?: RuntimeStorage) {
   const gateway = await recordedProvider({
     directory,
     provider: settings.providerID,
     upstream: settings.upstream,
     apiKey: (await Bun.file(settings.apiKeyFile).text()).trim(),
   })
-  const { home, host } = await prepareRuntime(directory, settings, gateway)
   let runtime
+  let home: string
   try {
-    runtime = await PresetRuntimeHandle.openTask({ host, mode: "oneshot" })
+    const prepared = await prepareRuntime(directory, settings, gateway)
+    home = prepared.home
+    runtime = await PresetRuntimeHandle.openTask({ host: prepared.host, mode: "oneshot", storage })
   } catch (error) {
     await gateway[Symbol.asyncDispose]()
     throw error
   }
   return {
     runtime,
+    recorder: gateway,
     home,
     model: { providerID: settings.providerID, modelID: settings.modelID },
     async [Symbol.asyncDispose]() {
