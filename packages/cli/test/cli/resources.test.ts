@@ -1,5 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import { createServer } from "node:http"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
 import { EnvironmentReleaseCommand, EnvironmentSelectCommand } from "../../src/cli/cmd/resources"
@@ -163,6 +164,124 @@ test("attached resource commands preserve Scope, preconditions and auth without 
   } finally {
     server.stop(true)
     await lock.release()
+    await isolation.dispose()
+  }
+}, 30000)
+
+test("the public parser preserves recovery identities and publishes complete archives without overwriting files", async () => {
+  const { runCli } = await import("../../src/main")
+  const isolation = await createIsolatedTestEnv()
+  const archive = path.join(isolation.env.SYNERGY_TEST_HOME!, "saved.ndjson")
+  const bytes = new Uint8Array([0, 255, 1, 128])
+  const received: Array<{ method: string; path: string; body: unknown }> = []
+  using server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      const pathname = new URL(request.url).pathname
+      received.push({
+        method: request.method,
+        path: pathname,
+        body:
+          pathname === "/workspace/import"
+            ? Array.from(new Uint8Array(await ((await request.formData()).get("file") as File).arrayBuffer()))
+            : request.method === "POST"
+              ? await request.json().catch(() => null)
+              : null,
+      })
+      if (pathname.endsWith("/export"))
+        return new Response(bytes, { headers: { "content-type": "application/octet-stream" } })
+      return Response.json({ accepted: true })
+    },
+  })
+  const interrupted = createServer((_request, response) => {
+    response.writeHead(200, {
+      "content-type": "application/octet-stream",
+      "content-length": String(bytes.length + 1),
+    })
+    response.write(bytes, () => response.destroy())
+  })
+  await new Promise<void>((resolve) => interrupted.listen(0, "127.0.0.1", resolve))
+  const address = interrupted.address()
+  if (!address || typeof address === "string") throw new Error("Archive fixture has no TCP port")
+  const output = spyOn(console, "log").mockImplementation(() => {})
+  const errors = spyOn(console, "error").mockImplementation(() => {})
+  const exitCode = process.exitCode ?? 0
+  let openedRuntime = false
+  async function invoke(argv: string[], attach = server.url.origin) {
+    process.exitCode = 0
+    output.mockClear()
+    await runCli({
+      argv: [...argv, "--attach", attach, "--scope", "research", "--token-env", "SYNERGY_RESOURCE_FIXTURE_TOKEN"],
+      runtimeFactory: async () => {
+        openedRuntime = true
+        throw new Error("Attached commands must not open a runtime")
+      },
+    })
+    return { code: process.exitCode, output: output.mock.calls.map((args) => args.join(" ")).join("\n") }
+  }
+  try {
+    for (const argv of [
+      ["environment", "profiles"],
+      ["environment", "list"],
+      ["environment", "inspect", "env_one"],
+      ["environment", "create", "worker", "--request-id", "allocation-request"],
+      ["environment", "reconcile", "env_one"],
+      ["environment", "recover", "env_one", "execution-one"],
+      ["environment", "recover", "env_one", "file-one", "--file"],
+      ["environment", "cancel", "env_one", "execution-one"],
+      ["workspace", "list"],
+      ["workspace", "create", "files", "--name", "Research"],
+      ["workspace", "register", "/workspace/research"],
+      ["workspace", "select", "ses_one", "none"],
+      ["workspace", "select", "ses_one", "wsp_one", "--generation", "2"],
+      ["workspace", "detach", "wsp_one", "--revision", "5"],
+      ["workspace", "operations", "wsp_one"],
+      ["workspace", "recover", "wsp_one", "file-one"],
+      ["workspace", "recover-saved", "wsp_one", "files", "--revision", "5"],
+    ]) {
+      const result = await invoke(argv)
+      expect(result.code, result.output).toBe(0)
+      expect(JSON.parse(result.output)).toEqual({ accepted: true })
+    }
+    expect(received.filter((request) => /\/(recover|cancel|operations)$/.test(request.path))).toEqual([
+      { method: "POST", path: "/environment/env_one/execution/execution-one/recover", body: null },
+      { method: "POST", path: "/environment/env_one/file/file-one/recover", body: null },
+      { method: "POST", path: "/environment/env_one/execution/execution-one/cancel", body: null },
+      { method: "GET", path: "/workspace/wsp_one/operations", body: null },
+      { method: "POST", path: "/workspace/wsp_one/operations/file-one/recover", body: null },
+    ])
+    expect(received.at(-1)).toMatchObject({
+      path: "/workspace/wsp_one/recover-saved",
+      body: { expectedRevision: 5, profile: "files" },
+    })
+    const requests = received.length
+    expect((await invoke(["workspace", "select", "ses_one", "wsp_one"])).code).toBe(1)
+    expect(received).toHaveLength(requests)
+    const exported = await invoke(["workspace", "export", "wsp_one", archive, "--revision", "5"])
+    expect(exported.code, exported.output).toBe(0)
+    expect(new Uint8Array(await Bun.file(archive).arrayBuffer())).toEqual(bytes)
+    expect((await invoke(["workspace", "export", "wsp_one", archive, "--revision", "5"])).code).toBe(1)
+    expect(new Uint8Array(await Bun.file(archive).arrayBuffer())).toEqual(bytes)
+    expect((await invoke(["workspace", "import", archive, "files"])).code).toBe(0)
+    expect(received.at(-1)).toMatchObject({ path: "/workspace/import", body: Array.from(bytes) })
+    const incomplete = archive + ".incomplete"
+    expect(
+      (
+        await invoke(
+          ["workspace", "export", "wsp_one", incomplete, "--revision", "5"],
+          `http://127.0.0.1:${address.port}`,
+        )
+      ).code,
+    ).toBe(1)
+    expect(await Bun.file(incomplete).exists()).toBe(false)
+    expect(await Array.fromAsync(new Bun.Glob("*.partial").scan(isolation.env.SYNERGY_TEST_HOME!))).toEqual([])
+    expect(openedRuntime).toBe(false)
+  } finally {
+    output.mockRestore()
+    errors.mockRestore()
+    process.exitCode = exitCode
+    await new Promise<void>((resolve, reject) => interrupted.close((error) => (error ? reject(error) : resolve())))
     await isolation.dispose()
   }
 }, 30000)
