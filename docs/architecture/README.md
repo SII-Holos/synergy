@@ -27,6 +27,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [Workspace and files](workspace-and-files.md)    | Worktrees, workspace-file routes, file search/read, anchored editing, formatting, diagnostics, snapshots, and restore.          |
 | [Sessions and messages](session-and-messages.md) | Durable session state, canonical message semantics, task roots, inbox modes, history, fork, and recovery.                       |
 | [LLM loop and compaction](llm-loop.md)           | Single-writer loop, prompt assembly, model execution, tools, loop jobs, compaction, and terminal behavior.                      |
+| [Usage accounting](usage-accounting.md)          | Retained execution meters, billing snapshots, timing, coverage, historical capture, clearing, and queries.                      |
 | [Frontend data sync](frontend-data-sync.md)      | Scope event sequencing, replay, delta/checkpoint streaming, reconcile writes, compaction swaps, and eviction.                   |
 | [Frontend localization](localization.md)         | Global locale ownership, catalog activation, message IDs, formatting, translation boundaries, and verification.                 |
 | [Channels](channels.md)                          | Channel targets, provider lifecycle, managed Project ownership, task routing, borrowed transports, diagnostics, and projection. |
@@ -127,7 +128,7 @@ Native application automation is described in [Native Computer Use](computer-use
 
 ## Harness public entry points
 
-The programmatic entry points are `@ericsanchezok/synergy-harness/session`, `/scope`, `/tools`, `/context`, `/lifecycle`, `/config`, `/persistence`, and `/rollout`. They expose execution operations, schemas and explicit host contribution contracts. Additional leaf exports are declared individually for host implementations and domain composition; there is no source wildcard export.
+The programmatic entry points are `@ericsanchezok/synergy-harness/session`, `/scope`, `/tools`, `/context`, `/lifecycle`, `/config`, `/persistence`, `/rollout`, and `/usage`. They expose execution operations, schemas and explicit host contribution contracts. Additional leaf exports are declared individually for host implementations and domain composition; there is no source wildcard export.
 
 `ToolInvocation.invoke` owns processor setup, permission checks, cancellation and execution evidence. Hosts do not construct partial processors. Every invocation enters global tool admission and scheduling. An active plugin parent identified by the same session, assistant message and call ID can lend one scheduling slot to a nested invocation; siblings remain serialized and other executor limits still apply. Parent termination cancels its unfinished children. `readRuntimeStats` and `readRolloutRevision` expose read-only views; the processor, tool resolver, scheduler and rollout journal are internal. White-box integration fixtures use explicit `test/` exports, which are removed from published tarballs and forbidden in production imports.
 

@@ -606,11 +606,15 @@ export namespace SessionCompaction {
           owner: { kind: "session", scopeID: index.scopeID, sessionID: input.sessionID },
           runID: input.rootID,
           purpose: "remote_compaction",
+          usageRole: "compaction",
           model: {
             providerID: input.providerID,
             modelID: input.modelID,
+            apiModelID,
             sdk: resolvedModel.api.npm,
             pricing: resolvedModel.pricing ?? null,
+            billingMode: resolvedModel.billingMode ?? "unknown",
+            limits: resolvedModel.limit,
           },
           request: JSON.parse(JSON.stringify({ model: apiModelID, input: items })),
         },
@@ -826,6 +830,7 @@ export namespace SessionCompaction {
 
       try {
         await processor.process({
+          usageRole: "compaction",
           user: { ...userMessage, variant: undefined, thinking: undefined },
           agent,
           abort: input.abort,

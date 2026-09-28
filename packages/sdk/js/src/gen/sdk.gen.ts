@@ -250,6 +250,14 @@ import type {
   GlobalStatsGetResponses,
   GlobalStatsProgressErrors,
   GlobalStatsProgressResponses,
+  GlobalStatsUsageClearErrors,
+  GlobalStatsUsageClearResponses,
+  GlobalStatsUsageErrors,
+  GlobalStatsUsageRebuildErrors,
+  GlobalStatsUsageRebuildResponses,
+  GlobalStatsUsageRecordsErrors,
+  GlobalStatsUsageRecordsResponses,
+  GlobalStatsUsageResponses,
   GlobalUpdateCheckErrors,
   GlobalUpdateCheckResponses,
   GlobalUpdateStartErrors,
@@ -974,6 +982,179 @@ export class Git extends HeyApiClient {
 }
 
 export class Stats extends HeyApiClient {
+  /**
+   * Get canonical usage statistics
+   *
+   * Read retained usage facts with explicit unknowns, billing bases, transport timing, attribution and migration coverage. Time ranges are half-open; request days use the sent timestamp in the returned timezone.
+   */
+  public usage<ThrowOnError extends boolean = false>(
+    parameters?: {
+      scopeID?: string
+      sessionID?: string
+      runID?: string
+      providerID?: string
+      modelID?: string
+      agent?: string
+      purpose?: string
+      from?: number
+      to?: number
+      includeDescendants?: "true" | "false"
+      timezone?: string
+      kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "providerID" },
+            { in: "query", key: "modelID" },
+            { in: "query", key: "agent" },
+            { in: "query", key: "purpose" },
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+            { in: "query", key: "includeDescendants" },
+            { in: "query", key: "timezone" },
+            { in: "query", key: "kind" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<GlobalStatsUsageResponses, GlobalStatsUsageErrors, ThrowOnError>({
+      url: "/global/stats/usage",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Clear explicitly scoped terminal usage records
+   *
+   * Requires an explicit Scope, session or time range and the summary revision to clear through. Active and newer records are retained. Run-filtered clears also retain unattributed owner-level gaps. Cleared identities cannot be restored by a rebuild.
+   */
+  public usageClear<ThrowOnError extends boolean = false>(
+    parameters?: {
+      scope?: {
+        scopeID?: string
+        sessionID?: string
+        runID?: string
+        providerID?: string
+        modelID?: string
+        agent?: string
+        purpose?: string
+        from?: number
+        to?: number
+        includeDescendants?: boolean
+        timezone?: string
+        kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+      }
+      throughRevision?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "body", key: "scope" },
+            { in: "body", key: "throughRevision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      GlobalStatsUsageClearResponses,
+      GlobalStatsUsageClearErrors,
+      ThrowOnError
+    >({
+      url: "/global/stats/usage/records",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Page through retained usage records
+   *
+   * Read compact records without prompts, tool arguments or raw response content. Cursor filters must match the initial request. Each record has a revision; reconnect through the summary endpoint.
+   */
+  public usageRecords<ThrowOnError extends boolean = false>(
+    parameters?: {
+      scopeID?: string
+      sessionID?: string
+      runID?: string
+      providerID?: string
+      modelID?: string
+      agent?: string
+      purpose?: string
+      from?: number
+      to?: number
+      includeDescendants?: "true" | "false"
+      timezone?: string
+      kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "runID" },
+            { in: "query", key: "providerID" },
+            { in: "query", key: "modelID" },
+            { in: "query", key: "agent" },
+            { in: "query", key: "purpose" },
+            { in: "query", key: "from" },
+            { in: "query", key: "to" },
+            { in: "query", key: "includeDescendants" },
+            { in: "query", key: "timezone" },
+            { in: "query", key: "kind" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      GlobalStatsUsageRecordsResponses,
+      GlobalStatsUsageRecordsErrors,
+      ThrowOnError
+    >({
+      url: "/global/stats/usage/records",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Schedule or resume historical usage capture
+   *
+   * Returns the durable background job. Rebuilding preserves existing facts, original pricing and explicit deletion markers.
+   */
+  public usageRebuild<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<
+      GlobalStatsUsageRebuildResponses,
+      GlobalStatsUsageRebuildErrors,
+      ThrowOnError
+    >({ url: "/global/stats/usage/rebuild", ...options })
+  }
+
   /**
    * Get stats snapshot
    *

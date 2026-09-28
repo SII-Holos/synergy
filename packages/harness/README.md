@@ -1,6 +1,6 @@
 # harness
 
-This package owns Synergy's generic execution runtime. Application hosts use the eight [public entry points](../../docs/architecture/README.md#harness-public-entry-points); individual host contracts are declared explicitly in `package.json`. Test-only exports are excluded from published packages.
+This package owns Synergy's generic execution runtime. Application hosts use the [public entry points](../../docs/architecture/README.md#harness-public-entry-points); individual host contracts are declared explicitly in `package.json`. Test-only exports are excluded from published packages.
 
 Run `bun run typecheck`, `bun run test`, and `bun run build` from this package.
 
@@ -13,3 +13,5 @@ The harness owns permission policy and the `SandboxHost` execution contract. OS 
 The `environment` host entries own durable allocation and operation identities. Register providers before opening a Runtime; missing providers fail explicitly. See [Environments](../../docs/architecture/environments.md) for execution, checkpoint and recovery semantics.
 
 Hosts supply immutable environment and paths, composition, and storage ownership to `RuntimeHandle.open()`. Imports have no registration side effects. Enter work with `handle.run()` or capture callbacks with `handle.bind()`; await `close()` or use `await using`. Multiple handles can coexist in one process. See [Runtime and Scope](../../docs/architecture/runtime-and-scope.md) for lifecycle and workspace semantics.
+
+The public `/usage` entry exposes retained accounting, typed queries, clear/rebuild operations, and explicit host lifecycle/transfer integration. Its [accounting contract](../../docs/architecture/usage-accounting.md) is independent of transcript and archive retention.

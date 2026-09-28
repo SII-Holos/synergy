@@ -406,6 +406,7 @@ export namespace Embedding {
           modelID: resolved.modelID,
           sdk: resolved.mode === "local" ? "transformers" : "@ai-sdk/openai-compatible",
           pricing: resolved.mode === "local" ? null : resolved.pricing,
+          billingMode: resolved.mode === "local" ? "local" : resolved.billingMode,
         },
         request: { text: input.text, sourceID: input.id },
       },
@@ -629,6 +630,7 @@ export namespace Embedding {
         mode: "remote" as const,
         model: provider.textEmbeddingModel(modelName),
         modelID: modelName,
+        billingMode: ec.billingMode ?? "unknown",
         pricing: ProviderPricing.resolve({
           providerID: "embedding",
           modelID: modelName,

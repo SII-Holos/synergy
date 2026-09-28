@@ -71,6 +71,8 @@ For snapshot lease changes, test metadata-gate contention separately from active
 
 ## Verify
 
+When adding a migration domain, update the complete-product registry contract in `packages/presets/test/migration/registry.test.ts` and run the Presets migration suite alongside the owning domain's upgrade tests.
+
 For hierarchical deletion, measure missing-key and batched-key cleanup beside a large unrelated namespace, and inspect real engine plans for namespace-only probes. Distinguish records, derived nodes and artifact references when admitting online retention. Exercise wide trees, deep ancestors, a newly active owner, a refreshed record and cancellation after deletion begins; a count of deleted records cannot establish that a bounded node traversal is exhausted. Pair SQLite format 2/3 fixtures with PostgreSQL. Keep whole-owner offline deletion atomic and require exclusive ownership after closing runtime admission.
 
 For storage queues and worker changes, hold the preceding operation past the waiter's deadline and verify it never executes later. Check inherited cancellation, caller context and shutdown drain. Suspend or terminate owned reader and writer processes independently; two connections in a shared synchronous process do not establish read availability. Preserve the distinct ordinary-work and maintenance budgets.
@@ -144,3 +146,7 @@ For Windows link snapshots, change only the native link kind while retaining its
 Temporary SQLite inventories must finalize prepared statements before closing and removing their directory. Exercise successful and failed archive transfer on Windows without forcing garbage collection or suppressing cleanup errors.
 
 For whole-subtree logical deletion, tombstone records and enqueue artifact GC inside the existing transaction before deleting the now-empty derived nodes as a materialized set. Prune only the addressed ancestor chain afterward. Keep individual/batched record deletion separate because other descendants can remain live. Verify bounded statement count on wide/deep trees, indexed plans with unrelated history, rollback, delayed-write fences, shared packs, SQLite formats 2/3 and PostgreSQL. Do not add a persisted format merely to optimize derived-node deletion.
+
+For retained usage, exercise deletion and retention independently from explicit usage clearing. Preserve compact evidence before pruning, persist bounded journal/message-page progress, and verify replay and portable Home transfer honor suppression identities. Repairing a derived time index must invalidate revision-keyed read caches. Keep parent relationships independent of cleared counters so active descendants remain queryable. See [Usage accounting](../../../docs/architecture/usage-accounting.md).
+
+Test unknown-attribution records with unrelated owners and descendants together. Selection must preserve uncertainty from the selected owners without importing another owner's gaps; a narrower clear must not erase uncertainty shared by unselected work.

@@ -9,6 +9,8 @@ import { Lock } from "../../util/lock"
 import { RolloutArtifact } from "./artifact"
 import { RolloutSchema } from "./schema"
 import { record, RolloutRecordingError } from "./error"
+import { ProviderPricing } from "../../provider/pricing"
+import { RolloutUsage } from "./usage"
 
 export namespace RolloutLedger {
   type Owner = RolloutSchema.Owner
@@ -401,9 +403,11 @@ export namespace RolloutLedger {
     owner: Owner
     runID: string
     purpose: string
+    usageRole?: RolloutSchema.CallRecord["usageRole"]
     kind?: RolloutSchema.CallRecord["kind"]
     execution?: RolloutSchema.CallRecord["execution"]
     parentCallID?: string
+    retryIndex?: number
     agent?: string
     model: z.infer<typeof RolloutSchema.Model>
     request: z.infer<ReturnType<typeof z.json>>
@@ -419,9 +423,11 @@ export namespace RolloutLedger {
       owner: input.owner,
       runID: input.runID,
       purpose: input.purpose,
+      usageRole: input.usageRole,
       kind: input.kind,
       execution: input.execution,
       parentCallID: input.parentCallID,
+      retryIndex: input.retryIndex,
       agent: input.agent,
       model: input.model,
       request,
@@ -456,6 +462,13 @@ export namespace RolloutLedger {
         ...current,
         ...result,
         sdkUsage: result.sdkUsage === undefined ? current.sdkUsage : result.sdkUsage,
+        sdkEstimate: result.sdkUsage
+          ? ProviderPricing.estimate(
+              current.model.pricing,
+              RolloutUsage.normalizeSdk(result.sdkUsage, current.model.sdk, current.kind) ?? undefined,
+              current.model.billingMode ?? "unknown",
+            )
+          : current.sdkEstimate,
         ended: Date.now(),
       })
       await RolloutJournal.write(owner, [...root(owner, runID), "calls", callID], completed)

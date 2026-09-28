@@ -93,6 +93,11 @@ export type RolloutAccountingSummary = {
     unknown: number
     total: number | null
   }
+  unclassifiedEquivalent?: {
+    known: number
+    unknown: number
+    total: number | null
+  }
   reported: {
     currencies: {
       [key: string]: number
@@ -113,6 +118,931 @@ export type RolloutAccountingSummary = {
       total: number | null
     }
   }
+}
+
+export type UsageSummary = {
+  version: 1
+  revision: number
+  computedAt: number
+  scope: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: boolean
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+  }
+  timezone: string
+  accounting: RolloutAccountingSummary
+  provisional: RolloutAccountingSummary
+  cache: {
+    ratio: number | null
+    observedRatio: number | null
+    read: number
+    input: number
+    samples: number
+    excluded: number
+  }
+  rates: {
+    generation: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+    endToEnd: {
+      value: number | null
+      tokens: number
+      milliseconds: number
+      samples: number
+      excluded: number
+      reasons?: {
+        [key: string]: number
+      }
+    }
+  }
+  latency: {
+    headers: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    firstByte: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    ttft: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    request: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    generation: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+  }
+  scheduling: {
+    source: "wall_clock"
+    dispatch: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+    betweenAttempts: {
+      samples: number
+      excluded: number
+      totalMs: number
+      meanMs: number | null
+      p50Ms: number | null
+      p95Ms: number | null
+    }
+  }
+  outcomes: {
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    retries: number
+    transportRetries: number
+    logicalRetries: number
+    rootTasks: number
+  }
+  coverage: {
+    records: number
+    imported: number
+    legacy: number
+    active: number
+    unclassified: number
+    unsent: number
+    external: number
+    migration: {
+      version: 1
+      status: "pending" | "running" | "completed" | "failed"
+      phase: "indexes" | "sessions" | "operations" | "completed"
+      after?: Array<string>
+      ownerAfter?: Array<string>
+      owners: number
+      records: number
+      updatedAt: number
+      failures: number
+    } | null
+  }
+  tools: Array<{
+    tool: string
+    calls: number
+    completed: number
+    failed: number
+    cancelled: number
+    interrupted: number
+    running: number
+    durationMs: number
+    timedSamples: number
+    averageMs: number | null
+  }>
+  phases: Array<{
+    recordID: string
+    runID: string
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    phase: "queued" | "request" | "generating" | "tool" | "terminal"
+    elapsedMs: number | null
+    retries: number
+  }>
+  latestRequest: {
+    version: 1
+    id: string
+    entityID: string
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    revision: number
+    sourceRevision: number
+    started: number
+    ended?: number
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    source: "local" | "imported" | "legacy"
+    purpose: string
+    usageRole?: "conversation" | "compaction" | "auxiliary"
+    retryIndex?: number
+    agent?: string
+    model: {
+      providerID: string
+      modelID: string
+      apiModelID?: string
+      sdk: string
+      pricing: {
+        version: 1
+        currency: "USD"
+        unitTokens: 1000000
+        source: {
+          kind: "catalog" | "configuration" | "mixed"
+          providerID: string
+          modelID: string
+        }
+        capturedAt: number
+        rates: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        over200K?: {
+          input: number | null
+          output: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+          cacheWrite1h: number | null
+        }
+        contextTiers?: Array<{
+          above: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+        }>
+        units?: {
+          audio_seconds?: {
+            price: number
+            per: number
+          }
+          audio_input_tokens?: {
+            price: number
+            per: number
+          }
+          audio_output_tokens?: {
+            price: number
+            per: number
+          }
+          characters?: {
+            price: number
+            per: number
+          }
+        }
+        raw: unknown
+      } | null
+      /**
+       * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+       */
+      billingMode?: "api" | "subscription" | "local" | "unknown"
+      limits?: {
+        context: number
+        input?: number
+        output: number
+      }
+    }
+    execution: "provider" | "local" | "external"
+    callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+    kind: "attempt"
+    callID: string
+    index: number
+    usage?: {
+      version: 1
+      protocol: "openai" | "anthropic" | "google" | "unknown"
+      raw: unknown | null
+      input: {
+        total: number | null
+        uncached: number | null
+        cacheRead: number | null
+        cacheWrite: number | null
+      }
+      output: {
+        total: number | null
+        reasoning: number | null
+      }
+      cacheWrites: {
+        [key: string]: number | null
+      }
+      units: Array<{
+        unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+        quantity: number | null
+      }>
+      billing: "tokens" | "units" | "unknown"
+      serviceTier?: string
+      reported: {
+        amount: number
+        currency: string
+        source: string
+      } | null
+      complete: boolean
+      issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+    }
+    estimate?: {
+      version: 1
+      currency: "USD" | null
+      basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+      total: number | null
+      known: number
+      missing: Array<string>
+    }
+    timing?: {
+      source: "transport"
+      sentAt?: number
+      headersAt?: number
+      firstByteAt?: number
+      firstContentAt?: number
+      lastContentAt?: number
+      endedAt?: number
+      detectedAt?: number
+      headersMs?: number
+      firstByteMs?: number
+      ttftMs?: number
+      generationMs?: number
+      requestMs?: number
+      contentEvents: number
+      reasoningObserved: boolean
+      streaming: boolean
+      backpressured?: boolean
+    }
+    usageFinal: boolean
+    httpStatus?: number
+    responseModel?: string
+  } | null
+  context: {
+    attemptID: string
+    callID: string
+    modelID: string
+    inputTokens: number | null
+    limit: number | null
+    ratio: number | null
+    stale: boolean
+    observedAt: number
+  } | null
+  daily: Array<{
+    date: string
+    accounting: RolloutAccountingSummary
+    toolCalls: number
+  }>
+  own: RolloutAccountingSummary
+  descendants: RolloutAccountingSummary
+  purposes: {
+    [key: string]: RolloutAccountingSummary
+  }
+  models: Array<{
+    providerID: string
+    modelID: string
+    accounting: RolloutAccountingSummary
+  }>
+  agents: {
+    [key: string]: RolloutAccountingSummary
+  }
+}
+
+export type UsageRecord =
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "run"
+      parent?: {
+        owner:
+          | {
+              kind: "session"
+              scopeID: string
+              sessionID: string
+            }
+          | {
+              kind: "operation"
+              scopeID: string
+              operationID: string
+            }
+        runID: string | null
+        messageID: string
+      }
+      parentOwner?:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      kind: "call"
+      parentCallID?: string
+      usage?: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      estimate?: {
+        version: 1
+        currency: "USD" | null
+        basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+        total: number | null
+        known: number
+        missing: Array<string>
+      }
+      hasAttempts: boolean
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      kind: "attempt"
+      callID: string
+      index: number
+      usage?: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      estimate?: {
+        version: 1
+        currency: "USD" | null
+        basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+        total: number | null
+        known: number
+        missing: Array<string>
+      }
+      timing?: {
+        source: "transport"
+        sentAt?: number
+        headersAt?: number
+        firstByteAt?: number
+        firstContentAt?: number
+        lastContentAt?: number
+        endedAt?: number
+        detectedAt?: number
+        headersMs?: number
+        firstByteMs?: number
+        ttftMs?: number
+        generationMs?: number
+        requestMs?: number
+        contentEvents: number
+        reasoningObserved: boolean
+        streaming: boolean
+        backpressured?: boolean
+      }
+      usageFinal: boolean
+      httpStatus?: number
+      responseModel?: string
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "tool"
+      tool: string
+      durationMs: number | null
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "legacy"
+      purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      usage: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      legacyCost: number
+      accounting?: RolloutAccountingSummary
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "gap"
+      sequence: number
+    }
+
+export type UsageRecordsPage = {
+  version: 1
+  revision: number
+  computedAt: number
+  scope: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: boolean
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+  }
+  timezone: string
+  items: Array<UsageRecord>
+  nextCursor: string | null
 }
 
 export type StatsSnapshot = {
@@ -2063,6 +2993,10 @@ export type Model = {
     }
     raw: unknown
   } | null
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   cost: {
     input: number
     output: number
@@ -2573,8 +3507,16 @@ export type ProviderConfig = {
           [key: string]: unknown | boolean | undefined
         }
       }
+      /**
+       * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+       */
+      billingMode?: "api" | "subscription" | "local" | "unknown"
     }
   }
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Canonical provider profile whose runtime behavior this account connection uses
    */
@@ -3210,6 +4152,10 @@ export type LocalEmbeddingConfig = {
  */
 export type EmbeddingConfig = {
   /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
+  /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
   cost?: {
@@ -3274,6 +4220,10 @@ export type EmbeddingConfig = {
  * Rerank model for memory retrieval refinement. Disabled when not configured.
  */
 export type RerankConfig = {
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
@@ -4011,6 +4961,10 @@ export type McpDefaultsConfig = {
  */
 export type VoiceSttConfig = {
   /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
+  /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
   cost?: {
@@ -4078,6 +5032,10 @@ export type VoiceSttConfig = {
  * Text-to-speech service configuration
  */
 export type VoiceTtsConfig = {
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
@@ -6795,13 +7753,16 @@ export type RolloutCallRecord = {
         operationID: string
       }
   purpose: string
+  usageRole?: "conversation" | "compaction" | "auxiliary"
   kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech"
   execution?: "provider" | "local" | "external"
   parentCallID?: string
+  retryIndex?: number
   agent?: string
   model: {
     providerID: string
     modelID: string
+    apiModelID?: string
     sdk: string
     pricing: {
       version: 1
@@ -6857,6 +7818,15 @@ export type RolloutCallRecord = {
       }
       raw: unknown
     } | null
+    /**
+     * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+     */
+    billingMode?: "api" | "subscription" | "local" | "unknown"
+    limits?: {
+      context: number
+      input?: number
+      output: number
+    }
   }
   started: number
   ended?: number
@@ -6864,6 +7834,14 @@ export type RolloutCallRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   sdkUsage: unknown | null
+  sdkEstimate?: {
+    version: 1
+    currency: "USD" | null
+    basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+    total: number | null
+    known: number
+    missing: Array<string>
+  }
   transportCaptured: boolean
   error?: string
 }
@@ -6893,6 +7871,7 @@ export type RolloutAttemptRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   httpStatus?: number
+  responseModel?: string
   usage?: {
     version: 1
     protocol: "openai" | "anthropic" | "google" | "unknown"
@@ -6922,11 +7901,32 @@ export type RolloutAttemptRecord = {
       source: string
     } | null
     complete: boolean
+    issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
   }
+  timing?: {
+    source: "transport"
+    sentAt?: number
+    headersAt?: number
+    firstByteAt?: number
+    firstContentAt?: number
+    lastContentAt?: number
+    endedAt?: number
+    detectedAt?: number
+    headersMs?: number
+    firstByteMs?: number
+    ttftMs?: number
+    generationMs?: number
+    requestMs?: number
+    contentEvents: number
+    reasoningObserved: boolean
+    streaming: boolean
+    backpressured?: boolean
+  }
+  usageFinal?: boolean
   estimate?: {
     version: 1
     currency: "USD" | null
-    basis: "api_price_estimate" | "subscription_api_equivalent"
+    basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
     total: number | null
     known: number
     missing: Array<string>
@@ -10765,6 +11765,19 @@ export type EventWorkspaceUpdated = {
   properties: WorkspaceInfo
 }
 
+export type EventScopeUpdated = {
+  type: "scope.updated"
+  properties: Scope
+}
+
+export type EventScopeRemoved = {
+  type: "scope.removed"
+  properties: {
+    id: string
+    directory?: string
+  }
+}
+
 export type EventEnvironmentUpdated = {
   type: "environment.updated"
   properties: EnvironmentInfo
@@ -10816,19 +11829,6 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventScopeUpdated = {
-  type: "scope.updated"
-  properties: Scope
-}
-
-export type EventScopeRemoved = {
-  type: "scope.removed"
-  properties: {
-    id: string
-    directory?: string
-  }
-}
-
 export type EventProviderAuthUpdated = {
   type: "provider.auth.updated"
   properties: {
@@ -10855,6 +11855,30 @@ export type EventPermissionReplied = {
     sessionID: string
     requestID: string
     reply: "once" | "session" | "always" | "reject"
+  }
+}
+
+export type EventUsageUpdated = {
+  type: "usage.updated"
+  properties: {
+    revision: number
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    recordID: string
+    kind: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    phase: "queued" | "request" | "generating" | "tool" | "terminal"
+    record: UsageRecord
   }
 }
 
@@ -11425,6 +12449,8 @@ export type EventRuntimeReloaded = {
 export type Event =
   | EventScopeRuntimeDisposed
   | EventWorkspaceUpdated
+  | EventScopeUpdated
+  | EventScopeRemoved
   | EventEnvironmentUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
@@ -11432,12 +12458,11 @@ export type Event =
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventScopeUpdated
-  | EventScopeRemoved
   | EventProviderAuthUpdated
   | EventConfigUpdated
   | EventPermissionAsked
   | EventPermissionReplied
+  | EventUsageUpdated
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
@@ -11664,6 +12689,185 @@ export type GlobalGitInitResponses = {
 }
 
 export type GlobalGitInitResponse = GlobalGitInitResponses[keyof GlobalGitInitResponses]
+
+export type GlobalStatsUsageData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: "true" | "false"
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+  }
+  url: "/global/stats/usage"
+}
+
+export type GlobalStatsUsageErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageError = GlobalStatsUsageErrors[keyof GlobalStatsUsageErrors]
+
+export type GlobalStatsUsageResponses = {
+  /**
+   * Canonical usage summary
+   */
+  200: UsageSummary
+}
+
+export type GlobalStatsUsageResponse = GlobalStatsUsageResponses[keyof GlobalStatsUsageResponses]
+
+export type GlobalStatsUsageClearData = {
+  body?: {
+    scope: {
+      scopeID?: string
+      sessionID?: string
+      runID?: string
+      providerID?: string
+      modelID?: string
+      agent?: string
+      purpose?: string
+      from?: number
+      to?: number
+      includeDescendants?: boolean
+      timezone?: string
+      kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    }
+    throughRevision: number
+  }
+  path?: never
+  query?: never
+  url: "/global/stats/usage/records"
+}
+
+export type GlobalStatsUsageClearErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageClearError = GlobalStatsUsageClearErrors[keyof GlobalStatsUsageClearErrors]
+
+export type GlobalStatsUsageClearResponses = {
+  /**
+   * Cleared and retained record counts
+   */
+  200: {
+    removed: number
+    activeRetained: number
+    newerRetained: number
+    /**
+     * Owner-level gaps retained because the clear selects a specific run
+     */
+    unattributedRetained: number
+    revision: number
+  }
+}
+
+export type GlobalStatsUsageClearResponse = GlobalStatsUsageClearResponses[keyof GlobalStatsUsageClearResponses]
+
+export type GlobalStatsUsageRecordsData = {
+  body?: never
+  path?: never
+  query?: {
+    scopeID?: string
+    sessionID?: string
+    runID?: string
+    providerID?: string
+    modelID?: string
+    agent?: string
+    purpose?: string
+    from?: number
+    to?: number
+    includeDescendants?: "true" | "false"
+    timezone?: string
+    kind?: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/stats/usage/records"
+}
+
+export type GlobalStatsUsageRecordsErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageRecordsError = GlobalStatsUsageRecordsErrors[keyof GlobalStatsUsageRecordsErrors]
+
+export type GlobalStatsUsageRecordsResponses = {
+  /**
+   * Usage records
+   */
+  200: UsageRecordsPage
+}
+
+export type GlobalStatsUsageRecordsResponse = GlobalStatsUsageRecordsResponses[keyof GlobalStatsUsageRecordsResponses]
+
+export type GlobalStatsUsageRebuildData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/stats/usage/rebuild"
+}
+
+export type GlobalStatsUsageRebuildErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalStatsUsageRebuildError = GlobalStatsUsageRebuildErrors[keyof GlobalStatsUsageRebuildErrors]
+
+export type GlobalStatsUsageRebuildResponses = {
+  /**
+   * Durable rebuild job
+   */
+  200: {
+    version: 1
+    status: "pending" | "running" | "completed" | "failed"
+    phase: "indexes" | "sessions" | "operations" | "completed"
+    after?: Array<string>
+    ownerAfter?: Array<string>
+    owners: number
+    records: number
+    updatedAt: number
+    failures: number
+  }
+}
+
+export type GlobalStatsUsageRebuildResponse = GlobalStatsUsageRebuildResponses[keyof GlobalStatsUsageRebuildResponses]
 
 export type GlobalStatsGetData = {
   body?: never

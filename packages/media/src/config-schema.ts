@@ -4,6 +4,7 @@ import { ProviderPricing } from "@ericsanchezok/synergy-harness/provider/pricing
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 export const VoiceSttConfig = z
   .object({
+    billingMode: ProviderPricing.BillingMode.optional(),
     cost: ProviderPricing.Cost.optional().describe(
       "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
     ),
@@ -23,6 +24,7 @@ export type VoiceSttConfig = z.infer<typeof VoiceSttConfig>
 
 export const VoiceTtsConfig = z
   .object({
+    billingMode: ProviderPricing.BillingMode.optional(),
     cost: ProviderPricing.Cost.optional().describe(
       "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
     ),
