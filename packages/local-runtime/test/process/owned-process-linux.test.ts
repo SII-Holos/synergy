@@ -10,6 +10,25 @@ import type { Socket } from "node:net"
 
 const nativeTest = test.skipIf(process.platform !== "linux")
 
+nativeTest(
+  "a Linux supervisor startup exit retains its cause and releases an unactivated claim",
+  async () => {
+    await using directory = await tmpdir()
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, "fixtures/owned-startup-exit.ts"), directory.path],
+      { cwd: directory.path, env: process.env, stdout: "pipe", stderr: "pipe" },
+    )
+    const [code, output, error] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(code, error).toBe(0)
+    expect(JSON.parse(output)).toEqual({ error: "supervisor-init-failed", code: 27, activated: false, claims: 0 })
+  },
+  10000,
+)
+
 async function errnoFixture(mode: string, jit = "0") {
   await using directory = await tmpdir()
   const child = Bun.spawn(

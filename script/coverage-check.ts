@@ -4,7 +4,7 @@ import { parseArgs } from "node:util"
 /**
  * Coverage gate. Runs each package's coverage command from the manifest,
  * parses lcov.info, applies file-level exemptions, and enforces per-package
- * line/function thresholds (the only metrics Bun 1.3.14 exposes).
+ * line/function thresholds from Bun lcov reports.
  *
  * Source files that never appear in lcov (never loaded by any test) count as
  * 0% so an uncovered file cannot silently vanish from the numbers.

@@ -5,6 +5,34 @@ import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/ex
 import { NativeExecutor } from "../../src/environment/native-executor"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 
+test.skipIf(process.platform !== "linux")(
+  "an unavailable native library does not hide its cause behind claim cleanup",
+  async () => {
+    await using tmp = await tmpdir()
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, "fixtures/unavailable-native.ts"), tmp.path],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    )
+    const timer = setTimeout(() => child.kill("SIGKILL"), 10000)
+    try {
+      const [code, output, error] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      expect({ code, output, error }).toEqual({ code: 0, output: "unavailable without effects\n", error: "" })
+    } finally {
+      clearTimeout(timer)
+      child.kill()
+      await child.exited
+    }
+  },
+  15000,
+)
+
 test("native executor deduplicates effects, drains output and retains the writer until saved", async () => {
   await using tmp = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
@@ -53,6 +81,48 @@ test("native executor deduplicates effects, drains output and retains the writer
   await recovered.start(request)
   expect(await Bun.file(marker).text()).toBe("changed")
 }, 30_000)
+
+test("cancelling a running native command preserves received bytes and a releasable receipt", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  const target = { environmentID: "native", allocationID: "allocation", generation: 1 }
+  await using executor = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
+  const command = {
+    command: process.execPath,
+    args: ["-e", "process.stdout.write('before-cancel'); process.stderr.write('error-tail'); setInterval(()=>{},1000)"],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [tmp.path],
+  }
+  const request = { id: "cancel-running", target, command, digest: ExecutionProtocol.digest(command) }
+  await executor.start(request)
+  const deadline = Date.now() + 10000
+  const output = async () => {
+    const chunks = await executor.output(request.id, 0, 128)
+    return ["stdout", "stderr"].map((stream) =>
+      chunks
+        .filter((chunk) => chunk.stream === stream)
+        .map((chunk) => Buffer.from(chunk.data, "base64").toString())
+        .join(""),
+    )
+  }
+  while (JSON.stringify(await output()) !== JSON.stringify(["before-cancel", "error-tail"])) {
+    if (Date.now() >= deadline)
+      throw new Error(`Command did not publish its output: ${JSON.stringify(await executor.status(request.id))}`)
+    await Bun.sleep(10)
+  }
+  await executor.cancel(request.id, request.digest)
+  expect(await executor.status(request.id)).toMatchObject({
+    state: "cancelled",
+    effectsStarted: true,
+    treeDrained: true,
+    streamsDrained: true,
+  })
+  expect(await output()).toEqual(["before-cancel", "error-tail"])
+  expect(await coordinator.inspect()).toHaveLength(1)
+  await executor.release(request.id)
+  expect(await coordinator.inspect()).toEqual([])
+}, 20000)
 
 test("cancel before dispatch remains cancelled and changed inputs or generations are rejected", async () => {
   await using tmp = await tmpdir()
@@ -158,5 +228,67 @@ test("a failed launch with verified process and stream drainage remains saveable
   expect(status?.streamsDrained).toBe(true)
   expect(await coordinator.inspect()).toHaveLength(1)
   await executor.release("missing")
+  expect(await coordinator.inspect()).toEqual([])
+}, 15000)
+
+test("a process binding failure preserves its cause and releases the unactivated claim", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  const target = { environmentID: "native", allocationID: "allocation", generation: 1 }
+  let rejectBinding = true
+  await using executor = await NativeExecutor.open({
+    target,
+    directory: path.join(tmp.path, "receipts"),
+    coordinator,
+    acquire: async (command, signal) => {
+      const lease = await coordinator.acquire({
+        id: crypto.randomUUID(),
+        owner: target.environmentID,
+        ancestors: [],
+        kind: "process",
+        roots: command.writableRoots,
+        retainAfterExit: true,
+        durable: true,
+        signal,
+      })
+      return {
+        ...lease,
+        bindProcess: async (pid, options) => {
+          if (rejectBinding) {
+            rejectBinding = false
+            throw new Error("binding unavailable")
+          }
+          await lease.bindProcess(pid, options)
+        },
+      }
+    },
+  })
+  const marker = path.join(tmp.path, "effect")
+  const command = {
+    command: process.execPath,
+    args: ["-e", `await Bun.write(${JSON.stringify(marker)}, "one")`],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [tmp.path],
+  }
+  const settle = async (id: string) => {
+    await executor.start({ id, target, command, digest: ExecutionProtocol.digest(command) })
+    const deadline = Date.now() + 5000
+    for (;;) {
+      const status = await executor.status(id)
+      if (status && ExecutionProtocol.terminal(status)) return status
+      if (Date.now() >= deadline) throw new Error("Execution never settled")
+      await Bun.sleep(10)
+    }
+  }
+  const failed = await settle("unbound")
+  expect(failed.error).toBe("binding unavailable")
+  expect(failed.effectsStarted).toBe(false)
+  expect(await Bun.file(marker).exists()).toBe(false)
+  expect(await coordinator.inspect()).toEqual([])
+  const next = await settle("next")
+  expect(next.exitCode).toBe(0)
+  expect(await Bun.file(marker).text()).toBe("one")
+  await executor.release("next")
   expect(await coordinator.inspect()).toEqual([])
 }, 15000)

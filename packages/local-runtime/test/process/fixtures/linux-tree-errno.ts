@@ -2,10 +2,11 @@ import { mock } from "bun:test"
 import * as ffi from "bun:ffi"
 import fs from "node:fs"
 import path from "node:path"
+import { openNativeLibrary } from "../../../src/native/ffi"
 
 const mapped = fs.readFileSync("/proc/self/maps", "utf8")
 const libc = mapped.match(/\/(?:[^\s]+\/)*ld-musl-[^/\s]+\.so\.1(?=\s|$)/m)?.[0] ?? "libc.so.6"
-const io = ffi.dlopen(libc, {
+const io = openNativeLibrary(libc, {
   pipe2: { args: ["ptr", "i32"], returns: "i32" },
   read: { args: ["i32", "ptr", "u64"], returns: "i64" },
   close: { args: ["i32"], returns: "i32" },
@@ -14,12 +15,11 @@ const pipes = new Int32Array(2)
 if (io.pipe2(ffi.ptr(pipes), 2048) !== 0) throw new Error("Cannot create nonblocking errno fixture")
 const byte = new Uint8Array(1)
 const destination = ffi.ptr(byte)
-const dlopen = ffi.dlopen
+const dlopen = openNativeLibrary
 // The real nonblocking read changes errno after an FFI result has crossed into JavaScript.
 // This deterministically exercises that boundary; it does not claim to reproduce the CI interruption timing.
-mock.module("bun:ffi", () => ({
-  ...ffi,
-  dlopen(...args: Parameters<typeof dlopen>) {
+mock.module("../../../src/native/ffi", () => ({
+  openNativeLibrary(...args: Parameters<typeof dlopen>) {
     const library = dlopen(...args)
     return {
       ...library,
@@ -65,7 +65,7 @@ async function check() {
   }
   if (mode === "pidfd-errors") {
     const { NativePty } = await import("../../../src/process/native-pty")
-    const native = (await import("bun:ffi")).dlopen(NativePty.libraryPath(), {
+    const native = (await import("../../../src/native/ffi")).openNativeLibrary(NativePty.libraryPath(), {
       synergy_linux_pidfd_open: { args: ["i32"], returns: "i32" },
       synergy_linux_pidfd_signal: { args: ["i32", "i32"], returns: "i32" },
       synergy_linux_close: { args: ["i32"], returns: "i32" },

@@ -324,7 +324,7 @@ export namespace EnvironmentExecution {
         environmentID: environment.id,
         message: "Provider does not expose an Executor",
       })
-    const key = JSON.stringify([info.scopeID, info.target])
+    const key = JSON.stringify([info.scopeID, info.target, environment.updatedAt])
     for (const cached of connections().keys()) {
       const [scopeID, target] = JSON.parse(cached) as [string, Environment.Target]
       if (scopeID === info.scopeID && target.environmentID === info.target.environmentID && cached !== key)

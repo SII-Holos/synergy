@@ -1,4 +1,5 @@
-import { dlopen, ptr, read } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
+import { ptr, read } from "bun:ffi"
 
 export namespace DarwinCoalition {
   export interface Reference {
@@ -10,7 +11,7 @@ export namespace DarwinCoalition {
 
   function initialize() {
     if (process.platform !== "darwin") throw new Error("Native Darwin process groups are unavailable")
-    const system = dlopen("/usr/lib/libSystem.B.dylib", {
+    const system = openNativeLibrary("/usr/lib/libSystem.B.dylib", {
       coalition_info_resource_usage: { args: ["u64", "ptr", "u64"], returns: "int" },
       sysctlbyname: { args: ["ptr", "ptr", "ptr", "ptr", "u64"], returns: "int" },
       __error: { args: [], returns: "ptr" },
@@ -34,7 +35,7 @@ export namespace DarwinCoalition {
     }
   }
   function openProcesses() {
-    return dlopen("/usr/lib/libproc.dylib", {
+    return openNativeLibrary("/usr/lib/libproc.dylib", {
       proc_pidinfo: { args: ["int", "int", "u64", "ptr", "int"], returns: "int" },
       proc_listallpids: { args: ["ptr", "int"], returns: "int" },
     })

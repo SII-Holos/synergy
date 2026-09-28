@@ -40,6 +40,7 @@ export namespace WorktreeProcess {
     const stderr: Buffer[] = []
     let bytes = 0
     let overflow = false
+    let failure: Error | undefined
     const collect = (chunks: Buffer[]) => (chunk: Buffer) => {
       const size = Math.min(chunk.length, 1024 * 1024 - bytes)
       if (size) chunks.push(Buffer.from(chunk.subarray(0, size)))
@@ -87,6 +88,9 @@ export namespace WorktreeProcess {
             lease: lease!,
             signal,
           })
+      owned.child.on("error", (error: Error) => {
+        failure ??= error
+      })
       owned.child.stdout!.on("data", collect(stdout))
       owned.child.stderr!.on("data", collect(stderr))
       await owned.activate()
@@ -98,6 +102,7 @@ export namespace WorktreeProcess {
         signal.throwIfAborted()
         await Promise.race([owned.completion, cancelled.promise])
         signal.throwIfAborted()
+        if (failure) throw failure
       } finally {
         signal.removeEventListener("abort", abort)
       }

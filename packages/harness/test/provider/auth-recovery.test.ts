@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from "bun:test"
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test"
 import { Auth } from "../../src/provider/api-key"
 import { ProviderAuthHealth } from "../../src/provider/auth-health"
 import { ProviderAuthRecovery } from "../../src/provider/auth-recovery"
@@ -179,19 +179,28 @@ test("a lone API key cools down on a first rejection and is invalidated only aft
     })
   }))
 
-test("a first-rejection cooldown honors the strict retry hint ceiling", () =>
-  runtime.run(async () => {
-    await Auth.set("test-exhausted", { type: "api", key: "hinted" })
-    const before = Math.floor(Date.now() / 1000)
-    await ProviderAuthRecovery.execute({
-      providerID: "test-exhausted",
-      request: async () => new Response(null, { status: 401, headers: { "retry-after": "1200" } }),
-    })
-    const entry = (await Auth.entries())["test-exhausted"].pool![0]
-    expect(entry.status).toBe("exhausted")
-    expect(entry.cooldownUntil).toBeGreaterThanOrEqual(before + Auth.RejectionPolicy.cooldownSeconds)
-    expect(entry.cooldownUntil).toBeLessThanOrEqual(before + Auth.RejectionPolicy.maxCooldownSeconds)
-  }))
+test.each([0, 1])(
+  "a first-rejection cooldown honors the strict retry hint ceiling after %i elapsed seconds",
+  (elapsed) =>
+    runtime.run(async () => {
+      await Auth.set("test-exhausted", { type: "api", key: "hinted" })
+      const before = Math.floor(Date.now() / 1000)
+      using clock = spyOn(Date, "now").mockReturnValue(before * 1000 + 999)
+      await ProviderAuthRecovery.execute({
+        providerID: "test-exhausted",
+        request: async () => {
+          clock.mockReturnValue((before + elapsed) * 1000 + 999)
+          return new Response(null, { status: 401, headers: { "retry-after": "1200" } })
+        },
+      })
+      const entry = (await Auth.entries())["test-exhausted"].pool![0]
+      expect(entry).toMatchObject({
+        status: "exhausted",
+        rejectedAt: before + elapsed,
+        cooldownUntil: before + elapsed + Auth.RejectionPolicy.maxCooldownSeconds,
+      })
+    }),
+)
 
 test("a rejection after the cooldown elapses within the window escalates to dead", () =>
   runtime.run(async () => {

@@ -182,7 +182,18 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       "environment",
       300,
       ["packages/harness", "packages/local-runtime", "packages/server"],
-      { pool: "docker" },
+      {
+        pool: "docker",
+        scenarios: [
+          "a deleted Docker allocation marks its live view unavailable while retaining saved files and staging",
+          "Docker compute starts on demand, preserves output and runs commands without host credentials",
+          "Docker Workspace checkpoints survive upload failure and replacement of the entire allocation",
+          "session terminals and user shell share the selected Docker Environment and recoverable Workspace",
+          "restarting the controller saves an existing Docker result without executing it again",
+          "configured Docker and local objects survive compute reclamation through the product composition",
+          "remote Docker Engine and execution endpoints share the lifecycle over authenticated TLS",
+        ],
+      },
     ),
     task(
       "windows",
