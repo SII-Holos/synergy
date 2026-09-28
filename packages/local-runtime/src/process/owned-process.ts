@@ -104,7 +104,7 @@ export namespace OwnedProcess {
           child.stdin.destroy(error)
           return
         }
-        if (stopping && code === "ECONNRESET") return
+        if (code === "ECONNRESET" && (stopping || (reported && sockets.get("control") === socket))) return
         if (sockets.has("control")) fail(error)
       })
       let pending = Buffer.alloc(0)
@@ -244,7 +244,9 @@ export namespace OwnedProcess {
         await Promise.all(drains)
         await finish()
       } catch (error) {
-        failure ??= error instanceof Error ? error : new Error(String(error))
+        const observed = error instanceof Error ? error : new Error(String(error))
+        if (failure && failure !== observed && observed.cause === undefined) observed.cause = failure
+        failure = observed
         complete.reject(failure)
         child.emit("error", failure)
         await abandon()
