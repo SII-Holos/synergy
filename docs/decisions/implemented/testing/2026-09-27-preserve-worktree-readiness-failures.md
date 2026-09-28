@@ -20,4 +20,6 @@ Checkout readiness observes both the persistent marker and Worktree creation set
 
 ## Consequences
 
+Native process fixtures publish complete PID receipts by atomic rename and validate positive identities before checking liveness. An explicit publication barrier keeps an incomplete receipt invisible to the readiness observer; file creation alone cannot establish that its payload is ready. Cancellation must still drain the actual process before another writer is admitted.
+
 A real failing checkout hook reproduces the lost error with the original wait. Regressions check the original structured error, cancellation of a hook that never becomes ready, native process exit, removal of the unfinished worktree and admission of a subsequent writer. Existing cancellation tests retain their foreign-lock and local-commit preservation assertions. The original CI logs identify the marker timeout and later blocked writers but contain neither the preceding Git result nor a native ownership snapshot; that underlying CI trigger remains unproven. Linux x64 CI remains necessary even when the corresponding native Linux ARM64 batch passes.
