@@ -113,6 +113,7 @@ export async function main(args: string[]) {
     const { resourceCycles } = await import("./acceptance/resource-cycles")
     const { desktopInput } = await import("./acceptance/product-ui")
     const { webReconnect } = await import("./acceptance/product-web")
+    const { installedEntrypoints, currentDevUpgrade } = await import("./acceptance/installed")
     await execute(
       plan,
       {
@@ -124,6 +125,12 @@ export async function main(args: string[]) {
         "shared-delegation": sharedDelegation(settings),
         ...(settings.artifacts?.web && settings.artifacts.desktop ? { "desktop-input": desktopInput(settings) } : {}),
         ...(settings.artifacts?.web && settings.chromium ? { "web-reconnect": webReconnect(settings) } : {}),
+        ...(settings.artifacts?.core && settings.artifacts.full
+          ? { "installed-entrypoints": installedEntrypoints(settings) }
+          : {}),
+        ...(settings.artifacts?.previous && settings.artifacts.full
+          ? { "current-dev-upgrade": currentDevUpgrade(settings) }
+          : {}),
         ...(settings.postgres ? { "storage-postgres": persistence(settings) } : {}),
         ...(settings.remote
           ? {
