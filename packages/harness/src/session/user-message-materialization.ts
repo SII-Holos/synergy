@@ -47,6 +47,15 @@ export namespace SessionUserMessageMaterialization {
       // durable record never holds the plaintext.
       prepared.push(await SecretMask.maskPart(normalized))
     }
+    return writePrepared({ info: message.info, parts: prepared }, options)
+  }
+
+  /** Internal callers must prepare artifacts and mask text before entering the transaction. */
+  export async function writePrepared<Info extends MessageV2.Info>(
+    message: { info: Info; parts: MessageV2.Part[] },
+    options: CommitOptions = {},
+  ): Promise<{ info: Info; parts: MessageV2.Part[] }> {
+    const { Session } = await import(".")
     return Storage.transaction(async () => {
       const existing = await MessageV2.get({ sessionID: message.info.sessionID, messageID: message.info.id }).catch(
         (error) => {
@@ -60,7 +69,7 @@ export namespace SessionUserMessageMaterialization {
       }
       const info = (await Session.updateMessage(message.info)) as Info
       const parts = []
-      for (const part of prepared) parts.push(await Session.updatePart(part))
+      for (const part of message.parts) parts.push(await Session.updatePart(part))
       const result = { info, parts }
       await options.commit?.(result)
       Storage.afterCommit(() => after(result))

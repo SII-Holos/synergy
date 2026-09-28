@@ -311,6 +311,27 @@ describe("ProviderTransform.message - Anthropic late-user-context cache boundary
     expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
     expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
+
+  test("durable context remains cacheable even when its text contains the legacy runtime tag", () => {
+    const result = ProviderTransform.message(
+      [
+        { role: "system", content: "instructions" },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "<runtime-context>retained observation</runtime-context>",
+              providerOptions: { synergy: { durableContext: true } },
+            },
+          ],
+        },
+      ],
+      anthropicModel,
+      { systemCacheBreakpoint: 0 },
+    )
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+  })
 })
 
 describe("ProviderTransform.message - mapped-profile and fallback cache boundary", () => {

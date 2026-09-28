@@ -21,7 +21,8 @@ export const TodoWriteTool = Tool.define("todowrite", {
     })
     return {
       title: `${params.todos.filter((x) => x.status !== "completed").length} todos`,
-      output: JSON.stringify(params.todos, null, 2),
+      // The call already retains the list; see the durable-prompt-context decision and Codex plan handler.
+      output: "Todo list updated.",
       metadata: {
         todos: params.todos,
       },

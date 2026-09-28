@@ -161,6 +161,7 @@ export const DagPatchTool = Tool.define("dagpatch", {
       }
     }
 
+    const before = new Map(nodes.map((node) => [node.id, JSON.stringify(node)]))
     const nodeMap = new Map(nodes.map((n) => [n.id, n]))
     const updates: string[] = []
     const errors: string[] = []
@@ -234,7 +235,8 @@ export const DagPatchTool = Tool.define("dagpatch", {
       parts.push(`${errors.length} error(s): ${errors.join("; ")}`)
     }
     parts.push("")
-    parts.push(JSON.stringify({ nodes, ready }, null, 2))
+    const changedNodes = nodes.filter((node) => before.get(node.id) !== JSON.stringify(node))
+    parts.push(JSON.stringify({ changedNodes, ready }, null, 2))
     parts.push(buildExecutionHint(nodes, ready))
 
     return {
