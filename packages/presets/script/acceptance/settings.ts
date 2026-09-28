@@ -44,4 +44,5 @@ export async function validateCatalog(settings: Settings) {
   const parsed = ModelsDevCatalog.safeParse(await Bun.file(settings.modelCatalog).json())
   if (!parsed.success || missingRequiredModelsDevProviders(parsed.data).length)
     throw new Error("Frozen model catalog is invalid or incomplete; bundled fallback is not acceptance evidence")
+  return parsed.data
 }

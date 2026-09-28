@@ -25,6 +25,28 @@ for (const id of ["installed-entrypoints", "current-dev-upgrade"] as const)
       await using tmp = await tmpdir()
       using provider = installedProvider()
       const settings = await fixtureSettings(tmp.path, provider.url.toString())
+      const catalog = await Bun.file(settings.modelCatalog).json()
+      catalog.fixture = {
+        id: "fixture",
+        name: "Fixture",
+        npm: "@ai-sdk/openai-compatible",
+        env: [],
+        models: {
+          model: {
+            id: "model",
+            name: "Frozen catalog fixture",
+            release_date: "2026-09-28",
+            reasoning: false,
+            tool_call: true,
+            attachment: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 128000, output: 2048 },
+          },
+        },
+      }
+      settings.modelCatalog = path.join(tmp.path, "catalog.json")
+      await Bun.write(settings.modelCatalog, JSON.stringify(catalog))
+      settings.config.provider = { fixture: { npm: "@ai-sdk/openai-compatible", env: [] } }
       settings.artifacts = {
         core: process.env.SYNERGY_ACCEPTANCE_CORE!,
         full: process.env.SYNERGY_ACCEPTANCE_FULL!,

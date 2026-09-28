@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
+import { mergeDeep } from "remeda"
 import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
 import type { RuntimeStorage } from "@ericsanchezok/synergy-harness/lifecycle"
 import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
@@ -9,13 +10,13 @@ import { atomicJSON } from "./evidence"
 import { type Settings, validateCatalog } from "./settings"
 
 export async function prepareRuntime(directory: string, settings: Settings, gateway: { url: string; token: string }) {
-  await validateCatalog(settings)
+  const catalog = await validateCatalog(settings)
   const home = path.join(directory, "home")
   const root = path.join(home, ".synergy")
   await fs.mkdir(path.join(root, "cache"), { recursive: true, mode: 0o700 })
   await fs.copyFile(settings.modelCatalog, path.join(root, "cache", "models.json"))
   const provider = z.record(z.string(), z.record(z.string(), z.json())).parse(settings.config.provider ?? {})
-  const selected = provider[settings.providerID] ?? {}
+  const selected = mergeDeep(catalog[settings.providerID] ?? {}, provider[settings.providerID] ?? {})
   const options = z.record(z.string(), z.json()).parse(selected.options ?? {})
   const config = {
     ...settings.config,
