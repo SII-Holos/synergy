@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import path from "node:path"
 import { buffer } from "node:stream/consumers"
+import { stripVTControlCharacters } from "node:util"
 import { NativePty } from "../../../src/process/native-pty"
 import { OwnedProcess } from "../../../src/process/owned-process"
 import { WorkspaceCoordinator } from "../../../src/workspace/coordinator"
@@ -50,7 +51,8 @@ const terminal = NativePty.spawn({
 })
 try {
   terminal.resize(91, 32)
-  assert.equal((await buffer(terminal.stdout)).toString(), "terminal-output")
+  const output = (await buffer(terminal.stdout)).toString()
+  assert.equal(process.platform === "win32" ? stripVTControlCharacters(output).trim() : output, "terminal-output")
   assert.equal(await terminal.exited, 0)
 } finally {
   terminal.close()

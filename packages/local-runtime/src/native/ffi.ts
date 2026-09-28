@@ -73,7 +73,12 @@ int synergy_ffi_open(const char* filename) {
   try {
     const file = path.join(directory, "bindings.c")
     fs.writeFileSync(file, source, { mode: 0o600 })
-    compiled = cc({ source: file, symbols, flags: ["-nostdlib"] })
+    compiled = cc({
+      source: file,
+      symbols,
+      flags: ["-nostdlib"],
+      library: process.platform === "win32" ? ["kernel32"] : [],
+    })
     const name = Buffer.from(`${filename}\0`, process.platform === "win32" ? "utf16le" : "utf8")
     const code = compiled.symbols.synergy_ffi_open!(ptr(name))
     if (code !== 0)

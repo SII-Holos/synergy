@@ -82,6 +82,48 @@ test("native executor deduplicates effects, drains output and retains the writer
   expect(await Bun.file(marker).text()).toBe("changed")
 }, 30_000)
 
+test("cancelling a running native command preserves received bytes and a releasable receipt", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  const target = { environmentID: "native", allocationID: "allocation", generation: 1 }
+  await using executor = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
+  const command = {
+    command: process.execPath,
+    args: ["-e", "process.stdout.write('before-cancel'); process.stderr.write('error-tail'); setInterval(()=>{},1000)"],
+    cwd: tmp.path,
+    env: {},
+    writableRoots: [tmp.path],
+  }
+  const request = { id: "cancel-running", target, command, digest: ExecutionProtocol.digest(command) }
+  await executor.start(request)
+  const deadline = Date.now() + 10000
+  const output = async () => {
+    const chunks = await executor.output(request.id, 0, 128)
+    return ["stdout", "stderr"].map((stream) =>
+      chunks
+        .filter((chunk) => chunk.stream === stream)
+        .map((chunk) => Buffer.from(chunk.data, "base64").toString())
+        .join(""),
+    )
+  }
+  while (JSON.stringify(await output()) !== JSON.stringify(["before-cancel", "error-tail"])) {
+    if (Date.now() >= deadline)
+      throw new Error(`Command did not publish its output: ${JSON.stringify(await executor.status(request.id))}`)
+    await Bun.sleep(10)
+  }
+  await executor.cancel(request.id, request.digest)
+  expect(await executor.status(request.id)).toMatchObject({
+    state: "cancelled",
+    effectsStarted: true,
+    treeDrained: true,
+    streamsDrained: true,
+  })
+  expect(await output()).toEqual(["before-cancel", "error-tail"])
+  expect(await coordinator.inspect()).toHaveLength(1)
+  await executor.release(request.id)
+  expect(await coordinator.inspect()).toEqual([])
+}, 20000)
+
 test("cancel before dispatch remains cancelled and changed inputs or generations are rejected", async () => {
   await using tmp = await tmpdir()
   const target = { environmentID: "native", allocationID: "allocation", generation: 1 }

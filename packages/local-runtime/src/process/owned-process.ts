@@ -160,6 +160,7 @@ export namespace OwnedProcess {
               socket.resume()
             })
             socket.pipe(stream)
+            socket.once("close", () => stream.end())
           }
           socket.resume()
           if (sockets.size === 4) connected.resolve(workerPID)

@@ -18,6 +18,8 @@ Bun 1.4's [engine FFI](https://github.com/oven-sh/bun/issues/28792) requires JIT
 
 Native startup can fail before a process is bound to its retained claim. Cleanup releases that unactivated claim rather than demanding a nonexistent process-tree completion receipt, preserving the original failure and allowing subsequent work. A missing-library subprocess verifies the failed receipt, absent side effect and empty claim ledger. Intentional whole-tree cancellation accepts the connection reset produced by the terminated worker, while still requiring native tree and stream drainage.
 
+Closing a worker output socket also ends its destination stream, including Windows cancellation resets that do not emit a readable `end`. Already received bytes remain readable; forced destruction is reserved for the bounded unread-output shutdown path. The Executor regression requires a cancelled receipt, both complete output streams, retained save ownership and explicit release. Windows JITless bindings explicitly link the system loader through `kernel32`; the PTY binding test compares rendered content after removing terminal control sequences.
+
 The generated SDK observes rejection of `reader.cancel()` during SSE abort. The pinned OpenAPI generator carries the patch so regeneration retains this behavior; a real HTTP stream and the CLI cancellation suite verify clean process exit. The patch is removable when the upstream generator observes that promise itself. Empty explicit Bun configuration still discovers the working-directory test preload, so guard subprocesses start in their independent fixture directory to exercise the requested environment unchanged.
 
 ## Alternatives considered
