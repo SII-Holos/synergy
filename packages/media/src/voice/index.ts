@@ -86,6 +86,7 @@ export namespace Voice {
         model: {
           providerID: "voice",
           modelID: stt.model,
+          billingMode: stt.billingMode ?? "unknown",
           sdk: "@ai-sdk/openai",
           pricing: ProviderPricing.resolve({
             providerID: "voice",
@@ -165,6 +166,7 @@ export namespace Voice {
         model: {
           providerID: "voice",
           modelID: tts.model,
+          billingMode: tts.billingMode ?? "unknown",
           sdk: "@ai-sdk/openai",
           pricing: ProviderPricing.resolve({
             providerID: "voice",

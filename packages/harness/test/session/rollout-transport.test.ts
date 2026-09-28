@@ -372,7 +372,7 @@ describe("rollout transport", () => {
         },
       ),
     ).rejects.toMatchObject({ name: "RolloutRecordingError" })
-    expect(produced).toBeLessThanOrEqual(1024)
+    expect(produced).toBeLessThanOrEqual(2048)
     expect(cancelled).toBe(true)
     expect(stream!.locked).toBe(false)
   })

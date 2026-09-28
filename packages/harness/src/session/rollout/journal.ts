@@ -5,6 +5,7 @@ import { RolloutArtifact } from "./artifact"
 import { RolloutPending } from "./pending"
 import type { RolloutSchema } from "./schema"
 import { record } from "./error"
+import { UsageLedger } from "../../usage/ledger"
 
 export namespace RolloutJournal {
   const Revision = z.number().int().nonnegative().safe()
@@ -59,8 +60,15 @@ export namespace RolloutJournal {
           await Storage.write(eventKey(owner, seq), event)
         }
         if (event.seq !== seq) throw new Error("Rollout journal sequence mismatch")
-        if (event.kind === "record") await Storage.write([...RolloutArtifact.root(owner), ...event.key], event.value)
-        else gaps.push(seq)
+        if (event.kind === "record") {
+          await Storage.write([...RolloutArtifact.root(owner), ...event.key], event.value)
+          await UsageLedger.capture(owner, seq, event.key, event.value)
+          await UsageLedger.committed(owner, seq)
+        } else {
+          gaps.push(seq)
+          await UsageLedger.captureGap(owner, seq, event.time)
+          await UsageLedger.committed(owner, seq)
+        }
         await Storage.write([...root(owner), "head"], { ...previous, committed: seq })
       })
       onProgress?.()
@@ -98,6 +106,8 @@ export namespace RolloutJournal {
         await RolloutPending.track(owner)
         await Storage.write(eventKey(owner, seq), event)
         await Storage.write(key, event.value)
+        await UsageLedger.capture(owner, seq, event.key, event.value)
+        await UsageLedger.committed(owner, seq)
         await Storage.write([...root(owner), "head"], { allocated: seq, committed: seq })
       })
       return seq

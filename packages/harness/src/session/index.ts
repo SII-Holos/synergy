@@ -1452,8 +1452,11 @@ export namespace Session {
       const id = pending.pop()!
       if (drained.has(id)) continue
       drained.add(id)
-      if (!(await SessionManager.getSession(id))) continue
+      const session = await SessionManager.getSession(id)
+      if (!session) continue
       await flushPartWrites(id)
+      const { UsageMigration } = await import("../usage/migration")
+      await UsageMigration.preserve({ kind: "session", scopeID: session.scope.id, sessionID: id })
       for (const child of await children(id)) pending.push(child.id)
     }
     const removed: Info[] = []

@@ -43,6 +43,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "openai",
+    billingMode: "api",
     name: "OpenAI",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/openai",
@@ -59,6 +60,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: CodexProvider.PROVIDER_ID,
+    billingMode: "subscription",
     name: "OpenAI Codex",
     description: "OpenAI Codex via ChatGPT/Codex subscription login",
     recommendation: recommended({
@@ -122,6 +124,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: GrokProvider.PROVIDER_ID,
+    billingMode: "subscription",
     name: "Grok",
     description: "Grok subscription via xAI OAuth",
     recommendation: recommended({
@@ -170,6 +173,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "anthropic",
+    billingMode: "unknown",
     name: "Anthropic",
     description: "Anthropic API key or Claude subscription OAuth",
     recommendation: recommended({
@@ -212,6 +216,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "google",
+    billingMode: "api",
     name: "Google",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/google",
@@ -228,6 +233,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "github-copilot",
+    billingMode: "subscription",
     name: "GitHub Copilot",
     aliases: ["copilot", "github-models"],
     recommendation: recommended({
@@ -277,6 +283,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "github-copilot-enterprise",
+    billingMode: "subscription",
     name: "GitHub Copilot Enterprise",
     env: ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
     baseURL: CopilotProvider.BASE_URL,
@@ -311,6 +318,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "azure",
+    billingMode: "api",
     name: "Azure OpenAI",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/azure",
@@ -320,6 +328,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "azure-cognitive-services",
+    billingMode: "api",
     name: "Azure Cognitive Services",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/azure",
@@ -335,6 +344,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "amazon-bedrock",
+    billingMode: "api",
     name: "Amazon Bedrock",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/amazon-bedrock",
@@ -443,6 +453,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "google-vertex",
+    billingMode: "api",
     name: "Google Vertex",
     authKind: "wellknown",
     aiSdkPackage: "@ai-sdk/google-vertex",
@@ -458,6 +469,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "google-vertex-anthropic",
+    billingMode: "api",
     name: "Google Vertex Anthropic",
     authKind: "wellknown",
     aiSdkPackage: "@ai-sdk/google-vertex/anthropic",
@@ -473,6 +485,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "sap-ai-core",
+    billingMode: "unknown",
     name: "SAP AI Core",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/openai-compatible",
@@ -502,6 +515,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "cloudflare-ai-gateway",
+    billingMode: "unknown",
     name: "Cloudflare AI Gateway",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/openai-compatible",
@@ -534,6 +548,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "vercel",
+    billingMode: "api",
     name: "Vercel AI Gateway",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/vercel",
@@ -555,6 +570,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "zenmux",
+    billingMode: "api",
     name: "ZenMux",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/openai-compatible",
@@ -569,6 +585,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "cerebras",
+    billingMode: "api",
     name: "Cerebras",
     authKind: "api_key",
     aiSdkPackage: "@ai-sdk/cerebras",
@@ -582,6 +599,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: MiniMaxProvider.PROVIDER_ID,
+    billingMode: "unknown",
     name: "MiniMax (OAuth)",
     description: "MiniMax via OAuth browser flow",
     baseURL: MiniMaxProvider.GLOBAL_INFERENCE,
@@ -603,6 +621,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "alibaba-coding-plan",
+    billingMode: "subscription",
     name: "Alibaba Cloud (Coding Plan)",
     baseURL: "https://coding-intl.dashscope.aliyuncs.com/v1",
     authKind: "api_key",
@@ -613,6 +632,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "qwen-oauth",
+    billingMode: "unknown",
     name: "Qwen OAuth",
     baseURL: "https://portal.qwen.ai/v1",
     authKind: "oauth_external",
@@ -623,6 +643,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "xiaomi",
+    billingMode: "api",
     name: "Xiaomi MiMo",
     aliases: ["mimo", "xiaomi-mimo"],
     baseURL: "https://api.xiaomimimo.com/v1",
@@ -636,6 +657,7 @@ export function registerBuiltinProviderProfiles() {
 
   ProviderProfile.register({
     id: "openrouter",
+    billingMode: "api",
     name: "OpenRouter",
     description: "OpenRouter API key with optional credits and access to free model variants.",
     signupUrl: "https://openrouter.ai/keys",

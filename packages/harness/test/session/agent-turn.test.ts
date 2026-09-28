@@ -40,7 +40,12 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
         user: { id: "msg_user" },
         sessionID: "ses_test",
         recording: { owner: { kind: "operation", scopeID: "home", operationID }, runID: operationID, purpose: "test" },
-        model: { id: "test-model", providerID: "test-provider", limit: {} },
+        model: {
+          id: "test-model",
+          providerID: "test-provider",
+          api: { id: "test-model", npm: "@ai-sdk/openai" },
+          limit: { context: 4096, output: 1024 },
+        },
         agent: { name: "synergy" },
         system: [],
         messages: [],

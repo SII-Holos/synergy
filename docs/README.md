@@ -39,6 +39,7 @@ Architecture documents define current invariants, ownership boundaries, and the 
 - [Workspace and files](architecture/workspace-and-files.md)
 - [Sessions and messages](architecture/session-and-messages.md)
 - [LLM loop and compaction](architecture/llm-loop.md)
+- [Usage accounting](architecture/usage-accounting.md)
 - [Frontend data sync](architecture/frontend-data-sync.md)
 - [Frontend plugin platform](architecture/frontend-plugin-platform.md)
 - [Frontend localization](architecture/localization.md)

@@ -39,6 +39,19 @@ export namespace StoragePath {
   export const metaMigrationLog = () => ["meta", "migration", "log"]
   export const metaMigrationLogDomain = (domain: string) => ["meta", "migration", `log-${domain}`]
   export const rolloutRecoveryPending = () => ["meta", "rollout", "recovery-pending"]
+  export const usageState = () => ["meta", "usage", "state"]
+  export const usageRebuild = () => ["meta", "usage", "rebuild-v1"]
+  export const usageOwner = (scopeID: string, owner: string) => ["usage", scopeID, owner]
+  export const usageRun = (scopeID: string, owner: string, runID: string) => [...usageOwner(scopeID, owner), runID]
+  export const usageRecord = (scopeID: string, owner: string, runID: string, kind: string, id: string) => [
+    ...usageRun(scopeID, owner, runID),
+    kind,
+    id,
+  ]
+  export const usageSuppressed = (id: string) => ["usage_suppressed", id]
+  export const usageTime = (scopeID: string, owner: string, order: string) => ["usage_time", scopeID, owner, order]
+  export const usageOwnerCheckpoint = (scopeID: string, owner: string) => ["usage_owner", scopeID, owner]
+  export const usageLink = (scopeID: string, owner: string, runID: string) => ["usage_link", scopeID, owner, runID]
 
   export const scopeRoot = () => ["projects"]
   export const scope = (scopeID: ScopeID) => ["projects", scopeID as string]

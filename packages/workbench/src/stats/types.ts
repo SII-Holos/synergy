@@ -288,6 +288,7 @@ export const SessionDigest = z.object({
       successes: z.number(),
       errors: z.number(),
       totalDurationMs: z.number(),
+      timedSamples: z.number().int().nonnegative().optional(),
     }),
   ),
 

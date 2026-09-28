@@ -8,6 +8,7 @@ import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstr
 import { authorityRecordRoots, StoragePortable } from "@ericsanchezok/synergy-harness/storage/portable"
 import { legacyRecordKey } from "@ericsanchezok/synergy-harness/storage/legacy-import"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { Usage } from "@ericsanchezok/synergy-harness/usage"
 import { StorageCompat } from "@ericsanchezok/synergy-harness/storage/compat"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SnapshotArchive } from "@ericsanchezok/synergy-harness/session/snapshot-archive"
@@ -233,6 +234,7 @@ export namespace DataTransfer {
         afterImport: async (tx) => {
           await workspaces?.publish(tx)
           await Session.rebuildStorageIndexes(tx)
+          await Usage.reconcileTransfer(tx)
           await tx.write(["storage_transfer", id], {
             version: 1,
             complete: true,

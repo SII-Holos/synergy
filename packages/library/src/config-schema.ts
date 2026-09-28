@@ -248,6 +248,7 @@ export type LocalEmbeddingConfig = z.infer<typeof LocalEmbeddingConfig>
 
 export const EmbeddingConfig = z
   .object({
+    billingMode: ProviderPricing.BillingMode.optional(),
     cost: ProviderPricing.Cost.optional().describe(
       "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
     ),
@@ -265,6 +266,7 @@ export type EmbeddingConfig = z.infer<typeof EmbeddingConfig>
 
 export const RerankConfig = z
   .object({
+    billingMode: ProviderPricing.BillingMode.optional(),
     cost: ProviderPricing.Cost.optional().describe(
       "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
     ),

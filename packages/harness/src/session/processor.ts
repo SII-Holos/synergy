@@ -1059,7 +1059,7 @@ export namespace SessionProcessor {
                   streamInput.modelSelection,
                   input.assistantMessage.id,
                 )
-              const stream = await AgentTurn.stream(agentTurnInput)
+              const stream = await AgentTurn.stream({ ...agentTurnInput, retryIndex: attempt })
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []
               if (rollout) {

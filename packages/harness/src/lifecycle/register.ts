@@ -11,6 +11,7 @@ import { SessionCompaction } from "../session/compaction"
 import { registerSearchFailureAnalyzer } from "../tool/search-guard"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { RuntimeContext } from "./context"
+import { UsageMigration } from "../usage/migration"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -22,6 +23,7 @@ export function registerHarness() {
   registerSessionMigrations()
   registerObservabilityMigrations()
   registerStorageMigrations()
+  UsageMigration.register()
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

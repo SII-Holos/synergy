@@ -93,6 +93,11 @@ export type RolloutAccountingSummary = {
     unknown: number
     total: number | null
   }
+  unclassifiedEquivalent?: {
+    known: number
+    unknown: number
+    total: number | null
+  }
   reported: {
     currencies: {
       [key: string]: number
@@ -1304,197 +1309,6 @@ export type StorageSnapshotCompactInput = {
   prune?: boolean
 }
 
-export type HolosLoginResponse = {
-  url: string
-}
-
-export type HolosAgentProfileInput = {
-  name: string
-  description?: string
-  avatarUrl?: string
-}
-
-export type HolosAgentProfile = {
-  name: string
-  description: string
-  avatarUrl: string | null
-}
-
-export type HolosCredentialsResponse = {
-  success: true
-  agentId: string
-  profile: HolosAgentProfile
-}
-
-export type HolosLogoutResponse = {
-  success: true
-}
-
-export type HolosReconnectResponse = {
-  success: true
-}
-
-export type SynergyLinkHostObservation = {
-  type: "synergy_link.host.hello"
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  /**
-   * Synergy Link host session identifier
-   */
-  hostSessionID: string
-  capabilities: {
-    platform: string
-    arch: string
-    hostname?: string
-    runtime: "node" | "bun" | "unknown"
-    defaultShell: "none" | "sh" | "cmd" | "powershell" | "pwsh"
-    supportedShells: Array<"none" | "sh" | "cmd" | "powershell" | "pwsh">
-    supportsPty: boolean
-    supportsSendKeys: boolean
-    supportsSoftKill: boolean
-    supportsProcessGroups: boolean
-    supportsBashDetach?: boolean
-    envCaseInsensitive: boolean
-    lineEndings: "lf" | "crlf"
-  }
-  observedAt: number
-}
-
-export type SynergyLinkProbe = {
-  status: "reachable" | "refused" | "busy" | "failed"
-  checkedAt: number
-}
-
-export type SynergyLinkTargetView = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-  availability: "unknown" | "unreachable" | "reachable" | "connected"
-  /**
-   * Synergy Link session identifier
-   */
-  sessionID?: string
-}
-
-export type SynergyLinkTarget = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-}
-
-export type SynergyLinkTargetCreateInput = {
-  name: string
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
-  }
-}
-
-export type SynergyLinkTargetPatchMetadata =
-  | {
-      kind: "metadata"
-      name: string
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      name: string
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-
-export type SynergyLinkTargetPatchRelink = {
-  kind: "relink"
-  name?: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-}
-
-export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
-
-export type SynergyLinkTargetRemoveResult = {
-  success: true
-}
-
-export type PushVapidKey = {
-  publicKey: string
-}
-
-export type PushCategories = {
-  completion: boolean
-  error: boolean
-  input: boolean
-}
-
-export type PushSubscriptionInfo = {
-  id: string
-  endpoint: string
-  deviceLabel?: string
-  created: number
-  categories: PushCategories
-}
-
 export type AgendaTriggerAt = {
   type: "at"
   /**
@@ -1800,6 +1614,197 @@ export type AgendaItem = {
   }
 }
 
+export type HolosLoginResponse = {
+  url: string
+}
+
+export type HolosAgentProfileInput = {
+  name: string
+  description?: string
+  avatarUrl?: string
+}
+
+export type HolosAgentProfile = {
+  name: string
+  description: string
+  avatarUrl: string | null
+}
+
+export type HolosCredentialsResponse = {
+  success: true
+  agentId: string
+  profile: HolosAgentProfile
+}
+
+export type HolosLogoutResponse = {
+  success: true
+}
+
+export type HolosReconnectResponse = {
+  success: true
+}
+
+export type SynergyLinkHostObservation = {
+  type: "synergy_link.host.hello"
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  /**
+   * Synergy Link host session identifier
+   */
+  hostSessionID: string
+  capabilities: {
+    platform: string
+    arch: string
+    hostname?: string
+    runtime: "node" | "bun" | "unknown"
+    defaultShell: "none" | "sh" | "cmd" | "powershell" | "pwsh"
+    supportedShells: Array<"none" | "sh" | "cmd" | "powershell" | "pwsh">
+    supportsPty: boolean
+    supportsSendKeys: boolean
+    supportsSoftKill: boolean
+    supportsProcessGroups: boolean
+    supportsBashDetach?: boolean
+    envCaseInsensitive: boolean
+    lineEndings: "lf" | "crlf"
+  }
+  observedAt: number
+}
+
+export type SynergyLinkProbe = {
+  status: "reachable" | "refused" | "busy" | "failed"
+  checkedAt: number
+}
+
+export type SynergyLinkTargetView = {
+  id: string
+  name: string
+  enabled: boolean
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  allowedAgents: Array<string>
+  authorization: "unverified" | "approved" | "revoked"
+  host?: SynergyLinkHostObservation
+  lastProbe?: SynergyLinkProbe
+  createdAt: number
+  updatedAt: number
+  availability: "unknown" | "unreachable" | "reachable" | "connected"
+  /**
+   * Synergy Link session identifier
+   */
+  sessionID?: string
+}
+
+export type SynergyLinkTarget = {
+  id: string
+  name: string
+  enabled: boolean
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  allowedAgents: Array<string>
+  authorization: "unverified" | "approved" | "revoked"
+  host?: SynergyLinkHostObservation
+  lastProbe?: SynergyLinkProbe
+  createdAt: number
+  updatedAt: number
+}
+
+export type SynergyLinkTargetCreateInput = {
+  name: string
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  enabled?: boolean
+  allowedAgents?: Array<string>
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
+}
+
+export type SynergyLinkTargetPatchMetadata =
+  | {
+      kind: "metadata"
+      name: string
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+    }
+  | {
+      kind: "metadata"
+      name: string
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
+  | {
+      kind: "metadata"
+      name: string
+      enabled: boolean
+      allowedAgents: Array<string>
+    }
+
+export type SynergyLinkTargetPatchRelink = {
+  kind: "relink"
+  name?: string
+  enabled?: boolean
+  allowedAgents?: Array<string>
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+}
+
+export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
+
+export type SynergyLinkTargetRemoveResult = {
+  success: true
+}
+
+export type PushVapidKey = {
+  publicKey: string
+}
+
+export type PushCategories = {
+  completion: boolean
+  error: boolean
+  input: boolean
+}
+
+export type PushSubscriptionInfo = {
+  id: string
+  endpoint: string
+  deviceLabel?: string
+  created: number
+  categories: PushCategories
+}
+
 export type GlobalActivity = {
   active: boolean
   sessions: number
@@ -2063,6 +2068,10 @@ export type Model = {
     }
     raw: unknown
   } | null
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   cost: {
     input: number
     output: number
@@ -2573,8 +2582,16 @@ export type ProviderConfig = {
           [key: string]: unknown | boolean | undefined
         }
       }
+      /**
+       * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+       */
+      billingMode?: "api" | "subscription" | "local" | "unknown"
     }
   }
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Canonical provider profile whose runtime behavior this account connection uses
    */
@@ -3121,6 +3138,10 @@ export type LocalEmbeddingConfig = {
  */
 export type EmbeddingConfig = {
   /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
+  /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
   cost?: {
@@ -3185,6 +3206,10 @@ export type EmbeddingConfig = {
  * Rerank model for memory retrieval refinement. Disabled when not configured.
  */
 export type RerankConfig = {
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
@@ -3922,6 +3947,10 @@ export type McpDefaultsConfig = {
  */
 export type VoiceSttConfig = {
   /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
+  /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
   cost?: {
@@ -3989,6 +4018,10 @@ export type VoiceSttConfig = {
  * Text-to-speech service configuration
  */
 export type VoiceTtsConfig = {
+  /**
+   * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+   */
+  billingMode?: "api" | "subscription" | "local" | "unknown"
   /**
    * Explicit model prices in USD: token rates per million, unit rates per declared quantity
    */
@@ -5621,12 +5654,12 @@ export type ScopeBootstrapResponse = {
   _errors?: {
     [key: string]: ScopeBootstrapFieldError
   }
+  agenda?: Array<AgendaItem>
   lsp?: Array<LspStatus>
   mcp?: {
     [key: string]: McpStatus
   }
   vcs?: VcsInfo
-  agenda?: Array<AgendaItem>
 }
 
 export type Pty = {
@@ -6655,10 +6688,12 @@ export type RolloutCallRecord = {
   kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech"
   execution?: "provider" | "local" | "external"
   parentCallID?: string
+  retryIndex?: number
   agent?: string
   model: {
     providerID: string
     modelID: string
+    apiModelID?: string
     sdk: string
     pricing: {
       version: 1
@@ -6714,6 +6749,15 @@ export type RolloutCallRecord = {
       }
       raw: unknown
     } | null
+    /**
+     * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+     */
+    billingMode?: "api" | "subscription" | "local" | "unknown"
+    limits?: {
+      context: number
+      input?: number
+      output: number
+    }
   }
   started: number
   ended?: number
@@ -6721,6 +6765,14 @@ export type RolloutCallRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   sdkUsage: unknown | null
+  sdkEstimate?: {
+    version: 1
+    currency: "USD" | null
+    basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+    total: number | null
+    known: number
+    missing: Array<string>
+  }
   transportCaptured: boolean
   error?: string
 }
@@ -6750,6 +6802,7 @@ export type RolloutAttemptRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   httpStatus?: number
+  responseModel?: string
   usage?: {
     version: 1
     protocol: "openai" | "anthropic" | "google" | "unknown"
@@ -6779,11 +6832,32 @@ export type RolloutAttemptRecord = {
       source: string
     } | null
     complete: boolean
+    issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
   }
+  timing?: {
+    source: "transport"
+    sentAt?: number
+    headersAt?: number
+    firstByteAt?: number
+    firstContentAt?: number
+    lastContentAt?: number
+    endedAt?: number
+    detectedAt?: number
+    headersMs?: number
+    firstByteMs?: number
+    ttftMs?: number
+    generationMs?: number
+    requestMs?: number
+    contentEvents: number
+    reasoningObserved: boolean
+    streaming: boolean
+    backpressured?: boolean
+  }
+  usageFinal?: boolean
   estimate?: {
     version: 1
     currency: "USD" | null
-    basis: "api_price_estimate" | "subscription_api_equivalent"
+    basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
     total: number | null
     known: number
     missing: Array<string>
@@ -9493,6 +9567,329 @@ export type AssetInfo = {
   size: number
 }
 
+export type BrowserViewerTicketResponse = {
+  protocolVersion: 3
+  ticket: string
+  expiresAt: number
+  iceServers: Array<{
+    urls: string | Array<string>
+    username?: string
+    credential?: string
+  }>
+}
+
+export type BrowserApiError = {
+  type: "error"
+  code: string
+  message: string
+  retryable: boolean
+  pageId?: string
+  commandId?: string
+  url?: string
+  snapshotId?: string
+  obstruction?: {
+    tag?: string
+    role?: string | null
+    name?: string
+    id?: string
+    class?: string
+    ref?: string
+    visible?: boolean
+    bounds?: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    frame?: string
+    receivesEvents?: boolean
+    candidates?: Array<{
+      tag?: string
+      role?: string | null
+      name?: string
+      id?: string
+      class?: string
+      ref?: string
+      visible?: boolean
+      bounds?: {
+        x: number
+        y: number
+        width: number
+        height: number
+      }
+      frame?: string
+      receivesEvents?: boolean
+    }>
+  }
+  suggestedAction?: string
+  locator?: unknown
+}
+
+export type BrowserViewerTicketRequest = {
+  protocolVersion: 3
+  pageId: string
+}
+
+export type BrowserAnnotationResponse = {
+  protocolVersion: 3
+  annotation: {
+    id: string
+    pageURL: string
+    pageID: string
+    element?: string
+    comment: string
+    styleFeedback?: {
+      [key: string]: string
+    }
+    resolved: boolean
+    createdAt: number
+  }
+}
+
+export type BrowserAnnotationRequest = {
+  protocolVersion: 3
+  pageId: string
+  x: number
+  y: number
+  comment: string
+  styleFeedback?: {
+    [key: string]: string
+  }
+}
+
+export type BrowserDiagnosticsResponse = {
+  protocolVersion: 3
+  pageId: string
+  action: string
+  data: unknown
+}
+
+export type BrowserDiagnosticsRequest = {
+  protocolVersion: 3
+  pageId: string
+  commandId: string
+  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
+  limit?: number
+}
+
+export type BrowserApiSessionState = {
+  type: "session.state"
+  protocolVersion: 3
+  ownerKey: string
+  status: "empty" | "suspended" | "active" | "migrating" | "failed"
+  page: {
+    id: string
+    url: string
+    title: string
+    isLoading: boolean
+    lastActiveAt: number | null
+  } | null
+  presentation: {
+    protocolVersion: 3
+    kind: "native" | "webrtc"
+    capabilities: {
+      native: boolean
+      webrtc: boolean
+    }
+    reason: "desktop-local" | "remote-client" | "requested"
+  } | null
+  hostStatus:
+    | "unavailable"
+    | "installing"
+    | "starting"
+    | "pending"
+    | "ready"
+    | "detached"
+    | "restarting"
+    | "idle"
+    | "failed"
+  seq: number
+  epoch: string
+  error?: BrowserApiError
+}
+
+export type BrowserControlResponse = {
+  type: "control.result"
+  protocolVersion: 3
+  result:
+    | {
+        type: "void"
+      }
+    | {
+        type: "page"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "navigation"
+        page: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        snapshot?: unknown
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
+      }
+    | {
+        type: "snapshot"
+        pageId: string
+        snapshotId: string
+        elements: Array<{
+          ref: string
+          role: string
+          name: string
+          value?: string
+          description?: string
+          depth: number
+        }>
+        truncated: boolean
+      }
+    | {
+        type: "action"
+        pageId: string
+        action: string
+        snapshot?: unknown
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+        settled?: boolean
+        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
+        settleElapsedMs?: number
+        inflightRequests?: number
+      }
+    | {
+        type: "wait"
+        pageId: string
+        matched: boolean
+        elapsedMs?: number
+        page?: {
+          id: string
+          url: string
+          title: string
+          isLoading: boolean
+          lastActiveAt: number | null
+        }
+      }
+    | {
+        type: "evaluation"
+        pageId: string
+        value: unknown
+      }
+    | {
+        type: "screenshot"
+        pageId: string
+        dataUrl: string
+        width: number
+        height: number
+      }
+    | {
+        type: "data"
+        pageId: string
+        data: unknown
+      }
+}
+
+export type BrowserControlRequest = {
+  protocolVersion: 3
+  command:
+    | {
+        type: "navigate"
+        url: string
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "history"
+        direction: "back" | "forward"
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "reload"
+        ignoreCache?: boolean
+        source?: "user"
+        /**
+         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
+         */
+        settleMode?: "networkquiet" | "load" | "none"
+        /**
+         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
+         */
+        settleTimeoutMs?: number
+        /**
+         * Return a fresh accessibility snapshot after the navigation settles (default true).
+         */
+        includeSnapshot?: boolean
+      }
+    | {
+        type: "stop"
+      }
+    | {
+        type: "resume"
+      }
+    | {
+        type: "close"
+      }
+    | {
+        type: "setViewport"
+        width: number
+        height: number
+      }
+    | {
+        type: "dialog.respond"
+        requestId: string
+        accept: boolean
+        promptText?: string
+      }
+    | {
+        type: "filechooser.select"
+        requestId: string
+        files: Array<{
+          name: string
+          mimeType: string
+          dataBase64: string
+        }>
+      }
+  commandId: string
+  traceId?: string
+}
+
 export type GlobalThemeContribution = {
   pluginId: string
   name: string
@@ -9873,329 +10270,6 @@ export type RegistryPublishInput = {
   yankedVersions?: Array<string>
 }
 
-export type BrowserViewerTicketResponse = {
-  protocolVersion: 3
-  ticket: string
-  expiresAt: number
-  iceServers: Array<{
-    urls: string | Array<string>
-    username?: string
-    credential?: string
-  }>
-}
-
-export type BrowserApiError = {
-  type: "error"
-  code: string
-  message: string
-  retryable: boolean
-  pageId?: string
-  commandId?: string
-  url?: string
-  snapshotId?: string
-  obstruction?: {
-    tag?: string
-    role?: string | null
-    name?: string
-    id?: string
-    class?: string
-    ref?: string
-    visible?: boolean
-    bounds?: {
-      x: number
-      y: number
-      width: number
-      height: number
-    }
-    frame?: string
-    receivesEvents?: boolean
-    candidates?: Array<{
-      tag?: string
-      role?: string | null
-      name?: string
-      id?: string
-      class?: string
-      ref?: string
-      visible?: boolean
-      bounds?: {
-        x: number
-        y: number
-        width: number
-        height: number
-      }
-      frame?: string
-      receivesEvents?: boolean
-    }>
-  }
-  suggestedAction?: string
-  locator?: unknown
-}
-
-export type BrowserViewerTicketRequest = {
-  protocolVersion: 3
-  pageId: string
-}
-
-export type BrowserAnnotationResponse = {
-  protocolVersion: 3
-  annotation: {
-    id: string
-    pageURL: string
-    pageID: string
-    element?: string
-    comment: string
-    styleFeedback?: {
-      [key: string]: string
-    }
-    resolved: boolean
-    createdAt: number
-  }
-}
-
-export type BrowserAnnotationRequest = {
-  protocolVersion: 3
-  pageId: string
-  x: number
-  y: number
-  comment: string
-  styleFeedback?: {
-    [key: string]: string
-  }
-}
-
-export type BrowserDiagnosticsResponse = {
-  protocolVersion: 3
-  pageId: string
-  action: string
-  data: unknown
-}
-
-export type BrowserDiagnosticsRequest = {
-  protocolVersion: 3
-  pageId: string
-  commandId: string
-  action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
-  limit?: number
-}
-
-export type BrowserApiSessionState = {
-  type: "session.state"
-  protocolVersion: 3
-  ownerKey: string
-  status: "empty" | "suspended" | "active" | "migrating" | "failed"
-  page: {
-    id: string
-    url: string
-    title: string
-    isLoading: boolean
-    lastActiveAt: number | null
-  } | null
-  presentation: {
-    protocolVersion: 3
-    kind: "native" | "webrtc"
-    capabilities: {
-      native: boolean
-      webrtc: boolean
-    }
-    reason: "desktop-local" | "remote-client" | "requested"
-  } | null
-  hostStatus:
-    | "unavailable"
-    | "installing"
-    | "starting"
-    | "pending"
-    | "ready"
-    | "detached"
-    | "restarting"
-    | "idle"
-    | "failed"
-  seq: number
-  epoch: string
-  error?: BrowserApiError
-}
-
-export type BrowserControlResponse = {
-  type: "control.result"
-  protocolVersion: 3
-  result:
-    | {
-        type: "void"
-      }
-    | {
-        type: "page"
-        page: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-      }
-    | {
-        type: "navigation"
-        page: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-        snapshot?: unknown
-        settled?: boolean
-        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
-        settleElapsedMs?: number
-        inflightRequests?: number
-      }
-    | {
-        type: "snapshot"
-        pageId: string
-        snapshotId: string
-        elements: Array<{
-          ref: string
-          role: string
-          name: string
-          value?: string
-          description?: string
-          depth: number
-        }>
-        truncated: boolean
-      }
-    | {
-        type: "action"
-        pageId: string
-        action: string
-        snapshot?: unknown
-        page?: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-        settled?: boolean
-        settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
-        settleElapsedMs?: number
-        inflightRequests?: number
-      }
-    | {
-        type: "wait"
-        pageId: string
-        matched: boolean
-        elapsedMs?: number
-        page?: {
-          id: string
-          url: string
-          title: string
-          isLoading: boolean
-          lastActiveAt: number | null
-        }
-      }
-    | {
-        type: "evaluation"
-        pageId: string
-        value: unknown
-      }
-    | {
-        type: "screenshot"
-        pageId: string
-        dataUrl: string
-        width: number
-        height: number
-      }
-    | {
-        type: "data"
-        pageId: string
-        data: unknown
-      }
-}
-
-export type BrowserControlRequest = {
-  protocolVersion: 3
-  command:
-    | {
-        type: "navigate"
-        url: string
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "history"
-        direction: "back" | "forward"
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "reload"
-        ignoreCache?: boolean
-        source?: "user"
-        /**
-         * Settle strategy after dispatch. Defaults: load for agent navigation, networkquiet for actions, none for user navigation. networkquiet waits until the page stops loading and no new network activity starts for 500ms; load waits for the main frame load lifecycle; none skips settling.
-         */
-        settleMode?: "networkquiet" | "load" | "none"
-        /**
-         * Maximum time to wait for the page to settle (default 15s for navigation, 10s for actions, hard cap 30s). A timeout does not fail the command; the result reports settled:false with current page state and a best-effort snapshot.
-         */
-        settleTimeoutMs?: number
-        /**
-         * Return a fresh accessibility snapshot after the navigation settles (default true).
-         */
-        includeSnapshot?: boolean
-      }
-    | {
-        type: "stop"
-      }
-    | {
-        type: "resume"
-      }
-    | {
-        type: "close"
-      }
-    | {
-        type: "setViewport"
-        width: number
-        height: number
-      }
-    | {
-        type: "dialog.respond"
-        requestId: string
-        accept: boolean
-        promptText?: string
-      }
-    | {
-        type: "filechooser.select"
-        requestId: string
-        files: Array<{
-          name: string
-          mimeType: string
-          dataBase64: string
-        }>
-      }
-  commandId: string
-  traceId?: string
-}
-
 export type HolosCredentialsStatusResponse = {
   exists: boolean
   agentId?: string
@@ -10483,6 +10557,14 @@ export type EventWorkspaceUpdated = {
   properties: WorkspaceInfo
 }
 
+export type EventScopeRuntimeDisposed = {
+  type: "scope.runtime.disposed"
+  properties: {
+    scopeID: string
+    directory?: string
+  }
+}
+
 export type EventScopeUpdated = {
   type: "scope.updated"
   properties: Scope
@@ -10496,18 +10578,32 @@ export type EventScopeRemoved = {
   }
 }
 
-export type EventScopeRuntimeDisposed = {
-  type: "scope.runtime.disposed"
-  properties: {
-    scopeID: string
-    directory?: string
-  }
-}
-
 export type EventProviderAuthUpdated = {
   type: "provider.auth.updated"
   properties: {
     health: ProviderAuthHealth
+  }
+}
+
+export type EventConfigUpdated = {
+  type: "config.updated"
+  properties: {
+    scope: "global" | "project"
+    changedFields: Array<string>
+  }
+}
+
+export type EventPermissionAsked = {
+  type: "permission.asked"
+  properties: PermissionRequest
+}
+
+export type EventPermissionReplied = {
+  type: "permission.replied"
+  properties: {
+    sessionID: string
+    requestID: string
+    reply: "once" | "session" | "always" | "reject"
   }
 }
 
@@ -10557,34 +10653,561 @@ export type EventMessagePartRemoved = {
   }
 }
 
-export type EventPermissionAsked = {
-  type: "permission.asked"
-  properties: PermissionRequest
-}
+export type UsageRecord =
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "run"
+      parent?: {
+        owner:
+          | {
+              kind: "session"
+              scopeID: string
+              sessionID: string
+            }
+          | {
+              kind: "operation"
+              scopeID: string
+              operationID: string
+            }
+        runID: string | null
+        messageID: string
+      }
+      parentOwner?:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      purpose: string
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      kind: "call"
+      parentCallID?: string
+      usage?: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      estimate?: {
+        version: 1
+        currency: "USD" | null
+        basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+        total: number | null
+        known: number
+        missing: Array<string>
+      }
+      hasAttempts: boolean
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      purpose: string
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      kind: "attempt"
+      callID: string
+      index: number
+      usage?: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      estimate?: {
+        version: 1
+        currency: "USD" | null
+        basis: "api_price_estimate" | "subscription_api_equivalent" | "unclassified_api_equivalent" | "local"
+        total: number | null
+        known: number
+        missing: Array<string>
+      }
+      timing?: {
+        source: "transport"
+        sentAt?: number
+        headersAt?: number
+        firstByteAt?: number
+        firstContentAt?: number
+        lastContentAt?: number
+        endedAt?: number
+        detectedAt?: number
+        headersMs?: number
+        firstByteMs?: number
+        ttftMs?: number
+        generationMs?: number
+        requestMs?: number
+        contentEvents: number
+        reasoningObserved: boolean
+        streaming: boolean
+        backpressured?: boolean
+      }
+      usageFinal: boolean
+      httpStatus?: number
+      responseModel?: string
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "tool"
+      tool: string
+      durationMs: number | null
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "legacy"
+      purpose: string
+      retryIndex?: number
+      agent?: string
+      model: {
+        providerID: string
+        modelID: string
+        apiModelID?: string
+        sdk: string
+        pricing: {
+          version: 1
+          currency: "USD"
+          unitTokens: 1000000
+          source: {
+            kind: "catalog" | "configuration" | "mixed"
+            providerID: string
+            modelID: string
+          }
+          capturedAt: number
+          rates: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          over200K?: {
+            input: number | null
+            output: number | null
+            cacheRead: number | null
+            cacheWrite: number | null
+            cacheWrite1h: number | null
+          }
+          contextTiers?: Array<{
+            above: number
+            rates: {
+              input: number | null
+              output: number | null
+              cacheRead: number | null
+              cacheWrite: number | null
+              cacheWrite1h: number | null
+            }
+          }>
+          units?: {
+            audio_seconds?: {
+              price: number
+              per: number
+            }
+            audio_input_tokens?: {
+              price: number
+              per: number
+            }
+            audio_output_tokens?: {
+              price: number
+              per: number
+            }
+            characters?: {
+              price: number
+              per: number
+            }
+          }
+          raw: unknown
+        } | null
+        /**
+         * Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.
+         */
+        billingMode?: "api" | "subscription" | "local" | "unknown"
+        limits?: {
+          context: number
+          input?: number
+          output: number
+        }
+      }
+      execution: "provider" | "local" | "external"
+      callKind: "chat" | "embedding" | "rerank" | "transcription" | "speech"
+      usage: {
+        version: 1
+        protocol: "openai" | "anthropic" | "google" | "unknown"
+        raw: unknown | null
+        input: {
+          total: number | null
+          uncached: number | null
+          cacheRead: number | null
+          cacheWrite: number | null
+        }
+        output: {
+          total: number | null
+          reasoning: number | null
+        }
+        cacheWrites: {
+          [key: string]: number | null
+        }
+        units: Array<{
+          unit: "audio_input_tokens" | "audio_output_tokens" | "audio_seconds" | "characters"
+          quantity: number | null
+        }>
+        billing: "tokens" | "units" | "unknown"
+        serviceTier?: string
+        reported: {
+          amount: number
+          currency: string
+          source: string
+        } | null
+        complete: boolean
+        issues?: Array<"input_breakdown_mismatch" | "reasoning_subset_mismatch" | "total_mismatch">
+      }
+      legacyCost: number
+      accounting?: RolloutAccountingSummary
+    }
+  | {
+      version: 1
+      id: string
+      entityID: string
+      owner:
+        | {
+            kind: "session"
+            scopeID: string
+            sessionID: string
+          }
+        | {
+            kind: "operation"
+            scopeID: string
+            operationID: string
+          }
+      runID: string
+      revision: number
+      sourceRevision: number
+      started: number
+      ended?: number
+      status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+      source: "local" | "imported" | "legacy"
+      kind: "gap"
+      sequence: number
+    }
 
-export type EventPermissionReplied = {
-  type: "permission.replied"
+export type EventUsageUpdated = {
+  type: "usage.updated"
   properties: {
-    sessionID: string
-    requestID: string
-    reply: "once" | "session" | "always" | "reject"
-  }
-}
-
-export type EventDagUpdated = {
-  type: "dag.updated"
-  properties: {
-    sessionID: string
-    nodes: Array<DagNode>
-    ready: Array<string>
-  }
-}
-
-export type EventConfigUpdated = {
-  type: "config.updated"
-  properties: {
-    scope: "global" | "project"
-    changedFields: Array<string>
+    revision: number
+    owner:
+      | {
+          kind: "session"
+          scopeID: string
+          sessionID: string
+        }
+      | {
+          kind: "operation"
+          scopeID: string
+          operationID: string
+        }
+    runID: string
+    recordID: string
+    kind: "run" | "call" | "attempt" | "tool" | "legacy" | "gap"
+    status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    phase: "queued" | "request" | "generating" | "tool" | "terminal"
+    record: UsageRecord
   }
 }
 
@@ -10681,76 +11304,14 @@ export type EventSessionCompacted = {
   }
 }
 
-export type EventCommandExecuted = {
-  type: "command.executed"
+export type EventChannelCommandExecuted = {
+  type: "channel.command.executed"
   properties: {
     name: string
-    sessionID: string
-    arguments: string
-    messageID: string
-  }
-}
-
-export type EventFileWatcherUpdated = {
-  type: "file.watcher.updated"
-  properties: {
-    workspaceID: string
-    workspaceGeneration: number
-    file: string
-    event: "added" | "changed" | "deleted" | "renamed"
-    absolute?: string
-    oldPath?: string
-    oldAbsolute?: string
-    parent?: string
-    node?: WorkspaceFileNode
-    resync?: boolean
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    workspaceID: string
-    workspaceGeneration: number
-    file: string
-    contentVersion: string
-  }
-}
-
-export type EventTodoUpdated = {
-  type: "todo.updated"
-  properties: {
-    sessionID: string
-    todos: Array<Todo>
-  }
-}
-
-export type EventPtyCreated = {
-  type: "pty.created"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyUpdated = {
-  type: "pty.updated"
-  properties: {
-    info: Pty
-  }
-}
-
-export type EventPtyExited = {
-  type: "pty.exited"
-  properties: {
-    id: string
-    exitCode: number
-  }
-}
-
-export type EventPtyDeleted = {
-  type: "pty.deleted"
-  properties: {
-    id: string
+    channelType: string
+    accountId: string
+    chatId: string
+    userId?: string
   }
 }
 
@@ -10781,69 +11342,6 @@ export type EventQuestionTimedOut = {
   properties: {
     sessionID: string
     requestID: string
-  }
-}
-
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
-  properties: {
-    tasks: Array<CortexTask>
-  }
-}
-
-export type EventRuntimeReloaded = {
-  type: "runtime.reloaded"
-  properties: {
-    executed: Array<RuntimeReloadTarget>
-    cascaded: Array<RuntimeReloadTarget>
-    changedFields: Array<string>
-  }
-}
-
-export type EventPluginUiUpdated = {
-  type: "plugin.ui.updated"
-  properties: {
-    scopeId: string
-  }
-}
-
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
-export type EventChannelCommandExecuted = {
-  type: "channel.command.executed"
-  properties: {
-    name: string
-    channelType: string
-    accountId: string
-    chatId: string
-    userId?: string
   }
 }
 
@@ -10927,6 +11425,84 @@ export type EventAgendaItemDeleted = {
   properties: {
     id: string
     scopeID: string
+  }
+}
+
+export type EventPluginUiUpdated = {
+  type: "plugin.ui.updated"
+  properties: {
+    scopeId: string
+  }
+}
+
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
+  }
+}
+
+export type EventFileWatcherUpdated = {
+  type: "file.watcher.updated"
+  properties: {
+    workspaceID: string
+    workspaceGeneration: number
+    file: string
+    event: "added" | "changed" | "deleted" | "renamed"
+    absolute?: string
+    oldPath?: string
+    oldAbsolute?: string
+    parent?: string
+    node?: WorkspaceFileNode
+    resync?: boolean
+  }
+}
+
+export type EventDagUpdated = {
+  type: "dag.updated"
+  properties: {
+    sessionID: string
+    nodes: Array<DagNode>
+    ready: Array<string>
+  }
+}
+
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
+  }
+}
+
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    workspaceID: string
+    workspaceGeneration: number
+    file: string
+    contentVersion: string
   }
 }
 
@@ -11129,6 +11705,53 @@ export type EventLatticeEventAppended = {
   }
 }
 
+export type EventCommandExecuted = {
+  type: "command.executed"
+  properties: {
+    name: string
+    sessionID: string
+    arguments: string
+    messageID: string
+  }
+}
+
+export type EventTodoUpdated = {
+  type: "todo.updated"
+  properties: {
+    sessionID: string
+    todos: Array<Todo>
+  }
+}
+
+export type EventPtyCreated = {
+  type: "pty.created"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyUpdated = {
+  type: "pty.updated"
+  properties: {
+    info: Pty
+  }
+}
+
+export type EventPtyExited = {
+  type: "pty.exited"
+  properties: {
+    id: string
+    exitCode: number
+  }
+}
+
+export type EventPtyDeleted = {
+  type: "pty.deleted"
+  properties: {
+    id: string
+  }
+}
+
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -11143,22 +11766,31 @@ export type EventGlobalDisposed = {
   }
 }
 
+export type EventRuntimeReloaded = {
+  type: "runtime.reloaded"
+  properties: {
+    executed: Array<RuntimeReloadTarget>
+    cascaded: Array<RuntimeReloadTarget>
+    changedFields: Array<string>
+  }
+}
+
 export type Event =
   | EventWorkspaceUpdated
+  | EventScopeRuntimeDisposed
   | EventScopeUpdated
   | EventScopeRemoved
-  | EventScopeRuntimeDisposed
   | EventProviderAuthUpdated
+  | EventConfigUpdated
+  | EventPermissionAsked
+  | EventPermissionReplied
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
   | EventMessageUpdated
   | EventMessageRemoved
   | EventMessagePartUpdated
   | EventMessagePartRemoved
-  | EventPermissionAsked
-  | EventPermissionReplied
-  | EventDagUpdated
-  | EventConfigUpdated
+  | EventUsageUpdated
   | EventSessionInputProgress
   | EventSessionUpdated
   | EventSessionDeleted
@@ -11171,25 +11803,11 @@ export type Event =
   | EventSessionTurnEnd
   | EventSessionInboxUpdated
   | EventSessionCompacted
-  | EventCommandExecuted
-  | EventFileWatcherUpdated
-  | EventFileEdited
-  | EventTodoUpdated
-  | EventPtyCreated
-  | EventPtyUpdated
-  | EventPtyExited
-  | EventPtyDeleted
+  | EventChannelCommandExecuted
   | EventQuestionAsked
   | EventQuestionReplied
   | EventQuestionRejected
   | EventQuestionTimedOut
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
-  | EventRuntimeReloaded
-  | EventPluginUiUpdated
-  | EventPluginEvent
-  | EventChannelCommandExecuted
   | EventChannelConnected
   | EventChannelDisconnected
   | EventHolosContactAdded
@@ -11201,6 +11819,14 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
+  | EventPluginUiUpdated
+  | EventPluginEvent
+  | EventFileWatcherUpdated
+  | EventDagUpdated
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
+  | EventFileEdited
   | EventSynergyLinkTargetCreated
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
@@ -11227,8 +11853,15 @@ export type Event =
   | EventLatticeRunCreated
   | EventLatticeRunUpdated
   | EventLatticeEventAppended
+  | EventCommandExecuted
+  | EventTodoUpdated
+  | EventPtyCreated
+  | EventPtyUpdated
+  | EventPtyExited
+  | EventPtyDeleted
   | EventServerConnected
   | EventGlobalDisposed
+  | EventRuntimeReloaded
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -12461,6 +13094,35 @@ export type GlobalDisposeResponses = {
 
 export type GlobalDisposeResponse = GlobalDisposeResponses[keyof GlobalDisposeResponses]
 
+export type GlobalAgendaListData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/agenda"
+}
+
+export type GlobalAgendaListErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalAgendaListError = GlobalAgendaListErrors[keyof GlobalAgendaListErrors]
+
+export type GlobalAgendaListResponses = {
+  /**
+   * List of agenda items from all scopes
+   */
+  200: Array<AgendaItem>
+}
+
+export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
+
 export type HolosLoginData = {
   body?: {
     callbackUrl?: string
@@ -12953,35 +13615,6 @@ export type PushUpdateCategoriesResponses = {
 }
 
 export type PushUpdateCategoriesResponse = PushUpdateCategoriesResponses[keyof PushUpdateCategoriesResponses]
-
-export type GlobalAgendaListData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/global/agenda"
-}
-
-export type GlobalAgendaListErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type GlobalAgendaListError = GlobalAgendaListErrors[keyof GlobalAgendaListErrors]
-
-export type GlobalAgendaListResponses = {
-  /**
-   * List of agenda items from all scopes
-   */
-  200: Array<AgendaItem>
-}
-
-export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
 
 export type GlobalActivityData = {
   body?: never
@@ -15039,34 +15672,6 @@ export type WorktreeRemoveResponses = {
 
 export type WorktreeRemoveResponse = WorktreeRemoveResponses[keyof WorktreeRemoveResponses]
 
-export type VcsGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/vcs"
-}
-
-export type VcsGetErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
-
-export type VcsGetResponses = {
-  /**
-   * VCS info
-   */
-  200: VcsInfo
-}
-
-export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
-
 export type SessionAgendaData = {
   body?: never
   path: {
@@ -15109,6 +15714,34 @@ export type SessionAgendaResponses = {
 }
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
+
+export type VcsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/vcs"
+}
+
+export type VcsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type VcsGetError = VcsGetErrors[keyof VcsGetErrors]
+
+export type VcsGetResponses = {
+  /**
+   * VCS info
+   */
+  200: VcsInfo
+}
+
+export type VcsGetResponse = VcsGetResponses[keyof VcsGetResponses]
 
 export type SessionIndexData = {
   body?: never
@@ -22029,6 +22662,251 @@ export type AssetGetResponses = {
   200: unknown
 }
 
+export type BrowserCreateViewerTicketData = {
+  body?: BrowserViewerTicketRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/webrtc/ticket"
+}
+
+export type BrowserCreateViewerTicketErrors = {
+  /**
+   * Ticket request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
+
+export type BrowserCreateViewerTicketResponses = {
+  /**
+   * Browser viewer ticket
+   */
+  200: BrowserViewerTicketResponse
+}
+
+export type BrowserCreateViewerTicketResponse =
+  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
+
+export type BrowserCreateAnnotationData = {
+  body?: BrowserAnnotationRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/annotations"
+}
+
+export type BrowserCreateAnnotationErrors = {
+  /**
+   * Annotation request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
+
+export type BrowserCreateAnnotationResponses = {
+  /**
+   * Created Browser annotation
+   */
+  200: BrowserAnnotationResponse
+}
+
+export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
+
+export type BrowserDiagnosticsData = {
+  body?: BrowserDiagnosticsRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/diagnostics"
+}
+
+export type BrowserDiagnosticsErrors = {
+  /**
+   * Diagnostics request rejected
+   */
+  400: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
+
+export type BrowserDiagnosticsResponses = {
+  /**
+   * Browser diagnostics result
+   */
+  200: BrowserDiagnosticsResponse
+}
+
+export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
+
+export type BrowserSessionData = {
+  body?: never
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/session"
+}
+
+export type BrowserSessionErrors = {
+  /**
+   * Browser session error
+   */
+  500: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
+
+export type BrowserSessionResponses = {
+  /**
+   * Browser session state
+   */
+  200: BrowserApiSessionState
+}
+
+export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
+
+export type BrowserControlData = {
+  body?: BrowserControlRequest
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native" | "webrtc"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/control"
+}
+
+export type BrowserControlErrors = {
+  /**
+   * Invalid browser command
+   */
+  400: BrowserApiError
+  /**
+   * Retryable browser error
+   */
+  409: BrowserApiError
+  /**
+   * Browser request payload is too large
+   */
+  413: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
+
+export type BrowserControlResponses = {
+  /**
+   * Browser control result
+   */
+  200: BrowserControlResponse
+}
+
+export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
+
+export type ComputerHostBrokerData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/computer/host/broker"
+}
+
+export type ComputerHostBrokerErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ComputerHostBrokerError = ComputerHostBrokerErrors[keyof ComputerHostBrokerErrors]
+
 export type PluginListGlobalThemeContributionsData = {
   body?: never
   path?: never
@@ -23019,251 +23897,6 @@ export type RegistryPluginsPublishResponses = {
 }
 
 export type RegistryPluginsPublishResponse = RegistryPluginsPublishResponses[keyof RegistryPluginsPublishResponses]
-
-export type BrowserCreateViewerTicketData = {
-  body?: BrowserViewerTicketRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/webrtc/ticket"
-}
-
-export type BrowserCreateViewerTicketErrors = {
-  /**
-   * Ticket request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
-
-export type BrowserCreateViewerTicketResponses = {
-  /**
-   * Browser viewer ticket
-   */
-  200: BrowserViewerTicketResponse
-}
-
-export type BrowserCreateViewerTicketResponse =
-  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
-
-export type BrowserCreateAnnotationData = {
-  body?: BrowserAnnotationRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/annotations"
-}
-
-export type BrowserCreateAnnotationErrors = {
-  /**
-   * Annotation request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserCreateAnnotationError = BrowserCreateAnnotationErrors[keyof BrowserCreateAnnotationErrors]
-
-export type BrowserCreateAnnotationResponses = {
-  /**
-   * Created Browser annotation
-   */
-  200: BrowserAnnotationResponse
-}
-
-export type BrowserCreateAnnotationResponse = BrowserCreateAnnotationResponses[keyof BrowserCreateAnnotationResponses]
-
-export type BrowserDiagnosticsData = {
-  body?: BrowserDiagnosticsRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/diagnostics"
-}
-
-export type BrowserDiagnosticsErrors = {
-  /**
-   * Diagnostics request rejected
-   */
-  400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserDiagnosticsError = BrowserDiagnosticsErrors[keyof BrowserDiagnosticsErrors]
-
-export type BrowserDiagnosticsResponses = {
-  /**
-   * Browser diagnostics result
-   */
-  200: BrowserDiagnosticsResponse
-}
-
-export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
-
-export type BrowserSessionData = {
-  body?: never
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/session"
-}
-
-export type BrowserSessionErrors = {
-  /**
-   * Browser session error
-   */
-  500: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserSessionError = BrowserSessionErrors[keyof BrowserSessionErrors]
-
-export type BrowserSessionResponses = {
-  /**
-   * Browser session state
-   */
-  200: BrowserApiSessionState
-}
-
-export type BrowserSessionResponse = BrowserSessionResponses[keyof BrowserSessionResponses]
-
-export type BrowserControlData = {
-  body?: BrowserControlRequest
-  path: {
-    directory: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-    mode?: "session" | "scope"
-    sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
-    protocolVersion?: number
-    sinceSeq?: number
-    epoch?: string
-    nativeTicket?: string
-  }
-  url: "/{directory}/browser/control"
-}
-
-export type BrowserControlErrors = {
-  /**
-   * Invalid browser command
-   */
-  400: BrowserApiError
-  /**
-   * Retryable browser error
-   */
-  409: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type BrowserControlError = BrowserControlErrors[keyof BrowserControlErrors]
-
-export type BrowserControlResponses = {
-  /**
-   * Browser control result
-   */
-  200: BrowserControlResponse
-}
-
-export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
-
-export type ComputerHostBrokerData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/computer/host/broker"
-}
-
-export type ComputerHostBrokerErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type ComputerHostBrokerError = ComputerHostBrokerErrors[keyof ComputerHostBrokerErrors]
 
 export type HolosCredentialsStatusData = {
   body?: never

@@ -112,11 +112,12 @@ async function run(
           throw abort.signal.reason
         })
       const owner = { kind: "session" as const, scopeID: ScopeContext.current.scope.id, sessionID: session.id }
-      spyOn(AgentTurn, "stream").mockImplementation(async () => {
+      spyOn(AgentTurn, "stream").mockImplementation(async (streamInput) => {
         const attempt = ++calls
         return RolloutCall.stream(
           {
             owner,
+            retryIndex: streamInput.retryIndex,
             runID: user.info.id,
             purpose: "test",
             request: {},
@@ -325,6 +326,7 @@ test(
   runtime.bind(async () => {
     const result = await run("stream")
     expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
+    expect(result.recordedCalls.map((call) => call.retryIndex)).toEqual([0, 1])
     expect(result.artifacts[0]).toContain("discard this partial answer")
     expect(result.artifacts[1]).toContain("valid answer")
     if (result.message.info.role !== "assistant") throw new Error("Expected an assistant message")

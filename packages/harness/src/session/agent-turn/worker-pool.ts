@@ -21,19 +21,20 @@ export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryT
   toolDefinitions: ToolCatalog.Definition[]
   contextUsageProvenance?: ContextUsage.Provenance
   recording?: { owner: RolloutSchema.Owner; runID: string; purpose: string }
+  retryIndex?: number
   lane?: AgentTurnLane
 }
 
 export type AgentTurnWorkerInput = Omit<
   AgentTurnInput,
-  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording" | "lane"
+  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording" | "retryIndex" | "lane"
 > & {
   user: Pick<AgentTurnInput["user"], "id">
   agent: Pick<AgentTurnInput["agent"], "name">
   prepared: LLM.PreparedTurn
 }
 
-type AgentTurnPoolInput = Omit<AgentTurnInput, "contextUsageProvenance" | "recording"> & {
+type AgentTurnPoolInput = Omit<AgentTurnInput, "contextUsageProvenance" | "recording" | "retryIndex"> & {
   prepared: LLM.PreparedTurn
   archive?: RolloutTransportSchema.Sink
 }

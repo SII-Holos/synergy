@@ -1,0 +1,259 @@
+import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { MigrationRegistry } from "../migration/registry"
+import type { Migration } from "../migration/types"
+import { MessageV2 } from "../session/message-v2"
+import { RolloutUsage } from "../session/rollout/usage"
+import { UsageLedger } from "./ledger"
+import { UsageSchema } from "./schema"
+import { Lock } from "../util/lock"
+
+export namespace UsageMigration {
+  export const id = "20260928-independent-usage-ledger-v1"
+  const migrations: Migration[] = [
+    {
+      id,
+      scope: "derived",
+      execution: "after-convergence",
+      description: "Schedule resumable historical usage capture without blocking runtime startup",
+      async up() {
+        if (!(await status())) await start()
+      },
+    },
+  ]
+  export function register() {
+    MigrationRegistry.register("usage", migrations)
+  }
+  export async function status() {
+    const raw = await Storage.read(StoragePath.usageRebuild(), { silentNotFound: true }).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    return raw ? UsageSchema.Rebuild.parse(raw) : undefined
+  }
+  export async function start() {
+    using lock = await Lock.write("usage-rebuild")
+    const previous = await status()
+    if (previous?.status === "running" || previous?.status === "pending") return previous
+    const result: UsageSchema.Rebuild =
+      previous?.status === "failed"
+        ? { ...previous, status: "pending" }
+        : {
+            version: 1,
+            status: "pending",
+            phase: "indexes",
+            owners: 0,
+            records: 0,
+            updatedAt: Date.now(),
+            failures: 0,
+          }
+    await Storage.write(StoragePath.usageRebuild(), result)
+    return result
+  }
+  export async function preserve(owner: UsageSchema.Owner) {
+    let count = await UsageLedger.captureOwner(owner)
+    let after: string[] | undefined
+    do {
+      const page = await preserveLegacy(owner, after)
+      count += page.count
+      after = page.after
+    } while (after)
+    return count
+  }
+  async function preserveLegacy(
+    owner: UsageSchema.Owner,
+    after?: string[],
+  ): Promise<{ count: number; after?: string[] }> {
+    if (owner.kind !== "session") return { count: 0 }
+    let count = 0
+    const covered = new Set<string>()
+    for await (const row of Storage.records<UsageSchema.Record>({
+      kind: "usage",
+      messageID: "call",
+      scopeID: owner.scopeID,
+      sessionID: owner.sessionID,
+    }))
+      covered.add(row.value.runID)
+    const messages = await Storage.query<unknown>({
+      kind: "message",
+      scopeID: owner.scopeID,
+      sessionID: owner.sessionID,
+      after,
+      limit: 128,
+    })
+    for (const row of messages) {
+      if (row.key.at(-1) !== "info") continue
+      const parsed = MessageV2.Info.safeParse(row.value)
+      if (!parsed.success) throw new Error("Historical usage message cannot be decoded")
+      const message = parsed.data
+      if (
+        message.role !== "assistant" ||
+        ["inherited", "imported"].includes(message.accounting?.kind ?? "") ||
+        covered.has(message.rootID ?? message.parentID)
+      )
+        continue
+      if (
+        message.accounting?.kind === "rollout" &&
+        (await UsageLedger.hasClearedCall(owner, message.rootID ?? message.parentID, message.accounting.callIDs))
+      )
+        continue
+      const usage = RolloutUsage.normalize("unknown", null)
+      usage.input = {
+        total: message.tokens.input + message.tokens.cache.read + message.tokens.cache.write,
+        uncached: message.tokens.input,
+        cacheRead: message.tokens.cache.read,
+        cacheWrite: message.tokens.cache.write,
+      }
+      usage.output = { total: message.tokens.output, reasoning: message.tokens.reasoning }
+      usage.billing = "tokens"
+      if (message.accounting?.kind === "rollout" && message.accounting.summary) {
+        const tokens = message.accounting.summary.tokens
+        usage.input = {
+          total: tokens.input.total,
+          uncached: tokens.uncached.total,
+          cacheRead: tokens.cacheRead.total,
+          cacheWrite: tokens.cacheWrite.total,
+        }
+        usage.output = { total: tokens.output.total, reasoning: tokens.reasoning.total }
+      }
+      await Storage.transaction(() =>
+        UsageLedger.writeLegacy({
+          owner,
+          runID: message.rootID ?? message.parentID,
+          entityID: message.id,
+          started: message.time.created,
+          ended: message.time.completed,
+          status: message.time.completed ? (message.error ? "failed" : "completed") : "interrupted",
+          purpose: message.agent,
+          agent: message.agent,
+          model: {
+            providerID: message.providerID,
+            modelID: message.modelID,
+            sdk: "legacy",
+            pricing: null,
+            billingMode: "unknown",
+          },
+          execution: "provider",
+          callKind: "chat",
+          usage,
+          legacyCost: message.cost,
+          accounting: message.accounting?.kind === "rollout" ? message.accounting.summary : undefined,
+        }),
+      )
+      for await (const partRow of Storage.records({
+        kind: "part",
+        scopeID: owner.scopeID,
+        sessionID: owner.sessionID,
+        messageID: message.id,
+      })) {
+        const part = MessageV2.Part.parse(partRow.value)
+        if (part.type !== "tool") continue
+        const finished =
+          part.state.status === "completed" || part.state.status === "error" ? part.state.time : undefined
+        const started = "time" in part.state ? part.state.time.start : message.time.created
+        await Storage.transaction(() =>
+          UsageLedger.writeLegacyTool({
+            owner,
+            runID: message.rootID ?? message.parentID,
+            entityID: part.id,
+            started,
+            ended: finished?.end,
+            tool: part.tool,
+            status:
+              part.state.status === "completed"
+                ? "completed"
+                : part.state.status === "error"
+                  ? "failed"
+                  : "interrupted",
+            durationMs: finished ? Math.max(0, finished.end - finished.start) : null,
+          }),
+        )
+      }
+      count++
+    }
+    return { count, after: messages.length === 128 ? messages.at(-1)!.key : undefined }
+  }
+  export async function batch(limit = 16) {
+    using lock = await Lock.write("usage-rebuild")
+    const current = await status()
+    if (!current) throw new Error("Usage rebuild has not been scheduled")
+    if (current.status === "completed" || current.status === "failed") return current
+    const state = { ...current, status: "running" as UsageSchema.Rebuild["status"], updatedAt: Date.now() }
+    try {
+      const rows = await Storage.query({
+        kind: state.phase === "indexes" ? "usage" : state.phase === "sessions" ? "session" : "operations",
+        after: state.after,
+        orderFrom: state.phase === "operations" ? "head" : undefined,
+        orderTo: state.phase === "operations" ? "head\u0000" : undefined,
+        limit,
+      })
+      for (const row of rows) {
+        if (state.phase === "indexes") await UsageLedger.repairIndex(UsageSchema.Record.parse(row.value))
+        const isSession = state.phase === "sessions"
+        if (isSession || row.key.slice(3).join("/") === "rollout/journal/head") {
+          const owner: UsageSchema.Owner = isSession
+            ? { kind: "session", scopeID: row.key[1], sessionID: row.key[2] }
+            : { kind: "operation", scopeID: row.key[1], operationID: row.key[2] }
+          const page = await UsageLedger.captureBatch(owner)
+          state.records += page.processed
+          if (!page.complete) {
+            await Storage.write(StoragePath.usageRebuild(), state)
+            return state
+          }
+          const legacy = await preserveLegacy(owner, state.ownerAfter)
+          state.records += legacy.count
+          state.ownerAfter = legacy.after
+          if (legacy.after) {
+            await Storage.write(StoragePath.usageRebuild(), state)
+            return state
+          }
+          state.owners++
+        }
+        state.after = row.key
+        await Storage.write(StoragePath.usageRebuild(), state)
+      }
+      if (rows.length < limit) {
+        state.after = undefined
+        if (state.phase === "indexes") state.phase = "sessions"
+        else if (state.phase === "sessions") state.phase = "operations"
+        else {
+          state.phase = "completed"
+          state.status = "completed"
+        }
+      }
+    } catch (error) {
+      state.status = "failed"
+      state.failures++
+      await Storage.write(StoragePath.usageRebuild(), state)
+      throw error
+    }
+    await Storage.write(StoragePath.usageRebuild(), state)
+    return state
+  }
+  export function service() {
+    let stopped = false
+    let wake: (() => void) | undefined
+    const done = (async () => {
+      while (!stopped) {
+        const current = await status().catch(() => undefined)
+        if (current && ["pending", "running"].includes(current.status)) {
+          await batch().catch(() => {})
+        }
+        if (stopped) return
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, current?.status === "running" ? 25 : 1000)
+          timer.unref()
+          wake = () => {
+            clearTimeout(timer)
+            resolve()
+          }
+        })
+      }
+    })()
+    return async () => {
+      stopped = true
+      wake?.()
+      await done
+    }
+  }
+}

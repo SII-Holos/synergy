@@ -55,10 +55,12 @@ export namespace Aggregator {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}`
     }
 
-    for (const msg of messages) {
+    for (const msg of MessageV2.deriveSemantics(
+      messages.toSorted((a, b) => a.info.time.created - b.info.time.created),
+    )) {
       messageCount++
 
-      if (msg.info.role === "user") {
+      if (msg.info.role === "user" && msg.info.isRoot) {
         turns++
         const key = hourKey(msg.info.time.created)
         hourlyTurns[key] = (hourlyTurns[key] ?? 0) + 1
@@ -125,12 +127,14 @@ export namespace Aggregator {
             successes: 0,
             errors: 0,
             totalDurationMs: 0,
+            timedSamples: 0,
           }
           toolEntry.calls++
           if (part.state.status === "completed") {
             toolEntry.successes++
             if (part.state.time.start !== undefined && part.state.time.end !== undefined) {
               toolEntry.totalDurationMs += part.state.time.end - part.state.time.start
+              toolEntry.timedSamples = (toolEntry.timedSamples ?? 0) + 1
             }
           }
           if (part.state.status === "error") {

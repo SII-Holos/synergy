@@ -1,0 +1,60 @@
+# Usage Accounting
+
+Harness owns compact usage facts through the public `/usage` entry. Workbench owns their HTTP routes and the compatibility projection into the existing activity snapshot. The ledger uses the Agent database and its transaction/outbox boundary; it is independent of transcript paging, Web state, and retained response artifacts.
+
+## Evidence and identity
+
+Each local run, logical call, physical transport attempt, and tool execution has a stable identity derived from its Scope, session or operation owner, run, kind, and execution ID. Updates replace that fact and advance the installation's usage revision. Repeated journal replay cannot add the same charge twice. Imported and inherited conversation evidence is excluded from local spending. Whole-Home transfer preserves original local identities; transfer reconciliation honors clear markers and advances the target revision beyond imported facts.
+
+The call retains purpose, agent, execution kind, provider/connection ID, configured and API model IDs, limits, billing mode, and the price snapshot captured when it was admitted. Attempts retain the response model when reported. Purpose (for example title, compaction, embedding, rerank, speech, validation, or primary conversation) and parent ownership are independent dimensions. Local and external execution coverage is explicit. Unobserved transport is an SDK fallback or an unknown call, never an invented HTTP attempt.
+
+Only compact numeric provider meters and normalized counts enter the retained ledger. Prompts, response text, request URLs, headers, tool arguments, and credential material remain outside it. Run/owner links and cleared identity markers are minimal metadata retained independently of charge records.
+
+## Token and money semantics
+
+`input.total` is independent of its uncached/read/write breakdown. A missing split does not erase an exact total. Total tokens are input plus output; reasoning is a subset of output. Counts must be nonnegative safe integers. Contradictory totals or subsets carry issue codes and unknown affected values. SDK fields are interpreted against the locked adapter's semantics, including Anthropic's exclusive input and Google's thinking output. Omitted SDK cache counters remain unknown.
+
+Image input is included in the provider's reported input total. Image bytes, dimensions, URLs, and base64 length are never converted into billable tokens; modality details are not added again to the total. Missing usage on an image request remains unknown. Transport tests exercise single images, mixed text/multiple images, large valid PNG uploads, both JSON and streaming protocols, provider refusal, retries, cancellation, and privacy after raw evidence removal. These deterministic HTTP fixtures complement opt-in live provider tests; they do not assert a vendor's current vision capability or price.
+
+Final accounting and provisional streamed samples are separate. A final provider usage marker, or reported usage on a complete successful body, establishes a final attempt sample. Failed/cancelled partial samples remain provisional unless the provider supplied final usage. A prepared request that was never sent contributes no consumption. Logical processor/derived-call retry ordinals and within-call transport retries are recorded separately; their counts are exposed alongside the combined retry count. Each sent retry is charged independently; its parent call's SDK total is never assigned to every retry. Journal gaps make completeness unknown while preserving known subtotals.
+
+Every aggregate token/cost metric carries `known`, `unknown`, and nullable `total`. Cache hit ratio is `cacheRead / input.total`, including cache creation in input. The observed ratio uses only paired complete input/read samples and carries excluded counts. Neither an unknown denominator nor an empty population becomes a measured zero ratio.
+
+Billing modes resolve in this order: model configuration, connection configuration, declared provider profile, `unknown`. Credentials, provider names, and model names do not determine billing. Mixed profiles such as Anthropic API/OAuth remain unknown without configuration. Provider and per-model `billingMode` accept `api`, `subscription`, `local`, or `unknown`; Library and Voice connections accept the same metadata.
+
+API estimates, subscription API equivalents, unclassified API equivalents, historical message cost, and provider-reported amounts are separate. Reported charges retain currency and are not summed across currencies or added to an estimate of the same work. Local execution does not imply an API charge. Missing price tiers and missing billing units remain unknown. Historical capture uses the original price snapshot, never today's model catalog. Legacy cost remains explicitly legacy and is not silently labeled as a newly verified bill.
+
+## Timing
+
+Transport records monotonic durations before IPC, chunk coalescing, and archive acknowledgement. One bounded response chunk is prefetched so sent/header acknowledgements do not inflate first-content timing; a producer that fills the bounded buffer while recording is stalled marks the interval backpressured. Wall timestamps support attribution, while monotonic intervals support rates. Measurements include send, headers, first byte, first nonempty text/reasoning/tool content, last content, and response termination.
+
+Generation rate is output tokens divided by the first-to-last content window. It requires at least two content events, streaming transport, final output usage, and known reasoning coverage. Request rate uses output divided by complete request duration and is a separate metric. Aggregation sums eligible token numerators and durations, not per-request speeds. Missing/zero intervals, nonstreaming responses, single content events, capture backpressure, and hidden or unknown reasoning coverage have explicit exclusion reasons. Latency includes sample counts, excluded counts, means, and nearest-rank p50/p95.
+
+Scheduling intervals are labeled `wall_clock`: dispatch measures call creation to first send, and between-attempt time measures a completed attempt's end to the next send within that logical call. These intervals can include preparation or SDK backoff; they are not server generation time or a promise of pure queue duration. Reversed or missing timestamps are excluded. Tool durations use observed wall start/end and timed-sample denominators. Interrupted work has detection time rather than a fabricated end time; offline recovery does not extend generation/request duration.
+
+## Persistence and historical capture
+
+Rollout journal writes atomically update compact facts, their time indexes, global revision, and outbox notification. Running meter updates with unchanged phase are limited to one per record per second. Phase changes and terminal updates publish immediately, carrying the compact record and revision. Clients reconcile gaps/reconnects through the summary API; no frontend display or fetch behavior is changed by this backend contract.
+
+The versioned `20260928-independent-usage-ledger-v1` migration schedules an after-convergence job. A resident Workbench service drains it and joins work on shutdown. Index repair, session owners, and operation heads have durable cursors; journal and legacy-message processing use bounded pages. Failure retains its cursor and failure count for explicit resume. Startup admission does not wait for all historical statistics. Coverage returns this job's status.
+
+Source precedence is recorded attempt usage, recoverable raw response usage, SDK-only call usage, then eligible legacy assistant messages. If an old rollout archive was already pruned, its retained message accounting summary preserves exact totals and equivalent/reported amounts; old numeric cost stays in the legacy bucket. Cleared call IDs block this fallback as well as journal replay. Raw response parsing streams bounded artifact chunks outside SQL write callbacks. Historical timing without transport observations stays unknown. Session deletion and evidence retention preserve remaining compact facts before removing their source. Oversized owners defer online retention to maintenance instead of doing an unbounded preservation pass on the hot path.
+
+Clearing usage requires a Scope/session/time selection and the revision observed by the caller. Active and newer records are retained. Cleared IDs suppress later replay, rebuild, and Home import; clearing a parent call also suppresses its late attempts. Relationship metadata remains so active descendants keep their ancestry. Conversation deletion alone does not clear usage. Rebuild repairs indexes and missing capture without repricing or restoring explicitly cleared facts.
+
+## Query contract
+
+Workbench exposes these routes under the existing global authentication boundary:
+
+| Route                                | Behavior                                                                                                                                                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /global/stats/usage`            | Versioned summary, revision, computation time, requested scope/timezone, accounting, provisional usage, coverage, rates, latency, scheduling, tools, active phases, latest request/context, daily/model/agent/purpose/ownership breakdowns |
+| `GET /global/stats/usage/records`    | Compact records; default 100, maximum 500; opaque cursor bound to the original filters                                                                                                                                                     |
+| `POST /global/stats/usage/rebuild`   | Schedule/resume durable capture and return progress                                                                                                                                                                                        |
+| `DELETE /global/stats/usage/records` | Explicit revision-bounded clear with removed/active/newer counts                                                                                                                                                                           |
+
+Filters cover Scope, session, run/root task, provider, model, agent, purpose, record kind, descendants, and `[from,to)` milliseconds. Time indexes support bounded reads; summaries cache by filter and ledger revision. Request-day attribution uses actual send time and a validated IANA timezone, defaulting to the server's local zone. SDK-only and legacy records use their recorded start time. Purpose and ownership breakdowns overlap intentionally and must not be added together.
+
+Latest primary context is tied to one actual primary request's input and model limits, never total conversation/retry consumption. Compaction or a newer primary model request can make an earlier observation stale. Missing measured input stays unknown. The old numeric activity API uses this ledger for token/cost/tool/day values while retaining transcript-derived activity and file-change fields; its numeric compatibility fields cannot express every unknown. New clients should use the structured accounting contract.
+
+See [Activity and statistics](../product/activity-and-statistics.md), [Agent storage](agent-storage.md), and the [decision record](../decisions/implemented/architecture/2026-09-28-retained-usage-accounting.md).

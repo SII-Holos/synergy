@@ -492,6 +492,7 @@ export type AttachmentConfig = z.infer<typeof AttachmentConfig>
 
 export const Provider = ModelsDev.Provider.partial()
   .extend({
+    billingMode: ProviderPricing.BillingMode.optional(),
     profile: z
       .string()
       .min(1)
@@ -508,6 +509,7 @@ export const Provider = ModelsDev.Provider.partial()
       .record(
         z.string(),
         ModelsDev.Model.partial().extend({
+          billingMode: ProviderPricing.BillingMode.optional(),
           cost: ProviderPricing.ModelConfigCost.optional(),
           variants: z
             .record(

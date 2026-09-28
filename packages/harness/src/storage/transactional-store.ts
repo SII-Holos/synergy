@@ -55,6 +55,8 @@ export interface RecordQuery {
   after?: string[]
   limit?: number
   descending?: boolean
+  orderFrom?: string
+  orderTo?: string
 }
 export interface StoredRecord<T = unknown> {
   key: string[]
@@ -125,6 +127,22 @@ function recordBody(value: SqlValue): RecordBody {
 }
 
 function metadata(key: string[]) {
+  if (["usage_time", "usage_link"].includes(key[0]))
+    return {
+      kind: key[0],
+      scope: key[1] ?? "",
+      session: key[2]?.startsWith("session_") ? key[2].slice(8) : "",
+      message: "",
+      order: key.at(-1)!,
+    }
+  if (key[0] === "usage")
+    return {
+      kind: "usage",
+      scope: key[1] ?? "",
+      session: key[2]?.startsWith("session_") ? key[2].slice(8) : "",
+      message: key[4] ?? "",
+      order: key.at(-1)!,
+    }
   if (key[0] === "sessions") {
     const message = key[3] === "messages"
     return {
@@ -904,6 +922,14 @@ export class StoreTransaction {
       conditions.push(`(order_key, key_id) ${comparison} (?, ?)`)
       const order = metadata(input.after).order
       values.push(order, keyParameter(this.keys, input.after))
+    }
+    if (input.orderFrom !== undefined) {
+      conditions.push("order_key >= ?")
+      values.push(input.orderFrom)
+    }
+    if (input.orderTo !== undefined) {
+      conditions.push("order_key < ?")
+      values.push(input.orderTo)
     }
     const limit = input.limit ?? 100
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 10000)

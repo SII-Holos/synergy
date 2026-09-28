@@ -1,6 +1,8 @@
 import { Context } from "../../util/context"
 import { RolloutTransportSchema } from "./transport-schema"
 import { record, RolloutRecordingError } from "./error"
+import { RolloutTiming } from "./timing"
+import { RolloutUsageCapture } from "./usage-capture"
 
 export namespace RolloutTransport {
   export type Event = RolloutTransportSchema.Event
@@ -41,6 +43,8 @@ export namespace RolloutTransport {
     const original = new Request(input, init)
     const endpoint = new URL(original.url)
     const controller = new AbortController()
+    const timing = RolloutTiming.create()
+    let content: ReturnType<typeof RolloutUsageCapture.create> | undefined
     let finishing: Promise<void> | undefined
     let recordingFailure: unknown
     let responseOK = false
@@ -56,6 +60,7 @@ export namespace RolloutTransport {
       }
     }
     function finish(status: "completed" | "failed" | "cancelled", error?: unknown) {
+      timing.end()
       finishing ??= (async () => {
         await cancelRequest?.(error)
         if (recordingFailure) throw recordingFailure
@@ -64,6 +69,7 @@ export namespace RolloutTransport {
           attemptID,
           status,
           error: error instanceof Error ? error.message : undefined,
+          timing: timing.snapshot(),
         })
       })()
       return finishing
@@ -79,6 +85,8 @@ export namespace RolloutTransport {
       let nextRead: ReturnType<typeof reader.read> | undefined
       let sourceEnded = false
       let sourceFailure: unknown
+      let ahead: Promise<Uint8Array> | undefined
+      let delivering = true
       async function readChunk() {
         if (sourceFailure) throw sourceFailure
         const buffer = new Uint8Array(RolloutTransportSchema.CHUNK_BYTES)
@@ -88,7 +96,24 @@ export namespace RolloutTransport {
         try {
           while (filled < buffer.byteLength && !sourceEnded) {
             if (!pending) {
-              nextRead ??= reader.read()
+              nextRead ??= reader.read().then(
+                (next) => {
+                  if (channel === "response") {
+                    if (next.done) {
+                      content?.finish()
+                      timing.end()
+                    } else if (next.value.byteLength) {
+                      timing.bytes()
+                      content?.append(next.value)
+                    }
+                  }
+                  return next
+                },
+                (error) => {
+                  if (channel === "response") timing.end()
+                  throw error
+                },
+              )
               const next = deadline ? await Promise.race([nextRead, deadline]) : await nextRead
               if (!next) break
               nextRead = undefined
@@ -122,6 +147,16 @@ export namespace RolloutTransport {
         // A cloned upload can share cancellation acknowledgement with a live sibling.
         void upstreamCancellation.catch(() => {})
       }
+      function prefetch() {
+        if (channel !== "response" || sourceEnded || sourceFailure || cancelling) return
+        ahead = readChunk()
+        void ahead.then(
+          (chunk) => {
+            if (delivering && chunk.byteLength && !sourceEnded) timing.backpressure()
+          },
+          () => {},
+        )
+      }
       function close(complete: boolean, reason?: unknown) {
         closing ??= (async () => {
           let cleanupError: unknown
@@ -130,6 +165,16 @@ export namespace RolloutTransport {
               if (!complete) await cancelUpstream(reason)
             } catch (error) {
               cleanupError = error
+            }
+            try {
+              if (ahead) {
+                const chunk = await ahead
+                ahead = undefined
+                if (chunk.byteLength && !recordingFailure)
+                  await emit({ type: "chunk", attemptID, channel, data: chunk, timing: timing.snapshot() })
+              }
+            } catch (error) {
+              cleanupError ??= error
             }
             try {
               if (nextRead) {
@@ -143,12 +188,22 @@ export namespace RolloutTransport {
             while (pending?.byteLength && !recordingFailure) {
               const data = pending.subarray(0, RolloutTransportSchema.CHUNK_BYTES)
               pending = pending.subarray(data.byteLength)
-              await emit({ type: "chunk", attemptID, channel, data })
+              await emit({
+                type: "chunk",
+                attemptID,
+                channel,
+                data,
+                ...(channel === "response" ? { timing: timing.snapshot() } : {}),
+              })
             }
           } catch (error) {
             cleanupError = error
           } finally {
-            reader.releaseLock()
+            try {
+              reader.releaseLock()
+            } catch (error) {
+              cleanupError ??= error
+            }
           }
           if (recordingFailure) throw recordingFailure
           await emit({ type: "body-end", attemptID, channel, complete })
@@ -158,6 +213,7 @@ export namespace RolloutTransport {
       }
       let outputController: ReadableStreamDefaultController<Uint8Array>
       function cancel(reason?: unknown) {
+        if (channel === "response") timing.end()
         cancelling = true
         cancellation ??= (async () => {
           try {
@@ -180,6 +236,7 @@ export namespace RolloutTransport {
           }
         }
       }
+      prefetch()
       return new ReadableStream<Uint8Array>(
         {
           start(output) {
@@ -188,11 +245,23 @@ export namespace RolloutTransport {
           pull(output) {
             pulling = (async () => {
               try {
-                const chunk = await readChunk()
+                delivering = false
+                const current = ahead
+                ahead = undefined
+                const chunk = await (current ?? readChunk())
+                prefetch()
+                delivering = true
                 if (chunk.byteLength) {
-                  await emit({ type: "chunk", attemptID, channel, data: chunk })
+                  await emit({
+                    type: "chunk",
+                    attemptID,
+                    channel,
+                    data: chunk,
+                    ...(channel === "response" ? { timing: timing.snapshot() } : {}),
+                  })
                   if (!cancelling) output.enqueue(chunk)
                 }
+                delivering = false
                 if (cancelling) return
                 if (!chunk.byteLength && sourceEnded) {
                   await close(true)
@@ -225,6 +294,7 @@ export namespace RolloutTransport {
       url: endpoint.origin + endpoint.pathname,
       method: original.method,
       mediaType: original.headers.get("content-type") ?? "application/octet-stream",
+      timing: timing.snapshot(),
     })
     const requestBody = original.body ? body(original.body, "request") : undefined
     if (!requestBody) await emit({ type: "body-end", attemptID, channel: "request", complete: true })
@@ -242,7 +312,31 @@ export namespace RolloutTransport {
       const transportOptions = Object.fromEntries(
         Object.entries(init ?? {}).filter(([key]) => !requestOptions.has(key)),
       )
-      response = await fetchFn(request, Object.keys(transportOptions).length ? transportOptions : undefined)
+      timing.sent()
+      const fetching = fetchFn(request, Object.keys(transportOptions).length ? transportOptions : undefined).then(
+        (value) => {
+          const mediaType = value.headers.get("content-type") ?? "application/octet-stream"
+          timing.headers(mediaType.includes("text/event-stream"))
+          content = RolloutUsageCapture.create("unknown", mediaType, undefined, undefined, timing.content)
+          if (!value.body) timing.end()
+          responseOK = value.ok
+          return value.body
+            ? new Response(body(value.body, "response"), {
+                status: value.status,
+                statusText: value.statusText,
+                headers: value.headers,
+              })
+            : value
+        },
+        (error) => {
+          timing.end()
+          throw error
+        },
+      )
+      // Observe rejection while the durable sent marker is crossing the worker boundary.
+      void fetching.catch(() => {})
+      await emit({ type: "attempt-sent", attemptID, timing: timing.snapshot() })
+      response = await fetching
       responseOK = response.ok
       await emit({
         type: "response",
@@ -250,17 +344,14 @@ export namespace RolloutTransport {
         status: response.status,
         mediaType: response.headers.get("content-type") ?? "application/octet-stream",
         headers: Object.fromEntries([...response.headers].filter(([key]) => responseHeaders.has(key.toLowerCase()))),
+        timing: timing.snapshot(),
       })
       if (!response.body) {
         await emit({ type: "body-end", attemptID, channel: "response", complete: true })
         await finish(responseOK ? "completed" : "failed")
         return response
       }
-      return new Response(body(response.body, "response"), {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers,
-      })
+      return response
     } catch (error) {
       try {
         if (response?.body && !response.body.locked) await response.body.cancel(error)

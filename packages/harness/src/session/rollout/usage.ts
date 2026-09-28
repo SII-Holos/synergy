@@ -2,7 +2,7 @@ import { JsonValue } from "../../util/json-value"
 import z from "zod"
 
 export namespace RolloutUsage {
-  const Count = z.number().finite().int().nonnegative().nullable()
+  const Count = z.number().finite().int().nonnegative().safe().nullable()
   export const Info = z
     .object({
       version: z.literal(1),
@@ -30,6 +30,7 @@ export namespace RolloutUsage {
         .strict()
         .nullable(),
       complete: z.boolean(),
+      issues: z.array(z.enum(["input_breakdown_mismatch", "reasoning_subset_mismatch", "total_mismatch"])).optional(),
     })
     .strict()
   export type Info = z.infer<typeof Info>
@@ -142,15 +143,44 @@ export namespace RolloutUsage {
       result.output.reasoning = count(usage.thoughtsTokenCount)
       result.output.total = sum(count(usage.candidatesTokenCount), result.output.reasoning)
     }
-    const totalInput = sum(result.input.uncached, result.input.cacheRead, result.input.cacheWrite)
-    if (result.input.total !== null && totalInput !== null && totalInput !== result.input.total)
+    return validate(result, count(usage.total_tokens ?? usage.totalTokenCount))
+  }
+
+  // Provenance: https://github.com/deepseek-ai/deepseek-harness/blob/21638c56315ae6a2b552d6091945d3144c9af32e/packages/llm/token-meter/src/turn-usage.ts
+  // Local adaptation: retain independent provider totals and mark contradictory meters unknown; no upstream code is copied.
+  function validate(result: Info, reportedTotal: number | null): Info {
+    const issues: NonNullable<Info["issues"]> = []
+    const parts = [result.input.uncached, result.input.cacheRead, result.input.cacheWrite]
+    const totalInput = sum(...parts)
+    if (
+      result.input.total !== null &&
+      ((totalInput !== null && totalInput !== result.input.total) ||
+        parts.some((part) => part !== null && part > result.input.total!))
+    ) {
+      issues.push("input_breakdown_mismatch")
       result.input.uncached = null
+      result.input.cacheRead = null
+      result.input.cacheWrite = null
+    }
     if (
       result.output.total !== null &&
       result.output.reasoning !== null &&
       result.output.reasoning > result.output.total
-    )
+    ) {
       result.output.reasoning = null
+      issues.push("reasoning_subset_mismatch")
+    }
+    if (
+      reportedTotal !== null &&
+      result.input.total !== null &&
+      result.output.total !== null &&
+      reportedTotal !== result.input.total + result.output.total
+    ) {
+      result.input = { total: null, uncached: null, cacheRead: null, cacheWrite: null }
+      result.output = { total: null, reasoning: null }
+      issues.push("total_mismatch")
+    }
+    if (issues.length) result.issues = issues
     result.complete =
       result.billing === "units"
         ? result.units.every((unit) => unit.quantity !== null)
@@ -171,8 +201,14 @@ export namespace RolloutUsage {
    * names are camelCase, unlike the provider wire format `normalize` parses, so
    * they need their own mapping.
    */
-  export function normalizeSdk(raw: unknown, sdk = "@ai-sdk/openai"): Info | null {
+  export function normalizeSdk(
+    raw: unknown,
+    sdk = "@ai-sdk/openai",
+    kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech",
+  ): Info | null {
     const usage = object(raw)
+    if (kind === "embedding" && count(usage.tokens) !== null)
+      return normalize("openai", { prompt_tokens: count(usage.tokens), total_tokens: count(usage.tokens) }, kind)
     const input = count(usage.inputTokens)
     const google = sdk === "@ai-sdk/google" || sdk === "@ai-sdk/google-vertex"
     const reasoning = count(usage.reasoningTokens)
@@ -184,7 +220,7 @@ export namespace RolloutUsage {
     const exclusiveInput =
       sdk === "@ai-sdk/anthropic" || sdk === "@ai-sdk/google-vertex/anthropic" || sdk === "@ai-sdk/amazon-bedrock"
     // Anthropic and Bedrock SDK input excludes cache reads and writes; LanguageModelUsage omits writes.
-    const cacheRead = count(usage.cachedInputTokens) ?? (exclusiveInput || input === null ? null : 0)
+    const cacheRead = count(usage.cachedInputTokens)
     const result: Info = {
       version: 1,
       protocol: google
@@ -204,12 +240,6 @@ export namespace RolloutUsage {
       complete: false,
     }
     result.input.uncached = exclusiveInput ? input : difference(input, cacheRead, 0)
-    result.complete =
-      result.input.total !== null &&
-      result.input.uncached !== null &&
-      result.input.cacheRead !== null &&
-      result.input.cacheWrite !== null &&
-      result.output.total !== null
-    return result
+    return validate(result, count(usage.totalTokens))
   }
 }

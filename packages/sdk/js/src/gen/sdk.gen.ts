@@ -11621,6 +11621,348 @@ export class Asset extends HeyApiClient {
   }
 }
 
+export class Browser extends HeyApiClient {
+  /**
+   * Create a Browser viewer ticket
+   *
+   * Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.
+   */
+  public createViewerTicket<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserViewerTicketRequest?: BrowserViewerTicketRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserViewerTicketRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BrowserCreateViewerTicketResponses,
+      BrowserCreateViewerTicketErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/webrtc/ticket",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Create a Browser annotation
+   *
+   * Attach user feedback to a coordinate on the active Browser page.
+   */
+  public createAnnotation<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserAnnotationRequest?: BrowserAnnotationRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserAnnotationRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BrowserCreateAnnotationResponses,
+      BrowserCreateAnnotationErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/annotations",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Read Browser diagnostics
+   *
+   * Read bounded console, network, element, asset, or download diagnostics for the active page.
+   */
+  public diagnostics<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserDiagnosticsRequest?: BrowserDiagnosticsRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserDiagnosticsRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BrowserDiagnosticsResponses, BrowserDiagnosticsErrors, ThrowOnError>({
+      url: "/{directory}/browser/diagnostics",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get Browser session state
+   *
+   * Read the browser session descriptor without creating, resuming, or navigating a page.
+   */
+  public session<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BrowserSessionResponses, BrowserSessionErrors, ThrowOnError>({
+      url: "/{directory}/browser/session",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Control the Browser workspace
+   *
+   * Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.
+   */
+  public control<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native" | "webrtc"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserControlRequest?: BrowserControlRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserControlRequest", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BrowserControlResponses, BrowserControlErrors, ThrowOnError>({
+      url: "/{directory}/browser/control",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Host extends HeyApiClient {
+  /**
+   * Connect the authenticated native Computer host
+   */
+  public broker<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<unknown, ComputerHostBrokerErrors, ThrowOnError>({
+      url: "/computer/host/broker",
+      ...options,
+      ...params,
+    })
+  }
+}
+
+export class Computer extends HeyApiClient {
+  host = new Host({ client: this.client })
+}
+
 export class Plugin extends HeyApiClient {
   /**
    * List plugin theme contributions across all enabled scopes
@@ -12372,348 +12714,6 @@ export class Registry extends HeyApiClient {
   }
 
   plugins = new Plugins({ client: this.client })
-}
-
-export class Browser extends HeyApiClient {
-  /**
-   * Create a Browser viewer ticket
-   *
-   * Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.
-   */
-  public createViewerTicket<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserViewerTicketRequest?: BrowserViewerTicketRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserViewerTicketRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      BrowserCreateViewerTicketResponses,
-      BrowserCreateViewerTicketErrors,
-      ThrowOnError
-    >({
-      url: "/{directory}/browser/webrtc/ticket",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Create a Browser annotation
-   *
-   * Attach user feedback to a coordinate on the active Browser page.
-   */
-  public createAnnotation<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserAnnotationRequest?: BrowserAnnotationRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserAnnotationRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<
-      BrowserCreateAnnotationResponses,
-      BrowserCreateAnnotationErrors,
-      ThrowOnError
-    >({
-      url: "/{directory}/browser/annotations",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Read Browser diagnostics
-   *
-   * Read bounded console, network, element, asset, or download diagnostics for the active page.
-   */
-  public diagnostics<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserDiagnosticsRequest?: BrowserDiagnosticsRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserDiagnosticsRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BrowserDiagnosticsResponses, BrowserDiagnosticsErrors, ThrowOnError>({
-      url: "/{directory}/browser/diagnostics",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  /**
-   * Get Browser session state
-   *
-   * Read the browser session descriptor without creating, resuming, or navigating a page.
-   */
-  public session<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<BrowserSessionResponses, BrowserSessionErrors, ThrowOnError>({
-      url: "/{directory}/browser/session",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Control the Browser workspace
-   *
-   * Send one strict user navigation, lifecycle, viewport, dialog, or file chooser command.
-   */
-  public control<ThrowOnError extends boolean = false>(
-    parameters: {
-      path_directory: string
-      query_directory?: string
-      scopeID?: string
-      mode?: "session" | "scope"
-      sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
-      protocolVersion?: number
-      sinceSeq?: number
-      epoch?: string
-      nativeTicket?: string
-      browserControlRequest?: BrowserControlRequest
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            {
-              in: "path",
-              key: "path_directory",
-              map: "directory",
-            },
-            {
-              in: "query",
-              key: "query_directory",
-              map: "directory",
-            },
-            { in: "query", key: "scopeID" },
-            { in: "query", key: "mode" },
-            { in: "query", key: "sessionID" },
-            { in: "query", key: "presentation" },
-            { in: "query", key: "protocolVersion" },
-            { in: "query", key: "sinceSeq" },
-            { in: "query", key: "epoch" },
-            { in: "query", key: "nativeTicket" },
-            { key: "browserControlRequest", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<BrowserControlResponses, BrowserControlErrors, ThrowOnError>({
-      url: "/{directory}/browser/control",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class Host extends HeyApiClient {
-  /**
-   * Connect the authenticated native Computer host
-   */
-  public broker<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<unknown, ComputerHostBrokerErrors, ThrowOnError>({
-      url: "/computer/host/broker",
-      ...options,
-      ...params,
-    })
-  }
-}
-
-export class Computer extends HeyApiClient {
-  host = new Host({ client: this.client })
 }
 
 export class Voice extends HeyApiClient {
@@ -13704,9 +13704,9 @@ export class SynergyClient extends HeyApiClient {
 
   worktree = new Worktree({ client: this.client })
 
-  vcs = new Vcs({ client: this.client })
-
   session = new Session({ client: this.client })
+
+  vcs = new Vcs({ client: this.client })
 
   part = new Part({ client: this.client })
 
@@ -13738,15 +13738,15 @@ export class SynergyClient extends HeyApiClient {
 
   asset = new Asset({ client: this.client })
 
+  browser = new Browser({ client: this.client })
+
+  computer = new Computer({ client: this.client })
+
   plugin = new Plugin({ client: this.client })
 
   api = new Api({ client: this.client })
 
   registry = new Registry({ client: this.client })
-
-  browser = new Browser({ client: this.client })
-
-  computer = new Computer({ client: this.client })
 
   voice = new Voice({ client: this.client })
 

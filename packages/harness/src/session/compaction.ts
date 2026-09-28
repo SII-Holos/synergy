@@ -609,8 +609,11 @@ export namespace SessionCompaction {
           model: {
             providerID: input.providerID,
             modelID: input.modelID,
+            apiModelID,
             sdk: resolvedModel.api.npm,
             pricing: resolvedModel.pricing ?? null,
+            billingMode: resolvedModel.billingMode ?? "unknown",
+            limits: resolvedModel.limit,
           },
           request: JSON.parse(JSON.stringify({ model: apiModelID, input: items })),
         },

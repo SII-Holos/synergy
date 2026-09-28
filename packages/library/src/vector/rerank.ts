@@ -47,6 +47,7 @@ export namespace Rerank {
           modelID: resolved.model,
           sdk: "@ai-sdk/openai-compatible",
           pricing: resolved.pricing,
+          billingMode: resolved.billingMode,
         },
         request,
       },
@@ -102,6 +103,7 @@ export namespace Rerank {
       baseURL,
       apiKey,
       model,
+      billingMode: rerankConfig?.billingMode ?? "unknown",
       pricing: ProviderPricing.resolve({
         providerID: "rerank",
         modelID: model,

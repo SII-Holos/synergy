@@ -401,6 +401,16 @@ export namespace StorageRetention {
     for (const owner of candidates) {
       input.signal?.throwIfAborted()
       if (!overBudget() || performance.now() > deadline) break
+      if (!input.maintenance && owner.records > ONLINE_LIMITS.records) {
+        report.deferred.push({ key: owner.key, reason: "records" })
+        continue
+      }
+      const { UsageMigration } = await import("../usage/migration")
+      await UsageMigration.preserve(
+        owner.kind === "session"
+          ? { kind: "session", scopeID: owner.scopeID, sessionID: owner.id }
+          : { kind: "operation", scopeID: owner.scopeID, operationID: owner.id },
+      )
       // Re-check liveness immediately before deleting: a session can start
       // between enumeration and this prune.
       const result = input.maintenance
