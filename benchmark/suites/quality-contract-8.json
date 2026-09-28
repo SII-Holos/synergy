@@ -25,77 +25,49 @@
       "source": "deepswe-1.1",
       "path": "tasks/fd-deterministic-multi-key-sorting",
       "digest": "d7bc1a5bc96128183f01fe8251d840a4a30f35382a2cbd799e8a0c3efaddcff3",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "rust"
-      ]
+      "tags": ["deepswe-1.1", "feature_request", "rust"]
     },
     {
       "id": "deepswe-1.1/katex-multicolumn-array-spans",
       "source": "deepswe-1.1",
       "path": "tasks/katex-multicolumn-array-spans",
       "digest": "c7a64e0c6b01b3f11a26bbc2bc301e8e2957d47a8077f336debfb12f82e04d99",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "javascript"
-      ]
+      "tags": ["deepswe-1.1", "feature_request", "javascript"]
     },
     {
       "id": "deepswe-1.1/kcp-go-multiplexed-kcp-streams",
       "source": "deepswe-1.1",
       "path": "tasks/kcp-go-multiplexed-kcp-streams",
       "digest": "c6234605fcf8876dede0a550619c00bd8cdf57dfd3f5527c61fb921a7130af2b",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "go"
-      ]
+      "tags": ["deepswe-1.1", "feature_request", "go"]
     },
     {
       "id": "deepswe-1.1/kgateway-consistent-hash-policy",
       "source": "deepswe-1.1",
       "path": "tasks/kgateway-consistent-hash-policy",
       "digest": "36e4607ff066d11bf7c87a70a4f86ce09abb0621a12330330f5a071ae160fa1f",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "go"
-      ]
+      "tags": ["deepswe-1.1", "feature_request", "go"]
     },
     {
       "id": "deepswe-1.1/sqlfmt-create-table-ddl-formatting",
       "source": "deepswe-1.1",
       "path": "tasks/sqlfmt-create-table-ddl-formatting",
       "digest": "9301cbecc65c1ff2de58268853d9d8516cf8ec18494a604226ae9ce816986b0d",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "python"
-      ]
+      "tags": ["deepswe-1.1", "feature_request", "python"]
     },
     {
       "id": "deepswe-1.1/superjson-error-stack-serialization",
       "source": "deepswe-1.1",
       "path": "tasks/superjson-error-stack-serialization",
       "digest": "fb66b7fd7e8385902deeee035b763baa761ba62aadde117bc8e9526a8d2c32bc",
-      "tags": [
-        "deepswe-1.1",
-        "feature_request",
-        "typescript"
-      ]
+      "tags": ["deepswe-1.1", "feature_request", "typescript"]
     },
     {
       "id": "doom-frame-diagnostic-v1/make-doom-for-mips",
       "source": "doom-frame-diagnostic-v1",
       "path": "benchmark/tasks/doom-frame-diagnostic-v1/make-doom-for-mips",
       "digest": "8445f5ec634904808f38e6bee877042e32090f6805d2a16c5613159a266e9ee9",
-      "tags": [
-        "diagnostic",
-        "terminal-bench-2.1",
-        "software-engineering"
-      ]
+      "tags": ["diagnostic", "terminal-bench-2.1", "software-engineering"]
     },
     {
       "id": "terminal-bench-2.1/adaptive-rejection-sampler",
