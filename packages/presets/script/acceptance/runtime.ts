@@ -5,6 +5,7 @@ import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
 import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
 import { recordedProvider } from "./provider"
 import { atomicJSON } from "./evidence"
+import { RemoteLab } from "./remote-protocol"
 
 export const Settings = z
   .object({
@@ -15,17 +16,13 @@ export const Settings = z
     modelCatalog: z.string().min(1),
     config: z.record(z.string(), z.json()),
     deadlineMs: z.number().int().positive().default(600_000),
+    remote: RemoteLab.optional(),
+    chromium: z.string().optional(),
   })
   .strict()
 export type Settings = z.infer<typeof Settings>
 
-export async function acceptanceRuntime(directory: string, settings: Settings) {
-  const gateway = await recordedProvider({
-    directory,
-    provider: settings.providerID,
-    upstream: settings.upstream,
-    apiKey: (await Bun.file(settings.apiKeyFile).text()).trim(),
-  })
+export async function prepareRuntime(directory: string, settings: Settings, gateway: { url: string; token: string }) {
   const home = path.join(directory, "home")
   const root = path.join(home, ".synergy")
   await fs.mkdir(path.join(root, "cache"), { recursive: true, mode: 0o700 })
@@ -56,6 +53,17 @@ export async function acceptanceRuntime(directory: string, settings: Settings) {
     },
   })
   await fs.mkdir(host.env.TMPDIR!, { recursive: true, mode: 0o700 })
+  return { home, host, config }
+}
+
+export async function acceptanceRuntime(directory: string, settings: Settings) {
+  const gateway = await recordedProvider({
+    directory,
+    provider: settings.providerID,
+    upstream: settings.upstream,
+    apiKey: (await Bun.file(settings.apiKeyFile).text()).trim(),
+  })
+  const { home, host } = await prepareRuntime(directory, settings, gateway)
   let runtime
   try {
     runtime = await PresetRuntimeHandle.openTask({ host, mode: "oneshot" })

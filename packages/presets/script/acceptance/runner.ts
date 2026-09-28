@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
-import { AcceptanceCase, Result, atomicJSON, digest, verifyResult } from "./evidence"
+import { AcceptanceCase, Result, atomicJSON, digest, sealEvidence, verifyResult } from "./evidence"
 import { readRequests } from "./provider"
 
 const inputSchema = z
@@ -204,6 +204,13 @@ export async function execute(
       })
       const recorded = await readRequests(directory)
       if (recorded.length) result.requests = recorded
+      for (const request of recorded) {
+        for (const file of ["request.json", "request.bin", "response.json", "response.bin"]) {
+          const relative = `requests/${request.id}/${file}`
+          if (await Bun.file(path.join(directory, relative)).exists())
+            result.evidence.push(await sealEvidence(directory, relative, "transport"))
+        }
+      }
       const errors = await verifyResult(directory, scenario, result, { plan: plan.digest, source: plan.source })
       if (result.status === "passed" && errors.length)
         result.status = errors.some((error) => error.startsWith("untriggered:") || error.startsWith("uncovered:"))

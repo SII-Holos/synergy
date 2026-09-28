@@ -64,6 +64,31 @@ test("a frozen run succeeds and resume never repeats a completed experiment", as
   await expect(execute(plan, drivers, { source })).rejects.toThrow("already started")
 })
 
+test("changing recorded provider bytes invalidates an otherwise passing experiment", async () => {
+  await using tmp = await tmpdir()
+  const plan = await setup(tmp.path)
+  await execute(
+    plan,
+    {
+      fixture: async (context) => {
+        const directory = path.join(context.directory, "requests", "request")
+        await atomicJSON(path.join(directory, "request.json"), {
+          id: "request",
+          status: "completed",
+          usage: { input: 1, output: 1 },
+        })
+        await Bun.write(path.join(directory, "request.bin"), "request")
+        await Bun.write(path.join(directory, "response.bin"), "response")
+        return driver(context)
+      },
+    },
+    { source },
+  )
+  expect((await report(plan)).passed).toBe(true)
+  await Bun.write(path.join(plan.directory, "cases/fixture/1/requests/request/response.bin"), "changed")
+  expect((await report(plan)).passed).toBe(false)
+})
+
 test("a missing result after controller death remains unknown and requires an explicit retry reason", async () => {
   await using tmp = await tmpdir()
   const plan = await setup(tmp.path)

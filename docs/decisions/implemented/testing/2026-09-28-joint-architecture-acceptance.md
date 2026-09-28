@@ -14,6 +14,10 @@ Presets owns an opt-in local acceptance entry with explicit scenario selection a
 
 A recording provider proxy preserves request/response bodies and journals each request before forwarding it. The journal outlives an individual Runtime or failed driver, so auxiliary calls, retries, cancellations and unknown usage remain accountable. Credentials never enter request evidence. Fixture-provider tests exercise the same capture and Runtime paths without contacting paid providers in CI. Raw experiment data stays outside the repository; exported summaries contain source identity, scenario outcomes and aggregate known/unknown usage.
 
+Remote recovery acceptance runs the complete product in a separate controller process against an explicitly configured TLS Engine and Execution Host. The observer waits for actual process exit before sending SIGKILL to its owned controller. A blocked local object-store publication must retain the remote file copy and durable use across that death; recovery retries saving the original operation. Docker observations independently count allocations and compare bytes before and after replacement. Successful experiments reclaim their allocations after observing the replacement; failed experiments retain private evidence for investigation.
+
+Mixed-media fixtures render random identifiers into PNG, JPEG and PDF through the frozen Chromium executable and construct Office documents containing separate identifiers. Prompts never contain those identifiers. The text-only parent profile keeps the same underlying provider/model but removes direct visual input, making `look_at` delegation observable without introducing another supplier. Audio/video checks establish byte retention and policy only, not decoding capability. Request and response bytes are included in evidence hashes, so changing a captured response invalidates acceptance.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.

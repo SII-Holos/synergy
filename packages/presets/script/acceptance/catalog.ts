@@ -1,13 +1,19 @@
-import { AcceptanceCase } from "./evidence"
+import { AcceptanceCase, digest } from "./evidence"
 
-type CaseInput = Omit<AcceptanceCase, "checks" | "verification"> & { facts: Record<string, boolean | number | string> }
+type CaseInput = Omit<AcceptanceCase, "checks" | "verification"> & {
+  facts: Record<string, boolean | number | string>
+  bytes?: Record<string, string>
+}
 function scenario(input: CaseInput): AcceptanceCase {
-  const { facts, ...spec } = input
+  const { facts, bytes = {}, ...spec } = input
   return AcceptanceCase.parse({
     ...spec,
     verification:
       "Compare product state, independently observed files/processes/database state, and recorded transport; validate every declared oracle and fault barrier.",
-    checks: Object.entries(facts).map(([key, equals]) => ({ evidence: "observations.json", pointer: [key], equals })),
+    checks: [
+      ...Object.entries(facts).map(([key, equals]) => ({ evidence: "observations.json", pointer: [key], equals })),
+      ...Object.entries(bytes).map(([evidence, text]) => ({ evidence, sha256: digest(text) })),
+    ],
   })
 }
 
@@ -51,6 +57,7 @@ export const cases: AcceptanceCase[] = [
         queueProgressed: true,
         localReferencePolicy: true,
         allocatedCompute: 0,
+        managedBytesPreserved: true,
       },
     }),
   ),
@@ -361,6 +368,7 @@ export const cases: AcceptanceCase[] = [
       barriers: [...barriers],
       factors: ["remote-execution", id, "recovery"],
       facts,
+      ...(["command-crash", "save-crash"].includes(id) ? { bytes: { "effects.txt": "once\n" } } : {}),
     }),
   ),
   scenario({
