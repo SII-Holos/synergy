@@ -135,6 +135,10 @@
           "reason": "dialogs require interactive flows"
         },
         {
+          "glob": "src/components/dialog/dialog-environment.tsx",
+          "reason": "Rendered in Playwright by test/components/dialog/environment-dialog.dom.test.ts, covering conditional selection, stable creation retries, drafts and recovery; browser execution does not contribute to Bun coverage."
+        },
+        {
           "glob": "src/components/dialog/dialog-scope-edit.tsx",
           "reason": "dialogs require interactive flows"
         },

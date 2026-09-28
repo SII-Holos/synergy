@@ -1,7 +1,67 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 import { ServerProcessLock } from "@ericsanchezok/synergy-harness/util/server-process-lock"
+import { EnvironmentReleaseCommand, EnvironmentSelectCommand } from "../../src/cli/cmd/resources"
+
+test("resource handlers preserve stale-allocation errors and reject unsafe attached URLs before sending", async () => {
+  const received: Array<{ path: string; body: unknown; scope: string | null }> = []
+  using server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      const pathname = new URL(request.url).pathname
+      received.push({ path: pathname, body: await request.json(), scope: request.headers.get("x-synergy-scope-id") })
+      return pathname.endsWith("/release")
+        ? Response.json({ name: "EnvironmentStale", data: { message: "Allocation changed" } }, { status: 409 })
+        : Response.json({ environmentID: null })
+    },
+  })
+  const output = spyOn(console, "log").mockImplementation(() => {})
+  const exitCode = process.exitCode
+  const args = {
+    _: [],
+    $0: "synergy",
+    attach: server.url.origin,
+    scope: "research",
+    tokenEnv: "SYNERGY_RESOURCE_FIXTURE_TOKEN",
+  }
+  try {
+    await EnvironmentSelectCommand.handler({
+      ...args,
+      sessionID: "ses_one",
+      environmentID: "none",
+      expected: "env_old",
+    })
+    expect(received).toEqual([
+      {
+        path: "/session/ses_one/environment",
+        body: { environmentID: null, expectedEnvironmentID: "env_old" },
+        scope: "research",
+      },
+    ])
+    expect(JSON.parse(output.mock.calls.at(-1)![0])).toEqual({ environmentID: null })
+    await EnvironmentReleaseCommand.handler({ ...args, environmentID: "env_one", generation: 4 })
+    expect(received.at(-1)).toMatchObject({ path: "/environment/env_one/release", body: { expectedGeneration: 4 } })
+    expect(process.exitCode).toBe(1)
+    expect(JSON.parse(output.mock.calls.at(-1)![0])).toEqual({
+      error: { name: "EnvironmentStale", data: { message: "Allocation changed" } },
+    })
+    for (const attach of [
+      `${server.url.origin}?secret=invalid`,
+      server.url.href.replace("http://", "http://user:invalid@"),
+      "file:///private",
+    ]) {
+      await expect(
+        EnvironmentReleaseCommand.handler({ ...args, attach, environmentID: "env_one", generation: 4 }),
+      ).rejects.toThrow("HTTP(S)")
+    }
+    expect(received).toHaveLength(2)
+  } finally {
+    output.mockRestore()
+    process.exitCode = exitCode
+  }
+})
 
 test("attached resource commands preserve Scope, preconditions and auth without acquiring the Home writer", async () => {
   const isolation = await createIsolatedTestEnv()

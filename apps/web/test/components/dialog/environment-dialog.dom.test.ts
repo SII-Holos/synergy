@@ -4,6 +4,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
+import { environmentCopy } from "../../../src/components/dialog/environment-dialog-copy"
 
 let server: ViteDevServer
 let browser: Browser
@@ -100,12 +101,12 @@ async function open(draft = false) {
 test("selection is conditional, failure retains the form, and opening allocates no compute", async () => {
   await open()
   expect(await page.evaluate(() => (window as any).fixture.profileRequests)).toEqual([])
-  await page.getByRole("button", { name: "No execution Environment", exact: true }).click()
+  await page.getByRole("button", { name: environmentCopy.none.message, exact: true }).click()
   await page.evaluate(() => {
     ;(window as any).fixture.fail = true
     ;(window as any).fixture.current = "env_remote"
   })
-  await page.getByRole("button", { name: "Use Environment", exact: true }).click()
+  await page.getByRole("button", { name: environmentCopy.choose.message, exact: true }).click()
   await page.getByRole("alert").waitFor()
   expect(await page.evaluate(() => (window as any).fixture.requests.at(-1))).toMatchObject({
     sessionEnvironmentSelection: { environmentID: null, expectedEnvironmentID: "env_native" },
@@ -114,8 +115,8 @@ test("selection is conditional, failure retains the form, and opening allocates 
   await page.evaluate(() => {
     ;(window as any).fixture.fail = false
   })
-  await page.getByRole("button", { name: "Reload", exact: true }).click()
-  await page.getByRole("button", { name: "Use Environment", exact: true }).click()
+  await page.getByRole("button", { name: environmentCopy.reload.message, exact: true }).click()
+  await page.getByRole("button", { name: environmentCopy.choose.message, exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   expect(await page.evaluate(() => (window as any).fixture.requests.at(-1))).toMatchObject({
     sessionEnvironmentSelection: { environmentID: null, expectedEnvironmentID: "env_remote" },
@@ -133,7 +134,7 @@ test("profile retry keeps its request identity and new-session selection is a dr
     ;(window as any).fixture.fail = false
   })
   await page.getByRole("button", { name: "worker", exact: true }).click()
-  await page.getByRole("button", { name: "Use Environment", exact: true }).click()
+  await page.getByRole("button", { name: environmentCopy.choose.message, exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "detached" })
   const requests = await page.evaluate(() => (window as any).fixture.profileRequests)
   expect(requests).toHaveLength(2)
@@ -145,7 +146,7 @@ test("profile retry keeps its request identity and new-session selection is a dr
 test("recovery addresses the existing operation without submitting a command", async () => {
   await open()
   await page.getByRole("button", { name: /docker.*remote/ }).click()
-  await page.getByRole("button", { name: "Recover result", exact: true }).click()
+  await page.getByRole("button", { name: environmentCopy.recover.message, exact: true }).click()
   expect(await page.evaluate(() => (window as any).fixture.requests.at(-1))).toMatchObject({
     kind: "recover",
     environmentID: "env_remote",
