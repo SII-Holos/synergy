@@ -1,13 +1,24 @@
-import { expect, test } from "bun:test"
+import { afterAll, beforeAll, expect, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 import { ProcessGroup } from "@ericsanchezok/synergy-util/process-group"
+import { artifactScenarios, stageArtifactInstallation } from "../support/artifact"
 
 const binary = process.env.SYNERGY_TEST_ARTIFACT_BIN
 const installed = process.env.SYNERGY_TEST_ARTIFACT_INSTALL
+const scenarios = artifactScenarios(process.env.SYNERGY_TEST_ARTIFACT_SCENARIOS)
+let installation: Awaited<ReturnType<typeof stageArtifactInstallation>> | undefined
 
-for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission"] as const)
+beforeAll(async () => {
+  if (binary && !installed) installation = await stageArtifactInstallation(binary)
+}, 120_000)
+
+afterAll(async () => {
+  await installation?.dispose()
+}, 120_000)
+
+for (const mode of scenarios)
   test.skipIf(!binary && !installed)(
     `installed runtime artifact preserves ${mode} outcome outside the repository`,
     async () => {
@@ -131,11 +142,7 @@ for (const mode of ["complete", "tool", "read", "budget", "timeout", "permission
       try {
         const command = installed
           ? [process.execPath, path.join(installed, "node_modules/.bin/synergy")]
-          : await (async () => {
-              const installation = path.join(isolation.env.SYNERGY_TEST_ROOT!, "installation")
-              await fs.cp(path.dirname(path.dirname(binary!)), installation, { recursive: true })
-              return [path.join(installation, "bin", path.basename(binary!))]
-            })()
+          : [installation!.binary]
         const workspace = path.join(isolation.env.SYNERGY_TEST_ROOT!, "research")
         await fs.mkdir(workspace, { recursive: true })
         await Bun.write(inputFile, fileContent)

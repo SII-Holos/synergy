@@ -33,6 +33,8 @@ jobs:
       build: ${{ steps.plan.outputs.build }}
       sandbox: ${{ steps.plan.outputs.sandbox }}
       benchmark: ${{ steps.plan.outputs.benchmark }}
+      core: ${{ steps.plan.outputs.core }}
+      full: ${{ steps.plan.outputs.full }}
       linux: ${{ steps.plan.outputs.linux }}
       linux_count: ${{ steps.plan.outputs.linux_count }}
       docker: ${{ steps.plan.outputs.docker }}
@@ -76,7 +78,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
@@ -84,6 +86,10 @@ jobs:
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ github.run_attempt }}
+          path: .artifacts/ci
       - uses: ./.github/actions/ci-setup
       - name: Resolve build toolchain identity
         id: build-key
@@ -108,6 +114,27 @@ jobs:
         with:
           name: ci-build-${{ github.run_attempt }}
           path: .artifacts/ci/build.tar
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - name: Prepare selected distributions
+        if: needs.plan.outputs.core == 'true' || needs.plan.outputs.full == 'true'
+        run: bun script/ci.ts prepare-distributions
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: needs.plan.outputs.core == 'true'
+        with:
+          name: ci-distribution-core-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions/core.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: needs.plan.outputs.full == 'true'
+        with:
+          name: ci-distribution-full-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions/full.tar.zst
+          compression-level: 0
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 3
@@ -195,14 +222,30 @@ jobs:
           tar -xf .artifacts/ci/build.tar -C .artifacts/ci
           bun script/ci.ts restore
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: matrix.pool == 'docker' && needs.plan.outputs.benchmark == 'true'
+        if: matrix.benchmark
         with:
           name: ci-benchmark-prepared-${{ github.run_attempt }}
           path: .artifacts/ci
       - name: Unpack read-only benchmark input
-        if: matrix.pool == 'docker' && needs.plan.outputs.benchmark == 'true'
+        if: matrix.benchmark
         shell: bash
         run: tar --zstd -xf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.core
+        with:
+          name: ci-distribution-core-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions
+      - name: Unpack core distribution
+        if: matrix.core
+        run: tar --zstd -xpf .artifacts/ci/distributions/core.tar.zst -C .artifacts/ci/distributions
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.full
+        with:
+          name: ci-distribution-full-${{ github.run_attempt }}
+          path: .artifacts/ci/distributions
+      - name: Unpack full distribution
+        if: matrix.full
+        run: tar --zstd -xpf .artifacts/ci/distributions/full.tar.zst -C .artifacts/ci/distributions
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: ${{ matrix.pool != 'docker' }}

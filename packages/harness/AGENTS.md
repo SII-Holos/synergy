@@ -1,6 +1,6 @@
 # harness Package
 
-Own the harness implementation, Runtime component/lifecycle contracts and public exports. Follow root rules and the owning architecture document.
+Own harness implementation, Runtime component/lifecycle contracts and public exports.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.
@@ -20,6 +20,8 @@ Run bun run typecheck and the affected tests, then the root package and dependen
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 
 Agent authority is owned by `Storage.Handle`: read [Agent storage](../../docs/architecture/agent-storage.md) before persistence changes. Use SQL business transactions for records, indexes and outbox entries; keep files and external effects outside retryable callbacks. The central bootstrap owns historical JSON import and activation. Runtime and maintenance entry points run registered owner recovery before admission. Storage engine changes run `bun test test/storage`; macOS packaging changes also run `bun test --config /dev/null test/script/release/workspace-sqlite.test.ts` from the repository root; the PostgreSQL CI matrix requires a real database via `SYNERGY_TEST_POSTGRES_URL`.
+
+Register PG contracts in `test/support/storage-backends.ts`; follow [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 
 Secret capture keeps Vault and execution-time resolution here; detector contracts and regex evaluation belong to `packages/secret-detection`. Register replacement detectors through `secrets/detector-source` before runtime startup. Run `bun test test/secrets/` and `bun run benchmark:secrets` for capture changes; the benchmark owns a disposable home.
 

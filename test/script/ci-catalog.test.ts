@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { catalog, changedFiles, workspaceInputs } from "../../script/ci/catalog"
+import { distributionCommands } from "../../script/ci/distributions"
 import { buildUnits, createPlan, LIMITS, selectAffected, type Task } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 
@@ -45,10 +46,11 @@ test("independent browser suite selection retains its executable prerequisites",
   }
 })
 
-test("required plans and installation-only diagnostics separate core and full controls", async () => {
+test("required plans and installation diagnostics retain every control within the Linux worker budget", async () => {
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "artifacts")
-  expect(controls.map((entry) => entry.variant).sort()).toEqual(["core", "full"])
+  expect(controls).toHaveLength(5)
+  expect(LIMITS.linux).toBe(6)
   const workspaces = [
     { name: "local-runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
   ]
@@ -65,24 +67,42 @@ test("required plans and installation-only diagnostics separate core and full co
       tasks: entries,
       only: controls.map((entry) => entry.id),
     })
-    const units = controls.map((control) => {
+    for (const control of controls) {
       const assigned = selected.units.filter((unit) => unit.tasks.includes(control.id))
       expect(assigned).toHaveLength(1)
       expect(assigned[0]!.pool).toBe("linux")
       expect(assigned[0]!.build).toBe(true)
       expect(assigned[0]!.sandbox).toBe(true)
-      if (control.variant === "full") expect(assigned[0]!.tasks).toEqual([control.id])
-      return assigned[0]!.id
+      expect(assigned[0]![control.profile!]).toBe(true)
+    }
+    const linux = selected.units.filter((unit) => unit.pool === "linux")
+    expect(linux.length).toBeLessThanOrEqual(6)
+    expect(linux.filter((unit) => unit.build).length).toBeLessThanOrEqual(5)
+  }
+  for (const control of controls) {
+    const selected = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "diagnostic",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks: entries,
+      only: [control.id],
     })
-    expect(new Set(units).size).toBe(2)
-    expect(selected.units.filter((unit) => unit.pool === "linux").length).toBeLessThanOrEqual(LIMITS.linux)
+    expect(selected.selected).toEqual([control.id])
+    expect(selected.units.flatMap((unit) => unit.tasks)).toEqual([control.id])
+    const unit = selected.units.find((unit) => unit.tasks.includes(control.id))!
+    expect(unit.core).toBe(control.profile === "core")
+    expect(unit.full).toBe(control.profile === "full")
   }
 })
 
-test("installed controls build their own inputs and execute every distribution check once", async () => {
+test("installed controls share two profile builds while preserving every distribution behavior exactly once", async () => {
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "artifacts")
-  expect(controls).toHaveLength(2)
   const root = path.resolve(import.meta.dir, "../..")
   const selected = createPlan({
     base: "base",
@@ -96,50 +116,56 @@ test("installed controls build their own inputs and execute every distribution c
     tasks: entries,
     only: controls.map((entry) => entry.id),
   })
-  const core = await commands(controls.find((entry) => entry.variant === "core")!, selected)
-  const full = await commands(controls.find((entry) => entry.variant === "full")!, selected)
-  expect(core.map((command) => command.name)).toEqual([
-    "watcher-native",
-    "core-build",
-    "core-installed",
-    "core-pack",
-    "core-install",
-  ])
-  expect(full.map((command) => command.name)).toEqual([
-    "product-build",
-    "product-installed",
-    "product-composition",
-    "installation-composition",
-  ])
-  for (const [recipe, profile, owner] of [
-    [core, "core", "cli"],
-    [full, "full", "presets"],
+  const scenarioName = (id: string) => `installed runtime artifact preserves ${id} outcome outside the repository`
+  const expected = ["complete", "tool", "read", "budget", "timeout", "permission"].map(scenarioName).sort()
+  const recipes = await Promise.all(controls.map(async (task) => ({ task, commands: await commands(task, selected) })))
+  const producerScripts: string[] = []
+  for (const [profile, owner] of [
+    ["core", "cli"],
+    ["full", "presets"],
   ] as const) {
-    const build = recipe.find((command) => command.name.endsWith("-build"))!
-    expect(build.args.slice(1)).toEqual([`packages/${owner}/script/build.ts`, "--single", "--skip-install"])
-    expect(build.env).toEqual({ SYNERGY_BUILD_TARGETS: "linux-x64", SYNERGY_REQUIRE_SANDBOX_ASSETS: "1" })
-    const verify = recipe.find((command) => command.name.endsWith("-installed"))!
-    expect(verify.cwd).toBe("packages/cli")
-    expect(verify.args.slice(1)).toEqual(["test", "--timeout", "30000", "test/cli/artifact.test.ts"])
-    expect(verify.env).toEqual({
-      SYNERGY_TEST_ARTIFACT_PROFILE: profile,
-      SYNERGY_TEST_ARTIFACT_BIN: path.join(root, `packages/${owner}/dist/synergy-linux-x64/bin/synergy`),
-    })
+    const producer = distributionCommands(profile, root)
+    const builds = producer.filter((command) => command.args.includes(`packages/${owner}/script/build.ts`))
+    expect(builds).toHaveLength(1)
+    expect(builds[0]!.args).toContain("--single")
+    expect(builds[0]!.args).toContain("--skip-install")
+    producerScripts.push(...producer.map((command) => command.args[1]!))
+    const binaries = controls.filter((entry) => entry.variant === "binary" && entry.profile === profile)
+    expect(binaries.flatMap((entry) => entry.scenarios ?? []).sort()).toEqual(expected)
   }
-  expect(core[3]!.args.slice(1)).toEqual([
-    "script/pack-workspace.ts",
-    "packages/cli",
-    path.join(root, ".artifacts/ci/core-packages"),
-  ])
-  expect(core[4]!.args.slice(1)).toEqual([
-    "script/package-install-check.ts",
-    path.join(root, ".artifacts/ci/core-packages"),
-  ])
-  for (const [index, file] of ["runtime-composition-check.ts", "installation-composition-check.ts"].entries()) {
-    expect(full[index + 2]!.args.slice(1)).toEqual([
-      `script/${file}`,
-      path.join(root, "packages/presets/dist/modules-packages"),
-    ])
+  for (const { task, commands: recipe } of recipes) {
+    expect(recipe.some((command) => command.args.some((arg) => producerScripts.includes(arg)))).toBe(false)
+    if (task.variant !== "binary" && task.variant !== "package") continue
+    const verification = recipe.filter((command) => command.env?.SYNERGY_TEST_ARTIFACT_SCENARIOS !== undefined)
+    expect(verification).toHaveLength(1)
+    const verify = verification[0]!
+    expect(verify.env?.SYNERGY_TEST_ARTIFACT_PROFILE).toBe(task.profile)
+    const scenarios: string[] = JSON.parse(verify.env!.SYNERGY_TEST_ARTIFACT_SCENARIOS!)
+    expect(scenarios.map(scenarioName).sort()).toEqual(task.scenarios!.toSorted())
+    if (task.variant === "package") continue
+    expect(verify.cwd).toBe("packages/cli")
+    expect(verify.args).toContain("test/cli/artifact.test.ts")
+    const owner = task.profile === "core" ? "cli" : "presets"
+    expect(verify.env?.SYNERGY_TEST_ARTIFACT_BIN).toBe(
+      path.join(root, `packages/${owner}/dist/synergy-linux-x64/bin/synergy`),
+    )
+  }
+  const packages = controls.filter((entry) => entry.variant === "package")
+  expect(packages).toHaveLength(1)
+  expect(packages[0]!.profile).toBe("core")
+  expect(packages[0]!.scenarios!.toSorted()).toEqual(expected)
+  const consumers = recipes.flatMap((recipe) => recipe.commands)
+  expect(consumers.filter((command) => command.args.includes("test/script/watcher-native.test.ts"))).toHaveLength(1)
+  const pack = distributionCommands("core", root).filter((command) => command.args.includes("script/pack-workspace.ts"))
+  expect(pack).toHaveLength(1)
+  const install = consumers.filter((command) => command.args.includes("script/package-install-check.ts"))
+  expect(install).toHaveLength(1)
+  expect(install[0]!.args.at(-1)).toBe(pack[0]!.args.at(-1))
+  expect(install[0]!.env?.SYNERGY_TEST_ARTIFACT_JUNIT).toEndWith(".xml")
+  for (const file of ["runtime-composition-check.ts", "installation-composition-check.ts"]) {
+    const checks = consumers.filter((command) => command.args.includes(`script/${file}`))
+    expect(checks).toHaveLength(1)
+    expect(checks[0]!.args.at(-1)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
   }
 })
 

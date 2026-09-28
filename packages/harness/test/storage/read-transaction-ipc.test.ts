@@ -33,13 +33,13 @@ afterAll(() =>
   }),
 )
 
-async function open(backend: "sqlite" | "postgres" = "sqlite") {
+async function open() {
   const namespace = crypto.randomUUID()
-  const store = await TransactionalStore.open(
-    backend === "sqlite"
-      ? { backend, namespace, filename: path.join(root, `${namespace}.sqlite`) }
-      : { backend, namespace, url: process.env.SYNERGY_TEST_POSTGRES_URL! },
-  )
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace,
+    filename: path.join(root, `${namespace}.sqlite`),
+  })
   stores.push(store)
   return store
 }
@@ -291,13 +291,6 @@ describe("retired scope index", () => {
       // A second run finds nothing to drop and must not fail.
       await Storage.provide({ store, artifactDirectory: root }, () => StorageDropScopeIndex.run())
       expect(present()).toBe(0)
-    }))
-
-  test("postgres accepts the same idempotent drop", () =>
-    runtime.run(async () => {
-      if (!process.env.SYNERGY_TEST_POSTGRES_URL) return
-      const store = await open("postgres")
-      await expect(store.dropIndexIfExists("storage_records_scope")).resolves.toBeUndefined()
     }))
 })
 

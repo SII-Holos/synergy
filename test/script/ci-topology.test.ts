@@ -34,9 +34,7 @@ describe("required CI topology", () => {
     for (const [pool, limit] of Object.entries({
       linux: LIMITS.linux - 1,
       contracts: 1,
-      docker: LIMITS.docker - 1,
-      "docker-external": 2,
-      "docker-ready": 1,
+      docker: LIMITS.docker,
       postgres: LIMITS.postgres,
       windows: LIMITS.windows,
       macos: LIMITS.macos,
@@ -47,16 +45,15 @@ describe("required CI topology", () => {
       expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
     }
     expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
-    expect(workflow.jobs["docker-external"]!.needs).toEqual(["plan"])
-    expect(workflow.jobs.docker!.needs).toContain("docker-external")
-    expect(workflow.jobs["docker-ready"]!.needs).toEqual(["plan", "benchmark-prepare"])
+    expect(workflow.jobs.docker!.needs).toEqual(["plan", "benchmark-prepare"])
+    expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker"])
   })
   test("every dev/main push and the daily cold run remain enabled", () => {
     expect(workflow.on.push.branches).toEqual(["dev", "main"])
     expect(workflow.on.schedule.length).toBe(1)
     expect(workflow.concurrency["cancel-in-progress"]).toContain("pull_request")
   })
-  test("each long-session model has an independent Docker execution unit", async () => {
+  test("each long-session protocol and JIT condition has an independent Docker execution unit", async () => {
     const tasks = await catalog()
     const plan = createPlan({
       base: "base",
@@ -69,8 +66,16 @@ describe("required CI topology", () => {
       headWorkspaces: [],
       tasks,
     })
-    const controls = tasks.filter((task) => task.id.startsWith("native-synergy-"))
-    expect(controls).toHaveLength(8)
+    const controls = tasks.filter((task) => task.selection?.startsWith("test_synergy_long_sessions"))
+    expect(controls.map((task) => task.scenarios![0]).sort()).toEqual(
+      ["jit", "jitless"]
+        .flatMap((jit) =>
+          ["chat-completions", "responses"].map(
+            (protocol) => `test_synergy_long_sessions_preserve_native_tools_and_usage[${jit}-${protocol}]`,
+          ),
+        )
+        .sort(),
+    )
     const units = controls.map((task) => {
       const assigned = plan.units.filter((unit) => unit.tasks.includes(task.id))
       expect(assigned).toHaveLength(1)
@@ -78,7 +83,7 @@ describe("required CI topology", () => {
       expect(executionQueue(assigned[0]!, tasks)).toBe("docker")
       return assigned[0]!.id
     })
-    expect(new Set(units).size).toBe(8)
+    expect(new Set(units).size).toBe(controls.length)
   })
   test("every prepared benchmark consumer restores its artifact before executing", async () => {
     const tasks = await catalog()
@@ -123,8 +128,9 @@ describe("required CI topology", () => {
         "-C",
         path.posix.dirname(archive),
       ])
-      expect(steps[download]!.if, task.id).toBeUndefined()
-      expect(steps[unpack]!.if, task.id).toBeUndefined()
+      expect(units[0]!.benchmark, task.id).toBe(true)
+      expect(steps[download]!.if, task.id).toBe("matrix.benchmark")
+      expect(steps[unpack]!.if, task.id).toBe("matrix.benchmark")
     }
   })
   test("diagnostics has one execution matrix capped at two and no required check", async () => {
