@@ -8,7 +8,7 @@ describe("MigrationRegistry", () => {
   test("registers all domains", () =>
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
-      expect(domainCount).toBe(16)
+      expect(domainCount).toBe(17)
     }))
 
   test("has expected domain names", () =>
@@ -30,6 +30,7 @@ describe("MigrationRegistry", () => {
         "scope",
         "session",
         "storage",
+        "usage",
         "workflows-session",
       ])
     }))
