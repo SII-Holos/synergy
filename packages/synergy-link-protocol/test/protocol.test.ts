@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test"
-import { SynergyLinkHost, SynergyLinkSession } from "../src"
+import { SynergyLinkBash, SynergyLinkHost, SynergyLinkSession } from "../src"
 
 describe("synergy-link protocol", () => {
+  test("bash completion signal is optional for older hosts", () => {
+    const result = { title: "command", metadata: { exit: null }, output: "stopped" }
+    expect(SynergyLinkBash.Result.parse(result)).toEqual(result)
+    expect(
+      SynergyLinkBash.Result.parse({ ...result, metadata: { exit: null, signal: "SIGTERM" } }).metadata.signal,
+    ).toBe("SIGTERM")
+  })
+
   test("session requests enforce the current version and strict envelope", () => {
     const request = {
       version: 2,

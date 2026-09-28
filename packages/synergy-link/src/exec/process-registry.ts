@@ -156,6 +156,7 @@ export class ProcessRegistry {
     const runtimeMs = this.#runtimeMs(current ?? launched.record)
     const output = current?.output ?? launched.record.output
     const exitCode = current?.exitCode ?? launched.record.exitCode ?? null
+    const exitSignal = current?.exitSignal ?? launched.record.exitSignal
 
     return {
       title: request.description,
@@ -163,6 +164,7 @@ export class ProcessRegistry {
         output,
         description: request.description,
         exit: typeof exitCode === "number" ? exitCode : null,
+        signal: exitSignal == null ? null : String(exitSignal),
         durationMs: runtimeMs,
         hostSessionID: this.#host.hostSessionID,
         linkID,
