@@ -11,6 +11,8 @@ Do not run `quality:quick` alongside browser suites or development builds in the
 
 ## Define the Invariant First
 
+When a dedicated CI task activates opt-in tests, declare its mandatory scenario names in the verification catalog. Verify the actual JUnit report rejects skipped or missing scenarios; process exit status cannot prove that an external capability was exercised. Cover both source and test-only changes in affected planning.
+
 1. State the observable contract and the failure that would violate it.
 2. For a bug or new behavior, write the smallest failing test before the implementation. Skip a new test only for a pure refactor whose existing tests already cover unchanged behavior.
 3. Assert public results, state transitions, emitted contracts, permissions, or recovery behavior. Avoid source-text assertions, private call counts, and snapshots of irrelevant structure.

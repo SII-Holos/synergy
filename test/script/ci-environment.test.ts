@@ -19,7 +19,7 @@ test("real Environment lifecycle verification builds its image and cannot silent
     tasks,
   })
   const unit = plan.units.find((entry) => entry.tasks.includes(task!.id))!
-  expect(executionQueue(unit, tasks)).toBe("docker-external")
+  expect(executionQueue(unit, tasks)).toBe("docker")
   const recipe = await commands(task!, plan)
   expect(recipe[0]!.args).toContain("install")
   expect(recipe.some((entry) => entry.args.includes("apparmor_parser"))).toBe(true)

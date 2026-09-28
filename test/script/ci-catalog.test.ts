@@ -17,6 +17,43 @@ const tasks: Task[] = ["synergy", "codex", "opencode", "pi", "deepseek"].map((va
   owners: [],
   needs: [],
 }))
+
+test("Environment acceptance retains executable coverage and required Docker evidence", async () => {
+  const entries = await catalog()
+  const environment = entries.find((entry) => entry.kind === "environment")!
+  const workspaces = ["harness", "local-runtime", "media", "presets"].map((name) => ({
+    name,
+    directory: `packages/${name}`,
+    dependencies: name === "harness" ? [] : ["harness"],
+    testDependencies: [],
+  }))
+  for (const file of [
+    "packages/harness/src/environment/execution.ts",
+    "packages/local-runtime/test/environment/docker.test.ts",
+    "packages/harness/src/session/input-attachment.ts",
+  ]) {
+    const selected = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "affected",
+      changed: [file],
+      baseWorkspaces: workspaces,
+      headWorkspaces: workspaces,
+      tasks: entries,
+    })
+    expect(selected.selected).toContain(environment.id)
+    expect(selected.units.flatMap((unit) => unit.tasks).filter((id) => id === environment.id)).toHaveLength(1)
+    expect(selected.selected).toContain("installed-full-composition")
+  }
+  expect(environment.scenarios).toContain(
+    "remote Docker Engine and execution endpoints share the lifecycle over authenticated TLS",
+  )
+  expect(environment.scenarios).toContain(
+    "Docker Workspace checkpoints survive upload failure and replacement of the entire allocation",
+  )
+})
 function plan(changed: string[]) {
   return createPlan({
     base: "a",

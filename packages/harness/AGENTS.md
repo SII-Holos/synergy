@@ -1,6 +1,6 @@
 # harness Package
 
-Own Harness, Runtime composition/lifecycle and public exports. Follow root rules and the owning architecture document.
+Own Harness, Runtime composition/lifecycle and public exports.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Keep optional product schemas out of the harness. `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; workflow state and execution/recovery policy belong to their domain packages. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk and stay out of client output. Full product composition explicitly completes schema registration.
