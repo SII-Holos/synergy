@@ -6,6 +6,10 @@ import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
 import { recordedProvider } from "./provider"
 import { atomicJSON } from "./evidence"
 import { RemoteLab } from "./remote-protocol"
+import {
+  ModelsDevCatalog,
+  missingRequiredModelsDevProviders,
+} from "@ericsanchezok/synergy-harness/provider/models-schemas"
 
 export const Settings = z
   .object({
@@ -22,7 +26,14 @@ export const Settings = z
   .strict()
 export type Settings = z.infer<typeof Settings>
 
+export async function validateCatalog(settings: Settings) {
+  const parsed = ModelsDevCatalog.safeParse(await Bun.file(settings.modelCatalog).json())
+  if (!parsed.success || missingRequiredModelsDevProviders(parsed.data).length)
+    throw new Error("Frozen model catalog is invalid or incomplete; bundled fallback is not acceptance evidence")
+}
+
 export async function prepareRuntime(directory: string, settings: Settings, gateway: { url: string; token: string }) {
+  await validateCatalog(settings)
   const home = path.join(directory, "home")
   const root = path.join(home, ".synergy")
   await fs.mkdir(path.join(root, "cache"), { recursive: true, mode: 0o700 })

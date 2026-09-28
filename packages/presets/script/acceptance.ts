@@ -48,9 +48,10 @@ export async function main(args: string[]) {
     throw new Error("Acceptance data must stay outside the source checkout")
   if (command === "plan") {
     if (!values.case || !values.settings) throw new Error("Planning requires explicit cases and frozen settings")
-    const { Settings } = await import("./acceptance/runtime")
+    const { Settings, validateCatalog } = await import("./acceptance/runtime")
     const settingsFile = path.resolve(values.settings)
     const settings = Settings.parse(await Bun.file(settingsFile).json())
+    await validateCatalog(settings)
     const inputs = [
       { name: "settings", path: settingsFile },
       { name: "models", path: settings.modelCatalog },

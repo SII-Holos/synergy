@@ -18,6 +18,8 @@ Remote recovery acceptance runs the complete product in a separate controller pr
 
 Mixed-media fixtures render random identifiers into PNG, JPEG and PDF through the frozen Chromium executable and construct Office documents containing separate identifiers. Prompts never contain those identifiers. The text-only parent profile keeps the same underlying provider/model but removes direct visual input, making `look_at` delegation observable without introducing another supplier. Audio/video checks establish byte retention and policy only, not decoding capability. Request and response bytes are included in evidence hashes, so changing a captured response invalidates acceptance.
 
+Attachment recognition exposes only the declared input channel: direct recognition has no tools, while visual delegation exposes `look_at`. Expected identifiers stay in observer memory; external evidence stores their hashes. A model reading an experiment answer file cannot establish attachment recognition. Frozen catalogs must pass the same required-provider completeness rule as Runtime before planning, and child processes receive the frozen catalog path explicitly. An invalid catalog must fail acceptance instead of silently selecting the process's bundled catalog.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.

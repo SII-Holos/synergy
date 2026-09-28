@@ -38,7 +38,13 @@ export async function controller(directory: string, deadlineMs: number) {
   const ready = Promise.withResolvers<Snapshot | undefined>()
   pending.set("ready", ready)
   const child = Bun.spawn([process.execPath, path.join(import.meta.dir, "remote-worker.ts"), directory], {
-    env: { PATH: process.env.PATH, SYNERGY_TEST_HOME: path.join(directory, "home"), SYNERGY_DISABLE_MODELS_FETCH: "1" },
+    env: {
+      PATH: process.env.PATH,
+      SYNERGY_HOME: path.join(directory, "home"),
+      SYNERGY_TEST_HOME: path.join(directory, "home"),
+      MODELS_DEV_API_JSON: path.join(directory, "home/.synergy/cache/models.json"),
+      SYNERGY_DISABLE_MODELS_FETCH: "1",
+    },
     stdout: Bun.file(path.join(directory, `controller-${Date.now()}.stdout`)),
     stderr: Bun.file(path.join(directory, `controller-${Date.now()}.stderr`)),
     ipc(message: unknown) {

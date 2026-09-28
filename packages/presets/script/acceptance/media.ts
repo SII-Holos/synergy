@@ -8,6 +8,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { createUserMessage } from "@ericsanchezok/synergy-harness/session/input"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { acceptanceRuntime, type Settings } from "./runtime"
 import { atomicJSON, digest, sealEvidence } from "./evidence"
 import { readRequests } from "./provider"
@@ -21,10 +22,6 @@ export function media(settings: Settings): Driver {
     const fixtures = await mediaFixtures(settings.chromium)
     const selected = visualChild ? fixtures.slice(0, 1) : fixtures
     for (const file of selected) await Bun.write(path.join(context.directory, file.filename), file.bytes)
-    await atomicJSON(
-      path.join(context.directory, "fixtures.json"),
-      selected.map(({ bytes, ...file }) => ({ ...file, sha256: digest(bytes) })),
-    )
     const provider = z.record(z.string(), z.record(z.string(), z.json())).parse(settings.config.provider ?? {})
     const current = provider[settings.providerID] ?? {}
     const models = z.record(z.string(), z.record(z.string(), z.json())).parse(current.models ?? {})
@@ -71,6 +68,7 @@ export function media(settings: Settings): Driver {
             sessionID: session.id,
             model: { providerID: settings.providerID, modelID: parentID },
             agent: context.scenario.agent,
+            tools: Object.fromEntries((await ToolRegistry.ids()).map((id) => [id, visualChild && id === "look_at"])),
             parts: [
               {
                 type: "text",
@@ -111,7 +109,6 @@ export function media(settings: Settings): Driver {
                   filename,
                   mime: mime!,
                   url: `data:${mime};base64,${bytes.toString("base64")}`,
-                  model: { mode: "none" },
                 },
               ],
             })
@@ -170,6 +167,7 @@ export function media(settings: Settings): Driver {
             files.map(async (file) => ({
               filename: file.filename,
               original: digest(file.bytes),
+              expectedIdentifier: digest(file.marker),
               stored: digest(await Bun.file(Asset.resolvePath(file.asset)!).bytes()),
             })),
           )
