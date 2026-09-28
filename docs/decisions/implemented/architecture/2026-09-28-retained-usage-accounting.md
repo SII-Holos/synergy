@@ -22,9 +22,13 @@ The executable contract lives in [Usage accounting](../../../architecture/usage-
 
 **Create a separate statistics database.** It isolates analytical queries but introduces cross-database commit and lifecycle recovery problems. The existing Agent transaction and outbox preserve one commit boundary.
 
+**Treat an owner match as proof of ancestry for one run.** A Session can own several runs. Following an owner-only edge from any selected run can include unrelated work and cause a run-scoped clear to erase its records. Run selection requires the recorded parent run at each edge; broader Session selection retains owner-only relationships.
+
 **Copy an upstream turn counter or its rate formula directly.** The [DeepSeek Harness turn meter](https://github.com/deepseek-ai/deepseek-harness/blob/21638c56315ae6a2b552d6091945d3144c9af32e/packages/llm/token-meter/src/turn-usage.ts) usefully separates attempts, cumulative snapshots, and completeness. Synergy needs independent operation owners, retained history, explicit billing modes, and transport timing that excludes retry/archival delays. No upstream code is copied.
 
 ## Consequences
+
+Run-scoped reporting and clearing share the same strict lineage selection. Missing parent run attribution stays outside that narrow selection, while selected owners' journal gaps continue to express uncertainty and survive a run-scoped clear. Gaps do not increase legacy evidence coverage. Real-storage regressions cover sibling runs under one owner, owner-only and null-run parents, transitive descendants, preserved unrelated records and unchanged Session-wide selection. The persisted record and index shapes do not change.
 
 Deletion of a conversation and clearing usage are distinct operations. Old archives may lack timing, billing classification, or complete token evidence; migrations retain those limitations instead of applying current prices or filling unknowns with zero. Mixed/custom providers require explicit billing metadata for API-spend classification. Compatibility displays retain their existing numeric shape, while future clients can consume quality and coverage from the new API.
 

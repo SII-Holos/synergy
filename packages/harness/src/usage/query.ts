@@ -167,9 +167,7 @@ export namespace UsageQuery {
           (!filter.runID || parent?.runID === filter.runID)
         const linked =
           directParent ||
-          (parent?.runID
-            ? selected.has(runKey(owner, parent.runID))
-            : [...selected].some((key) => key.startsWith(`${scopeKey(owner)}:`)))
+          (parent?.runID ? selected.has(runKey(owner, parent.runID)) : !filter.runID && owners.has(scopeKey(owner)))
         if (!linked) continue
         selected.add(runKey(record.owner, record.runID))
         owners.add(scopeKey(record.owner))
@@ -586,7 +584,7 @@ export namespace UsageQuery {
       coverage: {
         records: records.length,
         imported: records.filter((r) => r.source === "imported").length,
-        legacy: records.filter((r) => r.source === "legacy").length,
+        legacy: records.filter((r) => r.source === "legacy" && r.kind !== "gap").length,
         active: records.filter((r) => r.status === "running").length,
         unclassified: records.filter((r) => r.kind === "call" && (r.model.billingMode ?? "unknown") === "unknown")
           .length,

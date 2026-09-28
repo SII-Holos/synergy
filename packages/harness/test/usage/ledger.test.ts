@@ -13,7 +13,7 @@ const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
 async function invocation(
-  input: Partial<Pick<Parameters<typeof RolloutLedger.beginCall>[0], "owner" | "purpose" | "usageRole">> = {},
+  input: Partial<Pick<Parameters<typeof RolloutLedger.beginCall>[0], "owner" | "purpose" | "usageRole" | "runID">> = {},
 ) {
   const owner = input.owner ?? {
     kind: "operation" as const,
@@ -22,7 +22,7 @@ async function invocation(
   }
   const call = await RolloutLedger.beginCall({
     owner,
-    runID: "run",
+    runID: input.runID ?? "run",
     purpose: input.purpose ?? "summary",
     usageRole: input.usageRole,
     request: { private: "secret prompt" },
@@ -46,11 +46,11 @@ async function invocation(
     ).text()
   })
   await recorder.finish()
-  await RolloutLedger.finishCall(owner, "run", call.id, {
+  await RolloutLedger.finishCall(owner, input.runID ?? "run", call.id, {
     status: "completed",
     sdkUsage: { inputTokens: 1000, outputTokens: 500 },
   })
-  await RolloutLedger.finishRun(owner, "run", "completed")
+  await RolloutLedger.finishRun(owner, input.runID ?? "run", "completed")
   return { owner, call }
 }
 
@@ -140,6 +140,63 @@ test("journal gaps are retained and prohibit claiming complete usage", () =>
     const result = await UsageQuery.summary({ scopeID: owner.scopeID })
     expect(result.accounting.journalGaps).toBe(1)
     expect(result.accounting.tokens.total.total).toBeNull()
+  }))
+
+async function ambiguousLineage() {
+  const scopeID = crypto.randomUUID()
+  const owner = { kind: "session" as const, scopeID, sessionID: crypto.randomUUID() }
+  const child = { ...owner, sessionID: crypto.randomUUID() }
+  const ownerOnly = { ...owner, sessionID: crypto.randomUUID() }
+  const unknownRun = { ...owner, sessionID: crypto.randomUUID() }
+  const grandchild = { ...owner, sessionID: crypto.randomUUID() }
+  const unknownGrandchild = { ...owner, sessionID: crypto.randomUUID() }
+  const runs = [owner, owner, child, child, ownerOnly, unknownRun, grandchild, unknownGrandchild].map((owner) => ({
+    owner,
+    runID: crypto.randomUUID(),
+  }))
+  await Storage.write(["sessions", scopeID, ownerOnly.sessionID, "info"], { parentID: owner.sessionID })
+  await Storage.write(["sessions", scopeID, unknownGrandchild.sessionID, "info"], { parentID: child.sessionID })
+  for (const run of runs) await invocation(run)
+  await Storage.transaction(async () => {
+    await UsageLedger.link(child, runs[2]!.runID, { owner, runID: runs[0]!.runID, messageID: "selected" })
+    await UsageLedger.link(child, runs[3]!.runID, { owner, runID: runs[1]!.runID, messageID: "sibling" })
+    await UsageLedger.link(unknownRun, runs[5]!.runID, { owner, runID: null, messageID: "unknown" })
+    await UsageLedger.link(grandchild, runs[6]!.runID, { owner: child, runID: runs[2]!.runID, messageID: "child" })
+  })
+  const selected: string[] = [runs[0]!.runID, runs[2]!.runID, runs[6]!.runID]
+  return { scopeID, owner, runs, selected }
+}
+
+test("run selection requires exact ancestry while session selection retains owner-only descendants", () =>
+  runtime.run(async () => {
+    const { scopeID, owner, runs, selected } = await ambiguousLineage()
+    for (const filter of [
+      { runID: selected[0] },
+      { scopeID, runID: selected[0] },
+      { scopeID, sessionID: owner.sessionID, runID: selected[0] },
+    ]) {
+      const result = await UsageQuery.records(filter)
+      expect(new Set(result.items.map((record) => record.runID))).toEqual(new Set(selected))
+      expect((await UsageQuery.summary(filter)).accounting.tokens.total.total).toBe(4500)
+    }
+    const own = await UsageQuery.records({ scopeID, runID: selected[0], includeDescendants: false })
+    expect(new Set(own.items.map((record) => record.runID))).toEqual(new Set([selected[0]]))
+    const session = await UsageQuery.records({ scopeID, sessionID: owner.sessionID })
+    expect(new Set(session.items.map((record) => record.runID))).toEqual(new Set(runs.map((run) => run.runID)))
+  }))
+
+test("run-scoped clearing preserves sibling runs and descendants without exact ancestry", () =>
+  runtime.run(async () => {
+    const { scopeID, runs, selected } = await ambiguousLineage()
+    const before = await UsageQuery.records({ scopeID })
+    const retained = before.items.filter((record) => !selected.includes(record.runID))
+    const result = await UsageLedger.clear({ scopeID, runID: selected[0] }, before.revision)
+    expect(result.removed).toBe(before.items.length - retained.length)
+    const after = await UsageQuery.records({ scopeID })
+    expect(new Set(after.items.map((record) => record.id))).toEqual(new Set(retained.map((record) => record.id)))
+    expect((await UsageQuery.summary({ scopeID })).accounting.tokens.total.total).toBe(
+      (runs.length - selected.length) * 1500,
+    )
   }))
 
 async function gapOwners() {
