@@ -22,6 +22,8 @@ Closing a worker output socket also ends its destination stream, including Windo
 
 The generated SDK observes rejection of `reader.cancel()` during SSE abort. The pinned OpenAPI generator carries the patch so regeneration retains this behavior; a real HTTP stream and the CLI cancellation suite verify clean process exit. The patch is removable when the upstream generator observes that promise itself. Empty explicit Bun configuration still discovers the working-directory test preload, so guard subprocesses start in their independent fixture directory to exercise the requested environment unchanged.
 
+Linux process preparation observes the supervisor's physical exit while awaiting its four transport greetings. An early exit retains the exit code or signal and at most 4096 bytes of stderr, releases the unactivated claim, and never activates the requested command. Waiting only for the handshake deadline hides the originating failure and unnecessarily retains admission. A real failed-launcher subprocess regression verifies the diagnostic and independent side-effect/claim state.
+
 ## Alternatives considered
 
 **Bound or ignore the server stop promise.** This hides an undrained transport and falsely reports successful Runtime closure. The independent process-exit oracle must remain authoritative.

@@ -70,7 +70,12 @@ export namespace OwnedProcess {
     const complete = deferred<void>()
     let workerPID: number | undefined
     let reference: OwnedTree.Reference | undefined
-    let job: Awaited<ReturnType<typeof DarwinJob.start>> | undefined
+    let job:
+      | {
+          remove(): Promise<void>
+          exited?: Promise<{ code: number | null; signal: NodeJS.Signals | null; stderr: string }>
+        }
+      | undefined
     let result: { code: number | null; signal: NodeJS.Signals | null } = { code: null, signal: null }
     let failure: Error | undefined
     let finished = false
@@ -332,7 +337,18 @@ export namespace OwnedProcess {
           : process.platform === "win32"
             ? await WindowsJob.start(command, directory)
             : await LinuxTree.start(command, directory)
-      const pid = await connected.promise
+      const pid = await Promise.race([
+        connected.promise,
+        ...(job.exited
+          ? [
+              job.exited.then((exit) => {
+                throw new Error(
+                  `Native process supervisor exited before startup (${exit.signal ?? exit.code}): ${exit.stderr.trim()}`,
+                )
+              }),
+            ]
+          : []),
+      ])
       void Promise.all(drains)
         .then(() => {
           const control = sockets.get("control")
