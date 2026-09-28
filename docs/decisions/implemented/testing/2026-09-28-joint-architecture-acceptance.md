@@ -20,6 +20,8 @@ Mixed-media fixtures render random identifiers into PNG, JPEG and PDF through th
 
 Attachment recognition exposes only the declared input channel: direct recognition has no tools, while visual delegation exposes `look_at`. Expected identifiers stay in observer memory; external evidence stores their hashes. A model reading an experiment answer file cannot establish attachment recognition. Frozen catalogs must pass the same required-provider completeness rule as Runtime before planning, and child processes receive the frozen catalog path explicitly. An invalid catalog must fail acceptance instead of silently selecting the process's bundled catalog.
 
+Catalog selection occurs before importing the source Runtime graph because its models macro runs during module loading. The selected file lives outside Runtime's disposable cache: fresh startup can clear that cache, and a restart must still resolve the same catalog-only model. A subprocess regression exercises actual controller death, fresh imports and a normal post-recovery model call to verify this distinction.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.

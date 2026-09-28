@@ -16,7 +16,8 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
 import { atomicJSON } from "./evidence"
-import { Settings, until } from "./runtime"
+import { until } from "./runtime"
+import { Settings } from "./settings"
 import { RemoteLab, Identity, Request, type Snapshot, type Command } from "./remote-protocol"
 
 const directory = process.argv[2]!
@@ -35,7 +36,7 @@ const host = createLocalHost({
     SYNERGY_HOME: home,
     SYNERGY_TEST_HOME: home,
     SYNERGY_DISABLE_MODELS_FETCH: "1",
-    MODELS_DEV_API_JSON: path.join(home, ".synergy/cache/models.json"),
+    MODELS_DEV_API_JSON: settings.modelCatalog,
     SYNERGY_CONFIG_CONTENT: config,
   },
 })

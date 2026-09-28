@@ -5,32 +5,7 @@ import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
 import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
 import { recordedProvider } from "./provider"
 import { atomicJSON } from "./evidence"
-import { RemoteLab } from "./remote-protocol"
-import {
-  ModelsDevCatalog,
-  missingRequiredModelsDevProviders,
-} from "@ericsanchezok/synergy-harness/provider/models-schemas"
-
-export const Settings = z
-  .object({
-    providerID: z.string().min(1),
-    modelID: z.string().min(1),
-    upstream: z.url(),
-    apiKeyFile: z.string().min(1),
-    modelCatalog: z.string().min(1),
-    config: z.record(z.string(), z.json()),
-    deadlineMs: z.number().int().positive().default(600_000),
-    remote: RemoteLab.optional(),
-    chromium: z.string().optional(),
-  })
-  .strict()
-export type Settings = z.infer<typeof Settings>
-
-export async function validateCatalog(settings: Settings) {
-  const parsed = ModelsDevCatalog.safeParse(await Bun.file(settings.modelCatalog).json())
-  if (!parsed.success || missingRequiredModelsDevProviders(parsed.data).length)
-    throw new Error("Frozen model catalog is invalid or incomplete; bundled fallback is not acceptance evidence")
-}
+import { type Settings, validateCatalog } from "./settings"
 
 export async function prepareRuntime(directory: string, settings: Settings, gateway: { url: string; token: string }) {
   await validateCatalog(settings)
@@ -59,7 +34,7 @@ export async function prepareRuntime(directory: string, settings: Settings, gate
       SYNERGY_HOME: home,
       SYNERGY_TEST_HOME: home,
       SYNERGY_DISABLE_MODELS_FETCH: "1",
-      MODELS_DEV_API_JSON: path.join(root, "cache", "models.json"),
+      MODELS_DEV_API_JSON: settings.modelCatalog,
       SYNERGY_CONFIG_CONTENT: JSON.stringify(config),
     },
   })

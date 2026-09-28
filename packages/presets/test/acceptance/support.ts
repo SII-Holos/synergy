@@ -1,5 +1,5 @@
 import path from "node:path"
-import type { Settings } from "../../script/acceptance/runtime"
+import type { Settings } from "../../script/acceptance/settings"
 
 export function fixtureProvider(answer: (input: Record<string, unknown>) => string | Promise<string>) {
   return Bun.serve({

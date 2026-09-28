@@ -1,5 +1,6 @@
 import path from "node:path"
-import { Settings, prepareRuntime } from "./runtime"
+import { prepareRuntime } from "./runtime"
+import { Settings } from "./settings"
 import { Command, RemoteLab, Reply, Snapshot } from "./remote-protocol"
 import { atomicJSON, sealEvidence } from "./evidence"
 import { recordedProvider, readRequests } from "./provider"
@@ -34,6 +35,7 @@ export async function docker(lab: RemoteLab, args: string[]) {
 }
 
 export async function controller(directory: string, deadlineMs: number) {
+  const settings = Settings.parse(await Bun.file(path.join(directory, "settings.json")).json())
   const pending = new Map<string, ReturnType<typeof Promise.withResolvers<Snapshot | undefined>>>()
   const ready = Promise.withResolvers<Snapshot | undefined>()
   pending.set("ready", ready)
@@ -42,7 +44,7 @@ export async function controller(directory: string, deadlineMs: number) {
       PATH: process.env.PATH,
       SYNERGY_HOME: path.join(directory, "home"),
       SYNERGY_TEST_HOME: path.join(directory, "home"),
-      MODELS_DEV_API_JSON: path.join(directory, "home/.synergy/cache/models.json"),
+      MODELS_DEV_API_JSON: settings.modelCatalog,
       SYNERGY_DISABLE_MODELS_FETCH: "1",
     },
     stdout: Bun.file(path.join(directory, `controller-${Date.now()}.stdout`)),

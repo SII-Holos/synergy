@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process"
 import { selectCases } from "./acceptance/catalog"
 import { Plan, execute, loadPlan, makePlan, report } from "./acceptance/runner"
 import { atomicJSON } from "./acceptance/evidence"
+import { Settings, validateCatalog } from "./acceptance/settings"
 
 const root = path.resolve(import.meta.dir, "../../..")
 function source() {
@@ -48,7 +49,6 @@ export async function main(args: string[]) {
     throw new Error("Acceptance data must stay outside the source checkout")
   if (command === "plan") {
     if (!values.case || !values.settings) throw new Error("Planning requires explicit cases and frozen settings")
-    const { Settings, validateCatalog } = await import("./acceptance/runtime")
     const settingsFile = path.resolve(values.settings)
     const settings = Settings.parse(await Bun.file(settingsFile).json())
     await validateCatalog(settings)
@@ -80,8 +80,10 @@ export async function main(args: string[]) {
     const plan = await loadPlan(directory)
     const input = plan.inputs.find((entry) => entry.name === "settings")
     if (!input) throw new Error("Frozen settings are missing")
-    const { Settings } = await import("./acceptance/runtime")
     const settings = Settings.parse(await Bun.file(input.path).json())
+    await validateCatalog(settings)
+    process.env.MODELS_DEV_API_JSON = settings.modelCatalog
+    process.env.SYNERGY_DISABLE_MODELS_FETCH = "1"
     const { attachments } = await import("./acceptance/attachments")
     const driver = attachments(settings)
     const { remoteFault } = await import("./acceptance/remote")
