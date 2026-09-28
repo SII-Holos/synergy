@@ -161,6 +161,7 @@ const builtinIconNames = [
   "panel-right-close",
   "panel-right-open",
   "paperclip",
+  "pause",
   "pen",
   "pen-line",
   "pencil",
