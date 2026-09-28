@@ -100,6 +100,7 @@ export async function main(args: string[]) {
     const { fileServices } = await import("./acceptance/file-services")
     const { remoteLoss } = await import("./acceptance/remote-loss")
     const { sharedDelegation } = await import("./acceptance/shared-delegation")
+    const { resourceCycles } = await import("./acceptance/resource-cycles")
     await execute(
       plan,
       {
@@ -121,6 +122,7 @@ export async function main(args: string[]) {
               "permission-targets": permissionTargets(settings),
               "file-services": fileServices(settings),
               "fault-remote-loss": remoteLoss(settings),
+              "resource-cycles": resourceCycles(settings),
               ...Object.fromEntries(
                 ["fault-allocation-ack", "fault-release-ack"].map((id) => [id, acknowledgements(settings)]),
               ),

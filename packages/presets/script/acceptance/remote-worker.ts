@@ -19,6 +19,7 @@ import { atomicJSON } from "./evidence"
 import { until } from "./runtime"
 import { Settings } from "./settings"
 import { RemoteLab, Identity, Request, type Snapshot, type Command } from "./remote-protocol"
+import { cycleHistory } from "./cycle-history"
 
 const directory = process.argv[2]!
 const settings = Settings.parse(await Bun.file(path.join(directory, "settings.json")).json())
@@ -40,7 +41,10 @@ const host = createLocalHost({
     SYNERGY_CONFIG_CONTENT: config,
   },
 })
-const runtime = await PresetRuntimeHandle.openTask({ host, mode: "oneshot" })
+const cycling = await Bun.file(path.join(directory, "cycles-enabled")).exists()
+const runtime = cycling
+  ? await PresetRuntimeHandle.open({ host, mode: "oneshot", network: { hostname: "127.0.0.1", port: 0 } })
+  : await PresetRuntimeHandle.openTask({ host, mode: "oneshot" })
 let identity: Identity | undefined
 const identityFile = Bun.file(path.join(directory, "identity.json"))
 if (await identityFile.exists()) identity = Identity.parse(await identityFile.json())
@@ -191,6 +195,10 @@ async function perform(command: Command): Promise<Snapshot | undefined> {
       fn: async () => {
         if (command === "start") await initialize()
         const current = identity!
+        if (command === "history" || command === "compact" || command === "recall") {
+          if (!runtime.server) throw new Error("Resource cycling requires its isolated HTTP Runtime")
+          await cycleHistory(command, directory, current, settings, `http://127.0.0.1:${runtime.server.port}`)
+        }
         if (command === "block-save") {
           await fs.rename(store, store + ".retained")
           await Bun.write(store, "acceptance-save-barrier", { mode: 0o600 })

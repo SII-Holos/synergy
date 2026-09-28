@@ -47,6 +47,9 @@ export const Command = z.enum([
   "continue",
   "replace",
   "reclaim",
+  "history",
+  "compact",
+  "recall",
   "close",
 ])
 export type Command = z.infer<typeof Command>
