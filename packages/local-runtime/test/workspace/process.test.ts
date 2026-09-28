@@ -36,7 +36,7 @@ test("worktree commands retain a supervisor error after activation even when the
           command: [
             process.execPath,
             "-e",
-            "await Bun.write(process.argv[1], String(process.pid)); while (!(await Bun.file(process.argv[2]).exists())) await Bun.sleep(10)",
+            "import {rename} from 'node:fs/promises'; await Bun.write(process.argv[1]+'.pending', String(process.pid)); await rename(process.argv[1]+'.pending', process.argv[1]); while (!(await Bun.file(process.argv[2]).exists())) await Bun.sleep(10)",
             started,
             release,
           ],
@@ -57,6 +57,7 @@ test("worktree command cancellation drains the activated native process before r
   await runtime.run(async () => {
     await using tmp = await tmpdir()
     const marker = path.join(tmp.path, "started")
+    const publish = path.join(tmp.path, "publish")
     const controller = new AbortController()
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -65,16 +66,21 @@ test("worktree command cancellation drains the activated native process before r
           command: [
             process.execPath,
             "-e",
-            "await Bun.write(process.argv[1], String(process.pid)); setInterval(() => {}, 1000)",
+            "import {rename} from 'node:fs/promises'; const pending=process.argv[1]+'.pending'; await Bun.write(pending, ''); while (!(await Bun.file(process.argv[2]).exists())) await Bun.sleep(10); await Bun.write(pending, String(process.pid)); await rename(pending, process.argv[1]); setInterval(() => {}, 1000)",
             marker,
+            publish,
           ],
           directory: tmp.path,
           roots: null,
           signal: controller.signal,
         }).catch((error: unknown) => error)
         try {
+          await waitUntil(() => Bun.file(marker + ".pending").exists())
+          expect(await Bun.file(marker).exists()).toBe(false)
+          await Bun.write(publish, "continue")
           await waitUntil(() => Bun.file(marker).exists())
           const pid = Number(await Bun.file(marker).text())
+          expect(pid).toBeGreaterThan(0)
           controller.abort(new DOMException("Cancelled after activation", "AbortError"))
           const result = await running
           expect(result).toBeInstanceOf(DOMException)
