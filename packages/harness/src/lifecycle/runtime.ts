@@ -162,10 +162,14 @@ export namespace RuntimeHandle {
       closing ??= (async () => {
         const errors: unknown[] = []
         async function cleanup(action: () => unknown) {
+          const label = String(action).replace(/\s+/g, " ").slice(0, 160)
+          process.stderr.write(`RUNTIME_CLOSE_BEGIN ${label}\n`)
           try {
             await action()
           } catch (error) {
             errors.push(error)
+          } finally {
+            process.stderr.write(`RUNTIME_CLOSE_END ${label}\n`)
           }
         }
         await cleanup(closeAdmission)
