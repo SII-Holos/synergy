@@ -63,7 +63,8 @@ export async function checkInstalledComposition(archiveDirectory: string) {
     )
     console.log((await nativeInput()).trim())
     await cli("install", "mcp", "lsp", "server", "--trust-host-code")
-    for (const id of ["mcp", "lsp", "server"]) assert.ok((await list()).some((pkg) => pkg.id === id && pkg.explicit))
+    const independent = await list()
+    for (const id of ["mcp", "lsp", "server"]) assert.ok(independent.some((pkg) => pkg.id === id && pkg.explicit))
     console.log("PASS installed CLI: core → independent MCP/LSP/HTTP")
     await Bun.write(
       path.join(directory, "managed-runtime.mjs"),
@@ -72,8 +73,9 @@ export async function checkInstalledComposition(archiveDirectory: string) {
     console.log((await run(["node", "managed-runtime.mjs"])).trim())
     await cli("update", "mcp", "--trust-host-code")
     await cli("remove", "mcp")
-    assert.ok(!(await list()).some((pkg) => pkg.id === "mcp"))
-    assert.ok((await list()).some((pkg) => pkg.id === "lsp"))
+    const remaining = await list()
+    assert.ok(!remaining.some((pkg) => pkg.id === "mcp"))
+    assert.ok(remaining.some((pkg) => pkg.id === "lsp"))
     await cli("remove", "lsp", "server")
 
     const preset = path.join(directory, "company-preset")

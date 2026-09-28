@@ -7,7 +7,7 @@ import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { RolloutArchive } from "../../src/session/rollout/archive"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutAccounting } from "../../src/session/rollout/accounting"
-import { testRuntime } from "../support/runtime"
+import { rolloutTestRuntime } from "../support/rollout-runtime"
 
 import { SessionManager } from "../../src/session/manager"
 import { SessionNav } from "../../src/session/nav"
@@ -20,7 +20,7 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
   longTest(
     `retains and validates a 30 MiB provider stream with 30,720 checkpoints: ${status}`,
     async () => {
-      const runtime = await testRuntime()
+      const runtime = await rolloutTestRuntime()
       const removeTree = Storage.removeTree
       const completeDelete = SnapshotLifecycle.completeDelete
       const releaseSession = SessionWorkspaceRuntime.releaseSession

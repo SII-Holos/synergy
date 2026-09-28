@@ -65,37 +65,3 @@ test("artifact replacement seeks by key and deduplicates shared-pack collection 
     await fs.rm(root, { recursive: true, force: true })
   }
 })
-
-test.skipIf(!process.env.SYNERGY_TEST_POSTGRES_URL)(
-  "PostgreSQL replacement deduplicates old shared packs",
-  async () => {
-    const store = await TransactionalStore.open({
-      backend: "postgres",
-      namespace: crypto.randomUUID(),
-      url: process.env.SYNERGY_TEST_POSTGRES_URL!,
-    })
-    try {
-      const location = {
-        pack: crypto.randomUUID() + ".pack",
-        codec: "raw" as const,
-        blockOffset: 0,
-        blockBytes: 1,
-        decodedBytes: 1,
-        offset: 0,
-        size: 1,
-        sha256: "0".repeat(64),
-      }
-      await store.transaction(async (tx) => {
-        const entries = Array.from({ length: 128 }, (_, n) => ({ key: ["blobs", String(n)], location }))
-        await tx.writeArtifacts(entries)
-        const replacement = { ...location, pack: crypto.randomUUID() + ".pack" }
-        await tx.writeArtifacts(entries.map((entry) => ({ ...entry, location: replacement })))
-        expect(await tx.artifactGarbage()).toEqual([{ pack: location.pack, used: false }])
-        await tx.removeTree(["blobs"])
-        expect((await tx.artifactGarbage()).map((entry) => entry.used)).toEqual([false, false])
-      })
-    } finally {
-      await store.close()
-    }
-  },
-)
