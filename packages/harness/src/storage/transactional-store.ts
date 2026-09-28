@@ -55,6 +55,7 @@ export interface RecordQuery {
   after?: string[]
   limit?: number
   descending?: boolean
+  orderEquals?: string
   orderFrom?: string
   orderTo?: string
 }
@@ -922,6 +923,10 @@ export class StoreTransaction {
       conditions.push(`(order_key, key_id) ${comparison} (?, ?)`)
       const order = metadata(input.after).order
       values.push(order, keyParameter(this.keys, input.after))
+    }
+    if (input.orderEquals !== undefined) {
+      conditions.push("order_key = ?")
+      values.push(input.orderEquals)
     }
     if (input.orderFrom !== undefined) {
       conditions.push("order_key >= ?")

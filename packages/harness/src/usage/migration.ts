@@ -183,8 +183,7 @@ export namespace UsageMigration {
       const rows = await Storage.query({
         kind: state.phase === "indexes" ? "usage" : state.phase === "sessions" ? "session" : "operations",
         after: state.after,
-        orderFrom: state.phase === "operations" ? "head" : undefined,
-        orderTo: state.phase === "operations" ? "head\u0000" : undefined,
+        orderEquals: state.phase === "operations" ? "head" : undefined,
         limit,
       })
       for (const row of rows) {
