@@ -20,7 +20,8 @@ for (const jit of ["0", "1"])
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
       ])
-      expect({ code, error }).toEqual({ code: 0, error: "" })
+      const state = await Bun.file(path.join(directory.path, "stage.json")).json()
+      expect({ code, error, state }).toEqual({ code: 0, error: "", state: { stage: "completed" } })
       expect(JSON.parse(output)).toEqual({ jit, files: true, process: true, terminal: true })
     } finally {
       clearTimeout(timeout)
