@@ -82,9 +82,7 @@
               "failed": 1
             },
             "missing_from_report_placeholders": 0,
-            "failed_names": [
-              "[f2p] fd-find::tests: test_sort_natural_leading_zeros_compare_equal_numerically"
-            ]
+            "failed_names": ["[f2p] fd-find::tests: test_sort_natural_leading_zeros_compare_equal_numerically"]
           },
           {
             "source": "verifier/reports/new-ctrf.json",
@@ -93,9 +91,7 @@
               "failed": 1
             },
             "missing_from_report_placeholders": 0,
-            "failed_names": [
-              "fd-find::tests: test_sort_natural_leading_zeros_compare_equal_numerically"
-            ]
+            "failed_names": ["fd-find::tests: test_sort_natural_leading_zeros_compare_equal_numerically"]
           },
           {
             "source": "verifier/reports/base-ctrf.json",
