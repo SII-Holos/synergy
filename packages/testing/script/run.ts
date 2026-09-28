@@ -40,7 +40,6 @@ async function executeBatch(
     "test",
     "--timeout",
     "30000",
-    "--no-orphans",
     "--reporter=junit",
     `--reporter-outfile=${path.join(directory, "junit.xml")}`,
     ...(coverage ? ["--coverage", "--coverage-reporter=lcov", `--coverage-dir=${directory}`] : []),

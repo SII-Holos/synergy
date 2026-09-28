@@ -18,6 +18,8 @@ import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { NativeExecutor } from "@ericsanchezok/synergy-local-runtime/environment/native-executor"
+import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/workspace/coordinator"
 const runtime = await testRuntime()
 
 const baseContext = {
@@ -166,12 +168,21 @@ describe("bash note virtual paths", () => {
           expect(await Bun.file(marker).exists()).toBe(false)
 
           const command = "/synergy/note/nte_missing"
+          await using executor = await NativeExecutor.open({
+            target: { environmentID: "test", allocationID: "allocation", generation: 1 },
+            directory: path.join(tmp.path, "receipts"),
+            inputsRoot: tempRoot,
+            coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+          })
           await expect(
             BashVirtualFile.materialize({
               command,
               references: [{ startIndex: 0, endIndex: command.length, provider: "note", id: "nte_missing" }],
               scopeID: ScopeContext.current.scope.id,
-              tempRoot,
+              executor,
+              executionID: "missing",
+              shell: Shell.acceptable(),
+              platform: process.platform,
             }),
           ).rejects.toThrow("Note not found: nte_missing")
           expect(await readdir(tempRoot)).toEqual([])
@@ -204,6 +215,12 @@ describe("bash note virtual paths", () => {
         await mkdir(tempRoot)
         const virtualPath = `/synergy/note/${noteID}`
         const command = `cat ${virtualPath}`
+        await using executor = await NativeExecutor.open({
+          target: { environmentID: "test", allocationID: "allocation", generation: 1 },
+          directory: path.join(root, "receipts"),
+          inputsRoot: tempRoot,
+          coordinator: new WorkspaceCoordinator({ directory: path.join(root, "claims") }),
+        })
         const materialized = await BashVirtualFile.materialize({
           command,
           references: [
@@ -215,7 +232,10 @@ describe("bash note virtual paths", () => {
             },
           ],
           scopeID: ScopeContext.current.scope.id,
-          tempRoot,
+          executor,
+          executionID: "quoted",
+          shell: Shell.acceptable(),
+          platform: process.platform,
         })
         try {
           const result = Bun.spawnSync([Shell.acceptable(), "-c", materialized.command], {
@@ -227,7 +247,7 @@ describe("bash note virtual paths", () => {
           expect(result.exitCode).toBe(0)
           expect(result.stdout.toString()).toContain("reviewed")
         } finally {
-          materialized.cleanup()
+          await materialized.cleanup()
         }
       })
     }))

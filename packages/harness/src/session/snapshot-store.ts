@@ -28,6 +28,7 @@ export namespace SnapshotStore {
     index: string
     temporary: string
     workspace: string
+    source?: SnapshotSchema.Workspace
   }
   const context = Context.create<Operation>("snapshot")
 
@@ -107,7 +108,7 @@ export namespace SnapshotStore {
   ): Promise<Operation> {
     const owned = await resolveRepository(scopeID, sessionID)
     const { backend, repository: repo } = owned
-    const real = await fs.realpath(workspace).catch(() => path.resolve(workspace))
+    const real = source ? "" : await fs.realpath(workspace).catch(() => path.resolve(workspace))
     const identity = source
       ? JSON.stringify([source.id, source.generation])
       : process.platform === "win32"
@@ -120,6 +121,7 @@ export namespace SnapshotStore {
       backend,
       repository: repo,
       workspace,
+      source,
       index: backend === "legacy" ? path.join(repo, "index") : path.join(temporary, "index"),
       temporary,
     }
@@ -133,7 +135,7 @@ export namespace SnapshotStore {
     sessionID: string,
     fn: () => Promise<T>,
     signal?: AbortSignal,
-    options?: { historical?: boolean },
+    options?: { historical?: boolean; source?: SnapshotSchema.Workspace },
   ) {
     const controller = new AbortController()
     const forwardAbort = () => controller.abort(signal?.reason)
@@ -152,7 +154,7 @@ export namespace SnapshotStore {
     sessionID: string,
     fn: () => Promise<T>,
     signal?: AbortSignal,
-    options?: { historical?: boolean },
+    options?: { historical?: boolean; source?: SnapshotSchema.Workspace },
   ) {
     const scopeID = ScopeContext.current.scope.id
     component(sessionID)
@@ -175,13 +177,16 @@ export namespace SnapshotStore {
             signal?.throwIfAborted()
             const workspace = options?.historical ? undefined : ScopeContext.current.workspace
             const source =
-              workspace?.id && workspace.generation
+              options?.source ??
+              (workspace?.id && workspace.generation
                 ? { id: workspace.id, generation: workspace.generation, root: workspace.path }
-                : undefined
+                : undefined)
             const operation = await resolve(
               scopeID,
               sessionID,
-              options?.historical ? path.dirname(repository(scopeID)) : ScopeContext.current.directory,
+              options?.historical
+                ? path.dirname(repository(scopeID))
+                : (options?.source?.root ?? ScopeContext.current.directory),
               source,
             )
             await fs.mkdir(operation.temporary, { recursive: true })
@@ -374,7 +379,7 @@ export namespace SnapshotStore {
     if (operation.backend === "legacy") return true
     const result = await SnapshotGit.run(
       ["git", "--git-dir", operation.repository, "update-ref", reference(operation.sessionID, hash), hash],
-      operation.workspace,
+      path.dirname(operation.repository),
       undefined,
       signal,
     )

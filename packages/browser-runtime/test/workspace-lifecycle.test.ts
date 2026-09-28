@@ -1,3 +1,5 @@
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { afterAll, afterEach, expect, test, spyOn } from "bun:test"
 import {
   BROWSER_PROTOCOL_VERSION,
@@ -21,7 +23,17 @@ import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserEvent } from "../src/event"
 import { testRuntime } from "./support/runtime"
 
-const runtime = await testRuntime(registerLocalRuntime)
+const runtime = await testRuntime(() => {
+  registerLocalRuntime()
+  EnvironmentProviders.register({
+    id: "remote-fixture",
+    allocate: async () => {
+      throw Error("must not allocate")
+    },
+    inspect: async () => ({ state: "absent" }),
+    deallocate: async () => {},
+  })
+})
 afterAll(() => runtime.close())
 afterEach(() =>
   runtime.run(async () => {
@@ -364,3 +376,42 @@ test(
     }),
   20000,
 )
+
+test("changing Environment closes the local Browser and remote selection cannot use the controller", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        const browser = await BrowserRuntime.getOrCreateSession(owner(session))
+        const disposed = spyOn(browser, "dispose")
+        const remote = await Environment.bind({
+          scopeID: session.scope.id,
+          ownerID: "remote-browser",
+          provider: "remote-fixture",
+          spec: {},
+        })
+        try {
+          const changed = await Session.updateEnvironment(session.id, {
+            environmentID: remote.id,
+            expectedEnvironmentID: session.environmentID!,
+          })
+          expect(disposed).toHaveBeenCalledTimes(1)
+          await expect(BrowserRuntime.getOrCreateSession(owner(changed))).rejects.toMatchObject({
+            code: "browser_environment_unavailable",
+          })
+          expect((await Environment.get(remote.id, session.scope.id)).state).toBe("idle")
+          const disabled = await Session.updateEnvironment(session.id, {
+            environmentID: null,
+            expectedEnvironmentID: remote.id,
+          })
+          await expect(BrowserRuntime.getOrCreateSession(owner(disabled))).rejects.toMatchObject({
+            code: "browser_environment_unavailable",
+          })
+        } finally {
+          disposed.mockRestore()
+        }
+      },
+    })
+  }))

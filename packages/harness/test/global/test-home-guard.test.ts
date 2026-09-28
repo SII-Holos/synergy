@@ -232,7 +232,8 @@ async function runBunTestSpawn(
   env: Record<string, string>,
 ): Promise<{ exitCode: number; stderr: string }> {
   const proc = Bun.spawn([process.execPath, "test", ...args], {
-    cwd: path.resolve(import.meta.dir, "..", ".."),
+    // Bun 1.4 still discovers the working directory preload with an empty explicit config.
+    cwd: path.dirname(args.at(-1)!),
     env,
     stdout: "pipe",
     stderr: "pipe",

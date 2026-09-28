@@ -26,6 +26,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `runtime` | `120-runtime.jsonc` | merge |
 | `voice` | `125-voice.jsonc` | merge |
 | `storage` | `130-storage.jsonc` | replace-domain |
+| `resources` | `135-resources.jsonc` | replace-domain |
 
 ## General
 
@@ -226,3 +227,11 @@ File: `130-storage.jsonc` · Merge: replace-domain
 | Key | Type | Description |
 | --- | --- | --- |
 | `storage` | StorageConfiguration.optional (optional) |  |
+
+## Workspaces and Environments
+
+File: `135-resources.jsonc` · Merge: replace-domain
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `resources` | ResourcesConfig |  |

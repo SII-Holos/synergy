@@ -28,11 +28,13 @@ import { SessionBounds } from "./bounds"
 import { SessionToolInput } from "./tool-input"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
+import { EnvironmentResources } from "../environment/resources"
 import { EnforcementGate, type Capability, type GateOptions, type SandboxContainment } from "../enforcement/gate"
 import { SandboxHost } from "../sandbox/host"
 import { approvablePath, formatExplanationForModel } from "../sandbox/explain"
 import { SandboxSessionApproval } from "../sandbox/session-approval"
 import type { BashSandboxPrepare } from "../tool/bash-contract"
+import { ExecutionProtocol } from "../environment/executor"
 import type { ResolvedProfile } from "../control-profile/types"
 import { EnforcementError } from "../enforcement/errors"
 import { Config } from "../config/config"
@@ -353,7 +355,7 @@ export namespace ToolResolver {
 
   interface ShellContainment {
     verdict: SandboxContainment
-    release(): void
+    release(): void | Promise<void>
   }
 
   /**
@@ -373,27 +375,30 @@ export namespace ToolResolver {
    * one, which is what keeps a refused call from leaving its temporary profile
    * behind.
    */
-  function prepareShellContainment(input: {
+  async function prepareShellContainment(input: {
     gate: Awaited<ReturnType<typeof EnforcementGate.create>>
     ctx: Tool.Context
     workspace: string
     command: string
-  }): ShellContainment | undefined {
+  }): Promise<ShellContainment | undefined> {
     const sandbox = input.gate.getSandbox()
     if (sandbox.mode === "none" || shouldBypassShellSandbox(input.ctx)) return undefined
-    const wrapper = SandboxHost.prepareWrapper({
-      command: "/bin/sh",
+    const options = {
+      command: input.ctx.resources?.runtime?.shell ?? "/bin/sh",
       args: ["-c", input.command],
       workspace: input.workspace,
       sandboxMode: sandbox.mode,
       backend: sandbox.backend,
-    })
+    }
+    const wrapper = input.ctx.resources
+      ? await EnvironmentResources.prepareSandbox(input.ctx.resources, options)
+      : SandboxHost.prepareWrapper(options)
     return {
       verdict: {
         contained: wrapper.sandboxed && !wrapper.skipReason,
         ...(wrapper.skipReason ? { skipReason: wrapper.skipReason } : {}),
       },
-      release: () => SandboxHost.cleanupWrapper(wrapper),
+      release: () => ("cleanup" in wrapper ? wrapper.cleanup?.() : SandboxHost.cleanupWrapper(wrapper)),
     }
   }
 
@@ -1109,6 +1114,7 @@ export namespace ToolResolver {
       const sessionAbort = options.abortSignal ?? neverAbort
       const ctx: Tool.Context = {
         sessionID: input.sessionID,
+        environmentID: input.session?.environmentID ?? null,
         abort: sessionAbort,
         messageID: input.processor.message.id,
         callID: options.toolCallId,
@@ -1512,7 +1518,7 @@ export namespace ToolResolver {
       })
     }
 
-    for (const item of await ToolRegistry.tools(input.model.providerID, input.agent)) {
+    for (const item of await ToolRegistry.tools(input.model.providerID, input.agent, input.session?.workspaceID)) {
       let schema: JSONSchema7
       try {
         schema = ProviderTransform.schema(input.model, registryInputSchema(item) as any, {
@@ -1572,6 +1578,9 @@ export namespace ToolResolver {
               const ctx = context(args, options)
               let toolTrace: ToolTrace | undefined
               const slot = runtimeInput.processor.beginExecution(options.toolCallId)
+              let resources: EnvironmentResources.Resolved | undefined
+              const linkExecution =
+                item.id === "bash" && (Object.hasOwn(args, "targetID") || Object.hasOwn(args, "linkID"))
               log.info("tool.execute.callback.slot", {
                 tool: item.id,
                 sessionID: runtimeInput.sessionID,
@@ -1586,8 +1595,23 @@ export namespace ToolResolver {
                 if (runtimeInput.session) {
                   SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
                 }
-                const workspace = ScopeContext.current.workspace?.path ?? null
-                const workspaceInfo = ScopeContext.current.workspace
+                const workspaceInfo =
+                  !linkExecution && (item.requiresWorkspace !== false || item.requiresExecution)
+                    ? ScopeContext.current.workspace
+                    : null
+                if ((item.requiresExecution || item.requiresWorkspace) && !linkExecution) {
+                  resources = await EnvironmentResources.select({
+                    scopeID: ScopeContext.current.scope.id,
+                    ownerID: ctx.sessionID,
+                    environmentID: ctx.environmentID,
+                    workspaceID: runtimeInput.session?.workspaceID ?? workspaceInfo?.id,
+                    workspaceGeneration: workspaceInfo?.generation,
+                    needs: { execution: item.requiresExecution, workspace: item.requiresWorkspace },
+                    signal: ctx.abort,
+                  })
+                  ctx.resources = resources
+                }
+                const workspace = resources?.directory ?? workspaceInfo?.path ?? null
                 const profileId = await Session.resolveEffectiveControlProfile({
                   sessionID: runtimeInput.session?.id,
                   agentControlProfile: runtimeInput.agent.controlProfile,
@@ -1596,15 +1620,32 @@ export namespace ToolResolver {
                 // session-effective profile (session > agent config) so full_access sessions
                 // bypass the guard as documented (issue #1006).
                 ;(ctx.extra as any).controlProfile = profileId
-                const synergyRoot = Global.Path.root
-                const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
+                const localFiles =
+                  !resources ||
+                  resources.kind === "native" ||
+                  (resources.environment?.provider === "native" &&
+                    resources.workspace?.backend?.provider === "directory")
+                const pathMode = localFiles
+                  ? "native"
+                  : resources?.kind === "objects"
+                    ? "relative"
+                    : resources?.runtime?.platform === "win32"
+                      ? "win32"
+                      : "posix"
+                const synergyRoot = localFiles ? Global.Path.root : undefined
+                const trustedRoots = !localFiles
+                  ? []
+                  : await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
                 const gate = await EnforcementGate.create(
                   await configureGateOptions({
                     activeWorkspace: workspace,
+                    pathMode,
                     workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                    originalCheckout: (workspaceInfo as any)?.originalCheckout,
+                    originalCheckout: localFiles ? (workspaceInfo as any)?.originalCheckout : undefined,
                     profileId,
-                    readRoots: [synergyRoot, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)],
+                    readRoots: localFiles
+                      ? [Global.Path.root, ...trustedRoots, ...SkillSourceProfile.allRootPaths(workspace)]
+                      : [],
                     trustedRoots,
                     synergyRoot,
                     sessionKey: runtimeInput.session?.id,
@@ -1622,11 +1663,11 @@ export namespace ToolResolver {
                 // ordinary capability flow instead of being allowed as if it
                 // were contained.
                 const containment =
-                  item.id === "bash"
-                    ? prepareShellContainment({
+                  item.id === "bash" && !linkExecution
+                    ? await prepareShellContainment({
                         gate,
                         ctx,
-                        workspace: ScopeContext.current.directory,
+                        workspace: workspace ?? "",
                         command: String(args.command ?? ""),
                       })
                     : undefined
@@ -1643,7 +1684,7 @@ export namespace ToolResolver {
                   // execution path prepares the wrapper it actually runs, so
                   // release here — on refusal and on success alike — through
                   // the host's existing cleanup contract.
-                  containment?.release()
+                  await containment?.release()
                 }
                 await RolloutTool.authorize({ stage: "evaluated", profile: gate.getProfileInfo(), envelope })
                 const modeDiagnostic = SessionModePolicy.evaluateCall({
@@ -1682,7 +1723,7 @@ export namespace ToolResolver {
                 using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
 
                 // ── Sandbox wrapping for bash ──────────────────────────
-                if (item.id === "bash") {
+                if (item.id === "bash" && !linkExecution) {
                   const sandbox = gate.getSandbox()
                   if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
                     // Register externally-approved roots, plus the paths the
@@ -1703,15 +1744,19 @@ export namespace ToolResolver {
                         backend: sandbox.backend,
                         fallback: sandbox.fallback,
                       })
-                      const wrapper = SandboxHost.prepareWrapper({
-                        command: "/bin/sh",
-                        args: ["-c", input.command],
-                        workspace: ScopeContext.current.directory,
+                      const options = {
+                        command: resources?.runtime?.shell ?? "/bin/sh",
+                        args: ExecutionProtocol.shellArgs(
+                          resources?.runtime?.shell ?? "/bin/sh",
+                          resources?.runtime?.platform ?? process.platform,
+                          input.command,
+                        ),
+                        workspace: workspace ?? "",
                         sandboxMode: sandbox.mode,
                         extraReadRoots: [
                           ...new Set([
                             ...(sandboxPolicy?.fileSystem.readableRoots ?? []),
-                            synergyRoot,
+                            ...(synergyRoot ? [synergyRoot] : []),
                             ...trustedRoots,
                             ...extRoots,
                             ...input.extraReadRoots,
@@ -1723,7 +1768,10 @@ export namespace ToolResolver {
                         stripDefaultHomeDenyRoot: true,
                         networkMode: sandboxPolicy?.network.mode,
                         backend: sandbox.backend,
-                      })
+                      }
+                      const wrapper = resources
+                        ? await EnvironmentResources.prepareSandbox(resources, options)
+                        : SandboxHost.prepareWrapper(options)
                       if (wrapper.skipReason && sandbox.fallback !== "deny") {
                         log.warn("sandbox.unavailable", { skipReason: wrapper.skipReason })
                       }
@@ -1851,6 +1899,7 @@ export namespace ToolResolver {
               } finally {
                 toolTrace?.dispose()
                 disposeToolTimeout(ctx)
+                await resources?.release()
               }
             },
             toModelOutput(result) {
@@ -1914,8 +1963,8 @@ export namespace ToolResolver {
                   if (runtimeInput.session) {
                     SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${key}`)
                   }
-                  const workspace = ScopeContext.current.workspace?.path ?? null
-                  const workspaceInfo = ScopeContext.current.workspace
+                  const workspaceInfo = entry.requiresWorkspace !== false ? ScopeContext.current.workspace : null
+                  const workspace = workspaceInfo?.path ?? null
                   const profileId = await Session.resolveEffectiveControlProfile({
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,

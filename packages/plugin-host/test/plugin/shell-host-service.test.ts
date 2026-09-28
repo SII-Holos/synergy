@@ -120,7 +120,7 @@ describe("plugin shell.run Host Service", () => {
         invoke({
           directory: tmp.path,
           scopeId: scope.id,
-          params: { command: [process.execPath, "-e", "process.exit(0)"] },
+          params: { command: ["sudo", "--version"] },
         }),
       ).rejects.toBeInstanceOf(EnforcementError.PolicyDenied)
     }))

@@ -1,9 +1,8 @@
 import z from "zod"
-import path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { FileView } from "../file/view"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
 export const GlobTool = Tool.define(
@@ -29,8 +28,7 @@ export const GlobTool = Tool.define(
         },
       })
 
-      let search = params.path ?? ScopeContext.current.directory
-      search = path.isAbsolute(search) ? search : path.resolve(ScopeContext.current.directory, search)
+      const search = FileView.resolve(params.path ?? ".")
 
       const TIMEOUT_MS = ToolTimeout.DEFAULTS.globMs
       const limit = 100
@@ -52,23 +50,25 @@ export const GlobTool = Tool.define(
             truncated = true
             break
           }
-          const full = path.resolve(search, file)
-          const stats = await Bun.file(full)
+          const full = FileView.resolve(file, search)
+          const stats = await FileView.file(full)
             .stat()
-            .then((x) => x.mtime.getTime())
+            .then((x) => x.mtimeMs)
             .catch(() => 0)
           files.push({
             path: full,
             mtime: stats,
           })
         }
-      } catch {
+      } catch (error) {
+        if (!timeoutSignal.aborted) throw error
         // Subprocess was killed — check if it was our timeout
         if (timeoutSignal.aborted && !ctx.abort?.aborted) {
           timedOut = true
         }
       }
 
+      ctx.abort?.throwIfAborted()
       if (timedOut) {
         throw new Error(
           `glob stopped after ${TIMEOUT_MS / 1_000}s before completing the search.\n` +
@@ -89,7 +89,7 @@ export const GlobTool = Tool.define(
       }
 
       return {
-        title: path.relative(ScopeContext.current.directory, search),
+        title: FileView.relative(search),
         metadata: {
           count: files.length,
           truncated,

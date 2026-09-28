@@ -1,3 +1,4 @@
+import { DialogEnvironment } from "@/components/dialog/dialog-environment"
 import { workspaceLocation } from "./workspace-location"
 import { WorkspaceLocationButton } from "./workspace-location-button"
 import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
@@ -174,6 +175,8 @@ function SessionActionMenu(props: {
 export function SessionTopBar(props: {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   sessionTransitionPending?: Accessor<boolean>
+  newSessionEnvironmentID?: string | null
+  onEnvironmentSelectionChange?: (environmentID: string | null | undefined) => void
   newSessionWorkspaceSelection?: SessionWorkspaceSelection
   onWorkspaceSelectionChange?: (selection: SessionWorkspaceSelection) => void
 }) {
@@ -216,6 +219,15 @@ export function SessionTopBar(props: {
       project={isGlobal() ? _({ id: "workspace.location.home", message: "Home" }) : projectLabel()}
       location={location()}
       disabled={!!params.id && !sessionInfo()}
+      onChooseEnvironment={() =>
+        dialog.show(() => (
+          <DialogEnvironment
+            sessionID={params.id}
+            selection={params.id ? undefined : props.newSessionEnvironmentID}
+            onSelect={params.id ? undefined : props.onEnvironmentSelectionChange}
+          />
+        ))
+      }
       onChoose={() =>
         dialog.show(() => (
           <DialogWorkspace

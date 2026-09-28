@@ -1,3 +1,4 @@
+import { WorkspaceTree } from "../workspace/tree"
 import path from "path"
 import { Log } from "../util/log"
 import { z } from "zod"
@@ -11,6 +12,8 @@ import { SnapshotLink } from "./snapshot-link"
 import { SnapshotRestore } from "./snapshot-restore"
 import { WorkspaceBinding } from "../workspace/binding"
 import { ObservabilityMetrics } from "../observability/metrics"
+import { WorkspaceCatalog } from "../workspace/catalog"
+import { WorkspaceContent } from "../workspace/content"
 
 export namespace Snapshot {
   const log = Log.create({ service: "snapshot" })
@@ -38,6 +41,50 @@ export namespace Snapshot {
     const source = ScopeContext.current.workspace
     if (!source?.id || !source.generation || source.bindingState === "unbound") return
     return { id: source.id, generation: source.generation, root: source.path }
+  }
+
+  export async function trackContent(
+    info: WorkspaceCatalog.Info,
+    manifest: string | null,
+    sessionID: string,
+    signal?: AbortSignal,
+  ) {
+    const source: SnapshotSchema.Workspace = {
+      id: info.id,
+      generation: info.binding.generation,
+      root: "",
+      pathKind: "workspace",
+    }
+    const { store } = await WorkspaceContent.resolve(
+      { workspaceID: info.id, scopeID: info.scopeID, generation: info.binding.generation },
+      true,
+    )
+    const tree = await WorkspaceContent.manifest(
+      { ...info, content: { revision: info.content?.revision ?? 0, manifest } },
+      store,
+    )
+    return SnapshotStore.withSession(
+      sessionID,
+      async () => {
+        const operation = SnapshotStore.current()
+        await SnapshotStore.initialize(operation)
+        await SnapshotCapture.refresh(operation, signal, { tree, store })
+        const result = await gitSpawn(
+          ["git", "--git-dir", operation.repository, "write-tree"],
+          path.dirname(operation.repository),
+          undefined,
+          signal,
+        )
+        if (result.exitCode !== 0 || !result.text.trim())
+          throw new SnapshotStore.StorageError("Snapshot content could not be retained")
+        const hash = result.text.trim()
+        if (!(await SnapshotStore.retainCurrent(hash, signal)))
+          throw new SnapshotStore.StorageError("Snapshot retention failed")
+        return hash
+      },
+      signal,
+      { source },
+    )
   }
 
   async function trackImpl(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
@@ -173,11 +220,21 @@ export namespace Snapshot {
           const source = patch.workspace
           if (!source)
             throw new SnapshotRestore.Invalid({ message: "This historical patch has no verified Workspace binding" })
-          const binding = await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
-          if (binding.path !== source.root)
-            throw new SnapshotRestore.Invalid({
-              message: "The historical Workspace location does not match its binding",
-            })
+          if (source.pathKind === "workspace") {
+            const info = await WorkspaceCatalog.get(source.id, ScopeContext.current.scope.id)
+            if (
+              info.binding.generation !== source.generation ||
+              info.binding.state !== "bound" ||
+              info.lifecycle !== "active"
+            )
+              throw new SnapshotRestore.Invalid({ message: "The historical Workspace binding is unavailable" })
+          } else {
+            const binding = await WorkspaceBinding.validate(source.id, ScopeContext.current.scope.id, source.generation)
+            if (binding.path !== source.root)
+              throw new SnapshotRestore.Invalid({
+                message: "The historical Workspace location does not match its binding",
+              })
+          }
           if (!(await SnapshotStore.ownsCurrent(patch.hash)))
             throw new SnapshotRestore.Invalid({
               message: "The historical file snapshot is unavailable to this session",
@@ -213,21 +270,23 @@ export namespace Snapshot {
           }
           for (const file of patch.files) {
             signal?.throwIfAborted()
-            const relative = path.relative(source.root, file)
+            const relative = source.pathKind === "workspace" ? file : path.relative(source.root, file)
             if (
-              !path.isAbsolute(file) ||
+              (source.pathKind !== "workspace" && !path.isAbsolute(file)) ||
               !relative ||
               relative === ".." ||
               relative.startsWith(`..${path.sep}`) ||
               path.isAbsolute(relative)
             )
               throw new SnapshotRestore.Invalid({ message: "A historical file is outside its Workspace" })
-            const normalized = path.normalize(file)
-            if (files.has(normalized)) continue
+            const normalized =
+              source.pathKind === "workspace" ? WorkspaceTree.Path.parse(relative) : path.normalize(file)
+            const identity = JSON.stringify([source.id, source.generation, normalized])
+            if (files.has(identity)) continue
             const entry = tree.get(process.platform === "win32" ? relative.replaceAll("\\", "/") : relative)
             if (entry && !["100644", "100755", "120000"].includes(entry.mode))
               throw new SnapshotRestore.Invalid({ message: "This snapshot file mode cannot be restored" })
-            files.set(normalized, {
+            files.set(identity, {
               file: normalized,
               workspace: source,
               mode: entry ? (entry.mode as "100644" | "100755" | "120000") : null,

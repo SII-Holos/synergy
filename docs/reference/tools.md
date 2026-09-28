@@ -115,7 +115,7 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `todoread` | `orchestration.todo` | Use this tool to read your todo list |
 | `todowrite` | `orchestration.todo` | Use this tool to create and manage a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user. It also help |
 | `view_file` | `code.read` | Read a file through the anchored coding harness. Use this instead of `read` when the content may feed `revise_file` or `resolve_conflicts`. The output starts with a real `[path#TAG]` header followed b |
-| `view_image` | `code.analyze` | Load a local image file into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated |
+| `view_image` | `code.analyze` | Load an image file from the selected Workspace into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourse |
 | `webfetch` | `search.web` | - Fetches content from a specified URL - Takes a URL and optional format as input - Fetches the URL content, converts to requested format (markdown by default) - Returns the content in the specified f |
 | `worktree_enter` | `platform.config` | Create or enter a git worktree for the current session.  |
 | `worktree_leave` | `platform.config` | Leave the current git worktree and return to the main checkout. Unbinds the session from the worktree,  |
@@ -267,7 +267,7 @@ Search code using AST-aware pattern matching. Unlike regex-based grep, ast_grep 
 
 Kind: `communication.deliver`
 
-Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots, rendered figures, screenshots, or compiled paper outputs. The file will be uploaded to the asset store and delivered as an attachment in the conversation. Image files render inline in supported clients; PDFs and other files render as preview/download cards. Usage notes: - The file_path must point to an existing file on the local filesystem - Use an optional filename to control the display name shown to the user - After a bash command, script, or document build creates a visual result (.png, .jpg, .svg, .pdf, .html), use this tool to show the result instead of only printing the path - This tool is for delivering files to the user, not for reading them into your own context — use read or look_at for that
+Deliver files to the user by making them available as conversation attachments. Use this after generating or obtaining user-facing artifacts such as PDFs, images, documents, archives, exports, plots, rendered figures, screenshots, or compiled paper outputs. The file will be uploaded to the asset store and delivered as an attachment in the conversation. Image files render inline in supported clients; PDFs and other files render as preview/download cards. Usage notes: - The file_path must point to an existing file in the selected Workspace - Use an optional filename to control the display name shown to the user - After a bash command, script, or document build creates a visual result (.png, .jpg, .svg, .pdf, .html), use this tool to show the result instead of only printing the path - This tool is for delivering files to the user, not for reading them into your own context — use read or look_at for that
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1603,11 +1603,11 @@ Read a file through the anchored coding harness. Use this instead of `read` when
 
 Kind: `code.analyze`
 
-Load a local image file into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated plot, screenshot, diagram, rendered page, or visual artifact. The tool does not analyze the image with a separate model; it attaches the image so the current model can see it on the next model step. Use look_at instead when view_image is unavailable or the active model does not support the image's format. Use attach only when the user should receive or inspect the file.
+Load an image file from the selected Workspace into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated plot, screenshot, diagram, rendered page, or visual artifact. The tool does not analyze the image with a separate model; it attaches the image so the current model can see it on the next model step. Use look_at instead when view_image is unavailable or the active model does not support the image's format. Use attach only when the user should receive or inspect the file.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filePath` | string | yes | Absolute path to the local image file to load into the current model context |
+| `filePath` | string | yes | Path to the Workspace image file to load into the current model context |
 
 ## webfetch
 

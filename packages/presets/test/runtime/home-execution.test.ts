@@ -5,6 +5,7 @@ import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { NoteStore, NoteMarkdown } from "@ericsanchezok/synergy-note"
@@ -112,6 +113,10 @@ test("Home tasks run in independent core and full workers, and full task data su
       const tool = messages.flatMap((message) => message.parts).find((part) => part.type === "tool")
       expect(tool?.type === "tool" ? tool.state.status : undefined).toBe("completed")
       expect((await Session.get(session.id)).workspace).toBeNull()
+      expect(await Environment.get(session.environmentID!, ScopeContext.current.scope.id)).toMatchObject({
+        state: "idle",
+        generation: 0,
+      })
       if (owner === "core") {
         expect(tool?.type === "tool" && tool.state.status === "completed" ? tool.state.output : "").toContain(
           "A Home task fetched this document without a workspace.",
@@ -136,7 +141,9 @@ test("Home tasks run in independent core and full workers, and full task data su
     ),
   )
   expect(requests.every((request) => ["core", "full"].includes(request.owner))).toBe(true)
-  expect(requests.every((request) => !request.tools.includes("read") && !request.tools.includes("bash"))).toBe(true)
+  expect(requests.every((request) => !request.tools.includes("read"))).toBe(true)
+  for (const owner of ["core", "full"])
+    expect(requests.some((request) => request.owner === owner && request.tools.includes("bash"))).toBe(true)
   expect(
     requests.filter((request) => request.owner === "core").every((request) => !request.tools.includes("note_write")),
   ).toBe(true)

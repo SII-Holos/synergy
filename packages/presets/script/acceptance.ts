@@ -1,0 +1,193 @@
+import path from "node:path"
+import { parseArgs } from "node:util"
+import { execFileSync } from "node:child_process"
+import { selectCases } from "./acceptance/catalog"
+import { Plan, execute, loadPlan, makePlan, report } from "./acceptance/runner"
+import { atomicJSON } from "./acceptance/evidence"
+import { Settings, validateCatalog } from "./acceptance/settings"
+
+const root = path.resolve(import.meta.dir, "../../..")
+function source() {
+  if (execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }).trim())
+    throw new Error("Commit the acceptance implementation before freezing or executing source")
+  return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim()
+}
+
+export async function main(args: string[]) {
+  const [command, ...rest] = args
+  const { values } = parseArgs({
+    args: rest,
+    options: {
+      case: { type: "string" },
+      out: { type: "string" },
+      settings: { type: "string" },
+      input: { type: "string", multiple: true },
+      retry: { type: "string" },
+      reason: { type: "string" },
+      help: { type: "boolean" },
+    },
+  })
+  if (values.help || !command || command === "--help") {
+    process.stdout.write(
+      "Local joint architecture acceptance\n\n" +
+        "plan --case <id,id|all> --out <private-directory> --settings <settings.json> [--input <name=path>]\n" +
+        "run --out <private-directory>\n" +
+        "resume --out <private-directory> [--retry <id,id> --reason <explanation>]\n" +
+        "report --out <private-directory>\n\n" +
+        "Live scenarios call the configured provider. Failed or interrupted attempts are never silently retried.\n" +
+        selectCases("all")
+          .map((entry) => `${entry.id}${entry.live ? " (live model)" : ""}`)
+          .join("\n") +
+        "\n",
+    )
+    return
+  }
+  if (!["plan", "run", "resume", "report"].includes(command)) throw new Error("Unknown acceptance command")
+  if (!values.out) throw new Error("An explicit private output directory is required")
+  const directory = path.resolve(values.out)
+  if (directory === root || directory.startsWith(root + path.sep))
+    throw new Error("Acceptance data must stay outside the source checkout")
+  if (command === "plan") {
+    if (!values.case || !values.settings) throw new Error("Planning requires explicit cases and frozen settings")
+    const settingsFile = path.resolve(values.settings)
+    const settings = Settings.parse(await Bun.file(settingsFile).json())
+    await validateCatalog(settings)
+    const inputs = [
+      { name: "settings", path: settingsFile },
+      { name: "models", path: settings.modelCatalog },
+      { name: "provider-credential", path: settings.apiKeyFile },
+      { name: "dependencies", path: path.join(root, "bun.lock") },
+      ...(settings.chromium ? [{ name: "chromium", path: settings.chromium }] : []),
+      ...(settings.postgres ? [{ name: "postgres-connection", path: settings.postgres.urlFile }] : []),
+      ...Object.entries(settings.artifacts ?? {}).flatMap(([name, value]) =>
+        typeof value === "string"
+          ? [{ name: `artifact-${name}`, path: value }]
+          : [
+              { name: `artifact-${name}`, path: value.directory },
+              ...("electronDirectory" in value ? [{ name: "artifact-electron", path: value.electronDirectory }] : []),
+            ],
+      ),
+      ...Object.entries(settings.remote ?? {}).flatMap(([kind, value]) =>
+        typeof value === "object"
+          ? Object.entries(value).map(([name, file]) => ({ name: `${kind}-${name}`, path: file }))
+          : [],
+      ),
+      ...(values.input ?? []).map((value) => {
+        const separator = value.indexOf("=")
+        if (separator <= 0) throw new Error("Input uses name=path syntax")
+        return { name: value.slice(0, separator), path: path.resolve(value.slice(separator + 1)) }
+      }),
+    ]
+    const plan = await makePlan({ source: source(), directory, cases: selectCases(values.case), inputs })
+    process.stdout.write(
+      JSON.stringify({ source: plan.source, plan: plan.digest, cases: plan.cases.map((entry) => entry.id) }, null, 2) +
+        "\n",
+    )
+    return
+  }
+  if (command === "run" || command === "resume") {
+    const plan = await loadPlan(directory)
+    const input = plan.inputs.find((entry) => entry.name === "settings")
+    if (!input) throw new Error("Frozen settings are missing")
+    const settings = Settings.parse(await Bun.file(input.path).json())
+    await validateCatalog(settings)
+    process.env.MODELS_DEV_API_JSON = settings.modelCatalog
+    process.env.SYNERGY_DISABLE_MODELS_FETCH = "1"
+    const { assertNativeAcceptanceReady } = await import("./acceptance/native-preflight")
+    await atomicJSON(path.join(directory, `native-preflight-${Date.now()}.json`), await assertNativeAcceptanceReady())
+    const { attachments } = await import("./acceptance/attachments")
+    const driver = attachments(settings)
+    const { remoteFault } = await import("./acceptance/remote")
+    const { media } = await import("./acceptance/media")
+    const { objects } = await import("./acceptance/objects")
+    const { persistence } = await import("./acceptance/persistence")
+    const { modelStream } = await import("./acceptance/model-stream")
+    const { apiLazy } = await import("./acceptance/api-lazy")
+    const { acknowledgements } = await import("./acceptance/acknowledgements")
+    const { executionDrain } = await import("./acceptance/execution-drain")
+    const { cancellations } = await import("./acceptance/cancellation")
+    const { permissionTargets } = await import("./acceptance/permission-targets")
+    const { fileServices } = await import("./acceptance/file-services")
+    const { remoteLoss } = await import("./acceptance/remote-loss")
+    const { sharedDelegation } = await import("./acceptance/shared-delegation")
+    const { resourceCycles } = await import("./acceptance/resource-cycles")
+    const { desktopInput } = await import("./acceptance/product-ui")
+    const { desktopRemote } = await import("./acceptance/product-remote")
+    const { webReconnect } = await import("./acceptance/product-web")
+    const { installedEntrypoints, currentDevUpgrade } = await import("./acceptance/installed")
+    await execute(
+      plan,
+      {
+        ...Object.fromEntries(["home", "project", "workspace"].map((kind) => [`attachments-${kind}`, driver])),
+        ...Object.fromEntries(["attachment-policy", "vision-child"].map((id) => [id, media(settings)])),
+        ...Object.fromEntries(["fault-publication-ack", "object-protocols"].map((id) => [id, objects(settings)])),
+        "storage-sqlite": persistence(settings),
+        "fault-model-stream": modelStream(settings),
+        "fault-model-timeout": modelStream(settings, { fault: "timeout" }),
+        "shared-delegation": sharedDelegation(settings),
+        ...(settings.artifacts?.web && settings.artifacts.desktop ? { "desktop-input": desktopInput(settings) } : {}),
+        ...(settings.artifacts?.web && settings.artifacts.desktop && settings.remote
+          ? { "desktop-remote": desktopRemote(settings) }
+          : {}),
+        ...(settings.artifacts?.web && settings.chromium ? { "web-reconnect": webReconnect(settings) } : {}),
+        ...(settings.artifacts?.core && settings.artifacts.full
+          ? { "installed-entrypoints": installedEntrypoints(settings) }
+          : {}),
+        ...(settings.artifacts?.previous && settings.artifacts.full
+          ? { "current-dev-upgrade": currentDevUpgrade(settings) }
+          : {}),
+        ...(settings.postgres ? { "storage-postgres": persistence(settings) } : {}),
+        ...(settings.remote
+          ? {
+              ...Object.fromEntries(
+                ["fault-command-crash", "fault-save-crash"].map((id) => [id, remoteFault(settings)]),
+              ),
+              "api-lazy": apiLazy(settings),
+              "execution-drain": executionDrain(settings),
+              "fault-cancel-phases": cancellations(settings),
+              "permission-targets": permissionTargets(settings),
+              "file-services": fileServices(settings),
+              "fault-remote-loss": remoteLoss(settings),
+              "resource-cycles": resourceCycles(settings),
+              ...Object.fromEntries(
+                ["fault-allocation-ack", "fault-release-ack"].map((id) => [id, acknowledgements(settings)]),
+              ),
+            }
+          : {}),
+      },
+      {
+        source: source(),
+        currentSource: source,
+        resume: command === "resume",
+        retry: values.retry?.split(","),
+        reason: values.reason,
+      },
+    )
+  }
+  const plan = Plan.parse(await Bun.file(path.join(directory, "plan.json")).json())
+  const result = await report(plan)
+  await atomicJSON(path.join(directory, "report.json"), result)
+  const markdown = [
+    "# Joint architecture acceptance",
+    "",
+    `Source: ${result.source}`,
+    `Plan: ${result.plan}`,
+    "",
+    `Accepted: ${result.passed ? "yes" : "no"}`,
+    "",
+    "| Scenario | Result | Attempts |",
+    "| --- | --- | --- |",
+    ...result.cases.map((entry) => `| ${entry.id} | ${entry.status} | ${entry.attempts} |`),
+    "",
+    `Recorded requests: ${result.usage.requests}; unknown usage: ${result.usage.unknownUsage}; attempts without accounting: ${result.usage.unaccountedAttempts}.`,
+    `Known token totals: input ${result.usage.input}, output ${result.usage.output}. These totals exclude unknown usage.`,
+    "",
+    ...result.limits.map((limit) => `- ${limit}`),
+    "",
+  ].join("\n")
+  await Bun.write(path.join(directory, "report.md"), markdown, { mode: 0o600 })
+  process.stdout.write(JSON.stringify(result, null, 2) + "\n")
+  if (!result.passed) process.exitCode = 1
+}
+
+if (import.meta.main) await main(process.argv.slice(2))

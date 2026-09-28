@@ -4,7 +4,7 @@ import path from "node:path"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { FileMutation } from "../../src/file/mutation"
+import { NativeFileMutation } from "../../src/file/mutation-core"
 import { WorkspaceFileService } from "../../src/workspace-file/service"
 import { WorkspaceFileRead } from "../../src/workspace-file/read"
 import { testRuntime } from "../support/runtime"
@@ -140,15 +140,15 @@ test("concurrent native processes cannot both replace the same content version",
   await using tmp = await tmpdir()
   const target = path.join(tmp.path, "shared.txt")
   await Bun.write(target, "old")
-  const implementation = path.resolve(import.meta.dir, "../../src/file/mutation.ts")
+  const implementation = path.resolve(import.meta.dir, "../../src/file/mutation-core.ts")
   const jobs = ["one", "two"].map((content) =>
     Bun.spawn(
       [
         process.execPath,
         "-e",
         `
-    import { FileMutation } from ${JSON.stringify(implementation)};
-    try { await FileMutation.write({ path: ${JSON.stringify(target)}, content: ${JSON.stringify(content)}, expectedVersion: ${JSON.stringify(FileTime.version("old"))} }); console.log("written") }
+    import { NativeFileMutation } from ${JSON.stringify(implementation)};
+    try { await NativeFileMutation.write({ path: ${JSON.stringify(target)}, content: ${JSON.stringify(content)}, expectedVersion: ${JSON.stringify(FileTime.version("old"))} }); console.log("written") }
     catch (error) { console.log(error.name); process.exitCode = error.name === "WorkspaceFileWriteConflictError" ? 0 : 1 }
   `,
       ],
@@ -179,7 +179,7 @@ test("a changed parent symlink or cancelled write leaves the targets untouched",
   await Bun.write(path.join(other.path, "a.txt"), "external")
   let validations = 0
   await expect(
-    FileMutation.write({
+    NativeFileMutation.write({
       path: path.join(link, "a.txt"),
       content: "new",
       expectedVersion: FileTime.version("old"),
@@ -195,7 +195,7 @@ test("a changed parent symlink or cancelled write leaves the targets untouched",
   expect(await Bun.file(path.join(other.path, "a.txt")).text()).toBe("external")
   const controller = new AbortController()
   await expect(
-    FileMutation.write({
+    NativeFileMutation.write({
       path: path.join(original, "a.txt"),
       content: "new",
       signal: controller.signal,

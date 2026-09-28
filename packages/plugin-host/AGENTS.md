@@ -9,7 +9,7 @@ Plugin processes, discovery, configuration, trust, permissions and capability-ga
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
-File-capable invocations pin canonical Workspace generations. Restore the invocation async context for every IPC Host callback, drain Host work before releasing ownership, and preserve native file conflicts. Verify with `bun test test/plugin-runtime/workspace-context.test.ts test/plugin/tool-invocation.test.ts test/plugin/shell-host-service.test.ts`.
+File-capable invocations pin canonical Workspace generations. Restore resource selection and async context for every IPC Host callback, drain Host work before releasing ownership, and preserve file conflicts. Host Services use selected file views and Environment execution without a controller fallback. Verify `bun test test/plugin-runtime/workspace-context.test.ts test/plugin-runtime/workspace-environment.test.ts test/plugin/tool-invocation.test.ts test/plugin/shell-host-service.test.ts`; set `SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE` for the Docker scenario.
 
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
 

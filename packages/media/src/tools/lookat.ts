@@ -1,12 +1,11 @@
 import z from "zod"
 import * as path from "path"
-import { pathToFileURL } from "url"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { SessionInteraction } from "@ericsanchezok/synergy-harness/session/interaction"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
 import DESCRIPTION from "./lookat.txt"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
@@ -103,7 +102,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
 
       const files: Array<{ filepath: string; mimeType: string; filename: string }> = []
       for (const raw of paths) {
-        const filepath = path.isAbsolute(raw) ? raw : path.join(ScopeContext.current.directory, raw)
+        const { filepath } = await Attachment.resolveLocalPath(raw)
         if (!(await Bun.file(filepath).exists())) {
           return {
             title: "File not found",
@@ -213,17 +212,19 @@ If the requested information is not found, clearly state what is missing.`
           origin: { type: "system" },
           parts: [
             { type: "text", text: prompt },
-            ...files.map((file) => ({
-              type: "attachment" as const,
-              mime: file.mimeType,
-              url: pathToFileURL(file.filepath).href,
-              filename: file.filename,
-              localPath: file.filepath,
-              model: {
-                mode: "provider-file" as const,
-                summary: `${file.filename} (${file.mimeType})`,
-              },
-            })),
+            ...(await Promise.all(
+              files.map((file) =>
+                Attachment.toPart({
+                  filepath: file.filepath,
+                  mime: file.mimeType,
+                  filename: file.filename,
+                  localPath: file.filepath,
+                  sessionID: session.id,
+                  messageID: ctx.messageID,
+                  model: { mode: "provider-file", summary: `${file.filename} (${file.mimeType})` },
+                }),
+              ),
+            )),
           ],
         })
 

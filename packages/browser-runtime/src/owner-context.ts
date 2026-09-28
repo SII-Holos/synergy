@@ -5,6 +5,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { BrowserOwner } from "./owner"
 
 export async function withinBrowserOwner<T>(
@@ -18,6 +19,18 @@ export async function withinBrowserOwner<T>(
     async () => {
       signal?.throwIfAborted()
       const session = owner.mode === "session" ? await Session.get(owner.sessionID!) : undefined
+      if (session) {
+        const environment = session.environmentID
+          ? await Environment.get(session.environmentID, session.scope.id)
+          : undefined
+        if (environment?.provider !== "native")
+          throw new BrowserProtocolError({
+            code: "browser_environment_unavailable",
+            message:
+              "Browser is available only with the native Environment. The selected Environment has no Browser provider.",
+            retryable: false,
+          })
+      }
       const scope = session?.scope ?? (await Scope.resolve({ scopeID: owner.scopeID }))
       const workspaceID = session
         ? session.workspaceID

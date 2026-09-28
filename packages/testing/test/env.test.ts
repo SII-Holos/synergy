@@ -27,6 +27,23 @@ describe("createIsolatedTestEnv", () => {
     await isolated.dispose()
     expect(await fs.stat(pathOf(root)).catch(() => null)).toBeNull()
   })
+
+  test("does not propagate an ambient process-death watchdog into owned fixture processes", async () => {
+    const previous = process.env.BUN_FEATURE_FLAG_NO_ORPHANS
+    process.env.BUN_FEATURE_FLAG_NO_ORPHANS = "1"
+    try {
+      const isolated = await createIsolatedTestEnv()
+      try {
+        expect(isolated.env.BUN_FEATURE_FLAG_NO_ORPHANS).toBeUndefined()
+        expect(process.env.BUN_FEATURE_FLAG_NO_ORPHANS).toBe("1")
+      } finally {
+        await isolated.dispose()
+      }
+    } finally {
+      if (previous === undefined) delete process.env.BUN_FEATURE_FLAG_NO_ORPHANS
+      else process.env.BUN_FEATURE_FLAG_NO_ORPHANS = previous
+    }
+  })
 })
 
 function pathOf(value: string) {

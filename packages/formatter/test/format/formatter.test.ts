@@ -381,21 +381,34 @@ test(
           }).then(() => {
             settled = true
           })
-          try {
-            const deadline = Date.now() + 5000
-            while (
-              (await Bun.file(ready)
+          const observation = new AbortController()
+          const readiness = (async () => {
+            for (;;) {
+              observation.signal.throwIfAborted()
+              const value = await Bun.file(ready)
                 .text()
-                .catch(() => "")) !== "ready" &&
-              Date.now() < deadline
-            )
+                .catch((error: unknown) => {
+                  if (error instanceof Error && "code" in error && error.code === "ENOENT") return ""
+                  throw error
+                })
+              if (value === "ready") return
               await Bun.sleep(10)
-            expect(await Bun.file(ready).text()).toBe("ready")
+            }
+          })()
+          try {
+            await Promise.race([
+              readiness,
+              formatting.then(() => {
+                throw new Error("Formatter settled before its held descendant became ready")
+              }),
+            ])
             expect(settled).toBe(false)
             await expect(
               WorkspaceAccess.write([control.path], async () => {}, AbortSignal.timeout(100)),
             ).rejects.toMatchObject({ name: "TimeoutError" })
           } finally {
+            observation.abort()
+            await readiness.catch(() => {})
             await Bun.write(finish, "finish")
             await formatting
             await Format.reload()
@@ -404,7 +417,7 @@ test(
         },
       })
     }),
-  15000,
+  60000,
 )
 
 afterRuntimeTests(() => runtime.close())

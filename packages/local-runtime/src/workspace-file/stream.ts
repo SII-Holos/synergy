@@ -3,6 +3,7 @@ import { constants } from "node:fs"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 
 export namespace WorkspaceFileStream {
@@ -29,6 +30,20 @@ export namespace WorkspaceFileStream {
     signal?: AbortSignal
     validate(path: string): Promise<void>
   }) {
+    if (!FileView.native()) {
+      input.signal?.throwIfAborted()
+      await input.validate(input.path)
+      const before = await FileView.stat(input.path)
+      const stat = await FileView.file(input.path).stat()
+      if (!stat.isFile()) throw new FileMutation.AccessDeniedError("Access denied: path is not a regular file")
+      if (stat.size > input.limit)
+        throw new TooLargeError(`File too large to stream (${stat.size} bytes, limit ${input.limit})`)
+      const bytes = await FileView.bytes(input.path, undefined, input.limit)
+      input.signal?.throwIfAborted()
+      if ((await FileView.stat(input.path))?.entryVersion !== before?.entryVersion)
+        throw new FileMutation.ConflictError()
+      return { stream: new Blob([new Uint8Array(bytes)]).stream(), stat }
+    }
     const lease = await WorkspaceAccess.pin(input.signal)
     let file: Awaited<ReturnType<typeof fs.open>> | undefined
     let resource: Resource | undefined

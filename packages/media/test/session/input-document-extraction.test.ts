@@ -1,119 +1,141 @@
-import { describe, expect, test } from "bun:test"
+import { afterAll, expect, test } from "bun:test"
 import { pathToFileURL } from "node:url"
 import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
-import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { createUserMessage } from "@ericsanchezok/synergy-harness/session/input"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { registerDocumentExtraction } from "../../src/register-documents"
-import { afterAll as afterRuntimeTests } from "bun:test"
+import { createPptx } from "@ericsanchezok/synergy-testing/pptx"
 import { testRuntime } from "../support/runtime"
+import { createDocx, createPdf, createXlsx } from "../support/documents"
+
 const runtime = await testRuntime()
+const model = { providerID: "test", modelID: "test" }
+const mime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
-const primaryModel = { providerID: "primary-provider", modelID: "primary-model" }
-const pptxMime = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+for (const [extension, mime, make] of [
+  ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createDocx],
+  ["xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", createXlsx],
+  ["pdf", "application/pdf", createPdf],
+] as const) {
+  test(
+    `${extension} uploads and inline attachments deliver extracted text without a workspace`,
+    () =>
+      runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          workspace: null,
+          fn: async () => {
+            const bytes = await make("DOCUMENTCONTENTMARKER")
+            const filename = `document.${extension}`
+            for (const url of [
+              `asset://${await Asset.write(bytes, mime, filename)}`,
+              `data:${mime};base64,${bytes.toString("base64")}`,
+            ]) {
+              const session = await Session.create({ workspace: null })
+              const message = await createUserMessage({
+                sessionID: session.id,
+                model,
+                parts: [{ type: "attachment", url, filename, mime }],
+              })
+              expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
+              expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain(filename)
+            }
+          },
+        }),
+      ),
+    30_000,
+  )
+}
 
-describe("session input attachment extraction", () => {
-  test("preserves a file attachment when document extraction fails", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await Session.create({})
-          const bytes = Buffer.from("not a pptx archive")
-          const filepath = `${tmp.path}/broken.pptx`
-          await Bun.write(filepath, bytes)
-
-          try {
-            const created = await createUserMessage({
+for (const source of ["asset", "data", "file"] as const) {
+  for (const valid of [true, false]) {
+    test(`${source} document ${valid ? "delivers extracted text" : "parks the complete input on extraction failure"}`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir()
+        await ScopeContext.provide({
+          scope: source === "file" ? await tmp.scope() : Scope.home(),
+          ...(source !== "file" ? { workspace: null } : {}),
+          fn: async () => {
+            const bytes = valid
+              ? Buffer.from(await createPptx(["DOCUMENTCONTENTMARKER"]))
+              : Buffer.from("broken pptx archive")
+            const filename = "slides.pptx"
+            const filepath = `${tmp.path}/${filename}`
+            await Bun.write(filepath, bytes)
+            const url =
+              source === "asset"
+                ? `asset://${await Asset.write(bytes, mime, filename)}`
+                : source === "data"
+                  ? `data:${mime};base64,${bytes.toString("base64")}`
+                  : pathToFileURL(filepath).href
+            const session = await Session.create({})
+            await createUserMessage({ sessionID: session.id, model, parts: [{ type: "text", text: "seed" }] })
+            const item = await SessionInbox.enqueueUser({
               sessionID: session.id,
-              model: primaryModel,
+              model,
               parts: [
-                { type: "text", text: "Please inspect this presentation" },
+                { type: "text", text: "Keep this request intact" },
+                { type: "attachment", url, filename, mime },
                 {
                   type: "attachment",
-                  url: pathToFileURL(filepath).href,
-                  filename: "broken.pptx",
-                  mime: pptxMime,
-                  model: { mode: "summary", summary: `broken.pptx (${pptxMime})` },
+                  url: `data:text/plain;base64,${Buffer.from("valid sibling").toString("base64")}`,
+                  filename: "sibling.txt",
+                  mime: "text/plain",
                 },
               ],
             })
+            const outcome = await SessionInbox.materializeNextTask(session.id)
+            expect(outcome.status).toBe(valid ? "materialized" : "failed")
+            if (valid) {
+              const message = await MessageV2.get({ sessionID: session.id, messageID: item.messageID })
+              expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
+            } else {
+              const failed = await SessionInbox.getStored(session.id, item.id)
+              expect(failed.input?.parts).toHaveLength(3)
+              expect(failed.failReason).toContain(filename)
+              expect(failed.failReason).not.toContain(tmp.path)
+              await expect(MessageV2.get({ sessionID: session.id, messageID: item.messageID })).rejects.toBeInstanceOf(
+                Storage.NotFoundError,
+              )
+            }
+          },
+        })
+      }))
+  }
+}
 
-            expect(
-              created.parts.some((part) => part.type === "text" && part.text === "Please inspect this presentation"),
-            ).toBe(true)
-            expect(
-              created.parts.some(
-                (part) =>
-                  part.type === "text" &&
-                  part.origin === "system" &&
-                  part.text.startsWith("Failed to extract text from broken.pptx:"),
-              ),
-            ).toBe(true)
-
-            const attachment = created.parts.find(
-              (part): part is MessageV2.AttachmentPart => part.type === "attachment",
-            )
-            expect(attachment?.url.startsWith("asset://")).toBe(true)
-            const asset = attachment ? await Asset.read(attachment.url.slice("asset://".length)) : undefined
-            expect(Buffer.from(await asset!.arrayBuffer())).toEqual(bytes)
-            expect(FileTime.get(session.id, filepath)).toBeInstanceOf(Date)
-          } finally {
-            await Session.remove(session.id)
-          }
-        },
-      })
-    }))
-
-  test("preserves a data attachment when document extraction fails", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
+test("audio and structured text preserve their original attachment with the document processor registered", () =>
+  runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        for (const [mime, filename, content] of [
+          ["audio/wav", "sound.wav", "RIFF audio transport"],
+          ["audio/mpeg", "sound.mp3", "audio transport"],
+          ["text/csv", "table.csv", "field\nTEXT_MARKER"],
+          ["application/json", "data.json", '{"field":"TEXT_MARKER"}'],
+        ]) {
+          const id = await Asset.write(Buffer.from(content), mime, filename)
           const session = await Session.create({})
-          const bytes = Buffer.from("not a pptx archive")
+          const message = await createUserMessage({
+            sessionID: session.id,
+            model,
+            parts: [{ type: "attachment", url: `asset://${id}`, mime, filename }],
+          })
+          const attachment = message.parts.find((part) => part.type === "attachment")
+          expect(attachment?.localPath).toBe(Asset.resolvePath(id))
+          expect(await Bun.file(attachment!.localPath!).text()).toBe(content)
+          if (filename.endsWith("csv") || filename.endsWith("json"))
+            expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("TEXT_MARKER")
+        }
+      },
+    }),
+  ))
 
-          try {
-            const created = await createUserMessage({
-              sessionID: session.id,
-              model: primaryModel,
-              parts: [
-                { type: "text", text: "Please inspect this presentation" },
-                {
-                  type: "attachment",
-                  url: `data:${pptxMime};base64,${bytes.toString("base64")}`,
-                  filename: "broken.pptx",
-                  mime: pptxMime,
-                  model: { mode: "summary", summary: `broken.pptx (${pptxMime})` },
-                },
-              ],
-            })
-
-            expect(
-              created.parts.some(
-                (part) =>
-                  part.type === "text" &&
-                  part.origin === "system" &&
-                  part.text.startsWith("Failed to extract text from broken.pptx:"),
-              ),
-            ).toBe(true)
-
-            const persisted = await MessageV2.parts({ sessionID: session.id, messageID: created.info.id })
-            const attachment = persisted.find((part): part is MessageV2.AttachmentPart => part.type === "attachment")
-            expect(attachment?.url.startsWith("asset://")).toBe(true)
-            const asset = attachment ? await Asset.read(attachment.url.slice("asset://".length)) : undefined
-            expect(Buffer.from(await asset!.arrayBuffer())).toEqual(bytes)
-          } finally {
-            await Session.remove(session.id)
-          }
-        },
-      })
-    }))
-})
-
-afterRuntimeTests(() => runtime.close())
+afterAll(() => runtime.close())

@@ -12,6 +12,8 @@ Storage maintenance commands own their Runtime lifecycle. Run their isolated sui
 
 Command contributions may select maintenance storage from parsed positionals; HTTP-only subcommands must not acquire the local Home lock.
 
+Workspace and Environment commands require an attached server and explicit Scope, use generated SDK operations, and retain mutation preconditions and structured errors. Verify with `bun test test/cli/resources.test.ts`.
+
 Own server process lifetime, managed startup reporting, signals and terminal presentation through an injected runtime factory. Keep `runCli()` as the sole parser. Agent Runtime supplies core execution and plugin hosting; optional product domains contribute through component adapters. Core CLI must not import optional product implementations. Test command-load failures and preserve send cancellation and recording-error exit codes.
 
 The public `cli/maintenance-progress` leaf owns aggregate maintenance reporting and cancellation for explicit CLI maintenance. Presets reuses its reporters; startup diagnostics stays independent of database bootstrap.

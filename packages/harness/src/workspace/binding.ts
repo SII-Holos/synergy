@@ -101,6 +101,8 @@ export namespace WorkspaceBinding {
     if (!path.isAbsolute(input.path))
       throw new WorkspaceCatalog.Invalid({ message: "Workspace location must be absolute", workspaceID: id })
     const previous = await WorkspaceCatalog.get(id, input.scopeID)
+    if (previous.revision !== input.expectedRevision)
+      throw new WorkspaceCatalog.BindingChanged({ message: "Workspace changed before rebinding", workspaceID: id })
     const source = WorkspaceLocation.source()
     const hostID = await source.hostID()
     const target = await source.identify(input.path)
@@ -110,6 +112,14 @@ export namespace WorkspaceBinding {
         ? [previous.binding.path]
         : []),
     ]
+    const { WorkspaceMounts } = await import("./mount")
+    const detached = previous.activeMount
+      ? await WorkspaceMounts.detach({
+          workspaceID: id,
+          scopeID: input.scopeID,
+          expectedRevision: input.expectedRevision,
+        })
+      : previous
     return WorkspaceAccess.exclusive(
       roots,
       async () => {
@@ -120,11 +130,13 @@ export namespace WorkspaceBinding {
             workspaceID: id,
           })
         const current = await WorkspaceCatalog.get(id, input.scopeID)
-        if (current.revision !== input.expectedRevision)
+        if (current.revision !== detached.revision)
           throw new WorkspaceCatalog.BindingChanged({ message: "Workspace changed before rebinding", workspaceID: id })
         const { WorkspaceRuntime } = await import("./runtime")
         await WorkspaceRuntime.disposeWorkspace(id)
-        return publishChange(input.scopeID, () => WorkspaceCatalog.rebind(id, { ...input, hostID, ...target }))
+        return publishChange(input.scopeID, () =>
+          WorkspaceCatalog.rebind(id, { ...input, expectedRevision: detached.revision, hostID, ...target }),
+        )
       },
       signal,
     )

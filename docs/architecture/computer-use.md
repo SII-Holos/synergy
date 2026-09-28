@@ -27,3 +27,5 @@ The host process belongs to Desktop and is closed with its broker connection. Th
 Desktop builds prepare a versioned macOS universal Cua executable from a pinned archive and verify both archive and executable digests. The executable and MIT notice are copied into `Resources/computer`; the macOS signing configuration includes the nested executable. The matching pinned TypeScript SDK stays external to the JavaScript bundle; its native module and dynamic library are unpacked from ASAR. Development can supply `SYNERGY_COMPUTER_DRIVER_PATH` explicitly. Other platforms and remote server connections do not provide native Computer Use.
 
 The [decision record](../decisions/implemented/feature/2026-09-07-first-party-computer-use.md) records the concurrency and embedding tradeoffs. [Desktop release](../operations/desktop-release.md) owns packaging procedures.
+
+Native Computer tools require a Session selecting the native Environment as well as Full Access. They hold the Session binding through dispatch and reject absent or remote execution selections before contacting Desktop. This component does not advertise Computer execution inside Docker.

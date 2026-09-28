@@ -1,3 +1,4 @@
+import { WorkspaceOperations } from "../workspace/operations"
 import { registerConfigMigrations } from "../config/migration"
 import { registerScopeMigrations } from "../scope/migration"
 import { registerSessionMigrations } from "../session/migration"
@@ -11,6 +12,11 @@ import { SessionCompaction } from "../session/compaction"
 import { registerSearchFailureAnalyzer } from "../tool/search-guard"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { RuntimeContext } from "./context"
+import { Environment } from "../environment"
+import { registerEnvironmentMigrations } from "../environment/migration"
+import { registerWorkspaceMigrations } from "../workspace/migration"
+import { WorkspaceMounts } from "../workspace/mount"
+import { EnvironmentExecution } from "../environment/execution"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
@@ -22,6 +28,12 @@ export function registerHarness() {
   registerSessionMigrations()
   registerObservabilityMigrations()
   registerStorageMigrations()
+  registerWorkspaceMigrations()
+  registerEnvironmentMigrations()
+  Environment.registerRecovery()
+  WorkspaceMounts.register()
+  EnvironmentExecution.registerRecovery()
+  WorkspaceOperations.register()
   registerSessionResolver()
   registerSummaryJob()
   registerTitleJob()

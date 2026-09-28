@@ -4,12 +4,18 @@ import { lsp } from "@ericsanchezok/synergy-lsp/component"
 import { formatter } from "@ericsanchezok/synergy-formatter/component"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 
 test("embedding selects only explicit components and isolates clients across two homes", async () => {
   await using a = await runtimeHome()
   await using b = await runtimeHome()
   await using first = await openAgentRuntime({ home: a.host.root, host: a.host, components: [lsp()] })
-  await using second = await openAgentRuntime({ home: b.host.root, host: b.host, components: [formatter()] })
+  await using second = await openAgentRuntime({
+    home: b.host.root,
+    host: b.host,
+    components: [formatter()],
+    environment: false,
+  })
   expect(first.components.map((component) => component.id)).toEqual(["local-runtime", "lsp", "plugin-host"])
   first.run(() => {
     expect("lsp" in Config.Info.shape).toBe(true)
@@ -17,6 +23,8 @@ test("embedding selects only explicit components and isolates clients across two
     expect("mcp" in Config.Info.shape).toBe(false)
   })
   second.run(() => {
+    expect(EnvironmentProviders.defaultSelection()).toBeUndefined()
+    expect(EnvironmentProviders.list()).toEqual([])
     expect("formatter" in Config.Info.shape).toBe(true)
     expect("lsp" in Config.Info.shape).toBe(false)
   })
@@ -24,6 +32,8 @@ test("embedding selects only explicit components and isolates clients across two
   const bClient = second.client({ directory: b.host.home })
   const aSession = (await aClient.session.create({ title: "first" })).data
   const bSession = (await bClient.session.create({ title: "second" })).data
+  expect(aSession.environmentID).toStartWith("env_")
+  expect(bSession.environmentID).toBeNull()
   expect(aSession.id).not.toBe(bSession.id)
   expect((await aClient.session.list()).data.data.map((session) => session.id)).toEqual([aSession.id])
   expect((await bClient.session.list()).data.data.map((session) => session.id)).toEqual([bSession.id])

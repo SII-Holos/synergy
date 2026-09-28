@@ -287,6 +287,7 @@ export namespace WorkspaceFile {
 
   export const StatusSummary = z
     .object({
+      capability: SearchCapability.optional(),
       files: z.array(
         z.object({
           path: z.string(),

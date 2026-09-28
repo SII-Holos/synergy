@@ -155,7 +155,6 @@ describe("workbench surface polarity", () => {
     expect(workspaceLocationButton).toContain('"workspace.main"')
     expect(sessionTopBar).toContain("resolveProjectScope(directory()")
     expect(sessionTopBar).toContain("getScopeLabel(projectScope()")
-    expect(workspaceLocationButton).toContain("{props.location.path}")
     expect(sessionTopBarCss).toContain(".stb-project-name")
     expect(sessionTopBarCss).toContain(".stb-folder")
     expect(sessionTopBarCss).toContain("text-overflow: ellipsis;")

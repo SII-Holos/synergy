@@ -1,3 +1,5 @@
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
 import { afterAll, expect, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -5,7 +7,20 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { ComputerAppsTool } from "../src/tools"
 
-const runtime = await testRuntime()
+const runtime = await testRuntime({
+  register: () => {
+    for (const id of ["native", "remote-fixture"])
+      EnvironmentProviders.register({
+        id,
+        allocate: async () => {
+          throw Error("must not allocate")
+        },
+        inspect: async () => ({ state: "absent" }),
+        deallocate: async () => {},
+      })
+    EnvironmentProviders.setDefault({ provider: "native", spec: {} })
+  },
+})
 
 test("native dispatch rechecks a profile downgraded after tool initialization", () =>
   runtime.run(async () => {
@@ -98,3 +113,39 @@ test("successful observation stores screenshots as durable attachments for a tex
   }))
 
 afterAll(() => runtime.close())
+
+test("Full Access cannot redirect a remote Environment Computer operation to the controller", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const remote = await Environment.bind({
+          scopeID: ScopeContext.current.scope.id,
+          ownerID: "remote-computer",
+          provider: "remote-fixture",
+          spec: {},
+        })
+        const tool = await ComputerAppsTool.init()
+        for (const environmentID of [remote.id, null]) {
+          const session = await Session.create({ environmentID, controlProfile: "full_access", workspace: null })
+          await expect(
+            tool.execute(
+              {},
+              {
+                sessionID: session.id,
+                messageID: "msg_missing",
+                agent: "synergy",
+                abort: new AbortController().signal,
+                metadata() {},
+                async ask() {
+                  throw Error("must not ask")
+                },
+              },
+            ),
+          ).rejects.toMatchObject({ code: "computer_environment_unavailable" })
+          await Session.remove(session.id)
+        }
+      },
+    })
+  }))

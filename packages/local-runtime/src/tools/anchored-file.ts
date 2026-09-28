@@ -1,7 +1,7 @@
+import { FileView } from "../file/view"
 import { FileMutation } from "../file/mutation"
 import * as path from "path"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { formatHashlineHeader, formatHashlineBlock } from "../hashline/format"
 import { SessionHashlineStore } from "../hashline/store"
 import { stripBom } from "../hashline/normalize"
@@ -69,13 +69,11 @@ export function* displayLineNumbers(ranges: { start: number; end: number }[], to
 }
 
 export function resolveFilePath(filePath: string): string {
-  return path.isAbsolute(filePath) ? filePath : path.join(ScopeContext.current.directory, filePath)
+  return FileView.resolve(filePath)
 }
 
 export function displayPath(filePath: string): string {
-  const relative = path.relative(ScopeContext.current.directory, filePath)
-  const display = relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : filePath
-  return display.replaceAll("\\", "/")
+  return FileView.display(filePath)
 }
 
 function isKnownBinaryPath(filePath: string): boolean {
@@ -106,7 +104,7 @@ function isKnownBinaryPath(filePath: string): boolean {
 }
 
 export async function readTextFile(filePath: string): Promise<string> {
-  const file = Bun.file(filePath)
+  const file = FileView.file(filePath)
   const stats = await file.stat().catch(() => undefined)
   if (!stats) throw new Error(`File not found: ${filePath}`)
   if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)
@@ -115,7 +113,7 @@ export async function readTextFile(filePath: string): Promise<string> {
 }
 
 export async function readTextFileUnderSnapshotCap(filePath: string): Promise<string | undefined> {
-  const file = Bun.file(filePath)
+  const file = FileView.file(filePath)
   const stats = await file.stat().catch(() => undefined)
   if (!stats) throw new Error(`File not found: ${filePath}`)
   if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${filePath}`)

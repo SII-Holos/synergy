@@ -74,7 +74,6 @@ export namespace ToolRegistry {
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          assertWorkspace(def.requiresWorkspace ?? true)
           const pluginCtx = {
             sessionID: ctx.sessionID,
             messageID: ctx.messageID,
@@ -84,7 +83,9 @@ export namespace ToolRegistry {
             ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
               ctx.ask({ ...input, metadata: input.metadata ?? {} }),
           }
-          const raw = await def.execute(args as any, pluginCtx)
+          const raw = await Tool.withWorkspace(def.requiresWorkspace ?? true, ctx, () =>
+            def.execute(args as any, pluginCtx),
+          )
           await ctx.captureResult?.(raw)
           return normalizePluginResult(raw, initCtx?.agent)
         },
@@ -116,8 +117,8 @@ export namespace ToolRegistry {
     return (await ToolPluginSource.get()?.conditionEnabled(pluginId, condition)) ?? false
   }
 
-  async function enabled(tool: Tool.Info): Promise<boolean> {
-    if (tool.requiresWorkspace && !ScopeContext.current.workspace) return false
+  async function enabled(tool: Tool.Info, workspaceID?: string | null): Promise<boolean> {
+    if (tool.requiresWorkspace && !workspaceID && !ScopeContext.current.workspace) return false
     if (!tool.enabledWhen) return true
     if (tool.source?.type !== "plugin") return false
     return conditionEnabled(tool.source.pluginId, tool.enabledWhen)
@@ -148,16 +149,18 @@ export namespace ToolRegistry {
               code: "CONTRIBUTION_DISABLED",
             })
           }
-          const raw = await entry.execute(args, {
-            sessionID: ctx.sessionID,
-            messageID: ctx.messageID,
-            agent: ctx.agent,
-            abort: ctx.abort,
-            callID: ctx.callID,
-            userMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
-            scopeId: ScopeContext.current.scope.id,
-            directory: ScopeContext.current.workspace?.path,
-          })
+          const raw = await Tool.withWorkspace(entry.requiresWorkspace ?? true, ctx, () =>
+            entry.execute(args, {
+              sessionID: ctx.sessionID,
+              messageID: ctx.messageID,
+              agent: ctx.agent,
+              abort: ctx.abort,
+              callID: ctx.callID,
+              userMessageID: typeof ctx.extra?.userMessageID === "string" ? ctx.extra.userMessageID : undefined,
+              scopeId: ScopeContext.current.scope.id,
+              directory: ScopeContext.current.workspace?.path,
+            }),
+          )
           await ctx.captureResult?.(raw)
           return normalizePluginResult(raw, initCtx?.agent)
         },
@@ -261,17 +264,19 @@ export namespace ToolRegistry {
     return result
   }
 
-  export async function tools(providerID: string, agent?: Agent.Info) {
+  export async function tools(providerID: string, agent?: Agent.Info, workspaceID?: string | null) {
     const allTools = await all()
-    const tools = (await Promise.all(allTools.map(async (tool) => ((await enabled(tool)) ? tool : undefined)))).filter(
-      (tool): tool is Tool.Info => Boolean(tool),
-    )
+    const tools = (
+      await Promise.all(allTools.map(async (tool) => ((await enabled(tool, workspaceID)) ? tool : undefined)))
+    ).filter((tool): tool is Tool.Info => Boolean(tool))
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
       tools.map(async (t) => {
         const def = await t.init({ agent })
         return {
           id: t.id,
+          requiresWorkspace: t.requiresWorkspace ?? false,
+          requiresExecution: t.requiresExecution,
           exposure: ToolExposure.deferredExposure(t.id, ToolExposure.normalize(t.id, t.exposure), agent?.deferredTools),
           display: t.display,
           source: t.source,

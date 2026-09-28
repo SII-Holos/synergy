@@ -72,10 +72,11 @@ test("normal and fault Docker groups retain the complete lifecycle file inventor
   expect(invocations[1]!.args).toContain("not real_synergy_paired_rollout")
 })
 
-test("native observations isolate each JIT, protocol and model control with frozen preparation", async () => {
+test("native observations isolate long-duration JIT/protocol controls and short model semantics with frozen preparation", async () => {
   const native = tasks.filter((task) => task.kind === "benchmark-native")
-  const long = native.filter((task) => task.id.startsWith("native-synergy-"))
-  expect(long).toHaveLength(8)
+  const long = native.filter((task) => task.selection?.startsWith("test_synergy_long_sessions"))
+  const semantics = native.find((task) => task.id === "native-synergy-semantics")!
+  expect(semantics.scenarios).toHaveLength(4)
   const selections = []
   for (const task of native) {
     const [recipe] = await commands(task, plan)
@@ -86,20 +87,19 @@ test("native observations isolate each JIT, protocol and model control with froz
       expect(task.variant).toBe("synergy")
       expect(task.needs).toContain("benchmark-prepare")
       selections.push(recipe!.args[index + 1])
-    } else
+    } else if (task !== semantics)
       expect(recipe!.args[index + 1]).toBe(
-        task.variant === "synergy" ? "not test_synergy_long_sessions" : "test_native_matrix",
+        task.variant === "synergy"
+          ? "not test_synergy_long_sessions and not test_synergy_native_semantics"
+          : "test_native_matrix",
       )
   }
   expect(selections.sort()).toEqual(
     ["jitless", "not jitless"]
       .flatMap((mode) =>
-        ["chat-completions", "responses"].flatMap((protocol) =>
-          ["fixture-one", "fixture-two"].map(
-            (model) => `test_synergy_long_sessions and ${mode} and ${protocol} and ${model}`,
-          ),
-        ),
+        ["chat-completions", "responses"].map((protocol) => `test_synergy_long_sessions and ${mode} and ${protocol}`),
       )
       .sort(),
   )
+  expect(semantics.selection).toBe("test_synergy_native_semantics")
 })

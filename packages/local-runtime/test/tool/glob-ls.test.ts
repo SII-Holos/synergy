@@ -18,11 +18,6 @@ const ctx = {
   ask: async () => {},
 }
 
-/**
- * Build a ctx with a pre-aborted signal. The combined signal
- * (AbortSignal.any([preAborted, timeoutSignal])) is immediately aborted,
- * so Ripgrep is killed before producing any output.
- */
 function abortedCtx() {
   const controller = new AbortController()
   controller.abort()
@@ -78,7 +73,7 @@ describe("tool.glob", () => {
       })
     }))
 
-  test("returns partial results without throwing when ctx.abort is already aborted", () =>
+  test("preserves cancellation instead of reporting a successful partial search", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -92,14 +87,8 @@ describe("tool.glob", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await GlobTool.init()
-          // ctx.abort is pre-aborted — the tool must not throw
-          const result = await tool.execute({ pattern: "*.ts" }, abortedCtx())
-
-          // User abort must NOT set truncated (only timeout does)
-          expect(result.metadata.truncated).toBe(false)
-          // Output should exist (may be empty or partial — don't crash)
-          expect(typeof result.output).toBe("string")
-          expect(result.metadata.count).toBeGreaterThanOrEqual(0)
+          const context = abortedCtx()
+          await expect(tool.execute({ pattern: "*.ts" }, context)).rejects.toBe(context.abort.reason)
         },
       })
     }))
@@ -155,7 +144,7 @@ describe("tool.list", () => {
       })
     }))
 
-  test("returns partial results without throwing when ctx.abort is already aborted", () =>
+  test("preserves cancellation instead of reporting a successful partial listing", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -168,13 +157,8 @@ describe("tool.list", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const tool = await ListTool.init()
-          // ctx.abort is pre-aborted — the tool must not throw
-          const result = await tool.execute({}, abortedCtx())
-
-          // User abort must NOT set truncated (only timeout does)
-          expect(result.metadata.truncated).toBe(false)
-          expect(typeof result.output).toBe("string")
-          expect(result.metadata.count).toBeGreaterThanOrEqual(0)
+          const context = abortedCtx()
+          await expect(tool.execute({}, context)).rejects.toBe(context.abort.reason)
         },
       })
     }))

@@ -22,6 +22,8 @@ Verify experience states through the persisted reward status and generated DTO, 
 
 ## Preserve State and API Ownership
 
+Ordinary uploaded attachments leave model preparation policy to the server. Do not manufacture an explicit summary or exclusion policy from MIME type: that can suppress text and document extraction. Verify the actual composer payload through preparation and a provider request, including a random identifier present only inside the uploaded bytes; upload success and a file card alone do not prove delivery.
+
 For optional components, use `useGlobalSDK().capabilities` and the built-in surface requirements. Test a core server and one selected component, including eager resources and reconnecting to a different selection. Keep plugin-owned surfaces independent of the built-in map; configuration field ownership still comes from `/config/domains`.
 
 Observer targets delivered by asynchronous mount callbacks must be reactive element signals, with cleanup on unmount. Verify late mount and replacement against rendered layout or computed CSS properties instead of asserting implementation strings.
@@ -70,7 +72,7 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 1. Name the user-facing meaning before choosing a glyph.
 2. Reuse an existing token only when the new control has the same meaning. Similar appearance or location is not enough.
 3. Add a new token to `packages/ui/src/components/semantic-icon.tsx` before using an icon for a new product entity, navigation concept, state, setting, command, or action.
-4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph.
+4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph. Avoid repeating a control's outline inside its glyph unless the inner enclosure carries an independent meaning.
 5. When the glyph is new to the shared Icon component, register it in both `packages/ui/src/components/icon.tsx` and `packages/ui/src/plugin/builtin-icons.ts` before referencing it from the semantic map.
 6. Render through `getSemanticIcon(token)` and type stored metadata as `SemanticIconTokenName`.
 7. Keep raw icon names inside base icon controls, file-type/icon registries, tool-card plumbing, or plugin-provided icon paths. Built-in Plugin host UI still uses semantic tokens. Tool icons follow `add-tool`, not the product semantic-token registry.
@@ -182,3 +184,5 @@ For file-draft changes, verify reload as well as component remount, original con
 For mobile drawers, use the shared modal stack instead of a document-wide keyboard listener. Test nested Settings and Escape, returning focus to each opener, releasing background isolation when the viewport widens, and keeping fixed actions reachable when collection content scrolls. A working-location summary must read the canonical session binding or explicit new-session choice; include null, missing binding, rebinding and pending creation cases rather than substituting the project directory.
 
 For collection navigation changes, verify every existing category against its own projection and preserve nested ownership and pagination. Check actual category controls and list bounds at the minimum sidebar width in both supported locales; full-width controls plus outer margins must not exceed their container. Keep intentional resize hit areas separate from content-overflow assertions, and verify fixed controls while the collection scrolls. For independent disclosures, verify simultaneous expansion, preserved nested state and keyboard exclusion while hidden. Exercise keyboard activation with the real session typing-autofocus handler mounted; it must not redirect a focused control’s Space or typeahead keys into the Composer.
+
+For Environment selection, test zero allocation when browsing profiles, conditional Session updates, stable creation request IDs after a lost reply, and draft restoration after startup failure. Activity recovery must address the original operation; never submit its command again.

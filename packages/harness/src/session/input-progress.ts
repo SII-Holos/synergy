@@ -31,30 +31,59 @@ export namespace SessionInputProgress {
     .meta({ ref: "SessionInputProgress" })
   export type Info = z.infer<typeof Info>
   export const Event = BusEvent.define("session.input.progress", Info, { streaming: true })
+  type Failure = {
+    sessionID: string
+    messageID: string
+    itemID: string
+    state: "retrying" | "failed"
+    updatedAt: number
+    error: NonNullable<Info["error"]>
+    cause: unknown
+  }
   const state = RuntimeContext.state(() => ({
     active: new Map<string, Info>(),
-    failures: new Map<string, { state: "retrying" | "failed"; updatedAt: number; error: NonNullable<Info["error"]> }>(),
+    failures: new Map<string, Failure>(),
   }))
 
   export function current(sessionID: string, messageID: string) {
-    return state().active.get(`${sessionID}:${messageID}`) ?? state().failures.get(sessionID)
+    const key = `${sessionID}:${messageID}`
+    return state().active.get(key) ?? state().failures.get(key)
   }
 
   export function clearFailure(sessionID: string) {
-    state().failures.delete(sessionID)
+    for (const [key, failure] of state().failures) if (failure.sessionID === sessionID) state().failures.delete(key)
   }
 
-  export function schedulingFailure(sessionID: string, error: unknown, terminal: boolean) {
+  function recordFailure(input: { sessionID: string; messageID: string; itemID: string }, cause: unknown) {
     const failures = state().failures
     if (failures.size >= 1024) failures.delete(failures.keys().next().value!)
-    failures.set(sessionID, {
-      state: terminal ? "failed" : "retrying",
+    const failure: Failure = {
+      ...input,
+      state: "retrying",
       updatedAt: Date.now(),
+      cause,
       error: {
-        code: error instanceof Error ? error.name : "Error",
+        code: cause instanceof Error ? cause.name : "Error",
         message: "The saved message could not be scheduled. Retry to resume processing.",
       },
-    })
+    }
+    failures.set(`${input.sessionID}:${input.messageID}`, failure)
+    return failure
+  }
+
+  export function schedulingFailure(
+    sessionID: string,
+    error: unknown,
+    terminal: boolean,
+    input?: { messageID: string; itemID: string },
+  ) {
+    const failure = input
+      ? recordFailure({ sessionID, ...input }, error)
+      : [...state().failures.values()].find((value) => value.sessionID === sessionID && value.cause === error)
+    if (!failure) return
+    failure.state = terminal ? "failed" : "retrying"
+    failure.updatedAt = Date.now()
+    return { messageID: failure.messageID, itemID: failure.itemID }
   }
 
   export async function run<T>(
@@ -63,6 +92,7 @@ export namespace SessionInputProgress {
   ): Promise<T> {
     const active = state().active
     const key = `${input.sessionID}:${input.messageID}`
+    state().failures.delete(key)
     let waits = 0
     const publish = AsyncLocalStorage.bind(() => {
       const progress: Info = {
@@ -86,6 +116,9 @@ export namespace SessionInputProgress {
         },
         body,
       )
+    } catch (cause) {
+      recordFailure(input, cause)
+      throw cause
     } finally {
       active.delete(key)
     }

@@ -3,7 +3,7 @@ import DESCRIPTION from "./scan-files.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { Ripgrep } from "../file/ripgrep"
 import { conflictWarning, detectConflicts } from "../conflict/detect"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { FileView } from "../file/view"
 import {
   displayPath,
   recordHashlineSnapshot,
@@ -118,7 +118,7 @@ export const ScanFilesTool = Tool.define(
         metadata: { pattern: params.pattern, path: params.path, include: params.include, globs: params.globs },
       })
 
-      const searchPath = params.path ? resolveFilePath(params.path) : ScopeContext.current.directory
+      const searchPath = params.path ? resolveFilePath(params.path) : FileView.directory()
       const perFileLimit = normalizePositiveInt(params.perFileLimit, DEFAULT_PER_FILE_LIMIT, SINGLE_FILE_PER_FILE_LIMIT)
       const limitFiles = normalizePositiveInt(params.limitFiles, DEFAULT_FILE_LIMIT, DEFAULT_FILE_LIMIT)
       const skipFiles = Math.max(params.skipFiles ?? 0, 0)
@@ -135,7 +135,7 @@ export const ScanFilesTool = Tool.define(
 
       try {
         for await (const match of Ripgrep.matches({
-          cwd: ScopeContext.current.directory,
+          cwd: FileView.directory(),
           pattern: params.pattern,
           paths: [searchPath],
           glob: [...(params.include ? [params.include] : []), ...(params.globs ?? [])],

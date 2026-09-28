@@ -1,14 +1,15 @@
-import { dlopen, ptr, read } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
+import { ptr, read } from "bun:ffi"
 import { getSystemErrorName } from "node:util"
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { FileMutation } from "./mutation"
+import { NativeFileMutation as FileMutation } from "./mutation-core"
 
 export namespace FileRename {
   let move: ((from: string, to: string) => void) | undefined
   function initialize() {
     if (process.platform === "win32") {
-      const native = dlopen("kernel32.dll", {
+      const native = openNativeLibrary("kernel32.dll", {
         MoveFileExW: { args: ["ptr", "ptr", "u32"], returns: "int" },
         GetLastError: { args: [], returns: "u32" },
       }).symbols
@@ -31,11 +32,11 @@ export namespace FileRename {
     }
     const native =
       process.platform === "darwin"
-        ? dlopen("/usr/lib/libSystem.B.dylib", {
+        ? openNativeLibrary("/usr/lib/libSystem.B.dylib", {
             renamex_np: { args: ["ptr", "ptr", "u32"], returns: "int" },
             __error: { args: [], returns: "ptr" },
           }).symbols
-        : dlopen(linuxLibrary(), {
+        : openNativeLibrary(linuxLibrary(), {
             renameat2: { args: ["int", "ptr", "int", "ptr", "u32"], returns: "int" },
             __errno_location: { args: [], returns: "ptr" },
           }).symbols

@@ -1,3 +1,4 @@
+import { ProcessEnvironment } from "../process/environment"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 // ---------------------------------------------------------------------------
 // SandboxBackend — unified dispatch layer
@@ -64,6 +65,8 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
 import { OwnedProcess } from "../process/owned-process"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import type { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import type { Readable } from "node:stream"
 const log = Log.create({ service: "sandbox-backend" })
 
@@ -176,31 +179,7 @@ export namespace SandboxBackend {
    * Environment variables allowed through the sandbox.
    * Never expose credential-bearing variables.
    */
-  export const SANDBOX_ENV_ALLOWLIST = [
-    "PATH",
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "TMPDIR",
-    "TEMP",
-    "TMP",
-    "SHELL",
-    "TERM",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "SystemRoot",
-    "SYSTEMROOT",
-    "WINDIR",
-    "ComSpec",
-    "COMSPEC",
-    "PATHEXT",
-    "BUN_INSTALL",
-    "NODE_PATH",
-    "npm_config_cache",
-    "PYTHONPATH",
-    "GIT_EXEC_PATH",
-  ]
+  export const SANDBOX_ENV_ALLOWLIST = ProcessEnvironment.allowed
 
   /** Env var injected to tell the agent that network is unavailable. */
   export const NETWORK_DISABLED_ENV_VAR = "SYNERGY_SANDBOX_NETWORK_DISABLED"
@@ -257,7 +236,15 @@ export namespace SandboxBackend {
    */
   export async function executeAsync(
     wrapper: SandboxExecutionWrapper,
-    opts: SandboxExecuteOpts,
+    opts: SandboxExecuteOpts & {
+      execution?: {
+        resources: EnvironmentResources.Resolved
+        scopeID: string
+        id: string
+        sandboxID?: string
+        intentDigest?: string
+      }
+    },
   ): Promise<ExecuteAsyncResult> {
     using wrapperCleanup = { [Symbol.dispose]: () => cleanupWrapper(wrapper) }
     if (wrapper.skipReason && opts.fallbackPolicy === "deny")
@@ -282,7 +269,10 @@ export namespace SandboxBackend {
     let totalBytes = 0
     let truncated = false
     let lease: WorkspaceAccess.Lease | undefined
-    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+    let owned:
+      | Awaited<ReturnType<typeof OwnedProcess.prepare>>
+      | Awaited<ReturnType<typeof EnvironmentProcess.prepare>>
+      | undefined
     let exitCode = -1
     let denialSession: DenialLoggerSession | null = null
     using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
@@ -302,16 +292,34 @@ export namespace SandboxBackend {
     }
     controller.signal.addEventListener("abort", stop, { once: true })
     try {
-      lease = await WorkspaceAccess.process(sandboxWriteRoots(wrapper), controller.signal)
-      if (wrapper.sandboxed && detectPlatform() === "macos") denialSession = startDenialLogger()
-      owned = await OwnedProcess.prepare({
-        command: wrapper.command,
-        args: wrapper.args,
-        cwd: opts.cwd ?? process.cwd(),
-        env: buildSandboxEnv(opts.env, opts.networkMode),
-        lease,
-        signal: controller.signal,
-      })
+      const execution = opts.execution
+      if (!execution) lease = await WorkspaceAccess.process(sandboxWriteRoots(wrapper), controller.signal)
+      if (wrapper.sandboxed && detectPlatform() === "macos" && (!execution || execution.resources.executor?.localPID))
+        denialSession = startDenialLogger()
+      owned = execution
+        ? await EnvironmentProcess.prepare({
+            id: execution.id,
+            scopeID: execution.scopeID,
+            resources: execution.resources,
+            intentDigest: execution.intentDigest,
+            signal: controller.signal,
+            command: {
+              command: wrapper.command,
+              args: wrapper.args,
+              cwd: opts.cwd ?? execution.resources.directory!,
+              env: { ...execution.resources.runtime!.env, ...opts.env },
+              writableRoots: sandboxWriteRoots(wrapper),
+              sandboxID: execution.sandboxID,
+            },
+          })
+        : await OwnedProcess.prepare({
+            command: wrapper.command,
+            args: wrapper.args,
+            cwd: opts.cwd ?? process.cwd(),
+            env: buildSandboxEnv(opts.env, opts.networkMode),
+            lease: lease!,
+            signal: controller.signal,
+          })
       reads.push(
         readStream(owned.child.stdout, outputChunks, opts.onStdout),
         readStream(owned.child.stderr, stderrChunks, opts.onStderr),
@@ -319,8 +327,10 @@ export namespace SandboxBackend {
       for (const read of reads) void read.catch(() => {})
       await owned.activate()
       owned.child.stdin.end()
-      denialSession?.adoptPid(owned.child.pid!)
-      await opts.after_spawn?.(owned.child.pid!)
+      if (owned.child.pid) {
+        denialSession?.adoptPid(owned.child.pid)
+        await opts.after_spawn?.(owned.child.pid)
+      }
       await Promise.all([...reads, owned.completion])
       exitCode = owned.child.exitCode ?? -1
     } catch (error) {
@@ -355,7 +365,16 @@ export namespace SandboxBackend {
       }
       const matches = SandboxDetector.scan(combinedOutput)
       if (matches.length > 0) {
-        const info = platformInfo()
+        const info = opts.execution
+          ? {
+              backend:
+                opts.execution.resources.runtime!.platform === "linux"
+                  ? "bwrap"
+                  : opts.execution.resources.runtime!.platform === "darwin"
+                    ? "seatbelt"
+                    : "windows",
+            }
+          : platformInfo()
         const explanation = SandboxDetector.buildBlockExplanation(matches, {
           command: wrapper.command,
           backend: info.backend,

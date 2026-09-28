@@ -30,3 +30,30 @@ test("a worktree request stays pending until the actual directory is created", (
     path: "/other",
   })
 })
+
+test("stored Workspaces have a location without claiming a controller path", () => {
+  const record = {
+    id: "wsp_objects",
+    scopeID: "scope",
+    type: "objects",
+    revision: 1,
+    binding: { state: "bound" as const, hostID: "host", path: null, generation: 2 },
+    backend: { provider: "objects", spec: {} },
+    metadata: { name: "Research" },
+    sharedWritableWorkspaceIDs: [],
+    lifecycle: "active" as const,
+    createdAt: 1,
+    updatedAt: 1,
+  }
+  expect(workspaceLocation({ session: { workspace: null, workspaceID: record.id }, records: [record] })).toEqual({
+    state: "bound",
+    stored: true,
+    name: "Research",
+  })
+  expect(
+    workspaceLocation({
+      selection: { mode: "workspace", workspaceID: record.id, workspaceGeneration: 1 },
+      records: [record],
+    }),
+  ).toEqual({ state: "unavailable" })
+})
