@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -6,7 +6,51 @@ import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access
 import { ProcessInspection } from "@ericsanchezok/synergy-harness/process/inspection"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { WorktreeProcess } from "../../src/workspace/process"
+import { OwnedProcess } from "../../src/process/owned-process"
 import { testRuntime } from "../support/runtime"
+
+test("worktree commands retain a supervisor error after activation even when the root exits successfully", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const started = path.join(tmp.path, "started")
+    const release = path.join(tmp.path, "release")
+    const failure = new Error("Fixture supervisor transport failed")
+    const prepare = OwnedProcess.prepare
+    using injected = spyOn(OwnedProcess, "prepare").mockImplementation(async (input) => {
+      const owned = await prepare(input)
+      return {
+        ...owned,
+        async activate() {
+          await owned.activate()
+          await waitUntil(() => Bun.file(started).exists())
+          owned.child.emit("error", failure)
+          await Bun.write(release, "continue")
+        },
+      }
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      async fn() {
+        const result = await WorktreeProcess.run({
+          command: [
+            process.execPath,
+            "-e",
+            "await Bun.write(process.argv[1], String(process.pid)); while (!(await Bun.file(process.argv[2]).exists())) await Bun.sleep(10)",
+            started,
+            release,
+          ],
+          directory: tmp.path,
+          roots: [tmp.path],
+        }).catch((error: unknown) => error)
+        expect(result).toBe(failure)
+        expect(ProcessInspection.alive(Number(await Bun.file(started).text()))).toBe(false)
+        await WorkspaceAccess.write([tmp.path], () => fs.writeFile(path.join(tmp.path, "next-write"), "released"))
+        expect(await fs.readFile(path.join(tmp.path, "next-write"), "utf8")).toBe("released")
+      },
+    })
+  })
+}, 20000)
 
 test("worktree command cancellation drains the activated native process before releasing ownership", async () => {
   await using runtime = await testRuntime()

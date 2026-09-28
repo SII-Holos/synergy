@@ -79,6 +79,8 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 
 A native readiness wait must also observe operation settlement: preserve early failures, report completion before readiness, and close its observer before cancelling and draining the owned operation. Test supervisor startup failure with a real early-exiting launcher; retain bounded stderr and exit identity, and prove that the target command did not run and its unactivated claim was released. Intentionally suspended native cancellation fixtures must reserve cleanup time within their existing test budget; the framework's hard timeout can kill the supervisor before its completion receipt is written.
 
+Also inject a supervisor error after command activation and let the real root exit normally. A drainage promise and exit code zero cannot replace the process error channel; callers must preserve that error while still draining ownership before returning.
+
 When a public operation returns a typed in-progress outcome at its foreground budget, correctness tests must await its documented completion path before asserting durable results. Exercise that outcome with an explicit held-operation fixture; do not raise the product deadline or swallow unrelated failures.
 
 ## Choose the Lowest Useful Level
