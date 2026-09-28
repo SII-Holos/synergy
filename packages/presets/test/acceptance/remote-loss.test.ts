@@ -31,6 +31,21 @@ test.skipIf(!settingsFile)(
     const facts = await Bun.file(path.join(plan.directory, "cases/fault-remote-loss/1/physical.json")).json()
     expect(facts.variants).toHaveLength(3)
     expect(facts.variants.every((entry: { bytesRecovered: boolean }) => entry.bytesRecovered)).toBe(true)
+    const recovery = await Bun.file(
+      path.join(plan.directory, "cases/fault-remote-loss/1/network/reconciled-executions.json"),
+    ).json()
+    expect(
+      recovery.some(
+        (entry: {
+          before: { state: string }
+          after: { state: string; status: { state: string; effectsStarted: boolean } }
+        }) =>
+          entry.before.state === "unknown" &&
+          entry.after.state === "completed" &&
+          entry.after.status.state === "cancelled" &&
+          entry.after.status.effectsStarted === false,
+      ),
+    ).toBe(true)
     expect(result.usage.requests).toBe(0)
   },
   240000,

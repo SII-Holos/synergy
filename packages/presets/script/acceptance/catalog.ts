@@ -332,7 +332,7 @@ export const cases: AcceptanceCase[] = [
       [
         "remote-loss",
         "Network loss, Execution Host exit and allocation removal are distinct failures",
-        ["network-lost", "host-exited", "container-removed", "continued"],
+        ["network-lost", "missing-query-cancelled", "host-exited", "container-removed", "continued"],
         { localFallbacks: 0, staleReads: 0, uncertaintiesDistinguished: true, continued: true },
       ],
       [

@@ -110,6 +110,38 @@ export function remoteLoss(input: unknown): Driver {
               needs: { workspace: true, execution: "exec" },
             })
             const root = resources.directory!
+            if (kind === "network") {
+              const id = `acceptance_lost_${crypto.randomUUID()}`
+              const executor = await EnvironmentExecution.connect({
+                scopeID: "home",
+                target: resources.runtime!.target,
+              })
+              const start = executor.start.bind(executor)
+              let dropped = false
+              executor.start = async (request) => {
+                if (request.id !== id) return start(request)
+                dropped = true
+                throw new Error("Acceptance dropped the query before transport delivery")
+              }
+              try {
+                await EnvironmentExecution.start({
+                  id,
+                  ...selection,
+                  command: { command: "/bin/cat", args: ["record.txt"], cwd: root, env: {}, writableRoots: [] },
+                }).catch((error: unknown) => {
+                  if (
+                    !(error instanceof Error) ||
+                    error.message !== "Acceptance dropped the query before transport delivery"
+                  )
+                    throw error
+                })
+                if (!dropped || (await executor.status(id)))
+                  throw new Error("Missing execution receipt was not triggered")
+                await atomicJSON(path.join(directory, "lost-query.json"), await EnvironmentExecution.get(id, "home"))
+              } finally {
+                executor.start = start
+              }
+            }
             const containerID = (
               await docker(settings.remote, ["ps", "-q", "--filter", `label=io.synergy.environment=${environment.id}`])
             ).trim()
@@ -270,6 +302,54 @@ export function remoteLoss(input: unknown): Driver {
                   restored.State.StartedAt !== before.State.StartedAt
                 )
                   throw new Error("Network recovery replaced the original allocation")
+                const executor = await EnvironmentExecution.connect({
+                  scopeID: "home",
+                  target: resources.runtime!.target,
+                })
+                await until(
+                  async () => {
+                    try {
+                      return await executor.health()
+                    } catch (error) {
+                      transport.push({
+                        kind,
+                        at: Date.now(),
+                        barrier: "execution-host-reconnecting",
+                        error: String(error),
+                      })
+                      return undefined
+                    }
+                  },
+                  (health) => health !== undefined && Environment.sameTarget(health.target, resources.runtime!.target),
+                  settings.deadlineMs,
+                )
+                const reconciledExecutions = []
+                for (const execution of await EnvironmentExecution.listActive("home")) {
+                  if (execution.target.environmentID !== environment.id) continue
+                  const before = await EnvironmentExecution.reconcile(execution.id, "home")
+                  if (before.state === "unknown") await EnvironmentExecution.cancel(execution.id, "home")
+                  await until(
+                    () => EnvironmentExecution.reconcile(execution.id, "home"),
+                    (entry) => ["exited", "unsaved", "saved", "completed"].includes(entry.state),
+                    settings.deadlineMs,
+                  )
+                  const after = await EnvironmentExecution.complete(execution.id, "home")
+                  reconciledExecutions.push({ before, after })
+                }
+                if (
+                  !reconciledExecutions.some(
+                    (entry) =>
+                      entry.before.state === "unknown" &&
+                      entry.after.status?.state === "cancelled" &&
+                      entry.after.status.effectsStarted === false,
+                  )
+                )
+                  throw new Error("Unknown query did not recover through an explicit cancellation receipt")
+                await atomicJSON(path.join(directory, "reconciled-executions.json"), reconciledExecutions)
+                await context.checkpoint("missing-query-cancelled", [
+                  { path: `${kind}/lost-query.json`, kind: "transport" },
+                  { path: `${kind}/reconciled-executions.json`, kind: "product" },
+                ])
               } else {
                 const replacement = await ResourceProfiles.createWorkspace({ scopeID: "home", profile: "files" })
                 const compute = await ResourceProfiles.createEnvironment({

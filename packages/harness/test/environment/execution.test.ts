@@ -58,6 +58,58 @@ function fixture() {
 
 const command = { command: "example", args: ["one"], cwd: "/workspace", env: {}, writableRoots: ["/workspace"] }
 
+test("reconciliation refreshes a moved endpoint without changing allocation identity or repeating execution", async () => {
+  const f = fixture()
+  let endpoint = 1
+  let online = true
+  await using runtime = await testRuntime({
+    register: () =>
+      EnvironmentProviders.register({
+        id: "moving-endpoint",
+        allocate: async (request) => ({ id: request.requestID, capabilities: ["exec"] }),
+        inspect: async (request) =>
+          online
+            ? { state: "ready", allocation: { id: request.requestID, capabilities: ["exec"] } }
+            : { state: "unknown" },
+        async deallocate() {},
+        async connect() {
+          const connected = endpoint
+          return {
+            ...f.executor,
+            async status(id) {
+              if (connected !== endpoint) throw new Error("Retired transport endpoint")
+              return f.executor.status(id)
+            },
+          }
+        },
+      }),
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({
+      scopeID: "scope",
+      ownerID: "moving",
+      provider: "moving-endpoint",
+      spec: {},
+    })
+    f.loseResponse()
+    await expect(
+      EnvironmentExecution.start({ id: "moving", scopeID: "scope", environmentID: environment.id, command }),
+    ).rejects.toThrow("ack lost")
+    const submitted = await EnvironmentExecution.get("moving", "scope")
+    online = false
+    expect((await Environment.reconcile(environment.id, "scope")).state).toBe("unavailable")
+    endpoint++
+    online = true
+    const ready = await Environment.reconcile(environment.id, "scope")
+    expect(ready.allocation?.id).toBe(submitted.target.allocationID)
+    expect(ready.generation).toBe(submitted.target.generation)
+    expect((await EnvironmentExecution.reconcile("moving", "scope")).state).toBe("exited")
+    await EnvironmentExecution.complete("moving", "scope", async () => ({}))
+    expect(f.starts()).toBe(1)
+    expect(await Environment.uses(environment.id)).toHaveLength(0)
+  })
+})
+
 test("execution intent precedes dispatch, duplicate operation IDs never repeat an effect", async () => {
   const f = fixture()
   await using runtime = await testRuntime({
