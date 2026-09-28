@@ -178,7 +178,10 @@ export namespace ExecutionHost {
                   frame.writeDoubleBE(chunk.cursor, 1)
                   bytes.copy(frame, 9)
                   const sent = socket.send(frame)
-                  if (sent === 0) return
+                  if (sent === 0) {
+                    socket.close(1013, "Reconnect to resume execution output")
+                    return
+                  }
                   socket.data.cursor = chunk.cursor
                   if (sent === -1)
                     await new Promise<void>((resolve) => {
@@ -191,7 +194,8 @@ export namespace ExecutionHost {
                   socket.data.cursor >= status.cursor &&
                   (ExecutionProtocol.terminal(status) || status.state === "unknown")
                 ) {
-                  socket.send(JSON.stringify({ type: "status", status }))
+                  if (socket.send(JSON.stringify({ type: "status", status })) === 0)
+                    socket.close(1013, "Reconnect to resume execution output")
                   return
                 }
                 if (!chunks.length) await Bun.sleep(50)

@@ -1,10 +1,12 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { OwnedProcess } from "../../src/process/owned-process"
+import { OwnedProtocol } from "../../src/process/owned-protocol"
+import type { Socket } from "node:net"
 
 const nativeTest = test.skipIf(process.platform !== "linux")
 
@@ -72,13 +74,19 @@ nativeTest(
     })
     const script = `await Bun.write(${JSON.stringify(marker)},String(process.pid)); setInterval(() => {},1000)`
     const root = `import {spawn} from 'node:child_process'; const c=spawn(process.execPath,['-e',${JSON.stringify(script)}],{env:{},stdio:'ignore',detached:true}); c.unref()`
+    let control: Socket | undefined
+    const messages = OwnedProtocol.messages
+    const protocol = spyOn(OwnedProtocol, "messages").mockImplementation((socket, receive, failed) => {
+      control = socket
+      return messages(socket, receive, failed)
+    })
     const owned = await OwnedProcess.prepare({
       command: process.execPath,
       args: ["-e", root],
       cwd: directory.path,
       env: {},
       lease,
-    })
+    }).finally(() => protocol.mockRestore())
     owned.child.stdout.resume()
     owned.child.stderr.resume()
     let descendant: number | undefined
@@ -92,7 +100,16 @@ nativeTest(
       }
       descendant = Number(await Bun.file(marker).text())
       process.kill(claim.pid, "SIGKILL")
-      await expect(owned.completion).rejects.toThrow("ownership remains uncertain")
+      const transport = Object.assign(new Error("control connection reset"), { code: "ECONNRESET" })
+      control!.emit("error", transport)
+      const failure = await owned.completion.then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(failure).toMatchObject({
+        message: expect.stringContaining("ownership remains uncertain"),
+        cause: transport,
+      })
       await lease.release()
       expect(await coordinator.inspect()).toHaveLength(1)
       const compete = () =>

@@ -94,6 +94,8 @@ export namespace OwnedProcess {
       accepted.add(socket)
       socket.on("close", () => accepted.delete(socket))
       socket.on("error", (error) => {
+        const code = (error as NodeJS.ErrnoException).code
+        if (code === "ECONNRESET" && (stopping || (reported && sockets.get("control") === socket))) return
         if (sockets.has("control")) fail(error)
       })
       let pending = Buffer.alloc(0)
@@ -232,7 +234,9 @@ export namespace OwnedProcess {
         await Promise.all(drains)
         await finish()
       } catch (error) {
-        failure ??= error instanceof Error ? error : new Error(String(error))
+        const observed = error instanceof Error ? error : new Error(String(error))
+        if (failure && failure !== observed && observed.cause === undefined) observed.cause = failure
+        failure = observed
         complete.reject(failure)
         child.emit("error", failure)
         await abandon()
