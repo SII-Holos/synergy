@@ -20,4 +20,6 @@ The benchmark assigns ZIP export and validation separate bounded periods, each 3
 
 ## Consequences
 
+Recovery exports retain the original plan's archive-validation budget independently of the requested export budget. The outer container deadline includes both stages and cleanup headroom, so it cannot cancel validation merely because export consumed its own allocation.
+
 Validation can finish after a slow but successful export, with independent stage timing and a retained ZIP if validation times out. Recovery refuses changed archives or an unverified prepared product bundle. Test reports can identify numbering drift and timeout placeholders without counting them as assertion failures. The Doom diagnostic changes the task digest and must be declared as a separate diagnostic condition in comparisons.

@@ -37,6 +37,8 @@ bun bench clean /absolute/path/to/run
 
 `debug` 创建独立 attempt；`recover-export` 在 retained Home 副本中重新导出；`recover-archive-validation` 使用原运行中冻结的验证器，仅对原验证超时的同一份 ZIP 续验，结果另存为派生记录。两者均不调用模型、不替换原评分或失败状态。`clean` 明确删除指定实验的证据及所属容器、网络和卷，并释放缓存引用。所有操作遵循实验所有权锁，不执行全局 Docker prune。
 
+`recover-export` 的导出超时与校验超时独立：校验沿用原计划的 `archive_validation_timeout_seconds`，外层容器预算包含两个阶段及清理余量。
+
 ## 配置与实验条件
 
 相对路径以 YAML 所在目录为基准。未知字段、不支持的模型参数、缺失的凭据引用和无法表示的原生配置均报错。

@@ -9,6 +9,62 @@ from synergy_bench.prepare import command
 from synergy_bench.storage import atomic_json, read_json
 
 
+@pytest.mark.parametrize("validation_timeout", [None, 900])
+def test_export_recovery_retains_independent_validation_budget(tmp_path, monkeypatch, validation_timeout):
+    artifact = tmp_path / "artifact"
+    (artifact / "bundle").mkdir(parents=True)
+    root = tmp_path / "run"
+    original = root / "trials/0000/attempt-001"
+    home = original / "retained/agent/home"
+    home.mkdir(parents=True)
+    (home / "retained-marker").write_text("original")
+    atomic_json(root / "owner.json", {"kind": "synergy-benchmark-run", "version": 1})
+    config = {"platform": "linux/amd64"}
+    if validation_timeout is not None:
+        config["archive_validation_timeout_seconds"] = validation_timeout
+    atomic_json(
+        root / "plan.json",
+        {
+            "version": 4,
+            "result_version": 5,
+            "variants": {"A": {"artifact": str(artifact), "runtime": "core"}},
+            "config": config,
+        },
+    )
+    atomic_json(original / "trial.json", {"variant": "A"})
+    atomic_json(
+        original / "evidence.json",
+        {
+            "version": 5,
+            "execution": {"session_id": "fixture-session", "run_id": "fixture-run"},
+            "trial_directory": "retained",
+            "verifier": {"rewards": {"reward": 0}},
+        },
+    )
+    before = (original / "evidence.json").read_bytes()
+    monkeypatch.setattr(recovery, "verify_prepared", lambda _: {"base_image": "fixture-image"})
+    monkeypatch.setattr(recovery, "recipe_links", lambda *_: {})
+    observed = {}
+
+    def export(command, log=None, timeout=None):
+        target = Path(log).parent
+        observed.update(request=read_json(target / "request.json"), timeout=timeout)
+        atomic_json(target / "output/export.json", {"status": "completed"})
+        return ""
+
+    monkeypatch.setattr(recovery, "command", export)
+    monkeypatch.setattr(recovery, "remove_owned_container", lambda _: None)
+    result = recovery.recover_export(root, "0", 1, timeout=60)
+    expected = validation_timeout if validation_timeout is not None else 300
+    assert observed["request"].get("validation_timeout_seconds") == expected
+    assert observed["request"]["timeout_seconds"] == 60
+    assert observed["timeout"] == 60 + expected + 15
+    assert result["status"] == "completed"
+    assert result["model_calls"] == 0
+    assert (original / "evidence.json").read_bytes() == before
+    assert sorted(file.name for file in home.iterdir()) == ["retained-marker"]
+
+
 @pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit recovery Docker contract")
 @pytest.mark.parametrize("exit_code", [0, 7])
 def test_recovery_hands_private_files_back_without_changing_original(

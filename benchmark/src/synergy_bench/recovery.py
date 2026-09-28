@@ -37,6 +37,7 @@ def recover_export(root: Path, trial: str, attempt: int, *, timeout: int = 300) 
         if not home.is_dir() or home.is_symlink():
             raise ValueError("Retained Home is unavailable")
         plan = read_json(root / "plan.json")
+        validation_timeout = plan["config"].get("archive_validation_timeout_seconds", 300)
         variant = plan["variants"][read_json(original / "trial.json")["variant"]]
         artifact = Path(variant["artifact"])
         receipt = verify_prepared(artifact)
@@ -69,6 +70,7 @@ def recover_export(root: Path, trial: str, attempt: int, *, timeout: int = 300) 
                     "runtime": variant["runtime"],
                     "identity": {"sessionID": execution["session_id"], "runID": execution["run_id"]},
                     "timeout_seconds": timeout,
+                    "validation_timeout_seconds": validation_timeout,
                 },
             )
             command(
@@ -98,7 +100,7 @@ def recover_export(root: Path, trial: str, attempt: int, *, timeout: int = 300) 
                     str(os.getgid()),
                 ],
                 target / "recovery.log",
-                timeout=timeout + 15,
+                timeout=timeout + validation_timeout + 15,
             )
             exported = read_json(target / "output/export.json")
             metadata.update(status=exported["status"], export=exported)
