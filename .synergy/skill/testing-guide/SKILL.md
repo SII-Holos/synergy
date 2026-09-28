@@ -63,6 +63,8 @@ Compare directory snapshots as sorted paths or sets when asserting unchanged fil
 
 Prepare durable fixtures before starting a short runtime deadline; for Cortex timeout tests, enqueue follow-ups between `Cortex.prepare` and `Cortex.start` rather than racing their writes against the timer.
 
+For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.
+
 For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify that metadata writes do not serialize a read-only turn.
 
 For retirement changes, overlap cleanup in independent repositories and include commands whose write footprint is broader than the retired directory. Verify that broader ownership is reserved before directory exclusion, that nested writes cannot wait on their own lifecycle claim, and that undeclared expansion fails before queuing. Capture ownership state for an unexplained timeout; a green rerun alone does not identify its cause.
