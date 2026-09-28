@@ -110,6 +110,7 @@ export namespace ProviderProfile {
     modelsURL?: string
     apiMode?: ApiMode
     authKind?: AuthKind
+    billingMode?: import("./billing").ProviderBilling.Mode
     aiSdkPackage?: string
     modelFactory?: ModelFactory
     modelsDevProviderID?: string

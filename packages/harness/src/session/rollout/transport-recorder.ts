@@ -38,6 +38,7 @@ export namespace RolloutTransportRecorder {
           url: event.url,
           method: event.method,
           started: Date.now(),
+          timing: event.timing,
           status: "running",
           request: await RolloutArtifact.get(call.owner, request.id),
         }
@@ -47,6 +48,9 @@ export namespace RolloutTransportRecorder {
       }
       const attempt = active.get(event.attemptID)
       if (!attempt) throw new Error("Rollout event has no active attempt")
+      if ("timing" in event && event.timing) {
+        attempt.value.timing = event.timing
+      }
       if (event.type === "response") {
         if (attempt.response) throw new Error("Duplicate rollout response")
         attempt.response = await RolloutArtifact.open(call.owner, event.mediaType)
@@ -59,7 +63,12 @@ export namespace RolloutTransportRecorder {
         const writer = attempt[event.channel]
         if (!writer) throw new Error("Rollout body has no artifact")
         if (event.type === "chunk") {
-          if (event.channel === "response") attempt.usage?.append(event.data)
+          if (event.channel === "response") {
+            attempt.usage?.append(event.data)
+            attempt.value.usage = attempt.usage?.current()
+            attempt.value.responseModel = attempt.usage?.responseModel()
+            attempt.value.usageFinal = false
+          }
           await writer.append(event.data)
           attempt.value[event.channel] = await writer.checkpoint()
           await RolloutLedger.writeAttempt(attempt.value)
@@ -71,14 +80,20 @@ export namespace RolloutTransportRecorder {
         attempt.value.request = await attempt.request.finish("partial")
         attempt.value.response = await attempt.response?.finish("partial")
         attempt.value.usage = attempt.usage?.finish()
+        attempt.value.responseModel = attempt.usage?.responseModel()
+        attempt.value.usageFinal =
+          !!attempt.usage?.hasFinalUsage() ||
+          (attempt.value.response?.status === "complete" &&
+            !!attempt.usage?.hasUsage() &&
+            (event.status === "completed" || !attempt.usage.streaming))
         attempt.value.estimate = ProviderPricing.estimate(
           call.model.pricing,
           attempt.value.usage,
-          call.model.providerID,
+          call.model.billingMode ?? "unknown",
         )
         attempt.value.status = event.status
         attempt.value.error = event.error
-        attempt.value.ended = Date.now()
+        attempt.value.ended = event.timing?.endedAt ?? Date.now()
         complete &&= attempt.value.request.status === "complete" && attempt.value.response?.status === "complete"
         await RolloutLedger.writeAttempt(attempt.value)
         active.delete(event.attemptID)
@@ -107,9 +122,10 @@ export namespace RolloutTransportRecorder {
             attempt.value.estimate = ProviderPricing.estimate(
               call.model.pricing,
               attempt.value.usage,
-              call.model.providerID,
+              call.model.billingMode ?? "unknown",
             )
             attempt.value.status = "interrupted"
+            if (attempt.value.timing) attempt.value.timing.detectedAt = Date.now()
             attempt.value.ended = Date.now()
             await RolloutLedger.writeAttempt(attempt.value)
             complete = false

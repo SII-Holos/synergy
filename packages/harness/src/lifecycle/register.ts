@@ -12,6 +12,7 @@ import { SessionCompaction } from "../session/compaction"
 import { registerSearchFailureAnalyzer } from "../tool/search-guard"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { RuntimeContext } from "./context"
+import { UsageMigration } from "../usage/migration"
 import { Environment } from "../environment"
 import { registerEnvironmentMigrations } from "../environment/migration"
 import { registerWorkspaceMigrations } from "../workspace/migration"
@@ -28,6 +29,7 @@ export function registerHarness() {
   registerSessionMigrations()
   registerObservabilityMigrations()
   registerStorageMigrations()
+  UsageMigration.register()
   registerWorkspaceMigrations()
   registerEnvironmentMigrations()
   Environment.registerRecovery()

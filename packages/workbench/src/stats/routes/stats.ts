@@ -5,6 +5,7 @@ import z from "zod"
 import { errors } from "@ericsanchezok/synergy-server/server/error"
 import { Engine } from ".."
 import { ProgressEvent, StatsSnapshot } from "../types"
+import { UsageRoute } from "./usage"
 
 const StatsQuery = z.object({
   recompute: z
@@ -16,6 +17,7 @@ const StatsQuery = z.object({
 
 export const StatsRoute = () =>
   new Hono()
+    .route("/usage", UsageRoute())
     .get(
       "/",
       describeRoute({

@@ -8,6 +8,8 @@ import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Aggregator } from "./aggregator"
 import { StatsStorage } from "./storage"
 import { Rollup } from "./rollup"
+import { CanonicalStats } from "./canonical"
+import { Usage } from "@ericsanchezok/synergy-harness/usage"
 import type { StatsWatermark, StatsSnapshot, ProgressCallback } from "./types"
 
 export namespace Engine {
@@ -131,6 +133,7 @@ export namespace Engine {
 
     // Write new/updated digests
     for (const d of freshDigests) {
+      await Usage.preserveOwner({ kind: "session", scopeID: d.scopeID, sessionID: d.sessionID })
       await StatsStorage.setDigest(d)
     }
 
@@ -152,7 +155,7 @@ export namespace Engine {
     }
 
     // Compute and store snapshot
-    const snapshot = Rollup.snapshot(allDigests, maxUpdated, await operationDigests())
+    const snapshot = await CanonicalStats.apply(Rollup.snapshot(allDigests, maxUpdated, await operationDigests()))
     onProgress?.({
       phase: "bucket",
       current: 0,

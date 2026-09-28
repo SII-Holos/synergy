@@ -134,3 +134,7 @@ Historical derived retries must not append to a terminal source rollout. Use exp
 SDK usage fallback must not assign a call aggregate to each unmeasured transport retry. Test a failed attempt followed by a successful attempt with call usage, and preserve provider-specific cache inclusion and unknown cache-write counts when only SDK evidence remains.
 
 Verify SDK output inclusion against the locked adapter: Google and Vertex expose candidate output separately from thinking, unlike OpenAI. Test reported aggregates, separate components and missing components before labeling fallback totals complete.
+
+When adding model statistics, follow [Usage accounting](../../../docs/architecture/usage-accounting.md). Capture monotonic model timing at transport arrival before IPC/coalescing/archival acknowledgement; retain wall timestamps separately. Test slow recording, cancellation, retries, hidden reasoning and recovery without fabricating speed. Resolve billing from explicit model/connection/profile metadata and preserve the call-time price snapshot; never infer API billing from authentication or a model name. Verify missing cache fields remain unknown even when input totals are exact.
+
+Record conversation, compaction and auxiliary usage roles at their invocation boundaries, independently of agent names. Test custom conversation agents and queries that include descendants: a child's request or compaction must not replace or invalidate the selected parent's context.

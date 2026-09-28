@@ -660,10 +660,20 @@
                     },
                     "additionalProperties": {}
                   }
+                },
+                "billingMode": {
+                  "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+                  "type": "string",
+                  "enum": ["api", "subscription", "local", "unknown"]
                 }
               },
               "additionalProperties": false
             }
+          },
+          "billingMode": {
+            "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+            "type": "string",
+            "enum": ["api", "subscription", "local", "unknown"]
           },
           "profile": {
             "description": "Canonical provider profile whose runtime behavior this account connection uses",

@@ -48,6 +48,21 @@ function digest(overrides: Partial<SessionDigest> = {}): SessionDigest {
 }
 
 describe("stats rollup", () => {
+  test("merges tool durations by measured sample count in either input order", () =>
+    runtime.run(() => {
+      const a = digest({
+        toolUsage: { read: { calls: 2, successes: 2, errors: 0, totalDurationMs: 200, timedSamples: 2 } },
+      })
+      const b = digest({
+        sessionID: "second",
+        toolUsage: { read: { calls: 3, successes: 2, errors: 1, totalDurationMs: 600, timedSamples: 2 } },
+      })
+      for (const values of [
+        [a, b],
+        [b, a],
+      ])
+        expect(Rollup.snapshot(values, 0).tools.tools[0]?.avgDurationMs).toBe(200)
+    }))
   test("computes an empty snapshot with zeroed dimensions", () =>
     runtime.run(() => {
       const snapshot = Rollup.snapshot([], 0)
@@ -92,7 +107,7 @@ describe("stats rollup", () => {
       expect(snapshot.tokenCost.tokens.cache.read).toBe(20)
       expect(snapshot.tokenCost.cost).toBe(0.25)
       expect(snapshot.tokenCost.avgCostPerTurn).toBeCloseTo(0.0625)
-      expect(snapshot.tokenCost.cacheHitRate).toBeCloseTo(20 / 120)
+      expect(snapshot.tokenCost.cacheHitRate).toBeCloseTo(20 / 125)
     }))
 
   test("aggregates model usage and computes average response time", () =>

@@ -308,6 +308,7 @@
     "./config": "./src/public/config.ts",
     "./persistence": "./src/public/persistence.ts",
     "./rollout": "./src/public/rollout.ts",
+    "./usage": "./src/public/usage.ts",
     "./test/internal/session/workflow-user-wrapper": "./src/session/workflow-user-wrapper.ts",
     "./test/internal/session/llm": "./src/session/llm.ts",
     "./test/internal/observability/writer": "./src/observability/writer.ts",

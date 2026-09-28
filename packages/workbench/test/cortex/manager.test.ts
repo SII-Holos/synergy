@@ -1350,6 +1350,7 @@ describe.serial("Cortex", () => {
                   providerID: "test-provider",
                   modelID: "test-model",
                   sdk: "@ai-sdk/openai",
+                  billingMode: "api",
                   pricing: ProviderPricing.resolve({
                     providerID: "test-provider",
                     modelID: "test-model",

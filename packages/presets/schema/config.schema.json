@@ -660,10 +660,20 @@
                     },
                     "additionalProperties": {}
                   }
+                },
+                "billingMode": {
+                  "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+                  "type": "string",
+                  "enum": ["api", "subscription", "local", "unknown"]
                 }
               },
               "additionalProperties": false
             }
+          },
+          "billingMode": {
+            "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+            "type": "string",
+            "enum": ["api", "subscription", "local", "unknown"]
           },
           "profile": {
             "description": "Canonical provider profile whose runtime behavior this account connection uses",
@@ -2212,6 +2222,11 @@
       "description": "Embedding model configuration. When absent, a local model is used automatically.",
       "type": "object",
       "properties": {
+        "billingMode": {
+          "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+          "type": "string",
+          "enum": ["api", "subscription", "local", "unknown"]
+        },
         "cost": {
           "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
           "type": "object",
@@ -2334,6 +2349,11 @@
       "description": "Rerank model for memory retrieval refinement. Disabled when not configured.",
       "type": "object",
       "properties": {
+        "billingMode": {
+          "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+          "type": "string",
+          "enum": ["api", "subscription", "local", "unknown"]
+        },
         "cost": {
           "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
           "type": "object",
@@ -2983,6 +3003,11 @@
           "ref": "VoiceSttConfig",
           "type": "object",
           "properties": {
+            "billingMode": {
+              "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+              "type": "string",
+              "enum": ["api", "subscription", "local", "unknown"]
+            },
             "cost": {
               "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
               "type": "object",
@@ -3090,6 +3115,11 @@
           "ref": "VoiceTtsConfig",
           "type": "object",
           "properties": {
+            "billingMode": {
+              "description": "Commercial billing basis. Model overrides connection, then the declared provider profile. Unclassified or mixed profiles remain unknown; authentication does not determine billing.",
+              "type": "string",
+              "enum": ["api", "subscription", "local", "unknown"]
+            },
             "cost": {
               "description": "Explicit model prices in USD: token rates per million, unit rates per declared quantity",
               "type": "object",

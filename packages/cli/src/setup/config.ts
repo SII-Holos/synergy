@@ -1045,8 +1045,11 @@ export namespace ConfigSetup {
           model: {
             providerID: model.providerID,
             modelID: model.id,
+            apiModelID: model.api.id,
             sdk: model.api.npm,
             pricing: model.pricing ?? null,
+            billingMode: model.billingMode ?? "unknown",
+            limits: model.limit,
           },
           request: JSON.parse(
             JSON.stringify({ messages: transformed, maxOutputTokens: 8, temperature: 0, providerOptions }),

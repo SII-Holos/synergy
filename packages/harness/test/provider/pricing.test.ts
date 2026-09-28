@@ -21,8 +21,8 @@ test("accepts the pinned external catalog while keeping explicit pricing strict"
       input_tokens_details: { cached_tokens: 0 },
       output_tokens: 100,
     })
-  expect(ProviderPricing.estimate(price, usage(250_000), "openai").total).toBe(0.6265)
-  expect(ProviderPricing.estimate(price, usage(300_000), "openai").total).toBe(1.50225)
+  expect(ProviderPricing.estimate(price, usage(250_000), "api").total).toBe(0.6265)
+  expect(ProviderPricing.estimate(price, usage(300_000), "api").total).toBe(1.50225)
 })
 
 test("accepts external tier extensions without relaxing configured pricing", () => {
@@ -55,7 +55,7 @@ test("prices OpenAI output once, including its reasoning subset", () => {
     output_tokens: 500,
     output_tokens_details: { reasoning_tokens: 100 },
   })
-  const cost = ProviderPricing.estimate(pricing, usage, "openai")
+  const cost = ProviderPricing.estimate(pricing, usage, "api")
   expect(cost.total).toBe(0.0105)
   expect(cost.known).toBe(0.0105)
   expect(cost.missing).toEqual([])
@@ -73,7 +73,7 @@ test("missing cache prices and absent model prices remain unknown", () => {
     input_tokens_details: { cached_tokens: 200 },
     output_tokens: 500,
   })
-  expect(ProviderPricing.estimate(pricing, usage, "openai")).toMatchObject({
+  expect(ProviderPricing.estimate(pricing, usage, "api")).toMatchObject({
     total: null,
     known: 0.0099,
     missing: ["cacheRead.price"],
@@ -83,7 +83,7 @@ test("missing cache prices and absent model prices remain unknown", () => {
 
 test("subscription equivalent is distinct from actual account charges", () => {
   const usage = RolloutUsage.normalize("openai", null)
-  const estimate = ProviderPricing.estimate(null, usage, "openai-codex")
+  const estimate = ProviderPricing.estimate(null, usage, "subscription")
   expect(estimate.total).toBeNull()
   expect(estimate.basis).toBe("subscription_api_equivalent")
 })
@@ -100,13 +100,13 @@ test("uses distinct cache TTL rates and never substitutes a generic write rate f
     ...raw,
     cache_creation: { ephemeral_5m_input_tokens: 10, ephemeral_1h_input_tokens: 20 },
   })
-  expect(ProviderPricing.estimate(pricing, usage, "anthropic").total).toBe(0.00121)
-  expect(ProviderPricing.estimate(pricing, RolloutUsage.normalize("anthropic", raw), "anthropic").total).toBeNull()
+  expect(ProviderPricing.estimate(pricing, usage, "api").total).toBe(0.00121)
+  expect(ProviderPricing.estimate(pricing, RolloutUsage.normalize("anthropic", raw), "api").total).toBeNull()
 })
 
 test("audio duration has an explicit unit and does not require fictional token counts", () => {
   const usage = RolloutUsage.normalize("openai", { type: "duration", seconds: 30 }, "transcription")
-  expect(ProviderPricing.estimate(null, usage, "voice")).toMatchObject({
+  expect(ProviderPricing.estimate(null, usage, "api")).toMatchObject({
     total: null,
     missing: ["audio_seconds.price"],
   })
@@ -116,7 +116,7 @@ test("audio duration has an explicit unit and does not require fictional token c
     source: "configuration",
     cost: { units: { audio_seconds: { price: 0.006, per: 60 } } },
   })
-  expect(ProviderPricing.estimate(pricing, usage, "voice").total).toBe(0.003)
+  expect(ProviderPricing.estimate(pricing, usage, "api").total).toBe(0.003)
 })
 
 test("cached audio with unknown modality overlap is not charged twice in the known subtotal", () => {
@@ -131,7 +131,7 @@ test("cached audio with unknown modality overlap is not charged twice in the kno
     input_tokens_details: { cached_tokens: 400, audio_tokens: 500 },
     output_tokens: 100,
   })
-  const estimate = ProviderPricing.estimate(pricing, usage, "openai")
+  const estimate = ProviderPricing.estimate(pricing, usage, "api")
   expect(estimate.total).toBeNull()
   expect(estimate.known).toBe(0.0015)
   expect(estimate.missing).toContain("audio_input_tokens.cache_overlap")
@@ -145,7 +145,7 @@ test("nonstandard service tiers do not masquerade as known standard API spend", 
     source: "configuration",
     cost: { input: 1, output: 2 },
   })
-  expect(ProviderPricing.estimate(price, usage, "openai")).toMatchObject({
+  expect(ProviderPricing.estimate(price, usage, "api")).toMatchObject({
     total: null,
     known: 0,
     missing: ["service_tier.flex.price"],

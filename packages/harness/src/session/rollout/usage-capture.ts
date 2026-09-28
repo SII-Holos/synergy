@@ -15,6 +15,7 @@ export namespace RolloutUsageCapture {
     mediaType: string,
     providerID?: string,
     kind?: Parameters<typeof RolloutUsage.normalize>[2],
+    onContent?: (reasoning: boolean) => void,
   ) {
     const protocol: RolloutUsage.Info["protocol"] =
       sdk.includes("anthropic") || providerID === "google-vertex-anthropic"
@@ -35,6 +36,8 @@ export namespace RolloutUsageCapture {
     let raw: Record<string, Json> | null = null
     let result: RolloutUsage.Info | undefined
     let serviceTier: string | undefined
+    let final = false
+    let responseModel: string | undefined
     function accept(text: string) {
       if (!text || text === "[DONE]") return
       let parsed: unknown
@@ -44,6 +47,49 @@ export namespace RolloutUsageCapture {
         return
       }
       const event = object(parsed)
+      const name = event.model ?? object(event.response).model ?? object(event.message).model ?? event.modelVersion
+      if (typeof name === "string" && name.length <= 256) responseModel = name
+      if (["response.completed", "response.incomplete", "message_stop"].includes(String(event.type))) final = true
+      if (object(event.delta).stop_reason) final = true
+      if (
+        Array.isArray(event.choices) &&
+        event.usage &&
+        (!event.choices.length || event.choices.some((choice) => object(choice).finish_reason))
+      )
+        final = true
+      if (Array.isArray(event.candidates) && event.candidates.some((candidate) => object(candidate).finishReason))
+        final = true
+      const nonempty = (value: unknown) => typeof value === "string" && value.length > 0
+      const deltas = Array.isArray(event.choices) ? event.choices.map((choice) => object(object(choice).delta)) : []
+      const delta = object(event.delta)
+      const parts = Array.isArray(event.candidates)
+        ? event.candidates.flatMap((candidate) => {
+            const parts = object(object(candidate).content).parts
+            return Array.isArray(parts) ? parts.map(object) : []
+          })
+        : []
+      const reasoning =
+        deltas.some((item) => nonempty(item.reasoning_content) || nonempty(item.reasoning)) ||
+        nonempty(delta.thinking) ||
+        parts.some((part) => part.thought === true && nonempty(part.text)) ||
+        (typeof event.type === "string" && event.type.includes("reasoning") && nonempty(event.delta))
+      const content =
+        reasoning ||
+        deltas.some(
+          (item) =>
+            nonempty(item.content) ||
+            (Array.isArray(item.tool_calls) &&
+              item.tool_calls.some((tool) => {
+                const fn = object(object(tool).function)
+                return nonempty(fn.arguments) || nonempty(fn.name)
+              })),
+        ) ||
+        nonempty(delta.text) ||
+        nonempty(delta.partial_json) ||
+        parts.some((part) => nonempty(part.text) || Object.keys(object(part.functionCall)).length > 0) ||
+        (["response.output_text.delta", "response.function_call_arguments.delta"].includes(String(event.type)) &&
+          nonempty(event.delta))
+      if (content && sse) onContent?.(reasoning)
       const tier = event.service_tier ?? object(event.response).service_tier
       if (typeof tier === "string") serviceTier = tier
       const candidate =
@@ -101,6 +147,21 @@ export namespace RolloutUsageCapture {
       }
     }
     return {
+      responseModel() {
+        return responseModel
+      },
+      hasUsage() {
+        return raw !== null
+      },
+      hasFinalUsage() {
+        return raw !== null && final
+      },
+      streaming: sse,
+      current() {
+        return raw
+          ? { ...RolloutUsage.normalize(protocol, raw, kind, providerID), ...(serviceTier ? { serviceTier } : {}) }
+          : undefined
+      },
       append(bytes: Uint8Array) {
         if (result) throw new Error("Usage capture is already closed")
         consume(decoder.decode(bytes, { stream: true }))

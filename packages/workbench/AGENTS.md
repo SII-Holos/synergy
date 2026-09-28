@@ -1,6 +1,6 @@
 # workbench Package
 
-Product Projects, statistics and performance read models, activity presentation and notifications. Keep product read models out of core execution accounting. Session and rollout evidence remain canonical in Harness. Read the root AGENTS.md and the owning architecture document before changes.
+Product Projects, statistics and performance read models, activity presentation and notifications. Keep product read models out of core execution accounting. Session, rollout and retained usage evidence remain canonical in Harness. Statistics routes and compatibility projections consume the public usage service; keep accounting formulas in that owner. Read the root AGENTS.md and the owning architecture document before changes.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.

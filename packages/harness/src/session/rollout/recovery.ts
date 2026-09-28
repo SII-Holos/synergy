@@ -36,6 +36,7 @@ export namespace RolloutRecovery {
         await RolloutLedger.writeAttempt({
           ...attempt,
           status: "interrupted",
+          ...(attempt.timing ? { timing: { ...attempt.timing, detectedAt: Date.now() } } : {}),
           ended: Date.now(),
           request: (await committed(identity, attempt.request, onProgress))!,
           response: await committed(identity, attempt.response, onProgress),

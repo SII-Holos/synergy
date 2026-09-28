@@ -10,6 +10,7 @@ export const POSTGRES_TEST_FILES = [
   "test/storage/postgres-ownership.test.ts",
   "test/storage/prune-contract.test.ts",
   "test/storage/transactional-store.test.ts",
+  "test/storage/usage-ledger.test.ts",
 ] as const
 
 type Backend = "sqlite" | "postgres"

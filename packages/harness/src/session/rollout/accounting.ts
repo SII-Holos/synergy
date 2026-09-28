@@ -1,6 +1,5 @@
 import z from "zod"
 import { Decimal } from "decimal.js"
-import type { RolloutSnapshot } from "./snapshot"
 import type { RolloutSchema } from "./schema"
 import { RolloutUsage } from "./usage"
 
@@ -37,6 +36,7 @@ export namespace RolloutAccounting {
         .strict(),
       apiEstimate: Metric,
       subscriptionEquivalent: Metric,
+      unclassifiedEquivalent: Metric.default({ known: 0, unknown: 0, total: 0 }),
       reported: z
         .object({
           currencies: z.record(z.string(), z.number().finite().nonnegative()),
@@ -71,6 +71,7 @@ export namespace RolloutAccounting {
       },
       apiEstimate: zero(),
       subscriptionEquivalent: zero(),
+      unclassifiedEquivalent: zero(),
       reported: { currencies: {}, unreported: 0 },
       units: {},
       cacheWrites: {},
@@ -98,6 +99,7 @@ export namespace RolloutAccounting {
       for (const key of tokenKeys) add(result.tokens[key], summary.tokens[key])
       add(result.apiEstimate, summary.apiEstimate)
       add(result.subscriptionEquivalent, summary.subscriptionEquivalent)
+      add(result.unclassifiedEquivalent, summary.unclassifiedEquivalent ?? zero())
       result.reported.unreported += summary.reported.unreported
       for (const [currency, value] of Object.entries(summary.reported.currencies))
         result.reported.currencies[currency] = new Decimal(result.reported.currencies[currency] ?? 0)
@@ -121,7 +123,15 @@ export namespace RolloutAccounting {
     }
   }
 
-  export function summarize(snapshot: Pick<RolloutSnapshot.Info, "calls" | "attempts" | "gaps">): Summary {
+  export type CallInput = Pick<
+    RolloutSchema.CallRecord,
+    "id" | "runID" | "execution" | "model" | "sdkUsage" | "sdkEstimate" | "kind"
+  > & { source?: unknown; usage?: RolloutUsage.Info }
+  export type AttemptInput = Pick<
+    RolloutSchema.AttemptRecord,
+    "id" | "callID" | "runID" | "usage" | "estimate" | "timing"
+  >
+  export function summarize(snapshot: { calls: CallInput[]; attempts: AttemptInput[]; gaps: number[] }): Summary {
     const result = empty()
     result.importedCalls = snapshot.calls.filter((call) => call.source).length
     result.calls = snapshot.calls.length - result.importedCalls
@@ -133,10 +143,13 @@ export namespace RolloutAccounting {
     // recording fetch still reports usage on its call record. Reading it keeps
     // token accounting — and the prompt budget's calibration anchor — alive
     // when recording is lost.
-    function recordedCallUsage(call: RolloutSchema.CallRecord) {
-      return call.sdkUsage ? (RolloutUsage.normalizeSdk(call.sdkUsage, call.model.sdk) ?? undefined) : undefined
+    function recordedCallUsage(call: CallInput) {
+      return (
+        call.usage ??
+        (call.sdkUsage ? (RolloutUsage.normalizeSdk(call.sdkUsage, call.model.sdk, call.kind) ?? undefined) : undefined)
+      )
     }
-    function charge(call: RolloutSchema.CallRecord, attempt?: RolloutSchema.AttemptRecord) {
+    function charge(call: CallInput, attempt?: AttemptInput) {
       const usage = attempt ? attempt.usage : recordedCallUsage(call)
       if (usage?.reported) {
         const { currency, amount } = usage.reported
@@ -163,14 +176,22 @@ export namespace RolloutAccounting {
           (input ?? inputSubtotal) + (output ?? 0),
         ),
       }
-      for (const key of tokenKeys) add(result.tokens[key], values[key])
-      const estimate = attempt?.estimate
+      if (usage?.billing !== "units") for (const key of tokenKeys) add(result.tokens[key], values[key])
+      if (call.execution === "local" || call.model.billingMode === "local") return
+      const estimate = attempt ? attempt.estimate : call.sdkEstimate
+      const basis =
+        estimate?.basis ??
+        (call.model.billingMode === "subscription"
+          ? "subscription_api_equivalent"
+          : call.model.billingMode === "api"
+            ? "api_price_estimate"
+            : "unclassified_api_equivalent")
       const target =
-        (estimate?.basis ??
-          (call.model.providerID === "openai-codex" ? "subscription_api_equivalent" : "api_price_estimate")) ===
-        "subscription_api_equivalent"
+        basis === "subscription_api_equivalent"
           ? result.subscriptionEquivalent
-          : result.apiEstimate
+          : basis === "api_price_estimate"
+            ? result.apiEstimate
+            : result.unclassifiedEquivalent
       add(target, amount(estimate?.total, estimate?.known ?? 0))
     }
     for (const attempt of snapshot.attempts) {
@@ -179,6 +200,8 @@ export namespace RolloutAccounting {
       const call = calls.get(attempt.callID)
       if (!call || call.runID !== attempt.runID) throw new Error("Rollout attempt has no owning call")
       if (call.source) continue
+      if (call.execution === "local") continue
+      if (attempt.timing && attempt.timing.sentAt === undefined) continue
       observed.add(call.id)
       result.attempts++
       charge(call, attempt)
@@ -190,8 +213,13 @@ export namespace RolloutAccounting {
         continue
       }
       if (observed.has(call.id)) continue
+      if (snapshot.attempts.some((attempt) => attempt.callID === call.id && attempt.timing)) continue
       result.unobservedCalls++
       charge(call)
+    }
+    if (snapshot.gaps.length) {
+      for (const key of tokenKeys) add(result.tokens[key], { known: 0, total: null, unknown: snapshot.gaps.length })
+      add(result.unclassifiedEquivalent, { known: 0, total: null, unknown: snapshot.gaps.length })
     }
     return Summary.parse(result)
   }
