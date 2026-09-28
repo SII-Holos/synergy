@@ -1,6 +1,6 @@
 import path from "path"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { FileView } from "../file/view"
 import { Ripgrep } from "../file/ripgrep"
 import { WorkspaceFileService } from "./service"
 import { ProcessOutput } from "@ericsanchezok/synergy-harness/process/output"
@@ -19,7 +19,7 @@ const MAX_INDEX_RECORDS = 50_000
 const APPLY_CONCURRENCY = 16
 
 function root() {
-  return ScopeContext.current.directory
+  return FileView.directory()
 }
 
 function addParents(dirs: Set<string>, file: string) {

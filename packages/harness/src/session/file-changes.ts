@@ -10,6 +10,7 @@ import { MessageV2 } from "./message-v2"
 import type { RolloutLedger } from "./rollout/ledger"
 import { Storage } from "../storage/storage"
 import { ExecutionCapacity } from "./execution-capacity"
+import { WorkspaceEvidence } from "../workspace/evidence"
 
 export namespace SessionFileChanges {
   const log = Log.create({ service: "session.file-changes" })
@@ -136,7 +137,15 @@ export namespace SessionFileChanges {
       },
       async () => {
         try {
-          return await action()
+          return await WorkspaceEvidence.provide(
+            {
+              scopeID: owner.scopeID,
+              sessionID: owner.sessionID,
+              messageID: input.messageID,
+              toolCallID: input.toolCallID,
+            },
+            action,
+          )
         } finally {
           finished = true
           if (changed) await ExecutionCapacity.wait(refresh)

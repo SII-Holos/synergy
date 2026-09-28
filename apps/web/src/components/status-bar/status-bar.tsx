@@ -1,3 +1,4 @@
+import { selectedFileWorkspace, fileWorkspaceLabel } from "@/context/file/workspace"
 import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
 import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -578,9 +579,13 @@ export function StatusBar() {
   })
   const workspaceType = createMemo(() => session()?.workspace?.type ?? "main")
   const isWorktree = () => workspaceType() === "git_worktree"
-  const workspaceName = createMemo(() => workspaceField(session(), "name") || workspaceField(session(), "path"))
+  const workspaceName = createMemo(() => {
+    const workspace = selectedFileWorkspace(session(), sync.data.workspaces)
+    return workspace ? fileWorkspaceLabel(workspace) : undefined
+  })
   const branch = createMemo(() => {
     if (isWorktree()) return workspaceField(session(), "branch")
+    if (session()?.workspaceID && !session()?.workspace) return undefined
     return workspaceField(session(), "branch") || sync.data.vcs?.branch
   })
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))

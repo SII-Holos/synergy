@@ -60,3 +60,5 @@ For uploads, pin the Workspace generation through dispatch and check cancellatio
 For Browser overlay changes, test overlapping blockers rather than only one open/close pair. Assert the last blocker controls native visibility and the same page, native view and entered content survive. Exercise prompt defaults, accepted empty text, cancellation, acknowledgement-only alerts, keyboard focus and request replacement through real components; native visibility additionally needs a real Electron view check.
 
 For JavaScript prompt changes, test the actual Electron page calling `prompt()` and receiving edited text, an empty string and null. DOM rendering alone cannot prove Electron support. Verify the preload in the staged Host ASAR, sender/frame validation, disposal, and a reply during a pending page command. Preserve the command’s Workspace lease and reject stale owners while allowing its reply to unblock it.
+
+Environment changes must close a Session Browser before committing its new selection. Verify that Docker and absent selections fail before contacting the local Browser host; presentation mode does not grant execution placement.

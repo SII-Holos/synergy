@@ -1,5 +1,5 @@
 import { $ } from "bun"
-import { describe, expect, mock, test } from "bun:test"
+import { describe, expect, mock, spyOn, test } from "bun:test"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -12,6 +12,7 @@ import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionLifecycle } from "@ericsanchezok/synergy-harness/session/lifecycle"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -332,7 +333,7 @@ describe("session input acceptance", () => {
       }
     }))
 
-  test("rejects input before accepting it when the bound worktree was deleted externally", () =>
+  test("durably accepts conversation input while its deleted worktree remains unavailable", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -348,6 +349,7 @@ describe("session input acceptance", () => {
             bind: true,
           })
 
+          const drive = spyOn(SessionDrive, "request").mockResolvedValue(true)
           try {
             await $`git worktree remove --force ${worktree.path}`.cwd(scope.local!.worktree).quiet()
 
@@ -360,18 +362,17 @@ describe("session input acceptance", () => {
               },
             )
 
-            expect(response.status).toBe(409)
-            expect(await response.json()).toEqual({
-              name: "WorkspaceUnavailable",
-              data: {
-                message: "The Workspace directory is unavailable",
-                workspaceID: (await Session.get(session.id)).workspaceID,
-              },
-            })
+            expect(response.status).toBe(200)
+            const result = (await response.json()) as { status: string; item: { id: string } }
+            expect(result.status).toBe("queued")
+            expect((await SessionInbox.list(session.id)).map((item) => item.id)).toEqual([result.item.id])
+            expect((await Session.get(session.id)).workspace?.path).toBe(worktree.path)
+            await expect(Session.assertWorkspaceAvailable(session.id)).rejects.toThrow("unavailable")
+            expect((await Environment.get(session.environmentID!, scope.id)).state).toBe("idle")
             expect(await Session.messages({ sessionID: session.id })).toHaveLength(0)
             expect(SessionManager.isRunning(session.id)).toBe(false)
           } finally {
-            await Bun.sleep(50)
+            drive.mockRestore()
             await Worktree.remove({ sessionID: session.id, target: worktree.id, force: true }).catch(() => undefined)
             await Session.remove(session.id)
           }

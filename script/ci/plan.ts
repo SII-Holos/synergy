@@ -24,6 +24,7 @@ export type TaskKind =
   | "benchmark-native"
   | "rollout"
   | "sandbox"
+  | "environment"
 
 export interface WorkspaceInput {
   directory: string

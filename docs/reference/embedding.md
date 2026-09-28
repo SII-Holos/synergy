@@ -114,3 +114,5 @@ This client does not own the service. For a filesystem project, resolve its Scop
 Managed SDK processes require the private bearer credential on HTTP requests. Existing service deployments retain their configured transport/authentication boundary; attaching does not create or replace credentials.
 
 The Web application discovers this selection before optional requests. Navigation, settings, composer mechanisms and workbench panels follow the active components; reconnecting replaces the previous selection. A Web client can therefore attach to a core server or a selected subset without polling absent component routes.
+
+Environment selection and resource ownership follow [Environments](../architecture/environments.md). Both `openAgentRuntime` and `openLocalRuntime` accept `environment: false` for hosts without a default native execution destination.

@@ -6,7 +6,8 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { openLocalRuntime, RuntimeHandle, createLocalStorage, registerLocalRuntime } from "../src"
-import { submitInput } from "../src/session-api"
+import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 
 test("Home and explicit none retain a null workspace through creation and child inheritance", async () => {
   await using fixture = await runtimeHome()
@@ -76,7 +77,7 @@ test("Home and explicit none retain a null workspace through creation and child 
   })
 })
 
-test("a missing project remains readable and a rejected submission does not persist input or rebind its workspace", async () => {
+test("a missing project accepts conversation input without rebinding its unavailable files or allocating compute", async () => {
   await using fixture = await runtimeHome()
   await using runtime = await openLocalRuntime({ host: fixture.host, mode: "oneshot" })
   const directory = path.join(fixture.host.home, "project")
@@ -90,12 +91,16 @@ test("a missing project remains readable and a rejected submission does not pers
         await fs.rm(directory, { recursive: true })
         expect((await Scope.fromID(scope.id))?.id).toBe(scope.id)
         expect((await Scope.list()).map((item) => item.id)).toContain(scope.id)
-        for (const noReply of [false, true]) {
-          await expect(
-            submitInput({ sessionID: session.id, noReply, parts: [{ type: "text", text: "Do not accept" }] }),
-          ).rejects.toThrow("available")
-        }
-        expect((await Session.messages({ sessionID: session.id })).length).toBe(0)
+        const message = await SessionInvoke.invoke({
+          sessionID: session.id,
+          noReply: true,
+          model: { providerID: "fixture", modelID: "fixture" },
+          parts: [{ type: "text", text: "Keep discussing" }],
+        })
+        expect(message.parts).toContainEqual(expect.objectContaining({ type: "text", text: "Keep discussing" }))
+        expect((await Session.messages({ sessionID: session.id })).length).toBe(1)
+        await expect(Session.assertWorkspaceAvailable(session.id)).rejects.toThrow("available")
+        expect((await Environment.get(session.environmentID!, session.scope.id)).state).toBe("idle")
         expect((await Session.get(session.id)).workspace).toEqual(session.workspace)
         await Scope.remove(scope.id)
         expect((await Scope.fromID(scope.id))?.id).toBe(scope.id)
@@ -240,10 +245,10 @@ test("custom tools with the same name remain owned by their Scope", async () => 
   })
 })
 
-test("terminal creation cannot borrow a Scope directory for a session without a workspace", async () => {
+test("terminal creation requires a selected Environment even when a Scope directory exists", async () => {
   const { Pty } = await import("../src/process/pty")
   await using fixture = await runtimeHome()
-  await using runtime = await openLocalRuntime({ host: fixture.host, mode: "oneshot" })
+  await using runtime = await openLocalRuntime({ host: fixture.host, mode: "oneshot", environment: false })
   await runtime.run(async () => {
     const { scope } = await Scope.fromDirectory(fixture.host.home)
     await ScopeContext.provide({
@@ -252,16 +257,16 @@ test("terminal creation cannot borrow a Scope directory for a session without a 
         const session = await Session.create({ workspace: null })
         await expect(
           Pty.create({ sessionID: session.id, cwd: fixture.host.home, command: "__missing_fixture_command__" }),
-        ).rejects.toMatchObject({ name: "WorkspaceRequired" })
+        ).rejects.toThrow("Environment")
         expect(Pty.list()).toEqual([])
       },
     })
     await ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
-        await expect(
-          Pty.create({ cwd: fixture.host.home, command: "__missing_fixture_command__" }),
-        ).rejects.toMatchObject({ name: "WorkspaceRequired" })
+        await expect(Pty.create({ cwd: fixture.host.home, command: "__missing_fixture_command__" })).rejects.toThrow(
+          "Environment",
+        )
       },
     })
   })

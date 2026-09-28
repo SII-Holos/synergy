@@ -1,14 +1,34 @@
 # Workspace and File Operations
 
+Additional writable directory sharing uses verified native directory bindings. Object-backed Workspaces do not advertise that directory permission action; their files use the selected Environment view and its captured write set.
+
 Local Runtime owns native filesystem subscriptions in `packages/local-runtime/src/file/watcher.ts` and declares each subscription's Scope or Workspace owner in startup. Harness owns generic Scope, storage and file contracts; importing Harness alone does not start a native watcher.
 
-Synergy keeps project ownership (`Scope`) separate from the directory in which a session executes (`workspace`). The normal workspace is the selected project directory; a session can instead bind to a Synergy-managed worktree without changing its owning Scope, config, Notes, or session index.
+Synergy keeps project ownership (`Scope`) separate from durable files (`Workspace`) and compute (`Environment`). A Session can select a native directory, managed worktree or object-backed Workspace without changing its owning Scope, config, Notes or session index.
+
+Saved object Workspace versions have a streaming NDJSON archive containing a validated manifest, deduplicated content chunks and a required completion record. Import verifies chunk and file digests before publishing a new catalog identity into an explicitly chosen storage profile. Archives carry no host paths, storage credentials, live mounts or Environment authority. Native directories use their directory and snapshot transfer mechanisms.
+
+Saved-version reads require the observed catalog revision. Recovery copies the saved head to a new Workspace and records its source; it does not clear the original mount, pending operation, execution claim or unsaved data. Web/Desktop expose the same recovery action. Transcript and rollout imports retain historical Workspace references without granting execution or storage authority. See the [resource CLI](../reference/cli-guide.md) for export, import and saved-copy recovery.
 
 The Harness Workspace catalog owns a stable ID and a versioned local binding. Sessions persist only `workspaceID`; their public `workspace` descriptor is resolved from that catalog. Multiple Sessions share the same binding, while rebinding preserves the ID and advances its generation. Execution verifies the host namespace, generation and directory identity. A missing catalog record, missing directory, or replaced directory retains its historical reference and fails execution.
 
 Owner-local migrations upgrade old embedded Session directories before navigation or other current projections read them, preserving activity and unrelated owner metadata. Transcript and Rollout archives include referenced Workspace metadata. Imported bindings remain unavailable until explicitly rebound, even if their historical path exists locally; import does not convey filesystem authority.
 
+## Storage backends and content
+
+The Workspace catalog records its backend independently of its local directory binding. The central `20260927-workspace-storage-backend` migration identifies existing directories without changing IDs, physical identities, binding generations or historical metadata. Content revision is distinct from catalog revision and binding generation. Object-backed Workspaces select a Runtime-registered blob store by ID; provider credentials remain in the composing host.
+
+`WorkspaceContent` reads and edits dormant object-backed files without allocating an Environment. Files use SHA-256 addressed chunks, and an immutable manifest records regular files, directories, modes and contained symbolic links. Publication uploads bytes and the manifest outside the Agent Storage transaction, then compares the prior content revision, binding generation and active mount identity before advancing the head and retaining its revision record. Failed uploads and stale writers leave the head unchanged. Imported records cannot authorize reads or writes.
+
+An active mount excludes dormant-manifest access: callers must use the live view rather than return older saved files. The native tree implementation captures bounded chunks, detects source changes, and materializes a validated tree through a private staging directory. It verifies hashes before publishing into an empty destination. Special files and escaping links fail explicitly. Directory mutations share the same atomic byte-version publisher inside the existing physical Workspace claim.
+
+Local Runtime supplies S3 and OSS blob adapters. S3 uses Bun's bundled SigV4 client; OSS uses the official SDK with OSS V4 signing. Both verify returned object hashes and bound reads. See [the content storage decision](../decisions/implemented/architecture/2026-09-27-workspace-content-manifests.md).
+
 A local binding without a verified physical directory identity cannot authorize execution or file access. Migration retains a missing directory's historical path; creating a new directory at that path or registering it again does not authorize the old binding. Explicit rebinding verifies the directory and advances the generation. See [unverified directory bindings](../decisions/implemented/bug-fix/2026-09-23-unverified-workspace-directory-bindings.md).
+
+The file-view facade resolves classic and anchored reads and edits from the selected logical Workspace. A dormant object view reads verified immutable chunks; an active view uses its recorded Executor file host. Reads carry exact content versions across bounded ranges. File evidence and edit events select the logical Workspace generation without inventing a local directory. Controller configuration reload applies only to local files. Entry inspection and mutation share the native implementation used by both the local adapters and Execution Host.
+
+Workspace file routes resolve logical IDs and binding generations independently of native directory projections. Read-only search enumerates the selected view, applies ordered Workspace ignore rules and explicit globs, and supplies verified bytes to Ripgrep through standard input. Regular expressions retain Ripgrep semantics without materializing another filesystem or starting compute. Native scans use the same engine directly; Workspace ignore files apply independently of Git repository initialization. Search has entry, depth, time and output bounds, and incomplete content searches report their failure. Runtime-local manifest caches retain at most eight verified immutable manifests within a 64 MiB encoded-byte budget; content hashes select indexed entries and directory children without changing the live-view fence.
 
 ## Scope Runtime Services
 
@@ -67,7 +87,7 @@ Worktrees have explicit owners such as a session, Cortex task, Blueprint workflo
 
 The active worktree is the default write and execution boundary. Ordinary files in the original checkout can be read when they are not sensitive, but autonomous work cannot modify or execute from the original checkout. Cleanup removes resources only when their recorded owner permits it; a worktree is not inferred to be disposable merely because one session stopped using it. It becomes eligible for the managed-worktree cap only once it is idle, clean, free of local-only commits, and unlocked; a worktree that fails any of those tests is reported with its reason instead of reclaimed. The cap therefore bounds growth without ever deleting the only copy of unpushed work, and a lock written outside Synergy is never cleared.
 
-Worktree use and removal combine the in-process lifecycle gate with native physical claims across Runtime instances. Session execution reserves the worktree before project services start, while create, enter, and leave reserve it around binding changes. Removal first excludes new users, refreshes the binding registry, and refuses any active session use; only then can it migrate idle bound sessions back to the main checkout and remove the directory. Automatic sweeps use the same removal gate, retain unverifiable commits and all on-disk locks, and drain before Scope disposal. Missing external worktree registrations are never pruned by the sweep. Binding registry updates use a shared filesystem lock and durable atomic publication so concurrent enters and leaves cannot overwrite one another. A stale managed record whose Git worktree and directory are already gone is cleaned from the registry after its idle bindings are migrated, without attempting filesystem status or deletion.
+Worktree use and removal combine the in-process lifecycle gate with native physical claims across Runtime instances. Workspace-dependent tools reserve the worktree before its file services start; the model loop itself carries only the logical selection. Create, enter, and leave reserve it around binding changes. Removal first excludes new users, refreshes the binding registry, and refuses any active session use; only then can it migrate idle bound sessions back to the main checkout and remove the directory. Automatic sweeps use the same removal gate, retain unverifiable commits and all on-disk locks, and drain before Scope disposal. Missing external worktree registrations are never pruned by the sweep. Binding registry updates use a shared filesystem lock and durable atomic publication so concurrent enters and leaves cannot overwrite one another. A stale managed record whose Git worktree and directory are already gone is cleaned from the registry after its idle bindings are migrated, without attempting filesystem status or deletion.
 
 Git mutations and configured setup commands use native process ownership and drain detached descendants. Creation chooses its name and base after write admission. Internal Git and registry metadata operations reserve their physical write interval without retaining an ordinary Workspace writer for a read-only turn. Reclamation excludes users of the actual directory, including Sessions that selected it without a managed-worktree registry entry. A caller leaves the target before removing it; unrelated admitted operations cannot borrow its lifecycle claim.
 
@@ -167,6 +187,8 @@ A Linux scan that stalls rather than failing (typically a network-filesystem sub
 
 Workspace events enter one per-Workspace drain that deduplicates paths, processes one batch at a time, bounds pending paths, and updates the file index without resolving Git status. Git-status reads share one in-flight build and perform at most one follow-up build when invalidated during that work. VCS branch refreshes run only for the dedicated Git `HEAD` event, not for ordinary file changes. If the watcher queue overflows, the backend invalidates its caches and emits one `file.watcher.updated` event with `resync: true`; the File context refreshes the root, expanded directories, and active document. `SYNERGY_DISABLE_FILEWATCHER=1` remains a diagnostic escape hatch. Refocus, refresh, and directory expansion still validate state, so correctness does not depend on lossless per-file delivery.
 
+Logical Workspace services use catalog identity and binding generation without projecting a controller path. Mounted views expose an observation epoch and monotonic version from the execution host's native watcher; the execution image includes the verified Linux binding. Observation polls existing mounts without holding Environment uses, so a file panel cannot allocate compute or prevent idle reclamation. Content publication, attachment, detachment and observation changes invalidate file caches and emit a Workspace resync, including branch refresh. A new subscription epoch forces a refresh after listener recovery. Catalog changes increment their revision and publish events in the same business transaction.
+
 ## Classic and Anchored Coding Tools
 
 Synergy supports ordinary file tools and an anchored coding harness. The anchored family uses:
@@ -188,6 +210,8 @@ Every successful edit mints a new tag and makes older tags stale. The patch lang
 
 ## Write Pipeline
 
+File and directory operations select the Workspace live view or its dormant object manifest. Mounted operations retain their allocation and writer until checkpoint publication. Dormant operations commit the immutable manifest head and operation result atomically in Agent Storage. Both paths deduplicate stable operation IDs and reject stale entry/content versions. Byte writes accept at most 8 MiB per request; larger files are read through versioned 4 MiB ranges. Execution-host creations assign files and new parent directories to the command identity before publication.
+
 A governed file write can include:
 
 1. path resolution and protected/external path classification
@@ -203,6 +227,10 @@ A governed file write can include:
 The exact stages vary by tool, but no write path should create a second unclassified filesystem capability.
 
 File previews pin their Workspace through bounded native descriptor reads, validate entry and content identity around the read, and reject growth or replacement instead of returning a falsely complete document. Internal symbolic links report the target's size and content while keeping the link's entry identity for mutations. Windows copies preserve directory-link and junction tags even when their targets are missing.
+
+The file workbench browses, previews, changes entries and serves downloads through the selected file view. Dormant object reads use immutable manifest content; active views resolve canonical paths on the execution host. Remote downloads collect a bounded, version-checked file before releasing allocation admission and serving the captured bytes. Protected-path checks run again beside each mutation, including directory descendants. Structured conflict, access and partial-result errors survive transport and operation recovery. Git status executes against a live Environment and reports its capability as unavailable for a dormant object view.
+
+Importing an authorized local source into another backend is an explicit content transfer. The importer captures a version-checked private copy, uploads immutable chunks and a single-root manifest, then publishes the destination through its normal retained mutation. Object backends commit the imported tree with their head; live views verify and materialize the bytes beside the Executor before exclusive destination publication. Existing destinations, special files, escaping links and protected descendants are rejected. Interrupted effects remain pending recovery rather than repeating the copy.
 
 ## Snapshots, Rollback, and Restore
 

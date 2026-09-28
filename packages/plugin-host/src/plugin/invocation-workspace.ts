@@ -3,7 +3,9 @@ import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import type { RuntimeInvocationContextData } from "../plugin-runtime/protocol"
 
 export namespace PluginInvocationWorkspace {
@@ -11,6 +13,7 @@ export namespace PluginInvocationWorkspace {
     scope: Scope
     workspace: Session.Info["workspace"]
     invocation: RuntimeInvocationContextData
+    selection: EnvironmentResources.Selection
     versions: Map<string, string>
   }>()
 
@@ -42,9 +45,23 @@ export namespace PluginInvocationWorkspace {
         if (session && session.scope.id !== scope.id)
           throw new Error("Plugin invocation Session belongs to another Scope")
         const workspace = session ? session.workspace : ScopeContext.current.workspace
-        if (session?.workspaceID && !workspace) throw new Error("Plugin invocation Workspace is unavailable")
+        const inherited = EnvironmentResources.current()
+        const workspaceID = session
+          ? session.workspaceID
+          : inherited?.workspace?.scopeID === scope.id
+            ? inherited.workspace.id
+            : workspace?.id
+        const record = workspaceID ? await WorkspaceCatalog.get(workspaceID, scope.id) : undefined
         if (workspace?.id) await WorkspaceBinding.validate(workspace.id, scope.id, workspace.generation)
-        const selected = { ...invocation, directory: workspace?.path }
+        const selected = { ...invocation, directory: record?.activeMount?.path ?? workspace?.path }
+        const selection: EnvironmentResources.Selection = {
+          scopeID: scope.id,
+          workspaceID,
+          workspaceGeneration: record?.binding.generation,
+          environmentID: session
+            ? session.environmentID
+            : (inherited?.environment?.id ?? inherited?.selection?.environmentID),
+        }
         return ScopeContext.provide({
           scope,
           workspace,
@@ -52,7 +69,16 @@ export namespace PluginInvocationWorkspace {
             WorkspaceAccess.withinTask(async () => {
               signal.throwIfAborted()
               if (workspace) await WorkspaceAccess.use([workspace])
-              return context.run({ scope, workspace, invocation: selected, versions: new Map() }, () => fn(selected))
+              const run = () =>
+                context.run({ scope, workspace, selection, invocation: selected, versions: new Map() }, () =>
+                  fn(selected),
+                )
+              return record
+                ? WorkspaceState.provide(
+                    { id: record.id, scopeID: record.scopeID, generation: record.binding.generation },
+                    run,
+                  )
+                : run()
             }, signal),
         })
       },

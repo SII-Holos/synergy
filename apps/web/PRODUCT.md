@@ -326,3 +326,7 @@ The session header explains working location from the actual Workspace binding, 
 Agenda opens on a series list with canonical pending and last-run-failed filters. Repeated planned times expand under their owning task; bounded previews are distinct from execution history. Keep day/week/month navigation and History available. Missing run metadata never means the task has never run. Plugin rows prioritize author-provided purpose, source and visible installation state; technical metadata lives in details, while disabled or approval states remain immediately visible.
 
 Remote Browser Retry checks server ownership and the existing page before resuming and reconnecting. Keep the address and error visible, disable repeated recovery attempts, and cancel obsolete recovery on session disposal. Retry does not create another page or replay user actions.
+
+Stored Workspaces use the same chooser, file tree and editor as directories. Show the Workspace name without implying a controller path. Creating a Workspace selects a storage profile; execution belongs to the independent Environment choice. Open file tabs retain their original Workspace identity across selection changes.
+
+The working-location menu exposes Environment selection independently from Workspace files. Choosing a profile does not start compute. Keep activity and recovery inside that chooser, preserve failed selections and new-session retry intent, and distinguish a result awaiting confirmation from one awaiting saving. Release saves files before reclaiming unused compute.

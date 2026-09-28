@@ -1,6 +1,30 @@
-import type { Session } from "@ericsanchezok/synergy-sdk"
+import type { Session, WorkspaceInfo } from "@ericsanchezok/synergy-sdk"
 
 export type FileWorkspace = NonNullable<Session["workspace"]> & { id: string; generation: number }
+
+export function selectedFileWorkspace(
+  session: Pick<Session, "workspace" | "workspaceID"> | undefined,
+  records: WorkspaceInfo[],
+) {
+  if (!session) return
+  if (session.workspace) return fileWorkspace(session.workspace)
+  const record = records.find((item) => item.id === session.workspaceID)
+  if (record?.backend?.provider !== "objects") return
+  return fileWorkspace({
+    id: record.id,
+    generation: record.binding.generation,
+    scopeID: record.scopeID,
+    type: record.type,
+    path: "",
+    name: typeof record.metadata.name === "string" ? record.metadata.name : record.id,
+    bindingState: record.binding.state,
+    lifecycle: record.lifecycle,
+  })
+}
+
+export function fileWorkspaceLabel(workspace: FileWorkspace) {
+  return workspace.path || (typeof workspace.name === "string" ? workspace.name : workspace.id)
+}
 
 export function fileWorkspace(value: unknown): FileWorkspace | undefined {
   if (!value || typeof value !== "object") return

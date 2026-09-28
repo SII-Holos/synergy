@@ -2,6 +2,7 @@ import path from "path"
 import fs from "node:fs/promises"
 import { constants } from "node:fs"
 import { FileMutation } from "../file/mutation"
+import { FileView } from "../file/view"
 import { FileEntry } from "../file/entry"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { WorkspaceFile } from "./types"
@@ -106,6 +107,14 @@ async function readBytes(
   limit: number,
   validate: (path: string) => Promise<void>,
 ) {
+  if (!FileView.native()) {
+    await validate(absolute)
+    const before = await FileView.stat(absolute)
+    if (before?.entryVersion !== info.entryVersion) throw new FileMutation.ConflictError()
+    const bytes = await FileView.bytes(absolute, { offset: 0, length: Math.min(limit, info.size) }, limit)
+    if ((await FileView.stat(absolute))?.entryVersion !== before?.entryVersion) throw new FileMutation.ConflictError()
+    return bytes
+  }
   const target = await FileMutation.canonical(absolute)
   await validate(target)
   const file = await fs.open(

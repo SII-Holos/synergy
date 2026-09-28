@@ -28,13 +28,16 @@ test("LSP preparation drains bounded binary output and reports failed native com
           expect(result.value.stdout.length + result.value.stderr.length).toBe(1024 * 1024)
           expect(result.value.stdout.every((byte) => byte === 255)).toBe(true)
           await result.dispose()
-          await expect(
-            LSPProcess.resolving(AbortSignal.timeout(10000), () =>
-              LSPProcess.run({
-                command: [process.execPath, "-e", "process.stderr.write('fixture failure');process.exit(7)"],
-              }),
-            ),
-          ).rejects.toThrow("7: fixture failure")
+          const failure = await LSPProcess.resolving(AbortSignal.timeout(10000), () =>
+            LSPProcess.run({
+              command: [process.execPath, "-e", "process.stderr.write('fixture failure');process.exit(7)"],
+            }),
+          ).then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          expect(failure).toBeInstanceOf(Error)
+          expect(failure).toMatchObject({ message: "Language server preparation exited with 7: fixture failure" })
         }),
     })
   }))

@@ -1,8 +1,5 @@
-import fs from "node:fs"
-import { chmod, mkdtemp, writeFile } from "node:fs/promises"
-import os from "node:os"
-import path from "node:path"
 import type { Node } from "web-tree-sitter"
+import type { Executor } from "@ericsanchezok/synergy-harness/environment/executor"
 import { ToolNoteSource } from "@ericsanchezok/synergy-harness/tool/note-source"
 import { BashVirtualPath } from "@ericsanchezok/synergy-harness/tool/virtual-path"
 
@@ -17,7 +14,8 @@ export namespace BashVirtualFile {
   export interface Materialization {
     command: string
     extraReadRoots: string[]
-    cleanup(): void
+    digest?: string
+    cleanup(): Promise<void>
   }
 
   interface Provider {
@@ -62,50 +60,52 @@ export namespace BashVirtualFile {
     command: string
     references: Reference[]
     scopeID: string
-    tempRoot?: string
+    executor: Executor
+    executionID: string
+    shell: string
+    platform: string
   }): Promise<Materialization> {
     if (input.references.length === 0) {
-      return { command: input.command, extraReadRoots: [], cleanup() {} }
+      return { command: input.command, extraReadRoots: [], async cleanup() {} }
     }
 
-    const tempDir = await mkdtemp(path.join(input.tempRoot ?? os.tmpdir(), "synergy-bash-files-"))
-    let cleaned = false
-    const cleanup = () => {
-      if (cleaned) return
-      cleaned = true
-      try {
-        fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
-      } catch {}
-    }
+    const executor = input.executor
+    if (!executor.prepareInputs || !executor.discardInputs)
+      throw new Error("Selected Environment cannot stage virtual files")
+    const cleanup = () => executor.discardInputs!(input.executionID)
 
     try {
-      await chmod(tempDir, 0o700)
       const unique = new Map<string, Reference>()
       for (const reference of input.references) {
         unique.set(`${reference.provider}:${reference.id}`, reference)
       }
 
       const paths = new Map<string, string>()
+      const files: { name: string; data: string }[] = []
       let index = 0
       for (const [key, reference] of unique.entries()) {
         const provider = providers[reference.provider]
         const content = await provider.read(input.scopeID, reference.id)
-        const filepath = path.join(tempDir, `${index++}${provider.extension}`)
-        await writeFile(filepath, content, { encoding: "utf-8", flag: "wx", mode: 0o600 })
-        await chmod(filepath, 0o400)
-        paths.set(key, filepath)
+        const name = `${index++}${provider.extension}`
+        files.push({ name, data: Buffer.from(content).toString("base64") })
+        paths.set(key, name)
       }
+      const prepared = await executor.prepareInputs({ id: input.executionID, files })
 
       let command = input.command
       for (const reference of input.references.toSorted((left, right) => right.startIndex - left.startIndex)) {
-        const filepath = paths.get(`${reference.provider}:${reference.id}`)
+        const name = paths.get(`${reference.provider}:${reference.id}`)
+        const filepath = name && prepared.paths[name]
         if (!filepath) throw new Error(`Bash virtual file was not materialized: ${reference.provider}:${reference.id}`)
-        command = command.slice(0, reference.startIndex) + shellQuote(filepath) + command.slice(reference.endIndex)
+        command =
+          command.slice(0, reference.startIndex) +
+          shellQuote(filepath, input.shell, input.platform) +
+          command.slice(reference.endIndex)
       }
 
-      return { command, extraReadRoots: [tempDir], cleanup }
+      return { command, extraReadRoots: Object.values(prepared.paths), digest: prepared.digest, cleanup }
     } catch (error) {
-      cleanup()
+      await cleanup().catch(() => {})
       throw error
     }
   }
@@ -130,7 +130,14 @@ export namespace BashVirtualFile {
     return { provider: matched.provider, id: matched.id }
   }
 
-  function shellQuote(value: string) {
+  function shellQuote(value: string, shell: string, platform: string) {
+    const name = shell.split(/[\\/]/).at(-1)?.toLowerCase()
+    if (platform === "win32" && ["cmd", "cmd.exe"].includes(name ?? "")) {
+      if (/["%!\r\n]/.test(value)) throw new Error("Execution input path cannot be quoted safely for cmd")
+      return `"${value}"`
+    }
+    if (platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(name ?? ""))
+      return `'${value.replaceAll("'", "''")}'`
     return `'${value.replaceAll("'", `'"'"'`)}'`
   }
 }

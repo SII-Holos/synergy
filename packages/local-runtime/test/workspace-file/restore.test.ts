@@ -9,8 +9,7 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
 import { WorkspaceCatalog, WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { testRuntime } from "../support/runtime"
-import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+import { testRuntime, testWorkspaceCoordinator } from "../support/runtime"
 import { FileEntry } from "../../src/file/entry"
 
 const runtime = await testRuntime()
@@ -130,7 +129,7 @@ test("a restore queued behind another writer detects its newer bytes", () =>
         const hash = (await Snapshot.track("restore-queued"))!
         const patch = { hash, workspace: Snapshot.workspace()!, files: [file] }
         await Bun.write(file, "selected")
-        const coordinator = new WorkspaceCoordinator()
+        const coordinator = testWorkspaceCoordinator()
         const writer = await coordinator.acquire({
           id: crypto.randomUUID(),
           owner: "another-writer",
@@ -210,7 +209,7 @@ test("cancellation releases queued restore ownership without changing files", ()
         await Bun.write(file, "original")
         const hash = (await Snapshot.track("restore-cancelled"))!
         await Bun.write(file, "keep")
-        const coordinator = new WorkspaceCoordinator()
+        const coordinator = testWorkspaceCoordinator()
         const writer = await coordinator.acquire({
           id: crypto.randomUUID(),
           owner: "blocker",

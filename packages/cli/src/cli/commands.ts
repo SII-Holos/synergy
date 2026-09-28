@@ -10,6 +10,16 @@ export function coreCommands(
 ): CommandEntry[] {
   return [
     {
+      command: "environment",
+      describe: "manage compute on an attached server",
+      load: async () => (await import("./cmd/resources")).EnvironmentCommand as unknown as CommandModule,
+    },
+    {
+      command: "workspace",
+      describe: "manage durable files on an attached server",
+      load: async () => (await import("./cmd/resources")).WorkspaceCommand as unknown as CommandModule,
+    },
+    {
       command: "send [message..]",
       describe: "send a message to synergy",
       load: async () => (await import("./cmd/send")).createSendCommand(runtimeFactory) as unknown as CommandModule,

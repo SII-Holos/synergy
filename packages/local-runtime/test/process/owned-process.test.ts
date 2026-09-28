@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { buffer, text } from "node:stream/consumers"
 import { randomUUID } from "node:crypto"
@@ -6,8 +6,72 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { OwnedProcess } from "../../src/process/owned-process"
+import { OwnedProtocol } from "../../src/process/owned-protocol"
 
 const nativeTest = test.skipIf(!["darwin", "linux"].includes(process.platform))
+
+nativeTest.each(["ready", "exit"])("control reset at %s preserves the native completion boundary", async (stage) => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const lease = await coordinator.acquire({
+    id: randomUUID(),
+    owner: "owner",
+    ancestors: [],
+    kind: "process",
+    roots: [tmp.path],
+  })
+  const injected = Object.assign(new Error("control connection reset"), { code: "ECONNRESET" })
+  const messages = OwnedProtocol.messages
+  let resets = 0
+  const protocol = spyOn(OwnedProtocol, "messages").mockImplementation((socket, receive, failed) =>
+    messages(
+      socket,
+      (raw) => {
+        receive(raw)
+        if (OwnedProtocol.Event.parse(raw).type !== stage) return
+        resets++
+        socket.emit("error", injected)
+      },
+      failed,
+    ),
+  )
+  try {
+    const owned = await OwnedProcess.prepare({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write('retained output'); process.stderr.write('retained error'); process.exitCode=7",
+      ],
+      cwd: tmp.path,
+      env: {},
+      lease,
+    })
+    const stdout = text(owned.child.stdout)
+    const stderr = text(owned.child.stderr)
+    const closed = ChildProcessClose.wait(owned.child).then(
+      (result) => result,
+      (error: unknown) => error,
+    )
+    try {
+      await owned.activate()
+      const result = await closed
+      await owned.completion
+      expect(resets).toBe(1)
+      if (stage === "ready") expect(result).toBe(injected)
+      else {
+        expect(result).toMatchObject({ code: 7, signal: null, drainTimedOut: false })
+        expect(await stdout).toBe("retained output")
+        expect(await stderr).toBe("retained error")
+      }
+      expect(await coordinator.inspect()).toHaveLength(0)
+    } finally {
+      await owned.stop()
+      await Promise.allSettled([closed, stdout, stderr])
+    }
+  } finally {
+    protocol.mockRestore()
+  }
+})
 
 nativeTest(
   "activation records ownership before any command runs and preserves bytes, cwd, env and exit",

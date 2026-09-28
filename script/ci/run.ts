@@ -48,6 +48,35 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
     env,
   })
   switch (task.kind) {
+    case "environment": {
+      const image = "synergy-execution-host:ci"
+      return [
+        bun("environment-dependencies", ["install", "--frozen-lockfile"], undefined, {
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1",
+        }),
+        bun("environment-native-pty", ["packages/local-runtime/script/build-pty.ts"]),
+        {
+          name: "environment-apparmor",
+          args: [
+            "sudo",
+            "apparmor_parser",
+            "-r",
+            "packages/local-runtime/src/environment/vendor/synergy-execution.apparmor",
+          ],
+        },
+        bun("environment-image", ["packages/local-runtime/script/build-execution-host.ts", "--image", image]),
+        test(
+          "environment-lifecycle",
+          [
+            "test/environment/docker.test.ts",
+            "test/environment/profiles.test.ts",
+            "test/environment/remote-docker.test.ts",
+          ],
+          "packages/local-runtime",
+          { SYNERGY_TEST_DOCKER_ENVIRONMENT_IMAGE: image, SYNERGY_TEST_DOCKER_APPARMOR: "1" },
+        ),
+      ]
+    }
     case "policy":
       return [
         ...[

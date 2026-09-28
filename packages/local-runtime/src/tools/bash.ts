@@ -55,7 +55,10 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>(
   "bash",
   {
     get description() {
-      return DESCRIPTION.replaceAll("${directory}", ScopeContext.current.directory)
+      return DESCRIPTION.replaceAll(
+        "${directory}",
+        ScopeContext.current.workspace?.path ?? "the selected Environment working directory",
+      )
         .replaceAll("${maxLines}", String(Truncate.MAX_LINES))
         .replaceAll("${maxBytes}", String(Truncate.MAX_BYTES))
     },
@@ -76,5 +79,5 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>(
       return LocalBashBackend.execute(params, ctx)
     },
   },
-  { requiresWorkspace: true },
+  { requiresWorkspace: false, requiresExecution: "exec" },
 )

@@ -12,6 +12,7 @@ export { createLocalHost, createLocalStorage } from "./host"
 export type LocalRuntimeOptions = Omit<Parameters<typeof RuntimeHandle.open>[0], "host" | "composition" | "storage"> & {
   host?: RuntimeHost
   storage?: RuntimeStorage
+  environment?: boolean
 }
 
 export async function openLocalRuntime(options: LocalRuntimeOptions) {
@@ -20,6 +21,6 @@ export async function openLocalRuntime(options: LocalRuntimeOptions) {
     ...options,
     host,
     storage: options.storage ?? createLocalStorage(host, options.storageReporter),
-    composition: { register: registerLocalRuntime },
+    composition: { register: () => registerLocalRuntime({ environment: options.environment }) },
   })
 }

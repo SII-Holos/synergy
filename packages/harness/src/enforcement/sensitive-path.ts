@@ -76,7 +76,12 @@ function isSynergyAuthRoot(candidate: string, synergyRoot: string | undefined): 
 function isCredentialRoot(normalized: string): boolean {
   return CREDENTIAL_ROOT_PARTS.some((part) => {
     const p = part.replace(/\\/g, "/").toLowerCase()
-    return normalized === p || normalized.startsWith(p + "/") || normalized.includes("/" + p + "/")
+    return (
+      normalized === p ||
+      normalized.startsWith(p + "/") ||
+      normalized.endsWith("/" + p) ||
+      normalized.includes("/" + p + "/")
+    )
   })
 }
 
@@ -90,7 +95,6 @@ function isProjectSynergyPath(candidate: string, workspaceRoot: string | undefin
 export namespace SensitivePathPolicy {
   export function classify(pathInput: string, options: SensitivePathOptions): SensitivePathMatch {
     if (!pathInput) return { matched: false }
-    const normalized = normalizeForMatch(pathInput)
     const homeExpanded = expandHomeDir(pathInput)
     const absoluteCandidate = path.isAbsolute(homeExpanded)
       ? path.normalize(homeExpanded)
@@ -120,6 +124,16 @@ export namespace SensitivePathPolicy {
       }
     }
 
+    const relative = classifyRelative(pathInput)
+    if (relative.matched) return relative
+
+    if (isProjectSynergyPath(homeExpanded, options.workspaceRoot)) return { matched: false }
+    if (options.synergyRoot && isInside(absoluteCandidate, options.synergyRoot)) return { matched: false }
+
+    return { matched: false }
+  }
+  export function classifyRelative(pathInput: string): SensitivePathMatch {
+    const normalized = normalizeForMatch(pathInput)
     if (normalized === ".git" || normalized.startsWith(".git/") || normalized.includes("/.git/")) {
       return {
         matched: true,
@@ -158,9 +172,6 @@ export namespace SensitivePathPolicy {
         exactSecretRoot: false,
       }
     }
-
-    if (isProjectSynergyPath(homeExpanded, options.workspaceRoot)) return { matched: false }
-    if (options.synergyRoot && isInside(absoluteCandidate, options.synergyRoot)) return { matched: false }
 
     return { matched: false }
   }

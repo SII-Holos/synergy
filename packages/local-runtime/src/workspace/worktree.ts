@@ -1,4 +1,7 @@
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
+import { SessionWorkspaceRuntime } from "@ericsanchezok/synergy-harness/session/workspace-runtime"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { FileMutation } from "../file/mutation"
@@ -433,6 +436,8 @@ export namespace Worktree {
 
   function ensureGitScope() {
     const scope = ScopeContext.current.scope
+    if (!EnvironmentResources.localFiles())
+      throw new NotGitError({ message: "Git worktree management requires a native directory Workspace." })
     if (scope.type !== "project" || scope.local?.vcs !== "git") {
       throw new NotGitError({ message: "Current scope is not a Git repository; git worktree is unavailable." })
     }
@@ -885,6 +890,28 @@ export namespace Worktree {
 
   export const create = fn(CreateInput.optional(), async (input) => {
     const parsed = CreateInput.parse(input ?? {})
+    return parsed.sessionID
+      ? SessionWorkspaceRuntime.withBinding(parsed.sessionID, () => createBound(parsed), WorkspaceAccess.signal())
+      : createBound(parsed)
+  })
+
+  async function nativeSession(sessionID: string) {
+    const session = await Session.get(sessionID)
+    const environment = session.environmentID
+      ? await Environment.get(session.environmentID, session.scope.id)
+      : undefined
+    if (session.scope.id !== ScopeContext.current.scope.id || environment?.provider !== "native")
+      throw new Environment.Unavailable({
+        environmentID: session.environmentID ?? "",
+        message: "Git worktree management requires the native Environment in this Scope.",
+      })
+    if (session.workspaceID && !session.workspace?.path)
+      throw new NotGitError({ message: "Git worktree management requires a native directory Workspace." })
+    return session
+  }
+
+  async function createBound(parsed: z.infer<typeof CreateInput>) {
+    const session = parsed.sessionID ? await nativeSession(parsed.sessionID) : undefined
     const { scope, repoRoot } = ensureGitScope()
     WorkspaceAccess.signal()?.throwIfAborted()
     await ensureExclude(repoRoot)
@@ -892,7 +919,6 @@ export namespace Worktree {
       fs.mkdir(worktreesRoot(repoRoot), { recursive: true }),
     )
 
-    const session = parsed.sessionID ? await Session.get(parsed.sessionID) : undefined
     const titleName = session?.title && !isDefaultTitle(session.title) ? session.title : undefined
     const plan: { selection?: Creation } = {}
     try {
@@ -982,7 +1008,7 @@ export namespace Worktree {
         }
       throw error
     }
-  })
+  }
 
   function match(info: Info, target: string) {
     return info.id === target || info.name === target || info.branch === target || info.path === target
@@ -1045,12 +1071,19 @@ export namespace Worktree {
   }
 
   export async function enter(input: TargetInput) {
-    const info = await find(input.target)
-    return withUse(info.path, input.sessionID, async () => {
-      const current = await find(input.target)
-      await bindSession(input.sessionID, current)
-      return current
-    })
+    return SessionWorkspaceRuntime.withBinding(
+      input.sessionID,
+      async () => {
+        await nativeSession(input.sessionID)
+        const info = await find(input.target)
+        return withUse(info.path, input.sessionID, async () => {
+          const current = await find(input.target)
+          await bindSession(input.sessionID, current)
+          return current
+        })
+      },
+      WorkspaceAccess.signal(),
+    )
   }
 
   async function leaveSession(sessionID: string, options?: { preserveActivityAt?: boolean }) {
@@ -1069,10 +1102,17 @@ export namespace Worktree {
   }
 
   export async function leave(sessionID: string) {
-    const session = await Session.get(sessionID)
-    const workspace = session.workspace
-    if (workspace?.type !== "git_worktree") return leaveSession(sessionID)
-    return withUse(workspace.path, sessionID, () => leaveSession(sessionID))
+    return SessionWorkspaceRuntime.withBinding(
+      sessionID,
+      async () => {
+        await nativeSession(sessionID)
+        const session = await Session.get(sessionID)
+        const workspace = session.workspace
+        if (workspace?.type !== "git_worktree") return leaveSession(sessionID)
+        return withUse(workspace.path, sessionID, () => leaveSession(sessionID))
+      },
+      WorkspaceAccess.signal(),
+    )
   }
 
   export async function status(sessionID: string) {

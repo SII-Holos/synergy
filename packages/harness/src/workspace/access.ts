@@ -5,11 +5,10 @@ import { ExecutionCapacity } from "../session/execution-capacity"
 import type { Workspace } from "../session/workspace-schema"
 import { WorkspaceBinding } from "./binding"
 import path from "node:path"
+import { WorkspaceBusyError } from "./claim"
 
 export namespace WorkspaceAccess {
-  export class BusyError extends Error {
-    override name = "WorkspaceBusyError"
-  }
+  export const BusyError = WorkspaceBusyError
   export interface ClaimInput {
     id: string
     owner: string
@@ -20,6 +19,7 @@ export namespace WorkspaceAccess {
     parentClaim?: string
     processID?: number
     retainAfterExit?: boolean
+    durable?: boolean
     cooperative?: boolean
     transient?: boolean
     signal?: AbortSignal
@@ -27,6 +27,7 @@ export namespace WorkspaceAccess {
   }
   export interface Lease {
     id: string
+    recovery?: { id: string; token: string }
     release(beforeRelease?: () => Promise<void>): Promise<void>
     bindProcess(processID: number, options?: { descendants?: boolean }): Promise<void>
   }
@@ -110,6 +111,7 @@ export namespace WorkspaceAccess {
     parentSessionID?: string
     workspace?: Workspace | null
     signal?: AbortSignal
+    lazy?: boolean
   }
   export function task<T>(input: TaskInput, fn: () => Promise<T>): Promise<T> {
     return runTask(input, fn)
@@ -142,7 +144,7 @@ export namespace WorkspaceAccess {
       signal: input.signal ? AbortSignal.any([input.signal, controller.signal]) : controller.signal,
     }
     try {
-      if (value.workspace && state().host) {
+      if (value.workspace && state().host && !input.lazy) {
         await ExecutionCapacity.wait(async () => {
           value.use = await host().acquire({
             id: randomUUID(),
@@ -381,7 +383,7 @@ export namespace WorkspaceAccess {
   export async function process(
     roots: string[] | null,
     signal?: AbortSignal,
-    options?: { cooperative?: boolean; retainAfterExit?: boolean; transient?: boolean },
+    options?: { cooperative?: boolean; retainAfterExit?: boolean; transient?: boolean; durable?: boolean },
   ): Promise<Lease> {
     if (options?.cooperative && !host().contendedProcesses)
       throw new Error("This Runtime cannot monitor cooperative process contention")
@@ -399,6 +401,7 @@ export namespace WorkspaceAccess {
             ancestors: task.ancestors,
             kind: "process",
             retainAfterExit: !!observe || options?.retainAfterExit,
+            durable: options?.durable,
             cooperative: options?.cooperative,
             parentClaim: parent?.task === task ? parent.lease.id : writes ? task.id : undefined,
             transient: options?.transient || parent?.task === task,
@@ -436,6 +439,35 @@ export namespace WorkspaceAccess {
     const provider = host()
     if (!provider.contendedProcesses) throw new Error("This Runtime cannot monitor cooperative process contention")
     return provider.contendedProcesses()
+  }
+
+  export async function hostClaim(
+    input: Omit<ClaimInput, "owner" | "ancestors" | "parentClaim" | "useRoots">,
+  ): Promise<Lease> {
+    return inTask(async (task) => {
+      let lease: Lease | undefined
+      try {
+        await ExecutionCapacity.wait(async () => {
+          const writes = input.kind !== "use" && (input.roots === null || input.roots.length > 0)
+          const parent = retirement.getStore()
+          if (writes && parent?.task !== task) await reserve(task, input.roots, input.signal, false)
+          lease = await host().acquire({
+            ...input,
+            owner: task.owner,
+            ancestors: task.ancestors,
+            parentClaim: parent?.task === task ? parent.lease.id : writes ? task.id : undefined,
+            useRoots: [...task.useRoots],
+            signal: input.signal ? AbortSignal.any([input.signal, task.signal]) : task.signal,
+          })
+        })
+        input.signal?.throwIfAborted()
+        await validate(task)
+        return lease!
+      } catch (error) {
+        await lease?.release()
+        throw error
+      }
+    }, input.signal)
   }
 
   export async function pin(signal?: AbortSignal): Promise<Lease> {

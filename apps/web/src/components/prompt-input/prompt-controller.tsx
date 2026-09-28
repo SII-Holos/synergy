@@ -1972,6 +1972,7 @@ export function createPromptInputController(props: PromptInputProps) {
         requireEditable()
         setStore("mode", mode)
       },
+      setEnvironment: (id) => props.onNewSessionEnvironmentChange?.(id),
       setWorkspaceSelection: (selection) => props.onNewSessionWorkspaceSelectionChange?.(selection),
       setControlProfile: input.setControlProfile,
       setPlan: setPendingPlan,

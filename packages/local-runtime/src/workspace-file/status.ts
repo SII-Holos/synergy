@@ -1,6 +1,7 @@
-import { $ } from "bun"
 import path from "path"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { WorktreeProcess } from "../workspace/process"
+import { FileView } from "../file/view"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileStatusCache } from "./status-cache"
@@ -15,7 +16,7 @@ const MAX_UNTRACKED_LINE_COUNT_FILES = 200
 const MAX_UNTRACKED_LINE_COUNT_BYTES = 256 * 1024
 
 function root() {
-  return ScopeContext.current.directory
+  return FileView.directory()
 }
 
 function cleanRelative(input: string) {
@@ -31,11 +32,11 @@ function parseStatus(input: string): WorkspaceFile.GitStatus {
 }
 
 async function lineCount(filepath: string) {
-  const stat = await Bun.file(filepath)
+  const stat = await FileView.file(filepath)
     .stat()
     .catch(() => undefined)
   if (!stat || stat.size > MAX_UNTRACKED_LINE_COUNT_BYTES) return undefined
-  const content = await Bun.file(filepath)
+  const content = await FileView.file(filepath)
     .text()
     .catch(() => undefined)
   if (content === undefined) return undefined
@@ -45,13 +46,36 @@ async function lineCount(filepath: string) {
 
 async function build(): Promise<WorkspaceFile.StatusSummary> {
   const cwd = root()
-  const repository = await $`git rev-parse --is-inside-work-tree`.cwd(cwd).quiet().nothrow()
+  if (!FileView.native() && !EnvironmentResources.current()?.runtime)
+    return { files: [], capability: { available: false, reason: "Git status requires a live Environment" } }
+  const git = (args: string[]) =>
+    WorktreeProcess.run({
+      command: ["git", ...args],
+      directory: cwd,
+      roots: [],
+      metadata: true,
+      env: { GIT_OPTIONAL_LOCKS: "0" },
+    })
+  const repository = await git(["rev-parse", "--is-inside-work-tree"])
   if (repository.exitCode !== 0 || repository.stdout.toString().trim() !== "true") return { files: [] }
   const counts = new Map<string, { added: number; removed: number }>()
   const [numstat, nameStatus, untracked] = await Promise.all([
-    $`git diff --numstat --no-renames --relative -z HEAD -- .`.cwd(cwd).quiet().nothrow().text(),
-    $`git diff --name-status -M --relative -z HEAD -- .`.cwd(cwd).quiet().nothrow().text(),
-    $`git ls-files --others --exclude-standard -z -- .`.cwd(cwd).quiet().nothrow().text(),
+    git([
+      "diff",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--numstat",
+      "--no-renames",
+      "--relative",
+      "-z",
+      "HEAD",
+      "--",
+      ".",
+    ]).then((result) => result.stdout.toString()),
+    git(["diff", "--no-ext-diff", "--no-textconv", "--name-status", "-M", "--relative", "-z", "HEAD", "--", "."]).then(
+      (result) => result.stdout.toString(),
+    ),
+    git(["ls-files", "--others", "--exclude-standard", "-z", "--", "."]).then((result) => result.stdout.toString()),
   ])
   for (const line of numstat.split("\0").filter(Boolean)) {
     const first = line.indexOf("\t")

@@ -30,6 +30,34 @@ Project configuration for an explicitly selected project Scope:
 
 Use `synergy config path` to print the active global roots.
 
+`135-resources.jsonc` is global-only. It configures Environment profiles and Workspace object stores. Resource records retain the settings chosen at creation, so changing a profile does not relocate existing files. Invalid resource configuration remains in place and blocks selection until repaired.
+
+```jsonc
+{
+  "resources": {
+    "defaultEnvironment": "worker",
+    "environments": {
+      "worker": {
+        "provider": "docker",
+        "spec": {
+          "image": "synergy-execution-host:development",
+          "host": { "endpoint": "unix:///var/run/docker.sock" },
+        },
+        "reuse": "session",
+        "idleTimeoutMs": 600000,
+      },
+    },
+    "stores": {
+      "files": { "provider": "local", "spec": { "namespace": "default" } },
+    },
+  },
+}
+```
+
+Build the example image from this checkout with `bun run --cwd packages/local-runtime build:execution-host`. The image includes the matching Executor protocol and native assets. Remote Docker hosts use an HTTPS Engine endpoint and an execution hostname reachable by the controller; `host.engineTLS` and `host.executionTLS` contain `certRef`, `keyRef` and optional `caRef` Secret Vault IDs. Execution TLS is required beyond loopback. Optional external bind/volume mounts are read-only and resolve on the daemon host.
+
+For an S3 or OSS store, use `provider: "s3"` or `"oss"` with `bucket`, `region`, optional `endpoint` and `prefix`, and `credentialsRef`. That Vault entry contains JSON with `accessKeyId`, `secretAccessKey` and optional `sessionToken`. OSS uses its own signing SDK. Local object storage lives in the Runtime's data directory; it remains independent of disposable execution volumes. API-only sessions need no Workspace or Environment. Set `defaultEnvironment: null` to require explicit execution selection.
+
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
 Clarus accounts live in the Channel domain and reuse Holos credentials:
