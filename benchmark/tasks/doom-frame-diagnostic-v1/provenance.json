@@ -1,0 +1,27 @@
+{
+  "changed_files": ["tests/test_outputs.py"],
+  "diagnostic_digest": "8445f5ec634904808f38e6bee877042e32090f6805d2a16c5613159a266e9ee9",
+  "diagnostic_test_sha256": "1904dbffd864965ec2c5d38c0f1762e70a31ce2a8781669c6be64bc8e95c162b",
+  "original_digest": "ccff8869f4810e40ed2d69650695801982c20a4e7ddd798fc48722ea35c3291d",
+  "original_test_sha256": "f1748ff20bfd670af1e1cb935647503eb176a4a14dd15f20935264ad7e4a98f6",
+  "purpose": "diagnostic_only",
+  "task": "make-doom-for-mips",
+  "unchanged_files_sha256": {
+    ".gitignore": "9a8dd8d9b6c3adb8e9e56328df27deef859a3e98fffc9b8133c8b22207c25953",
+    "README.md": "b1fcf8c6f2300038a15afdfaf2d80a25e490dee5a047912c911fce28785bc7be",
+    "environment/Dockerfile": "1da0fdafc36e59fcf685a8dbed9717b291195e251fe0e1247267bc5a0a9980ed",
+    "environment/task-deps/doomgeneric_img.c": "97bd88089d3f1cbe182b9929538190ee59f31d496f0cbcc6300213d09f195a26",
+    "environment/task-deps/vm.js": "ea8238f11af2368b108fbb392a57ee04fb7efc40c44222aa0d8bfe1175bcc747",
+    "instruction.md": "1903b660e4c64966ff257f828c932adff2b289de589bd6aee22b933bb4fef429",
+    "solution/solve.sh": "7795f4ac8ee4eaa35f2cfdce7f05e3c589b1c1b75534c02451a51b1767c3d6b6",
+    "task.toml": "a7d7a498f0d3a992b384e5086ba2b411767c1c1a013d1b41f6a25cdaf6d05acc",
+    "tests/reference.jpg": "d1909be8f3266a72686c3945029a553b82e5b46acd624eda65f3fdd5eb339574",
+    "tests/test.sh": "25809a2ebcb714b1c4e55563b0db16add23e2fd9b68d03e51b1734f8dbb392e1"
+  },
+  "upstream": {
+    "commit": "7131e4375048a0e408a8fb404b5f499d726b695b",
+    "license": "LICENSE",
+    "url": "https://github.com/harbor-framework/terminal-bench-2-1"
+  },
+  "version": 1
+}

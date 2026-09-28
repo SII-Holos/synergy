@@ -259,6 +259,7 @@ def test_cancelled_execution_keeps_first_score_and_all_cost_without_becoming_a_p
             request_idle_timeout_seconds=None,
             cleanup_seconds=60,
             export_timeout_seconds=300,
+            archive_validation_timeout_seconds=300,
             preparation_timeout_seconds=1800,
             resources={"reserve_cpus": 2},
         )
@@ -315,6 +316,7 @@ def test_pairing_requires_matching_declared_execution_conditions(tmp_path, chang
             request_idle_timeout_seconds=None,
             cleanup_seconds=60,
             export_timeout_seconds=300,
+            archive_validation_timeout_seconds=300,
             preparation_timeout_seconds=1800,
             resources={"reserve_cpus": 2},
         )

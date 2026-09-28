@@ -19,9 +19,10 @@ description: Change or validate the repository benchmark evaluator, native harne
 
 ## Preserve execution and evidence
 
-1. Write a failing behavioral regression before changing lifecycle, protocol, usage or scoring behavior. Use the native verifier and the fixed three-hour execution budget. Preparation, execution, export and cleanup have separate deadlines.
+1. Write a failing behavioral regression before changing lifecycle, protocol, usage or scoring behavior. Use the native verifier and the fixed three-hour execution budget. Preparation, execution, export, archive validation and cleanup have separate deadlines. A validation timeout may be resumed only against the byte-identical retained ZIP with the run's frozen verifier and dependency map, with a separate receipt and no model replay; preserve the original evidence and reward.
    Preserve Pier's `AgentTimeoutError` when an outer deadline interrupts execution; its native exception type determines whether artifact collection and verification continue. Validate this with a real timed-out native oracle and a completed verifier.
 2. Keep native prompts, tools, loops and compaction. A protocol bridge converts messages and streams; it must not create an agent loop or silently drop unsupported controls.
+   Compare sealed source inventories by canonical path and content, not traversal order; retain the receipt's original digest and reject any byte, mode, link, or path change.
 3. Exercise both Git and ordinary workspaces when upgrading native CLIs. Wait for the CLI's terminal process and native session state; a completed model turn does not establish that the agent loop ended.
    For a native stall, compare the actual CLI with and without the observer in disposable environments before attributing it to capture. Runtime controls such as Synergy/OpenCode `bun_jit` require explicit named variants, retained effective settings and actual CLI acceptance; never hot-switch the original attempt. A passing workaround does not by itself establish the stalled process's internal root cause.
 
@@ -114,6 +115,7 @@ description: Change or validate the repository benchmark evaluator, native harne
 
 3. Verify deadline propagation across every subprocess and Docker layer before live acceptance: an unspecified native execution deadline inherits its caller, while preparation defaults stay scoped to preparation. Test work that exceeds the preparation ceiling, explicit execution deadlines and cancellation cleanup. Retain failure types and cause locations without exception text or locals; integration tests must fail immediately when their evaluator exits before dispatch. Run live acceptance from frozen inputs. Count all attempts and diagnostic calls; reference sealed historical preflight and failed-run cost summaries without re-parsing retired formats. Model failures are observations; unexplained evaluator failures block claims of support.
 4. Compare only matching model/task/repeat/conditions. Expose missing or unpairable samples. Use seeded task-cluster bootstrap and only produce precise token differences for reconciled complete usage.
+   Separate a verifier's native reward from executed assertions, synthetic missing-result placeholders and unique renumbered JUnit matches. A diagnostic task source changes the task digest; report its score separately and regrade retained work only when its final workspace provenance can be verified.
 5. Update this workflow, package documentation and an implemented decision record when their behavior changes. Run skill, documentation, decision, test-layout and workspace-boundary gates; follow `git-guide` for publication.
 
 ## Diagnose retained trajectories

@@ -733,12 +733,13 @@ describe("tool.bash truncation", () => {
             ctx,
           )
           expect((result.metadata as any).truncated).toBe(false)
-          expect(result.output.replace(/\r\n/g, "\n")).toBe("hello\n")
+          expect(result.output.replace(/\r\n/g, "\n")).toBe("hello\n\nShell exited with code 0.")
+          expect(result.metadata.output).toBe("hello\n")
         },
       })
     }))
 
-  test("full output is saved to file when truncated", () =>
+  test("full model-visible output retains command text when truncated", () =>
     inProject(async () => {
       await ScopeContext.provide({
         scope: (await Scope.fromDirectory(projectRoot)).scope,
@@ -759,9 +760,11 @@ describe("tool.bash truncation", () => {
 
           const saved = await Bun.file(filepath).text()
           const lines = saved.trim().split(/\r?\n/)
-          expect(lines.length).toBe(lineCount)
+          expect(lines.length).toBe(lineCount + 2)
           expect(lines[0]).toBe("1")
           expect(lines[lineCount - 1]).toBe(String(lineCount))
+          expect(lines[lineCount]).toBe("")
+          expect(lines[lineCount + 1]).toBe("Shell exited with code 0.")
         },
       })
     }))
@@ -1095,7 +1098,8 @@ describe("tool.bash remote execution", () => {
           ctx,
         )
 
-        expect(result.output).toBe("remote-output")
+        expect(result.output).toBe("remote-output\n\nShell exited with code 0.")
+        expect(result.metadata.output).toBe("remote-output")
         expect(forwarded).not.toHaveProperty("detach")
         expect(actions).toEqual([{ action: "heartbeat", sessionID: "session_remote_bash" }])
       } finally {

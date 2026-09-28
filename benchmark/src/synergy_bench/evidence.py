@@ -43,6 +43,12 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
     sources = []
     observations = []
     missing_results = []
+    missing_names: list[str] = []
+    actual_failed: list[str] = []
+    raw_cases: dict[str, list[tuple[str, str]]] = {}
+    started_tests: set[str] = set()
+    completed_tests: set[str] = set()
+    timed_out_tests: set[str] = set()
     for file in sorted((trial / "verifier").rglob("*")):
         if not file.is_file() or file.is_symlink():
             continue
@@ -50,9 +56,20 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
             if file.suffix == ".xml":
                 root = ET.parse(file).getroot()
                 format_name = "junit"
-                observed = int(root.get("tests", "0"))
-                if not observed:
-                    observed = sum(int(suite.get("tests", "0")) for suite in root.findall(".//testsuite"))
+                observed = 0
+                for case in root.iter("testcase"):
+                    name = ".".join(part for part in [case.get("classname"), case.get("name")] if part)
+                    normalized = re.sub(r"\[ruleset\d+-", "[ruleset-", name)
+                    case_status = (
+                        "skipped"
+                        if case.find("skipped") is not None
+                        else "failed"
+                        if case.find("failure") is not None or case.find("error") is not None
+                        else "passed"
+                    )
+                    if case_status != "skipped":
+                        observed += 1
+                    raw_cases.setdefault(normalized, []).append((name, case_status))
             elif file.suffix == ".json":
                 # CTRF executed test statuses: https://ctrf.io/docs/specification/overview
                 value = read_json(file)
@@ -71,6 +88,16 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
                     for test in reported
                 )
                 observed = len(reported) - missing
+                for test in reported:
+                    test_name = test.get("name")
+                    if not isinstance(test_name, str):
+                        continue
+                    if test.get("status") == "failed" and str(test.get("message", "")).startswith(
+                        "missing from report ("
+                    ):
+                        missing_names.append(test_name)
+                    elif test.get("status") == "failed":
+                        actual_failed.append(test_name)
                 if missing:
                     missing_results.append({"source": file.relative_to(trial).as_posix(), "count": missing})
             elif file.suffix in {".txt", ".log", ".jsonl"}:
@@ -87,8 +114,17 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
                         event = json.loads(line)
                     except ValueError:
                         continue
-                    if isinstance(event, dict) and event.get("Action") == "run" and isinstance(event.get("Test"), str):
-                        running.add((event.get("Package", ""), event["Test"]))
+                    if not isinstance(event, dict) or not isinstance(event.get("Test"), str):
+                        continue
+                    package = event.get("Package", "")
+                    name = f"{package}.{event['Test']}" if package else event["Test"]
+                    if event.get("Action") == "run":
+                        running.add((package, event["Test"]))
+                        started_tests.add(name)
+                    elif event.get("Action") in {"pass", "fail", "skip"}:
+                        completed_tests.add(name)
+                    elif event.get("Action") == "output" and "test timed out" in str(event.get("Output", "")):
+                        timed_out_tests.add(name)
                 observed = max(observed, len(running))
             else:
                 continue
@@ -109,6 +145,25 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         if timing.get("started_at")
         else "unknown"
     )
+    renumbered = []
+    unresolved_missing = []
+    for expected in missing_names:
+        name = re.sub(r"^\[(?:f2p|p2p)\] ", "", expected)
+        normalized = re.sub(r"\[ruleset\d+-", "[ruleset-", name)
+        matches = raw_cases.get(normalized, []) if normalized != name else []
+        if len(matches) == 1 and matches[0][0] != name:
+            renumbered.append({"expected": expected, "observed": matches[0][0], "status": matches[0][1]})
+        else:
+            unresolved_missing.append(expected)
+    started_without_result = [
+        name
+        for name in unresolved_missing
+        if re.sub(r"^\[(?:f2p|p2p)\] ", "", name) in started_tests
+        and re.sub(r"^\[(?:f2p|p2p)\] ", "", name) not in completed_tests
+    ]
+    completed_unmatched = [
+        name for name in unresolved_missing if re.sub(r"^\[(?:f2p|p2p)\] ", "", name) in completed_tests
+    ]
     return {
         "execution": status,
         "functional_tests": "started" if sources else "unknown",
@@ -116,6 +171,18 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
         "test_count_semantics": "maximum_observed_count_across_overlapping_reports",
         "observations": observations,
         "missing_results": missing_results,
+        "test_reconciliation": {
+            "actual_failed": actual_failed,
+            "renumbered": renumbered,
+            "unresolved_missing": unresolved_missing,
+            "started_without_result": started_without_result,
+            "completed_unmatched": completed_unmatched,
+            "not_started": [
+                name for name in unresolved_missing if re.sub(r"^\[(?:f2p|p2p)\] ", "", name) not in started_tests
+            ],
+            "timed_out_tests": sorted(timed_out_tests),
+            "verifier_timed_out": status == "timed_out",
+        },
         "sources": sources,
         "raw_rewards": (pier.get("verifier_result") or {}).get("rewards"),
     }

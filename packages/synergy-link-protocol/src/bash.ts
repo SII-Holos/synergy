@@ -24,6 +24,7 @@ export namespace SynergyLinkBash {
     output: z.string().optional(),
     description: z.string().optional(),
     exit: z.number().nullable().optional(),
+    signal: z.string().nullable().optional(),
     processId: SynergyLinkIdentity.ProcessID.optional(),
     background: z.boolean().optional(),
     durationMs: z.number().optional(),

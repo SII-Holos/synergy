@@ -6,7 +6,19 @@ import { Truncate } from "@ericsanchezok/synergy-harness/tool/truncation"
 import { SynergyLinkExecution } from "./synergy-link-execution"
 import { LocalBashBackend } from "./bash/local"
 import { RemoteBashBackend } from "./bash/remote"
-import type { BashMetadata } from "@ericsanchezok/synergy-harness/tool/bash-contract"
+import type { BashMetadata, BashResult } from "@ericsanchezok/synergy-harness/tool/bash-contract"
+
+export function modelVisibleBashResult(result: BashResult): BashResult {
+  if (result.metadata.background) return result
+  const { exit, signal } = result.metadata
+  const completion = signal
+    ? `Shell exited with signal ${signal}.`
+    : typeof exit === "number"
+      ? `Shell exited with code ${exit}.`
+      : "Shell exit status unknown."
+  const separator = result.output.endsWith("\n") ? "\n" : "\n\n"
+  return { ...result, output: result.output ? `${result.output}${separator}${completion}` : completion }
+}
 
 const parameters = z
   .object({
@@ -73,10 +85,10 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>(
         agent: ctx.agent,
       })
       if (target.kind === "remote") {
-        return RemoteBashBackend.execute(params, target)
+        return modelVisibleBashResult(await RemoteBashBackend.execute(params, target))
       }
 
-      return LocalBashBackend.execute(params, ctx)
+      return modelVisibleBashResult(await LocalBashBackend.execute(params, ctx))
     },
   },
   { requiresWorkspace: false, requiresExecution: "exec" },

@@ -35,7 +35,8 @@ test("Bash uses the selected Environment without requiring a Workspace", async (
           { command: "printf environment", description: "Execute without files" },
           context,
         )
-        expect(result.output).toBe("environment")
+        expect(result.output).toBe("environment\n\nShell exited with code 0.")
+        expect(result.metadata.output).toBe("environment")
         expect(result.metadata.exit).toBe(0)
         const keys = await Storage.list(["environment_execution", session.scope.id])
         expect(keys).toHaveLength(1)

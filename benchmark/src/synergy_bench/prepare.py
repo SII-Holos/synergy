@@ -228,7 +228,8 @@ def verify_prepared(path: Path) -> dict[str, Any]:
 def verify_inventory_source(inventory: Inventory, receipt: dict[str, Any]) -> None:
     if digest(receipt["files"]) != receipt["digest"]:
         raise ValueError("Source manifest changed")
-    if inventory.entries("source", excluded=EXCLUDED) != receipt["files"]:
+    observed = inventory.entries("source", excluded=EXCLUDED)
+    if sorted(observed, key=lambda item: item["path"]) != sorted(receipt["files"], key=lambda item: item["path"]):
         raise ValueError("Source content or inventory changed")
 
 

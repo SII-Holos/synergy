@@ -1,0 +1,3 @@
+make-doom-for-mips/environment/task-deps/doomgeneric_img.c -whitespace
+make-doom-for-mips/environment/task-deps/vm.js -whitespace
+make-doom-for-mips/solution/solve.sh -whitespace

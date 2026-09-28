@@ -160,7 +160,12 @@ class SynergyAgent(BaseAgent):
                 if result.return_code:
                     raise NonZeroAgentExitCodeError(f"Synergy exited with code {result.return_code}")
         except asyncio.CancelledError:
-            cleanup = int(self.settings["cleanup_seconds"]) + int(self.settings["export_timeout_seconds"]) + 15
+            cleanup = (
+                int(self.settings["cleanup_seconds"])
+                + int(self.settings["export_timeout_seconds"])
+                + int(self.settings.get("archive_validation_timeout_seconds", 300))
+                + 15
+            )
             try:
                 drained = await asyncio.wait_for(
                     environment.exec(

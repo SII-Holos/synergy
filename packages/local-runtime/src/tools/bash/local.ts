@@ -908,6 +908,7 @@ export namespace LocalBashBackend {
         metadata: {
           output: truncateMetadataOutput(output),
           exit: child.exitCode,
+          signal: child.signalCode,
           description: params.description,
           backend: "local",
         },
@@ -921,6 +922,7 @@ export namespace LocalBashBackend {
         metadata: {
           output: truncateMetadataOutput(output + abortTag),
           exit: child.exitCode,
+          signal: child.signalCode,
           description: params.description,
           backend: "local",
         },
@@ -955,6 +957,7 @@ export namespace LocalBashBackend {
       metadata: {
         output: truncateMetadataOutput(output),
         exit: child.exitCode,
+        signal: child.signalCode,
         description: params.description,
         backend: "local",
       },
