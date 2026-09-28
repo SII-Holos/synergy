@@ -48,6 +48,7 @@ def test_validation_recovery_uses_exact_retained_archive_without_export_or_evide
     )
     before = (original / "evidence.json").read_bytes()
     monkeypatch.setattr(recovery, "verify_prepared", lambda _: {"base_image": "fixture-image"})
+
     def frozen_recipe(source, dependencies):
         assert dependencies == {"@old/runtime": "workspace:*"}
         return {}
