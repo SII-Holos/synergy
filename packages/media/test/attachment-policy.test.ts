@@ -5,6 +5,20 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
 
+test("audio remains a binary attachment even when the document converter recognizes its extension", () =>
+  runtime.run(() => {
+    for (const [filename, mime] of [
+      ["sound.wav", "audio/wav"],
+      ["sound.mp3", "audio/mpeg"],
+    ]) {
+      expect(Attachment.policy({ filename, mime })).toMatchObject({
+        kind: "media",
+        extractText: false,
+        keepBinary: true,
+      })
+    }
+  }))
+
 test("extracts text from office docs without keeping binary", () =>
   runtime.run(() => {
     expect(Attachment.policy({ filename: "slides.pptx" })).toMatchObject({

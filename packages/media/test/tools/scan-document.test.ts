@@ -4,6 +4,8 @@ import { ScanDocumentTool } from "../../src/tools/scan-document"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { createPptx } from "@ericsanchezok/synergy-testing/pptx"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -19,6 +21,23 @@ const ctx = {
 }
 
 const DOCUMENT_TEST_TIMEOUT_MS = 15_000
+
+test("reads a managed document without a workspace", () =>
+  runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      fn: async () => {
+        const id = await Asset.write(
+          Buffer.from(await createPptx(["MANAGED_DOCUMENT_CONTENT"])),
+          "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
+        const tool = await ScanDocumentTool.init()
+        const result = await tool.execute({ filePath: Asset.resolvePath(id)! }, ctx)
+        expect(result.output).toContain("MANAGED_DOCUMENT_CONTENT")
+      },
+    }),
+  ))
 
 function csvContent(rows: number): string {
   const lines = ["col1,col2,col3"]

@@ -2,7 +2,8 @@ import { RuntimeContext } from "../lifecycle/context"
 import { ModelSelection } from "./model-selection-schema"
 import { RolloutArtifact } from "./rollout/artifact"
 import { RolloutAttachment } from "./rollout/attachment"
-import { findRecordingError } from "./rollout/error"
+import { findRecordingError, isTransientStorageError } from "./rollout/error"
+import { attachmentPreparationError, prepareManagedAttachment, shouldExtractAttachmentText } from "./input-attachment"
 import path from "path"
 import { pathToFileURL } from "url"
 import fs from "fs/promises"
@@ -11,7 +12,6 @@ import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
 import { ScopeContext } from "../scope/context"
-import { Bus } from "../bus"
 import { SessionInputResources, SessionSymbolLookup } from "./input-source"
 import { SessionInputTools } from "./input-tools"
 import { SessionPluginHooks } from "./plugin-hooks"
@@ -21,7 +21,6 @@ import { Attachment } from "../attachment"
 import { Asset } from "../asset/asset"
 import { fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
-import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Tool } from "../tool/tool"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import { SessionHistory } from "./history"
@@ -160,28 +159,6 @@ export async function lastModel(sessionID: string) {
   }
   const { Provider } = await import("../provider/provider")
   return Provider.defaultModel()
-}
-
-function attachmentExtractionFailure(input: {
-  sessionID: string
-  messageID: string
-  filename?: string
-  error: unknown
-}): MessageV2.TextPart {
-  const filename = input.filename ?? "attachment"
-  log.warn("attachment text extraction failed", {
-    sessionID: input.sessionID,
-    filename,
-    error: input.error,
-  })
-  return {
-    id: Identifier.ascending("part"),
-    messageID: input.messageID,
-    sessionID: input.sessionID,
-    type: "text",
-    origin: "system",
-    text: `Failed to extract text from ${filename}: The original attachment was preserved.`,
-  }
 }
 
 export type CreateUserMessageInput = InvokeInput & {
@@ -330,37 +307,57 @@ async function materializeUserMessage(
     },
   }
 
-  const parts = await Promise.all(
+  const prepared = await Promise.allSettled(
     input.parts.map(async (inputPart): Promise<MessageV2.Part[]> => {
-      const causal = RolloutContext.current()
-      async function captureInput(value: unknown) {
-        if (!causal) return
-        const artifact = await RolloutArtifact.writeText(causal.owner, JSON.stringify(value), "application/json")
-        await RolloutLedger.attachInput(causal.owner, causal.runID, artifact)
-      }
-      const part =
-        inputPart.type === "attachment" && causal && inputPart.source?.type !== "resource"
-          ? await RolloutAttachment.capture(causal.owner, inputPart, { allowFile: true })
-          : inputPart
-      if (part.type === "attachment") {
-        if (causal && part.artifact) await RolloutLedger.attachInput(causal.owner, causal.runID, part.artifact)
-        // before checking the protocol we check if this is an mcp resource because it needs special handling
-        if (part.source?.type === "resource") {
-          const { clientName, uri } = part.source
-          log.info("mcp resource", { clientName, uri, mime: part.mime })
+      try {
+        let source: Awaited<ReturnType<typeof Attachment.resolveLocalPath>> | undefined
+        if (inputPart.type === "attachment" && inputPart.source?.type !== "resource") {
+          if (!URL.canParse(inputPart.url)) throw new Attachment.InvalidUrlError()
+          const url = new URL(inputPart.url)
+          if (url.protocol === "asset:" || url.protocol === "file:") {
+            const filepath =
+              url.protocol === "asset:" ? Asset.resolvePath(url.hostname + url.pathname) : fileURLToPath(url)
+            if (!filepath) throw new Attachment.InvalidUrlError()
+            source = await Attachment.resolveLocalPath(filepath)
+          }
+        }
+        const causal = RolloutContext.current()
+        async function captureInput(value: unknown) {
+          if (!causal) return
+          const artifact = await RolloutArtifact.writeText(causal.owner, JSON.stringify(value), "application/json")
+          await RolloutLedger.attachInput(causal.owner, causal.runID, artifact)
+        }
+        const part =
+          inputPart.type === "attachment" && causal && inputPart.source?.type !== "resource"
+            ? await RolloutAttachment.capture(causal.owner, inputPart, { allowFile: true })
+            : inputPart
+        if (part.type === "attachment") {
+          if (causal && part.artifact) await RolloutLedger.attachInput(causal.owner, causal.runID, part.artifact)
+          // before checking the protocol we check if this is an mcp resource because it needs special handling
+          if (part.source?.type === "resource") {
+            if (!shouldExtractAttachmentText(part))
+              return [
+                {
+                  ...part,
+                  id: part.id ?? Identifier.ascending("part"),
+                  sessionID: input.sessionID,
+                  messageID: info.id,
+                },
+              ]
+            const { clientName, uri } = part.source
+            log.info("mcp resource", { clientName, uri, mime: part.mime })
 
-          const pieces: MessageV2.Part[] = [
-            {
-              id: Identifier.ascending("part"),
-              messageID: info.id,
-              sessionID: input.sessionID,
-              type: "text",
-              origin: "system" as const,
-              text: `Reading MCP resource: ${part.filename} (${uri})`,
-            },
-          ]
+            const pieces: MessageV2.Part[] = [
+              {
+                id: Identifier.ascending("part"),
+                messageID: info.id,
+                sessionID: input.sessionID,
+                type: "text",
+                origin: "system" as const,
+                text: `Reading MCP resource: ${part.filename} (${uri})`,
+              },
+            ]
 
-          try {
             const resourceContent = await SessionInputResources.readMcpResource(clientName, uri)
             if (!resourceContent) {
               throw new Error(`Resource not found: ${clientName}/${uri}`)
@@ -403,64 +400,63 @@ async function materializeUserMessage(
               messageID: info.id,
               sessionID: input.sessionID,
             })
-          } catch (error: unknown) {
-            if (findRecordingError(error)) throw findRecordingError(error)
-            log.error("failed to read MCP resource", { error, clientName, uri })
-            const message = error instanceof Error ? error.message : String(error)
-            pieces.push({
-              id: Identifier.ascending("part"),
-              messageID: info.id,
-              sessionID: input.sessionID,
-              type: "text",
-              origin: "system" as const,
-              text: `Failed to read MCP resource ${part.filename}: ${message}`,
-            })
-          }
 
-          return pieces
-        }
-        const url = new URL(part.url)
-        let filepath: string | undefined
-        const protocol = (() => {
-          if (url.protocol !== "asset:") return url.protocol
-          filepath = Asset.resolvePath(url.hostname + url.pathname)
-          if (!filepath) {
-            throw new Error(`Invalid asset URL: ${part.url}`)
+            return pieces
           }
-          return "file:"
-        })()
-        switch (protocol) {
-          case "data:":
-            if (Attachment.isText(part.mime)) {
-              return [
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
-                },
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text: Attachment.decodeDataUrl(part.url).buffer.toString(),
-                },
-                {
-                  ...part,
-                  id: part.id ?? Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                },
-              ]
-            }
-            const dataPolicy = Attachment.policy(part)
-            if (dataPolicy.extractText) {
-              try {
-                const text = await Attachment.extractTextFromDataPart(part)
+          const url = new URL(part.url)
+          if (url.protocol === "data:" || source?.managed || (source && !shouldExtractAttachmentText(part))) {
+            if (source && !source.managed) FileTime.read(input.sessionID, source.filepath)
+            return await prepareManagedAttachment(
+              { ...part, id: part.id ?? Identifier.ascending("part"), sessionID: input.sessionID, messageID: info.id },
+              source?.filepath,
+            )
+          }
+          switch (url.protocol) {
+            case "file:":
+              const filepath = source!.filepath
+              const stat = await Bun.file(filepath).stat()
+
+              if (stat.isDirectory()) {
+                part.mime = "application/x-directory"
+              }
+
+              if (Attachment.isText(part.mime)) {
+                let offset: number | undefined = undefined
+                let limit: number | undefined = undefined
+                const range = {
+                  start: url.searchParams.get("start"),
+                  end: url.searchParams.get("end"),
+                }
+                if (range.start != null) {
+                  const filePathURI = part.url.split("?")[0]
+                  let start = parseInt(range.start)
+                  let end = range.end ? parseInt(range.end) : undefined
+                  // some LSP servers (eg, gopls) don't give full range in
+                  // workspace/symbol searches, so we'll try to find the
+                  // symbol in the document to get the full range
+                  if (start === end) {
+                    const symbols = await SessionSymbolLookup.documentSymbols(filePathURI)
+                    for (const symbol of symbols) {
+                      let range: SymbolRange | undefined
+                      if ("range" in symbol) {
+                        range = symbol.range
+                      } else if ("location" in symbol) {
+                        range = symbol.location.range
+                      }
+                      if (range?.start?.line && range?.start?.line === start) {
+                        start = range.start.line
+                        end = range?.end?.line ?? start
+                        break
+                      }
+                    }
+                  }
+                  offset = Math.max(start - 1, 0)
+                  if (end) {
+                    limit = end - offset
+                  }
+                }
+                const args = { filePath: filepath, offset, limit }
+
                 const pieces: MessageV2.Part[] = [
                   {
                     id: Identifier.ascending("part"),
@@ -468,231 +464,100 @@ async function materializeUserMessage(
                     sessionID: input.sessionID,
                     type: "text",
                     origin: "system" as const,
-                    text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
+                    text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
                   },
+                ]
+
+                await readTool()
+                  .then((tool) => tool.init())
+                  .then(async (t) => {
+                    const { Provider } = await import("../provider/provider")
+                    const model = await Provider.getModel(info.model.providerID, info.model.modelID)
+                    const readCtx: Tool.Context = {
+                      sessionID: input.sessionID,
+                      abort: new AbortController().signal,
+                      agent: input.agent!,
+                      messageID: info.id,
+                      extra: { bypassCwdCheck: true, model },
+                      captureResult: (result) => captureInput({ tool: "read", input: args, result }),
+                      metadata: async () => {},
+                      ask: async () => {},
+                    }
+                    const result = await t.execute(args, readCtx)
+                    pieces.push({
+                      id: Identifier.ascending("part"),
+                      messageID: info.id,
+                      sessionID: input.sessionID,
+                      type: "text",
+                      origin: "system" as const,
+                      text: result.output,
+                    })
+                    if (result.attachments?.length) {
+                      pieces.push(
+                        ...result.attachments.map((attachment) => ({
+                          ...attachment,
+                          filename: attachment.filename ?? part.filename,
+                          messageID: info.id,
+                          sessionID: input.sessionID,
+                        })),
+                      )
+                    } else {
+                      pieces.push({
+                        ...part,
+                        id: part.id ?? Identifier.ascending("part"),
+                        messageID: info.id,
+                        sessionID: input.sessionID,
+                      })
+                    }
+                  })
+
+                return pieces
+              }
+
+              if (part.mime === "application/x-directory") {
+                const args = { path: filepath }
+                const listCtx: Tool.Context = {
+                  sessionID: input.sessionID,
+                  abort: new AbortController().signal,
+                  agent: input.agent!,
+                  messageID: info.id,
+                  extra: { bypassCwdCheck: true },
+                  captureResult: (result) => captureInput({ tool: "list", input: args, result }),
+                  metadata: async () => {},
+                  ask: async () => {},
+                }
+                const result = await listTool()
+                  .then((tool) => tool.init())
+                  .then((t) => t.execute(args, listCtx))
+                return [
                   {
                     id: Identifier.ascending("part"),
                     messageID: info.id,
                     sessionID: input.sessionID,
                     type: "text",
                     origin: "system" as const,
-                    text,
+                    text: `Called the list tool with the following input: ${JSON.stringify(args)}`,
                   },
-                ]
-                if (dataPolicy.keepBinary) {
-                  pieces.push({
-                    ...part,
-                    id: part.id ?? Identifier.ascending("part"),
-                    messageID: info.id,
-                    sessionID: input.sessionID,
-                  })
-                }
-                return pieces
-              } catch (error) {
-                return [
-                  attachmentExtractionFailure({
-                    sessionID: input.sessionID,
-                    messageID: info.id,
-                    filename: part.filename,
-                    error,
-                  }),
                   {
-                    ...part,
-                    id: part.id ?? Identifier.ascending("part"),
-                    messageID: info.id,
-                    sessionID: input.sessionID,
-                  },
-                ]
-              }
-            }
-            if (dataPolicy.saveLocal) {
-              try {
-                const localPath = await Attachment.saveDataPartLocally(part)
-                return [
-                  {
-                    ...part,
-                    id: part.id ?? Identifier.ascending("part"),
-                    messageID: info.id,
-                    sessionID: input.sessionID,
-                    localPath,
-                  },
-                ]
-              } catch (error) {
-                log.error("failed to save media file to disk", { error, mime: part.mime })
-              }
-            }
-            break
-          case "file:":
-            log.info(url.protocol === "asset:" ? "asset" : "file", { mime: part.mime })
-            filepath = filepath ?? fileURLToPath(part.url)
-            if (url.protocol === "asset:" && !(await Bun.file(filepath).exists())) {
-              throw new Error(`Asset not found: ${url.hostname + url.pathname}`)
-            }
-            const stat = await Bun.file(filepath).stat()
-
-            if (stat.isDirectory()) {
-              part.mime = "application/x-directory"
-            }
-
-            if (Attachment.isText(part.mime)) {
-              let offset: number | undefined = undefined
-              let limit: number | undefined = undefined
-              const range = {
-                start: url.searchParams.get("start"),
-                end: url.searchParams.get("end"),
-              }
-              if (range.start != null) {
-                const filePathURI = part.url.split("?")[0]
-                let start = parseInt(range.start)
-                let end = range.end ? parseInt(range.end) : undefined
-                // some LSP servers (eg, gopls) don't give full range in
-                // workspace/symbol searches, so we'll try to find the
-                // symbol in the document to get the full range
-                if (start === end) {
-                  const symbols = await SessionSymbolLookup.documentSymbols(filePathURI)
-                  for (const symbol of symbols) {
-                    let range: SymbolRange | undefined
-                    if ("range" in symbol) {
-                      range = symbol.range
-                    } else if ("location" in symbol) {
-                      range = symbol.location.range
-                    }
-                    if (range?.start?.line && range?.start?.line === start) {
-                      start = range.start.line
-                      end = range?.end?.line ?? start
-                      break
-                    }
-                  }
-                }
-                offset = Math.max(start - 1, 0)
-                if (end) {
-                  limit = end - offset
-                }
-              }
-              const args = { filePath: filepath, offset, limit }
-
-              const pieces: MessageV2.Part[] = [
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text: `Called the Read tool with the following input: ${JSON.stringify(args)}`,
-                },
-              ]
-
-              await readTool()
-                .then((tool) => tool.init())
-                .then(async (t) => {
-                  const { Provider } = await import("../provider/provider")
-                  const model = await Provider.getModel(info.model.providerID, info.model.modelID)
-                  const readCtx: Tool.Context = {
-                    sessionID: input.sessionID,
-                    abort: new AbortController().signal,
-                    agent: input.agent!,
-                    messageID: info.id,
-                    extra: { bypassCwdCheck: true, model },
-                    captureResult: (result) => captureInput({ tool: "read", input: args, result }),
-                    metadata: async () => {},
-                    ask: async () => {},
-                  }
-                  const result = await t.execute(args, readCtx)
-                  pieces.push({
                     id: Identifier.ascending("part"),
                     messageID: info.id,
                     sessionID: input.sessionID,
                     type: "text",
                     origin: "system" as const,
                     text: result.output,
-                  })
-                  if (result.attachments?.length) {
-                    pieces.push(
-                      ...result.attachments.map((attachment) => ({
-                        ...attachment,
-                        filename: attachment.filename ?? part.filename,
-                        messageID: info.id,
-                        sessionID: input.sessionID,
-                      })),
-                    )
-                  } else {
-                    pieces.push({
-                      ...part,
-                      id: part.id ?? Identifier.ascending("part"),
-                      messageID: info.id,
-                      sessionID: input.sessionID,
-                    })
-                  }
-                })
-                .catch(async (error) => {
-                  if (findRecordingError(error)) throw findRecordingError(error)
-                  log.error("failed to read file", { error })
-                  const message = error instanceof Error ? error.message : error.toString()
-                  const { SessionEvent } = await import("./event")
-                  Bus.publish(SessionEvent.Error, {
-                    sessionID: input.sessionID,
-                    error: new NamedError.Unknown({
-                      message,
-                    }).toObject(),
-                  })
-                  pieces.push({
-                    id: Identifier.ascending("part"),
+                  },
+                  {
+                    ...part,
+                    id: part.id ?? Identifier.ascending("part"),
                     messageID: info.id,
                     sessionID: input.sessionID,
-                    type: "text",
-                    origin: "system" as const,
-                    text: `Read tool failed to read ${filepath} with the following error: ${message}`,
-                  })
-                })
-
-              return pieces
-            }
-
-            if (part.mime === "application/x-directory") {
-              const args = { path: filepath }
-              const listCtx: Tool.Context = {
-                sessionID: input.sessionID,
-                abort: new AbortController().signal,
-                agent: input.agent!,
-                messageID: info.id,
-                extra: { bypassCwdCheck: true },
-                captureResult: (result) => captureInput({ tool: "list", input: args, result }),
-                metadata: async () => {},
-                ask: async () => {},
+                  },
+                ]
               }
-              const result = await listTool()
-                .then((tool) => tool.init())
-                .then((t) => t.execute(args, listCtx))
-              return [
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text: `Called the list tool with the following input: ${JSON.stringify(args)}`,
-                },
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text: result.output,
-                },
-                {
-                  ...part,
-                  id: part.id ?? Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                },
-              ]
-            }
 
-            const filePolicy = Attachment.policy({ filepath, filename: part.filename, mime: part.mime })
-            if (filePolicy.extractText) {
-              FileTime.read(input.sessionID, filepath)
-              try {
+              const filePolicy = Attachment.policy({ filepath, filename: part.filename, mime: part.mime })
+              if (filePolicy.extractText) {
+                FileTime.read(input.sessionID, filepath)
                 const text = await Attachment.extractTextFromFile(filepath)
                 const pieces: MessageV2.Part[] = [
                   {
@@ -715,6 +580,7 @@ async function materializeUserMessage(
                 if (filePolicy.keepBinary) {
                   pieces.push(
                     await Attachment.toPart({
+                      ...part,
                       filepath,
                       mime: part.mime,
                       filename: part.filename,
@@ -726,65 +592,55 @@ async function materializeUserMessage(
                   )
                 }
                 return pieces
-              } catch (error) {
-                return [
-                  attachmentExtractionFailure({
-                    sessionID: input.sessionID,
-                    messageID: info.id,
-                    filename: part.filename,
-                    error,
-                  }),
-                  await Attachment.toPart({
-                    filepath,
-                    mime: part.mime,
-                    filename: part.filename,
-                    sessionID: input.sessionID,
-                    messageID: info.id,
-                    id: part.id,
-                    source: part.source,
-                    presentation: part.presentation,
-                    model: part.model,
-                    metadata: part.metadata,
-                  }),
-                ]
               }
-            }
 
-            FileTime.read(input.sessionID, filepath)
-            const attachment = await Attachment.toPart({
-              filepath,
-              mime: part.mime,
-              filename: part.filename,
-              sessionID: input.sessionID,
-              messageID: info.id,
-              id: part.id,
-              source: part.source,
-              localPath: filepath,
-            })
-            return [
-              {
-                id: Identifier.ascending("part"),
-                messageID: info.id,
+              FileTime.read(input.sessionID, filepath)
+              const attachment = await Attachment.toPart({
+                ...part,
+                filepath,
+                mime: part.mime,
+                filename: part.filename,
                 sessionID: input.sessionID,
-                type: "text",
-                origin: "system" as const,
-                text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: attachment.localPath })}`,
-              },
-              attachment,
-            ]
+                messageID: info.id,
+                id: part.id,
+                source: part.source,
+                localPath: filepath,
+              })
+              return [
+                {
+                  id: Identifier.ascending("part"),
+                  messageID: info.id,
+                  sessionID: input.sessionID,
+                  type: "text",
+                  origin: "system" as const,
+                  text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: attachment.localPath })}`,
+                },
+                attachment,
+              ]
+          }
         }
-      }
 
-      return [
-        {
-          id: Identifier.ascending("part"),
-          ...part,
-          messageID: info.id,
-          sessionID: input.sessionID,
-        },
-      ]
+        return [
+          {
+            id: Identifier.ascending("part"),
+            ...part,
+            messageID: info.id,
+            sessionID: input.sessionID,
+          },
+        ]
+      } catch (error) {
+        throw inputPart.type === "attachment" ? attachmentPreparationError(inputPart, error) : error
+      }
     }),
-  ).then((x) => x.flat())
+  )
+  const failures = prepared.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []))
+  if (failures.length)
+    throw (
+      failures.find(
+        (error) => findRecordingError(error) || isTransientStorageError(error) || error instanceof DOMException,
+      ) ?? failures[0]
+    )
+  const parts = prepared.flatMap((result) => (result.status === "fulfilled" ? result.value : []))
 
   await SessionPluginHooks.trigger(
     "chat.message",
