@@ -98,6 +98,7 @@ export async function main(args: string[]) {
     const { cancellations } = await import("./acceptance/cancellation")
     const { permissionTargets } = await import("./acceptance/permission-targets")
     const { fileServices } = await import("./acceptance/file-services")
+    const { remoteLoss } = await import("./acceptance/remote-loss")
     await execute(
       plan,
       {
@@ -117,6 +118,7 @@ export async function main(args: string[]) {
               "fault-cancel-phases": cancellations(settings),
               "permission-targets": permissionTargets(settings),
               "file-services": fileServices(settings),
+              "fault-remote-loss": remoteLoss(settings),
               ...Object.fromEntries(
                 ["fault-allocation-ack", "fault-release-ack"].map((id) => [id, acknowledgements(settings)]),
               ),

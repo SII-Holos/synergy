@@ -40,6 +40,8 @@ Permission acceptance invokes registered tools through the existing public tool-
 
 File-service acceptance crosses registered Read/Edit/Bash calls, durable diff and undo, file tree/download, native or remote observation, a real formatter, a language protocol process and an installed process plugin on both file views. The language process compares delivered document bytes with its own filesystem and returns their hash. Formatter receipts bind its input and output hashes to a separate process. A plugin holds after reading, then the observer edits both old and new targets and switches the Session binding before releasing the callback. The late write must fail without changing either independently read file.
 
+Remote-loss acceptance separately disconnects a running container's private bridge, kills its Execution Host, and removes the container. Product reads and execution must fail while independent Engine observations distinguish these physical outcomes. Network recovery must retain the same container start identity. Host/container loss requires an explicit recovery step: independently read and hash the retained volume, publish those verified bytes into a new Workspace, and select a new Environment in the same Session. The original unavailable view and its volume remain recorded for investigation; this does not turn a lost host into a successful execution or authorize implicit fallback to a saved checkpoint. Live runs require model-directed file reads before the fault and after recovery.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.

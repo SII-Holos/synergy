@@ -371,6 +371,11 @@ export const cases: AcceptanceCase[] = [
         "No lost bytes or duplicate side effects",
         "Unknown outcomes remain explicit and recoverable",
         "No stale/local fallback",
+        ...(id === "remote-loss"
+          ? [
+              "Explicit import of independently verified retained bytes continues the same Session while original unavailable views remain recorded",
+            ]
+          : []),
       ],
       barriers: [...barriers],
       factors: ["remote-execution", id, "recovery"],
