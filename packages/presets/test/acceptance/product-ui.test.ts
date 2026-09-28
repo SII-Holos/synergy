@@ -5,9 +5,22 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { acceptanceRuntime } from "../../script/acceptance/runtime"
 import { fixtureProvider, fixtureSettings } from "./support"
 import { productProvider } from "./product-provider"
-import { desktopInput } from "../../script/acceptance/product-ui"
+import { desktopInput, uploadedContentReachedModel } from "../../script/acceptance/product-ui"
 import { selectCases } from "../../script/acceptance/catalog"
 import { execute, makePlan, report } from "../../script/acceptance/runner"
+
+test("upload evidence distinguishes streamed auxiliary requests from foreground requests in either journal order", () => {
+  const title = { stream: true, messages: [{ role: "user", content: "Generate a title" }] }
+  const foreground = {
+    stream: true,
+    tools: [{ type: "function" }],
+    messages: [{ role: "user", content: "Attachment record: marker" }],
+  }
+  expect(uploadedContentReachedModel([title, foreground], "marker")).toBe(true)
+  expect(uploadedContentReachedModel([foreground, title], "marker")).toBe(true)
+  expect(uploadedContentReachedModel([title], "marker")).toBe(false)
+  expect(uploadedContentReachedModel([{ ...foreground, messages: [] }, foreground], "marker")).toBe(false)
+})
 
 test("the isolated product acceptance Runtime serves its explicitly selected Web artifact", async () => {
   await using tmp = await tmpdir()

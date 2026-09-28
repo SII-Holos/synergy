@@ -15,6 +15,11 @@ import { productWindow } from "./product-window"
 import type { Settings } from "./settings"
 import type { Driver } from "./runner"
 
+export function uploadedContentReachedModel(inputs: Record<string, unknown>[], marker: string) {
+  const foreground = inputs.filter((input) => Array.isArray(input.tools) && input.tools.length > 0)
+  return foreground.length > 0 && foreground.every((input) => JSON.stringify(input).includes(marker))
+}
+
 export function desktopInput(settings: Settings): Driver {
   return async (context) => {
     const agent = context.scenario.agent
@@ -187,7 +192,7 @@ export function desktopInput(settings: Settings): Driver {
             attachmentRead =
               answer.includes(attachment) &&
               Boolean(bytes && (await bytes.text()).includes(attachment)) &&
-              JSON.stringify(inputs.find((input) => input.stream === true)).includes(attachment)
+              uploadedContentReachedModel(inputs, attachment)
             if (!attachmentRead) throw new Error("Model did not identify the actual Desktop attachment")
             physical.uploadHash = digest(await bytes!.bytes())
             await checkpoint("uploaded", "ui-uploaded")

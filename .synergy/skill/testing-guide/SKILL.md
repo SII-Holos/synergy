@@ -15,6 +15,8 @@ Do not run `quality:quick` alongside browser suites or development builds in the
 
 ## Local Joint Acceptance
 
+Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.
+
 Product scenarios select built artifacts explicitly: `artifacts.web` names the production Web directory; `artifacts.desktop` contains `directory`, relative `entry`, `electronDirectory` and relative `executable`. Directory inputs freeze every file, executable bit and internal link, rejecting dependencies outside the artifact. Freeze the whole Chromium application with an additional named input as well as its selected executable. Keep build output immutable during a run; rebuilding requires a new plan.
 
 Exercise the real composer, resource dialogs and Desktop shell with a fresh user directory. Select the declared primary agent through the UI and verify the submitted message. Confirm pause/cancel against actual processes and stored input state, refresh saved drafts, and interrupt the real event WebSocket while work continues. Seed pagination history through canonical task roots and mark it as synthetic; seeded history does not count as model use. Cross failed-input presentation with a healthy successor and compare previous messages after recovery. Local fixture-provider regressions use `SYNERGY_ACCEPTANCE_WEB`, `SYNERGY_ACCEPTANCE_DESKTOP`, `SYNERGY_ACCEPTANCE_ELECTRON` and `SYNERGY_ACCEPTANCE_CHROMIUM`; paid requests remain exclusive to explicit live runs.
