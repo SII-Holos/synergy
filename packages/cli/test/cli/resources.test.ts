@@ -18,7 +18,7 @@ test("resource handlers preserve stale-allocation errors and reject unsafe attac
     },
   })
   const output = spyOn(console, "log").mockImplementation(() => {})
-  const exitCode = process.exitCode
+  const exitCode = process.exitCode ?? 0
   const args = {
     _: [],
     $0: "synergy",
