@@ -36,7 +36,7 @@ export namespace WindowsJob {
   const runtime = () => (native ??= initialize())
   const error = (operation: string) => new Error(`${operation} failed: ${runtime().GetLastError()}`)
   const wide = (value: string) => Buffer.from(`${value}\0`, "utf16le")
-  function close(handle: Pointer) {
+  function close(handle: Pointer | bigint) {
     if (!runtime().CloseHandle(handle)) throw error("CloseHandle")
   }
   function open(reference: Reference, access: number) {
@@ -181,10 +181,10 @@ export namespace WindowsJob {
       )
     )
       throw error("CreateProcessW")
-    const processHandle = Number(information.readBigUInt64LE(0)) as Pointer
-    const threadHandle = Number(information.readBigUInt64LE(8)) as Pointer
+    const processHandle = information.readBigUInt64LE(0)
+    const threadHandle = information.readBigUInt64LE(8)
     const pid = information.readUInt32LE(16)
-    let job: Pointer | undefined
+    let job: Pointer | bigint | undefined
     try {
       const reference = referenceFor(pid)
       const name = wide(reference.name)

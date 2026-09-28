@@ -47,6 +47,29 @@ const driver: Driver = async (context) => {
   }
 }
 
+test("a failed driver preserves sealed observed stages without turning partial progress into acceptance", async () => {
+  await using tmp = await tmpdir()
+  const plan = await setup(tmp.path)
+  await execute(
+    plan,
+    {
+      fixture: async (context) => {
+        await atomicJSON(path.join(context.directory, "physical.json"), { effects: 1 })
+        await context.checkpoint("observed", [{ path: "physical.json", kind: "external" }])
+        throw new Error("Recovery failed after the observed effect")
+      },
+    },
+    { source },
+  )
+  const result = await Bun.file(path.join(plan.directory, "cases/fixture/1/result.json")).json()
+  expect(result.status).toBe("failed")
+  expect(result.barriers).toEqual(["observed"])
+  expect(result.evidence.some((entry: { path: string }) => entry.path === "physical.json")).toBe(true)
+  expect((await report(plan)).passed).toBe(false)
+  await Bun.write(path.join(plan.directory, "cases/fixture/1/physical.json"), '{"effects":2}')
+  expect((await report(plan)).cases[0]!.errors).toContain("changed:physical.json")
+})
+
 test("a frozen run succeeds and resume never repeats a completed experiment", async () => {
   await using tmp = await tmpdir()
   const plan = await setup(tmp.path)
@@ -118,6 +141,36 @@ test("changing a frozen input or source blocks execution before driver side effe
   await Bun.write(path.join(tmp.path, "artifact"), "changed")
   await expect(execute(plan, { fixture: driver }, { source })).rejects.toThrow("artifact")
   expect((await report(plan)).passed).toBe(false)
+})
+
+test("plans freeze Bun and reject a different executable before driver side effects", async () => {
+  await using tmp = await tmpdir()
+  const plan = await setup(tmp.path)
+  expect(plan.inputs.find((entry) => entry.name === "runtime")?.sha256).toBe(
+    digest(await Bun.file(process.execPath).bytes()),
+  )
+  const other = path.join(tmp.path, "other-bun")
+  await Bun.write(other, "different executable")
+  const mismatched = await makePlan({
+    source,
+    directory: path.join(tmp.path, "mismatched"),
+    cases: [scenario],
+    inputs: [{ name: "runtime", path: other }],
+  })
+  let executed = false
+  await expect(
+    execute(
+      mismatched,
+      {
+        fixture: async (context) => {
+          executed = true
+          return driver(context)
+        },
+      },
+      { source },
+    ),
+  ).rejects.toThrow("Running executable differs")
+  expect(executed).toBe(false)
 })
 
 test("no driver, missing result and a modified result cannot be counted as passes", async () => {

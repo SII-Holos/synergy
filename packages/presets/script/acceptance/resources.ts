@@ -2,7 +2,7 @@ import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { SecretVault } from "@ericsanchezok/synergy-harness/secrets/vault"
 import type { RemoteLab } from "./remote-protocol"
 
-export async function configureRemote(lab: RemoteLab) {
+export async function configureRemote(lab: RemoteLab, idleTimeoutMs?: number) {
   async function tls(files: RemoteLab["engineTLS"]) {
     const refs = await Promise.all(
       [files.cert, files.key, files.ca].map(
@@ -17,6 +17,7 @@ export async function configureRemote(lab: RemoteLab) {
       environments: {
         remote: {
           provider: "docker",
+          ...(idleTimeoutMs === undefined ? {} : { idleTimeoutMs }),
           spec: {
             image: lab.image,
             memoryBytes: 1_073_741_824,

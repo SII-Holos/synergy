@@ -43,7 +43,11 @@ export async function prepareRuntime(directory: string, settings: Settings, gate
   return { home, host, config }
 }
 
-export async function acceptanceRuntime(directory: string, settings: Settings, storage?: RuntimeStorage) {
+export async function acceptanceRuntime(
+  directory: string,
+  settings: Settings,
+  options: { storage?: RuntimeStorage; http?: boolean; webAppDirectory?: string } = {},
+) {
   const gateway = await recordedProvider({
     directory,
     provider: settings.providerID,
@@ -55,7 +59,15 @@ export async function acceptanceRuntime(directory: string, settings: Settings, s
   try {
     const prepared = await prepareRuntime(directory, settings, gateway)
     home = prepared.home
-    runtime = await PresetRuntimeHandle.openTask({ host: prepared.host, mode: "oneshot", storage })
+    runtime = options.http
+      ? await PresetRuntimeHandle.open({
+          host: prepared.host,
+          mode: "oneshot",
+          storage: options.storage,
+          network: { hostname: "127.0.0.1", port: 0 },
+          webAppDirectory: options.webAppDirectory,
+        })
+      : await PresetRuntimeHandle.openTask({ host: prepared.host, mode: "oneshot", storage: options.storage })
   } catch (error) {
     await gateway[Symbol.asyncDispose]()
     throw error

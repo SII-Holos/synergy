@@ -93,6 +93,8 @@ export async function main(args: string[]) {
     const { persistence } = await import("./acceptance/persistence")
     const { modelStream } = await import("./acceptance/model-stream")
     const { apiLazy } = await import("./acceptance/api-lazy")
+    const { acknowledgements } = await import("./acceptance/acknowledgements")
+    const { executionDrain } = await import("./acceptance/execution-drain")
     await execute(
       plan,
       {
@@ -108,6 +110,10 @@ export async function main(args: string[]) {
                 ["fault-command-crash", "fault-save-crash"].map((id) => [id, remoteFault(settings)]),
               ),
               "api-lazy": apiLazy(settings),
+              "execution-drain": executionDrain(settings),
+              ...Object.fromEntries(
+                ["fault-allocation-ack", "fault-release-ack"].map((id) => [id, acknowledgements(settings)]),
+              ),
             }
           : {}),
       },

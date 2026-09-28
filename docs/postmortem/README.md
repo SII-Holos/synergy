@@ -10,7 +10,7 @@ Write a postmortem only when **all three** criteria hold:
 - **Systemic** — the bug escaped because of a gap in tests, tooling, or conventions, not a one-off typo.
 - **Costly to rediscover** — it cost real debugging time, and it would cost it again.
 
-A bug that fails any of these criteria is a bug fix with tests, not a postmortem.
+Otherwise, write a bug fix with tests.
 
 ## Placement
 
@@ -89,6 +89,8 @@ Add entries only for qualifying incidents.
 | 0025 | Benchmark verifier dependencies and missing results | implemented | 2026-09-23 |
 
 | 0032 | [Workspace-free attachment preparation](0032-workspace-free-attachment-preparation.md) | implemented | 2026-09-28 |
+
+| 0033 | [Completed terminal blocked Runtime shutdown](0033-completed-terminal-blocked-runtime-shutdown.md) | implemented | 2026-09-28 |
 
 ## History rules
 

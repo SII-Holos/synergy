@@ -25,7 +25,15 @@ test("attachment recognition cannot read an on-disk answer key or use shell acce
   }
   const cases = selectCases("attachment-policy")
   const plan = await makePlan({ source: "a".repeat(40), directory: path.join(tmp.path, "plan"), cases, inputs: [] })
-  await media(settings)({ plan, scenario: cases[0]!, directory, attempt: 1 })
+  await media(settings)({
+    plan,
+    scenario: cases[0]!,
+    directory,
+    attempt: 1,
+    checkpoint: async () => {
+      throw new Error("Direct media probe does not own runner checkpoints")
+    },
+  })
   expect(observed.length).toBeGreaterThan(0)
   expect(observed.every((request) => !request.answerKeyVisible)).toBe(true)
   expect(observed.every((request) => Array.isArray(request.tools) && request.tools.length === 0)).toBe(true)

@@ -78,7 +78,7 @@ export function persistence(settings: Settings): Driver {
     const states: unknown[] = []
     const operationID = crypto.randomUUID()
     const bytes = Buffer.from(crypto.randomUUID())
-    await using first = await acceptanceRuntime(context.directory, settings, storage)
+    await using first = await acceptanceRuntime(context.directory, settings, { storage })
     await using external = await observer(options)
     if (options.backend === "postgres") {
       const rows = await external.query("SELECT current_setting('server_version_num')::integer AS version")
@@ -187,7 +187,7 @@ export function persistence(settings: Settings): Driver {
     const inboxBefore = await within(first, () => SessionInbox.list(identity.sessionID))
     if (before.length || inboxBefore.length) throw new Error("Interrupted business transaction published partial state")
     await first[Symbol.asyncDispose]()
-    await using second = await acceptanceRuntime(context.directory, settings, storage)
+    await using second = await acceptanceRuntime(context.directory, settings, { storage })
     barriers.push("restarted")
     let discard = true
     const replies: Array<Record<string, unknown>> = []
@@ -254,7 +254,7 @@ export function persistence(settings: Settings): Driver {
       }
     })
     await second[Symbol.asyncDispose]()
-    await using third = await acceptanceRuntime(context.directory, settings, storage)
+    await using third = await acceptanceRuntime(context.directory, settings, { storage })
     const final = await within(third, async () => ({
       messages: await Session.messages({ sessionID: archived.imported.rootSessionID }),
       receipt: await Storage.current().store.operationReceipt(operationID),

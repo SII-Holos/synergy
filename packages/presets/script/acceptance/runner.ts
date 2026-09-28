@@ -1,7 +1,7 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
-import { AcceptanceCase, Result, atomicJSON, digest, sealEvidence, verifyResult } from "./evidence"
+import { AcceptanceCase, Result, atomicJSON, digest, sealEvidence, verifyResult, type Evidence } from "./evidence"
 import { readRequests } from "./provider"
 
 const inputSchema = z
@@ -23,6 +23,7 @@ export type Driver = (context: {
   scenario: AcceptanceCase
   directory: string
   attempt: number
+  checkpoint(barrier: string, files?: Array<Pick<Evidence, "path" | "kind">>): Promise<void>
 }) => Promise<Pick<Result, "status" | "model" | "barriers" | "evidence" | "requests" | "reason">>
 
 export async function makePlan(input: {
@@ -33,8 +34,11 @@ export async function makePlan(input: {
 }): Promise<Plan> {
   if (new Set(input.cases.map((entry) => entry.id)).size !== input.cases.length) throw new Error("Duplicate case")
   if (new Set(input.inputs.map((entry) => entry.name)).size !== input.inputs.length) throw new Error("Duplicate input")
+  const declared = input.inputs.some((entry) => entry.name === "runtime")
+    ? input.inputs
+    : [...input.inputs, { name: "runtime", path: process.execPath }]
   const inputs = await Promise.all(
-    input.inputs.map(async (entry) => ({
+    declared.map(async (entry) => ({
       name: entry.name,
       path: await fs.realpath(entry.path),
       sha256: digest(new Uint8Array(await Bun.file(entry.path).arrayBuffer())),
@@ -142,6 +146,9 @@ export async function execute(
   options: { source: string; resume?: boolean; retry?: string[]; reason?: string },
 ) {
   await validateFreeze(plan, options.source)
+  const executable = plan.inputs.find((entry) => entry.name === "runtime")
+  if (!executable || digest(await Bun.file(process.execPath).bytes()) !== executable.sha256)
+    throw new Error("Running executable differs from the frozen Runtime")
   const retry = new Set(options.retry ?? [])
   if (retry.size && (!options.resume || !options.reason?.trim())) throw new Error("Retries require resume and a reason")
   for (const id of retry) if (!plan.cases.some((entry) => entry.id === id)) throw new Error(`Unknown retry case: ${id}`)
@@ -166,10 +173,24 @@ export async function execute(
         ...(previous.length ? { retryReason: options.reason } : {}),
       })
       const driver = drivers[scenario.id]
+      const progress: { barriers: string[]; evidence: Evidence[] } = { barriers: [], evidence: [] }
+      async function checkpoint(barrier: string, files: Array<Pick<Evidence, "path" | "kind">> = []) {
+        if (!scenario.barriers.includes(barrier) || progress.barriers.includes(barrier))
+          throw new Error("Checkpoint must identify a new declared barrier")
+        const evidence = await Promise.all(files.map((file) => sealEvidence(directory, file.path, file.kind)))
+        if (
+          new Set([...progress.evidence, ...evidence].map((entry) => entry.path)).size !==
+          progress.evidence.length + evidence.length
+        )
+          throw new Error("Checkpoint evidence must use immutable unique paths")
+        progress.barriers.push(barrier)
+        progress.evidence.push(...evidence)
+        await atomicJSON(path.join(directory, "progress.json"), { ...progress, at: Date.now() })
+      }
       let output: Awaited<ReturnType<Driver>>
       try {
         output = driver
-          ? await driver({ plan, scenario, directory, attempt })
+          ? await driver({ plan, scenario, directory, attempt, checkpoint })
           : {
               status: "uncovered",
               model: "not-applicable",
@@ -201,7 +222,13 @@ export async function execute(
         started,
         finished: Date.now(),
         ...output,
+        barriers: [...new Set([...progress.barriers, ...output.barriers])],
+        evidence: [
+          ...progress.evidence,
+          ...output.evidence.filter((entry) => !progress.evidence.some((saved) => saved.path === entry.path)),
+        ],
       })
+      if (progress.barriers.length) result.evidence.push(await sealEvidence(directory, "progress.json", "transport"))
       const recorded = await readRequests(directory)
       if (recorded.length) result.requests = recorded
       for (const request of recorded) {

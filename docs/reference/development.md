@@ -8,7 +8,7 @@ Workspace `build` commands compile dependency modules. CLI and Presets modules u
 
 ## Requirements and Preparation
 
-The root manifest pins Bun `1.3.14`. Install that version, then run:
+The root manifest pins Bun `1.4.2`. Install that version, then run:
 
 ```bash
 bun dev prepare
