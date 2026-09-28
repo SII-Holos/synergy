@@ -56,15 +56,19 @@ def grading_evidence(trial: Path, pier: dict[str, Any]) -> dict[str, Any]:
             if file.suffix == ".xml":
                 root = ET.parse(file).getroot()
                 format_name = "junit"
-                observed = int(root.get("tests", "0"))
-                if not observed:
-                    observed = sum(int(suite.get("tests", "0")) for suite in root.findall(".//testsuite"))
-                for case in root.findall(".//testcase"):
+                observed = 0
+                for case in root.iter("testcase"):
                     name = ".".join(part for part in [case.get("classname"), case.get("name")] if part)
                     normalized = re.sub(r"\[ruleset\d+-", "[ruleset-", name)
                     case_status = (
-                        "failed" if case.find("failure") is not None or case.find("error") is not None else "passed"
+                        "skipped"
+                        if case.find("skipped") is not None
+                        else "failed"
+                        if case.find("failure") is not None or case.find("error") is not None
+                        else "passed"
                     )
+                    if case_status != "skipped":
+                        observed += 1
                     raw_cases.setdefault(normalized, []).append((name, case_status))
             elif file.suffix == ".json":
                 # CTRF executed test statuses: https://ctrf.io/docs/specification/overview
