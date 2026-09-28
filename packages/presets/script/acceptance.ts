@@ -97,6 +97,7 @@ export async function main(args: string[]) {
     const { executionDrain } = await import("./acceptance/execution-drain")
     const { cancellations } = await import("./acceptance/cancellation")
     const { permissionTargets } = await import("./acceptance/permission-targets")
+    const { fileServices } = await import("./acceptance/file-services")
     await execute(
       plan,
       {
@@ -115,6 +116,7 @@ export async function main(args: string[]) {
               "execution-drain": executionDrain(settings),
               "fault-cancel-phases": cancellations(settings),
               "permission-targets": permissionTargets(settings),
+              "file-services": fileServices(settings),
               ...Object.fromEntries(
                 ["fault-allocation-ack", "fault-release-ack"].map((id) => [id, acknowledgements(settings)]),
               ),

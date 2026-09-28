@@ -38,6 +38,8 @@ Cancellation runs the same four stages against native and remote execution. A co
 
 Permission acceptance invokes registered tools through the existing public tool-invocation boundary in all three control profiles on native and remote targets. The observer reads the actual protected-file path before rejecting a pending request, then checks the final bytes independently. Symlinks, native authorized external writes, remote mount containment, an actual read-only Docker volume and unsupported Browser/Computer selections retain their distinct permission or runtime outcomes. The controller's sentinel must remain absent after the selected remote allocation stops. A successful command in a Linux sandbox's private temporary filesystem does not establish a write to the allocation's original temporary directory.
 
+File-service acceptance crosses registered Read/Edit/Bash calls, durable diff and undo, file tree/download, native or remote observation, a real formatter, a language protocol process and an installed process plugin on both file views. The language process compares delivered document bytes with its own filesystem and returns their hash. Formatter receipts bind its input and output hashes to a separate process. A plugin holds after reading, then the observer edits both old and new targets and switches the Session binding before releasing the callback. The late write must fail without changing either independently read file.
+
 ## Alternatives considered
 
 **Trust the test process exit status.** Bun successfully exits when opt-in tests are skipped. That is useful for ordinary package suites but cannot prove the dedicated Docker job exercised physical execution.

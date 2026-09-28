@@ -144,6 +144,8 @@ For startup maintenance, pair real SQLite lifecycle tests (opening DDL, VACUUM/c
 
 ## Local Performance Experiments
 
+For file-view acceptance, alternate public tools, history/undo, file services and actual formatter/LSP/plugin processes against the same bytes. Language fixtures must verify delivered text against their own filesystem; fixed diagnostic strings cannot establish target consistency. Hold a process callback at an observable barrier, edit old and new targets externally, switch the Session binding, and verify both physical files after the callback settles.
+
 For startup-to-conversation acceptance, test fresh, historical and large homes through durable input admission, canonical publication and model completion on the same fixture. Include multi-turn recall, duplicate admission, retry after pause, terminal historical roots and repeated Runtime restarts. Record the fixture's node, record, owner and artifact distributions; a large unrelated namespace proves cleanup scaling but does not establish retention owner-enumeration capacity. Keep machine-dependent timing thresholds in local reports, with correctness and recovery invariants in CI.
 
 Budget live model calls at the provider boundary before forwarding them, counting auxiliary tasks and retries as well as user turns. Preserve interrupted attempts and explicitly record configuration variants. A soak report must identify the source revision and process restart boundaries; source edits do not reload an already-running parent's modules.
