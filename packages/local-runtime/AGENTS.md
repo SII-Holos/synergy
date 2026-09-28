@@ -7,7 +7,7 @@ Own native execution, generic runtime reload, CLI network/Scope host adapters an
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
 
-Run bun run typecheck and the affected tests, then the root package and dependency checks.
+Run `bun run typecheck`, affected tests and root package/dependency checks.
 
 Keep lifecycle implementation in harness and local capability registration here. Local Host captures home and environment once; `createLocalClient` requires its Runtime Handle and explicit Scope selector. Worker modules export startup functions and activate only at their selected entrypoint. Session HTTP handlers and in-process clients share `session-api.ts`; preserve Scope ownership, durable inbox scheduling and cancellation. Do not import CLI, HTTP-server or product implementation packages.
 
@@ -23,6 +23,8 @@ Native Workspace coordination owns canonical-root overlap and process identity f
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
 Use public `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports. Preserve byte versions, native link kinds and exclusive publication. Snapshots use Harness link encoding. Acquire Workspace claims before activation; process ownership does not infer writable roots.
+
+Use `native/ffi` internally; verify both JIT modes with `test/process/native-bindings.test.ts`.
 
 Expose composition through `./component`; keep registration side-effect free until the factory is selected. Declare required components, optional ordering, worker roles and lazy HTTP adapters explicitly. Runtime-scoped reload and lifecycle contributions must preserve isolated instances and failed-start cleanup.
 

@@ -1,4 +1,4 @@
-import { dlopen } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
 import fs from "node:fs"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
@@ -27,7 +27,7 @@ export namespace LinuxTree {
   function initialize() {
     if (process.platform !== "linux") throw new Error("Linux process ownership is unavailable")
     try {
-      return dlopen(NativePty.libraryPath(), {
+      return openNativeLibrary(NativePty.libraryPath(), {
         synergy_linux_subreaper: { args: [], returns: "i32" },
         synergy_linux_waitpid: { args: [], returns: "i32" },
         synergy_linux_pidfd_open: { args: ["i32"], returns: "i32" },

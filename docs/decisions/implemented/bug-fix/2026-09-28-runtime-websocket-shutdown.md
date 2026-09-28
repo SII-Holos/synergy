@@ -14,6 +14,12 @@ The regression reproduces the failure on Bun 1.3.14 and passes on Bun 1.4.2. The
 
 Local acceptance freezes the actual executing binary along with source and dependencies. Starting a run under another binary fails before driver side effects. Reports can still audit older frozen experiments without rerunning them.
 
+Bun 1.4's [engine FFI](https://github.com/oven-sh/bun/issues/28792) requires JIT for `dlopen`. Explicit JITless execution binds the same native libraries through Bun's bundled C compiler and typed forwarding functions, without enabling JavaScript JIT or adding a system compiler prerequisite. The bridge resolves every requested symbol before returning and preserves the platform ABI and native error results. Normal execution continues to use `dlopen`. Actual file publication, owned process completion and PTY bytes run in both modes; Linux errno probes also cross the forwarding boundary.
+
+Native startup can fail before a process is bound to its retained claim. Cleanup releases that unactivated claim rather than demanding a nonexistent process-tree completion receipt, preserving the original failure and allowing subsequent work. A missing-library subprocess verifies the failed receipt, absent side effect and empty claim ledger. Intentional whole-tree cancellation accepts the connection reset produced by the terminated worker, while still requiring native tree and stream drainage.
+
+The generated SDK observes rejection of `reader.cancel()` during SSE abort. The pinned OpenAPI generator carries the patch so regeneration retains this behavior; a real HTTP stream and the CLI cancellation suite verify clean process exit. The patch is removable when the upstream generator observes that promise itself. Empty explicit Bun configuration still discovers the working-directory test preload, so guard subprocesses start in their independent fixture directory to exercise the requested environment unchanged.
+
 ## Alternatives considered
 
 **Bound or ignore the server stop promise.** This hides an undrained transport and falsely reports successful Runtime closure. The independent process-exit oracle must remain authoritative.

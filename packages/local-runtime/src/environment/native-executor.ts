@@ -252,6 +252,7 @@ export class NativeExecutor implements Executor {
         }
         await this.persist(operation)
       }
+      let bound = false
       operation.owned = await OwnedProcess.prepare({
         command: this.options.runAs ? "/usr/bin/setpriv" : command.command,
         args: this.options.runAs
@@ -270,8 +271,11 @@ export class NativeExecutor implements Executor {
         pty: command.pty ? { ...command.pty, library: NativePty.libraryPath() } : undefined,
         lease: {
           id: lease.id,
-          bindProcess: (pid, options) => lease.bindProcess(pid, options),
-          release: () => this.options.coordinator.confirmDrained(lease.recovery!),
+          bindProcess: async (pid, options) => {
+            await lease.bindProcess(pid, options)
+            bound = true
+          },
+          release: () => (bound ? this.options.coordinator.confirmDrained(lease.recovery!) : lease.release()),
         },
       })
       const owned = operation.owned

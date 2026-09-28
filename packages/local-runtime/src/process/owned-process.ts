@@ -94,6 +94,7 @@ export namespace OwnedProcess {
       accepted.add(socket)
       socket.on("close", () => accepted.delete(socket))
       socket.on("error", (error) => {
+        if (stopping && (error as NodeJS.ErrnoException).code === "ECONNRESET") return
         if (sockets.has("control")) fail(error)
       })
       let pending = Buffer.alloc(0)

@@ -137,6 +137,8 @@ for (const terminal of [false, true])
       })
       owned.child.stdout.resume()
       owned.child.stderr.resume()
+      const errors: Error[] = []
+      owned.child.on("error", (error) => errors.push(error))
       try {
         await owned.activate()
         await waitForFile(marker)
@@ -155,6 +157,7 @@ for (const terminal of [false, true])
           }),
         ).rejects.toThrow("busy")
         await owned.stop()
+        expect(errors).toEqual([])
         expect(() => process.kill(pid, 0)).toThrow()
         expect(await coordinator.inspect()).toHaveLength(0)
       } finally {

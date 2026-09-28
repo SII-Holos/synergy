@@ -1074,6 +1074,7 @@
   ],
   "patchedDependencies": {
     "@kobalte/core@0.13.11": "patches/@kobalte%2Fcore@0.13.11.patch",
+    "@hey-api/openapi-ts@0.88.1": "patches/@hey-api%2Fopenapi-ts@0.88.1.patch",
     "@pierre/diffs@1.3.3": "patches/@pierre%2Fdiffs@1.3.3.patch",
     "ghostty-web@0.3.0": "patches/ghostty-web@0.3.0.patch",
   },

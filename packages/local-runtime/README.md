@@ -14,6 +14,8 @@ Source workers launch this package’s `src/agent-worker.ts` through the harness
 
 Native execution belongs here: `process/pty`, `file/watcher`, and the macOS/Linux/Windows sandbox backends and helper sources. `registerLocalRuntime()` registers the sandbox host and the file-watcher startup contribution before commands or workers execute. Build sandbox helpers with `bun script/build-helper.ts`; Linux bwrap development setup uses `bash script/download-bwrap.sh`.
 
+Explicit JITless execution uses Bun's bundled C compiler to bind the same packaged native libraries; ordinary execution uses Bun's engine FFI. Neither mode requires a separate compiler at execution time. `bun test test/process/native-bindings.test.ts` checks file publication, process ownership and PTY output in both modes.
+
 Local Runtime registers a borrowed native Environment provider without allocating resources. `localRuntime({ environment: false })` omits it for embedded compositions that supply other providers. The native Executor shares process ownership and Workspace coordination with local tools; see [Environments](../../docs/architecture/environments.md). Validate it with `bun test test/environment test/workspace/coordinator.test.ts`.
 
 Hosts opening a `NativeExecutor` directly supply a `WorkspaceCoordinator` from `workspace/coordinator`. Cooperating native executors use the same host claim directory; isolated test runtimes use a private one. Execution input staging and sandbox cleanup stay with this executor through saved completion.

@@ -1,4 +1,5 @@
-import { dlopen, ptr, type Pointer } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
+import { ptr, type Pointer } from "bun:ffi"
 
 export namespace WindowsJob {
   export interface Reference {
@@ -12,7 +13,7 @@ export namespace WindowsJob {
 
   function initialize() {
     if (process.platform !== "win32") throw new Error("Windows process jobs are unavailable")
-    return dlopen("kernel32.dll", {
+    return openNativeLibrary("kernel32.dll", {
       CreateJobObjectW: { args: ["ptr", "ptr"], returns: "ptr" },
       OpenJobObjectW: { args: ["u32", "bool", "ptr"], returns: "ptr" },
       SetInformationJobObject: { args: ["ptr", "i32", "ptr", "u32"], returns: "bool" },
