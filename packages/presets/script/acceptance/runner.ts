@@ -143,9 +143,10 @@ async function acquireLock(directory: string, resume: boolean) {
 export async function execute(
   plan: Plan,
   drivers: Record<string, Driver>,
-  options: { source: string; resume?: boolean; retry?: string[]; reason?: string },
+  options: { source: string; currentSource?: () => string; resume?: boolean; retry?: string[]; reason?: string },
 ) {
-  await validateFreeze(plan, options.source)
+  const currentSource = () => options.currentSource?.() ?? options.source
+  await validateFreeze(plan, currentSource())
   const executable = plan.inputs.find((entry) => entry.name === "runtime")
   if (!executable || digest(await Bun.file(process.execPath).bytes()) !== executable.sha256)
     throw new Error("Running executable differs from the frozen Runtime")
@@ -160,7 +161,7 @@ export async function execute(
     for (const [index, scenario] of plan.cases.entries()) {
       const previous = inventories[index]!
       if (previous.length && !retry.has(scenario.id)) continue
-      await validateFreeze(plan, options.source)
+      await validateFreeze(plan, currentSource())
       const attempt = (previous.at(-1) ?? 0) + 1
       const directory = path.join(plan.directory, "cases", scenario.id, String(attempt))
       const started = Date.now()
@@ -199,6 +200,7 @@ export async function execute(
               requests: [],
               reason: "No driver registered",
             }
+        if (currentSource() !== plan.source) throw new Error("Frozen source changed")
       } catch (error) {
         output = {
           status: "failed",

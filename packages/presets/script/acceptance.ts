@@ -112,6 +112,7 @@ export async function main(args: string[]) {
     const { sharedDelegation } = await import("./acceptance/shared-delegation")
     const { resourceCycles } = await import("./acceptance/resource-cycles")
     const { desktopInput } = await import("./acceptance/product-ui")
+    const { desktopRemote } = await import("./acceptance/product-remote")
     const { webReconnect } = await import("./acceptance/product-web")
     const { installedEntrypoints, currentDevUpgrade } = await import("./acceptance/installed")
     await execute(
@@ -124,6 +125,9 @@ export async function main(args: string[]) {
         "fault-model-stream": modelStream(settings),
         "shared-delegation": sharedDelegation(settings),
         ...(settings.artifacts?.web && settings.artifacts.desktop ? { "desktop-input": desktopInput(settings) } : {}),
+        ...(settings.artifacts?.web && settings.artifacts.desktop && settings.remote
+          ? { "desktop-remote": desktopRemote(settings) }
+          : {}),
         ...(settings.artifacts?.web && settings.chromium ? { "web-reconnect": webReconnect(settings) } : {}),
         ...(settings.artifacts?.core && settings.artifacts.full
           ? { "installed-entrypoints": installedEntrypoints(settings) }
@@ -152,6 +156,7 @@ export async function main(args: string[]) {
       },
       {
         source: source(),
+        currentSource: source,
         resume: command === "resume",
         retry: values.retry?.split(","),
         reason: values.reason,

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import fs from "node:fs/promises"
+import { readFileSync } from "node:fs"
 import path from "node:path"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { makePlan, execute, report, validateFreeze, type Driver } from "../../script/acceptance/runner"
@@ -126,6 +127,40 @@ test("a frozen run succeeds and resume never repeats a completed experiment", as
   await execute(plan, drivers, { source, resume: true })
   expect(calls).toBe(1)
   await expect(execute(plan, drivers, { source })).rejects.toThrow("already started")
+})
+
+test("source changes during a driver stop later scenarios and cannot publish a complete acceptance result", async () => {
+  await using tmp = await tmpdir()
+  const sourceFile = path.join(tmp.path, "source.ts")
+  await Bun.write(sourceFile, "export const value = 1")
+  const currentSource = () => new Bun.CryptoHasher("sha1").update(readFileSync(sourceFile)).digest("hex")
+  const plan = await makePlan({
+    source: currentSource(),
+    directory: path.join(tmp.path, "run"),
+    cases: [scenario, { ...scenario, id: "successor" }],
+    inputs: [],
+  })
+  let successor = false
+  await expect(
+    execute(
+      plan,
+      {
+        fixture: async (context) => {
+          const result = await driver(context)
+          await Bun.write(sourceFile, "export const value = 2")
+          return result
+        },
+        successor: async (context) => {
+          successor = true
+          return driver(context)
+        },
+      },
+      { source: plan.source, currentSource },
+    ),
+  ).rejects.toThrow("Frozen source changed")
+  expect(successor).toBe(false)
+  expect((await report(plan)).passed).toBe(false)
+  expect(await Bun.file(path.join(plan.directory, "cases/successor/1/start.json")).exists()).toBe(false)
 })
 
 test("changing recorded provider bytes invalidates an otherwise passing experiment", async () => {
