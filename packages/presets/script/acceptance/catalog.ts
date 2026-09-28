@@ -378,12 +378,22 @@ export const cases: AcceptanceCase[] = [
         ["before-bytes", "during-tool-arguments", "after-tool-result", "continued"],
         { inputPreserved: true, partialEvidencePreserved: true, effects: 1, continued: true },
       ],
+      [
+        "model-timeout",
+        "Withheld provider bytes trigger actual TTFB and idle watchdogs before bytes, within tool arguments and after a tool",
+        ["before-timeout-completed", "before-bytes", "during-tool-arguments", "after-tool-result", "continued"],
+        { inputPreserved: true, partialEvidencePreserved: true, effects: 1, continued: true, timeoutWatchdogs: 3 },
+      ],
     ] as const
   ).map(([id, fault, barriers, facts]) =>
     scenario({
       id: `fault-${id}`,
-      units: ["A", "C", "D", "E"],
-      live: ["command-crash", "save-crash", "remote-loss", "model-stream"].includes(id),
+      units: ["model-stream", "model-timeout"].includes(id)
+        ? ["A", "C", "D"]
+        : id === "publication-ack"
+          ? ["A", "C", "E"]
+          : ["A", "C", "D", "E"],
+      live: ["command-crash", "save-crash", "remote-loss", "model-stream", "model-timeout"].includes(id),
       agent: "synergy",
       risk: fault,
       preconditions: [
@@ -409,9 +419,19 @@ export const cases: AcceptanceCase[] = [
           : []),
       ],
       barriers: [...barriers],
-      factors: ["remote-execution", id, "recovery"],
+      factors: [
+        ["model-stream", "model-timeout"].includes(id)
+          ? "model-transport"
+          : id === "publication-ack"
+            ? "object-publication"
+            : "remote-execution",
+        id,
+        "recovery",
+      ],
       facts,
-      ...(["command-crash", "save-crash", "model-stream"].includes(id) ? { bytes: { "effects.txt": "once\n" } } : {}),
+      ...(["command-crash", "save-crash", "model-stream", "model-timeout"].includes(id)
+        ? { bytes: { "effects.txt": "once\n" } }
+        : {}),
     }),
   ),
   scenario({

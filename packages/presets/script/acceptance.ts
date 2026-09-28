@@ -123,6 +123,7 @@ export async function main(args: string[]) {
         ...Object.fromEntries(["fault-publication-ack", "object-protocols"].map((id) => [id, objects(settings)])),
         "storage-sqlite": persistence(settings),
         "fault-model-stream": modelStream(settings),
+        "fault-model-timeout": modelStream(settings, { fault: "timeout" }),
         "shared-delegation": sharedDelegation(settings),
         ...(settings.artifacts?.web && settings.artifacts.desktop ? { "desktop-input": desktopInput(settings) } : {}),
         ...(settings.artifacts?.web && settings.artifacts.desktop && settings.remote

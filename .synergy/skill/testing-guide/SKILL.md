@@ -11,6 +11,8 @@ When upgrading Bun, validate native FFI with JIT enabled and disabled, including
 
 Local acceptance fault injectors must match the intended request and an observed stage; auxiliary model calls, empty argument deltas and untriggered hooks are not coverage. Preserve upstream and delivered bytes separately when truncating a stream, and drain request journals on cancellation before reporting usage. For persistence, independently observe the same owned namespace, fail actual database writes or connections, retain a sealed export before cleanup, and keep cloud-adapter protocol fixtures distinct from real-provider deployment acceptance.
 
+Distinguish model disconnects from watchdog timeouts. Hold an actual upstream response until the client aborts, and require the matching first-byte or idle watchdog metric before counting the phase. Complete real model work before and after the timeout sequence and independently count any earlier tool side effect. Match delegated fixture roles by an unambiguous identity token; descriptive text appended by the model must not prevent observing the real child task.
+
 Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
 
 ## Local Joint Acceptance
@@ -80,6 +82,8 @@ For non-blocking and ordering contracts, hold the downstream operation behind an
 A native readiness wait must also observe operation settlement: preserve early failures, report completion before readiness, and close its observer before cancelling and draining the owned operation. Test supervisor startup failure with a real early-exiting launcher; retain bounded stderr and exit identity, and prove that the target command did not run and its unactivated claim was released. Intentionally suspended native cancellation fixtures must reserve cleanup time within their existing test budget; the framework's hard timeout can kill the supervisor before its completion receipt is written.
 
 Also inject a supervisor error after command activation and let the real root exit normally. A drainage promise and exit code zero cannot replace the process error channel; callers must preserve that error while still draining ownership before returning.
+
+Separately exercise a real child closing stdin while unread input is queued, then emitting more stdout and stderr. Input rejection must reach the input stream without terminating the command; require its actual exit, complete output bytes and released claim. Keep output and control transport failures fatal.
 
 When a public operation returns a typed in-progress outcome at its foreground budget, correctness tests must await its documented completion path before asserting durable results. Exercise that outcome with an explicit held-operation fixture; do not raise the product deadline or swallow unrelated failures.
 

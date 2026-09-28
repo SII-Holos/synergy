@@ -6,13 +6,36 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { createUserMessage } from "@ericsanchezok/synergy-harness/session/input"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
-import { acceptanceRuntime } from "./runtime"
+import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
+import { z } from "zod"
+import { acceptanceRuntime, until } from "./runtime"
 import type { Settings } from "./settings"
 import { atomicJSON, digest, sealEvidence } from "./evidence"
 import { readRequests } from "./provider"
 import type { Driver } from "./runner"
 
-export function modelStream(settings: Settings): Driver {
+export function modelStream(
+  input: Settings,
+  options: { fault?: "disconnect" | "timeout"; ttfbSeconds?: number; idleSeconds?: number } = {},
+): Driver {
+  const timeout = options.fault === "timeout"
+  const providers = z.record(z.string(), z.record(z.string(), z.json())).parse(input.config.provider ?? {})
+  const settings = timeout
+    ? {
+        ...input,
+        config: {
+          ...input.config,
+          observability: { enabled: true, performance: { enabled: true, samplingRate: 1 } },
+          provider: {
+            ...providers,
+            [input.providerID]: {
+              ...providers[input.providerID],
+              timeout: { ttfb_sec: options.ttfbSeconds ?? 60, idle_sec: options.idleSeconds ?? 3, wall_sec: 0 },
+            },
+          },
+        },
+      }
+    : input
   return async (context) => {
     await using host = await acceptanceRuntime(context.directory, settings)
     const workspace = path.join(context.directory, "project")
@@ -28,6 +51,7 @@ export function modelStream(settings: Settings): Driver {
           const tools = Object.fromEntries((await ToolRegistry.ids()).map((id) => [id, id === "bash"]))
           const barriers: string[] = []
           const faults: Array<{ stage: string; at: number }> = []
+          const watchdogs: Array<{ stage: string; kind: string; at: number }> = []
           const inputs: string[] = []
           const snapshots: Array<{ input: string; messages: Awaited<ReturnType<typeof Session.messages>> }> = []
           async function prompt(text: string) {
@@ -45,10 +69,27 @@ export function modelStream(settings: Settings): Driver {
             return { input, messages }
           }
           try {
+            if (timeout) {
+              const baseline = await prompt(
+                "Transport phase=baseline. Read the file with Bash: <command>cat record.txt</command> Return the complete identifier. Do not modify any files.",
+              )
+              const answer = baseline.messages
+                .filter(
+                  (message) => message.info.role === "assistant" && message.info.parentID === baseline.input.info.id,
+                )
+                .flatMap((message) => message.parts)
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("\n")
+              if (!answer.includes(marker)) throw new Error("The real model did not complete the pre-timeout task")
+              barriers.push("before-timeout-completed")
+            }
             for (const stage of ["before-bytes", "during-tool-arguments", "after-tool-result"] as const) {
               const tag = crypto.randomUUID().replaceAll("-", "")
+              const since = Date.now()
               host.recorder.arm({
                 stage,
+                mode: options.fault,
                 matches(body) {
                   if (!body.tools?.length) return false
                   return stage === "after-tool-result"
@@ -73,6 +114,21 @@ export function modelStream(settings: Settings): Driver {
               )
               if (!barriers.includes(stage))
                 throw new Error(`Model did not trigger ${stage}; this scenario is uncovered`)
+              if (timeout) {
+                const expected = stage === "during-tool-arguments" ? "idle" : "ttfb"
+                const metrics = await until(
+                  async () =>
+                    ObservabilityStore.queryMetrics({
+                      since,
+                      names: ["llm.watchdog.fired"],
+                      providerID: settings.providerID,
+                    }),
+                  (items) => items.some((item) => JSON.parse(item.labels_json ?? "{}").kind === expected),
+                  settings.deadlineMs,
+                )
+                const fired = metrics.filter((item) => JSON.parse(item.labels_json ?? "{}").kind === expected)
+                watchdogs.push({ stage, kind: expected, at: fired[0]!.time })
+              }
             }
             const final = await prompt(
               "Continue the same session after the transport faults. Read the existing files with Bash: <command>cat effects.txt; cat record.txt</command> Return both complete outputs. Do not write files or repeat earlier commands.",
@@ -95,7 +151,9 @@ export function modelStream(settings: Settings): Driver {
               .map((part) => part.text)
               .join("\n")
             const requests = await readRequests(context.directory)
-            const failed = requests.filter((request) => request.status === "failed")
+            const failed = requests.filter(
+              (request) => request.status === "failed" || (timeout && request.status === "cancelled"),
+            )
             const partial = await Promise.all(
               failed.map(async (request) => {
                 const file = Bun.file(path.join(context.directory, "requests", request.id, "delivered.bin"))
@@ -111,6 +169,7 @@ export function modelStream(settings: Settings): Driver {
                 partial.some((body) => body.includes('"arguments":"') && !body.includes("[DONE]")),
               effects: effects.trim().split("\n").filter(Boolean).length,
               continued: read && answer.includes(marker) && actualMarker === marker,
+              ...(timeout ? { timeoutWatchdogs: watchdogs.length } : {}),
             }
             if (observations.continued) barriers.push("continued")
             await Promise.all([
@@ -125,7 +184,7 @@ export function modelStream(settings: Settings): Driver {
                 recordHash: digest(actualMarker),
                 expectedRecordHash: digest(marker),
               }),
-              atomicJSON(path.join(context.directory, "transport.json"), { faults, requests }),
+              atomicJSON(path.join(context.directory, "transport.json"), { faults, watchdogs, requests }),
             ])
             return {
               status: "passed",

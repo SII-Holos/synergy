@@ -4,7 +4,17 @@ import { ModelRequest, atomicJSON } from "./evidence"
 
 type Stage = "before-bytes" | "during-tool-arguments" | "after-tool-result"
 type Body = { model?: string; messages?: Array<{ role?: string; content?: unknown }>; tools?: unknown[] }
-type Fault = { stage: Stage; matches?: (body: Body) => boolean; onTriggered: (stage: Stage) => void | Promise<void> }
+type Fault = {
+  stage: Stage
+  mode?: "disconnect" | "timeout"
+  matches?: (body: Body) => boolean
+  onTriggered: (stage: Stage) => void | Promise<void>
+}
+
+async function aborted(signal: AbortSignal) {
+  if (signal.aborted) return
+  await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }))
+}
 
 function usageOf(value: unknown): ModelRequest["usage"] {
   if (typeof value !== "object" || value === null || !("usage" in value)) return null
@@ -56,11 +66,11 @@ export async function recordedProvider(options: {
   const active = new Map<AbortController, Promise<void>>()
   let fault = options.fault
   async function trigger(stage: Stage, body: Body) {
-    if (fault?.stage !== stage || (fault.matches && !fault.matches(body))) return false
+    if (fault?.stage !== stage || (fault.matches && !fault.matches(body))) return
     const selected = fault
     fault = undefined
     await selected.onTriggered(stage)
-    return true
+    return selected.mode ?? "disconnect"
   }
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -88,7 +98,7 @@ export async function recordedProvider(options: {
       const handle = await fs.open(path.join(directory, "response.bin"), "wx", 0o600)
       const delivered = await fs.open(path.join(directory, "delivered.bin"), "wx", 0o600)
       let deliveredBytes = 0
-      let injected = false
+      let injected: Fault["mode"]
       let finishing: Promise<void> | undefined
       function finish(status: ModelRequest["status"]) {
         return (finishing ??= (async () => {
@@ -119,8 +129,16 @@ export async function recordedProvider(options: {
           requestID: upstream.headers.get("x-request-id") ?? upstream.headers.get("request-id"),
         })
         const afterTool = body.messages?.some((message) => message.role === "tool") ?? false
-        if ((await trigger("before-bytes", body)) || (afterTool && (await trigger("after-tool-result", body)))) {
-          injected = true
+        const earlyFault =
+          (await trigger("before-bytes", body)) ?? (afterTool ? await trigger("after-tool-result", body) : undefined)
+        if (earlyFault) {
+          injected = earlyFault
+          if (earlyFault === "timeout") {
+            await aborted(controller.signal)
+            await upstream.body?.cancel().catch(() => {})
+            await finish("cancelled")
+            return new Response(null, { status: 499 })
+          }
           controller.abort()
           await upstream.body?.cancel().catch(() => {})
           await delivered.write("Acceptance transport fault")
@@ -170,8 +188,12 @@ export async function recordedProvider(options: {
                     }
                     record.usage = usageOf(value) ?? record.usage
                     const argument = /"arguments"\s*:\s*"((?:\\.|[^"\\])+?)"/.exec(line)
-                    if (line.includes('"tool_calls"') && argument && (await trigger("during-tool-arguments", body))) {
-                      injected = true
+                    const argumentFault =
+                      line.includes('"tool_calls"') && argument
+                        ? await trigger("during-tool-arguments", body)
+                        : undefined
+                    if (argument && argumentFault) {
+                      injected = argumentFault
                       const captured = Buffer.from(await Bun.file(path.join(directory, "response.bin")).arrayBuffer())
                       const lineStart = captured.lastIndexOf(Buffer.from(line))
                       if (lineStart < 0) throw new Error("Recorded tool frame has no byte position")
@@ -184,6 +206,13 @@ export async function recordedProvider(options: {
                       await delivered.write(prefix)
                       deliveredBytes += prefix.length
                       target.enqueue(prefix)
+                      if (argumentFault === "timeout") {
+                        await aborted(controller.signal)
+                        await reader.cancel().catch(() => {})
+                        await finish("cancelled")
+                        target.close()
+                        return
+                      }
                       controller.abort()
                       await reader.cancel().catch(() => {})
                       await finish("failed")
@@ -196,7 +225,7 @@ export async function recordedProvider(options: {
                 deliveredBytes += chunk.value.length
                 target.enqueue(chunk.value)
               } catch (error) {
-                const cancelled = controller.signal.aborted && !injected
+                const cancelled = controller.signal.aborted && injected !== "disconnect"
                 controller.abort(error)
                 await reader.cancel(error).catch(() => {})
                 await finish(cancelled ? "cancelled" : "failed")

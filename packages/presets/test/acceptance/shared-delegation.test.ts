@@ -36,7 +36,7 @@ test("shared child writers preserve external edits across cancellation and rebin
             ? ["keep", "cancel"].map((name) => ({
                 name: "task",
                 arguments: JSON.stringify({
-                  description: `sibling-${name}`,
+                  description: `sibling-${name} write ${name}.txt`,
                   subagent_type: "implementation-engineer",
                   background: false,
                   output: { mode: "final_response" },

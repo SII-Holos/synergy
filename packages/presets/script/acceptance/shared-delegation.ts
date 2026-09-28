@@ -130,6 +130,11 @@ export function sharedDelegation(settings: Settings): Driver {
           blocker.child.stderr.resume()
           const transport: unknown[] = []
           const worktrees: Array<{ path: string; taskID: string; expected: string; actual: string }> = []
+          function sibling(tasks: Awaited<ReturnType<typeof Cortex.getTasksForSession>>, role: "keep" | "cancel") {
+            const matches = tasks.filter((task) => task.description.split(/\s+/, 1)[0] === `sibling-${role}`)
+            if (matches.length > 1) throw new Error("Delegated sibling identity is ambiguous")
+            return matches[0]
+          }
           let parentRun: Promise<unknown> | undefined
           try {
             await blocker.activate()
@@ -150,10 +155,7 @@ export function sharedDelegation(settings: Settings): Driver {
             void parentRun.catch(() => {})
             const children = await until(
               async () => Cortex.getTasksForSession(parent.id),
-              (tasks) =>
-                ["keep", "cancel"].every((name) =>
-                  tasks.some((task) => task.description === `sibling-${name}` && task.status === "running"),
-                ),
+              (tasks) => (["keep", "cancel"] as const).every((role) => sibling(tasks, role)?.status === "running"),
               settings.deadlineMs,
             )
             await atomicJSON(path.join(context.directory, "children-running.json"), children)
@@ -174,7 +176,7 @@ export function sharedDelegation(settings: Settings): Driver {
               throw new Error("Parent reported a result before the blocked children could read it")
             await atomicJSON(path.join(context.directory, "writer-contended.json"), { claims: queued, parent: before })
             await context.checkpoint("writer-contended", [{ path: "writer-contended.json", kind: "external" }])
-            const cancelled = children.find((child) => child.description === "sibling-cancel")!
+            const cancelled = sibling(children, "cancel")!
             await Cortex.cancel(cancelled.id)
             await Cortex.drain(cancelled.id)
             if (Cortex.get(cancelled.id)?.status !== "cancelled")
@@ -198,7 +200,7 @@ export function sharedDelegation(settings: Settings): Driver {
             blocker.child.stdin.end()
             await blocker.completion
             await parentRun
-            const keep = children.find((child) => child.description === "sibling-keep")!
+            const keep = sibling(children, "keep")!
             await until(
               async () => Cortex.get(keep.id),
               (task) => task?.status === "completed",
