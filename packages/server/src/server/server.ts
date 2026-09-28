@@ -52,6 +52,8 @@ import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { ScopePath } from "./scope-path"
 import { WorkspaceFilesRoute } from "./workspace-files"
 import { WorkspacesRoute } from "./workspaces"
+import { EnvironmentsRoute } from "./environments"
+import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { File as SynergyFile } from "@ericsanchezok/synergy-local-runtime/file"
 import { ConfigRoute } from "./config-route"
 import { SecretsRoute } from "./secrets-route"
@@ -568,11 +570,14 @@ export namespace Server {
             err instanceof Worktree.UnavailableError ||
             err instanceof WorkspaceCatalog.Unavailable ||
             err instanceof WorkspaceCatalog.BindingChanged ||
+            err instanceof Environment.Busy ||
+            err instanceof Environment.Stale ||
             err instanceof Scope.WorkspaceUnavailableError ||
             err instanceof Session.ForkPointMissingError ||
             err.name === "SessionModelSelectionConflictError"
           )
             status = 409
+          else if (err instanceof Environment.Unavailable) status = 503
           else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
           else if (
             err instanceof WorkspaceCatalog.Invalid ||
@@ -1391,6 +1396,7 @@ export namespace Server {
       .route("/skill", SkillRoute())
       .route("/workspace/files", WorkspaceFilesRoute())
       .route("/workspace", WorkspacesRoute())
+      .route("/environment", EnvironmentsRoute())
       .route("", contributionRoutes("scoped-before-assets"))
       .route("/asset", AssetRoute())
       .route("", contributionRoutes("scoped-after-assets"))

@@ -5937,6 +5937,7 @@
                 "permissions",
                 "runtime",
                 "storage",
+                "resources",
                 "skills",
                 "worktree",
                 "library",
@@ -6024,6 +6025,7 @@
                 "permissions",
                 "runtime",
                 "storage",
+                "resources",
                 "skills",
                 "worktree",
                 "library",
@@ -6122,6 +6124,7 @@
                 "permissions",
                 "runtime",
                 "storage",
+                "resources",
                 "skills",
                 "worktree",
                 "library",
@@ -6230,6 +6233,7 @@
                     "permissions",
                     "runtime",
                     "storage",
+                    "resources",
                     "skills",
                     "worktree",
                     "library",
@@ -6255,6 +6259,7 @@
                       "permissions",
                       "runtime",
                       "storage",
+                      "resources",
                       "skills",
                       "worktree",
                       "library",
@@ -8755,6 +8760,17 @@
                   "workspace": {
                     "$ref": "#/components/schemas/SessionWorkspaceSelection"
                   },
+                  "environmentID": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "completionNotice": {
                     "type": "object",
                     "properties": {
@@ -9426,6 +9442,111 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.dag({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/environment": {
+      "post": {
+        "operationId": "session.setEnvironment",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Change an idle Session's Environment selection",
+        "responses": {
+          "200": {
+            "description": "Updated Session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionEnvironmentSelection"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.setEnvironment({\n  ...\n})"
           }
         ]
       }
@@ -15611,6 +15732,14 @@
           },
           {
             "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -15764,6 +15893,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           {
             "in": "query",
@@ -15934,6 +16071,14 @@
           },
           {
             "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "path",
             "schema": {
               "type": "string"
@@ -16059,6 +16204,14 @@
           },
           {
             "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "in": "query",
             "name": "query",
             "schema": {
               "type": "string"
@@ -16173,6 +16326,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Get workspace file status",
@@ -16243,6 +16404,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           },
           {
             "in": "query",
@@ -16362,6 +16531,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Write workspace file",
@@ -16481,6 +16658,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Create a Workspace directory",
@@ -16599,6 +16784,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Copy a Workspace file or directory without replacing the destination",
@@ -16717,6 +16910,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Move a Workspace file or directory without replacing the destination",
@@ -16835,6 +17036,14 @@
               "maximum": 9007199254740991
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         ],
         "summary": "Permanently remove a Workspace file or directory",
@@ -16913,6 +17122,765 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.remove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/export": {
+      "get": {
+        "operationId": "workspace.exportSaved",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "expectedRevision",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "required": true
+          }
+        ],
+        "summary": "Export the observed saved Workspace version without live authority",
+        "responses": {
+          "200": {
+            "description": "Versioned Workspace archive",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.exportSaved({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/import": {
+      "post": {
+        "operationId": "workspace.importSaved",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profile",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        ],
+        "summary": "Import saved files as a new Workspace in a chosen storage profile",
+        "responses": {
+          "200": {
+            "description": "Imported Workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "contentEncoding": "binary"
+                  }
+                },
+                "required": ["file"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.importSaved({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/recover-saved": {
+      "post": {
+        "operationId": "workspace.recoverSaved",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Copy the last saved files into a new Workspace without clearing unknown live work",
+        "responses": {
+          "200": {
+            "description": "New Workspace from saved content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "profile": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": ["expectedRevision", "profile"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.recoverSaved({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/objects": {
+      "post": {
+        "operationId": "workspace.createObjects",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Create a durable Workspace from an object-storage profile",
+        "responses": {
+          "200": {
+            "description": "Created Workspace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": ["profile"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.createObjects({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/operations": {
+      "get": {
+        "operationId": "workspace.operations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "List unfinished Workspace file operations",
+        "responses": {
+          "200": {
+            "description": "Unfinished file operations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceOperationSummary"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.operations({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/operations/{operationID}/recover": {
+      "post": {
+        "operationId": "workspace.recoverOperation",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "operationID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Retry reconciliation of an existing Workspace operation",
+        "responses": {
+          "200": {
+            "description": "File operation outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOperationSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable or runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.recoverOperation({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/workspace/{workspaceID}/detach": {
+      "post": {
+        "operationId": "workspace.detach",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspaceID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Save and detach an idle Workspace view",
+        "responses": {
+          "200": {
+            "description": "Workspace after saving",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable or runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedRevision": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["expectedRevision"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.detach({\n  ...\n})"
           }
         ]
       }
@@ -17325,6 +18293,954 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.rebind({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/profiles": {
+      "get": {
+        "operationId": "environment.profiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List configured Workspace and Environment profiles",
+        "responses": {
+          "200": {
+            "description": "Available profiles without credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceProfiles"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.profiles({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment": {
+      "get": {
+        "operationId": "environment.list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "List Environments in a Scope",
+        "responses": {
+          "200": {
+            "description": "Environment catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EnvironmentInfo"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "environment.create",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Select an Environment profile without allocating compute",
+        "responses": {
+          "200": {
+            "description": "Logical Environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "profile": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "requestID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128
+                  }
+                },
+                "required": ["profile", "requestID"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/{environmentID}": {
+      "get": {
+        "operationId": "environment.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Get an Environment",
+        "responses": {
+          "200": {
+            "description": "Environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/{environmentID}/activity": {
+      "get": {
+        "operationId": "environment.activity",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Inspect retained Environment work without allocating compute",
+        "responses": {
+          "200": {
+            "description": "Activity and unfinished operations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentActivity"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/{environmentID}/reconcile": {
+      "post": {
+        "operationId": "environment.reconcile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Reconcile the current Environment allocation",
+        "responses": {
+          "200": {
+            "description": "Reconciled Environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable or runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.reconcile({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/{environmentID}/release": {
+      "post": {
+        "operationId": "environment.release",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Save attached Workspaces and reclaim unused compute",
+        "responses": {
+          "200": {
+            "description": "Released Environment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable or runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedGeneration": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["expectedGeneration"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.release({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/{environmentID}/execution/{operationID}/recover": {
+      "post": {
+        "operationId": "environment.recoverExecution",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "operationID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Inspect an existing execution and retry saving without repeating its command",
+        "responses": {
+          "200": {
+            "description": "Existing execution outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentExecutionInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable or runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.recoverExecution({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/{environmentID}/execution/{operationID}/cancel": {
+      "post": {
+        "operationId": "environment.cancelExecution",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "operationID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Request cancellation of existing physical execution",
+        "responses": {
+          "200": {
+            "description": "Durable cancellation status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnvironmentExecutionInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable or runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.cancelExecution({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/environment/{environmentID}/file/{operationID}/recover": {
+      "post": {
+        "operationId": "environment.recoverFile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environmentID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "operationID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "summary": "Recover an existing Workspace mutation without repeating uncertain effects",
+        "responses": {
+          "200": {
+            "description": "File operation outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOperationSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable or runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ServiceUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.environment.recoverFile({\n  ...\n})"
           }
         ]
       }
@@ -43054,6 +44970,318 @@
         },
         "additionalProperties": false
       },
+      "ResourcesConfig": {
+        "type": "object",
+        "properties": {
+          "defaultEnvironment": {
+            "description": "Environment profile selected for new Sessions; null disables automatic selection",
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "environments": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "native"
+                    },
+                    "spec": {
+                      "default": {},
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "idleTimeoutMs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "reuse": {
+                      "type": "string",
+                      "enum": ["session", "workspace", "scope"]
+                    }
+                  },
+                  "required": ["provider"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "docker"
+                    },
+                    "spec": {
+                      "type": "object",
+                      "properties": {
+                        "image": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "memoryBytes": {
+                          "default": 1073741824,
+                          "type": "integer",
+                          "minimum": 67108864,
+                          "maximum": 9007199254740991
+                        },
+                        "cpus": {
+                          "default": 1,
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 256
+                        },
+                        "pids": {
+                          "default": 256,
+                          "type": "integer",
+                          "minimum": 16,
+                          "maximum": 65536
+                        },
+                        "mounts": {
+                          "default": [],
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "enum": ["bind", "volume"]
+                              },
+                              "source": {
+                                "type": "string",
+                                "minLength": 1
+                              },
+                              "target": {
+                                "type": "string",
+                                "pattern": "^\\/.*"
+                              },
+                              "readOnly": {
+                                "description": "External mounts are read-only; writable files use a coordinated Workspace",
+                                "default": true,
+                                "type": "boolean",
+                                "const": true
+                              }
+                            },
+                            "required": ["type", "source", "target"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "host": {
+                          "type": "object",
+                          "properties": {
+                            "endpoint": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "engineTLS": {
+                              "type": "object",
+                              "properties": {
+                                "certRef": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "keyRef": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "caRef": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                }
+                              },
+                              "required": ["certRef", "keyRef"],
+                              "additionalProperties": false
+                            },
+                            "executionHostname": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "publishHostIP": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "executionTLS": {
+                              "type": "object",
+                              "properties": {
+                                "certRef": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "keyRef": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                },
+                                "caRef": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
+                                }
+                              },
+                              "required": ["certRef", "keyRef"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": ["endpoint"],
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": ["image", "host"],
+                      "additionalProperties": false
+                    },
+                    "idleTimeoutMs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "reuse": {
+                      "type": "string",
+                      "enum": ["session", "workspace", "scope"]
+                    }
+                  },
+                  "required": ["provider", "spec"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "stores": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "local"
+                    },
+                    "spec": {
+                      "type": "object",
+                      "properties": {
+                        "namespace": {
+                          "default": "default",
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$"
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["provider", "spec"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "s3"
+                    },
+                    "spec": {
+                      "type": "object",
+                      "properties": {
+                        "bucket": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "region": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "endpoint": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "prefix": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]*$"
+                        },
+                        "credentialsRef": {
+                          "description": "Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON",
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        }
+                      },
+                      "required": ["bucket", "region", "credentialsRef"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["provider", "spec"],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "provider": {
+                      "type": "string",
+                      "const": "oss"
+                    },
+                    "spec": {
+                      "type": "object",
+                      "properties": {
+                        "bucket": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "region": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "endpoint": {
+                          "type": "string",
+                          "format": "uri"
+                        },
+                        "prefix": {
+                          "type": "string",
+                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9/_-]*$"
+                        },
+                        "credentialsRef": {
+                          "description": "Secret Vault ID containing accessKeyId, secretAccessKey and optional sessionToken as JSON",
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        "cname": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["bucket", "region", "credentialsRef"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["provider", "spec"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
       "MemoryConfig": {
         "type": "object",
         "properties": {
@@ -46294,6 +48522,9 @@
           "worktree": {
             "$ref": "#/components/schemas/WorktreeConfig"
           },
+          "resources": {
+            "$ref": "#/components/schemas/ResourcesConfig"
+          },
           "library": {
             "$ref": "#/components/schemas/LibraryConfig"
           },
@@ -46787,6 +49018,25 @@
         },
         "required": ["home", "state", "config", "worktree", "directory", "workspace"]
       },
+      "EnvironmentTarget": {
+        "type": "object",
+        "properties": {
+          "environmentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "allocationID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "generation": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["environmentID", "allocationID", "generation"]
+      },
       "WorkspaceInfo": {
         "type": "object",
         "properties": {
@@ -46839,6 +49089,78 @@
               }
             },
             "required": ["state", "hostID", "path", "generation"]
+          },
+          "backend": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "spec": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": ["provider", "spec"]
+          },
+          "content": {
+            "type": "object",
+            "properties": {
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "manifest": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["revision", "manifest"]
+          },
+          "mountGeneration": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "activeMount": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "target": {
+                "$ref": "#/components/schemas/EnvironmentTarget"
+              },
+              "path": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string",
+                "enum": ["preparing", "active", "saving", "unavailable"]
+              },
+              "readOnly": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": ["id", "generation", "target", "path", "state"]
           },
           "importedFrom": {
             "type": "object",
@@ -47070,8 +49392,11 @@
             "maximum": 9007199254740991
           },
           "root": {
+            "type": "string"
+          },
+          "pathKind": {
             "type": "string",
-            "minLength": 1
+            "const": "workspace"
           }
         },
         "required": ["id", "generation", "root"]
@@ -48104,6 +50429,17 @@
               }
             ]
           },
+          "environmentID": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "workspaceError": {
             "type": "string"
           },
@@ -48789,6 +51125,9 @@
           "cwd": {
             "type": "string"
           },
+          "environmentID": {
+            "type": "string"
+          },
           "workspaceID": {
             "type": "string",
             "pattern": "^wsp_.*"
@@ -48806,7 +51145,7 @@
             "type": "number"
           }
         },
-        "required": ["id", "title", "command", "args", "cwd", "workspaceID", "workspaceGeneration", "status", "pid"]
+        "required": ["id", "title", "command", "args", "cwd", "environmentID", "status"]
       },
       "ConfigIssue": {
         "type": "object",
@@ -48920,6 +51259,7 @@
               "permissions",
               "runtime",
               "storage",
+              "resources",
               "skills",
               "worktree",
               "library",
@@ -49068,6 +51408,7 @@
                 "permissions",
                 "runtime",
                 "storage",
+                "resources",
                 "skills",
                 "worktree",
                 "library",
@@ -49201,6 +51542,7 @@
               "permissions",
               "runtime",
               "storage",
+              "resources",
               "skills",
               "worktree",
               "library",
@@ -49335,6 +51677,7 @@
                 "permissions",
                 "runtime",
                 "storage",
+                "resources",
                 "skills",
                 "worktree",
                 "library",
@@ -49557,6 +51900,7 @@
                     "permissions",
                     "runtime",
                     "storage",
+                    "resources",
                     "skills",
                     "worktree",
                     "library",
@@ -49617,6 +51961,7 @@
                 "permissions",
                 "runtime",
                 "storage",
+                "resources",
                 "skills",
                 "worktree",
                 "library",
@@ -52870,6 +55215,35 @@
             "required": ["mode"]
           }
         ]
+      },
+      "SessionEnvironmentSelection": {
+        "type": "object",
+        "properties": {
+          "environmentID": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expectedEnvironmentID": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["environmentID", "expectedEnvironmentID"],
+        "additionalProperties": false
       },
       "SessionModelSelectionInput": {
         "type": "object",
@@ -57294,6 +59668,9 @@
       "WorkspaceFileStatusSummary": {
         "type": "object",
         "properties": {
+          "capability": {
+            "$ref": "#/components/schemas/WorkspaceSearchCapability"
+          },
           "files": {
             "type": "array",
             "items": {
@@ -57494,6 +59871,510 @@
           }
         },
         "required": ["path", "expectedVersion"]
+      },
+      "WorkspaceOperationSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "workspaceID": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "target": {
+            "$ref": "#/components/schemas/EnvironmentTarget"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["submitted", "unknown", "unsaved", "completed", "failed"]
+          },
+          "error": {
+            "type": "string"
+          },
+          "failure": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "completed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["name", "message"]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "scopeID", "workspaceID", "generation", "state", "createdAt", "updatedAt"]
+      },
+      "ServiceUnavailableError": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["message"]
+      },
+      "RuntimeShuttingDownError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RuntimeShuttingDown"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ResourceProfiles": {
+        "type": "object",
+        "properties": {
+          "defaultEnvironment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "reuse": {
+                  "type": "string",
+                  "enum": ["session", "workspace", "scope"]
+                }
+              },
+              "required": ["name", "provider", "reuse"]
+            }
+          },
+          "stores": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                }
+              },
+              "required": ["name", "provider"]
+            }
+          }
+        },
+        "required": ["defaultEnvironment", "environments", "stores"]
+      },
+      "EnvironmentInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "scopeID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "provider": {
+            "type": "string",
+            "minLength": 1
+          },
+          "spec": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "ownership": {
+            "type": "string",
+            "enum": ["borrowed", "managed"]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["idle", "allocating", "ready", "releasing", "unavailable"]
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "allocation": {
+            "type": "object",
+            "properties": {
+              "requestID": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "capabilities": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["requestID"]
+          },
+          "idleTimeoutMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "lastUsedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "scopeID",
+          "provider",
+          "spec",
+          "ownership",
+          "state",
+          "generation",
+          "idleTimeoutMs",
+          "createdAt",
+          "updatedAt",
+          "lastUsedAt"
+        ]
+      },
+      "EnvironmentExecutionStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EnvironmentTarget"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["accepted", "running", "exited", "cancelled", "unknown"]
+          },
+          "cursor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "exitCode": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "signal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "treeDrained": {
+            "default": false,
+            "type": "boolean"
+          },
+          "streamsDrained": {
+            "default": false,
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "failure": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 8192
+              },
+              "code": {
+                "type": "string",
+                "maxLength": 128
+              },
+              "completed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["name", "message"]
+          },
+          "outputTruncated": {
+            "type": "boolean"
+          },
+          "effectsStarted": {
+            "type": "boolean"
+          },
+          "contended": {
+            "type": "boolean"
+          },
+          "before": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                },
+                "workspaceID": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                },
+                "generation": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "manifest": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              },
+              "required": ["id", "workspaceID", "generation", "manifest"]
+            }
+          }
+        },
+        "required": ["id", "target", "digest", "state", "cursor"]
+      },
+      "EnvironmentExecutionInfo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EnvironmentTarget"
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                },
+                "workspaceID": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                },
+                "generation": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "readOnly": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["id", "workspaceID", "generation"]
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "workspaceID": {
+                  "type": "string"
+                },
+                "reference": {
+                  "type": "object",
+                  "properties": {
+                    "scopeID": {
+                      "type": "string"
+                    },
+                    "sessionID": {
+                      "type": "string"
+                    },
+                    "messageID": {
+                      "type": "string"
+                    },
+                    "toolCallID": {
+                      "type": "string"
+                    },
+                    "partID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["scopeID", "sessionID", "messageID", "toolCallID", "partID"]
+                }
+              },
+              "required": ["workspaceID", "reference"]
+            }
+          },
+          "digest": {
+            "type": "string"
+          },
+          "intentDigest": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64
+          },
+          "state": {
+            "type": "string",
+            "enum": ["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]
+          },
+          "status": {
+            "$ref": "#/components/schemas/EnvironmentExecutionStatus"
+          },
+          "saved": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "outputCursor": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "scopeID", "target", "digest", "state", "outputCursor", "createdAt", "updatedAt"]
+      },
+      "EnvironmentActivity": {
+        "type": "object",
+        "properties": {
+          "environment": {
+            "$ref": "#/components/schemas/EnvironmentInfo"
+          },
+          "uses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/components/schemas/EnvironmentTarget"
+                },
+                "createdAt": {
+                  "type": "number"
+                },
+                "kind": {
+                  "default": "operation",
+                  "type": "string",
+                  "enum": ["operation", "admission"]
+                },
+                "ownerEpoch": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "target", "createdAt"]
+            }
+          },
+          "executions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentExecutionInfo"
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceOperationSummary"
+            }
+          }
+        },
+        "required": ["environment", "uses", "executions", "files"]
       },
       "EmbeddingStatus": {
         "anyOf": [
@@ -61594,34 +64475,6 @@
         },
         "required": ["message"]
       },
-      "ServiceUnavailableError": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": ["message"]
-      },
-      "RuntimeShuttingDownError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "RuntimeShuttingDown"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
-      },
       "PluginConfigUpdate": {
         "type": "object",
         "propertyNames": {
@@ -63534,19 +66387,6 @@
           }
         ]
       },
-      "Event.workspace.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "workspace.updated"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/WorkspaceInfo"
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.scope.runtime.disposed": {
         "type": "object",
         "properties": {
@@ -63565,6 +66405,19 @@
               }
             },
             "required": ["scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.workspace.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "workspace.updated"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/WorkspaceInfo"
           }
         },
         "required": ["type", "properties"]
@@ -63604,86 +66457,15 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.provider.auth.updated": {
+      "Event.environment.updated": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "const": "provider.auth.updated"
+            "const": "environment.updated"
           },
           "properties": {
-            "type": "object",
-            "properties": {
-              "health": {
-                "$ref": "#/components/schemas/ProviderAuthHealth"
-              }
-            },
-            "required": ["health"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.config.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "config.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scope": {
-                "type": "string",
-                "enum": ["global", "project"]
-              },
-              "changedFields": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              }
-            },
-            "required": ["scope", "changedFields"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.permission.asked": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.asked"
-          },
-          "properties": {
-            "$ref": "#/components/schemas/PermissionRequest"
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.permission.replied": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "permission.replied"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "sessionID": {
-                "type": "string"
-              },
-              "requestID": {
-                "type": "string"
-              },
-              "reply": {
-                "type": "string",
-                "enum": ["once", "session", "always", "reject"]
-              }
-            },
-            "required": ["sessionID", "requestID", "reply"]
+            "$ref": "#/components/schemas/EnvironmentInfo"
           }
         },
         "required": ["type", "properties"]
@@ -63810,6 +66592,90 @@
               }
             },
             "required": ["sessionID", "messageID", "partID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.provider.auth.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "provider.auth.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "health": {
+                "$ref": "#/components/schemas/ProviderAuthHealth"
+              }
+            },
+            "required": ["health"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.config.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "config.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": ["global", "project"]
+              },
+              "changedFields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["scope", "changedFields"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.asked": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.asked"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/PermissionRequest"
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.permission.replied": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "permission.replied"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "requestID": {
+                "type": "string"
+              },
+              "reply": {
+                "type": "string",
+                "enum": ["once", "session", "always", "reject"]
+              }
+            },
+            "required": ["sessionID", "requestID", "reply"]
           }
         },
         "required": ["type", "properties"]
@@ -65511,10 +68377,10 @@
       "Event": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/Event.workspace.updated"
+            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
           },
           {
-            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
+            "$ref": "#/components/schemas/Event.workspace.updated"
           },
           {
             "$ref": "#/components/schemas/Event.scope.updated"
@@ -65523,16 +68389,7 @@
             "$ref": "#/components/schemas/Event.scope.removed"
           },
           {
-            "$ref": "#/components/schemas/Event.provider.auth.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.config.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.permission.asked"
-          },
-          {
-            "$ref": "#/components/schemas/Event.permission.replied"
+            "$ref": "#/components/schemas/Event.environment.updated"
           },
           {
             "$ref": "#/components/schemas/Event.installation.updated"
@@ -65551,6 +68408,18 @@
           },
           {
             "$ref": "#/components/schemas/Event.message.part.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.provider.auth.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.config.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.asked"
+          },
+          {
+            "$ref": "#/components/schemas/Event.permission.replied"
           },
           {
             "$ref": "#/components/schemas/Event.usage.updated"

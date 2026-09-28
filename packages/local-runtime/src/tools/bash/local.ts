@@ -5,7 +5,6 @@ import { fileURLToPath } from "url"
 import { Language, type Node } from "web-tree-sitter"
 import { $ } from "bun"
 import { lazy } from "@ericsanchezok/synergy-harness/util/lazy"
-import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
@@ -28,10 +27,13 @@ import type { BashSandboxPrepare } from "@ericsanchezok/synergy-harness/tool/bas
 import { ObservabilityRedaction } from "@ericsanchezok/synergy-harness/observability/redaction"
 import { ChildProcessClose } from "@ericsanchezok/synergy-harness/process/child-process-close"
 import path from "node:path"
-import { OwnedProcess } from "../../process/owned-process"
+import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { createHash, randomUUID } from "node:crypto"
 import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
-import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
+import { StringDecoder } from "node:string_decoder"
+import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -199,12 +201,47 @@ export function withLinuxChildOomPreference(command: string, platform = process.
   return `{ printf '%s\\n' ${CHILD_OOM_SCORE_ADJ} > /proc/self/oom_score_adj; } 2>/dev/null || :; ${command}`
 }
 
-export const LocalBashBackend = {
-  async execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
-    const shell = Shell.acceptable()
+export namespace LocalBashBackend {
+  export async function execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
+    await using admission = ctx.resources
+      ? null
+      : await EnvironmentResources.select({
+          scopeID: ScopeContext.current.scope.id,
+          ownerID: ctx.sessionID,
+          environmentID: ctx.environmentID,
+          workspaceID: ScopeContext.current.workspace?.id,
+          workspaceGeneration: ScopeContext.current.workspace?.generation,
+          needs: { execution: "exec" },
+          signal: ctx.abort,
+        })
+    const resources = ctx.resources ?? admission!
+    const workspace = ScopeContext.current.workspace
+    if (
+      workspace &&
+      resources.environment?.provider === "native" &&
+      resources.workspace?.backend?.provider === "directory"
+    ) {
+      const { WorkspaceRuntime } = await import("@ericsanchezok/synergy-harness/workspace/runtime")
+      return await WorkspaceRuntime.withUse(ScopeContext.current.scope, workspace, ctx.sessionID, () =>
+        run(params, ctx, resources),
+      )
+    }
+    return await run(params, ctx, resources)
+  }
+
+  async function run(
+    params: BashParams,
+    ctx: BashContext,
+    resources: EnvironmentResources.Resolved,
+  ): Promise<BashResult> {
+    const shell = resources.runtime!.shell
+    const platform = resources.runtime!.platform
+    const executionID = createHash("sha256")
+      .update(JSON.stringify([ScopeContext.current.scope.id, ctx.sessionID, ctx.messageID, ctx.callID || randomUUID()]))
+      .digest("hex")
     log.info("bash tool using shell", { shell })
 
-    const cwd = params.workdir || ScopeContext.current.directory
+    const cwd = params.workdir || resources.directory!
     const traceId = ((ctx.extra as any)?.traceId as string | undefined) ?? Observability.traceId("bash")
     let regProc: ProcessRegistry.Process | undefined
     const trace = (type: string, data?: Record<string, unknown>, level?: Observability.Event["level"]) =>
@@ -311,13 +348,15 @@ export const LocalBashBackend = {
       await trace("attachment.discovery.start", {
         outputChars: result.output.length,
       })
-      const attachments = await AttachmentDiscovery.discover({
-        output: result.output,
-        cwd,
-        sessionID: ctx.sessionID,
-        messageID: ctx.messageID,
-        tool: "bash",
-      })
+      const attachments = await EnvironmentResources.provide(resources, "attachment-discovery", () =>
+        AttachmentDiscovery.discover({
+          output: result.output,
+          cwd,
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          tool: "bash",
+        }),
+      )
         .then(async (items) => {
           await trace("attachment.discovery.end", {
             attachmentCount: items.length,
@@ -352,13 +391,7 @@ export const LocalBashBackend = {
     }
 
     // Build sandbox-safe environment from the backend allowlist
-    const sandboxEnv: Record<string, string> = {}
-    for (const key of SandboxBackend.SANDBOX_ENV_ALLOWLIST) {
-      const val = RuntimeContext.current().host.env[key]
-      if (val !== undefined) {
-        sandboxEnv[key] = val
-      }
-    }
+    const sandboxEnv: Record<string, string> = { ...resources.runtime!.env }
 
     // Secret boundary: resolved mask tokens arrive as SYNERGY_SEC_* environment
     // variables from the resolver; the command references them via
@@ -376,10 +409,10 @@ export const LocalBashBackend = {
       // Base the controlled root on the session workspace (the sandbox
       // wrapper's writable root), never on a possibly external workdir: the
       // host-side mkdir below must stay inside the workspace boundary.
-      const workspaceRoot = ScopeContext.current.directory
+      const workspaceRoot = resources.directory!
       const controlledRoot = controlledTempRoot(workspaceRoot, ctx.sessionID)
       try {
-        fs.mkdirSync(controlledRoot, { recursive: true })
+        if (resources.executor?.localPID) fs.mkdirSync(controlledRoot, { recursive: true })
         sandboxEnv.TMPDIR = controlledRoot
         sandboxEnv.TMP = controlledRoot
         sandboxEnv.TEMP = controlledRoot
@@ -418,9 +451,13 @@ export const LocalBashBackend = {
       command: params.command,
       references: virtualFileReferences,
       scopeID: ScopeContext.current.scope.id,
+      executor: resources.executor!,
+      executionID,
+      shell,
+      platform,
     })
     let executionCommand = materialized.command
-    executionCommand = withLinuxChildOomPreference(executionCommand)
+    executionCommand = withLinuxChildOomPreference(executionCommand, platform)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
     // macOS sandboxd audit stream for this child. Seatbelt reports denials to
@@ -429,14 +466,17 @@ export const LocalBashBackend = {
     let denialSession: DenialLoggerSession | null = null
     using denialCleanup = { [Symbol.dispose]: () => denialSession?.stop() }
     let artifactsCleaned = false
-    const cleanupExecutionArtifacts = () => {
+    let dispatched = false
+    const cleanupExecutionArtifacts = (saved = false) => {
+      if (dispatched && !saved) return
       if (artifactsCleaned) return
       artifactsCleaned = true
       // Audit drainage remains owned by the foreground execution scope, including early returns.
       if (sandboxWrapper?.tempPath) {
         SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
       }
-      materialized.cleanup()
+      void sandboxWrapper?.cleanup?.().catch((error) => log.warn("sandbox cleanup failed", { error }))
+      void materialized.cleanup().catch((error) => log.warn("execution input cleanup failed", { error }))
     }
 
     try {
@@ -447,7 +487,7 @@ export const LocalBashBackend = {
         })
       }
       assertDetachedDaemonContainment({
-        platform: process.platform,
+        platform,
         detachedDaemonAllowed,
         sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
       })
@@ -461,7 +501,7 @@ export const LocalBashBackend = {
     // child's stderr, and a fast command's denial is emitted microseconds after
     // spawn — so the audit stream must already be live before the child runs.
     // Bind it to the pid once the child exists.
-    if (sandboxWrapper && !sandboxWrapper.skipReason && process.platform === "darwin") {
+    if (sandboxWrapper && !sandboxWrapper.skipReason && platform === "darwin" && resources.executor?.localPID) {
       denialSession = startDenialLogger()
     }
 
@@ -521,40 +561,54 @@ export const LocalBashBackend = {
     }
 
     let sawOutput = false
-    const append = (chunk: Buffer) => {
+    const decoders = { stdout: new StringDecoder("utf8"), stderr: new StringDecoder("utf8") }
+    const append = (channel: RolloutProcess.Channel, chunk: Buffer) => {
       if (!sawOutput) {
         sawOutput = true
         void trace("bash.first_output", {
           bytes: chunk.length,
         })
       }
-      ProcessRegistry.appendOutput(regProc, chunk.toString())
+      ProcessRegistry.appendOutput(regProc, decoders[channel].write(chunk))
       scheduleMetadata()
     }
 
     let child: ProcessHandle
-    let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+    let owned: Awaited<ReturnType<typeof EnvironmentProcess.prepare>> | undefined
     try {
       if (sandboxWrapper?.skipReason && sandboxFallback === "deny")
         throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
-      const shellName = path.win32.basename(shell).toLowerCase()
-      const args =
-        process.platform === "win32" && ["cmd", "cmd.exe"].includes(shellName)
-          ? ["/d", "/s", "/c", `"${executionCommand}"`]
-          : process.platform === "win32" && ["powershell", "powershell.exe", "pwsh", "pwsh.exe"].includes(shellName)
-            ? ["-NoProfile", "-Command", executionCommand]
-            : ["-c", executionCommand]
+      const args = ExecutionProtocol.shellArgs(shell, platform, executionCommand)
       const invocation =
         sandboxWrapper && !sandboxWrapper.skipReason
           ? { command: sandboxWrapper.command, args: sandboxWrapper.args }
           : { command: shell, args }
-      const lease = await WorkspaceAccess.process(sandboxWriteRoots(sandboxWrapper), ctx.abort)
-      try {
-        owned = await OwnedProcess.prepare({ ...invocation, cwd, env: sandboxEnv, lease, signal: ctx.abort })
-      } catch (error) {
-        await lease.release()
-        throw error
-      }
+      const intentDigest = createHash("sha256")
+        .update(
+          JSON.stringify({
+            command: executionCommand,
+            shell,
+            cwd,
+            env: Object.fromEntries(Object.entries(sandboxEnv).sort(([a], [b]) => a.localeCompare(b))),
+            inputs: materialized.digest,
+            sandbox: sandboxWrapper?.intentDigest ?? sandboxWrapper,
+          }),
+        )
+        .digest("hex")
+      owned = await EnvironmentProcess.prepare({
+        id: executionID,
+        intentDigest,
+        scopeID: ScopeContext.current.scope.id,
+        resources,
+        command: {
+          ...invocation,
+          cwd,
+          env: sandboxEnv,
+          writableRoots: sandboxWriteRoots(sandboxWrapper),
+          sandboxID: sandboxWrapper?.id,
+        },
+        signal: ctx.abort,
+      })
       child = owned.child
     } catch (e: unknown) {
       await evidence?.finish({ interrupted: true, exitCode: null, signal: null })
@@ -572,6 +626,9 @@ export const LocalBashBackend = {
     if (denialSession && child.pid) {
       denialSession.adoptPid(child.pid)
     }
+    child.once("spawn", () => {
+      if (denialSession && child.pid) denialSession.adoptPid(child.pid)
+    })
 
     let aborted = false
     let timedOut = false
@@ -653,7 +710,7 @@ export const LocalBashBackend = {
     const receive = (channel: RolloutProcess.Channel, chunk: Buffer) => {
       if (recordingFailure) return
       if (!evidence) {
-        append(chunk)
+        append(channel, chunk)
         return
       }
       const stream = channel === "stdout" ? child.stdout : child.stderr
@@ -662,7 +719,7 @@ export const LocalBashBackend = {
       outputPending = outputPending
         .then(async () => {
           await evidence!.append(channel, chunk)
-          append(chunk)
+          append(channel, chunk)
         })
         .catch((error: unknown) => {
           recordingFailure ??= error instanceof Error ? error : new Error(String(error))
@@ -683,6 +740,7 @@ export const LocalBashBackend = {
       finalized = true
       exited = true
       cleanupAllTimers()
+      for (const decoder of Object.values(decoders)) ProcessRegistry.appendOutput(regProc, decoder.end())
       if (metadataDirty) flushMetadata()
       const exitSignal = timedOut ? "SIGTERM" : signal
       ProcessRegistry.markStdioClosed(regProc, { drainTimedOut })
@@ -696,7 +754,7 @@ export const LocalBashBackend = {
         ProcessRegistry.remove(regProc.id)
       }
       releaseChildReferences()
-      cleanupExecutionArtifacts()
+      cleanupExecutionArtifacts(true)
       void trace("bash.child.close", {
         exitCode: code,
         exitSignal: signal,
@@ -750,6 +808,7 @@ export const LocalBashBackend = {
     ProcessRegistry.trackClosure(regProc, closing)
     if (owned) {
       try {
+        dispatched = true
         await owned.activate()
         regProc.pid = child.pid
         if (denialSession && child.pid) denialSession.adoptPid(child.pid)
@@ -813,6 +872,7 @@ export const LocalBashBackend = {
     if (waitResult === "background") {
       cleanupForegroundWait()
       if (!exited) {
+        owned?.detachSignal()
         ProcessRegistry.markBackgrounded(regProc)
         return {
           title: `[Auto-Background] ${params.description}`,
@@ -900,7 +960,7 @@ export const LocalBashBackend = {
       },
       output: warnOutput(output),
     })
-  },
+  }
 }
 
 /**

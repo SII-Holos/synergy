@@ -18,10 +18,16 @@ import { registerCortexTools } from "@ericsanchezok/synergy-harness/cortex/tools
 import { registerCortexSessionRuntime } from "@ericsanchezok/synergy-harness/cortex/session-runtime"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { registerConfig } from "./config-schema"
+import { registerNativeEnvironment } from "./environment/native"
+import { EnvironmentProviders } from "@ericsanchezok/synergy-harness/environment/provider"
+import { WorkspaceCoordinator } from "./workspace/coordinator"
+import { ResourceProfiles } from "./environment/profiles"
 
 const registration = RuntimeContext.state(() => ({ complete: false }))
 
-export function registerLocalRuntime(options: { workers?: boolean } = {}) {
+export function registerLocalRuntime(
+  options: { workers?: boolean; environment?: boolean; workspaceCoordinator?: WorkspaceCoordinator } = {},
+) {
   const state = registration()
   if (state.complete) return
   registerHarness()
@@ -35,7 +41,13 @@ export function registerLocalRuntime(options: { workers?: boolean } = {}) {
   }
   registerLocalTools()
   registerInputTools()
-  registerWorkspace()
+  const coordinator = options.workspaceCoordinator ?? new WorkspaceCoordinator()
+  registerWorkspace(coordinator)
+  if (options.environment !== false) {
+    registerNativeEnvironment({ coordinator })
+    EnvironmentProviders.setDefault({ provider: "native", spec: {}, reuse: "scope" })
+  }
+  ResourceProfiles.register({ environment: options.environment })
   registerSkillDomain()
   registerCommandDomain()
   Command.registerActions()

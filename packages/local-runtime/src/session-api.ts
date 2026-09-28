@@ -22,7 +22,6 @@ import { Command } from "./command/command"
 const log = Log.create({ service: "session-api" })
 
 export async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   if (input.model) await Provider.getModel(input.model.providerID, input.model.modelID)
   if (input.agent && !(await Agent.get(input.agent))) throw new Error(`Agent not found: ${input.agent}`)
   if (input.noReply === true && !SessionManager.isRunning(input.sessionID)) {
@@ -59,8 +58,8 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
 
 function scheduleInput(item: SessionInbox.Item, reason: string) {
   void SessionDrive.request(item.sessionID, reason).catch((error) => {
-    SessionInputProgress.schedulingFailure(item.sessionID, error, false)
     SessionManager.scheduleWake(item.sessionID, "durable-input-recovery")
+    SessionInputProgress.schedulingFailure(item.sessionID, error, false, { messageID: item.messageID, itemID: item.id })
     log.error("failed to schedule durable user input", {
       sessionID: item.sessionID,
       itemID: item.id,
@@ -71,7 +70,6 @@ function scheduleInput(item: SessionInbox.Item, reason: string) {
 }
 
 export async function retryInput(input: { sessionID: string; itemID: string }): Promise<SessionInbox.Item> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   let item: SessionInbox.Item
   {
     using control = await Lock.write(`session-control:${input.sessionID}`)
@@ -85,7 +83,6 @@ export async function retryInput(input: { sessionID: string; itemID: string }): 
 }
 
 export async function restoreInput(input: { sessionID: string; itemID: string }): Promise<void> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   using control = await Lock.write(`session-control:${input.sessionID}`)
   const result = await SessionInbox.restore(input)
   if (result.restored && result.item.status !== "failed") scheduleInput(result.item, "user-input-restored")
@@ -117,7 +114,6 @@ export async function createSession(
 }
 
 export async function submitCommand(input: Parameters<typeof SessionInvoke.command>[0]): Promise<void> {
-  await Session.assertWorkspaceAvailable(input.sessionID)
   const command = await Command.require(input.command)
   const messageID = input.messageID ?? Identifier.ascending("message")
   await RolloutLifecycle.configuration(

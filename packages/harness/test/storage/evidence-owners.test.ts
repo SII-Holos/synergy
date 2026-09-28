@@ -36,13 +36,13 @@ afterAll(() =>
   }),
 )
 
-async function open(backend: "sqlite" | "postgres" = "sqlite") {
+async function open() {
   const namespace = crypto.randomUUID()
-  const store = await TransactionalStore.open(
-    backend === "sqlite"
-      ? { backend, namespace, filename: path.join(root, `${namespace}.sqlite`) }
-      : { backend, namespace, url: process.env.SYNERGY_TEST_POSTGRES_URL! },
-  )
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace,
+    filename: path.join(root, `${namespace}.sqlite`),
+  })
   stores.push(store)
   return store
 }
@@ -242,20 +242,6 @@ describe("storage owner enumeration", () => {
       // An interrupted build or a repeated run converges instead of failing.
       await Storage.provide({ store, artifactDirectory: root }, () => StorageRecordsOwnerIndex.run())
       expect(await present()).toBe(1)
-    }))
-
-  test("postgres accepts the same index creation", () =>
-    runtime.run(async () => {
-      if (!process.env.SYNERGY_TEST_POSTGRES_URL) return
-      const store = await open("postgres")
-      // The migration runs the shared DDL on both engines; `IF NOT EXISTS` is a
-      // no-op the second time, which is what keeps a re-run safe.
-      await expect(
-        Storage.provide({ store, artifactDirectory: root }, () => StorageRecordsOwnerIndex.run()),
-      ).resolves.toBeUndefined()
-      await expect(
-        Storage.provide({ store, artifactDirectory: root }, () => StorageRecordsOwnerIndex.run()),
-      ).resolves.toBeUndefined()
     }))
 
   test("the enumeration seeks the owner index instead of grouping through a temporary b-tree", () =>

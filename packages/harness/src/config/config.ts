@@ -564,6 +564,12 @@ export namespace Config {
         ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id, { preserveUnregistered: true })
         if (domain.id === "storage" && fragment.storage && path.resolve(root) !== path.resolve(Global.Path.config))
           throw new Error("Storage configuration is global and cannot be overridden by a project")
+        if (
+          domain.globalOnly &&
+          Object.keys(fragment).length &&
+          path.resolve(root) !== path.resolve(Global.Path.config)
+        )
+          throw new Error(`${domain.label} configuration must be global`)
         result = mergeConfigConcatArrays(result, fragment as Info)
         // A recovered file clears its historical diagnostic so the registry
         // reflects the most recent load. Only clear when the file really
@@ -573,7 +579,7 @@ export namespace Config {
           clearIssueForPath(filepath)
         }
       } catch (error) {
-        if (domain.id === "storage" || strictExecution.getStore()) throw error
+        if (domain.id === "storage" || domain.failClosed || strictExecution.getStore()) throw error
         await quarantineDomainFile(domain.id, filepath, error)
       }
     }
@@ -1296,6 +1302,7 @@ export namespace Config {
   export async function update(config: Info) {
     const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
     for (const [id, fragment] of ConfigDomain.split(config)) {
+      if (ConfigDomain.byId().get(id)?.globalOnly) throw new Error("Resource configuration must be global")
       await writeDomainFile(id, fragment, synergyDir)
     }
     const { ScopeRuntime } = await import("../scope/runtime")
@@ -1364,6 +1371,7 @@ export namespace Config {
       ConfigDomain.validateKeys(config as Record<string, unknown>, parsed, { preserveUnregistered: true })
       return config
     } catch (error) {
+      if (ConfigDomain.byId().get(parsed)?.failClosed) throw error
       // A broken single domain file should not make the domain unreadable:
       // quarantine it and report empty (Settings will show no config).
       await quarantineDomainFile(parsed, filepath, error)
@@ -1417,6 +1425,11 @@ export namespace Config {
     options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
   ) {
     const parsed = ConfigDomain.Id.parse(id)
+    if (
+      ConfigDomain.byId().get(parsed)?.globalOnly &&
+      path.resolve(options.root ?? Global.Path.config) !== path.resolve(Global.Path.config)
+    )
+      throw new Error("Resource configuration must be global")
     ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
     const stored = await domainGet(parsed, options.root)
     const mergedPatch = mergeRedactedSecrets(patch as Info, stored)

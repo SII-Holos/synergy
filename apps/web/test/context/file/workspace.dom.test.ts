@@ -41,7 +41,7 @@ beforeAll(async () => {
         remove: async (query) => { entries.push(query); return { data: { removed: true, path: query.workspaceFileDeleteInput.path } } },
         children: async () => ({ data: { children: [], truncated: false } }) } } },
       event: { listen(cb) { listeners.add(cb); return () => listeners.delete(cb) } } })
-    export const useSync = () => ({ data: { path: { directory: "/a", workspace: a } }, session: { get: () => state.session } })
+    export const useSync = () => ({ data: { workspaces: [{id:"wsp_objects",scopeID:"scope",type:"objects",binding:{state:"bound",path:null,generation:1},backend:{provider:"objects"},metadata:{name:"Research"},lifecycle:"active"}], path: { directory: "/a", workspace: a } }, session: { get: () => state.session } })
     export const useParams = () => ({ id: "session" })
     export const useWorkbenchPanels = () => ({ surface: () => ({ tabs: () => state.tabs, activeTab: () => state.active }),
       async openPanel(panelId, { init }) { const tab = { id: String(state.tabs.length), panelId, ...init }; setState("tabs", list => [...list, tab]); setState("active", tab); return tab },
@@ -49,6 +49,7 @@ beforeAll(async () => {
     export const Persist = { workspace: (owner, key) => ({ storage: "fixture:" + owner, key }), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
     export const persisted = (_key, store) => [...store, undefined, () => true]
     window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, disk, state, writeState,
+      selectObjects() { setState("session", {workspace: null,workspaceID:"wsp_objects"}) },
       emit(properties) { listeners.forEach(cb => cb({ details: { type: "file.watcher.updated", properties: { workspaceID: a.id, workspaceGeneration: a.generation, ...properties } } })) },
       flush() { pending.splice(0).forEach(resolve => resolve()) },
       event(ws) { listeners.forEach(cb => cb({ details: { type: "file.watcher.updated", properties: {
@@ -420,3 +421,21 @@ test("a recovered draft remains accessible after the original file disappears", 
   expect(result.draft.content).toBe("keep despite deletion")
   expect(errors).toEqual([])
 }, 30_000)
+
+test("a stored Workspace opens relative files without a controller directory", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => (window as any).fixture.selectObjects())
+  await page.evaluate(() => {
+    const h = (window as any).fixture
+    void h.file.load("same.txt")
+    void h.file.load("/same.txt")
+    void h.file.load("file:///same.txt")
+  })
+  await page.evaluate(() => (window as any).fixture.flush())
+  await page.waitForFunction(() => document.querySelector("output")?.textContent === "wsp_objects")
+  expect(
+    await page.evaluate(() => (window as any).fixture.requests.map((q: { workspaceID: string }) => q.workspaceID)),
+  ).toEqual(["wsp_objects"])
+  expect(errors).toEqual([])
+}, 20_000)

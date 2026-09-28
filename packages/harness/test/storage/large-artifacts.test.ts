@@ -4,14 +4,15 @@ import path from "node:path"
 import { createHash } from "node:crypto"
 import { Storage } from "../../src/storage/storage"
 import { TransactionalStore } from "../../src/storage/transactional-store"
+import { storageTestOptions } from "../support/storage-backends"
 import { PackedLegacyImporter } from "../../src/storage/packed-import"
 import { PackedBackup } from "../../src/storage/packed-backup"
 import { StorageArtifactMigration } from "../../src/storage/artifact-migration"
 import { ArtifactPack } from "../../src/storage/artifact-pack"
 import { StoragePortable } from "../../src/storage/portable"
 import { afterAll as afterRuntimeTests } from "bun:test"
-import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+import { storageTestRuntime } from "../support/storage-runtime"
+const runtime = await storageTestRuntime()
 
 const owner = ["sessions", "scope", "owner"]
 const key = [...owner, "rollout", "blobs", "large"]
@@ -24,9 +25,7 @@ async function fixture() {
   await fs.mkdir(dataRoot)
   const namespace = crypto.randomUUID()
   const store = await TransactionalStore.open(
-    process.env.SYNERGY_TEST_POSTGRES_URL
-      ? { backend: "postgres", namespace, url: process.env.SYNERGY_TEST_POSTGRES_URL }
-      : { backend: "sqlite", namespace, filename: path.join(root, "target.sqlite") },
+    storageTestOptions({ namespace, filename: path.join(root, "target.sqlite") }),
   )
   return {
     root,

@@ -1,3 +1,4 @@
+import { FileView } from "../file/view"
 import z from "zod"
 import DESCRIPTION from "./view-file.txt"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -76,7 +77,7 @@ export const ViewFileTool = Tool.define(
       let content = await readTextFileUnderSnapshotCap(filePath)
       const snapshotAvailable = content !== undefined
       if (content === undefined) {
-        const file = Bun.file(filePath)
+        const file = FileView.file(filePath)
         const prefix = await file.slice(0, DEFAULT_VIEW_BYTES).text()
         content = prefix.slice(0, prefix.lastIndexOf("\n") + 1)
       }

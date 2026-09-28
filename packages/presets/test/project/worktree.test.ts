@@ -503,7 +503,7 @@ describe("git worktree integration", () => {
       })
     }))
 
-  test("remove rejects while session execution is using the worktree before it becomes busy", () =>
+  test("remove rejects an admitted session before its first tool runs", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -534,7 +534,12 @@ describe("git worktree integration", () => {
 
             await started
             try {
-              await expect(Worktree.remove({ target: created.id, force: true })).rejects.toThrow("using worktree")
+              await expect(Worktree.remove({ target: created.id, force: true })).rejects.toMatchObject({
+                name: "WorktreeSessionBusyError",
+                data: { sessionID: session.id },
+              })
+              expect((await Worktree.list()).some((item) => item.id === created.id)).toBe(true)
+              expect((await Session.get(session.id)).workspace?.path).toBe(created.path)
             } finally {
               finishExecution()
               await execution.catch(() => undefined)

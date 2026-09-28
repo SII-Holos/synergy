@@ -427,6 +427,7 @@ export namespace SessionImport {
     const result = Session.PersistedInfo.parse({
       ...input.info,
       id: input.sessionID,
+      environmentID: null,
       scope: input.scope,
       parentID: input.parentID,
       forkedFrom,

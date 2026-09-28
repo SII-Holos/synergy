@@ -1,11 +1,12 @@
-import { dlopen, ptr } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
+import { ptr } from "bun:ffi"
 import fs from "node:fs/promises"
 import path from "node:path"
 
 export namespace FileLink {
   let native: ReturnType<typeof initialize> | undefined
   function initialize() {
-    return dlopen("kernel32.dll", {
+    return openNativeLibrary("kernel32.dll", {
       CreateFileW: { args: ["ptr", "u32", "u32", "ptr", "u32", "u32", "ptr"], returns: "u64" },
       GetFileInformationByHandleEx: { args: ["u64", "int", "ptr", "u32"], returns: "bool" },
       CloseHandle: { args: ["u64"], returns: "bool" },

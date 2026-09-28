@@ -1,14 +1,18 @@
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
+import { AsyncLocalStorage } from "node:async_hooks"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
+import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { $ } from "bun"
 import path from "path"
 import { z } from "zod"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { FileWatcher } from "@ericsanchezok/synergy-local-runtime/file/watcher"
 import { Filesystem } from "@ericsanchezok/synergy-harness/util/filesystem"
 import { VcsBranchWatcher } from "./vcs-branch-watcher"
+import { FileView } from "@ericsanchezok/synergy-local-runtime/file/view"
+import { WorktreeProcess } from "@ericsanchezok/synergy-local-runtime/workspace/process"
 
 const log = Log.create({ service: "vcs" })
 
@@ -33,27 +37,39 @@ export namespace Vcs {
   export type Info = z.infer<typeof Info>
 
   async function currentBranch() {
-    return $`git rev-parse --abbrev-ref HEAD`
-      .quiet()
-      .nothrow()
-      .cwd(ScopeContext.current.directory)
-      .text()
-      .then((x) => x.trim())
-      .catch(() => undefined)
+    const query = async () => {
+      const result = await WorktreeProcess.run({
+        command: ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        directory: FileView.directory(),
+        roots: [],
+        metadata: true,
+        env: { GIT_OPTIONAL_LOCKS: "0" },
+      })
+      return result.exitCode === 0 ? result.stdout.toString().trim() : undefined
+    }
+    try {
+      if (FileView.native()) return await query()
+      const owner = WorkspaceState.current()!
+      const workspace = await WorkspaceCatalog.get(owner.id!, owner.scopeID)
+      if (workspace.binding.generation !== owner.generation || workspace.activeMount?.state !== "active") return
+      await using resources = await EnvironmentResources.resolve({
+        scopeID: owner.scopeID,
+        workspaceID: owner.id,
+        workspaceGeneration: owner.generation,
+        needs: { workspace: true },
+      })
+      return await EnvironmentResources.provide(resources, `vcs:${crypto.randomUUID()}`, query)
+    } catch (error) {
+      log.debug("branch unavailable", { error })
+      return undefined
+    }
   }
 
   const state = WorkspaceState.create(
     async () => {
-      const repository = await $`git rev-parse --is-inside-work-tree`
-        .cwd(ScopeContext.current.directory)
-        .quiet()
-        .nothrow()
-      if (repository.exitCode !== 0 || repository.stdout.toString().trim() !== "true") {
-        return { branch: async () => undefined, unsubscribe: undefined, watcher: undefined }
-      }
       const watcher = VcsBranchWatcher.create({
         debounceMs: 50,
-        resolve: currentBranch,
+        resolve: AsyncLocalStorage.bind(currentBranch),
         onChange: (branch, previous) => {
           log.info("branch changed", { from: previous, to: branch })
           WorkspaceEvents.publish(Event.BranchUpdated, { branch })
@@ -63,7 +79,7 @@ export namespace Vcs {
       log.info("initialized", { branch: current })
 
       const unsubscribe = WorkspaceEvents.subscribe(FileWatcher.Event.Updated, (event) => {
-        watcher.notify(event.properties.file)
+        watcher.notify(event.properties.resync ? ".git/HEAD" : event.properties.file)
       })
 
       return {

@@ -1,3 +1,4 @@
+import { FileView } from "../file/view"
 import { z } from "zod"
 import { createTwoFilesPatch } from "diff"
 import DESCRIPTION from "./revise-file.txt"
@@ -152,7 +153,7 @@ export const ReviseFileTool = Tool.define(
           )
         }
 
-        const file = Bun.file(resolvedPath)
+        const file = FileView.file(resolvedPath)
         const stats = await file.stat().catch(() => undefined)
         if (!stats) throw new Error(`File not found: ${section.path}`)
         if (stats.isDirectory()) throw new Error(`Path is a directory, not a file: ${section.path}`)

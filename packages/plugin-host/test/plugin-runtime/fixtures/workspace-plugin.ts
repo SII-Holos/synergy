@@ -5,8 +5,22 @@ export default definePlugin({
   id: "workspace-runtime-fixture",
   version: "1.0.0",
   description: "Workspace invocation ownership fixture",
-  capabilities: [capability("workspace.read"), capability("workspace.write")],
+  capabilities: [capability("workspace.read"), capability("workspace.write"), capability("shell.execute")],
   contributions: [
+    operation({
+      id: "transform",
+      type: "command",
+      requires: ["workspace.read", "workspace.write", "shell.execute"],
+      input: z.object({ path: z.string(), command: z.array(z.string()).min(1) }),
+      output: z.object({ before: z.string(), after: z.string(), exitCode: z.number() }),
+      async handler(input, context) {
+        const before = await context.workspace!.read!(input.path)
+        const execution = await context.shell!.run({ command: input.command as [string, ...string[]] })
+        const after = await context.workspace!.read!(input.path)
+        await context.workspace!.write!(input.path, `${after}:plugin`)
+        return { before, after: await context.workspace!.read!(input.path), exitCode: execution.exitCode }
+      },
+    }),
     operation({
       id: "edit",
       type: "command",

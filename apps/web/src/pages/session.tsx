@@ -237,6 +237,7 @@ function SessionPageContent() {
   const [store, setStore] = createStore({
     messageId: undefined as string | undefined,
     turnStart: 0,
+    newSessionEnvironment: undefined as { scopeID: string; id: string | null | undefined } | undefined,
     newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
     promptHeight: 0,
     mobileReviewOpen: false,
@@ -1574,6 +1575,9 @@ function SessionPageContent() {
             get readOnly() {
               return sessionMeta().isReadOnly
             },
+            get newSessionEnvironmentID() {
+              return store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
+            },
             get newSessionWorkspaceSelection() {
               return newSessionWorkspaceSelection()
             },
@@ -1586,8 +1590,10 @@ function SessionPageContent() {
             get newSessionCanCreateWorktree() {
               return sync.scope?.local?.vcs === "git"
             },
+            onNewSessionEnvironmentChange: (id) => setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id }),
             onNewSessionWorkspaceSelectionChange: (selection) => setStore("newSessionWorkspaceSelection", selection),
-            onNewSessionWorkspaceSelectionReset: () => setStore("newSessionWorkspaceSelection", undefined),
+            onNewSessionWorkspaceSelectionReset: () =>
+              setStore({ newSessionWorkspaceSelection: undefined, newSessionEnvironment: undefined }),
             onNewSessionTransitionChange: setNewSessionTransition,
             get sessionTransitionPending() {
               return sessionTransitionPending()
@@ -1858,6 +1864,10 @@ function SessionPageContent() {
     conversation: () => (
       <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
         <SessionTopBar
+          newSessionEnvironmentID={
+            store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
+          }
+          onEnvironmentSelectionChange={(id) => setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id })}
           newSessionWorkspaceSelection={newSessionWorkspaceSelection()}
           onWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
           onWorkspaceTransition={startWorkspaceTransition}

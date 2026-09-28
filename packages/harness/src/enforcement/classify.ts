@@ -49,6 +49,7 @@ export namespace PathClassifier {
   export type Confidence = "high" | "medium" | "low"
 
   export interface Options {
+    pathMode?: "native" | "relative" | "posix" | "win32"
     workspace: string | null
     originalCheckout?: string
     /**
@@ -94,6 +95,21 @@ export namespace PathClassifier {
   }
 
   export function classify(input: string, options: Options): Result {
+    if (options.pathMode && options.pathMode !== "native") {
+      if (hasShellExpansion(input) || containsParentTraversal(input) || /[\x00-\x1f]/.test(input))
+        return outside("path traverses or expands outside the selected Workspace")
+      if (options.pathMode === "relative")
+        return input.startsWith("/") || input.includes("\\") || /^[a-zA-Z]:/.test(input)
+          ? outside("object Workspace paths must be relative")
+          : inside("relative path is inside the selected Workspace")
+      if (!options.workspace) return outside("no Workspace is bound")
+      const api = options.pathMode === "win32" ? path.win32 : path.posix
+      const root = api.normalize(options.workspace)
+      const relative = api.relative(root, api.resolve(root, input))
+      return relative === "" || (!api.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${api.sep}`))
+        ? inside("path is inside the selected execution Workspace")
+        : outside("path is outside the selected execution Workspace")
+    }
     if (!options.workspace) return outside("no local workspace is bound")
     const workspace = normalizeWorkspace(options.workspace)
     if (hasShellExpansion(input)) return outside("path uses shell expansion outside the active workspace")
@@ -142,7 +158,7 @@ export namespace PathClassifier {
   export function classifyPath(input: string, options: Options): Result {
     const base = classify(input, options)
 
-    if (!options.originalCheckout) return base
+    if (!options.originalCheckout || (options.pathMode && options.pathMode !== "native")) return base
 
     // If the base classifier already determined the path is inside the active
     // workspace, the originalCheckout check must not override that.  Worktrees

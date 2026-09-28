@@ -6,6 +6,7 @@ import { SessionEnvContributor } from "./env-contributor"
 
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
+import { WorkspaceCatalog } from "../workspace/catalog"
 import { SessionEndpoint } from "./endpoint"
 
 import PROMPT_FALLBACK from "./prompt/fallback.txt"
@@ -37,14 +38,23 @@ export namespace SystemPrompt {
     const envLines = [
       workspace
         ? `  Working directory: ${workspace.path}`
-        : "  Workspace: none. Local file and process tools require a workspace.",
+        : session?.workspaceID
+          ? `  Workspace: ${session.workspaceID}. File paths resolve within this Workspace.`
+          : "  Workspace: none. File tools require a Workspace; execution tools use the selected Environment.",
       `  Is directory a git repo: ${isGitRepo ? "yes" : "no"}`,
       `  Platform: ${process.platform}`,
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    const writeRoots = await Scope.Root.executionRoots(scope, workspace)
+    const writeRoots = await Scope.Root.executionRoots(scope, workspace).catch((error) => {
+      if (!WorkspaceCatalog.Unavailable.isInstance(error)) throw error
+      envLines.push(
+        "  Workspace files: unavailable. API-only work remains available; file operations require recovery.",
+      )
+      return []
+    })
     if (writeRoots.length) envLines.push(`  Writable workspace directories: ${writeRoots.join(", ")}`)
+    if (session) envLines.push(`  Selected Environment: ${session.environmentID ?? "none"}`)
 
     if (workspace) {
       envLines.push(`  Workspace type: ${workspace.type}`)

@@ -12,6 +12,7 @@ export namespace ToolMcpSource {
     id: string
     serverName: string
     toolName: string
+    requiresWorkspace?: boolean
     tool: Tool
     inputSchema: JSONSchema7
   }

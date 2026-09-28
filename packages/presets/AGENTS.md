@@ -11,7 +11,11 @@ Own complete-product source composition, cross-domain data commands and integrat
 - Full-data copies hold native directory retirement claims as well as offline Home locks, including selected folders and source removal. Copied Git relationship repair belongs to Local Runtime and must never reconnect to an uncopied source.
 - Preserve first-class native Desktop and WebRTC Browser presentation. Browser backend ownership belongs to `packages/browser-runtime`; protocol contracts belong to `packages/browser-core`.
 
+Prepare native PTY assets with `bun ../../packages/local-runtime/script/build-pty.ts` before `bun test test/server/runtime-websocket-shutdown.test.ts`. CI supplies the verified native build artifact.
+
 Run `bun run typecheck`, affected tests and `bun run test:coverage` from this package. The shared testing orchestrator injects a positive isolated-home marker into every child; never use raw parallel coverage. Model fixtures belong to `packages/testing/fixtures/models-api.json`.
+
+`script/acceptance.ts` owns opt-in local joint acceptance through `plan/run/resume/report`; its behavioral regressions live in `test/acceptance`. Keep real-provider calls outside CI, retain failed attempts and unknown accounting, and require independently verified evidence before reporting coverage.
 
 Run manual startup and CLI checks with an isolated `SYNERGY_HOME` using `develop-synergy`. Never restart or modify the active instance. For releases, verify full assets and an installed tarball outside the repository; source resolution alone cannot prove the package is complete.
 

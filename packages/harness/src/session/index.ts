@@ -1,6 +1,8 @@
 import { Workspace } from "./workspace-schema"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
+import { Environment } from "../environment"
+import { WorkspaceMounts } from "../workspace/mount"
 import { SessionRecords } from "./records"
 import { ModelSelection } from "./model-selection-schema"
 import { WorkspaceAccess } from "../workspace/access"
@@ -551,6 +553,7 @@ export namespace Session {
       workflow?: Info["workflow"]
       workspace?: import("./types").Workspace | null
       workspaceID?: string | null
+      environmentID?: string | null
       forkedFrom?: Info["forkedFrom"]
       completionNotice?: {
         silent?: boolean
@@ -634,6 +637,18 @@ export namespace Session {
     await Storage.transaction(async () => {
       if (result.parentID && !(await SessionManager.getSession(result.parentID)))
         throw new Storage.NotFoundError({ message: "Parent Session no longer exists" })
+      const environment = await Environment.select({
+        scopeID: scope.id,
+        ownerID: result.id,
+        workspaceID: result.workspaceID,
+        environmentID:
+          input?.environmentID !== undefined
+            ? input.environmentID
+            : parent?.scope.id === scope.id
+              ? parent.environmentID
+              : undefined,
+      })
+      result.environmentID = environment?.id ?? null
       await Storage.write(
         StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(result.id)),
         SessionRecords.serialize(result),
@@ -668,12 +683,7 @@ export namespace Session {
       return session
     if (selection.mode === "workspace") {
       SessionManager.assertIdle(sessionID)
-      const workspace = await WorkspaceBinding.validate(
-        selection.workspaceID,
-        session.scope.id,
-        selection.workspaceGeneration,
-      )
-      return updateWorkspace(sessionID, workspace, { requireIdle: true })
+      return updateWorkspace(sessionID, null, { requireIdle: true, reference: selection })
     }
     if (selection.mode === "none" || selection.mode === "current") {
       SessionManager.assertIdle(sessionID)
@@ -745,6 +755,7 @@ export namespace Session {
         scope: source.scope as Scope,
         workspace: source.workspace,
         workspaceID: source.workspaceID,
+        environmentID: source.environmentID,
         title: input.title,
         controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
         forkedFrom: {
@@ -864,17 +875,37 @@ export namespace Session {
   export async function updateWorkspace(
     sessionID: string,
     workspace: import("./types").Workspace | null,
-    options?: { requireIdle?: boolean; preserveActivityAt?: boolean },
+    options?: {
+      requireIdle?: boolean
+      preserveActivityAt?: boolean
+      reference?: { workspaceID: string; workspaceGeneration: number }
+    },
   ): Promise<Info> {
     return SessionWorkspaceRuntime.withBinding(sessionID, async () => {
       const session = await SessionManager.requireSession(sessionID)
       const owns = WorkspaceAccess.owns(sessionID)
       if (!owns) SessionManager.assertIdle(sessionID)
-      workspace = workspace?.id
-        ? await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
-        : await WorkspaceBinding.adopt(workspace, session.scope.id)
+      const reference =
+        options?.reference ??
+        (workspace?.id ? { workspaceID: workspace.id, workspaceGeneration: workspace.generation } : undefined)
+      const resolve = async () => {
+        if (!reference) return WorkspaceBinding.adopt(workspace, session.scope.id)
+        const record = await WorkspaceCatalog.get(reference.workspaceID, session.scope.id)
+        if (record.binding.state !== "bound" || record.lifecycle !== "active")
+          throw new WorkspaceCatalog.Unavailable({
+            workspaceID: record.id,
+            message: "Workspace has no storage authority",
+          })
+        if (reference.workspaceGeneration !== undefined && reference.workspaceGeneration !== record.binding.generation)
+          throw new WorkspaceCatalog.BindingChanged({ workspaceID: record.id, message: "Workspace binding changed" })
+        return record.backend?.provider === "objects"
+          ? null
+          : WorkspaceBinding.validate(record.id, session.scope.id, reference.workspaceGeneration)
+      }
+      workspace = await resolve()
+      const workspaceID = reference?.workspaceID ?? workspace?.id ?? null
       const commit = async () => {
-        if (workspace?.id) await WorkspaceBinding.validate(workspace.id, session.scope.id, workspace.generation)
+        await resolve()
         if (options?.requireIdle || !owns) SessionManager.assertIdle(sessionID)
         if (workspace && owns) {
           const { WorkspaceRuntime } = await import("../workspace/runtime")
@@ -884,7 +915,7 @@ export namespace Session {
             fn: () => WorkspaceRuntime.ensure(session.scope, workspace!),
           })
         }
-        await SessionWorkspaceRuntime.beforeTransition(session, workspace)
+        await SessionWorkspaceRuntime.beforeTransition(session, workspace, workspaceID)
         return updateInternal(
           sessionID,
           (draft) => {
@@ -894,7 +925,7 @@ export namespace Session {
               if (workspace.scopeID !== draft.scope.id) throw new Error("Workspace belongs to a different Scope")
             }
             draft.workspace = workspace
-            draft.workspaceID = workspace?.id ?? null
+            draft.workspaceID = workspaceID
           },
           { ...options, workspaceChange: true },
         )
@@ -902,6 +933,59 @@ export namespace Session {
       return owns
         ? WorkspaceAccess.transition(sessionID, workspace, commit)
         : WorkspaceAccess.task({ workspace }, commit)
+    })
+  }
+
+  export const EnvironmentSelection = z
+    .object({
+      environmentID: z.string().min(1).nullable(),
+      expectedEnvironmentID: z.string().min(1).nullable(),
+    })
+    .strict()
+    .meta({ ref: "SessionEnvironmentSelection" })
+
+  export async function updateEnvironment(
+    sessionID: string,
+    selection: z.infer<typeof EnvironmentSelection>,
+  ): Promise<Info> {
+    return SessionWorkspaceRuntime.withBinding(sessionID, async () => {
+      SessionManager.assertIdle(sessionID)
+      const session = await get(sessionID)
+      if ((session.environmentID ?? null) !== selection.expectedEnvironmentID)
+        throw new Environment.Stale({
+          environmentID: session.environmentID ?? "",
+          message: "Session Environment selection changed",
+        })
+      if (selection.environmentID === (session.environmentID ?? null)) return session
+      if (selection.environmentID) await Environment.get(selection.environmentID, session.scope.id)
+      if (session.environmentID && (await Environment.uses(session.environmentID)).length)
+        throw new Environment.Busy({
+          environmentID: session.environmentID,
+          message: "Finish or reconcile active Environment work before changing selection",
+        })
+      const workspace = session.workspaceID
+        ? await WorkspaceCatalog.get(session.workspaceID, session.scope.id)
+        : undefined
+      if (workspace?.activeMount && workspace.activeMount.target.environmentID === session.environmentID)
+        await WorkspaceMounts.detach({ scopeID: session.scope.id, workspaceID: workspace.id })
+      await SessionWorkspaceRuntime.beforeEnvironmentTransition(session)
+      return Storage.transaction(async () => {
+        SessionManager.assertIdle(sessionID)
+        await Environment.changeBinding({ scopeID: session.scope.id, ownerID: session.id, ...selection })
+        return updateInternal(
+          sessionID,
+          (draft) => {
+            SessionManager.assertIdle(sessionID)
+            if ((draft.environmentID ?? null) !== selection.expectedEnvironmentID)
+              throw new Environment.Stale({
+                environmentID: draft.environmentID ?? "",
+                message: "Session Environment selection changed",
+              })
+            draft.environmentID = selection.environmentID
+          },
+          { environmentChange: true },
+        )
+      })
     })
   }
 
@@ -1178,7 +1262,12 @@ export namespace Session {
   async function updateInternal(
     id: string,
     editor: (session: Info) => void,
-    options?: { preserveActivityAt?: boolean; forcePublish?: boolean; workspaceChange?: boolean },
+    options?: {
+      preserveActivityAt?: boolean
+      forcePublish?: boolean
+      workspaceChange?: boolean
+      environmentChange?: boolean
+    },
   ) {
     await SessionCompat.requireImported(id)
     return Storage.transaction(async () => {
@@ -1190,6 +1279,8 @@ export namespace Session {
       const before = structuredClone(session)
       const result = structuredClone(session)
       editor(result)
+      if (!options?.environmentChange && result.environmentID !== before.environmentID)
+        throw new Error("Environment bindings cannot be changed through Session.update")
       if (
         !options?.workspaceChange &&
         (result.workspaceID !== before.workspaceID ||

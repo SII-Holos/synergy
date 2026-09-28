@@ -73,12 +73,11 @@ test("creation, children and forks preserve an unresolved Workspace reference", 
           expect(session.workspace).toBeNull()
           expect(await Session.get(session.id)).toMatchObject({ workspaceID: missing.id, workspace: null })
           let ran = false
-          await expect(
-            SessionManager.run(session.id, async () => {
-              ran = true
-            }),
-          ).rejects.toThrow()
-          expect(ran).toBe(false)
+          await SessionManager.run(session.id, async () => {
+            ran = true
+          })
+          expect(ran).toBe(true)
+          await expect(Session.assertWorkspaceAvailable(session.id)).rejects.toThrow()
         }
         const unbound = await Session.create({ parentID: parent.id, workspace: null })
         expect(unbound.workspaceID).toBeNull()

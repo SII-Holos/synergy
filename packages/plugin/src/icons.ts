@@ -53,7 +53,7 @@ export const SemanticIconToken = {
   "session.idle": "circle",
   "session.waiting": "hourglass",
   "session.retry": "rotate-ccw",
-  "session.pause": "circle-pause",
+  "session.pause": "pause",
   "session.continue": "play",
   "session.child": "arrow-down-from-line",
   "session.background": "calendar-days",

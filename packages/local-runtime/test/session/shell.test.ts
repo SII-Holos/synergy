@@ -211,3 +211,31 @@ test.skipIf(process.platform === "win32")("user shell records full output before
 )
 
 afterRuntimeTests(() => runtime.close())
+
+test.skipIf(process.platform === "win32")(
+  "user shell uses its Environment without requiring files",
+  () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        workspace: null,
+        async fn() {
+          const session = await Session.create({ workspace: null })
+          const result = await shell({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            command: "printf environment-shell",
+          })
+          expect(
+            result.parts.some(
+              (part) =>
+                part.type === "tool" && part.state.status === "completed" && part.state.output === "environment-shell",
+            ),
+          ).toBe(true)
+        },
+      })
+    }),
+  20_000,
+)

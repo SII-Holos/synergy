@@ -4,8 +4,7 @@ import path from "node:path"
 import { randomBytes } from "node:crypto"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 
-if (process.env.SYNERGY_REQUIRE_POSTGRES_TESTS === "1" && !process.env.SYNERGY_TEST_POSTGRES_URL)
-  throw new Error("PostgreSQL contract tests require a real database")
+import { storageTestBackends } from "../support/storage-backends"
 
 const root = await fs.mkdtemp(path.join(process.env.SYNERGY_TEST_ROOT!, "transactional-store-"))
 const stores: TransactionalStore[] = []
@@ -22,7 +21,7 @@ afterAll(async () => {
   await fs.rm(root, { recursive: true, force: true })
 })
 
-for (const backend of ["sqlite", ...(process.env.SYNERGY_TEST_POSTGRES_URL ? ["postgres"] : [])] as const) {
+for (const backend of storageTestBackends()) {
   describe(`${backend} transactional records`, () => {
     async function open() {
       const namespace = crypto.randomUUID()
@@ -285,18 +284,21 @@ for (const backend of ["sqlite", ...(process.env.SYNERGY_TEST_POSTGRES_URL ? ["p
   })
 }
 
-test("sqlite keeps the database and WAL sidecars owner-only", async () => {
-  const filename = path.join(root, "permissions.sqlite")
-  const store = await TransactionalStore.open({ backend: "sqlite", namespace: "permissions", filename })
-  try {
-    await store.write(["record"], { value: 1 })
-    const mode = async (suffix: string) => (await fs.stat(`${filename}${suffix}`)).mode & 0o777
-    if (process.platform !== "win32") {
-      expect(await mode("")).toBe(0o600)
-      expect(await mode("-wal")).toBe(0o600)
-      expect(await mode("-shm")).toBe(0o600)
+test.skipIf(!storageTestBackends().includes("sqlite"))(
+  "sqlite keeps the database and WAL sidecars owner-only",
+  async () => {
+    const filename = path.join(root, "permissions.sqlite")
+    const store = await TransactionalStore.open({ backend: "sqlite", namespace: "permissions", filename })
+    try {
+      await store.write(["record"], { value: 1 })
+      const mode = async (suffix: string) => (await fs.stat(`${filename}${suffix}`)).mode & 0o777
+      if (process.platform !== "win32") {
+        expect(await mode("")).toBe(0o600)
+        expect(await mode("-wal")).toBe(0o600)
+        expect(await mode("-shm")).toBe(0o600)
+      }
+    } finally {
+      await store.close()
     }
-  } finally {
-    await store.close()
-  }
-})
+  },
+)

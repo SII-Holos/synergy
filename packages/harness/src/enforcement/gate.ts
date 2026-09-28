@@ -107,6 +107,7 @@ export interface PluginApprovalCapabilities {
 }
 
 export interface GateOptions {
+  pathMode?: PathClassifier.Options["pathMode"]
   activeWorkspace: string | null
   workspaceType: string
   profileId?: ProfileIdInput
@@ -196,6 +197,7 @@ function classifyPathCapability(
   pathInput: string,
   options: {
     activeWorkspace: string | null
+    pathMode?: PathClassifier.Options["pathMode"]
     originalCheckout?: string
     write?: boolean
     readRoots?: string[]
@@ -213,6 +215,7 @@ function classifyPathCapability(
     options.followFinalSymlink === undefined ? undefined : { followFinalSymlink: options.followFinalSymlink }
   const classification = PathClassifier.classifyPath(pathInput, {
     workspace: options.activeWorkspace,
+    pathMode: options.pathMode,
     originalCheckout: options.originalCheckout,
     followFinalSymlink: options.followFinalSymlink,
   })
@@ -281,6 +284,7 @@ export namespace EnforcementGate {
   export async function create(options: GateOptions) {
     const {
       activeWorkspace,
+      pathMode,
       workspaceType,
       profileId: rawProfileId = "guarded",
       registeredMcpTools = new Set<string>(),
@@ -320,7 +324,7 @@ export namespace EnforcementGate {
         approvedReadPaths.add(grant)
       }
     }
-    const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
+    const pathOptions = { activeWorkspace, pathMode, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
 

@@ -2,6 +2,29 @@ import { describe, expect, test } from "bun:test"
 import fs from "fs"
 import path from "path"
 import os from "os"
+import { PathClassifier } from "../../src/enforcement/classify"
+
+test("target paths are classified in their own namespace without consulting controller symlinks", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-classify-target-"))
+  try {
+    fs.symlinkSync(os.tmpdir(), path.join(root, "link"), process.platform === "win32" ? "junction" : undefined)
+    expect(PathClassifier.classify("link/file", { workspace: root }).boundary).toBe("outside")
+    expect(
+      PathClassifier.classify("link/file", {
+        workspace: root,
+        pathMode: process.platform === "win32" ? "win32" : "posix",
+      }).boundary,
+    ).toBe("inside")
+    expect(PathClassifier.classify("src/file", { workspace: null, pathMode: "relative" }).boundary).toBe("inside")
+    for (const filename of ["/etc/passwd", "../file", "C:\\file", "~/secret"])
+      expect(PathClassifier.classify(filename, { workspace: null, pathMode: "relative" }).boundary).toBe("outside")
+    expect(PathClassifier.classify("D:\\other", { workspace: "C:\\project", pathMode: "win32" }).boundary).toBe(
+      "outside",
+    )
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true })
+  }
+})
 
 // ---------------------------------------------------------------------------
 // enforcement/classify.test.ts

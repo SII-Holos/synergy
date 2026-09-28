@@ -1,3 +1,4 @@
+import { fileWorkspaceLabel } from "@/context/file/workspace"
 import { useLingui } from "@lingui/solid"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
@@ -121,8 +122,8 @@ export function FileExplorer(props: { onClose: () => void }) {
   const openActions = (path = focusedPath() ?? selectedPath(), operation?: FileEntryOperation) => {
     const node = path ? (file.explorer.node(path) ?? file.get(path)?.node) : undefined
     const actions = file.entries
-    const workspacePath = file.workspace?.path
-    if (!workspacePath) return
+    if (!file.workspace) return
+    const workspacePath = fileWorkspaceLabel(file.workspace)
     const dirty = path ? file.draft.within(path) : false
     dialog.show(() => (
       <FileEntryDialog

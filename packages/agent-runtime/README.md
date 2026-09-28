@@ -11,4 +11,4 @@ const client = runtime.client({ directory: process.cwd() })
 const session = await client.session.create({ title: "Embedded agent" })
 ```
 
-The core includes local execution and the process plugin host. Components are checked for duplicate identities, missing dependencies, version conflicts and cycles before opening storage. Runtime close drains execution and disposes started services in reverse dependency order.
+The core includes local execution and the process plugin host. Set `environment: false` to omit the default native Environment in an API-only host; Session creation and API tools do not allocate compute. See [Environments](../../docs/architecture/environments.md) for selection and lifetime. Components are checked for duplicate identities, missing dependencies, version conflicts and cycles before opening storage. Runtime close drains execution and disposes started services in reverse dependency order.

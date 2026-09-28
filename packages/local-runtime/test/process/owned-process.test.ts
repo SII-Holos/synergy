@@ -10,6 +10,54 @@ import { OwnedProcess } from "../../src/process/owned-process"
 const nativeTest = test.skipIf(!["darwin", "linux"].includes(process.platform))
 
 nativeTest(
+  "closing stdin with unread input does not terminate the command or truncate its remaining output",
+  async () => {
+    await using tmp = await tmpdir()
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+    const ready = path.join(tmp.path, "ready")
+    const close = path.join(tmp.path, "close-input")
+    const lease = await coordinator.acquire({
+      id: randomUUID(),
+      owner: "owner",
+      ancestors: [],
+      kind: "process",
+      roots: [tmp.path],
+    })
+    const owned = await OwnedProcess.prepare({
+      command: process.execPath,
+      args: [
+        "-e",
+        "import fs from 'node:fs'; await Bun.write(process.argv[1], 'ready'); while (!(await Bun.file(process.argv[2]).exists())) await Bun.sleep(10); fs.closeSync(0); process.stdout.write('after-stdin-close'); await Bun.sleep(100); process.stderr.write('remaining-stderr')",
+        ready,
+        close,
+      ],
+      cwd: tmp.path,
+      env: {},
+      lease,
+    })
+    const stdout = text(owned.child.stdout)
+    const stderr = text(owned.child.stderr)
+    const closed = ChildProcessClose.wait(owned.child)
+    void closed.catch(() => {})
+    try {
+      await owned.activate()
+      while (!(await Bun.file(ready).exists())) await Bun.sleep(10)
+      owned.child.stdin.write(Buffer.alloc(4 * 1024 * 1024))
+      await Bun.write(close, "close")
+      expect(await closed).toMatchObject({ code: 0, signal: null, drainTimedOut: false })
+      await owned.completion
+      expect(await stdout).toBe("after-stdin-close")
+      expect(await stderr).toBe("remaining-stderr")
+      expect(await coordinator.inspect()).toHaveLength(0)
+    } finally {
+      await owned.stop()
+      await Promise.allSettled([closed, stdout, stderr])
+    }
+  },
+  20000,
+)
+
+nativeTest(
   "activation records ownership before any command runs and preserves bytes, cwd, env and exit",
   async () => {
     await using tmp = await tmpdir()

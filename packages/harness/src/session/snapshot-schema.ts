@@ -6,7 +6,11 @@ export namespace SnapshotSchema {
     .object({
       id: z.string().min(1),
       generation: z.number().int().positive(),
-      root: z.string().min(1),
+      root: z.string(),
+      pathKind: z.literal("workspace").optional(),
+    })
+    .refine((source) => (source.pathKind === "workspace" ? source.root === "" : source.root.length > 0), {
+      message: "A native snapshot needs a root; Workspace paths are relative",
     })
     .meta({ ref: "SnapshotWorkspace" })
   export type Workspace = z.infer<typeof Workspace>

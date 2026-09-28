@@ -1035,6 +1035,37 @@ describe("CdpPageController input actions", () => {
     ).rejects.toMatchObject({ code: "browser_target_not_actionable" })
   })
 
+  test("stops obstruction polling when the action deadline expires without dispatching input", async () => {
+    const transport = new FakeTransport()
+    let now = 0
+    let samples = 0
+    transport.setCallFunction(() => {
+      now += 500
+      samples++
+      return {
+        visible: true,
+        enabled: true,
+        editable: false,
+        receivesEvents: false,
+        box: { x: 10, y: 20, width: 100, height: 30 },
+        obstruction: { tag: "div", role: "dialog", name: "Overlay" },
+      }
+    })
+    const controller = controllerFor(transport, { now: () => now })
+    try {
+      await expect(
+        controller.execute({
+          type: "action",
+          action: { type: "click", target: { kind: "css", value: "button" }, timeoutMs: 500, settleMode: "none" },
+        }),
+      ).rejects.toMatchObject({ code: "browser_obstructed" })
+      expect(samples).toBe(1)
+      expect(transport.calls.some((call) => call.method.startsWith("Input."))).toBe(false)
+    } finally {
+      await controller.dispose()
+    }
+  })
+
   test("reports missing locators with a structured error", async () => {
     const transport = new FakeTransport()
     transport.locatorCount = 0

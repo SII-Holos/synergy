@@ -1,3 +1,4 @@
+import { fileWorkspaceLabel } from "@/context/file/workspace"
 import DOMPurify from "dompurify"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useLingui } from "@lingui/solid"
@@ -502,7 +503,7 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
     <div class="file-workbench">
       <div class="file-workbench-toolbar">
         <nav class="file-breadcrumb" aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}>
-          <Show when={file.workspace?.path}>
+          <Show when={file.workspace && fileWorkspaceLabel(file.workspace)}>
             {(root) => (
               <button
                 type="button"

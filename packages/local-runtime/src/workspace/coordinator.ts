@@ -1,4 +1,4 @@
-import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceBusyError as BusyError } from "@ericsanchezok/synergy-harness/workspace/claim"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
@@ -8,7 +8,7 @@ import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identi
 import { retrySleep } from "@ericsanchezok/synergy-util/retry"
 import { identifyFilesystemObject } from "@ericsanchezok/synergy-util/filesystem-identity"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
-import { FileMutation } from "../file/mutation"
+import { FileCoordination } from "../file/coordination"
 import { OwnedTree } from "../process/owned-tree"
 
 const Root = z.object({
@@ -31,11 +31,13 @@ const Claim = z.object({
   processTree: OwnedTree.Reference.optional(),
   finalizer: z.object({ pid: z.number().int().positive(), startIdentity: z.string() }).optional(),
   finalizing: z.boolean().optional(),
+  durable: z.boolean().optional(),
+  drained: z.boolean().optional(),
   cooperative: z.boolean().optional(),
   transient: z.boolean().optional(),
   state: z.enum(["waiting", "active"]),
 })
-const Ledger = z.object({ version: z.literal(1), claims: z.array(Claim) })
+const Ledger = z.object({ version: z.union([z.literal(1), z.literal(2), z.literal(3)]), claims: z.array(Claim) })
 type Claim = z.infer<typeof Claim>
 type Ledger = z.infer<typeof Ledger>
 
@@ -49,13 +51,14 @@ export interface WorkspaceClaimInput {
   parentClaim?: string
   processID?: number
   retainAfterExit?: boolean
+  durable?: boolean
   cooperative?: boolean
   transient?: boolean
   signal?: AbortSignal
   timeoutMs?: number
 }
 
-export const WorkspaceBusyError = WorkspaceAccess.BusyError
+export const WorkspaceBusyError = BusyError
 
 function contains(parent: string, child: string) {
   const relative = path.relative(parent, child)
@@ -128,7 +131,7 @@ export class WorkspaceCoordinator {
 
   private directory() {
     return (this.directoryPromise ??= (async () => {
-      if (!this.options.directory) return FileMutation.lockDirectory()
+      if (!this.options.directory) return FileCoordination.lockDirectory()
       const directory = this.options.directory
       await fs.mkdir(directory, { recursive: true, mode: 0o700 })
       const stat = await fs.lstat(directory)
@@ -142,7 +145,8 @@ export class WorkspaceCoordinator {
     })())
   }
 
-  private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree">, fresh = false) {
+  private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree" | "drained">, fresh = false) {
+    if (claim.drained) return false
     if (claim.processTree) {
       try {
         return OwnedTree.inspect(claim.processTree).state === "active"
@@ -185,12 +189,15 @@ export class WorkspaceCoordinator {
         const ledger = raw === undefined ? { version: 1 as const, claims: [] } : Ledger.parse(JSON.parse(raw))
         const alive = await Promise.all(
           ledger.claims.map(
-            async (claim) => (await this.alive(claim)) || (!!claim.finalizer && (await this.alive(claim.finalizer))),
+            async (claim) =>
+              claim.durable || (await this.alive(claim)) || (!!claim.finalizer && (await this.alive(claim.finalizer))),
           ),
         )
         const retired = ledger.claims.filter((_claim, index) => !alive[index])
         ledger.claims = ledger.claims.filter((_claim, index) => alive[index])
         const result = await fn(ledger)
+        if (ledger.claims.some((claim) => claim.drained)) ledger.version = 3
+        else if (ledger.version < 2 && ledger.claims.some((claim) => claim.durable)) ledger.version = 2
         const serialized = JSON.stringify(ledger)
         if (raw !== serialized) await AtomicFile.writeJsonAtomic(filename, serialized, { durable: true, private: true })
         for (const claim of retired) {
@@ -214,6 +221,8 @@ export class WorkspaceCoordinator {
       throw new Error("Invalid Workspace admission timeout")
     if (input.retainAfterExit && input.kind !== "process")
       throw new Error("Only process claims can retain finalization ownership")
+    if (input.durable && (input.kind !== "process" || !input.retainAfterExit))
+      throw new Error("Durable claims require retained process ownership")
     if (input.cooperative && input.kind !== "process")
       throw new Error("Only process claims support cooperative retirement")
     const finalizerIdentity = input.retainAfterExit ? await processStartIdentity(process.pid) : undefined
@@ -239,7 +248,7 @@ export class WorkspaceCoordinator {
         ? null
         : await Promise.all(
             [...new Set(values)].map(async (root) => {
-              let canonical = await FileMutation.canonical(root)
+              let canonical = await FileCoordination.canonical(root)
               if (process.platform === "win32") canonical = canonical.toLowerCase()
               const parents: string[] = []
               for (let parent = path.dirname(canonical); parent !== canonical; parent = path.dirname(parent)) {
@@ -267,6 +276,7 @@ export class WorkspaceCoordinator {
       parentClaim: input.parentClaim,
       cooperative: input.cooperative,
       transient: input.transient,
+      durable: input.durable,
       roots,
       useRoots,
       pid,
@@ -369,15 +379,60 @@ export class WorkspaceCoordinator {
         throw new WorkspaceBusyError("Workspace is busy; coordination admission timed out")
       throw error
     }
+    return this.lease(request.id, request.token, input.durable)
+  }
+
+  async recover(reference: { id: string; token: string }) {
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (claim && !claim.durable) throw new Error("Workspace claim is not recoverable")
+    })
+    return this.lease(reference.id, reference.token, true)
+  }
+
+  async confirmDrained(reference: { id: string; token: string }) {
+    // OwnedProcess removes its Linux receipt during cleanup; preserve the verified result before checkpoint I/O.
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (!claim?.durable || !claim.processTree) throw new Error("A retained process tree is required for completion")
+      if (claim.drained) return
+      if (OwnedTree.inspect(claim.processTree).state !== "exited")
+        throw new Error("Workspace process tree is still active")
+      claim.drained = true
+    })
+  }
+
+  async validateRetention(reference: { id: string; token: string }, root: string) {
+    const canonical = await FileCoordination.canonical(root)
+    const identity = await identifyFilesystemObject(canonical)
+    await this.update((ledger) => {
+      const claim = ledger.claims.find((claim) => claim.id === reference.id && claim.token === reference.token)
+      if (
+        !claim?.durable ||
+        claim.state !== "active" ||
+        !covers(claim.roots, [
+          {
+            path: process.platform === "win32" ? canonical.toLowerCase() : canonical,
+            physicalID: identity.physicalID,
+            ancestorPhysicalIDs: [],
+          },
+        ])
+      )
+        throw new Error("Checkpoint has no retained writer covering this Workspace")
+    })
+  }
+
+  private lease(id: string, token: string, durable?: boolean) {
     let releasing: Promise<void> | undefined
     return {
-      id: request.id,
+      id,
+      recovery: durable ? { id, token } : undefined,
       release: (beforeRelease?: () => Promise<void>) =>
-        (releasing ??= this.release(request.id, request.token, beforeRelease).finally(() => {
+        (releasing ??= this.release(id, token, beforeRelease).finally(() => {
           releasing = undefined
         })),
       bindProcess: (processID: number, options?: { descendants?: boolean }) =>
-        this.bindProcess(request.id, request.token, processID, options),
+        this.bindProcess(id, token, processID, options),
     }
   }
 

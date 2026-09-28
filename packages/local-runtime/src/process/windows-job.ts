@@ -1,4 +1,5 @@
-import { dlopen, ptr, type Pointer } from "bun:ffi"
+import { openNativeLibrary } from "../native/ffi"
+import { ptr } from "bun:ffi"
 
 export namespace WindowsJob {
   export interface Reference {
@@ -12,31 +13,33 @@ export namespace WindowsJob {
 
   function initialize() {
     if (process.platform !== "win32") throw new Error("Windows process jobs are unavailable")
-    return dlopen("kernel32.dll", {
-      CreateJobObjectW: { args: ["ptr", "ptr"], returns: "ptr" },
-      OpenJobObjectW: { args: ["u32", "bool", "ptr"], returns: "ptr" },
-      SetInformationJobObject: { args: ["ptr", "i32", "ptr", "u32"], returns: "bool" },
-      QueryInformationJobObject: { args: ["ptr", "i32", "ptr", "u32", "ptr"], returns: "bool" },
-      AssignProcessToJobObject: { args: ["ptr", "ptr"], returns: "bool" },
-      IsProcessInJob: { args: ["ptr", "ptr", "ptr"], returns: "bool" },
-      TerminateJobObject: { args: ["ptr", "u32"], returns: "bool" },
-      OpenProcess: { args: ["u32", "bool", "u32"], returns: "ptr" },
-      GetProcessTimes: { args: ["ptr", "ptr", "ptr", "ptr", "ptr"], returns: "bool" },
-      TerminateProcess: { args: ["ptr", "u32"], returns: "bool" },
-      CloseHandle: { args: ["ptr"], returns: "bool" },
+    // Provenance: https://bun.com/docs/runtime/ffi#pointers
+    // Windows HANDLE values are opaque integers, not virtual addresses accepted by Bun's pointer binding.
+    return openNativeLibrary("kernel32.dll", {
+      CreateJobObjectW: { args: ["ptr", "ptr"], returns: "u64" },
+      OpenJobObjectW: { args: ["u32", "bool", "ptr"], returns: "u64" },
+      SetInformationJobObject: { args: ["u64", "i32", "ptr", "u32"], returns: "bool" },
+      QueryInformationJobObject: { args: ["u64", "i32", "ptr", "u32", "ptr"], returns: "bool" },
+      AssignProcessToJobObject: { args: ["u64", "u64"], returns: "bool" },
+      IsProcessInJob: { args: ["u64", "u64", "ptr"], returns: "bool" },
+      TerminateJobObject: { args: ["u64", "u32"], returns: "bool" },
+      OpenProcess: { args: ["u32", "bool", "u32"], returns: "u64" },
+      GetProcessTimes: { args: ["u64", "ptr", "ptr", "ptr", "ptr"], returns: "bool" },
+      TerminateProcess: { args: ["u64", "u32"], returns: "bool" },
+      CloseHandle: { args: ["u64"], returns: "bool" },
       GetLastError: { args: [], returns: "u32" },
       FreeConsole: { args: [], returns: "bool" },
       CreateProcessW: {
         args: ["ptr", "ptr", "ptr", "ptr", "bool", "u32", "ptr", "ptr", "ptr", "ptr"],
         returns: "bool",
       },
-      ResumeThread: { args: ["ptr"], returns: "u32" },
+      ResumeThread: { args: ["u64"], returns: "u32" },
     }).symbols
   }
   const runtime = () => (native ??= initialize())
   const error = (operation: string) => new Error(`${operation} failed: ${runtime().GetLastError()}`)
   const wide = (value: string) => Buffer.from(`${value}\0`, "utf16le")
-  function close(handle: Pointer) {
+  function close(handle: bigint) {
     if (!runtime().CloseHandle(handle)) throw error("CloseHandle")
   }
   function open(reference: Reference, access: number) {
@@ -181,10 +184,10 @@ export namespace WindowsJob {
       )
     )
       throw error("CreateProcessW")
-    const processHandle = Number(information.readBigUInt64LE(0)) as Pointer
-    const threadHandle = Number(information.readBigUInt64LE(8)) as Pointer
+    const processHandle = information.readBigUInt64LE(0)
+    const threadHandle = information.readBigUInt64LE(8)
     const pid = information.readUInt32LE(16)
-    let job: Pointer | undefined
+    let job: bigint | undefined
     try {
       const reference = referenceFor(pid)
       const name = wide(reference.name)

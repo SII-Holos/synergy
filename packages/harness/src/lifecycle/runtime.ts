@@ -1,6 +1,8 @@
 import { observeStorageMaintenance } from "../storage/maintenance-progress"
 import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
 import { registerHarness } from "./register"
+import { EnvironmentProviders } from "../environment/provider"
+import { EnvironmentMaintenance } from "../environment/maintenance"
 import { ProviderCatalog } from "../provider/catalog"
 import { ModelsCatalog, startModelCatalogRefresh } from "../provider/models"
 import { RuntimeContext, type RuntimeHost } from "./context"
@@ -139,6 +141,7 @@ export namespace RuntimeHandle {
     let residentStarted = false
     let stopCompat: (() => Promise<void>) | undefined
     let stopReclamation: (() => Promise<void>) | undefined
+    let stopEnvironments: (() => Promise<void>) | undefined
     let stopVaultSync: (() => void) | undefined
     let vaultSync = Promise.resolve()
     let closing: Promise<void> | undefined
@@ -178,6 +181,7 @@ export namespace RuntimeHandle {
         for (const stop of stopBackground) await cleanup(stop)
         await cleanup(() => StorageRetention.stop())
         await cleanup(() => stopReclamation?.())
+        await cleanup(() => stopEnvironments?.())
         await cleanup(() => stopCompat?.())
         await cleanup(async () => {
           stopVaultSync?.()
@@ -221,6 +225,8 @@ export namespace RuntimeHandle {
         for (const stop of [() => AgentTurn.stop(), () => PolicyWorker.stop(), () => ToolScheduler.stop()])
           await cleanup(stop)
         await cleanup(() => ToolResolver.stop())
+        await cleanup(() => ScopeRuntime.stop())
+        await cleanup(() => EnvironmentProviders.close())
         await cleanup(() => LoopJob.drainAll())
         await cleanup(() => Session.flushPartWrites())
         await cleanup(async () => {
@@ -229,7 +235,6 @@ export namespace RuntimeHandle {
         })
         await cleanup(() => ModelsCatalog.stop())
         await cleanup(() => ProviderCatalog.stop())
-        await cleanup(() => ScopeRuntime.stop())
         await cleanup(() => services.disposeExtensions?.())
         await cleanup(() => SessionCompat.drain())
         await cleanup(() => ObservabilityStore.interruptRunningSpans({ reason: "runtime_shutdown" }))
@@ -389,6 +394,7 @@ export namespace RuntimeHandle {
         })
       options.signal?.throwIfAborted()
       stopBackground.push(SessionManager.startIdleSweep())
+      stopEnvironments = EnvironmentMaintenance.start()
       stopBackground.push(await ProviderCatalog.subscribeModelCatalog())
       if (options.mode === "server") stopBackground.push(startModelCatalogRefresh())
       if (options.mode === "server")

@@ -37,7 +37,7 @@ test("process admission uses the compiled write footprint separately from bindin
   })
 })
 
-for (const operation of ["write", "metadata", "process", "exclusive", "retire"] as const) {
+for (const operation of ["write", "metadata", "process", "exclusive", "retire", "hostClaim"] as const) {
   for (const failure of ["cancel", "resume-error"] as const) {
     test(`${operation} releases admission when capacity resume ${failure}`, async () => {
       const claims = new Set<string>()
@@ -71,7 +71,18 @@ for (const operation of ["write", "metadata", "process", "exclusive", "retire"] 
               },
             },
             async () => {
-              if (operation === "process") {
+              if (operation === "hostClaim") {
+                const lease = await WorkspaceAccess.hostClaim({
+                  id: "file-host",
+                  kind: "process",
+                  roots: ["/workspace"],
+                  durable: true,
+                  retainAfterExit: true,
+                  signal: controller.signal,
+                })
+                executed = true
+                await lease.release()
+              } else if (operation === "process") {
                 const lease = await WorkspaceAccess.process(["/workspace"], controller.signal)
                 executed = true
                 await lease.release()

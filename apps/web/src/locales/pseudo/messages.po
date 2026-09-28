@@ -10157,6 +10157,106 @@ msgid "diff.preview-truncated"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "environment.dialog.activeUses"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.activityLoading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.cancelDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.existing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.none"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.operation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.profiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reconcile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recover"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.recoverDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.release"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.reload"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.state"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "environment.dialog.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "list.for-label"
 msgstr ""
 
@@ -22148,6 +22248,14 @@ msgid "workspace.dialog.choose"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.createStored"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.description"
 msgstr ""
 
@@ -22168,6 +22276,10 @@ msgid "workspace.dialog.loading"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "workspace.dialog.name"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "workspace.dialog.none"
 msgstr ""
 
@@ -22185,6 +22297,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.rebindPath"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.recoverDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.recoverSaved"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -22213,6 +22333,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.dialog.sharingEmpty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.dialog.store"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -22245,6 +22369,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "workspace.location.planned"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workspace.location.stored"
 msgstr ""
 
 #. js-lingui-explicit-id

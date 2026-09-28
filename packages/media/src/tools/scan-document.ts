@@ -1,11 +1,11 @@
 import z from "zod"
 import * as path from "path"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
-import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Document } from "../util/document"
 import { FileTime } from "@ericsanchezok/synergy-harness/file/time"
 import { truncateLineForDisplay } from "@ericsanchezok/synergy-local-runtime/tools/anchored-file"
 import DESCRIPTION from "./scan-document.txt"
+import { Attachment } from "@ericsanchezok/synergy-harness/attachment"
 
 const DEFAULT_LIMIT = 2000
 const MAX_LIMIT = 2000
@@ -54,9 +54,7 @@ export const ScanDocumentTool = Tool.define("scan_document", {
       .describe(`Maximum lines to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT})`),
   }),
   async execute(params, ctx) {
-    const filepath = path.isAbsolute(params.filePath)
-      ? params.filePath
-      : path.join(ScopeContext.current.directory, params.filePath)
+    const { filepath, managed } = await Attachment.resolveLocalPath(params.filePath)
 
     await ctx.ask({
       permission: "scan_document",
@@ -141,7 +139,7 @@ export const ScanDocumentTool = Tool.define("scan_document", {
       output += `\n\n(End of document — ${allLines.length} lines total)`
     }
 
-    FileTime.read(ctx.sessionID, filepath)
+    if (!managed) FileTime.read(ctx.sessionID, filepath)
 
     const metadata: ScanDocumentMetadata = {
       filePath: filepath,

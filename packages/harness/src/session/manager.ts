@@ -427,44 +427,30 @@ export namespace SessionManager {
     runtimeState().sessionCompletions.set(sessionID, completion.promise)
 
     try {
-      const session = await requireSession(sessionID)
-      if (session.workspaceID && options?.workspace !== "history") {
-        const { WorkspaceBinding } = await import("../workspace/binding")
-        await WorkspaceBinding.validate(session.workspaceID, session.scope.id, session.workspace?.generation)
-      }
+      const session = await SessionWorkspaceRuntime.withBinding(
+        sessionID,
+        () => requireSession(sessionID),
+        lease.signal,
+      )
       const scope = session.scope as Scope
       const workspace = options?.workspace === "history" ? null : session.workspace
       const { ScopeRuntime } = await import("../scope/runtime")
-      const runWithScope = () =>
-        ExecutionCapacity.session(sessionID, () =>
-          WorkspaceAccess.task({ sessionID, parentSessionID: session.parentID, workspace, signal: lease.signal }, () =>
+      const result = await ExecutionCapacity.session(sessionID, () =>
+        WorkspaceAccess.task(
+          { sessionID, parentSessionID: session.parentID, workspace, signal: lease.signal, lazy: true },
+          () =>
             ScopeRuntime.provide({
               scope,
               workspace,
-              ensure: workspace !== null,
+              ensure: false,
               fn: async () => {
                 if (options?.workspace !== "history") assertExecutionContext(session, "session manager run")
-                if (workspace?.type !== "git_worktree") {
-                  activate(lease)
-                  return fn(lease)
-                }
-                await SessionWorkspaceRuntime.get().lockWorktree(workspace.path)
-                try {
-                  activate(lease)
-                  return await fn(lease)
-                } finally {
-                  await SessionWorkspaceRuntime.get().unlockWorktree(workspace.path)
-                }
+                activate(lease)
+                return fn(lease)
               },
             }),
-          ),
-        )
-      let result: T
-      if (workspace?.type !== "git_worktree") {
-        result = await runWithScope()
-      } else {
-        result = await SessionWorkspaceRuntime.get().withWorktree(workspace.path, session.id, runWithScope)
-      }
+        ),
+      )
       completed = true
       return result
     } finally {
@@ -632,10 +618,6 @@ export namespace SessionManager {
   // A removed worktree fails before any inbox work starts, so no retry can
   // make progress and no queued work can be stranded behind it; the error
   // class lives above this package boundary, so it is recognized by name.
-  // InvalidUrlError stays retryable on purpose: steer and context items are
-  // drained (deleted) before materialization, so the error can surface after
-  // the poisoned item is already gone, and abandoning the chain then would
-  // strand runnable work queued behind it.
   const PERMANENT_WAKE_ERROR_NAMES = new Set(["WorktreeNotFoundError"])
 
   function isPermanentWakeFailure(error: unknown): boolean {
@@ -662,8 +644,11 @@ export namespace SessionManager {
         .catch(async (error) => {
           if (!instanceState.accepting) return
           const terminal = isPermanentWakeFailure(error) || WAKE_RETRY_DELAYS_MS[failureCount] === undefined
-          SessionInputProgress.schedulingFailure(sessionID, error, terminal)
-          if (terminal) await SessionInbox.failScheduledTask(sessionID).catch(() => {})
+          const failedInput = SessionInputProgress.schedulingFailure(sessionID, error, terminal)
+          const parked =
+            terminal && failedInput
+              ? await SessionInbox.failScheduledTask(sessionID, failedInput.itemID).catch(() => false)
+              : false
           if (isPermanentWakeFailure(error)) {
             instanceState.activeWakeChains.delete(sessionID)
             log.error("async session wake failed permanently", { sessionID, reason, error, permanent: true })
@@ -671,6 +656,10 @@ export namespace SessionManager {
           }
           const delay = WAKE_RETRY_DELAYS_MS[failureCount]
           if (delay === undefined) {
+            if (parked && (await SessionInbox.hasRunnableItem(sessionID))) {
+              scheduleWakeAttempt(sessionID, reason, 0, 0)
+              return
+            }
             instanceState.activeWakeChains.delete(sessionID)
             log.error("async session wake failed", { sessionID, reason, error, retriesExhausted: true })
             return

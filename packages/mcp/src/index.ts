@@ -1,5 +1,5 @@
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { Scope } from "@ericsanchezok/synergy-harness/scope"
+import { Tool as HarnessTool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import * as McpConfigSchema from "@ericsanchezok/synergy-mcp/config-schema"
 import { dynamicTool, type Tool, jsonSchema, type JSONSchema7 } from "ai"
@@ -79,6 +79,7 @@ export namespace MCP {
     id: string
     serverName: string
     toolName: string
+    requiresWorkspace?: boolean
     tool: Tool
     inputSchema: JSONSchema7
   }
@@ -109,21 +110,18 @@ export namespace MCP {
         description: mcpTool.description ?? "",
         inputSchema: jsonSchema(inputSchema),
         execute: async (args: unknown) => {
-          if (requiresWorkspace && !ScopeContext.current.workspace)
-            throw new Scope.WorkspaceRequiredError({
-              message: "This MCP tool requires a local workspace.",
-              scopeID: ScopeContext.current.scope.id,
-            })
-          return client.callTool(
-            {
-              name: mcpTool.name,
-              arguments: args as Record<string, unknown>,
-            },
-            CallToolResultSchema,
-            {
-              resetTimeoutOnProgress: true,
-              timeout: callTimeout,
-            },
+          return HarnessTool.withWorkspace(requiresWorkspace, {}, () =>
+            client.callTool(
+              {
+                name: mcpTool.name,
+                arguments: args as Record<string, unknown>,
+              },
+              CallToolResultSchema,
+              {
+                resetTimeoutOnProgress: true,
+                timeout: callTimeout,
+              },
+            ),
           )
         },
       }),
@@ -390,6 +388,7 @@ export namespace MCP {
           id: toolName,
           serverName: handle.name,
           toolName: mcpTool.name,
+          requiresWorkspace: handle.config.requiresWorkspace ?? true,
           ...converted,
         })
       }

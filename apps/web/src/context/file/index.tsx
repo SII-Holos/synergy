@@ -30,6 +30,7 @@ import { normalizeWorkspacePath, pdfPreviewAction, pdfPreviewBytes } from "@/com
 import { releaseFileSourceWorkspace } from "@/components/file-workbench/source-model-cache"
 import {
   fileWorkspace,
+  selectedFileWorkspace,
   fileWorkspaceKey,
   workspaceFileOwner,
   workspaceFilePath,
@@ -255,10 +256,11 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   const directoryWaiters: VoidFunction[] = []
 
   const normalize = (input: string) => {
-    if (!directory) return undefined
-    const root = directory.replaceAll("\\", "/").replace(/\/$/, "")
+    if (!workspace) return undefined
+    const root = (directory ?? "").replaceAll("\\", "/").replace(/\/$/, "")
     let value = input
     if (value.startsWith("file://")) {
+      if (!root) return undefined
       try {
         value = decodeURIComponent(new URL(value).pathname)
       } catch {
@@ -268,7 +270,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     value = value.replaceAll("\\", "/")
     if (!root.startsWith("/")) value = value.replace(/^\/(?=[A-Za-z]:\/)/, "")
     if (value === root) return undefined
-    if (value.startsWith(root + "/")) value = value.slice(root.length + 1)
+    if (root && value.startsWith(root + "/")) value = value.slice(root.length + 1)
     if (value.startsWith("/") || /^[A-Za-z]:\//.test(value)) return undefined
     return normalizeWorkspacePath(value)
   }
@@ -1230,7 +1232,11 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const params = useParams()
     const owner = getOwner()
     const entries = new Map<string, { value: WorkspaceFiles; dispose: VoidFunction; users: number }>()
-    const selected = createMemo(() => (params.id ? sync.session.get(params.id)?.workspace : sync.data.path.workspace))
+    const selected = createMemo(() =>
+      params.id
+        ? selectedFileWorkspace(sync.session.get(params.id), sync.data.workspaces)
+        : fileWorkspace(sync.data.path.workspace),
+    )
     const selectedKey = () => fileWorkspaceKey(sdk.url, sdk.scopeID, fileWorkspace(selected()) ?? null)
     const prune = (keep?: string) => {
       for (const [key, entry] of entries) {
