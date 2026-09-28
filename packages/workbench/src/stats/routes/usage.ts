@@ -30,10 +30,6 @@ const response = (schema: z.ZodType, description: string) => ({
 
 export const UsageRoute = () =>
   new Hono()
-    .onError((error, c) => {
-      if (UsageSchema.InvalidQuery.isInstance(error)) return c.json({ message: error.data.message }, 400)
-      throw error
-    })
     .get(
       "/",
       describeRoute({
@@ -45,7 +41,12 @@ export const UsageRoute = () =>
       }),
       validator("query", Query),
       async (c) => {
-        return c.json(await Usage.summary(c.req.valid("query")))
+        try {
+          return c.json(await Usage.summary(c.req.valid("query")))
+        } catch (error) {
+          if (UsageSchema.InvalidQuery.isInstance(error)) return c.json({ message: error.data.message }, 400)
+          throw error
+        }
       },
     )
     .get(
@@ -60,7 +61,12 @@ export const UsageRoute = () =>
       validator("query", PageQuery),
       async (c) => {
         const { cursor, limit, ...scope } = c.req.valid("query")
-        return c.json(await Usage.records(scope, { cursor, limit }))
+        try {
+          return c.json(await Usage.records(scope, { cursor, limit }))
+        } catch (error) {
+          if (UsageSchema.InvalidQuery.isInstance(error)) return c.json({ message: error.data.message }, 400)
+          throw error
+        }
       },
     )
     .post(
@@ -86,6 +92,11 @@ export const UsageRoute = () =>
       validator("json", Clear),
       async (c) => {
         const { scope, throughRevision } = c.req.valid("json")
-        return c.json(await Usage.clear(scope, throughRevision))
+        try {
+          return c.json(await Usage.clear(scope, throughRevision))
+        } catch (error) {
+          if (UsageSchema.InvalidQuery.isInstance(error)) return c.json({ message: error.data.message }, 400)
+          throw error
+        }
       },
     )

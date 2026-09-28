@@ -1,12 +1,21 @@
 import { afterAll, expect, test } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import { Hono } from "hono"
+import { generateSpecs } from "hono-openapi"
 import { StatsRoute } from "../../src/stats/routes/stats"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/global/stats", StatsRoute())
+
+test("usage routes preserve OpenAPI metadata through the nested stats router", async () => {
+  const spec = await generateSpecs(new Hono().route("/global/stats", StatsRoute()))
+  expect(spec.paths?.["/global/stats/usage"]?.get?.operationId).toBe("global.stats.usage")
+  expect(spec.paths?.["/global/stats/usage/records"]?.get?.operationId).toBe("global.stats.usageRecords")
+  expect(spec.paths?.["/global/stats/usage/records"]?.delete?.operationId).toBe("global.stats.usageClear")
+  expect(spec.paths?.["/global/stats/usage/rebuild"]?.post?.operationId).toBe("global.stats.usageRebuild")
+})
 
 test("usage API pages compact records, enforces cursor filters and validates clear scope and revision", () =>
   runtime.run(async () => {

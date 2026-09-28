@@ -31,6 +31,7 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 ## Verify
 
 1. Test validation, success, domain error, Scope ownership, and event behavior at the narrowest route/domain level.
+   For nested Hono routers, test `generateSpecs()` on the mounted parent and assert the new operation IDs. A child router's custom `onError` can wrap middleware and hide `describeRoute` metadata while HTTP tests still pass; map domain errors inside handlers or at the owning server boundary instead.
 2. Typecheck the runtime, SDK, and affected client.
 3. Run the affected frontend context/component test when response identity or event reconciliation changes.
 4. Inspect the generated diff; do not hand-edit generated SDK files. Use `bun run --cwd packages/sdk/js build --compile-only` to validate the existing client concurrently with source readers. Full generation cleans and rewrites `src/gen`, so reserve it for explicit generation work, not read-only package checks.
