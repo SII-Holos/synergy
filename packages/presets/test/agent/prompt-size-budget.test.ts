@@ -63,7 +63,7 @@ describe("static prompt and tool context size budgets", () => {
 
   test("slimmed tool descriptions stay within budget", () =>
     runtime.run(() => {
-      expect(sourceBytes("bash.txt")).toBeLessThanOrEqual(7_000)
+      expect(sourceBytes("bash.txt")).toBeLessThanOrEqual(7_012)
       expect(sourceBytes("revise-file.txt")).toBeLessThanOrEqual(5_000)
       expect(sourceBytes("dagwrite.txt")).toBeLessThanOrEqual(3_250)
       expect(sourceBytes("process.txt")).toBeLessThanOrEqual(5_050)

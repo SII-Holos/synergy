@@ -138,7 +138,8 @@ describe("bash note virtual paths", () => {
           )
 
           expect(result.metadata.exit).toBe(0)
-          expect(result.output).toBe("ok")
+          expect(result.output).toBe("ok\n\nShell exited with code 0.")
+          expect(result.metadata.output).toBe("ok")
         },
       })
     }))
