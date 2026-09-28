@@ -20,6 +20,8 @@ Changing the option creates a separate experimental condition. Retain original f
 
 **Accept short preflight success.** Short tool roundtrips do not exercise the native execution length where stalls appeared. Deterministic native controls must retain at least 120 tool roundtrips, effective wrapper and CLI process settings, terminal execution, native grading and complete usage for two models over both supported protocols.
 
+The CI allocation of the two deterministic model fixtures is superseded by the [PR CI decision](2026-09-27-pr-ci-feedback.md). Both JIT modes and protocols retain independent 120-round controls; four-round native controls cover model identity and usage under equivalent execution conditions. This changes test allocation, not the frozen JIT condition or the requirement for actual long native execution.
+
 ## Consequences
 
 The control enables an explicit paired evaluation on affected hosts without changing prompts, tools, model controls or task deadlines. Interpreted execution can change performance; results cannot be pooled with default-JIT runs. Native long-session acceptance remains bounded evidence, so later real-task failures must still be retained and investigated.

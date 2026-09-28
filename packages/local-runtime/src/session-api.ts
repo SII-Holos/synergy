@@ -58,8 +58,8 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
 
 function scheduleInput(item: SessionInbox.Item, reason: string) {
   void SessionDrive.request(item.sessionID, reason).catch((error) => {
-    SessionInputProgress.schedulingFailure(item.sessionID, error, false)
     SessionManager.scheduleWake(item.sessionID, "durable-input-recovery")
+    SessionInputProgress.schedulingFailure(item.sessionID, error, false, { messageID: item.messageID, itemID: item.id })
     log.error("failed to schedule durable user input", {
       sessionID: item.sessionID,
       itemID: item.id,

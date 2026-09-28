@@ -27,6 +27,7 @@ import { SessionHistory } from "./history"
 import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import { SessionRootVariant } from "./root-variant"
 import { SessionInputProgress } from "./input-progress"
+import { AttachmentPreparationError } from "./input-attachment"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -1022,8 +1023,11 @@ export namespace SessionInbox {
         () => materializeStoredItem(item, rootID, options),
       )
     } catch (error) {
-      if (item.mode !== "task" && error instanceof Attachment.InvalidUrlError)
-        await parkTaskFailure(item.sessionID, item, error.message)
+      const reason = materializationFailureReason(error)
+      if (item.mode !== "task" && reason !== undefined) {
+        await parkTaskFailure(item.sessionID, item, reason)
+        return undefined
+      }
       throw error
     }
   }
@@ -1229,14 +1233,18 @@ export namespace SessionInbox {
       // terminalized its run; report no runnable work instead of parking
       // (parking would resurrect the cancelled item) or surfacing an error.
       if (error instanceof DOMException && error.name === "AbortError") return { status: "empty" }
-      if (!(error instanceof Attachment.InvalidUrlError) && !RolloutAdmissionError.isInstance(error)) throw error
-      const reason = RolloutAdmissionError.isInstance(error)
-        ? error.data.message
-        : (error as Attachment.InvalidUrlError).message
+      const reason = materializationFailureReason(error)
+      if (reason === undefined) throw error
       if (!(await parkTaskFailure(sessionID, task, reason))) return { status: "empty" }
       return { status: "failed", itemID: task.id, reason }
     }
     return { status: "materialized", itemID: task.id, messageID: task.messageID }
+  }
+
+  function materializationFailureReason(error: unknown): string | undefined {
+    if (AttachmentPreparationError.isInstance(error) || RolloutAdmissionError.isInstance(error))
+      return error.data.message
+    if (error instanceof Attachment.InvalidUrlError) return error.message
   }
 
   async function parkTaskFailure(sessionID: string, task: StoredItem, reason: string): Promise<boolean> {
@@ -1267,10 +1275,16 @@ export namespace SessionInbox {
     return true
   }
 
-  export async function failScheduledTask(sessionID: string): Promise<void> {
-    const task = await peekTask(sessionID)
+  export async function failScheduledTask(sessionID: string, itemID?: string): Promise<boolean> {
+    const task = itemID
+      ? await getStored(sessionID, itemID).catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
+      : await peekTask(sessionID)
     if (task)
-      await parkTaskFailure(sessionID, task, "The saved message could not be scheduled. Retry to resume processing.")
+      return parkTaskFailure(sessionID, task, "The saved message could not be scheduled. Retry to resume processing.")
+    return false
   }
 
   /** Clear a parked failure so the item becomes runnable again. */

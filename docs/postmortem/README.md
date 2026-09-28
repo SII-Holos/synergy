@@ -88,6 +88,8 @@ Add entries only for qualifying incidents.
 | 0024 | Benchmark observer imposed a stream idle timeout | implemented | 2026-09-23 |
 | 0025 | Benchmark verifier dependencies and missing results | implemented | 2026-09-23 |
 
+| 0032 | [Workspace-free attachment preparation](0032-workspace-free-attachment-preparation.md) | implemented | 2026-09-28 |
+
 ## History rules
 
 Preserve what happened, including mistakes and guardrails later replaced. Record subsequent corrections without rewriting the incident.

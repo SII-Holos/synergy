@@ -114,24 +114,6 @@ test("reclaiming released pages keeps records readable and reports freed pages",
     }
   }))
 
-test("a postgres store reports nothing to maintain instead of failing", () =>
-  runtime.run(async () => {
-    const url = process.env.SYNERGY_TEST_POSTGRES_URL
-    if (!url) return
-    const namespace = crypto.randomUUID()
-    const store = await TransactionalStore.open({ backend: "postgres", namespace, url })
-    try {
-      expect(await store.maintain({ operation: "enable-incremental-vacuum" })).toEqual({
-        changed: false,
-        autoVacuum: "none",
-        releasedPages: 0,
-        freelistPages: 0,
-      })
-    } finally {
-      await store.close()
-    }
-  }))
-
 afterRuntimeTests(() => runtime.close())
 test("ordinary startup defers a blocking vacuum without claiming its migration completed", () =>
   runtime.run(async () => {

@@ -1,9 +1,11 @@
+import { POSTGRES_TEST_FILES } from "../../packages/harness/test/support/storage-backends"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
 import { loadManifest } from "../coverage-check"
 import { collectTests } from "../../packages/testing/script/batches"
 import { type Task, type WorkspaceInput } from "./plan"
 import { workspaces } from "../workspace-manifest"
+export { changedFiles } from "./selection"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
 export const OUTPUT = ".artifacts/ci"
@@ -91,17 +93,6 @@ export async function workspaceInputs(root: string, revision: string): Promise<W
   }))
 }
 
-export function changedFiles(root: string, base: string, head: string): string[] {
-  if (![base, head].every((sha) => /^[a-f0-9]{40}$/.test(sha)))
-    throw new Error("CI requires exact base and head revisions")
-  // --no-renames includes both the removed and added ownership paths.
-  return git(root, ["diff", "--name-only", "--no-renames", "-z", base, head])
-    .toString()
-    .split("\0")
-    .filter(Boolean)
-    .sort()
-}
-
 export async function catalog(root = ROOT): Promise<Task[]> {
   const manifest = await loadManifest(root)
   const packages = workspaces(root)
@@ -126,15 +117,56 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     task("root-tests", "static", 90, [], { variant: "tests" }),
     task("typecheck", "typecheck", 100),
     task("packages", "packages", 45, [...coverage]),
-    task("installed-runtime-core", "artifacts", 1080, ["packages/cli", "packages/presets"], {
-      variant: "core",
-      files: ["test/script/watcher-native.test.ts"],
-      prerequisites: ["sandbox"],
-    }),
-    task("installed-runtime-full", "artifacts", 1800, ["packages/cli", "packages/presets"], {
-      variant: "full",
-      prerequisites: ["sandbox"],
-    }),
+    ...[
+      {
+        id: "installed-core-binary",
+        profile: "core" as const,
+        variant: "binary",
+        seconds: 300,
+        scenarios: ["complete", "tool", "read", "budget", "timeout", "permission"],
+        files: ["test/script/watcher-native.test.ts"],
+      },
+      {
+        id: "installed-core-package",
+        profile: "core" as const,
+        variant: "package",
+        seconds: 300,
+        scenarios: ["complete", "tool", "read", "budget", "timeout", "permission"],
+      },
+      {
+        id: "installed-full-behavior-a",
+        profile: "full" as const,
+        variant: "binary",
+        seconds: 450,
+        scenarios: ["complete", "tool", "budget"],
+      },
+      {
+        id: "installed-full-behavior-b",
+        profile: "full" as const,
+        variant: "binary",
+        seconds: 360,
+        scenarios: ["read", "timeout", "permission"],
+      },
+      {
+        id: "installed-full-composition",
+        profile: "full" as const,
+        variant: "composition",
+        seconds: 480,
+        scenarios: [],
+      },
+    ].map((entry) =>
+      task(entry.id, "artifacts", entry.seconds, ["packages/cli", "packages/presets"], {
+        ...entry,
+        prerequisites: ["sandbox"],
+        scenarios: entry.scenarios.length
+          ? entry.scenarios.map(
+              (scenario) => `installed runtime artifact preserves ${scenario} outcome outside the repository`,
+            )
+          : undefined,
+        scenarioPrefix: "installed runtime artifact preserves ",
+        outputs: entry.variant === "composition" ? [] : ["junit"],
+      }),
+    ),
     task(
       "web-integration",
       "web",
@@ -172,6 +204,11 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       task(`postgres-${version}`, "postgres", 180, ["packages/harness"], {
         pool: "postgres",
         variant: String(version),
+        files: [...POSTGRES_TEST_FILES],
+        inputs: [
+          ...POSTGRES_TEST_FILES.map((file) => `packages/harness/${file}`),
+          "packages/harness/test/support/preload.ts",
+        ],
       }),
     ),
     task("benchmark-pure", "benchmark-pure", 80, ["benchmark"]),
@@ -200,26 +237,46 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       task(`native-${variant}`, "benchmark-native", variant === "synergy" ? 580 : 330, [], {
         pool: "docker",
         variant,
-        selection: variant === "synergy" ? "not test_synergy_long_sessions" : "test_native_matrix",
+        selection:
+          variant === "synergy"
+            ? "not test_synergy_long_sessions and not test_synergy_native_semantics"
+            : "test_native_matrix",
         files: ["benchmark/test/test_matrix_docker.py"],
         needs: variant === "synergy" ? ["benchmark-prepare"] : [],
       }),
     ),
+    task("native-synergy-semantics", "benchmark-native", 420, [], {
+      pool: "docker",
+      variant: "synergy",
+      selection: "test_synergy_native_semantics",
+      needs: ["benchmark-prepare"],
+      files: ["benchmark/test/test_matrix_docker.py"],
+      scenarios: [
+        "jit-chat-completions-fixture-one",
+        "jit-responses-fixture-two",
+        "jitless-chat-completions-fixture-two",
+        "jitless-responses-fixture-one",
+      ].map((id) => `test_synergy_native_semantics[${id}]`),
+      scenarioPrefix: "test_synergy_native_semantics[",
+    }),
     ...["jit", "jitless"].flatMap((mode) =>
-      ["chat-completions", "responses"].flatMap((protocol) =>
-        ["fixture-one", "fixture-two"].map((model) =>
-          task(`native-synergy-${mode}-${protocol}-${model}`, "benchmark-native", 580, [], {
-            pool: "docker",
-            variant: "synergy",
-            selection: `test_synergy_long_sessions and ${mode === "jit" ? "not jitless" : "jitless"} and ${protocol} and ${model}`,
-            files: ["benchmark/test/test_matrix_docker.py"],
-            needs: ["benchmark-prepare"],
-          }),
-        ),
+      ["chat-completions", "responses"].map((protocol) =>
+        task(`native-synergy-${mode}-${protocol}`, "benchmark-native", mode === "jitless" ? 1100 : 450, [], {
+          pool: "docker",
+          variant: "synergy",
+          selection: `test_synergy_long_sessions and ${mode === "jit" ? "not jitless" : "jitless"} and ${protocol}`,
+          files: ["benchmark/test/test_matrix_docker.py"],
+          needs: ["benchmark-prepare"],
+          scenarios: [`test_synergy_long_sessions_preserve_native_tools_and_usage[${mode}-${protocol}]`],
+          scenarioPrefix: "test_synergy_long_sessions_preserve_native_tools_and_usage[",
+        }),
       ),
     ),
     ...["completed", "cancelled", "failed"].map((variant) =>
-      task(`rollout-${variant}`, "rollout", 320, ["packages/harness"], { variant }),
+      task(`rollout-${variant}`, "rollout", 320, ["packages/harness"], {
+        variant,
+        inputs: ["packages/harness/test/session/rollout-long.test.ts", "packages/harness/test/support/preload.ts"],
+      }),
     ),
   ]
   const specialized = new Set(tasks.flatMap((task) => task.files ?? []))
@@ -227,10 +284,10 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     .filter((file) => !specialized.has(file))
     .sort()
   const weights: Record<string, number> = {
-    "packages/presets": 360,
-    "apps/web": 220,
+    "packages/presets": 500,
+    "apps/web": 640,
     "packages/connections": 180,
-    "packages/ui": 160,
+    "packages/ui": 320,
     "packages/local-runtime": 150,
     "packages/library": 130,
   }
@@ -268,7 +325,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
           : entry.pool === "postgres"
             ? "database"
             : "task-home"
-    entry.outputs =
+    entry.outputs ??=
       entry.kind === "native-workspace" || entry.kind === "windows"
         ? ["junit", "lcov"]
         : entry.kind === "suite"

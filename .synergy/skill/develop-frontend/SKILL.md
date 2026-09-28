@@ -70,7 +70,7 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 1. Name the user-facing meaning before choosing a glyph.
 2. Reuse an existing token only when the new control has the same meaning. Similar appearance or location is not enough.
 3. Add a new token to `packages/ui/src/components/semantic-icon.tsx` before using an icon for a new product entity, navigation concept, state, setting, command, or action.
-4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph.
+4. Choose a built-in glyph that is not already mapped to another semantic token. Reuse the existing token when the meaning is truly identical; do not create a second token that aliases its glyph. Avoid repeating a control's outline inside its glyph unless the inner enclosure carries an independent meaning.
 5. When the glyph is new to the shared Icon component, register it in both `packages/ui/src/components/icon.tsx` and `packages/ui/src/plugin/builtin-icons.ts` before referencing it from the semantic map.
 6. Render through `getSemanticIcon(token)` and type stored metadata as `SemanticIconTokenName`.
 7. Keep raw icon names inside base icon controls, file-type/icon registries, tool-card plumbing, or plugin-provided icon paths. Built-in Plugin host UI still uses semantic tokens. Tool icons follow `add-tool`, not the product semantic-token registry.

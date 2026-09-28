@@ -8,6 +8,8 @@ Status: implemented
 
 ## Decision
 
+PR 的默认模式与历史样本准入、Docker 队列布局由 [PR 反馈决策](2026-09-27-pr-ci-feedback.md) 部分取代；本记录的计划身份、执行证据、缓存完整性与覆盖率要求继续适用。
+
 使用统一任务目录自动发现 workspace 与测试，按 base/head 两侧依赖闭包生成计划。任务结果绑定计划摘要、测试提交、run、attempt 和模式，并附带可校验的 JUnit、lcov、逐文件批次清单及耗时。required check 保留 `All checks passed`，核对实际 job 与计划完成性。CI 的类型与 package check 各运行一次；覆盖率和普通测试合并执行，特殊平台与非插桩验证独立保留。
 
 工作流使用标准托管 runner 和有界矩阵。验证后的 watcher、plugin、sandbox helper 产物按输入身份复用；完整列表、字节摘要与权限校验通过后才恢复。Benchmark 正常路径与故障恢复共享只读准备产物，外部 harness 不安装 Synergy workspace。跨 run 不缓存成功结论，冷全量每日执行。
