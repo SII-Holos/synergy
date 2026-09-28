@@ -85,7 +85,7 @@ export namespace AgentTurn {
     const instanceState = runtimeState()
 
     if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
-    const { contextUsageProvenance, recording, retryIndex, ...turnInput } = input
+    const { contextUsageProvenance, recording, usageRole, retryIndex, ...turnInput } = input
     const attribution = recording ?? {
       owner: {
         kind: "session" as const,
@@ -108,6 +108,7 @@ export namespace AgentTurn {
         RolloutCall.stream(
           {
             ...attribution,
+            usageRole: usageRole ?? "auxiliary",
             retryIndex,
             agent: input.agent.name,
             model: {

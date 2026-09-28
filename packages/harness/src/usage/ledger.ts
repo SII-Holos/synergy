@@ -304,6 +304,7 @@ export namespace UsageLedger {
     if (!call) throw new Error("Usage attempt is missing its call")
     const attribution = {
       purpose: call.purpose,
+      usageRole: call.usageRole,
       agent: call.agent,
       model: model(call.model),
       execution: call.execution ?? ("provider" as const),

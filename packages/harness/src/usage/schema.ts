@@ -23,6 +23,7 @@ export namespace UsageSchema {
   }
   export const attribution = {
     purpose: z.string(),
+    usageRole: RolloutSchema.CallRecord.shape.usageRole,
     retryIndex: z.number().int().nonnegative().optional(),
     agent: z.string().optional(),
     model: RolloutSchema.Model,

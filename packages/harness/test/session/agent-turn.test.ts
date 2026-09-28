@@ -4,6 +4,7 @@ import { runInProcessStream } from "../../src/session/agent-turn/in-process"
 import { AgentWorkerPool } from "../../src/session/agent-turn/worker-pool"
 import { ContextUsage } from "../../src/session/context-usage"
 import { LLM } from "../../src/session/llm"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -71,6 +72,9 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
         async dispose() {},
       })
       const stream = await pending
+
+      const calls = await RolloutLedger.calls({ kind: "operation", scopeID: "home", operationID }, operationID)
+      expect(calls.map((call) => call.usageRole)).toEqual(["auxiliary"])
 
       expect(estimationStarts).toBe(1)
       expect(stream.contextUsageDraft).toBeDefined()

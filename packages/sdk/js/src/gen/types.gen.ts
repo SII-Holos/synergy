@@ -316,6 +316,7 @@ export type UsageSummary = {
     status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
     source: "local" | "imported" | "legacy"
     purpose: string
+    usageRole?: "conversation" | "compaction" | "auxiliary"
     retryIndex?: number
     agent?: string
     model: {
@@ -558,6 +559,7 @@ export type UsageRecord =
       status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
       source: "local" | "imported" | "legacy"
       purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
       retryIndex?: number
       agent?: string
       model: {
@@ -697,6 +699,7 @@ export type UsageRecord =
       status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
       source: "local" | "imported" | "legacy"
       purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
       retryIndex?: number
       agent?: string
       model: {
@@ -885,6 +888,7 @@ export type UsageRecord =
       source: "local" | "imported" | "legacy"
       kind: "legacy"
       purpose: string
+      usageRole?: "conversation" | "compaction" | "auxiliary"
       retryIndex?: number
       agent?: string
       model: {
@@ -7606,6 +7610,7 @@ export type RolloutCallRecord = {
         operationID: string
       }
   purpose: string
+  usageRole?: "conversation" | "compaction" | "auxiliary"
   kind?: "chat" | "embedding" | "rerank" | "transcription" | "speech"
   execution?: "provider" | "local" | "external"
   parentCallID?: string

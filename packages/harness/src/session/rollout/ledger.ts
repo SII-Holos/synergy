@@ -403,6 +403,7 @@ export namespace RolloutLedger {
     owner: Owner
     runID: string
     purpose: string
+    usageRole?: RolloutSchema.CallRecord["usageRole"]
     kind?: RolloutSchema.CallRecord["kind"]
     execution?: RolloutSchema.CallRecord["execution"]
     parentCallID?: string
@@ -422,6 +423,7 @@ export namespace RolloutLedger {
       owner: input.owner,
       runID: input.runID,
       purpose: input.purpose,
+      usageRole: input.usageRole,
       kind: input.kind,
       execution: input.execution,
       parentCallID: input.parentCallID,

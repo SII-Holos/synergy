@@ -34,7 +34,13 @@ function facts(
     cache_creation_input_tokens: input.write ?? 100,
     output_tokens: 500,
   })
-  const attribution = { purpose: "synergy", model, execution: "provider" as const, callKind: "chat" as const }
+  const attribution = {
+    purpose: "synergy",
+    usageRole: "conversation" as const,
+    model,
+    execution: "provider" as const,
+    callKind: "chat" as const,
+  }
   return [
     { ...base, ...attribution, kind: "call", hasAttempts: true },
     {
@@ -127,6 +133,42 @@ test("active transport replaces its queued call phase and context uses the usabl
   expect(result.phases).toHaveLength(1)
   expect(result.phases[0].phase).toBe("request")
   expect(result.context?.limit).toBe(1500)
+})
+
+test("custom conversation agents retain their latest request context", () => {
+  const records = facts().map((record) => ({ ...record, purpose: "custom-primary", agent: "custom-primary" }))
+  expect(UsageQuery.summarize(records).context).toMatchObject({ inputTokens: 1000, modelID: "m" })
+})
+
+test("descendant requests and compactions cannot replace or invalidate a selected owner's context", () => {
+  const records = facts()
+  const child = facts({ started: base.started + 1000 }).map((record) => ({
+    ...record,
+    id: `child-${record.id}`,
+    entityID: `child-${record.entityID}`,
+    owner: { ...owner, sessionID: "child" },
+    runID: "child-run",
+  }))
+  const compaction = {
+    ...child[0],
+    started: base.started + 2000,
+    purpose: "compaction",
+    usageRole: "compaction" as const,
+  }
+  const summary = UsageQuery.summarize([...records, ...child, compaction], { sessionID: owner.sessionID })
+  expect(summary.context).toMatchObject({ attemptID: "attempt", stale: false })
+  expect(UsageQuery.summarize(child, { sessionID: owner.sessionID }).context).toBeNull()
+  expect(UsageQuery.summarize([...records, ...child], { runID: "run" }).context?.attemptID).toBe("attempt")
+  expect(UsageQuery.summarize([...records, { ...compaction, owner }]).context?.stale).toBe(true)
+  expect(UsageQuery.summarize([...records, { ...compaction, owner, source: "imported" }]).context?.stale).toBe(false)
+})
+
+test("auxiliary and historically unclassified calls cannot supply conversation context", () => {
+  for (const usageRole of ["auxiliary", undefined] as const) {
+    const records = facts().map((record) => ({ ...record, usageRole }))
+    expect(UsageQuery.summarize(records).context).toBeNull()
+    expect(UsageQuery.summarize(records).accounting.tokens.total.total).toBe(1500)
+  }
 })
 
 test("a filtered-out retry cannot resurrect SDK totals on its parent call", () => {

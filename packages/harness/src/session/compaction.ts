@@ -606,6 +606,7 @@ export namespace SessionCompaction {
           owner: { kind: "session", scopeID: index.scopeID, sessionID: input.sessionID },
           runID: input.rootID,
           purpose: "remote_compaction",
+          usageRole: "compaction",
           model: {
             providerID: input.providerID,
             modelID: input.modelID,
@@ -829,6 +830,7 @@ export namespace SessionCompaction {
 
       try {
         await processor.process({
+          usageRole: "compaction",
           user: { ...userMessage, variant: undefined, thinking: undefined },
           agent,
           abort: input.abort,

@@ -31405,6 +31405,10 @@
                   "purpose": {
                     "type": "string"
                   },
+                  "usageRole": {
+                    "type": "string",
+                    "enum": ["conversation", "compaction", "auxiliary"]
+                  },
                   "retryIndex": {
                     "type": "integer",
                     "minimum": 0,
@@ -32590,6 +32594,10 @@
               "purpose": {
                 "type": "string"
               },
+              "usageRole": {
+                "type": "string",
+                "enum": ["conversation", "compaction", "auxiliary"]
+              },
               "retryIndex": {
                 "type": "integer",
                 "minimum": 0,
@@ -33331,6 +33339,10 @@
               },
               "purpose": {
                 "type": "string"
+              },
+              "usageRole": {
+                "type": "string",
+                "enum": ["conversation", "compaction", "auxiliary"]
               },
               "retryIndex": {
                 "type": "integer",
@@ -34277,6 +34289,10 @@
               },
               "purpose": {
                 "type": "string"
+              },
+              "usageRole": {
+                "type": "string",
+                "enum": ["conversation", "compaction", "auxiliary"]
               },
               "retryIndex": {
                 "type": "integer",
@@ -51332,6 +51348,10 @@
           },
           "purpose": {
             "type": "string"
+          },
+          "usageRole": {
+            "type": "string",
+            "enum": ["conversation", "compaction", "auxiliary"]
           },
           "kind": {
             "type": "string",

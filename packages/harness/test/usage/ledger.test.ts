@@ -12,12 +12,19 @@ import { RolloutArtifact } from "../../src/session/rollout/artifact"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
-async function invocation() {
-  const owner = { kind: "operation" as const, scopeID: crypto.randomUUID(), operationID: crypto.randomUUID() }
+async function invocation(
+  input: Partial<Pick<Parameters<typeof RolloutLedger.beginCall>[0], "owner" | "purpose" | "usageRole">> = {},
+) {
+  const owner = input.owner ?? {
+    kind: "operation" as const,
+    scopeID: crypto.randomUUID(),
+    operationID: crypto.randomUUID(),
+  }
   const call = await RolloutLedger.beginCall({
     owner,
     runID: "run",
-    purpose: "summary",
+    purpose: input.purpose ?? "summary",
+    usageRole: input.usageRole,
     request: { private: "secret prompt" },
     model: { providerID: "test", modelID: "test", sdk: "@ai-sdk/openai", pricing: null, billingMode: "api" },
   })
@@ -55,12 +62,26 @@ test("canonical usage keeps independent input totals, unknown splits and compact
     expect(before.accounting.tokens.uncached.total).toBeNull()
     expect(before.cache.ratio).toBeNull()
     expect(before.accounting.attempts).toBe(1)
-    await Storage.removeTree(["operations", owner.scopeID, owner.operationID])
+    await Storage.removeTree(RolloutArtifact.root(owner))
     expect((await UsageQuery.summary({ scopeID: owner.scopeID })).accounting).toEqual(before.accounting)
     const records = await UsageQuery.records({ scopeID: owner.scopeID })
     expect(records.items.some((item) => item.kind === "attempt")).toBe(true)
     expect(JSON.stringify(records)).not.toContain("secret")
     expect(JSON.stringify(records)).not.toContain("fixture.test")
+  }))
+
+test("conversation role survives transport capture and source deletion for custom agents", () =>
+  runtime.run(async () => {
+    const owner = { kind: "session" as const, scopeID: crypto.randomUUID(), sessionID: crypto.randomUUID() }
+    await invocation({ owner, purpose: "custom-primary", usageRole: "conversation" })
+    const scope = { scopeID: owner.scopeID, sessionID: owner.sessionID }
+    const before = await UsageQuery.summary(scope)
+    expect(before.context).toMatchObject({ inputTokens: 1000, modelID: "test" })
+    const records = await UsageQuery.records(scope)
+    const calls = records.items.filter((record) => record.kind === "call" || record.kind === "attempt")
+    expect(calls.map((record) => record.usageRole)).toEqual(["conversation", "conversation"])
+    await Storage.removeTree(RolloutArtifact.root(owner))
+    expect((await UsageQuery.summary(scope)).context).toEqual(before.context)
   }))
 
 test("clear is revision bounded, preserves active calls and suppresses replay resurrection", () =>

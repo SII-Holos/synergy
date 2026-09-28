@@ -151,6 +151,7 @@ export namespace RolloutSchema {
       runID: Segment,
       owner: Owner,
       purpose: z.string(),
+      usageRole: z.enum(["conversation", "compaction", "auxiliary"]).optional(),
       kind: z.enum(["chat", "embedding", "rerank", "transcription", "speech"]).optional(),
       execution: z.enum(["provider", "local", "external"]).optional(),
       parentCallID: Segment.optional(),

@@ -530,17 +530,17 @@ export namespace UsageQuery {
         agents.set(agent, attributed)
       }
     const latestRequest = attempts.toSorted((a, b) => stamp(b) - stamp(a) || b.index - a.index)[0] ?? null
-    const primary = attempts
-      .filter((attempt) => ["synergy", "synergy-max", "synergy-flash"].includes(attempt.purpose))
-      .toSorted((a, b) => stamp(b) - stamp(a) || b.index - a.index)[0]
-    const limit = primary?.model.limits ? (ModelLimit.usableInput(primary.model.limits) ?? null) : null
-    const tokens = primary?.usage?.input.total ?? null
     const roots =
       rootOwners ??
       new Set(records.filter((record) => record.runID === scope.runID).map((record) => scopeKey(record.owner)))
     const own = (record: UsageSchema.Record) =>
       (!scope.sessionID || (record.owner.kind === "session" && record.owner.sessionID === scope.sessionID)) &&
       (!scope.runID || record.runID === scope.runID || (record.kind === "gap" && roots.has(scopeKey(record.owner))))
+    const primary = attempts
+      .filter((attempt) => attempt.usageRole === "conversation" && own(attempt))
+      .toSorted((a, b) => stamp(b) - stamp(a) || b.index - a.index)[0]
+    const limit = primary?.model.limits ? (ModelLimit.usableInput(primary.model.limits) ?? null) : null
+    const tokens = primary?.usage?.input.total ?? null
     return Summary.parse({
       version: 1,
       revision,
@@ -611,8 +611,14 @@ export namespace UsageQuery {
             ratio: tokens !== null && limit ? tokens / limit : null,
             observedAt: stamp(primary),
             stale:
-              records.some((r) => "purpose" in r && r.purpose.includes("compaction") && r.started > stamp(primary)) ||
-              tokens === null,
+              records.some(
+                (r) =>
+                  "usageRole" in r &&
+                  r.usageRole === "compaction" &&
+                  r.source !== "imported" &&
+                  scopeKey(r.owner) === scopeKey(primary.owner) &&
+                  r.started > stamp(primary),
+              ) || tokens === null,
           }
         : null,
       phases: records

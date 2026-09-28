@@ -113,11 +113,13 @@ async function run(
         })
       const owner = { kind: "session" as const, scopeID: ScopeContext.current.scope.id, sessionID: session.id }
       spyOn(AgentTurn, "stream").mockImplementation(async (streamInput) => {
+        expect(streamInput.usageRole).toBe("conversation")
         const attempt = ++calls
         return RolloutCall.stream(
           {
             owner,
             retryIndex: streamInput.retryIndex,
+            usageRole: streamInput.usageRole,
             runID: user.info.id,
             purpose: "test",
             request: {},
