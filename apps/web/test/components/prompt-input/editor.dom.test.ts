@@ -115,3 +115,54 @@ test("plain-text paste replaces the selection and participates in native undo an
     expect(await page.locator("#value").textContent()).toBe(expected)
   }
 }, 20_000)
+
+test("project transfer checks both draft revisions and cancellation leaves both drafts intact", async () => {
+  await page.reload()
+  await page.waitForSelector("#seed")
+  await page.evaluate(`window.projectDraftFixture.navigate('/c2NvcGU/session')`)
+  await page.click("#seed")
+  await page.evaluate(
+    `window.sourceCapture = window.projectDraftFixture.prompt.capture(); window.transfer = window.projectDraftFixture.prompt.prepareProjectTransfer('dGFyZ2V0', 'scope', '/source')`,
+  )
+  await page.evaluate(`window.transfer.release()`)
+  expect(await page.locator("#value").textContent()).toBe("hello")
+  await page.evaluate(
+    `window.transfer = window.projectDraftFixture.prompt.prepareProjectTransfer('dGFyZ2V0', 'scope', '/source'); window.projectDraftFixture.prompt.set([{type:'text',content:'later source',start:0,end:12}],3)`,
+  )
+  expect(await page.evaluate<boolean>(`window.transfer.commit()`)).toBe(false)
+  await page.evaluate(`window.transfer.release(); window.projectDraftFixture.navigate('/dGFyZ2V0/session')`)
+  await page.click("#seed")
+  await page.evaluate(
+    `window.targetCapture = window.projectDraftFixture.prompt.capture(); window.projectDraftFixture.navigate('/c2NvcGU/session')`,
+  )
+  await page.evaluate(
+    `window.transfer = window.projectDraftFixture.prompt.prepareProjectTransfer('dGFyZ2V0', 'scope', '/source')`,
+  )
+  expect(await page.evaluate<boolean>(`window.transfer.conflict`)).toBe(true)
+  await page.evaluate(`window.targetCapture.draft.set([{type:'text',content:'later target',start:0,end:12}])`)
+  expect(await page.evaluate<boolean>(`window.transfer.commit()`)).toBe(false)
+  expect(await page.locator("#value").textContent()).toBe("later source")
+  await page.evaluate(
+    `window.transfer.release(); window.transfer = window.projectDraftFixture.prompt.prepareProjectTransfer('dGFyZ2V0', 'scope', '/source')`,
+  )
+  expect(await page.evaluate<boolean>(`window.transfer.commit()`)).toBe(true)
+  await page.evaluate(`window.transfer.release(); window.projectDraftFixture.navigate('/dGFyZ2V0/session')`)
+  expect(await page.locator("#value").textContent()).toBe("later target\nlater source".replace("\n", "\n\n"))
+  await page.evaluate(
+    `window.projectDraftFixture.navigate('/c2NvcGU/session'); window.sourceCapture.release(); window.targetCapture.release()`,
+  )
+  expect(await page.locator("#value").textContent()).toBe("")
+}, 20_000)
+
+test("project transfer preserves the editing cursor when the destination draft is empty", async () => {
+  await page.goto(`${server.resolvedUrls!.local[0]}c2NvcGU/session/a`)
+  await page.waitForSelector("#seed")
+  await page.evaluate(`window.projectDraftFixture.navigate('/Y3Vyc29y/session')`)
+  await page.evaluate(
+    `window.projectDraftFixture.prompt.set([{type:'text',content:'keep typing here',start:0,end:16}],5)`,
+  )
+  await page.evaluate(
+    `window.transfer=window.projectDraftFixture.prompt.prepareProjectTransfer('ZW1wdHk','cursor','/source');window.transfer.commit();window.transfer.release();window.projectDraftFixture.navigate('/ZW1wdHk/session')`,
+  )
+  expect(await page.evaluate<number>(`window.projectDraftFixture.prompt.cursor()`)).toBe(5)
+}, 20_000)

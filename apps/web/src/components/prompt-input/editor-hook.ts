@@ -102,6 +102,7 @@ export function usePromptEditor(input: PromptEditorInput) {
       parts.push({
         type: "file",
         path: file.dataset.path!,
+        ...(file.dataset.originScopeId ? { originScopeID: file.dataset.originScopeId } : {}),
         content,
         start: position,
         end: position + content.length,

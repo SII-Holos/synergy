@@ -12,6 +12,7 @@ function Editor() {
   const prompt = usePrompt()
   const navigate = useNavigate()
   const params = useParams()
+  Object.assign(window, { projectDraftFixture: { prompt, navigate } })
   const [node, setNode] = createSignal<HTMLDivElement>()
   const [mounted, setMounted] = createSignal(false)
   const [revision, setRevision] = createSignal(0)
@@ -168,7 +169,7 @@ render(
   () => (
     <Router>
       <Route
-        path="/:dir/session/:id"
+        path="/:dir/session/:id?"
         component={() => {
           const drafts = createDraftSessionIndex("http://prompt-fixture")
           onCleanup(drafts.dispose)
