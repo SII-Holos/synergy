@@ -58,7 +58,12 @@ export function AddressBar(props: AddressBarProps) {
   const [history, setHistory] = createSignal({ back: false, forward: false })
   let findGeneration = 0
   let timer: ReturnType<typeof setTimeout> | undefined
-  const realPage = () => props.hasPage() && Boolean(props.activeUrl()) && props.activeUrl() !== "about:blank"
+  const realPage = () =>
+    props.hasPage() &&
+    browser.page()?.status === "active" &&
+    browser.hostStatus() === "ready" &&
+    Boolean(props.activeUrl()) &&
+    props.activeUrl() !== "about:blank"
   const menu = (action: () => void) => {
     browser.setControlsOpen(false)
     optionsTrigger?.focus()
@@ -74,7 +79,11 @@ export function AddressBar(props: AddressBarProps) {
   })
   createEffect(() => {
     props.activeUrl()
-    if (props.isLoading() || !realPage()) return
+    if (!realPage()) {
+      setHistory({ back: false, forward: false })
+      return
+    }
+    if (props.isLoading()) return
     void props.onPageAction?.({ type: "state" }).then((result) => {
       if (result?.type !== "state") return
       setHistory({ back: result.back, forward: result.forward })

@@ -58,3 +58,5 @@ Report the implemented behavior, local commits, generated contracts, automated c
 ## Local browser data
 
 Keep password values inside Desktop’s OS-encrypted store and native form operation. Never return them through IPC results, logs or Agent tools; sanitize page-controlled exceptions from filling. Filling requires the exact website origin and never submits. Website data clearing preserves saved passwords and history; profile removal explicitly clears them. File imports are bounded, cancellable, preserve duplicates by default and report unsupported rows without secret values. Test temporary profiles, interrupted imports, exact-origin matching and unavailable system encryption.
+
+Invalidate in-flight saves when deleting profile data. Query native navigation controls only after the page is ready; suspension and recovery are ordinary states, not background-probe errors. Keep tab menu addresses synchronized even when the website title is unchanged, and bind batch tab closing to the original task and surface.

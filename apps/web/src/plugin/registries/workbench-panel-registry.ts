@@ -43,6 +43,9 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   createTab?: () => WorkbenchPanelTabInit | void | Promise<WorkbenchPanelTabInit | void>
   onCloseTab?: (tab: WorkbenchPanelTab) => void | boolean | Promise<void | boolean>
   title?: (tab: WorkbenchPanelTab, siblingTabs: WorkbenchPanelTab[]) => string | undefined
+  tabActions?: (
+    tab: WorkbenchPanelTab,
+  ) => Array<{ id: string; label: string; disabled?: boolean; run(): void | Promise<void> }>
   tabIcon?: (tab: WorkbenchPanelTab) => JSX.Element
 }
 

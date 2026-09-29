@@ -6,7 +6,7 @@ import { useNavigate, useParams } from "@solidjs/router"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { browserWorkbenchRoute } from "./browser/browser-workbench-model"
+import { browserWorkbenchRoute, browserTabURL } from "./browser/browser-workbench-model"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -222,6 +222,66 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
           } finally {
             openingBrowser = false
           }
+        },
+        tabActions(tab) {
+          const url = browserTabURL(tab)
+          const route = browserWorkbenchRoute(tab.state) ?? browserRoute()
+          const run = (action: () => Promise<void>) =>
+            action().catch((error) => {
+              showToast({
+                type: "error",
+                title: i18n._(B.issue),
+                description: normalizeBrowserError(error, "Browser action failed").message,
+              })
+            })
+          return [
+            {
+              id: "reload",
+              label: i18n._(B.reload),
+              disabled: !route || !tab.resourceId,
+              run: () =>
+                run(async () => {
+                  if (!route || !tab.resourceId) return
+                  const { browserWorkbenchAccess } = await import("./browser/browser-workbench-api")
+                  const { BROWSER_PROTOCOL_VERSION } = await import("@ericsanchezok/synergy-browser-core")
+                  const { createBrowserCommandId } = await import("./browser/browser-command")
+                  await sdk.client.browser.control(
+                    {
+                      ...(await browserWorkbenchAccess({
+                        client: sdk.client,
+                        serverUrl: sdk.url,
+                        bridge: platform.browserNative,
+                        route,
+                      })),
+                      browserControlRequest: {
+                        protocolVersion: BROWSER_PROTOCOL_VERSION,
+                        pageId: tab.resourceId,
+                        commandId: createBrowserCommandId(),
+                        command: { type: "reload" },
+                      },
+                    },
+                    { throwOnError: true },
+                  )
+                }),
+            },
+            {
+              id: "copy",
+              label: i18n._({ id: "browser.tab.copyAddress", message: "Copy page address" }),
+              disabled: !/^https?:/.test(url),
+              run: () =>
+                run(async () => {
+                  if (!(await platform.clipboard?.writeText(url))) await navigator.clipboard.writeText(url)
+                }),
+            },
+            {
+              id: "external",
+              label: i18n._(B.openExternal),
+              disabled: !/^https?:/.test(url),
+              run: () => {
+                platform.openLink(url)
+              },
+            },
+          ]
         },
         async onCloseTab(tab) {
           if (!tab.resourceId) return

@@ -60,3 +60,14 @@ test("a local open response arriving before its event cannot lose its new tab", 
   expect(next.tabs.map((tab) => tab.resourceId)).toEqual(["one", "new"])
   expect(next.active).toBe("new")
 })
+
+test("page menu address follows navigation even when the website title is unchanged", () => {
+  const first = reconcileBrowserTabs({ tabs: [], active: undefined, pages: [page("one", "Website")], route })
+  const second = reconcileBrowserTabs({
+    ...first,
+    pages: [{ ...page("one", "Website"), url: "https://one.test/next" }],
+    route,
+  })
+  expect(second.tabs[0]?.state).toMatchObject({ browserURL: "https://one.test/next" })
+  expect(second.active).toBe(first.active)
+})

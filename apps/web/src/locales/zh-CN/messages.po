@@ -9813,6 +9813,10 @@ msgid "browser.label.unsettled"
 msgstr "未稳定"
 
 #. js-lingui-explicit-id
+msgid "browser.page.back"
+msgstr "返回网页"
+
+#. js-lingui-explicit-id
 msgid "browser.settings.advanced"
 msgstr "独立账号和高级设置"
 
@@ -9887,6 +9891,10 @@ msgstr "URL"
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
 msgstr "输入长度"
+
+#. js-lingui-explicit-id
+msgid "browser.tab.copyAddress"
+msgstr "复制页面地址"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "browser.tabs.empty"
@@ -22602,6 +22610,10 @@ msgstr "最小化"
 #. js-lingui-explicit-id
 msgid "window.restore"
 msgstr "恢复"
+
+#. js-lingui-explicit-id
+msgid "workbench.closeRight"
+msgstr "关闭右侧标签页"
 
 #. js-lingui-explicit-id
 msgid "workbench.discard.action"

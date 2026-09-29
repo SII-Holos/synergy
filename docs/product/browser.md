@@ -12,6 +12,8 @@ The address bar, history controls, viewport choices, annotations and diagnostic 
 
 The page menu provides find, webpage zoom, printing and PDF saving. Diagnostic panels and viewport presets live under Developer tools. Native webpage shortcuts use Command on macOS and Control on Windows/Linux. The person and Agent may operate the same page concurrently; no takeover or hand-back is required. If navigation invalidates an Agent observation, the Agent reads the page again instead of replaying an uncertain submission.
 
+The tab context menu offers reload, copy address, external opening, close, close others and close tabs to the right. Batch closing stays within that task's selected workbench surface and respects each resource's close policy. Downloads and diagnostic views provide a direct return to the webpage. Suspended pages wait for recovery before querying native navigation controls.
+
 ## Saved website logins
 
 Website logins are remembered automatically and reused by other tasks and Scopes in the same Desktop installation. Ordinary browsing needs no account setup in Synergy. Browser options → Browser settings contains login profiles and website permissions. Add a separate profile only when another account needs an independent login store. Opening a page copy with that profile creates a new peer tab; existing pages retain their original profile.

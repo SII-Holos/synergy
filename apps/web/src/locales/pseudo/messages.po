@@ -9813,6 +9813,10 @@ msgid "browser.label.unsettled"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "browser.page.back"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "browser.settings.advanced"
 msgstr ""
 
@@ -9886,6 +9890,10 @@ msgstr ""
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.tab.copyAddress"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
@@ -22601,6 +22609,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "window.restore"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workbench.closeRight"
 msgstr ""
 
 #. js-lingui-explicit-id

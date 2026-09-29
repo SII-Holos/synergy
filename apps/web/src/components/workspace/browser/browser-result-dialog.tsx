@@ -84,9 +84,11 @@ export function BrowserResultDialog(props: {
             aria-label={_(M.mark)}
             onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect()
+              const x = event.detail === 0 ? 0.5 : (event.clientX - rect.left) / rect.width
+              const y = event.detail === 0 ? 0.5 : (event.clientY - rect.top) / rect.height
               setPoint({
-                x: Math.round(((event.clientX - rect.left) / rect.width) * capture().width),
-                y: Math.round(((event.clientY - rect.top) / rect.height) * capture().height),
+                x: Math.round(Math.max(0, Math.min(1, x)) * capture().width),
+                y: Math.round(Math.max(0, Math.min(1, y)) * capture().height),
               })
             }}
           >

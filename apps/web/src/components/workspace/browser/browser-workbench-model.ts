@@ -29,7 +29,7 @@ export function browserPageTab(
     panelId: "browser",
     resourceId: page.id,
     title: page.title || page.url,
-    state: { browserRoute: route },
+    state: { browserRoute: route, browserURL: page.url },
     source: "browser",
   }
 }
@@ -52,6 +52,7 @@ export function reconcileBrowserTabs(input: {
     if (
       tab.resourceId === next.resourceId &&
       tab.title === next.title &&
+      browserTabURL(tab) === page.url &&
       route?.sessionID === input.route.sessionID &&
       route.path_directory === input.route.path_directory &&
       route.query_directory === input.route.query_directory &&
@@ -63,7 +64,11 @@ export function reconcileBrowserTabs(input: {
         ...tab,
         resourceId: next.resourceId,
         title: next.title,
-        state: { ...(typeof tab.state === "object" && tab.state ? tab.state : {}), browserRoute: input.route },
+        state: {
+          ...(typeof tab.state === "object" && tab.state ? tab.state : {}),
+          browserRoute: input.route,
+          browserURL: page.url,
+        },
       },
     ]
   })
@@ -76,4 +81,11 @@ export function reconcileBrowserTabs(input: {
       tabs.length === input.tabs.length && tabs.every((tab, index) => tab === input.tabs[index]) ? input.tabs : tabs,
     active,
   }
+}
+
+export function browserTabURL(tab: WorkbenchPanelTab) {
+  const state = tab.state
+  return state && typeof state === "object" && "browserURL" in state && typeof state.browserURL === "string"
+    ? state.browserURL
+    : ""
 }

@@ -30,6 +30,8 @@ Desktop owns a versioned local profile data store for recent visits and OS-encry
 
 File-based import is the cross-platform contract. CSV and Safari ZIP password exports plus Cookie JSON cover explicit transfers without tying the product to external browser encryption databases. Imports preserve existing entries by default and return counts without credentials. The native bridge exposes metadata and origin-scoped fill/save actions, never decrypted password retrieval. See [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage) and [Safari export format](https://developer.apple.com/documentation/safariservices/importing-data-exported-from-safari).
 
+Profile deletion invalidates password saves that are still awaiting encryption, so an asynchronous completion cannot recreate deleted entries. Navigation metadata follows the page URL even when the title stays unchanged; native state probes wait for a ready page and cannot turn normal suspension into a user-facing error.
+
 ## Result delivery and native overlays
 
 Task-owned completed downloads are copied into the established Asset store only after owner, state, path and bounded-file checks. The generated `browser.downloadArtifact` endpoint remains usable when the source page is closed. Screenshot feedback uses historical image coordinates and source metadata in the editable composer; it does not write hidden Session annotations or auto-submit. Draft capture prevents asynchronous results from landing in another conversation.

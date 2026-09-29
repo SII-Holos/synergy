@@ -106,3 +106,32 @@ test("cookie import accepts documented storageState shape without merging origin
   ).toHaveLength(1)
   expect(() => parseCookieImport('{"cookies":"bad"}')).toThrow()
 })
+
+test("profile deletion invalidates an encryption operation still in flight", async () => {
+  const { root } = await fixture()
+  let started!: () => void, resume!: () => void
+  const entered = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  const waiting = new Promise<void>((resolve) => {
+    resume = resolve
+  })
+  const store = new BrowserDataStore(root, {
+    ...encryption,
+    encrypt: async (value) => {
+      started()
+      await waiting
+      return encryption.encrypt(value)
+    },
+  })
+  const pending = store.savePassword(
+    "persist:deleted",
+    { origin: "https://example.com", username: "fixture", password: "fixture" },
+    false,
+  )
+  await entered
+  await store.clear("persist:deleted")
+  resume()
+  await expect(pending).rejects.toThrow()
+  expect((await store.list("persist:deleted")).passwords).toEqual([])
+})

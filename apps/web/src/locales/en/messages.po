@@ -9813,6 +9813,10 @@ msgid "browser.label.unsettled"
 msgstr "unsettled"
 
 #. js-lingui-explicit-id
+msgid "browser.page.back"
+msgstr "Back to webpage"
+
+#. js-lingui-explicit-id
 msgid "browser.settings.advanced"
 msgstr "Separate accounts and advanced settings"
 
@@ -9887,6 +9891,10 @@ msgstr "URL"
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
 msgstr "Value length"
+
+#. js-lingui-explicit-id
+msgid "browser.tab.copyAddress"
+msgstr "Copy page address"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "browser.tabs.empty"
@@ -22602,6 +22610,10 @@ msgstr "Minimize"
 #. js-lingui-explicit-id
 msgid "window.restore"
 msgstr "Restore"
+
+#. js-lingui-explicit-id
+msgid "workbench.closeRight"
+msgstr "Close tabs to the right"
 
 #. js-lingui-explicit-id
 msgid "workbench.discard.action"

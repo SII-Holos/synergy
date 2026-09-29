@@ -43,6 +43,7 @@ beforeAll(async () => {
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { BrowserResultDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-result-dialog.tsx`)}
     import { BrowserPageDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/page-dialog.tsx`)}
     import { NativeBrowserSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/native-browser-surface.tsx`)}
     import { BrowserSettings } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-settings.tsx`)}
@@ -65,8 +66,9 @@ beforeAll(async () => {
       window.showPageDialog = (type, defaultValue = "Default draft") => setRequest({type,defaultValue,pageId:"page-one",requestId:"request-one",message:"Name this draft"})
       return <div class="synergy-workbench-canvas">
         <button onClick={() => window.showPageDialog("prompt")}>Open prompt</button>
+        <button onClick={() => dialog.show(() => <BrowserResultDialog initial={{type:"capture", dataUrl:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4xkAAAAASUVORK5CYII=",width:100,height:100,url:"https://example.test/page",title:"Capture",capturedAt:1}} recapture={async () => {throw new Error("Unused")}} attach={async (file,text) => {window.captureResult = {name:file.name,type:file.type,text}}} />)}>Open screenshot</button>
         <div class="browser-workspace" style="height:500px">
-          <AddressBar activeUrl={() => "about:blank"} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
+          <AddressBar onPageAction={async action => {window.commands.push(action);return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
           <div ref={container} style="position:relative;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div>
         </div>
         <Show when={request()} keyed>{request => <BrowserPageDialog request={request} onRespond={(accept,promptText) => {window.commands.push({accept,promptText});setRequest(undefined)}} />}</Show>
@@ -95,6 +97,8 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 900, height: 800 } })
   page.on("pageerror", (error) => errors.push(error.message))
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
 }, 60000)
 
 afterAll(async () => {
@@ -104,11 +108,17 @@ afterAll(async () => {
 })
 
 type Fixture = Window & {
+  captureResult?: { name: string; type: string; text: string }
   commands: Array<{ accept?: boolean; promptText?: string }>
   attachments: Array<{ pageId: string; visible: boolean }>
   detachments: unknown[]
   showPageDialog(type: string, value?: string): void
-  browserFixture: { setBrowserError(error: unknown): void; setAnnotationTarget(target: unknown): void }
+  browserFixture: {
+    replacePages(pages: unknown[]): void
+    setHostStatus(id: string, status: string): void
+    setBrowserError(error: unknown): void
+    setAnnotationTarget(target: unknown): void
+  }
 }
 
 test("prompt selects the default, submits edited and empty values, cancels separately, and restores focus", async () => {
@@ -219,4 +229,46 @@ test("browser settings returns focus to its durable menu trigger and preserves t
   expect(await menu.evaluate((node) => document.activeElement === node)).toBe(true)
   await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
   expect(await page.evaluate(() => (window as unknown as Fixture).detachments)).toEqual([])
+})
+
+test("screenshot keyboard mark remains in image bounds and keeps feedback with its attachment", async () => {
+  await page.setViewportSize({ width: 900, height: 800 })
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open screenshot", exact: true }).click()
+  const mark = page.getByRole("button", { name: "Marked location", exact: true })
+  await mark.focus()
+  await mark.press("Enter")
+  await page
+    .getByRole("textbox", { name: "Describe what you want to change or check…", exact: true })
+    .fill("Keep this feedback")
+  await page.getByRole("button", { name: "Add to draft", exact: true }).click()
+  await page.getByRole("dialog").waitFor({ state: "hidden" })
+  const result = await page.evaluate(() => (window as unknown as Fixture).captureResult)
+  expect(result?.type).toBe("image/png")
+  expect(result?.text).toContain("(50, 50) of 100 × 100")
+  expect(result?.text).toContain("Feedback: Keep this feedback")
+  expect(result?.text).toContain("https://example.test/page")
+})
+
+test("a suspended page does not probe unavailable native navigation controls", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.commands.length = 0
+    fixture.browserFixture.setHostStatus("page-one", "detached")
+    fixture.browserFixture.replacePages([
+      {
+        id: "page-one",
+        profileId: "personal",
+        status: "suspended",
+        url: "https://example.test/restored",
+        title: "Restored",
+        isLoading: false,
+        lastActiveAt: null,
+      },
+    ])
+  })
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands)).toEqual([])
 })

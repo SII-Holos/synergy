@@ -355,7 +355,13 @@ function BrowserPanelInner(props: {
           }
           onPageAction={async (action) => {
             const pageId = browser.pageId()
-            if (!pageId || !platform.browserNative?.pageAction) return
+            if (
+              !pageId ||
+              browser.page()?.status !== "active" ||
+              browser.hostStatus() !== "ready" ||
+              !platform.browserNative?.pageAction
+            )
+              return
             try {
               return await platform.browserNative.pageAction({
                 protocolVersion: BROWSER_PROTOCOL_VERSION,
@@ -364,6 +370,7 @@ function BrowserPanelInner(props: {
                 action,
               })
             } catch (error) {
+              if (action.type === "state" || browser.page()?.status !== "active") return
               const normalized = normalizeBrowserError(error, "Page action failed. Retry.")
               browser.setBrowserError({ pageId, severity: "error", message: normalized.message, code: normalized.code })
             }
@@ -431,7 +438,16 @@ function BrowserPanelInner(props: {
               </Show>
             }
           >
-            <DevPanelContent panel={browser.devPanel()!} downloadArtifact={downloadArtifact} />
+            <div class="flex h-full min-h-0 flex-col">
+              <div class="border-b border-border-weak-base p-2">
+                <Button size="small" variant="ghost" onClick={() => browser.setDevPanel("closed")}>
+                  {_({ id: "browser.page.back", message: "Back to webpage" })}
+                </Button>
+              </div>
+              <div class="min-h-0 flex-1">
+                <DevPanelContent panel={browser.devPanel()!} downloadArtifact={downloadArtifact} />
+              </div>
+            </div>
           </Show>
           <AgentAssistant />
           <Show when={showAnnotation()}>

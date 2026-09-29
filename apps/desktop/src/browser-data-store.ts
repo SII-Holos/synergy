@@ -23,6 +23,7 @@ export type BrowserEncryption = {
 }
 
 export class BrowserDataStore {
+  private revisions = new Map<string, number>()
   private queues = new Map<string, Promise<unknown>>()
   constructor(
     private root: string,
@@ -51,6 +52,7 @@ export class BrowserDataStore {
     }
   }
   async savePassword(partition: string, input: ImportedPassword, overwrite: boolean) {
+    const revision = this.revisions.get(partition) ?? 0
     if (!partition.startsWith("persist:") || !(await this.encryption.available()))
       throw new Error("A persistent browser profile and system password store are required.")
     const origin = browserOrigin(input.origin)
@@ -58,6 +60,8 @@ export class BrowserDataStore {
       throw new Error("Password entry is invalid.")
     const encrypted = (await this.encryption.encrypt(input.password)).toString("base64")
     return this.mutate(partition, (value) => {
+      if (revision !== (this.revisions.get(partition) ?? 0))
+        throw new Error("Browser profile was cleared. Reopen it before saving passwords.")
       const previous = value.passwords.find((entry) => entry.origin === origin && entry.username === input.username)
       if (previous && !overwrite) return false
       if (previous) previous.encrypted = encrypted
@@ -79,6 +83,7 @@ export class BrowserDataStore {
     })
   }
   clear(partition: string) {
+    this.revisions.set(partition, (this.revisions.get(partition) ?? 0) + 1)
     return this.mutate(partition, (value) => {
       value.history = []
       value.passwords = []
