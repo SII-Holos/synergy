@@ -75,7 +75,7 @@ describe("plugin shell.run Host Service", () => {
             await Bun.sleep(10)
           }
           await expect(
-            WorkspaceAccess.write([tmp.path], async () => {}, AbortSignal.timeout(100)),
+            WorkspaceAccess.exclusive([tmp.path], async () => {}, AbortSignal.timeout(100)),
           ).rejects.toMatchObject({ name: "TimeoutError" })
           const pid = Number(await Bun.file(marker).text())
           controller.abort()

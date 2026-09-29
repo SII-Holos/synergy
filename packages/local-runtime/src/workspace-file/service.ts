@@ -279,28 +279,32 @@ export namespace WorkspaceFileService {
       return WorkspaceAccess.withinTask(
         () =>
           entryOperation(async () => {
-            await WorkspaceAccess.reserveWrite([path.dirname(from)], signal)
             await validateEntry(to, "write")
             if (await FileView.stat(to)) throw new WriteConflictError()
             const staging = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-transfer-"))
             await fs.chmod(staging, 0o700)
             try {
-              await NativeFileEntry.copy({
-                from,
-                to: path.join(staging, "entry"),
-                expectedVersion: source.version,
+              await WorkspaceAccess.write(
+                [path.dirname(from)],
+                () =>
+                  NativeFileEntry.copy({
+                    from,
+                    to: path.join(staging, "entry"),
+                    expectedVersion: source.version,
+                    signal,
+                    async validate(target, operation) {
+                      if (operation === "write") {
+                        if (!isPathContained(staging, target, { followFinalSymlink: false }))
+                          throw new AccessDeniedError("Transfer staging escaped its owner")
+                        return
+                      }
+                      if (!isPathContained(from, target, { followFinalSymlink: false }))
+                        throw new AccessDeniedError("Import source escaped its owner")
+                      await input.validateSource(target)
+                    },
+                  }),
                 signal,
-                async validate(target, operation) {
-                  if (operation === "write") {
-                    if (!isPathContained(staging, target, { followFinalSymlink: false }))
-                      throw new AccessDeniedError("Transfer staging escaped its owner")
-                    return
-                  }
-                  if (!isPathContained(from, target, { followFinalSymlink: false }))
-                    throw new AccessDeniedError("Import source escaped its owner")
-                  await input.validateSource(target)
-                },
-              })
+              )
               await FileView.importTree(to, (store) => NativeWorkspaceTree.capture(staging, store, signal), signal)
               return await changedEntry(to)
             } finally {
@@ -309,42 +313,55 @@ export namespace WorkspaceFileService {
           }),
         signal,
       )
+    let destinationRoot = path.dirname(to)
+    while (!(await FileEntry.inspect(destinationRoot))) destinationRoot = path.dirname(destinationRoot)
     return WorkspaceAccess.withinTask(
       () =>
-        entryOperation(async () => {
-          await WorkspaceAccess.reserveWrite([root(), path.dirname(from)], signal)
-          await validateEntry(to, "write")
-          if (await FileEntry.inspect(to)) throw new WriteConflictError()
-          const parent = path.dirname(to)
-          let createdParent = false
-          try {
-            if (!(await FileEntry.inspect(parent))) {
-              await FileEntry.mkdir({ path: parent, createParents: true, mode: 0o700, signal, validate: validateEntry })
-              createdParent = true
-            }
-            await FileEntry.copy({
-              from,
-              to,
-              expectedVersion: source.version,
-              signal,
-              async validate(target, operation) {
-                if (operation === "write") return validateEntry(target, operation)
-                if (!isPathContained(from, target, { followFinalSymlink: false }))
-                  throw new AccessDeniedError("Import source escaped its owner")
-                await input.validateSource(target)
-              },
-            })
-            return await changedEntry(to)
-          } catch (cause) {
-            if (createdParent && !(cause instanceof PartialMutationError))
-              throw new PartialMutationError(
-                "Import did not publish its target; parent directories were created",
-                [parent],
-                { cause },
-              )
-            throw cause
-          }
-        }),
+        entryOperation(() =>
+          WorkspaceAccess.write(
+            [path.dirname(from), destinationRoot],
+            async () => {
+              await validateEntry(to, "write")
+              if (await FileEntry.inspect(to)) throw new WriteConflictError()
+              const parent = path.dirname(to)
+              let createdParent = false
+              try {
+                if (!(await FileEntry.inspect(parent))) {
+                  await FileEntry.mkdir({
+                    path: parent,
+                    createParents: true,
+                    mode: 0o700,
+                    signal,
+                    validate: validateEntry,
+                  })
+                  createdParent = true
+                }
+                await FileEntry.copy({
+                  from,
+                  to,
+                  expectedVersion: source.version,
+                  signal,
+                  async validate(target, operation) {
+                    if (operation === "write") return validateEntry(target, operation)
+                    if (!isPathContained(from, target, { followFinalSymlink: false }))
+                      throw new AccessDeniedError("Import source escaped its owner")
+                    await input.validateSource(target)
+                  },
+                })
+                return await changedEntry(to)
+              } catch (cause) {
+                if (createdParent && !(cause instanceof PartialMutationError))
+                  throw new PartialMutationError(
+                    "Import did not publish its target; parent directories were created",
+                    [parent],
+                    { cause },
+                  )
+                throw cause
+              }
+            },
+            signal,
+          ),
+        ),
       signal,
     )
   }

@@ -9,6 +9,28 @@ function request(roots: string[] | null, owner: string = randomUUID()) {
   return { id: randomUUID(), owner, kind: "task" as const, roots, ancestors: [] }
 }
 
+test("a legacy ledger rewrite cannot restore exclusive authorship after overlapping work", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const coordinator = new WorkspaceCoordinator({ directory })
+  const held = await coordinator.acquire({ ...request([]), kind: "process", useRoots: [tmp.path] })
+  try {
+    expect(await held.isolated()).toBe(true)
+    const other = await coordinator.acquire({ ...request([]), kind: "process", useRoots: [tmp.path] })
+    await other.release()
+    expect(await held.isolated()).toBe(false)
+    const filename = path.join(directory, "workspace-claims-v1.json")
+    const ledger: { claims: Record<string, unknown>[] } = await Bun.file(filename).json()
+    for (const claim of ledger.claims) delete claim.overlappingWrites
+    await fs.writeFile(filename, JSON.stringify(ledger))
+    expect(await held.isolated()).toBe(false)
+    expect(await coordinator.inspect()).toHaveLength(1)
+  } finally {
+    await held.release()
+  }
+  expect(await coordinator.inspect()).toHaveLength(0)
+})
+
 test("a durable writer survives its owner and is released only with its saved recovery reference", async () => {
   await using tmp = await tmpdir()
   const directory = path.join(tmp.path, "locks")
@@ -363,7 +385,7 @@ test("a use lease prevents deletion but permits reads and ordinary writers", asy
   await exclusive.release()
 })
 
-test("read-only processes pin their bindings while allowing bounded and host-wide writers", async () => {
+test("resource-only processes permit bounded commits and retain lifecycle and legacy exclusion", async () => {
   await using tmp = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
   const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
@@ -379,8 +401,7 @@ test("read-only processes pin their bindings while allowing bounded and host-wid
     })
     const bounded = await coordinator.acquire({ ...request([tmp.path]), timeoutMs: 100 })
     await bounded.release()
-    const host = await coordinator.acquire({ ...request(null), timeoutMs: 100 })
-    await host.release()
+    await expect(coordinator.acquire({ ...request(null), timeoutMs: 100 })).rejects.toThrow("busy")
     await expect(
       coordinator.acquire({
         ...request([tmp.path]),

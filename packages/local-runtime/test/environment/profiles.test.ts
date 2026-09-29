@@ -141,7 +141,7 @@ test.skipIf(!image)(
             args: ["-c", "printf configured > result"],
             cwd: resources.directory!,
             env: {},
-            writableRoots: [resources.directory!],
+            useRoots: [resources.directory!],
           },
         })
         operation.child.stdout.resume()

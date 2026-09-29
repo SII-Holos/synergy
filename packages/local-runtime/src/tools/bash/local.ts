@@ -31,7 +31,6 @@ import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/p
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { createHash, randomUUID } from "node:crypto"
 import type { ProcessHandle } from "@ericsanchezok/synergy-harness/process/handle"
-import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
 import { StringDecoder } from "node:string_decoder"
 import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
 
@@ -604,7 +603,7 @@ export namespace LocalBashBackend {
           ...invocation,
           cwd,
           env: sandboxEnv,
-          writableRoots: sandboxWriteRoots(sandboxWrapper),
+          useRoots: [cwd],
           sandboxID: sandboxWrapper?.id,
         },
         signal: ctx.abort,

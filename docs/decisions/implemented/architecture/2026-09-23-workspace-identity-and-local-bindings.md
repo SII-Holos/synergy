@@ -8,6 +8,8 @@ A directory string cannot identify working files independently of their location
 
 ## Decision
 
+The permission-footprint and turn-wide reservation aspects are superseded by [operation coordination](../architecture/2026-09-29-workspace-operation-coordination.md); the identity, native ownership and bounded retirement guarantees remain applicable.
+
 The Harness Workspace catalog owns stable identities and transactional location indexes. Each local binding names a host namespace, path, optional filesystem identity, and generation. Rebinding requires the expected record revision, preserves the Workspace ID, and advances its binding generation. A conflicting destination or replaced directory requires an explicit operation instead of silently adopting different files. Cross-Scope lookup is unavailable to callers.
 
 Runtime hosts explicitly supply local location identification. Local Runtime uses a persistent private namespace identity and filesystem directory identities; hosts without local file capabilities can omit that dependency. A record revision orders metadata changes, while a binding generation invalidates work resolved against a previous location.

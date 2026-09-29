@@ -28,6 +28,7 @@ export namespace WorkspaceAccess {
   export interface Lease {
     id: string
     recovery?: { id: string; token: string }
+    isolated?(): Promise<boolean>
     release(beforeRelease?: () => Promise<void>): Promise<void>
     bindProcess(processID: number, options?: { descendants?: boolean }): Promise<void>
   }
@@ -37,13 +38,10 @@ export namespace WorkspaceAccess {
   }
   interface Task {
     runtime: RuntimeContext.Instance
-    id: string
     owner: string
     sessionID?: string
     ancestors: string[]
     workspace?: Workspace | null
-    roots?: string[] | null
-    lease?: Lease
     use?: Lease
     uses: Map<string, Lease>
     bindings: Map<string, Workspace>
@@ -56,7 +54,7 @@ export namespace WorkspaceAccess {
     closed: boolean
     signal: AbortSignal
   }
-  type WriteFinalizer = { finish(): Promise<void>; afterRelease?(): Promise<void> }
+  type WriteFinalizer = { finish(isolated?: () => Promise<boolean>): Promise<void>; afterRelease?(): Promise<void> }
   type WriteObserver = (input: {
     roots: string[] | null
     workspaces: Workspace[]
@@ -80,6 +78,7 @@ export namespace WorkspaceAccess {
     }
   }
   const context = RuntimeContext.createAsyncContext<Task>()
+  const mutation = RuntimeContext.createAsyncContext<{ task: Task; lease: Lease }>()
   const retirement = RuntimeContext.createAsyncContext<{ task: Task; lease: Lease; roots: string[] }>()
   const state = RuntimeContext.state(() => ({ host: undefined as Host | undefined }))
 
@@ -123,7 +122,6 @@ export namespace WorkspaceAccess {
     const controller = new AbortController()
     const value: Task = {
       runtime,
-      id: randomUUID(),
       owner: owner ?? JSON.stringify([runtime.host.root, input.sessionID ?? randomUUID()]),
       sessionID: input.sessionID,
       ancestors: input.parentSessionID
@@ -163,7 +161,6 @@ export namespace WorkspaceAccess {
       controller.abort(new DOMException("Workspace task ended", "AbortError"))
       await value.serial.catch(() => {})
       const released = await Promise.allSettled([
-        value.lease?.release(),
         value.use?.release(),
         ...[...value.uses.values()].map((lease) => lease.release()),
         ...[...value.retired].map((lease) => lease.release()),
@@ -180,32 +177,6 @@ export namespace WorkspaceAccess {
       () => {},
     )
     return pending
-  }
-  async function reserve(task: Task, roots: string[] | null, signal?: AbortSignal, includeWorkspace = true) {
-    if (retirement.getStore()?.task === task) throw new BusyError("Write footprints must be reserved before retirement")
-    return serial(task, async () => {
-      await validate(task)
-      const combined = signal ? AbortSignal.any([task.signal, signal]) : task.signal
-      task.roots =
-        roots === null || task.roots === null
-          ? null
-          : [
-              ...new Set([
-                ...(task.roots ?? []),
-                ...(includeWorkspace && task.workspace ? [task.workspace.path] : []),
-                ...roots,
-              ]),
-            ]
-      task.lease = await host().acquire({
-        id: task.id,
-        owner: task.owner,
-        ancestors: task.ancestors,
-        kind: "task",
-        roots: task.roots,
-        signal: combined,
-      })
-      await validate(task)
-    })
   }
   export function withinTask<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const active = current()
@@ -280,12 +251,10 @@ export namespace WorkspaceAccess {
           task.signal.throwIfAborted()
           if (task.closed) throw new Error("Workspace task is closed")
           const result = await commit()
-          for (const lease of [task.lease, task.use, ...task.uses.values()]) if (lease) task.retired.add(lease)
+          for (const lease of [task.use, ...task.uses.values()]) if (lease) task.retired.add(lease)
           task.workspace = workspace
           task.use = nextUse
           nextUse = undefined
-          task.lease = undefined
-          task.roots = undefined
           task.uses.clear()
           task.bindings.clear()
           task.useRoots = new Set(workspace ? [workspace.path] : [])
@@ -308,31 +277,21 @@ export namespace WorkspaceAccess {
     }
   }
 
-  export async function reserveWrite(roots: string[] | null, signal?: AbortSignal): Promise<void> {
-    const task = current()
-    if (!task) throw new Error("A write reservation requires a Workspace task")
-    await withActivity(task, async () => {
-      await ExecutionCapacity.wait(() => reserve(task, roots, signal))
-      await validate(task)
-    })
-  }
-
-  export async function write<T>(roots: string[] | null, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  export async function write<T>(roots: string[], fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (!RuntimeContext.tryCurrent()) return fn()
     return inTask(async (task) => {
       let operation: Lease | undefined
       let finalize: WriteFinalizer | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          const parent = retirement.getStore()
-          if (parent?.task !== task) await reserve(task, roots, signal)
+          const parent = retirement.getStore() ?? mutation.getStore()
           operation = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
             ancestors: task.ancestors,
-            kind: "operation",
-            parentClaim: parent?.task === task ? parent.lease.id : task.id,
-            roots: roots === null ? null : [...new Set([...(task.workspace ? [task.workspace.path] : []), ...roots])],
+            kind: "task",
+            parentClaim: parent?.task === task ? parent.lease.id : undefined,
+            roots,
             signal: signal ? AbortSignal.any([signal, task.signal]) : task.signal,
           })
         })
@@ -341,10 +300,10 @@ export namespace WorkspaceAccess {
         finalize = await observer()?.(observation(task, roots))
         signal?.throwIfAborted()
         await validate(task)
-        return await fn()
+        return await mutation.run({ task, lease: operation! }, fn)
       } finally {
         try {
-          await finalize?.finish()
+          await finalize?.finish(operation?.isolated)
         } finally {
           await operation?.release()
           await finalize?.afterRelease?.()
@@ -358,14 +317,13 @@ export namespace WorkspaceAccess {
       let lease: Lease | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          const parent = retirement.getStore()
-          if (parent?.task !== task) await reserve(task, [], signal, false)
+          const parent = retirement.getStore() ?? mutation.getStore()
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
             ancestors: task.ancestors,
             kind: "operation",
-            parentClaim: parent?.task === task ? parent.lease.id : task.id,
+            parentClaim: parent?.task === task ? parent.lease.id : undefined,
             transient: true,
             roots,
             signal: signal ? AbortSignal.any([signal, task.signal]) : task.signal,
@@ -381,9 +339,15 @@ export namespace WorkspaceAccess {
   }
 
   export async function process(
-    roots: string[] | null,
+    useRoots: string[],
     signal?: AbortSignal,
-    options?: { cooperative?: boolean; retainAfterExit?: boolean; transient?: boolean; durable?: boolean },
+    options?: {
+      cooperative?: boolean
+      retainAfterExit?: boolean
+      transient?: boolean
+      durable?: boolean
+      mutationRoots?: string[]
+    },
   ): Promise<Lease> {
     if (options?.cooperative && !host().contendedProcesses)
       throw new Error("This Runtime cannot monitor cooperative process contention")
@@ -392,9 +356,7 @@ export namespace WorkspaceAccess {
       const observe = observer()
       try {
         await ExecutionCapacity.wait(async () => {
-          const writes = roots === null || roots.length > 0
-          const parent = retirement.getStore()
-          if (writes && parent?.task !== task) await reserve(task, options?.transient ? [] : roots, signal, false)
+          const parent = retirement.getStore() ?? mutation.getStore()
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
@@ -403,16 +365,19 @@ export namespace WorkspaceAccess {
             retainAfterExit: !!observe || options?.retainAfterExit,
             durable: options?.durable,
             cooperative: options?.cooperative,
-            parentClaim: parent?.task === task ? parent.lease.id : writes ? task.id : undefined,
+            parentClaim: parent?.task === task ? parent.lease.id : undefined,
             transient: options?.transient || parent?.task === task,
-            roots,
-            useRoots: [...task.useRoots],
+            roots: options?.mutationRoots ?? [],
+            useRoots: [...new Set([...task.useRoots, ...useRoots])],
             signal: signal ? AbortSignal.any([signal, task.signal]) : task.signal,
           })
         })
         signal?.throwIfAborted()
         await validate(task)
-        const finalize = roots?.length === 0 ? undefined : await observe?.(observation(task, roots))
+        const finalize =
+          useRoots.length === 0
+            ? undefined
+            : await observe?.(observation(task, options?.mutationRoots?.length ? options.mutationRoots : useRoots))
         const owned = lease!
         if (!finalize) return owned
         let finalized = false
@@ -421,7 +386,7 @@ export namespace WorkspaceAccess {
           ...owned,
           async release(beforeRelease?: () => Promise<void>) {
             await owned.release(async () => {
-              await finalize.finish()
+              await finalize.finish(owned.isolated)
               await beforeRelease?.()
               finalized = true
             })
@@ -444,18 +409,17 @@ export namespace WorkspaceAccess {
   export async function hostClaim(
     input: Omit<ClaimInput, "owner" | "ancestors" | "parentClaim" | "useRoots">,
   ): Promise<Lease> {
+    if (input.kind === "exclusive" && !current()) return maintenance(() => hostClaim(input))
     return inTask(async (task) => {
       let lease: Lease | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          const writes = input.kind !== "use" && (input.roots === null || input.roots.length > 0)
-          const parent = retirement.getStore()
-          if (writes && parent?.task !== task) await reserve(task, input.roots, input.signal, false)
+          const parent = retirement.getStore() ?? mutation.getStore()
           lease = await host().acquire({
             ...input,
             owner: task.owner,
             ancestors: task.ancestors,
-            parentClaim: parent?.task === task ? parent.lease.id : writes ? task.id : undefined,
+            parentClaim: parent?.task === task ? parent.lease.id : undefined,
             useRoots: [...task.useRoots],
             signal: input.signal ? AbortSignal.any([input.signal, task.signal]) : task.signal,
           })
@@ -532,15 +496,7 @@ export namespace WorkspaceAccess {
   export async function handoff<T>(fn: () => Promise<T>): Promise<T> {
     const task = current()
     if (task?.retiring) throw new BusyError("Cannot release write ownership during retirement")
-    return ExecutionCapacity.wait(async () => {
-      if (task)
-        await serial(task, async () => {
-          await task.lease?.release()
-          task.lease = undefined
-          task.roots = undefined
-        })
-      return fn()
-    })
+    return ExecutionCapacity.wait(fn)
   }
 
   export async function exclusive<T>(roots: string[], fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -584,7 +540,7 @@ export namespace WorkspaceAccess {
   export async function retire<T>(
     roots: string[],
     fn: () => Promise<T>,
-    options: { writeRoots?: string[] | null } = {},
+    options: { writeRoots?: string[] } = {},
   ): Promise<T> {
     return inTask(async (task) => {
       if (task.activity !== 1 || task.retiring) throw new BusyError("Workspace operations are in flight")
@@ -603,15 +559,24 @@ export namespace WorkspaceAccess {
         throw new BusyError("Leave the Workspace before removing its directory")
       task.retiring = true
       let lease: Lease | undefined
+      let reservation: Lease | undefined
       try {
         await ExecutionCapacity.wait(async () => {
-          await reserve(task, options.writeRoots === undefined ? [] : options.writeRoots, undefined, false)
+          reservation = await host().acquire({
+            id: randomUUID(),
+            owner: task.owner,
+            ancestors: task.ancestors,
+            kind: "task",
+            roots: [...roots, ...(options.writeRoots ?? [])],
+            signal: task.signal,
+            timeoutMs: 1000,
+          })
           lease = await host().acquire({
             id: randomUUID(),
             owner: task.owner,
             ancestors: task.ancestors,
             kind: "exclusive",
-            parentClaim: task.id,
+            parentClaim: reservation!.id,
             transient: true,
             roots,
             signal: task.signal,
@@ -622,7 +587,11 @@ export namespace WorkspaceAccess {
         return await retirement.run({ task, lease: lease!, roots: roots.map((root) => path.resolve(root)) }, fn)
       } finally {
         try {
-          await lease?.release()
+          try {
+            await lease?.release()
+          } finally {
+            await reservation?.release()
+          }
         } finally {
           task.retiring = false
         }

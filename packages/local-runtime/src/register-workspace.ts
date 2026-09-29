@@ -17,8 +17,6 @@ import { WorkspaceFileService } from "./workspace-file/service"
 const log = Log.create({ service: "runtime.workspace" })
 
 const workspaceServices: SessionWorkspaceRuntime.Provider = {
-  lockWorktree: (directory) => Worktree.lock(directory),
-  unlockWorktree: (directory) => Worktree.unlock(directory),
   withWorktree: (directory, sessionID, fn) => Worktree.withUse(directory, sessionID, fn),
   createWorktree: (input) => Worktree.create(input),
   enterWorktree: (input) => Worktree.enter(input),

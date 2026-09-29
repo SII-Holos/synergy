@@ -11,6 +11,8 @@ When upgrading Bun, validate native FFI with JIT enabled and disabled, including
 
 Local acceptance fault injectors must match the intended request and an observed stage; auxiliary model calls, empty argument deltas and untriggered hooks are not coverage. Preserve upstream and delivered bytes separately when truncating a stream, and drain request journals on cancellation before reporting usage. For persistence, independently observe the same owned namespace, fail actual database writes or connections, retain a sealed export before cleanup, and keep cloud-adapter protocol fixtures distinct from real-provider deployment acceptance.
 
+For Workspace contention, explicitly inject a managed mutation when testing writer admission. Raw Bash commands retain resource use without writer exclusion; shared-child cancellation scenarios must observe both commands at a physical barrier before cancelling and rebinding one. Include resource-use roots when checking residual claims, and test imports into multiple missing directory levels so parent creation stays inside the admitted mutation.
+
 Distinguish model disconnects from watchdog timeouts. Hold an actual upstream response until the client aborts, and require the matching first-byte or idle watchdog metric before counting the phase. Complete real model work before and after the timeout sequence and independently count any earlier tool side effect. Match delegated fixture roles by an unambiguous identity token; descriptive text appended by the model must not prevent observing the real child task.
 
 Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
@@ -65,9 +67,11 @@ Prepare durable fixtures before starting a short runtime deadline; for Cortex ti
 
 For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.
 
-For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify that metadata writes do not serialize a read-only turn.
+For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify concurrent tools in sibling and shared Workspaces while real unrestricted commands are still active. Test LSP continuity, exact formatter preconditions, save conflicts after response loss and stale checkpoint recovery without replay.
 
-For retirement changes, overlap cleanup in independent repositories and include commands whose write footprint is broader than the retired directory. Verify that broader ownership is reserved before directory exclusion, that nested writes cannot wait on their own lifecycle claim, and that undeclared expansion fails before queuing. Capture ownership state for an unexplained timeout; a green rerun alone does not identify its cause.
+For shared claim ledgers, exercise a legacy reader rewriting newer records. Missing observation fields must remain unknown and cannot restore exclusive authorship or authorize undo; preserve retained resource ownership.
+
+For retirement changes, overlap cleanup in independent repositories and include concrete Git/cache mutations outside the retired directory. Verify that broader ownership is reserved before directory exclusion, that nested writes cannot wait on their own lifecycle claim, and that undeclared expansion fails before queuing. Capture ownership state for an unexplained timeout; a green rerun alone does not identify its cause.
 
 For process-backed write evidence, test the interval after native exit but before archive completion: an overlapping writer must remain excluded, disjoint roots must proceed, and finalizer failure or Runtime death must not leave a completed process permanently occupied.
 

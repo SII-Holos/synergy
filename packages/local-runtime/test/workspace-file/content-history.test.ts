@@ -16,6 +16,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { RolloutTool } from "@ericsanchezok/synergy-harness/session/rollout/tool"
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
 import { FileView } from "../../src/file/view"
+import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
 
 for (const live of [false, true])
@@ -118,7 +119,7 @@ for (const live of [false, true])
     )
   }, 30_000)
 
-test("execution history survives a failed save and includes every writable mounted Workspace", async () => {
+test("execution history survives a failed save and includes only explicitly referenced mounted Workspaces", async () => {
   let failSave = false
   await using runtime = await testRuntime({
     register() {
@@ -200,6 +201,7 @@ test("execution history survives a failed save and includes every writable mount
           async () => {
             const execution = await EnvironmentProcess.prepare({
               id: "history-execution",
+              workspaces: [WorkspaceMounts.reference(other.workspace!)],
               scopeID,
               resources,
               command: {
@@ -212,7 +214,7 @@ test("execution history survives a failed save and includes every writable mount
                 ],
                 cwd: resources.directory!,
                 env: {},
-                writableRoots: null,
+                useRoots: [other.directory!],
               },
             })
             execution.child.stdout.resume()

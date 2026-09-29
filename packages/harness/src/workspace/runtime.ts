@@ -26,14 +26,7 @@ export namespace WorkspaceRuntime {
       }
       if (workspace.type !== "git_worktree") return await run()
       const worktree = SessionWorkspaceRuntime.get()
-      return await worktree.withWorktree(workspace.path, sessionID, async () => {
-        await worktree.lockWorktree(workspace.path)
-        try {
-          return await run()
-        } finally {
-          await worktree.unlockWorktree(workspace.path)
-        }
-      })
+      return await worktree.withWorktree(workspace.path, sessionID, run)
     } finally {
       await use.release()
     }

@@ -74,14 +74,8 @@ export interface SandboxExecutionWrapper {
   sandboxed: boolean
   skipReason?: string
   tempPath?: string
-  /** Native compiler receipt; absence or an unconfined wrapper requires host-wide exclusion. */
+  /** Native compiler containment metadata; never a Workspace coordination claim. */
   writeFootprint?: { kind: "roots"; roots: string[] } | { kind: "host" }
-}
-
-export function sandboxWriteRoots(wrapper?: SandboxExecutionWrapper): string[] | null {
-  return wrapper?.sandboxed && !wrapper.skipReason && wrapper.writeFootprint?.kind === "roots"
-    ? wrapper.writeFootprint.roots
-    : null
 }
 
 export interface SandboxExecuteOpts {

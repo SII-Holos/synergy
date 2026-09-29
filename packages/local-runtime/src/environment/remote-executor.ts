@@ -19,6 +19,7 @@ export class RemoteExecutor implements Executor {
   }
 
   async start(request: ExecutionProtocol.Request) {
+    await this.health()
     return ExecutionProtocol.Status.parse(await this.request("POST", "/v1/operations", request))
   }
   async describe() {

@@ -71,7 +71,7 @@ nativeTest(
 )
 
 nativeTest(
-  "disjoint compiled roots run concurrently, while an explicitly shared root blocks a writer",
+  "sandbox grants do not serialize processes, including an explicitly shared root",
   () =>
     runtime.run(async () => {
       await using a = await tmpdir()
@@ -98,11 +98,10 @@ nativeTest(
                 context({
                   workspace: b.path,
                   mode: "workspace_write",
-                  abort: AbortSignal.timeout(shared ? 200 : 5000),
+                  abort: AbortSignal.timeout(5000),
                 }),
               )
-              if (shared) await expect(result).rejects.toThrow()
-              else expect((await result).output).toBe("independent")
+              expect((await result).output).toBe("independent")
               expect(processInfo.child?.alive?.()).toBe(true)
             },
           })
