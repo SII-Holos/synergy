@@ -67,6 +67,8 @@ For persisted cooldowns and retry deadlines, advance a controlled clock at the f
 
 For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify concurrent tools in sibling and shared Workspaces while real unrestricted commands are still active. Test LSP continuity, exact formatter preconditions, save conflicts after response loss and stale checkpoint recovery without replay.
 
+For shared claim ledgers, exercise a legacy reader rewriting newer records. Missing observation fields must remain unknown and cannot restore exclusive authorship or authorize undo; preserve retained resource ownership.
+
 For retirement changes, overlap cleanup in independent repositories and include concrete Git/cache mutations outside the retired directory. Verify that broader ownership is reserved before directory exclusion, that nested writes cannot wait on their own lifecycle claim, and that undeclared expansion fails before queuing. Capture ownership state for an unexplained timeout; a green rerun alone does not identify its cause.
 
 For process-backed write evidence, test the interval after native exit but before archive completion: an overlapping writer must remain excluded, disjoint roots must proceed, and finalizer failure or Runtime death must not leave a completed process permanently occupied.

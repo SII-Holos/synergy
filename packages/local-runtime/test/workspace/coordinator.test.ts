@@ -9,6 +9,28 @@ function request(roots: string[] | null, owner: string = randomUUID()) {
   return { id: randomUUID(), owner, kind: "task" as const, roots, ancestors: [] }
 }
 
+test("a legacy ledger rewrite cannot restore exclusive authorship after overlapping work", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const coordinator = new WorkspaceCoordinator({ directory })
+  const held = await coordinator.acquire({ ...request([]), kind: "process", useRoots: [tmp.path] })
+  try {
+    expect(await held.isolated()).toBe(true)
+    const other = await coordinator.acquire({ ...request([]), kind: "process", useRoots: [tmp.path] })
+    await other.release()
+    expect(await held.isolated()).toBe(false)
+    const filename = path.join(directory, "workspace-claims-v1.json")
+    const ledger: { claims: Record<string, unknown>[] } = await Bun.file(filename).json()
+    for (const claim of ledger.claims) delete claim.overlappingWrites
+    await fs.writeFile(filename, JSON.stringify(ledger))
+    expect(await held.isolated()).toBe(false)
+    expect(await coordinator.inspect()).toHaveLength(1)
+  } finally {
+    await held.release()
+  }
+  expect(await coordinator.inspect()).toHaveLength(0)
+})
+
 test("a durable writer survives its owner and is released only with its saved recovery reference", async () => {
   await using tmp = await tmpdir()
   const directory = path.join(tmp.path, "locks")

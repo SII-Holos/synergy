@@ -300,7 +300,7 @@ export namespace WorkspaceOperations {
         async (saved) => {
           if (info.evidence && !checkpoint.beforeManifest)
             throw new Error("Workspace operation has no physical baseline")
-          if (checkpoint.isolated === false || attempt.id !== info.id) await WorkspaceEvidence.incomplete(info.evidence)
+          if (checkpoint.isolated !== true || attempt.id !== info.id) await WorkspaceEvidence.incomplete(info.evidence)
           else
             await WorkspaceEvidence.finish(info.evidence, saved, checkpoint.beforeManifest ?? null, checkpoint.manifest)
         },

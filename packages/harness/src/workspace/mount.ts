@@ -338,7 +338,7 @@ export namespace WorkspaceMounts {
         files,
         { ...checkpoint, beforeManifest: before },
         (saved) =>
-          checkpoint.isolated === false || attempt.id !== checkpointID(input.id, reference.id)
+          checkpoint.isolated !== true || attempt.id !== checkpointID(input.id, reference.id)
             ? WorkspaceEvidence.incomplete(evidence)
             : WorkspaceEvidence.finish(evidence, saved, before ?? null, checkpoint.manifest),
         attempt,

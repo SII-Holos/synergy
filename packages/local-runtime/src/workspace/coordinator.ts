@@ -287,6 +287,7 @@ export class WorkspaceCoordinator {
       startIdentity: await processStartIdentity(pid),
       processBound: input.processID !== undefined,
       finalizer: finalizerIdentity ? { pid: process.pid, startIdentity: finalizerIdentity } : undefined,
+      overlappingWrites: false,
       state: "waiting",
     }
     let registered = false
@@ -459,7 +460,8 @@ export class WorkspaceCoordinator {
     return this.update((ledger) => {
       const claim = ledger.claims.find((item) => item.id === reference.id && item.token === reference.token)
       if (!claim || claim.state !== "active") throw new Error("Workspace observation claim is unavailable")
-      return !claim.overlappingWrites
+      // Older runtimes can preserve a claim while stripping newer observation fields.
+      return claim.overlappingWrites === false
     })
   }
 
