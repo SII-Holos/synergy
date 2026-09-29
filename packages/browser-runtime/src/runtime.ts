@@ -231,6 +231,17 @@ export namespace BrowserRuntime {
     return create
   }
 
+  export async function clearProfile(id: string): Promise<void> {
+    const profile = await BrowserProfiles.get(id)
+    const wasDefault = (await BrowserProfiles.list()).defaultProfileId === id
+    await BrowserProfiles.update(id, { enabled: false })
+    await BrowserBroker.clearProfile(profile)
+    if (profile.enabled) {
+      await BrowserProfiles.update(id, { enabled: true })
+      if (wasDefault) await BrowserProfiles.setDefault(id)
+    }
+  }
+
   export function resourceStats() {
     const instanceState = runtimeState()
 

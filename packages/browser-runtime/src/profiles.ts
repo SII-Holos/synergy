@@ -132,6 +132,7 @@ export namespace BrowserProfiles {
       const profile = value.profiles.find((item) => item.id === id)
       if (!profile) throw missing(id)
       Object.assign(profile, parsed, { revision: profile.revision + 1 })
+      if (profile.enabled) value.defaultProfileId ??= id
       if (!profile.enabled && value.defaultProfileId === id)
         value.defaultProfileId = value.profiles.find((item) => item.enabled)?.id ?? null
       await Storage.write(catalogKey, value)

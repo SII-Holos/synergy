@@ -15,7 +15,7 @@ export namespace BrowserDownloads {
     url: string
     suggestedFilename: string
     mimeType?: string
-    state: "pending" | "completed" | "failed" | "blocked" | "cancelled"
+    state: "awaiting_approval" | "pending" | "completed" | "failed" | "blocked" | "cancelled"
     path?: string
     size?: number
     createdAt: number
@@ -69,7 +69,7 @@ export namespace BrowserDownloads {
     const entry = instanceState.records.get(BrowserOwner.key(owner))?.get(id)
     if (!entry) throw new Error(`Download ${id} was not found for this browser owner.`)
     if (entry.record.state === "cancelled") return { ...entry.record }
-    if (entry.record.state !== "pending") {
+    if (entry.record.state !== "pending" && entry.record.state !== "awaiting_approval") {
       throw new Error(`Download ${id} cannot be cancelled after reaching ${entry.record.state} state.`)
     }
     entry.record.state = "cancelled"
@@ -154,7 +154,7 @@ export namespace BrowserDownloads {
       ownerRecords.set(record.id, {
         record: {
           ...record,
-          state: record.state === "pending" ? "failed" : record.state,
+          state: ["pending", "awaiting_approval"].includes(record.state) ? "failed" : record.state,
           ...(managedPath ? { path: managedPath } : {}),
         },
       })

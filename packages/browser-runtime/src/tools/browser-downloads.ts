@@ -1,16 +1,16 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserDownloads } from "../downloads"
 import { BrowserCommandService } from "../command-service"
 import { BrowserOwner } from "../owner"
 import { BrowserExport } from "../export"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
-import { formatBrowserJSON } from "./browser-shared"
+import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 
 const parameters = z
   .object({
-    action: z.enum(["list", "wait", "cancel", "export"]),
-    id: z.string().min(1).max(20_000).optional().describe("Required for wait, cancel, and export."),
+    action: z.enum(["list", "accept", "wait", "cancel", "export"]),
+    id: z.string().min(1).max(20_000).optional().describe("Required except for list."),
     timeoutSeconds: z.number().int().min(1).max(60).optional().describe("Valid only for wait; defaults to 30."),
     path: z.string().min(1).max(20_000).optional().describe("Required only for export."),
     page: z.number().int().min(0).optional().describe("Valid only for list; defaults to 0."),
@@ -49,7 +49,8 @@ interface BrowserDownloadsMetadata {
 }
 
 export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownloadsMetadata>("browser_downloads", {
-  description: "List, wait for, cancel, or export owner-isolated managed browser downloads.",
+  description:
+    "List downloads across pages. Accept a waiting download, wait for completion, cancel, or export it to the Workspace.",
   parameters,
   async execute(params, ctx) {
     const owner = BrowserOwner.fromToolContext(ctx)
@@ -65,6 +66,23 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
         metadata: { records, page, total: all.length, outputTruncated: formatted.truncated },
       }
     }
+    if (params.action === "accept") {
+      const record = BrowserDownloads.get(owner, params.id!)
+      if (!record || record.state !== "awaiting_approval")
+        throw new Error("Download is not waiting for approval. List downloads to check its state.")
+      await BrowserCommandService.execute(owner, {
+        pageId: record.pageID,
+        commandId: `${ctx.callID ?? ctx.messageID}:download-accept`,
+        command: { type: "download.accept", id: record.id },
+        authorize: ({ profileId }) => BrowserToolHelper.authorize(ctx, profileId, record.url, "downloads"),
+        signal: ctx.abort,
+      })
+      return {
+        title: "Download accepted",
+        output: formatBrowserJSON(publicRecord(record)).output,
+        metadata: { id: record.id },
+      }
+    }
     if (params.action === "wait") {
       const record = await BrowserDownloads.wait(owner, params.id!, (params.timeoutSeconds ?? 30) * 1_000, ctx.abort)
       const visible = publicRecord(record)
@@ -78,7 +96,7 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
     if (params.action === "cancel") {
       const pending = BrowserDownloads.get(owner, params.id!)
       if (!pending) throw new Error(`Download ${params.id} was not found for this browser owner.`)
-      if (pending.state === "pending") {
+      if (pending.state === "pending" || pending.state === "awaiting_approval") {
         await BrowserCommandService.execute(owner, {
           pageId: pending.pageID,
           commandId: `${ctx.callID ?? ctx.messageID}:download-cancel`,
@@ -97,6 +115,11 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
       }
     }
 
+    const record = BrowserDownloads.get(owner, params.id!)
+    const browser = await BrowserCommandService.session(owner)
+    const page = browser.pages.find((page) => page.id === record?.pageID)
+    if (!record || !page) throw new Error("Open the download's page before exporting it.")
+    await BrowserToolHelper.authorize(ctx, page.profileId, record.url, "downloads")
     const target = await BrowserExport.fileTarget(ScopeContext.current.directory, params.path!)
     const exported = await BrowserDownloads.exportTo(owner, params.id!, target, ctx.abort)
     return { title: `Download ${params.id} exported`, output: exported, metadata: { id: params.id, path: exported } }

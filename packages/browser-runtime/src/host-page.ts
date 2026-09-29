@@ -117,6 +117,12 @@ export class BrowserHostPage implements BrowserPageBackend {
   private handleEvent(event: BrowserHostPageEvent): void {
     if (event.type === "host.status") {
       this._hostStatus = event.status
+      this.events.onStatus?.(this, event.status)
+      return
+    }
+    if (event.type === "page.closed") {
+      this.unsubscribe()
+      this.events.onClosed?.(this)
       return
     }
     if (event.type === "page.loading") {

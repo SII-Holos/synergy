@@ -25101,9 +25101,9 @@
         ]
       }
     },
-    "/{directory}/browser/webrtc/ticket": {
+    "/{directory}/browser/pages": {
       "post": {
-        "operationId": "browser.createViewerTicket",
+        "operationId": "browser.openPage",
         "parameters": [
           {
             "in": "query",
@@ -25145,14 +25145,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -25191,31 +25191,20 @@
             "required": true
           }
         ],
-        "summary": "Create a Browser viewer ticket",
-        "description": "Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.",
+        "summary": "Open a browser page",
         "responses": {
           "200": {
-            "description": "Browser viewer ticket",
+            "description": "New page",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BrowserViewerTicketResponse"
+                  "$ref": "#/components/schemas/BrowserAPISessionPage"
                 }
               }
             }
           },
           "400": {
-            "description": "Ticket request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Browser request payload is too large",
+            "description": "Page could not open",
             "content": {
               "application/json": {
                 "schema": {
@@ -25239,7 +25228,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BrowserViewerTicketRequest"
+                "$ref": "#/components/schemas/BrowserOpenPage"
               }
             }
           }
@@ -25247,7 +25236,404 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createViewerTicket({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.openPage({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/profiles": {
+      "get": {
+        "operationId": "browser.profiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "List browser identities",
+        "responses": {
+          "200": {
+            "description": "Identities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfileList"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.profiles({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "browser.createProfile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Create a browser identity",
+        "responses": {
+          "200": {
+            "description": "Identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfile"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserProfileCreate"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createProfile({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/profiles/{profileId}/manage": {
+      "post": {
+        "operationId": "browser.manageProfile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "profileId",
+            "required": true
+          }
+        ],
+        "summary": "Manage a browser identity",
+        "responses": {
+          "200": {
+            "description": "Updated identities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfileList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identity operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserManageProfile"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.manageProfile({\n  ...\n})"
           }
         ]
       }
@@ -25296,14 +25682,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -25447,14 +25833,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -25598,14 +25984,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -25730,14 +26116,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -63168,64 +63554,6 @@
         },
         "required": ["id", "url", "mime", "size"]
       },
-      "BrowserViewerTicketResponse": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 3
-          },
-          "ticket": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "expiresAt": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "iceServers": {
-            "maxItems": 100,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "urls": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 20000
-                    },
-                    {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 20000
-                      }
-                    }
-                  ]
-                },
-                "username": {
-                  "type": "string",
-                  "maxLength": 20000
-                },
-                "credential": {
-                  "type": "string",
-                  "maxLength": 20000
-                }
-              },
-              "required": ["urls"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["protocolVersion", "ticket", "expiresAt", "iceServers"],
-        "additionalProperties": false
-      },
       "BrowserAPIError": {
         "type": "object",
         "properties": {
@@ -63417,29 +63745,289 @@
         "required": ["type", "code", "message", "retryable"],
         "additionalProperties": false
       },
-      "BrowserViewerTicketRequest": {
+      "BrowserAPISessionPage": {
         "type": "object",
         "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 3
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
           },
-          "pageId": {
+          "url": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "isLoading": {
+            "type": "boolean"
+          },
+          "lastActiveAt": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "openerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "suspended", "failed"]
+          },
+          "error": {
+            "$ref": "#/components/schemas/BrowserAPIError"
+          }
+        },
+        "required": ["id", "url", "title", "isLoading", "lastActiveAt", "profileId", "status"],
+        "additionalProperties": false
+      },
+      "BrowserOpenPage": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "profileId": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
             "pattern": "^[a-zA-Z0-9._-]+$"
           }
         },
-        "required": ["protocolVersion", "pageId"],
         "additionalProperties": false
+      },
+      "BrowserProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["persistent", "temporary"]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "origins": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "access": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                },
+                "downloads": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                },
+                "uploads": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["id", "name", "kind", "enabled", "revision", "createdAt", "origins"],
+        "additionalProperties": false
+      },
+      "BrowserProfileList": {
+        "type": "object",
+        "properties": {
+          "defaultProfileId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[a-zA-Z0-9._-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserProfile"
+            }
+          }
+        },
+        "required": ["defaultProfileId", "profiles"],
+        "additionalProperties": false
+      },
+      "BrowserProfileCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["persistent", "temporary"]
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "BrowserProfileUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BrowserManageProfile": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "update"
+              },
+              "changes": {
+                "$ref": "#/components/schemas/BrowserProfileUpdate"
+              }
+            },
+            "required": ["action", "changes"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "default"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "remove"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "clear"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "policy"
+              },
+              "origin": {
+                "type": "string",
+                "format": "uri"
+              },
+              "policy": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "access": {
+                        "type": "string",
+                        "enum": ["inherit", "allow", "ask", "deny"]
+                      },
+                      "downloads": {
+                        "type": "string",
+                        "enum": ["inherit", "allow", "ask", "deny"]
+                      },
+                      "uploads": {
+                        "type": "string",
+                        "enum": ["inherit", "allow", "ask", "deny"]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["action", "origin", "policy"],
+            "additionalProperties": false
+          }
+        ]
       },
       "BrowserAnnotationResponse": {
         "type": "object",
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "annotation": {
             "type": "object",
@@ -63499,7 +64087,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "pageId": {
             "type": "string",
@@ -63538,7 +64126,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "pageId": {
             "type": "string",
@@ -63560,7 +64148,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "pageId": {
             "type": "string",
@@ -63596,7 +64184,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "ownerKey": {
             "type": "string",
@@ -63605,50 +64193,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["empty", "suspended", "active", "migrating", "failed"]
-          },
-          "page": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "url": {
-                    "type": "string",
-                    "maxLength": 20000
-                  },
-                  "title": {
-                    "type": "string",
-                    "maxLength": 20000
-                  },
-                  "isLoading": {
-                    "type": "boolean"
-                  },
-                  "lastActiveAt": {
-                    "anyOf": [
-                      {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "enum": ["empty", "suspended", "active", "failed"]
           },
           "presentation": {
             "anyOf": [
@@ -63657,28 +64202,25 @@
                 "properties": {
                   "protocolVersion": {
                     "type": "number",
-                    "const": 3
+                    "const": 4
                   },
                   "kind": {
                     "type": "string",
-                    "enum": ["native", "webrtc"]
+                    "enum": ["native"]
                   },
                   "capabilities": {
                     "type": "object",
                     "properties": {
                       "native": {
                         "type": "boolean"
-                      },
-                      "webrtc": {
-                        "type": "boolean"
                       }
                     },
-                    "required": ["native", "webrtc"],
+                    "required": ["native"],
                     "additionalProperties": false
                   },
                   "reason": {
                     "type": "string",
-                    "enum": ["desktop-local", "remote-client", "requested"]
+                    "enum": ["desktop-local", "requested"]
                   }
                 },
                 "required": ["protocolVersion", "kind", "capabilities", "reason"],
@@ -63715,6 +64257,13 @@
           },
           "error": {
             "$ref": "#/components/schemas/BrowserAPIError"
+          },
+          "pages": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserAPISessionPage"
+            }
           }
         },
         "required": [
@@ -63722,11 +64271,11 @@
           "protocolVersion",
           "ownerKey",
           "status",
-          "page",
           "presentation",
           "hostStatus",
           "seq",
-          "epoch"
+          "epoch",
+          "pages"
         ],
         "additionalProperties": false
       },
@@ -63739,7 +64288,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "result": {
             "anyOf": [
@@ -64141,9 +64690,15 @@
       "BrowserControlRequest": {
         "type": "object",
         "properties": {
+          "pageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "command": {
             "anyOf": [
@@ -64382,7 +64937,7 @@
             "maxLength": 20000
           }
         },
-        "required": ["protocolVersion", "command", "commandId"],
+        "required": ["pageId", "protocolVersion", "command", "commandId"],
         "additionalProperties": false
       },
       "GlobalThemeContribution": {
@@ -66387,28 +66942,6 @@
           }
         ]
       },
-      "Event.scope.runtime.disposed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.runtime.disposed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "directory": {
-                "type": "string"
-              }
-            },
-            "required": ["scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.workspace.updated": {
         "type": "object",
         "properties": {
@@ -66453,6 +66986,28 @@
               }
             },
             "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.runtime.disposed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.runtime.disposed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["scopeID"]
           }
         },
         "required": ["type", "properties"]
@@ -68377,9 +68932,6 @@
       "Event": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
-          },
-          {
             "$ref": "#/components/schemas/Event.workspace.updated"
           },
           {
@@ -68387,6 +68939,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
           },
           {
             "$ref": "#/components/schemas/Event.environment.updated"

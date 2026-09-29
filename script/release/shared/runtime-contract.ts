@@ -130,6 +130,7 @@ async function assertNoProductAssets(runtimeDir: string): Promise<void> {
   const productPaths = [
     "app",
     "browser-runtime",
+    "runtime/node_modules/@ericsanchezok/synergy-browser-runtime",
     "lib/onnxruntime-web",
     "lib/resvg-wasm",
     "lib/holos-cli",

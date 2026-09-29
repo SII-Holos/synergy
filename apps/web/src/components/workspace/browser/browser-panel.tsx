@@ -1,4 +1,4 @@
-import { createBrowserSessionRecovery } from "./browser-session-recovery"
+import { BrowserTabs } from "./browser-tabs"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -48,7 +48,7 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
       scopeID: sdk.scopeID,
       mode: "session",
       sessionID: input.sessionID,
-      presentation: clientPresentation === "native" ? "auto" : "webrtc",
+      presentation: "auto",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
     })
     if (!response.data) throw response.error ?? new Error("Browser session bootstrap failed")
@@ -107,11 +107,12 @@ function BrowserPanelInner(props: {
   const platform = usePlatform()
   const { _ } = useLingui()
   const ownerKey = props.initial.ownerKey
-  browser.setSession("page", props.initial.page)
+  browser.replacePages(props.initial.pages)
   browser.setSession("seq", props.initial.seq)
   browser.setSession("epoch", props.initial.epoch)
   browser.setPresentation(props.clientPresentation === "native" ? null : props.initial.presentation)
-  if (props.initial.page) browser.setHostStatus(props.initial.page.id, props.initial.hostStatus)
+  for (const page of props.initial.pages)
+    browser.setHostStatus(page.id, page.status === "active" ? props.initial.hostStatus : "detached")
   if (props.initial.error) {
     browser.setBrowserError({
       severity: "error",
@@ -127,9 +128,6 @@ function BrowserPanelInner(props: {
     routeDirectory: props.routeDirectory,
     presentation: props.clientPresentation,
   })
-  if (shouldResumeBrowserSession(props.initial)) {
-    queueMicrotask(() => browser.send({ type: "resume" }))
-  }
 
   const [handledNavigationNonce, setHandledNavigationNonce] = createSignal<number | undefined>(undefined)
   createEffect(() => {
@@ -139,66 +137,16 @@ function BrowserPanelInner(props: {
     browser.navigate(request.url)
   })
 
-  const [recovering, setRecovering] = createSignal(false)
-  const [recoveryVersion, setRecoveryVersion] = createSignal(0)
-  const route = {
-    path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
-    query_directory: sdk.directory,
-    scopeID: sdk.scopeID,
-    mode: "session" as const,
-    sessionID: props.sessionID,
-    presentation: "webrtc" as const,
-    protocolVersion: BROWSER_PROTOCOL_VERSION,
-  }
-  const recovery = createBrowserSessionRecovery({
-    ownerKey,
-    pageId: browser.pageId,
-    read: async (signal) => {
-      const response = await sdk.client.browser.session(route, { signal, throwOnError: true })
-      return response.data
-    },
-    resume: async (signal) => {
-      await sdk.client.browser.control(
-        {
-          ...route,
-          browserControlRequest: {
-            protocolVersion: BROWSER_PROTOCOL_VERSION,
-            commandId: createBrowserCommandId(),
-            command: { type: "resume" },
-          },
-        },
-        { signal, throwOnError: true },
-      )
-    },
-    reconnect: () => {
-      ws.reconnect()
-      setRecoveryVersion((value) => value + 1)
-    },
-  })
-  let disposed = false
-  onCleanup(() => {
-    disposed = true
-    recovery.dispose()
-  })
-  const retryRemote = async () => {
-    if (recovering()) return
-    setRecovering(true)
-    try {
-      await recovery.run()
-    } catch (error) {
-      if (!disposed) {
-        const normalized = normalizeBrowserError(error, _(B.remoteUnavailable))
-        browser.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
-      }
-    } finally {
-      if (!disposed) setRecovering(false)
-    }
-  }
-
+  const recovering = () => false
+  const recoveryVersion = () => 0
   const retryNative = () => {
     ws.retryNative()
     const pageId = browser.pageId()
-    if (!pageId || props.clientPresentation !== "native") return
+    if (!pageId) return
+    if (browser.page()?.status === "suspended" || browser.hostStatus() === "detached") {
+      browser.send({ type: "resume", pageId })
+      return
+    }
     browser.setHostStatus(pageId, "restarting")
     void platform.browserNative
       ?.retryPage({ protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey, pageId })
@@ -225,6 +173,8 @@ function BrowserPanelInner(props: {
         mode: "session",
         sessionID: props.sessionID,
         protocolVersion: BROWSER_PROTOCOL_VERSION,
+        presentation: "native",
+        nativeTicket: await ws.createNativeTicket(),
         browserDiagnosticsRequest: {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           pageId,
@@ -261,7 +211,7 @@ function BrowserPanelInner(props: {
     browser.setAnnotationMode(false)
   }
 
-  const handleAnnotationSubmit = (comment: string, styleFeedback?: Record<string, string>) => {
+  const handleAnnotationSubmit = async (comment: string, styleFeedback?: Record<string, string>) => {
     const target = browser.annotationTarget()
     const pageId = browser.pageId()
     const routeDirectory = props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
@@ -274,6 +224,8 @@ function BrowserPanelInner(props: {
           mode: "session",
           sessionID: props.sessionID,
           protocolVersion: BROWSER_PROTOCOL_VERSION,
+          presentation: "native",
+          nativeTicket: await ws.createNativeTicket(),
           browserAnnotationRequest: {
             protocolVersion: BROWSER_PROTOCOL_VERSION,
             pageId,
@@ -305,6 +257,11 @@ function BrowserPanelInner(props: {
   return (
     <BrowserStoreProvider store={browser}>
       <div class="browser-workspace flex h-full flex-col">
+        <BrowserTabs
+          sessionID={props.sessionID}
+          routeDirectory={props.routeDirectory}
+          createTicket={ws.createNativeTicket}
+        />
         <AddressBar
           activeUrl={() => page()?.url ?? ""}
           isLoading={() => page()?.isLoading ?? false}
@@ -318,11 +275,7 @@ function BrowserPanelInner(props: {
         <Show when={browser.session.connectionStatus === "failed"}>
           <div role="status" class="flex items-center justify-between gap-2 px-3 py-2 text-text-weak">
             <Trans id={B.disconnected.id} message={B.disconnected.message} />
-            <Button
-              size="small"
-              disabled={recovering()}
-              onClick={() => (props.clientPresentation === "native" ? retryNative() : void retryRemote())}
-            >
+            <Button size="small" disabled={recovering()} onClick={retryNative}>
               <Trans id={B.retry.id} message={B.retry.message} />
             </Button>
           </div>
@@ -354,7 +307,6 @@ function BrowserPanelInner(props: {
                   ownerKey={ownerKey}
                   clientPresentation={props.clientPresentation}
                   onRetryNative={retryNative}
-                  onRetryRemote={() => void retryRemote()}
                   recovering={recovering()}
                   recoveryVersion={recoveryVersion()}
                 />

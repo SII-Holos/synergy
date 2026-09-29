@@ -8,7 +8,6 @@ import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
 import { browser as B } from "@/locales/messages"
 import { NativeBrowserSurface } from "./native-browser-surface"
-import { RemoteBrowserSurface } from "./remote-browser-surface"
 import { shouldShowBrowserPresentationSurface } from "./browser-presentation"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
@@ -31,7 +30,7 @@ export function BrowserSurface(props: {
   sessionID: string
   routeDirectory?: string
   ownerKey: string
-  clientPresentation: "native" | "webrtc"
+  clientPresentation: "native"
   onRetryNative?: () => void
   onRetryRemote?: () => void
   recovering?: boolean
@@ -49,7 +48,6 @@ export function BrowserSurface(props: {
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
   const nativeRecoveryAvailable = () => props.clientPresentation === "native" && Boolean(platform.browserNative)
-  const webrtcPresentation = () => props.clientPresentation === "webrtc" && browser.presentation()?.kind !== "native"
 
   function fitViewportSize() {
     if (!wrapperRef) return null
@@ -177,7 +175,13 @@ export function BrowserSurface(props: {
                 <Trans id={B.nativeRecoveryHint.id} message={B.nativeRecoveryHint.message} />
               </Show>
             </div>
-            <Show when={browser.hostStatus() === "failed" && nativeRecoveryAvailable() && props.onRetryNative}>
+            <Show
+              when={
+                (browser.hostStatus() === "failed" || browser.hostStatus() === "detached") &&
+                nativeRecoveryAvailable() &&
+                props.onRetryNative
+              }
+            >
               <Button size="small" variant="primary" onClick={() => props.onRetryNative?.()}>
                 <Trans id={B.retry.id} message={B.retry.message} />
               </Button>
@@ -188,16 +192,6 @@ export function BrowserSurface(props: {
       >
         <Show when={nativePresentation()}>
           <NativeBrowserSurface container={container} ownerKey={props.ownerKey} />
-        </Show>
-        <Show when={webrtcPresentation()}>
-          <RemoteBrowserSurface
-            sessionID={props.sessionID}
-            routeDirectory={props.routeDirectory}
-            container={container}
-            onRetry={props.onRetryRemote}
-            recovering={props.recovering}
-            recoveryVersion={props.recoveryVersion}
-          />
         </Show>
       </Show>
 

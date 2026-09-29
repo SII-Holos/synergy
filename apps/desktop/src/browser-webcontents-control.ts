@@ -245,6 +245,10 @@ export class BrowserWebContentsControl {
       return { type: "void" }
     }
 
+    if (command.type === "download.accept") {
+      await diagnostics?.acceptDownload(command.id)
+      return { type: "void" }
+    }
     if (command.type === "download.cancel") {
       await diagnostics?.cancelDownload(command.id)
       return { type: "void" }

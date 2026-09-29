@@ -27,7 +27,7 @@ const StoredDownloadSchema = z
     url: z.string().max(20_000),
     suggestedFilename: z.string().min(1).max(1_024),
     mimeType: z.string().max(256).optional(),
-    state: z.enum(["pending", "completed", "failed", "blocked", "cancelled"]),
+    state: z.enum(["awaiting_approval", "pending", "completed", "failed", "blocked", "cancelled"]),
     path: z.string().max(20_000).optional(),
     size: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
     createdAt: z.number().int().nonnegative(),

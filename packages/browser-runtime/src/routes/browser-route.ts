@@ -5,29 +5,32 @@ import {
   BrowserProtocolError,
   BrowserControlRequestSchema,
   BrowserControlResponseSchema,
+  BrowserOpenPageSchema,
+  BrowserAPISessionPageSchema,
+  BrowserProfileListSchema,
+  BrowserProfileCreateSchema,
+  BrowserProfileSchema,
+  BrowserProfileUpdateSchema,
+  BrowserOriginPolicySchema,
   BrowserAPIErrorSchema,
-  BrowserViewerTicketRequestSchema,
-  BrowserViewerTicketResponseSchema,
   BrowserAnnotationRequestSchema,
   BrowserAnnotationResponseSchema,
   BrowserDiagnosticsRequestSchema,
   BrowserDiagnosticsResponseSchema,
   BrowserAPISessionStateSchema,
-  BrowserWebRTCMessageSchema,
-  BrowserWebRTCSignalSchema,
   parseBrowserPresentationPreference,
   type BrowserPresentationSelection,
 } from "@ericsanchezok/synergy-browser-core"
 import { Hono, type Context, type Next } from "hono"
 import { upgradeWebSocket } from "hono/bun"
 import { describeRoute, resolver, validator } from "hono-openapi"
+import { BrowserProfiles } from "../profiles.js"
+import { BrowserRuntime } from "../runtime.js"
 import { BrowserBroker } from "../broker.js"
 import { BrowserControl } from "../control.js"
 import { BrowserHost } from "../host.js"
 import { BrowserOwner } from "../owner.js"
-import { BrowserWebRTCSignaling } from "../webrtc-signaling.js"
 import { BrowserWorkspace } from "../workspace.js"
-import { BrowserTicket } from "../ticket.js"
 import { BrowserDownloads } from "../downloads.js"
 import { BrowserAssets } from "../assets.js"
 import { BrowserCommandService } from "../command-service.js"
@@ -56,7 +59,7 @@ const BrowserRouteQuery = z
   .object({
     mode: z.enum(["session", "scope"]).default("session"),
     sessionID: z.string().min(1).max(1_000).optional(),
-    presentation: z.enum(["auto", "native", "webrtc"]).default("auto"),
+    presentation: z.enum(["auto", "native"]).default("auto"),
     directory: z.string().max(20_000).optional(),
     scopeID: z.string().max(1_000).optional(),
     protocolVersion: z.coerce.number().pipe(z.literal(BROWSER_PROTOCOL_VERSION)).default(BROWSER_PROTOCOL_VERSION),
@@ -82,13 +85,16 @@ interface RouteState {
   directory: string
   owner: BrowserOwner.Info
   presentation: BrowserPresentationSelection
-  requestedPresentation: "auto" | "native" | "webrtc"
+  requestedPresentation: "auto" | "native"
   nativePresentation: boolean
 }
 
-async function routeState(c: {
-  req: { url: string; param(name: string): string; query(name: string): string | undefined }
-}): Promise<RouteState> {
+async function routeState(
+  c: {
+    req: { url: string; param(name: string): string; query(name: string): string | undefined }
+  },
+  requireNative = false,
+): Promise<RouteState> {
   const directory = c.req.param("directory")
   if (!directory) throw new Error("Missing directory")
   const mode = (c.req.query("mode") ?? "session") as BrowserOwner.Mode
@@ -105,7 +111,6 @@ async function routeState(c: {
     mode,
   })
   BrowserOwner.assertValid(owner)
-  const capabilities = BrowserHost.capabilities()
   const nativePresentation = BrowserNativePresentation.consume(
     owner,
     new URL(c.req.url).origin,
@@ -127,10 +132,12 @@ async function routeState(c: {
       suggestedAction: "Retry native Browser recovery.",
     })
   }
-  // WebRTC is on-demand: the Host process is started by the control path when
-  // the first interactive command arrives, so an explicit WebRTC request must
-  // not fail here while the capability is still coming up. Only managed-local
-  // native presentation is strict at route time.
+  if (requireNative && !nativePresentation)
+    throw new BrowserProtocolError({
+      code: "browser_desktop_required",
+      message: "Use the built-in browser in Desktop.",
+      retryable: false,
+    })
   return { directory, owner, presentation, requestedPresentation, nativePresentation }
 }
 
@@ -184,63 +191,122 @@ export const BrowserRoute = () =>
       }),
     )
     .post(
-      "/:directory/browser/webrtc/ticket",
+      "/:directory/browser/pages",
       describeRoute({
-        summary: "Create a Browser viewer ticket",
-        description: "Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.",
-        operationId: "browser.createViewerTicket",
+        summary: "Open a browser page",
+        operationId: "browser.openPage",
         responses: {
           200: {
-            description: "Browser viewer ticket",
-            content: { "application/json": { schema: resolver(BrowserViewerTicketResponseSchema) } },
+            description: "New page",
+            content: { "application/json": { schema: resolver(BrowserAPISessionPageSchema) } },
           },
           400: {
-            description: "Ticket request rejected",
+            description: "Page could not open",
             content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
           },
-          413: payloadTooLargeResponse,
         },
       }),
       limitBrowserBody(MAX_TICKET_BYTES),
       validator("query", BrowserRouteQuery),
-      validator("json", BrowserViewerTicketRequestSchema),
+      validator("json", BrowserOpenPageSchema),
       async (c) => {
         try {
-          const state = await routeState(c)
-          const body = c.req.valid("json")
-          const session = await BrowserWorkspace.sessionState(state)
-          if (
-            session.status !== "active" ||
-            !session.page ||
-            session.page.id !== body.pageId ||
-            !BrowserBroker.hasPage(state.owner, body.pageId)
-          ) {
-            throw new BrowserProtocolError({
-              code: "browser_ticket_page_unavailable",
-              message: "The requested Browser page is not active.",
-              retryable: true,
-              pageId: body.pageId,
-            })
-          }
-          if (!BrowserBroker.ready("webrtc")) {
-            throw new BrowserProtocolError({
-              code: "browser_host_unavailable",
-              message: "The WebRTC Browser Host is not ready.",
-              retryable: true,
-              pageId: body.pageId,
-            })
-          }
-          if (!BrowserWebRTCSignaling.hasHost(state.owner, body.pageId)) {
-            BrowserBroker.renewHostTicket(state.owner, body.pageId)
-          }
-          const issued = BrowserTicket.issue(state.owner, body.pageId, "viewer")
-          return c.json({
-            protocolVersion: BROWSER_PROTOCOL_VERSION,
-            ...issued,
-            iceServers: browserIceServers(),
-          })
+          const state = await routeState(c, true)
+          const browser = await BrowserWorkspace.ensureSession(state.owner)
+          const page = await browser.openPage(c.req.valid("json"))
+          return c.json(browser.pages.find((item) => item.id === page.id)!)
         } catch (error) {
-          return c.json(protocolError(error, "browser_ticket_failed"), 400)
+          return c.json(protocolError(error, "browser_open_failed"), 400)
+        }
+      },
+    )
+    .get(
+      "/:directory/browser/profiles",
+      describeRoute({
+        summary: "List browser identities",
+        operationId: "browser.profiles",
+        responses: {
+          200: {
+            description: "Identities",
+            content: { "application/json": { schema: resolver(BrowserProfileListSchema) } },
+          },
+        },
+      }),
+      validator("query", BrowserRouteQuery),
+      async (c) => {
+        await routeState(c, true)
+        return c.json(await BrowserProfiles.list())
+      },
+    )
+    .post(
+      "/:directory/browser/profiles",
+      describeRoute({
+        summary: "Create a browser identity",
+        operationId: "browser.createProfile",
+        responses: {
+          200: { description: "Identity", content: { "application/json": { schema: resolver(BrowserProfileSchema) } } },
+        },
+      }),
+      limitBrowserBody(MAX_TICKET_BYTES),
+      validator("query", BrowserRouteQuery),
+      validator("json", BrowserProfileCreateSchema),
+      async (c) => {
+        await routeState(c, true)
+        return c.json(BrowserProfiles.publicProfile(await BrowserProfiles.create(c.req.valid("json"))))
+      },
+    )
+    .post(
+      "/:directory/browser/profiles/:profileId/manage",
+      describeRoute({
+        summary: "Manage a browser identity",
+        operationId: "browser.manageProfile",
+        responses: {
+          200: {
+            description: "Updated identities",
+            content: { "application/json": { schema: resolver(BrowserProfileListSchema) } },
+          },
+          400: {
+            description: "Identity operation failed",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+        },
+      }),
+      limitBrowserBody(MAX_TICKET_BYTES),
+      validator("query", BrowserRouteQuery),
+      validator(
+        "json",
+        z
+          .discriminatedUnion("action", [
+            z.object({ action: z.literal("update"), changes: BrowserProfileUpdateSchema }).strict(),
+            z.object({ action: z.literal("default") }).strict(),
+            z.object({ action: z.literal("remove") }).strict(),
+            z.object({ action: z.literal("clear") }).strict(),
+            z
+              .object({
+                action: z.literal("policy"),
+                origin: z.string().url(),
+                policy: BrowserOriginPolicySchema.nullable(),
+              })
+              .strict(),
+          ])
+          .meta({ ref: "BrowserManageProfile" }),
+      ),
+      async (c) => {
+        try {
+          await routeState(c, true)
+          const id = c.req.param("profileId"),
+            input = c.req.valid("json")
+          if (input.action === "update") await BrowserProfiles.update(id, input.changes)
+          else if (input.action === "default") await BrowserProfiles.setDefault(id)
+          else if (input.action === "policy") await BrowserProfiles.setPolicy(id, input.origin, input.policy)
+          else if (input.action === "clear") await BrowserRuntime.clearProfile(id)
+          else {
+            await BrowserRuntime.clearProfile(id)
+            await BrowserProfiles.remove(id)
+          }
+          return c.json(await BrowserProfiles.list())
+        } catch (error) {
+          return c.json(protocolError(error, "browser_profile_failed"), 400)
         }
       },
     )
@@ -267,10 +333,10 @@ export const BrowserRoute = () =>
       validator("json", BrowserAnnotationRequestSchema),
       async (c) => {
         try {
-          const state = await routeState(c)
+          const state = await routeState(c, true)
           const body = c.req.valid("json")
           const session = await BrowserWorkspace.ensureSession(state.owner)
-          const page = session.page
+          const page = session.getPage(body.pageId)
           if (!page || page.id !== body.pageId) {
             throw new BrowserProtocolError({
               code: "browser_annotation_page_unavailable",
@@ -317,11 +383,11 @@ export const BrowserRoute = () =>
       async (c) => {
         let commandId: string | undefined
         try {
-          const state = await routeState(c)
+          const state = await routeState(c, true)
           const body = c.req.valid("json")
           commandId = body.commandId
           const session = await BrowserWorkspace.ensureSession(state.owner)
-          if (!session.page || session.page.id !== body.pageId) {
+          if (!session.getPage(body.pageId)) {
             throw new BrowserProtocolError({
               code: "browser_diagnostics_page_unavailable",
               message: "The requested Browser page is not active.",
@@ -434,13 +500,13 @@ export const BrowserRoute = () =>
       async (c) => {
         let commandId: string | undefined
         try {
-          const state = await routeState(c)
+          const state = await routeState(c, true)
           const body = c.req.valid("json")
           commandId = body.commandId
           const command = body.command
           const result = await BrowserWorkspace.executeControl(
             state,
-            { command, commandId, traceId: body.traceId },
+            { pageId: body.pageId, command, commandId, traceId: body.traceId },
             new URL(c.req.url).origin,
           )
           return c.json(result.payload, result.status as 200)
@@ -456,7 +522,7 @@ export const BrowserRoute = () =>
         let state: RouteState
         try {
           assertWebSocketRequest(c, "viewer")
-          state = await routeState(c)
+          state = await routeState(c, true)
         } catch (error) {
           return rejectedSocket(error)
         }
@@ -495,142 +561,6 @@ export const BrowserRoute = () =>
         }
       }),
     )
-    .get(
-      "/:directory/browser/webrtc/connect",
-      upgradeWebSocket((c) => createBrowserSignalingSocket(c, "viewer")),
-    )
-    .get(
-      "/:directory/browser/webrtc/host",
-      upgradeWebSocket((c) => createBrowserSignalingSocket(c, "host")),
-    )
-
-export function browserSignalingPageAvailable(
-  role: "viewer" | "host",
-  pageId: string,
-  session: { status: BrowserControl.SessionState["status"]; page: { id: string } | null },
-  brokerHasPage: boolean,
-): boolean {
-  if (!brokerHasPage) return false
-  if (role === "host") return true
-  return session.status === "active" && session.page?.id === pageId
-}
-
-export function browserSignalingEventSocket(
-  registered: BrowserWS | undefined,
-  _eventSocket: BrowserWS,
-): BrowserWS | undefined {
-  return registered
-}
-
-export async function createBrowserSignalingSocket(c: any, role: "viewer" | "host") {
-  let state: RouteState
-  try {
-    assertWebSocketRequest(c, role)
-    state = await routeState(c)
-  } catch (error) {
-    return rejectedSocket(error)
-  }
-  let pageId = c.req.query("pageId") as string | undefined
-  let socket: BrowserWS | undefined
-  let messageWindowStartedAt = Date.now()
-  let messageCount = 0
-  return {
-    async onOpen(_event: unknown, ws: BrowserWS) {
-      socket = ws
-      try {
-        const session = await BrowserWorkspace.sessionState(state)
-        pageId ||= session.page?.id
-        const brokerHasPage = pageId ? BrowserBroker.hasPage(state.owner, pageId) : false
-        if (!pageId || !browserSignalingPageAvailable(role, pageId, session, brokerHasPage)) {
-          throw new BrowserProtocolError({
-            code: "browser_webrtc_missing_page",
-            message: "No active Browser Host page is available for WebRTC.",
-            retryable: true,
-            pageId,
-          })
-        }
-        BrowserTicket.consume(state.owner, pageId, role, c.req.query("ticket"))
-        if (role === "viewer") {
-          BrowserWebRTCSignaling.attachViewer(state.owner, pageId, ws, {
-            hostReady: BrowserWebRTCSignaling.hasHost(state.owner, pageId),
-          })
-        } else {
-          BrowserWebRTCSignaling.attachHost(state.owner, pageId, ws, { hostReady: brokerHasPage })
-        }
-        send(
-          ws,
-          BrowserWebRTCMessageSchema.parse({
-            type: role === "viewer" ? "webrtc.signaling.ready" : "webrtc.host.signaling.ready",
-            protocolVersion: BROWSER_PROTOCOL_VERSION,
-            presentation: state.presentation,
-            session: BrowserWorkspace.sessionStatePayload(state.owner, session, state.presentation),
-            pageId,
-          }),
-        )
-      } catch (error) {
-        send(ws, protocolError(error, "browser_ticket_rejected"))
-        ws.close(1008, "Invalid Browser signaling session")
-      }
-    },
-    onMessage(event: any, ws: BrowserWS) {
-      if (!pageId) return
-      const now = Date.now()
-      if (now - messageWindowStartedAt >= 1_000) {
-        messageWindowStartedAt = now
-        messageCount = 0
-      }
-      messageCount++
-      if (messageCount > 500) {
-        ws.close(1008, "Browser signaling rate exceeded")
-        return
-      }
-      if (Buffer.byteLength(String(event.data ?? ""), "utf8") > 256 * 1024) {
-        ws.close(1009, "Browser signaling message is too large")
-        return
-      }
-      let message
-      try {
-        message = BrowserWebRTCSignalSchema.parse(JSON.parse(String(event.data)))
-      } catch (error) {
-        send(ws, protocolError(error, "browser_webrtc_invalid_message"))
-        return
-      }
-      if (message.pageId !== pageId) {
-        send(
-          ws,
-          protocolError(new Error("WebRTC pageId does not match the attached page."), "browser_webrtc_cross_page"),
-        )
-        return
-      }
-      if (!BrowserWebRTCSignaling.acceptsRole(role, message)) {
-        send(
-          ws,
-          protocolError(
-            new Error(`WebRTC ${message.type} is not valid for the ${role} role.`),
-            "browser_webrtc_role_mismatch",
-          ),
-        )
-        ws.close(1008, "WebRTC signaling role mismatch")
-        return
-      }
-      if (role === "viewer") {
-        const registeredSocket = browserSignalingEventSocket(socket, ws)
-        if (!registeredSocket) return
-        BrowserWebRTCSignaling.handleViewerMessage(state.owner, pageId, registeredSocket, message)
-      } else BrowserWebRTCSignaling.handleHostMessage(state.owner, pageId, message)
-    },
-    onClose() {
-      if (!pageId || !socket) return
-      if (role === "viewer") {
-        BrowserWebRTCSignaling.detachViewer(state.owner, pageId, socket)
-        return
-      }
-      if (BrowserWebRTCSignaling.detachHost(state.owner, pageId, socket)) {
-        BrowserBroker.renewHostTicket(state.owner, pageId)
-      }
-    },
-  }
-}
 
 function assertWebSocketRequest(c: any, role: "viewer" | "host"): void {
   if (c.req.query("protocolVersion") !== String(BROWSER_PROTOCOL_VERSION)) {
@@ -694,18 +624,6 @@ function isLoopback(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1"
 }
 
-function browserIceServers() {
-  const value = RuntimeContext.current().host.env.SYNERGY_BROWSER_ICE_SERVERS
-  if (!value) return []
-  try {
-    const parsed = JSON.parse(value)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((entry) => BrowserViewerTicketResponseSchema.shape.iceServers.element.safeParse(entry).success)
-  } catch {
-    return []
-  }
-}
-
 async function diagnosticsData(
   owner: BrowserOwner.Info,
   body: z.infer<typeof BrowserDiagnosticsRequestSchema>,
@@ -725,10 +643,12 @@ async function diagnosticsData(
   }
   if (body.action === "clear") {
     await BrowserCommandService.execute(owner, {
+      pageId: body.pageId,
       commandId: `${body.commandId}:console`,
       command: { type: "console", action: "clear" },
     })
     await BrowserCommandService.execute(owner, {
+      pageId: body.pageId,
       commandId: `${body.commandId}:network`,
       command: { type: "network", action: "clear" },
     })
@@ -736,12 +656,14 @@ async function diagnosticsData(
   }
   if (body.action === "elements") {
     const result = await BrowserCommandService.execute(owner, {
+      pageId: body.pageId,
       commandId: body.commandId,
       command: { type: "snapshot", maxNodes: body.limit },
     })
     return result.type === "snapshot" ? result.elements.map((element) => ({ ...element, children: [] })) : []
   }
   const result = await BrowserCommandService.execute(owner, {
+    pageId: body.pageId,
     commandId: body.commandId,
     command:
       body.action === "console"

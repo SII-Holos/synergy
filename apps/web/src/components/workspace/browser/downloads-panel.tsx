@@ -7,6 +7,11 @@ const STATE_META: Record<
   DownloadEntry["state"],
   { label: { id: string; message: string }; color: string; bg: string }
 > = {
+  awaiting_approval: {
+    label: { id: "browser.downloads.waiting", message: "Waiting" },
+    color: "text-text-on-warning-base",
+    bg: "bg-surface-warning-weak",
+  },
   in_progress: {
     label: P.stateDownloading,
     color: "text-text-on-info-base",
@@ -55,7 +60,7 @@ function formatTime(ts: number): string {
 }
 
 export function DownloadsPanel() {
-  const { pageId: currentPageId, downloads } = useBrowser()
+  const { pageId: currentPageId, downloads, send } = useBrowser()
   const lingui = useLingui()
 
   const entries = createMemo((): DownloadEntry[] => {
@@ -89,6 +94,22 @@ export function DownloadsPanel() {
               return (
                 <div class="flex gap-2 px-3 py-1.5 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
                   <span class="w-20 shrink-0">
+                    <Show when={entry.state === "awaiting_approval"}>
+                      <button
+                        type="button"
+                        class="text-text-interactive-base underline"
+                        onClick={() => send({ type: "download.accept", id: entry.id })}
+                      >
+                        {lingui._({ id: "browser.downloads.accept", message: "Download" })}
+                      </button>
+                      <button
+                        type="button"
+                        class="ml-1 text-text-weak underline"
+                        onClick={() => send({ type: "download.cancel", id: entry.id })}
+                      >
+                        {lingui._({ id: "browser.downloads.cancel", message: "Cancel" })}
+                      </button>
+                    </Show>
                     <span class={`inline-flex items-center px-1.5 rounded text-10-medium ${meta.color} ${meta.bg}`}>
                       {lingui._(meta.label)}
                     </span>

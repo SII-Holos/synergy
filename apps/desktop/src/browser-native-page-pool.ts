@@ -33,15 +33,11 @@ export interface BrowserNativePageHandle {
 interface Generation {
   id: number
   view: WebContentsView
+  contents: WebContents
   control: BrowserWebContentsControl
   diagnostics: BrowserHostDiagnostics
-  onLogin: (
-    event: Electron.Event,
-    webContents: Electron.WebContents,
-    details: Electron.AuthenticationResponseDetails,
-    authInfo: Electron.AuthInfo,
-    callback: (username?: string, password?: string) => void,
-  ) => void
+  releaseLogin(): void
+  session: Electron.Session
   cleanupEvents: () => void
   state(): BrowserPage
   navigationTimer: ReturnType<typeof setTimeout> | null
@@ -204,12 +200,7 @@ export class BrowserNativePagePool {
       })
     view.setBounds(bounds)
     const contents = view.webContents
-    const onLogin: Generation["onLogin"] = (event, webContents, _details, authInfo, callback) => {
-      if (!authInfo.isProxy || webContents !== contents) return
-      event.preventDefault()
-      callback(input.networkProxy.username, input.networkProxy.password)
-    }
-    app.on("login", onLogin)
+    const releaseLogin = registerProxyLogin(contents, input.networkProxy)
     let diagnostics: BrowserHostDiagnostics | undefined
     let control: BrowserWebContentsControl | undefined
     let cleanupEvents: (() => void) | undefined
@@ -223,13 +214,17 @@ export class BrowserNativePagePool {
         emitHostEvent: input.emit,
       })
       await diagnostics.start()
-      const state = (): BrowserPage => ({
-        id: input.page.id,
-        url: (contents.getURL() || restoreURL || input.page.url).slice(0, 20_000),
-        title: contents.getTitle().slice(0, 20_000),
-        isLoading: contents.isLoading(),
-        lastActiveAt: null,
-      })
+      let lastState = input.page
+      const state = (): BrowserPage =>
+        contents.isDestroyed()
+          ? lastState
+          : (lastState = {
+              id: input.page.id,
+              url: (contents.getURL() || restoreURL || input.page.url).slice(0, 20_000),
+              title: contents.getTitle().slice(0, 20_000),
+              isLoading: contents.isLoading(),
+              lastActiveAt: null,
+            })
       control = new BrowserWebContentsControl({
         pageId: input.page.id,
         contents: () => contents,
@@ -247,9 +242,11 @@ export class BrowserNativePagePool {
       const generation: Generation = {
         id,
         view,
+        contents,
         control,
         diagnostics,
-        onLogin,
+        releaseLogin,
+        session: contents.session,
         cleanupEvents: () => undefined,
         state,
         navigationTimer: null,
@@ -264,7 +261,7 @@ export class BrowserNativePagePool {
       return generation
     } catch (error) {
       cleanupEvents?.()
-      app.off("login", onLogin)
+      releaseLogin()
       const cleanup = await Promise.allSettled([control?.dispose(), diagnostics?.dispose()].filter(Boolean))
       if (!contents.isDestroyed()) contents.close()
       const failures = cleanup.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
@@ -294,7 +291,10 @@ export class BrowserNativePagePool {
           isLoading: true,
           lastActiveAt: null,
         }
+        // Preserve Electron's supplied child WebContents (opener, POST and renderer handshake).
+        // https://www.electronjs.org/docs/latest/api/structures/window-open-handler-response
         const view = new WebContentsView({
+          ...options,
           webPreferences: {
             ...options.webPreferences,
             partition: parent.profile.partition,
@@ -381,7 +381,14 @@ export class BrowserNativePagePool {
     })
     contents.once("destroyed", () => {
       if (!entry.closing && entry.generation === generation) {
-        void this.recover(entry, "unexpected-destroyed").catch(() => undefined)
+        void this.destroyEntry(`${entry.ownerKey}:${entry.input.page.id}`)
+          .then(() => {
+            entry.input.emit({ type: "page.closed", pageId: entry.input.page.id })
+          })
+          .catch((error) => {
+            console.error("Popup close cleanup", error)
+            entry.input.emit({ type: "page.error", pageId: entry.input.page.id, message: String(error) })
+          })
       }
     })
     contents.on("unresponsive", () => {
@@ -594,7 +601,16 @@ export class BrowserNativePagePool {
     const operation = (async () => {
       try {
         await entry.recovery?.catch(() => undefined)
+        const profileSession = entry.generation.session
         await this.closeGeneration(entry.generation)
+        if (
+          !entry.input.profile.partition.startsWith("persist:") &&
+          ![...this.entries.values()].some(
+            (other) => other !== entry && other.input.profile.id === entry.input.profile.id,
+          )
+        ) {
+          await profileSession.clearStorageData()
+        }
       } finally {
         this.entries.delete(ownerKey)
         this.destroying.delete(ownerKey)
@@ -606,11 +622,11 @@ export class BrowserNativePagePool {
 
   private async closeGeneration(generation: Generation): Promise<void> {
     generation.cleanupEvents()
-    app.off("login", generation.onLogin)
+    generation.releaseLogin()
     const results = await Promise.allSettled([generation.control.dispose(), generation.diagnostics.dispose()])
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     try {
-      await closeWebContents(generation.view.webContents)
+      await closeWebContents(generation.contents)
     } catch (error) {
       failures.push(error)
     }
@@ -720,4 +736,26 @@ function configureProfileProxy(
   const ready = (previous?.ready ?? Promise.resolve()).then(() => session.setProxy({ proxyRules: proxy.server }))
   profileProxies.set(session, { key, ready })
   return ready
+}
+
+const proxyLogins = new Map<WebContents, { username: string; password: string }>()
+const onProxyLogin: (
+  event: Electron.Event,
+  contents: WebContents,
+  details: Electron.AuthenticationResponseDetails,
+  authInfo: Electron.AuthInfo,
+  callback: (username?: string, password?: string) => void,
+) => void = (event, contents, _details, authInfo, callback) => {
+  const credentials = proxyLogins.get(contents)
+  if (!credentials || !authInfo.isProxy) return
+  event.preventDefault()
+  callback(credentials.username, credentials.password)
+}
+function registerProxyLogin(contents: WebContents, credentials: { username: string; password: string }) {
+  if (!proxyLogins.size) app.on("login", onProxyLogin)
+  proxyLogins.set(contents, credentials)
+  return () => {
+    proxyLogins.delete(contents)
+    if (!proxyLogins.size) app.off("login", onProxyLogin)
+  }
 }

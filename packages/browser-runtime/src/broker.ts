@@ -21,7 +21,6 @@ import { BrowserProfiles } from "./profiles.js"
 import { BrowserOwner } from "./owner.js"
 import { BrowserNetworkGateway } from "./network-gateway.js"
 import { BrowserStorage } from "./storage.js"
-import { BrowserTicket } from "./ticket.js"
 import { BrowserDownloads } from "./downloads.js"
 import { BrowserEvent } from "./event.js"
 import { ObservabilityBrowserTelemetry } from "@ericsanchezok/synergy-harness/observability/browser-metrics"
@@ -78,7 +77,7 @@ export namespace BrowserBroker {
   export function capabilities(): BrowserPresentationCapabilities {
     const instanceState = runtimeState()
 
-    return instanceState.connection?.capabilities ?? { native: false, webrtc: false }
+    return instanceState.connection?.capabilities ?? { native: false }
   }
 
   export function ready(kind?: BrowserPresentationKind): boolean {
@@ -93,28 +92,6 @@ export namespace BrowserBroker {
 
     return instanceState.connection?.pages.has(pageKey(owner, pageId)) ?? false
   }
-  export function renewHostTicket(owner: BrowserOwner.Info, pageId: string): boolean {
-    const instanceState = runtimeState()
-
-    const active = instanceState.connection
-    if (!active || !active.pages.has(pageKey(owner, pageId))) return false
-    const signalingTicket = BrowserTicket.issue(owner, pageId, "host")
-    try {
-      active.socket.send(
-        JSON.stringify({
-          type: "page.signaling.ticket",
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          ownerKey: BrowserOwner.key(owner),
-          pageId,
-          signalingTicket: signalingTicket.ticket,
-        } satisfies BrowserHostMessage),
-      )
-      return true
-    } catch {
-      return false
-    }
-  }
-
   export function onActivity(listener: (hasPages: boolean) => void): () => void {
     const instanceState = runtimeState()
 
@@ -272,6 +249,7 @@ export namespace BrowserBroker {
       const buffered = instanceState.bufferedEvents.get(key)
       if (buffered && buffered.length < 256) buffered.push(message.event)
       for (const listener of instanceState.eventListeners.get(key) ?? []) listener(message.event)
+      if (message.event.type === "page.closed") releasePage(instanceState.connection, key)
       return
     }
     if (message.type !== "page.result") {
@@ -326,8 +304,6 @@ export namespace BrowserBroker {
       await BrowserStorage.ensureOwnerDirs(input.owner)
       const networkProxy = await BrowserNetworkGateway.proxyFor(input.profile.id)
       const downloadDir = await BrowserDownloads.managedDirectory(input.owner)
-      const signalingTicket =
-        input.presentation === "webrtc" ? BrowserTicket.issue(input.owner, input.pageId, "host") : null
       createSent = true
       const result = await request({
         type: "page.create",
@@ -352,7 +328,6 @@ export namespace BrowserBroker {
         profile: { id: input.profile.id, partition: input.profile.partition, revision: input.profile.revision },
         networkProxy,
         downloadDir,
-        ...(signalingTicket ? { signalingTicket: signalingTicket.ticket } : {}),
       })
       return result
     } catch (error) {
@@ -373,7 +348,7 @@ export namespace BrowserBroker {
             const instanceState = runtimeState()
 
             if (instanceState.connection === active) releasePage(active, reservedPageKey)
-            BrowserTicket.revoke(input.owner, input.pageId)
+
             notifyActivity()
             ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "ok")
           })
@@ -383,12 +358,22 @@ export namespace BrowserBroker {
           })
       } else {
         releasePage(active, reservedPageKey)
-        BrowserTicket.revoke(input.owner, input.pageId)
+
         notifyActivity()
         ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "ok")
       }
       throw error
     }
+  }
+
+  export async function clearProfile(profile: BrowserProfiles.Stored): Promise<void> {
+    await request({
+      type: "profile.clear",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      requestId: nextRequestId(),
+      profileId: profile.id,
+      partition: profile.partition,
+    })
   }
 
   export async function command(
@@ -417,7 +402,7 @@ export namespace BrowserBroker {
       pageId,
     })
     if (instanceState.connection) releasePage(instanceState.connection, pageKey(owner, pageId))
-    BrowserTicket.revoke(owner, pageId)
+
     notifyActivity()
     ObservabilityBrowserTelemetry.recordResourceCleanup(owner, "ok")
   }
@@ -456,7 +441,7 @@ export namespace BrowserBroker {
     const ownerKey = BrowserOwner.key(owner)
     instanceState.preferences.delete(ownerKey)
     instanceState.popupListeners.delete(ownerKey)
-    BrowserTicket.revoke(owner)
+
     for (const key of instanceState.eventListeners.keys()) {
       if (key.startsWith(`${ownerKey}:`)) instanceState.eventListeners.delete(key)
     }
@@ -505,7 +490,7 @@ function notifyHostStatus(status: BrowserHostStatus): void {
 }
 
 function request(
-  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" }>,
+  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" | "profile.clear" }>,
 ): Promise<BrowserBackendResult> {
   const instanceState = runtimeState()
 
@@ -531,7 +516,12 @@ function request(
           code: "browser_host_timeout",
           message: `Browser Host request timed out: ${message.type}`,
           retryable: true,
-          pageId: "pageId" in message ? message.pageId : message.page.id,
+          pageId:
+            message.type === "profile.clear"
+              ? message.profileId
+              : "pageId" in message
+                ? message.pageId
+                : message.page.id,
         }),
       )
     }, requestTimeout(message))
@@ -539,7 +529,8 @@ function request(
       resolve,
       reject,
       timer,
-      pageId: "pageId" in message ? message.pageId : message.page.id,
+      pageId:
+        message.type === "profile.clear" ? message.profileId : "pageId" in message ? message.pageId : message.page.id,
     })
     try {
       active.socket.send(JSON.stringify(message))
@@ -552,7 +543,7 @@ function request(
 }
 
 function requestTimeout(
-  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" }>,
+  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" | "profile.clear" }>,
 ): number {
   if (message.type !== "page.command") return 35_000
   const command = message.command
@@ -599,7 +590,7 @@ function disconnect(active: Connection, error: Error): void {
       }
     }
   }
-  active.pages.clear()
+  for (const key of [...active.pages]) releasePage(active, key)
 }
 
 function send(message: BrowserHostMessage): void {
@@ -643,9 +634,9 @@ function secureEqual(actual: string, expected: string): boolean {
 }
 
 function telemetryOwner(
-  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" }>,
+  message: Extract<BrowserHostMessage, { type: "page.create" | "page.command" | "page.close" | "profile.clear" }>,
 ): BrowserOwner.Info | undefined {
   const instanceState = runtimeState()
 
-  return instanceState.preferences.get(message.ownerKey)?.owner
+  return "ownerKey" in message ? instanceState.preferences.get(message.ownerKey)?.owner : undefined
 }

@@ -37,3 +37,11 @@ Browser changes span the backend, Electron, shared UI and packaging. Persistent 
 ## Implementation checkpoints
 
 The page catalog and persistent identity catalog now have isolated behavioral tests for eight independent pages, profile reuse, disabled identities, temporary profiles, lazy restore, and the concurrent page limit. Protocol v4 introduces explicit page targets. Native view and broker integration are in progress; this checkpoint does not claim complete UI, migration, policy, packaging or Desktop acceptance.
+
+### Native implementation checkpoint
+
+The Desktop-only protocol and HTTP page/profile API are implemented. The shared renderer now uses native tabs with an independent human selection and an identity manager. The headless engine, WebRTC surface and separately distributed Browser Host are removed. The full runtime's sealed module seed includes the native backend module for Desktop; CLI/Web component selection leaves it inactive and no separate Chromium payload is shipped.
+
+The isolated Electron contract exercises eight actual WebContents, cross-task persistent cookies, named-profile isolation, native popup POST/opener and postMessage, popup self-close, opener-close independence, and per-page renderer recovery. It passed locally. Remaining acceptance work includes the complete Web/Harness regression migration, download authorization, release closure checks, product UI inspection, and documentation/Skill alignment. This checkpoint is not final acceptance.
+
+Popup adoption preserves Electron's supplied WebContents rather than constructing a second browsing context, following the [Electron window-open contract](https://www.electronjs.org/docs/latest/api/structures/window-open-handler-response).

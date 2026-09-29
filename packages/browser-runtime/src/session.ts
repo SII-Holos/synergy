@@ -32,6 +32,7 @@ interface PageEntry {
   state: BrowserSessionPage
   live?: BrowserPageBackend
   flight?: Promise<BrowserPageBackend>
+  temporary?: boolean
 }
 
 export class BrowserSessionImpl implements BrowserSession {
@@ -98,6 +99,7 @@ export class BrowserSessionImpl implements BrowserSession {
     const url = normalizeBrowserURL(input.url ?? "about:blank")
     this.checkNavigation(url)
     const entry: PageEntry = {
+      temporary: input.profile.kind === "temporary",
       state: {
         id: input.id,
         url,
@@ -113,6 +115,7 @@ export class BrowserSessionImpl implements BrowserSession {
     try {
       return await this.start(entry, input.profile, input.adopt)
     } catch (error) {
+      if (entry.live) await entry.live.close()
       this.entries.delete(input.id)
       await this.save()
       throw error
@@ -236,14 +239,28 @@ export class BrowserSessionImpl implements BrowserSession {
 
   private pageEvents(id: string): BrowserPageEventHandlers {
     return {
+      onClosed: () => {
+        if (!this.entries.delete(id)) return
+        void this.save().catch(() => undefined)
+        BrowserEvent.publish(this.owner, { type: "page.closed", pageId: id })
+      },
+      onStatus: (_page, status) => {
+        const entry = this.entries.get(id)
+        if (!entry) return
+        entry.state.status = status === "ready" ? "active" : status === "failed" ? "failed" : "suspended"
+        BrowserEvent.publish(this.owner, { type: "page.updated", page: this.describe(id) })
+      },
       onLoading: (page) => {
+        if (!this.entries.has(id)) return
         BrowserEvent.publish(this.owner, { type: "page.loading", pageId: page.id, url: page.url })
       },
       onLoaded: (page) => {
+        if (!this.entries.has(id)) return
         this.updatePage(page)
         BrowserEvent.publish(this.owner, { type: "page.loaded", page: this.describe(page.id) })
       },
       onUpdated: (page) => {
+        if (!this.entries.has(id)) return
         this.updatePage(page)
         BrowserEvent.publish(this.owner, { type: "page.updated", page: this.describe(page.id) })
       },
@@ -379,7 +396,7 @@ export class BrowserSessionImpl implements BrowserSession {
   async save(): Promise<void> {
     const operation = this.saveTail.then(() =>
       BrowserStorage.save(this.owner, {
-        pages: this.pages,
+        pages: this.pages.filter((page) => !this.entries.get(page.id)?.temporary),
         timestamp: Date.now(),
         annotations: this._annotations,
         downloads: BrowserDownloads.list(this.owner),

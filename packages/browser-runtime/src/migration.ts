@@ -1,18 +1,8 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import fs from "fs/promises"
-import path from "path"
-import { Global } from "@ericsanchezok/synergy-harness/global"
-import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { BrowserOwner } from "./owner.js"
 import { BrowserProfiles } from "./profiles.js"
 import { BrowserStorage } from "./storage.js"
-import {
-  BrowserCheckpointSchema,
-  BrowserProtocolErrorSchema,
-  type BrowserCheckpoint,
-  type BrowserProtocolErrorData,
-} from "@ericsanchezok/synergy-browser-core"
 
 export namespace BrowserMigration {
   export interface Result {
@@ -117,51 +107,6 @@ export namespace BrowserMigration {
     return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 200) || `page-${crypto.randomUUID()}`
   }
 
-  function checkpointFromState(
-    state: StoredState,
-    page: ReturnType<typeof pageFromState>,
-  ): BrowserCheckpoint | undefined {
-    if (!page || page.url.startsWith("[")) return undefined
-    const value =
-      state.checkpoint && typeof state.checkpoint === "object" ? (state.checkpoint as Record<string, unknown>) : {}
-    const viewport =
-      value.viewport && typeof value.viewport === "object" ? (value.viewport as Record<string, unknown>) : {}
-    const scroll = value.scroll && typeof value.scroll === "object" ? (value.scroll as Record<string, unknown>) : {}
-    const checkpoint = {
-      url: typeof value.url === "string" ? value.url : page.url,
-      cookies: Array.isArray(value.cookies)
-        ? value.cookies.filter((cookie): cookie is Record<string, unknown> =>
-            Boolean(cookie && typeof cookie === "object"),
-          )
-        : [],
-      origins: Array.isArray(value.origins)
-        ? value.origins.flatMap((entry) => {
-            if (!entry || typeof entry !== "object") return []
-            const origin = entry as Record<string, unknown>
-            if (typeof origin.origin !== "string") return []
-            return [
-              {
-                origin: origin.origin,
-                localStorage: stringRecord(origin.localStorage),
-                sessionStorage: stringRecord(origin.sessionStorage),
-              },
-            ]
-          })
-        : [],
-      viewport: {
-        width: typeof viewport.width === "number" && viewport.width > 0 ? Math.round(viewport.width) : 1280,
-        height: typeof viewport.height === "number" && viewport.height > 0 ? Math.round(viewport.height) : 720,
-      },
-      scroll: {
-        x: typeof scroll.x === "number" ? scroll.x : 0,
-        y: typeof scroll.y === "number" ? scroll.y : 0,
-      },
-      formState: [],
-    }
-    const parsed = BrowserCheckpointSchema.safeParse(checkpoint)
-    return parsed.success ? parsed.data : undefined
-  }
-
   function stringRecord(value: unknown): Record<string, string> {
     if (!value || typeof value !== "object") return {}
     return Object.fromEntries(
@@ -184,19 +129,6 @@ export namespace BrowserMigration {
       downloads: Array.isArray(state.downloads)
         ? (state.downloads as NonNullable<BrowserStorage.SessionState["downloads"]>)
         : [],
-    }
-  }
-
-  function migratedError(value: unknown): BrowserProtocolErrorData | undefined {
-    const parsed = BrowserProtocolErrorSchema.safeParse(value)
-    if (parsed.success) return parsed.data
-    if (typeof value !== "string" || !value.trim()) return undefined
-    return {
-      type: "error",
-      code: "browser_migrated_failure",
-      message: value.slice(0, 100_000),
-      retryable: true,
-      suggestedAction: "Resume the Browser page to retry recovery.",
     }
   }
 

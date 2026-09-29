@@ -75,19 +75,19 @@ export class BrowserHostDiagnostics {
     const { contents } = this.options
     contents.ipc.on("synergy:browser:prompt", this.onPrompt)
     installBrowserContentPermissions(contents.session)
-    contents.session.on("will-download", this.onDownload)
+    registerDownloadListener(contents.session, contents.id, this.onDownload)
     await this.attachDebugger()
   }
 
   async dispose(): Promise<void> {
     const { contents } = this.options
-    contents.ipc.off("synergy:browser:prompt", this.onPrompt)
+    if (!contents.isDestroyed()) contents.ipc.off("synergy:browser:prompt", this.onPrompt)
     for (const request of this.pendingPrompts.values()) {
       clearTimeout(request.timer)
       request.event.returnValue = null
     }
     this.pendingPrompts.clear()
-    this.session.off("will-download", this.onDownload)
+    unregisterDownloadListener(this.session, contents.id)
     clearBrowserContentPermissions(this.session)
     for (const timer of this.pendingDialogs.values()) clearTimeout(timer)
     this.pendingDialogs.clear()
@@ -140,6 +140,12 @@ export class BrowserHostDiagnostics {
       await staged.cleanup()
       throw error
     }
+  }
+
+  async acceptDownload(id: string): Promise<void> {
+    const item = this.pendingDownloads.get(id)
+    if (!item) throw new Error("Download is no longer waiting. List downloads to check its state.")
+    item.resume()
   }
 
   async cancelDownload(id: string): Promise<void> {
@@ -282,7 +288,7 @@ export class BrowserHostDiagnostics {
       url: redactBrowserURL(item.getURL()).slice(0, 20_000),
       fileName,
       mimeType,
-      state: "in_progress",
+      state: "awaiting_approval",
       totalBytes: browserByteCount(item.getTotalBytes()),
       receivedBytes: browserByteCount(item.getReceivedBytes()),
       timestamp: Date.now(),
@@ -340,7 +346,6 @@ export class BrowserHostDiagnostics {
         }
         this.emitDownload(entry)
       })
-      item.resume()
     } catch (error) {
       item.cancel()
       entry.state = "interrupted"
@@ -395,4 +400,29 @@ function isDangerousDownload(mimeType: string, filename: string): boolean {
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+}
+
+type DownloadListener = (event: Electron.Event, item: Electron.DownloadItem, contents: Electron.WebContents) => void
+const downloadListeners = new WeakMap<
+  Electron.Session,
+  { listeners: Map<number, DownloadListener>; dispatch: DownloadListener }
+>()
+function registerDownloadListener(session: Electron.Session, id: number, listener: DownloadListener) {
+  let entry = downloadListeners.get(session)
+  if (!entry) {
+    const listeners = new Map<number, DownloadListener>()
+    const dispatch: DownloadListener = (event, item, contents) => listeners.get(contents.id)?.(event, item, contents)
+    entry = { listeners, dispatch }
+    downloadListeners.set(session, entry)
+    session.on("will-download", dispatch)
+  }
+  entry.listeners.set(id, listener)
+}
+function unregisterDownloadListener(session: Electron.Session, id: number) {
+  const entry = downloadListeners.get(session)
+  if (!entry) return
+  entry.listeners.delete(id)
+  if (entry.listeners.size) return
+  session.off("will-download", entry.dispatch)
+  downloadListeners.delete(session)
 }

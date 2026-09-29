@@ -81,7 +81,11 @@ export namespace BrowserCommandService {
       })
     }
     const command = parsed.data
-    const fingerprint = JSON.stringify(command)
+    const session = await BrowserCommandService.session(owner)
+    const descriptor = session.pages.find((page) => page.id === request.pageId)
+    const profile =
+      descriptor && command.type !== "close" ? await BrowserProfiles.requireEnabled(descriptor.profileId) : undefined
+    const fingerprint = JSON.stringify({ command, revision: profile?.revision })
     const key = queueKey(owner, request.pageId)
     const queue = instanceState.queues.get(key) ?? createQueue()
     instanceState.queues.set(key, queue)
@@ -326,6 +330,13 @@ async function executeOnce(
       message: "Resume this page before using it.",
       retryable: true,
       pageId: request.pageId,
+    })
+  if (command.type !== "navigate" && page.url !== descriptor.url)
+    throw new BrowserProtocolError({
+      code: "browser_page_changed",
+      message: "The page changed while awaiting permission. Inspect it before continuing.",
+      retryable: true,
+      pageId: page.id,
     })
   const result = await executePage(page, command.type === "navigate" ? { ...command, url } : command, request)
   await session.save()

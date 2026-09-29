@@ -1,3 +1,4 @@
+import { session } from "electron"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserHostMessageSchema,
@@ -39,6 +40,14 @@ export class BrowserHostBrokerClient {
   private theme: DesktopThemeSnapshot
 
   constructor(options: BrowserHostBrokerOptions) {
+    const server = new URL(options.serverUrl)
+    if (
+      !["http:", "https:"].includes(server.protocol) ||
+      !["127.0.0.1", "localhost", "[::1]"].includes(server.hostname) ||
+      server.username ||
+      server.password
+    )
+      throw new Error("Native Browser requires a local Desktop server.")
     this.options = { ...options, token: BrowserRegistrationSecretSchema.parse(options.token) }
     this.theme = options.theme
   }
@@ -62,7 +71,7 @@ export class BrowserHostBrokerClient {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: this.options.hostId ?? `browser-host-${process.pid}`,
         token: this.options.token,
-        capabilities: { native: Boolean(this.options.nativePool), webrtc: false },
+        capabilities: { native: Boolean(this.options.nativePool) },
       })
     })
     socket.addEventListener("message", (event) => void this.handle(event.data, epoch))
@@ -130,12 +139,22 @@ export class BrowserHostBrokerClient {
       this.options.onStatus?.("ready")
       return
     }
-    if (
-      message.type !== "page.create" &&
-      message.type !== "page.close" &&
-      message.type !== "page.command" &&
-      message.type !== "page.signaling.ticket"
-    ) {
+    if (message.type === "profile.clear") {
+      try {
+        if (!/^(persist:)?synergy-browser-[a-zA-Z0-9._-]+$/.test(message.partition))
+          throw new Error("Invalid browser partition.")
+        const profile = session.fromPartition(message.partition)
+        await profile.clearStorageData()
+        await profile.clearCache()
+        await profile.clearAuthCache()
+        await profile.closeAllConnections()
+        this.result(message.requestId, { type: "void" })
+      } catch (error) {
+        this.failure(message.requestId, error)
+      }
+      return
+    }
+    if (message.type !== "page.create" && message.type !== "page.close" && message.type !== "page.command") {
       this.socket?.close(1008, "Browser Host received a message for the wrong protocol role")
       return
     }
@@ -156,10 +175,7 @@ export class BrowserHostBrokerClient {
   }
 
   private async dispatch(
-    message: Extract<
-      BrowserHostMessage,
-      { type: "page.create" | "page.close" | "page.command" | "page.signaling.ticket" }
-    >,
+    message: Extract<BrowserHostMessage, { type: "page.create" | "page.close" | "page.command" }>,
     epoch: number,
   ): Promise<void> {
     if (epoch !== this.connectionEpoch) return
@@ -231,6 +247,7 @@ export class BrowserHostBrokerClient {
   }
 
   private event(ownerKey: string, pageId: string, event: BrowserHostPageEvent): void {
+    if (event.type === "page.closed") this.pages.delete(`${ownerKey}:${pageId}`)
     this.send({ type: "page.event", protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey, pageId, event })
   }
 

@@ -755,8 +755,11 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
       if (toolName === "browser_navigation") {
-        caps.push({ class: args.action === "current" ? "browser_inspect" : "browser_interact", nonBypassable: false })
-        if (args.action === "goto") {
+        caps.push({
+          class: args.action === "current" || args.action === "list" ? "browser_inspect" : "browser_interact",
+          nonBypassable: false,
+        })
+        if (args.action === "goto" || args.action === "open") {
           caps.push({ class: "network_request", nonBypassable: false })
         }
         return { capabilities: caps }

@@ -5,7 +5,6 @@ import path from "path"
 import { WEB_DIST_DIR, PRESETS_DIR, PRESETS_DIST_DIR } from "../shared/packages"
 import { assertRuntimeManifest } from "../shared/runtime-contract"
 
-const playwrightRuntimeCheck = "__browser-playwright-runtime-check"
 const embeddingRuntimeCheck = "__embedding-runtime-check"
 
 export async function validateLocalArtifacts(platformPackageNames: string[]) {
@@ -42,7 +41,7 @@ export async function smokeRuntimeArtifact(runtimeDir: string, profile: RuntimeA
     await fs.cp(runtimeDir, installation, { recursive: true })
     await fs.mkdir(home)
     const binary = path.join(installation, "bin", process.platform === "win32" ? "synergy.exe" : "synergy")
-    const checks = profile === "full" ? ["--version", playwrightRuntimeCheck, embeddingRuntimeCheck] : ["--version"]
+    const checks = profile === "full" ? ["--version", embeddingRuntimeCheck] : ["--version"]
     const results: Array<{ flag: string; stdout: string }> = []
     for (const flag of checks) {
       const child = Bun.spawn([binary, flag], {

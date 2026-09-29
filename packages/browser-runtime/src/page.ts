@@ -18,6 +18,8 @@ export interface BrowserDialogRequest {
 }
 
 export interface BrowserPageEventHandlers {
+  onClosed?: (page: BrowserPageBackend) => void
+  onStatus?: (page: BrowserPageBackend, status: import("@ericsanchezok/synergy-browser-core").BrowserHostStatus) => void
   onLoading?: (page: BrowserPageBackend, url: string) => void
   onLoaded?: (page: BrowserPageBackend) => void
   onUpdated?: (page: BrowserPageBackend) => void

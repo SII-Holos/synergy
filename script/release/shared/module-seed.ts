@@ -40,6 +40,11 @@ export async function prepareModuleArchives(options: {
     targets: options.targets,
     version: options.version,
   })
+  if (options.profile === "full")
+    await packWorkspace("packages/browser-runtime", options.output, {
+      targets: options.targets,
+      version: options.version,
+    })
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-selections-"))
   try {
     for (const id of options.profile === "core" ? (["core"] as const) : (["core", "full", "web", "desktop"] as const)) {
@@ -98,7 +103,7 @@ export async function stageModuleSeed(options: {
   const cli = "@ericsanchezok/synergy-cli"
   await withInstalledPackages(
     options.archives,
-    [cli, name],
+    [cli, name, ...(options.profile === "full" ? ["@ericsanchezok/synergy-browser-runtime"] : [])],
     async (directory) => {
       const native = nativePackageName({
         platform: options.target.os,
@@ -139,7 +144,10 @@ export async function stageModuleSeed(options: {
         path.join(directory, "node_modules", cli),
         options.version,
         {
-          roots: { [name]: options.version },
+          roots: {
+            [name]: options.version,
+            ...(options.profile === "full" ? { "@ericsanchezok/synergy-browser-runtime": options.version } : {}),
+          },
         },
       )
       await fs.rm(options.destination, { recursive: true, force: true })

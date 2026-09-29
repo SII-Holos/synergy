@@ -1,3 +1,4 @@
+import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { runtimeFeatureAvailable } from "../runtime-features"
 import { createEffect, onCleanup, type ParentProps } from "solid-js"
@@ -15,8 +16,12 @@ import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
 import { createBossWorkbenchPanel } from "./boss-panel-entry"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const { capabilities } = useGlobalSDK()
+  const platform = usePlatform()
   const register = (entry: Parameters<typeof registerWorkbenchPanel>[0]) =>
-    runtimeFeatureAvailable("panel", entry.id, capabilities.has) ? registerWorkbenchPanel(entry) : () => {}
+    runtimeFeatureAvailable("panel", entry.id, capabilities.has) &&
+    (entry.id !== "browser" || Boolean(platform.browserNative))
+      ? registerWorkbenchPanel(entry)
+      : () => {}
   const terminal = useTerminal()
   const file = useFile()
   const { controller, i18n } = useLocale()

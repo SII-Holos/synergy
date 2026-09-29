@@ -30,7 +30,10 @@ const parameters = z
       ctx.addIssue({ code: "custom", path: ["pageId"], message: "pageId is not used by open or list." })
   })
 
-export const BrowserNavigationTool = Tool.define("browser_navigation", {
+export const BrowserNavigationTool = Tool.define<
+  typeof parameters,
+  { action: string; count?: number; pageId?: string; url?: string; profileId?: string; resultType?: string }
+>("browser_navigation", {
   description:
     "List or open browser pages; navigate, inspect or recover a page by pageId. Pages keep their identity and do not change the user's selected tab. Inspect page state before repeating an uncertain action.",
   parameters,
