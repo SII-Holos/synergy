@@ -1,5 +1,9 @@
 [data-component="tooltip-trigger"] {
   display: flex;
+
+  &[data-inactive] {
+    display: contents;
+  }
 }
 
 [data-slot="tooltip-keybind"] {

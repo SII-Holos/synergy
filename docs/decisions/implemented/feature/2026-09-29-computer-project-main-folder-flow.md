@@ -14,6 +14,8 @@ Workbench stores versioned project directory references and a revision separatel
 
 The project Popover, two-field create dialog, independently saved settings and directory browser share flat controls, typography, state timing and theme shadows. The original Manus [surface and density research](https://app.notion.com/p/3ead59e86a7481759701c15a03d89f4d) and [motion/state research](https://app.notion.com/p/3ead59e86a7481a98ae7ef3d62b5f38f) inform complete-page inspection, not only the Shell. The precise presentation is owned by [PRODUCT.md](../../../../apps/web/PRODUCT.md#project-first-task-entry); binding and migration semantics live in [Workspace and files](../../../architecture/workspace-and-files.md#product-project-directories).
 
+Suppressing a Tooltip changes its open state without replacing its trigger. Menu-to-dialog handoffs restore the owning trigger before mounting the dialog, so returning focus does not target a removed menu item. Escape dismisses the topmost surface, including a focused path tooltip, before its parent.
+
 This refines the presentation from [project-first task entry](2026-09-29-project-first-task-entry.md), retaining its revisioned draft transfer, connection ownership and folder-picker distinction. The earlier round omitted the combined page's information density, shared-control finish and actual multi-directory semantics; those are required acceptance evidence here.
 
 ## Alternatives considered

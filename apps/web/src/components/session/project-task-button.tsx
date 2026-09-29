@@ -44,8 +44,13 @@ export function ProjectTaskButton(props: {
   const desktop = createMediaQuery("(min-width: 640px)")
   const server = useServer()
   const globalSync = useGlobalSync()
-  const create = () => {
+  function closeMenu() {
     setOpened(false)
+    if (!desktop()) dialog.close()
+    document.querySelector<HTMLButtonElement>("[data-project-task-selector]")?.focus({ preventScroll: true })
+  }
+  const create = () => {
+    closeMenu()
     dialog.show(() => (
       <DialogCreateProject
         onCreated={async (id, url) => {
@@ -63,7 +68,7 @@ export function ProjectTaskButton(props: {
   }
   const settings = props.onSettings
     ? () => {
-        setOpened(false)
+        closeMenu()
         props.onSettings?.()
       }
     : undefined

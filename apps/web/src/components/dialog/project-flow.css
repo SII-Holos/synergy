@@ -326,8 +326,9 @@
     --dialog-max-height: calc(100dvh - 16px);
   }
 }
-.project-select-popover {
+.project-select-popover[data-component="popover-content"] {
   width: min(360px, calc(100vw - 24px));
+  max-width: min(360px, calc(100vw - 24px));
 }
 .project-menu-content {
   display: flex;

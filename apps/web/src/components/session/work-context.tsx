@@ -170,10 +170,11 @@ export function SessionWorkContext(props: {
           placement="top-start"
           class="project-select-popover"
           triggerAs={(attributes) => (
-            <Tooltip value={open() ? "" : (actual()?.path ?? main()?.path ?? "")}>
+            <Tooltip value={open() || dialog.active ? "" : (actual()?.path ?? main()?.path ?? "")}>
               <button
                 {...attributes}
                 class="session-work-context-button"
+                data-worktree-task-selector
                 disabled={props.disabled || pending()}
                 aria-label={label()}
               >
@@ -273,6 +274,9 @@ export function SessionWorkContext(props: {
               class="project-flow-row"
               onClick={() => {
                 setOpen(false)
+                document
+                  .querySelector<HTMLButtonElement>("[data-worktree-task-selector]")
+                  ?.focus({ preventScroll: true })
                 dialog.show(() => (
                   <DialogWorktrees
                     scopeID={sdk.scopeID}

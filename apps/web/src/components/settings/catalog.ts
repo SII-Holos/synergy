@@ -131,7 +131,7 @@ const BUILTIN_SETTINGS_COPY = {
       { id: "settings.general.monoFont.title", message: "Monospace font" },
       { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
       { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
-      { id: "settings.catalog.general.row.newSessionWorkspace", message: "Files for new tasks" },
+      { id: "settings.catalog.general.row.newSessionWorkspace", message: "New task starting point" },
       { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
       { id: "settings.catalog.general.row.notifications", message: "Notifications" },
       { id: "settings.catalog.general.row.toastDuration", message: "Toast Duration" },

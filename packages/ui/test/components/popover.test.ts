@@ -29,6 +29,7 @@ beforeAll(async () => {
     function Fixture() {
       const [open, setOpen] = createSignal(false)
       const [count, setCount] = createSignal(0)
+      const [projectOpen, setProjectOpen] = createSignal(false)
       return <>
         <Popover open={open()} onOpenChange={setOpen}
           trigger={<Tooltip value="Session actions" inactive={count() > 0}>
@@ -46,6 +47,12 @@ beforeAll(async () => {
           trigger={triggerProps => <button {...triggerProps}>Plugin actions</button>}>
           <button>Plugin action</button>
         </pluginComponents.Popover>
+        <Popover open={projectOpen()} onOpenChange={setProjectOpen}
+          triggerAs={triggerProps => <Tooltip value={projectOpen() ? "" : "Choose project"}>
+            <button {...triggerProps} aria-label="Choose project">Project</button>
+          </Tooltip>}>
+          <input aria-label="Search projects" autofocus />
+        </Popover>
       </>
     }
     render(() => <Fixture />, document.getElementById("root"))
@@ -128,5 +135,20 @@ test("public plugin component triggers retain pointer and focus behavior", async
   await action.waitFor({ state: "detached" })
   await page.waitForFunction((element) => element === document.activeElement, await trigger.elementHandle())
   expect(await trigger.evaluate((element) => element === document.activeElement)).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("suppressing a focused trigger tooltip preserves Escape and trigger identity", async () => {
+  const trigger = page.getByRole("button", { name: "Choose project", exact: true })
+  const original = await trigger.elementHandle()
+  await trigger.focus()
+  await page.getByRole("tooltip").waitFor()
+  await trigger.click()
+  await page.getByRole("textbox", { name: "Search projects" }).waitFor()
+  expect(await trigger.evaluate((element, original) => element === original, original)).toBe(true)
+  await page.waitForFunction(() => !document.querySelector('[data-component="tooltip"]'))
+  await page.keyboard.press("Escape")
+  await page.getByRole("textbox", { name: "Search projects" }).waitFor({ state: "detached", timeout: 3000 })
+  await page.waitForFunction((element) => document.activeElement === element, original)
   expect(errors).toEqual([])
 })

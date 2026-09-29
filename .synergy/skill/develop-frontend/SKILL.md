@@ -163,6 +163,8 @@ bun run localization:check
 
 ## Handoff
 
+When a menu suppresses its trigger Tooltip, preserve the trigger element and focus listeners. Exercise focus → open → Escape → focus return with the real composed controls. A menu action that opens a Dialog must hand off a connected return-focus target; an unmounted menu item is not one. Distinguish a visible path Tooltip consuming Escape from a parent dialog failing to close.
+
 Report state ownership, API path, semantic icon token, shared primitives, accessibility states, tests, visual checks, and any durable `PRODUCT.md` or Skill update.
 
 ## Replaceable plugin presentation
@@ -207,6 +209,10 @@ Pin global workspace controls to the owner spanning both panes, not the pane tha
 
 Native titlebar acceptance must include OS-level coordinate clicks on restore, Search, New and the workspace toggle, plus a window drag from the empty header. Renderer-injected clicks and accessibility activation can bypass native drag hit testing. Check actual drag rectangles against controls in sibling or portaled subtrees; `no-drag` on a button alone does not prove that an overlapping drag owner releases it. Repeat after sidebar collapse and with the side workspace open. See the [escaped native hit-test failure](../../../docs/postmortem/0035-native-titlebar-swallowed-controls.md).
 
-For project-entry changes, test the real Prompt provider and project picker together: destination-first merging, both revision checks, cancel, upload blocking, same-connection ownership and file-reference provenance. Verify independent section saves and unsaved dismissal in project settings. Inspect real project/copy/location dialogs at narrow and short viewports, 200% zoom, both themes and keyboard focus return. Folder selection must retain the underlying dialog state and distinguish the connected service from Desktop's machine.
+For project-entry changes, test the real Prompt provider and project picker together: destination-first merging, both revision checks, cancel, upload blocking, same-connection ownership and file-reference provenance. Verify independent section saves and unsaved dismissal in project settings. Inspect real computer/project/main-folder and Worktree controls at narrow and short viewports, 200% zoom, both themes and keyboard focus return. Folder selection must retain the underlying dialog state and distinguish the connected service from Desktop's machine.
 
 Use the shared Dialog footer for actions that must remain reachable while project forms or directory results scroll. Cover short windows and keyboard focus return. During directory loading, edit the path before the response arrives and verify that the response preserves the newer input.
+
+Project creation must remain a real two-field flow with a small computer selector. Verify per-connection directory staging, default-main creation, existing-project detection without renaming, failure retention and Composer focus after the modal closes. At least two actual repositories must participate in multi-folder acceptance: create from A with B shared, change main to B, and verify old tasks and A Worktrees still open, search, modify and clean up through their original bindings. Compare primary and additional roots in file tree, context picker, search and command tools rather than accepting a visual folder list as proof of access. New Worktree selection must allocate nothing until send. Exercise historical Worktrees with a non-Git or unavailable current main.
+
+Inspect the shared controls in the real project Popover, create form, settings and service directory browser. Required sizes and timing live in PRODUCT.md. Check single-border input focus, separate menu/dialog shadows, fixed trailing checks, stable loading widths, nested Escape and focus restoration. Capture complete screens in both themes, narrow/short viewports, 200% zoom and reduced motion; isolated component snapshots cannot establish the combined page's density.

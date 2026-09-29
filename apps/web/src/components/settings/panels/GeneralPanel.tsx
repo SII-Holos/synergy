@@ -101,14 +101,13 @@ const copy = {
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
   activityMinimal: { id: "settings.general.activityDisplay.minimal", message: "Minimal" },
-  workspaceTitle: { id: "settings.general.workspace.title", message: "Files for new tasks" },
+  workspaceTitle: { id: "settings.general.workspace.title", message: "New task starting point" },
   workspaceDescription: {
     id: "settings.general.workspace.description",
-    message:
-      "Use project files or create an independent copy for each new Git task. Projects can override this default.",
+    message: "Use the main folder or create a Worktree for each new Git task. Projects can override this default.",
   },
-  workspaceMain: { id: "settings.general.workspace.main", message: "Project files" },
-  workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Independent copy" },
+  workspaceMain: { id: "settings.general.workspace.main", message: "Main folder" },
+  workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Worktree" },
   compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",
