@@ -127,7 +127,7 @@ export function remoteLoss(input: unknown): Driver {
                 await EnvironmentExecution.start({
                   id,
                   ...selection,
-                  command: { command: "/bin/cat", args: ["record.txt"], cwd: root, env: {}, writableRoots: [] },
+                  command: { command: "/bin/cat", args: ["record.txt"], cwd: root, env: {}, useRoots: [] },
                 }).catch((error: unknown) => {
                   if (
                     !(error instanceof Error) ||
@@ -252,7 +252,7 @@ export function remoteLoss(input: unknown): Driver {
                     args: ["-e", `await Bun.write(${JSON.stringify(sentinel)},'wrong-target')`],
                     cwd: root,
                     env: {},
-                    writableRoots: [root],
+                    useRoots: [root],
                   },
                 })
               } catch (error) {

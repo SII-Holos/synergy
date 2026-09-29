@@ -91,6 +91,7 @@ export class NativeExecutor implements Executor {
         if (!ExecutionProtocol.terminal(status) || !receipt?.claim || receipt.released)
           throw new Error("Execution has no retained completed writer")
         await options.coordinator.validateRetention(receipt.claim, root)
+        return receipt.claim
       },
     })
   }
@@ -223,7 +224,11 @@ export class NativeExecutor implements Executor {
             owner: this.options.target.environmentID,
             ancestors: [],
             kind: "process",
-            roots: command.writableRoots,
+            roots: [
+              ...(command.mutationRoots ?? []),
+              ...(command.preconditions ?? []).map((condition) => condition.canonical),
+            ],
+            useRoots: [...new Set([command.cwd, ...command.useRoots])],
             retainAfterExit: true,
             durable: true,
             cooperative: command.cooperative,
@@ -236,7 +241,7 @@ export class NativeExecutor implements Executor {
       for (const condition of command.preconditions ?? []) {
         if (!path.isAbsolute(condition.path) || !path.isAbsolute(condition.canonical))
           throw new Error("Execution file preconditions require absolute target paths")
-        await this.options.coordinator.validateRetention(lease.recovery, path.dirname(condition.canonical))
+        await this.options.coordinator.validateRetention(lease.recovery, condition.canonical)
         if (
           (await NativeFileMutation.canonical(condition.path)) !== condition.canonical ||
           ((await NativeFileMutation.snapshot(condition.canonical, operation.abort.signal))?.version ?? null) !==

@@ -86,7 +86,7 @@ export namespace SessionFileChanges {
           })
         }
         return {
-          async finish() {
+          async finish(isolated) {
             for (const { workspace, part } of pending) {
               await ScopeContext.provide({
                 scope,
@@ -100,7 +100,7 @@ export namespace SessionFileChanges {
                     await MessageV2.get({ sessionID: owner.sessionID, messageID: input.messageID })
                     if (part.hash) {
                       const afterHash = await Snapshot.track(owner.sessionID, AbortSignal.timeout(30000))
-                      if (afterHash) {
+                      if (afterHash && (!isolated || (await isolated()))) {
                         const files = await Snapshot.changedPaths(
                           part.hash,
                           afterHash,

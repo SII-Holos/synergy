@@ -113,7 +113,7 @@ test(
               await Bun.sleep(10)
             }
             await expect(
-              WorkspaceAccess.write([directory.path], async () => {}, AbortSignal.timeout(100)),
+              WorkspaceAccess.exclusive([directory.path], async () => {}, AbortSignal.timeout(100)),
             ).rejects.toMatchObject({ name: "TimeoutError" })
             await Bun.write(stop, "stop")
             expect(await running).toMatchObject({ exitCode: 0, timedOut: false })
@@ -136,7 +136,11 @@ test(
       const marker = path.join(directory.path, "must-not-start")
       const tempPath = path.join(directory.path, "profile")
       await Bun.write(tempPath, "prepared")
-      const lease = await WorkspaceAccess.process(null)
+      const lease = await WorkspaceAccess.hostClaim({
+        id: crypto.randomUUID(),
+        kind: "exclusive",
+        roots: [directory.path],
+      })
       const controller = new AbortController()
       const running = SandboxBackend.executeAsync(
         { ...wrapper(`await Bun.write(${JSON.stringify(marker)}, 'started')`), tempPath },

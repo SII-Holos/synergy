@@ -11,6 +11,34 @@ import { NativeFileMutation } from "../../src/file/mutation-core"
 
 const Socket = WebSocket as unknown as { new (url: URL, options: Bun.WebSocketOptions): WebSocket }
 
+test("a legacy Execution Host is rejected before command dispatch", async () => {
+  const target = { environmentID: "environment", allocationID: "allocation", generation: 1 }
+  let dispatched = 0
+  const host = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      if (new URL(request.url).pathname === "/v1/status") return Response.json({ version: 1, target })
+      dispatched++
+      return new Response("Unexpected dispatch", { status: 400 })
+    },
+  })
+  try {
+    const remote = new RemoteExecutor({
+      url: host.url.toString(),
+      target,
+      token: "test-token-with-at-least-thirty-two-bytes",
+    })
+    const command = { command: "unused", args: [], cwd: "/workspace", env: {}, useRoots: [] }
+    await expect(
+      remote.start({ id: "legacy", target, command, digest: ExecutionProtocol.digest(command) }),
+    ).rejects.toThrow()
+    expect(dispatched).toBe(0)
+  } finally {
+    await host.stop(true)
+  }
+})
+
 test("authenticated execution transport uses the native handler and replays output by cursor", async () => {
   await using tmp = await tmpdir()
   const target = { environmentID: "environment", allocationID: "allocation", generation: 1 }
@@ -26,6 +54,8 @@ test("authenticated execution transport uses the native handler and replays outp
     listen: { hostname: "127.0.0.1", port: 0 },
   })
   const remote = new RemoteExecutor({ url: host.url, target, token: "test-token-with-at-least-thirty-two-bytes" })
+  expect((await remote.health()).version).toBe(ExecutionProtocol.version)
+  expect(ExecutionHost.openAPI().info.version).toBe(String(ExecutionProtocol.version))
   const description = await remote.describe()
   expect(description).toEqual(await executor.describe())
   expect(description.target).toEqual(target)
@@ -63,7 +93,7 @@ test("authenticated execution transport uses the native handler and replays outp
     args: ["-e", "process.stdout.write('remote'); process.stderr.write('error')"],
     cwd: tmp.path,
     env: {},
-    writableRoots: [],
+    useRoots: [],
   }
   const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
   await remote.start(request)
@@ -133,7 +163,7 @@ test("duplex transport preserves binary input and output, and disconnect does no
     args: ["-e", "for await (const chunk of Bun.stdin.stream()) process.stdout.write(chunk)"],
     cwd: tmp.path,
     env: {},
-    writableRoots: [],
+    useRoots: [],
   }
   await remote.start({ id: "binary", target, command, digest: ExecutionProtocol.digest(command) })
   for (let i = 0; (await remote.status("binary"))?.state !== "running" && i < 300; i++) await Bun.sleep(10)
@@ -218,7 +248,7 @@ test.skipIf(process.platform !== "darwin")(
         args: wrapper.args,
         cwd: tmp.path,
         env: {},
-        writableRoots: wrapper.writeFootprint?.kind === "roots" ? wrapper.writeFootprint.roots : null,
+        useRoots: [],
       }
       await remote.start({ id: "sandboxed", target, command, digest: ExecutionProtocol.digest(command) })
       for (let i = 0; i < 400 && !ExecutionProtocol.terminal((await remote.status("sandboxed"))!); i++)
@@ -234,7 +264,7 @@ test.skipIf(process.platform !== "darwin")(
   20_000,
 )
 
-test("cooperative execution reports host contention and retains ownership until acknowledgement", async () => {
+test("cooperative execution reports lifecycle contention and retains ownership until acknowledgement", async () => {
   await using tmp = await tmpdir()
   const target = { environmentID: "environment", allocationID: "allocation", generation: 1 }
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
@@ -247,7 +277,7 @@ test("cooperative execution reports host contention and retains ownership until 
     args: ["-e", "process.stdin.resume()"],
     cwd: tmp.path,
     env: {},
-    writableRoots: [tmp.path],
+    useRoots: [tmp.path],
     cooperative: true,
   }
   const digest = ExecutionProtocol.digest(command)
@@ -262,7 +292,7 @@ test("cooperative execution reports host contention and retains ownership until 
     id: "writer",
     owner: "writer",
     ancestors: [],
-    kind: "operation",
+    kind: "exclusive",
     roots: [tmp.path],
     signal: abort.signal,
   })

@@ -61,7 +61,7 @@ test("configured LSP owner serves real protocol queries and releases its process
     })
   }))
 
-test("starting another Workspace retires idle unconfined LSP processes and preserves independent diagnostics", () =>
+test("starting another Workspace preserves both native LSP processes and independent diagnostics", () =>
   runtime.run(async () => {
     const { Session } = await import("@ericsanchezok/synergy-harness/session")
     const { ProcessInspection } = await import("@ericsanchezok/synergy-harness/process/inspection")
@@ -109,7 +109,7 @@ test("starting another Workspace retires idle unconfined LSP processes and prese
         ),
       )
       expect(pids[0]).not.toBe(pids[1])
-      expect(ProcessInspection.alive(pids[0]!)).toBe(false)
+      expect(ProcessInspection.alive(pids[0]!)).toBe(true)
       expect(ProcessInspection.alive(pids[1]!)).toBe(true)
       await ScopeContext.provide({
         scope,
@@ -118,7 +118,7 @@ test("starting another Workspace retires idle unconfined LSP processes and prese
           const file = path.join(first.path, "source.fixture")
           expect(Object.keys(await LSP.diagnostics())).toEqual([file])
           expect(await LSP.hover({ file, line: 0, character: 0 })).toEqual([{ contents: "fixture hover" }])
-          expect(Number(await Bun.file(path.join(first.path, "server.pid")).text())).not.toBe(pids[0])
+          expect(Number(await Bun.file(path.join(first.path, "server.pid")).text())).toBe(pids[0])
         },
       })
     } finally {
@@ -127,7 +127,7 @@ test("starting another Workspace retires idle unconfined LSP processes and prese
   }))
 
 test(
-  "a competing writer waits for an active LSP query then retires the idle process before writing",
+  "Workspace retirement waits for an active LSP query then drains its idle process",
   () =>
     runtime.run(async () => {
       const disabled = Object.fromEntries(Object.values(LSPServer).map((server) => [server.id, { disabled: true }]))
@@ -157,7 +157,7 @@ test(
             expect(await Bun.file(started).exists()).toBe(true)
             expect(await LSP.status()).toEqual([{ id: "fixture", name: "fixture", root: "", status: "connected" }])
             const pid = Number(await Bun.file(path.join(tmp.path, "server.pid")).text())
-            const writer = WorkspaceAccess.write([tmp.path], async () => {
+            const writer = WorkspaceAccess.exclusive([tmp.path], async () => {
               expect(await Bun.file(path.join(tmp.path, "query-completed")).text()).toBe("replied\n")
               expect(ProcessInspection.alive(pid)).toBe(false)
               await Bun.write(file, "let ownerSymbol = 2")
@@ -295,12 +295,19 @@ test(
         fn: async () => {
           const held = Promise.withResolvers<void>()
           const release = Promise.withResolvers<void>()
-          const writer = WorkspaceAccess.write(null, async () => {
-            held.resolve()
-            await release.promise
+          const writer = WorkspaceAccess.maintenance(async () => {
+            const legacy = await WorkspaceAccess.hostClaim({ id: crypto.randomUUID(), kind: "process", roots: null })
+            try {
+              held.resolve()
+              await release.promise
+            } finally {
+              await legacy.release()
+            }
           })
           await held.promise
-          const query = LSP.hover({ file: path.join(tmp.path, "source.fixture"), line: 0, character: 0 })
+          const query = WorkspaceAccess.task({ workspace: ScopeContext.current.workspace, lazy: true }, () =>
+            LSP.hover({ file: path.join(tmp.path, "source.fixture"), line: 0, character: 0 }),
+          )
           const failure = query.then(
             () => undefined,
             (error: unknown) => error,

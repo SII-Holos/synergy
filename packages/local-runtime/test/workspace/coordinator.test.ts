@@ -363,7 +363,7 @@ test("a use lease prevents deletion but permits reads and ordinary writers", asy
   await exclusive.release()
 })
 
-test("read-only processes pin their bindings while allowing bounded and host-wide writers", async () => {
+test("resource-only processes permit bounded commits and retain lifecycle and legacy exclusion", async () => {
   await using tmp = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
   const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
@@ -379,8 +379,7 @@ test("read-only processes pin their bindings while allowing bounded and host-wid
     })
     const bounded = await coordinator.acquire({ ...request([tmp.path]), timeoutMs: 100 })
     await bounded.release()
-    const host = await coordinator.acquire({ ...request(null), timeoutMs: 100 })
-    await host.release()
+    await expect(coordinator.acquire({ ...request(null), timeoutMs: 100 })).rejects.toThrow("busy")
     await expect(
       coordinator.acquire({
         ...request([tmp.path]),

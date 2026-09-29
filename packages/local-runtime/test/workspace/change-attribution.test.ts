@@ -165,7 +165,7 @@ for (const ending of ["complete", "cancel", "remove-session", "switch-workspace"
             try {
               await a.task(() =>
                 a.tool("background", async () => {
-                  const lease = await WorkspaceAccess.process(null)
+                  const lease = await WorkspaceAccess.process([tmp.path])
                   owned = await OwnedProcess.prepare({
                     command: process.execPath,
                     args: [
@@ -189,7 +189,11 @@ for (const ending of ["complete", "cancel", "remove-session", "switch-workspace"
                 }),
               )
               expect((await a.patches())[0]?.operation?.status).toBe("pending")
-              const excluded = await WorkspaceAccess.write([tmp.path], async () => {}, AbortSignal.timeout(100)).then(
+              const excluded = await WorkspaceAccess.exclusive(
+                [tmp.path],
+                async () => {},
+                AbortSignal.timeout(100),
+              ).then(
                 () => undefined,
                 (error: unknown) => error,
               )
@@ -310,6 +314,53 @@ test("explicitly shared Workspace writes retain their own source and never grant
           expect(await Bun.file(path.join(own.path, "shared.txt")).exists()).toBe(false)
         } finally {
           await Session.remove(a.session.id)
+        }
+      },
+    })
+  }))
+
+test("overlapping process evidence cannot undo another session's committed bytes", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      async fn() {
+        const a = await actor(),
+          b = await actor()
+        let owned: Awaited<ReturnType<typeof OwnedProcess.prepare>> | undefined
+        try {
+          await a.task(() =>
+            a.tool("background", async () => {
+              const lease = await WorkspaceAccess.process([tmp.path])
+              owned = await OwnedProcess.prepare({
+                command: process.execPath,
+                args: ["-e", "process.stdin.resume()"],
+                cwd: tmp.path,
+                env: {},
+                lease,
+              })
+              owned.child.stdout.resume()
+              owned.child.stderr.resume()
+              await owned.activate()
+              return "running"
+            }),
+          )
+          const file = path.join(tmp.path, "other.txt")
+          await b.task(() =>
+            b.tool("edit", () => FileMutation.write({ path: file, content: "other session", expectedVersion: null })),
+          )
+          owned!.child.stdin!.end()
+          await owned!.completion
+          const evidence = await a.patches()
+          expect(evidence).toHaveLength(1)
+          expect(evidence[0]?.operation?.status).toBe("incomplete")
+          const result = await Snapshot.revert(evidence, a.session.id)
+          expect(result.restoredFiles).toEqual([])
+          expect(await Bun.file(file).text()).toBe("other session")
+        } finally {
+          await owned?.stop()
+          await Session.remove(a.session.id)
+          await Session.remove(b.session.id)
         }
       },
     })

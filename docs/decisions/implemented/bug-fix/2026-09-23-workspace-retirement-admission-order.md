@@ -8,6 +8,8 @@ Directory retirement and native command writes have different footprints. Two cl
 
 ## Decision
 
+The permission-footprint and turn-wide reservation aspects are superseded by [operation coordination](../architecture/2026-09-29-workspace-operation-coordination.md); the identity, native ownership and bounded retirement guarantees remain applicable.
+
 `WorkspaceAccess.retire` accepts an explicit `writeRoots` footprint and reserves it before acquiring directory exclusion. Worktree cancellation cleanup, explicit or automatic removal, and missing-directory reconciliation declare host-wide writes because their Git operations can invoke user hooks. The native coordinator admits a retirement descendant only when its footprint is covered by an active ancestor reservation or by the retired roots themselves. An undeclared expansion reports `WorkspaceBusyError` before joining a wait cycle.
 
 File mutations under retirement acquire their operation claim through the existing exclusive owner. They do not replace the parent task reservation. Reservation expansion and Cortex-style ownership handoff are refused while retirement is active. Ordinary metadata operations outside retirement retain their short write intervals.

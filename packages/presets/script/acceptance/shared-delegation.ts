@@ -122,7 +122,7 @@ export function sharedDelegation(settings: Settings): Driver {
               ],
               cwd: project,
               env: { PATH: process.env.PATH ?? "" },
-              writableRoots: [project],
+              useRoots: [project],
               cooperative: true,
             },
           })

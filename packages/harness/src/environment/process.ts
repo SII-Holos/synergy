@@ -3,6 +3,7 @@ import { PassThrough, Writable } from "node:stream"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { ProcessHandle } from "../process/handle"
+import type { WorkspaceProtocol } from "../workspace/protocol"
 import { WorkspaceMounts } from "../workspace/mount"
 import { Environment } from "."
 import { EnvironmentExecution } from "./execution"
@@ -28,6 +29,7 @@ export namespace EnvironmentProcess {
     command: ExecutionProtocol.Command
     intentDigest?: string
     signal?: AbortSignal
+    workspaces?: WorkspaceProtocol.Reference[]
   }
 
   class Child extends EventEmitter implements ProcessHandle {
@@ -58,9 +60,15 @@ export namespace EnvironmentProcess {
       throw new Environment.Unavailable({ environmentID: "", message: "Process requires resolved execution resources" })
     const command = ExecutionProtocol.Command.parse(input.command)
     const mount = input.resources.workspace?.activeMount
-    if (mount && command.writableRoots?.length && !command.writableRoots.includes(mount.path))
-      command.writableRoots = [...command.writableRoots, mount.path]
-    const workspaces = input.resources.workspace ? [WorkspaceMounts.reference(input.resources.workspace)] : undefined
+    command.useRoots = [...new Set([command.cwd, ...command.useRoots, ...(mount ? [mount.path] : [])])]
+    const workspaces = [
+      ...new Map(
+        [
+          ...(input.resources.workspace ? [WorkspaceMounts.reference(input.resources.workspace)] : []),
+          ...(input.workspaces ?? []),
+        ].map((reference) => [reference.id, reference]),
+      ).values(),
+    ]
     const completed = Promise.withResolvers<void>()
     const running = Promise.withResolvers<boolean>()
     void completed.promise.catch(() => {})

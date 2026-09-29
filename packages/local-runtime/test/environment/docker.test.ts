@@ -110,7 +110,7 @@ test.skipIf(!image)(
             ],
             cwd: "/tmp",
             env: {},
-            writableRoots: null,
+            useRoots: [],
           },
         })
         for (let attempt = 0; operation.state !== "exited" && attempt < 300; attempt++) {
@@ -184,7 +184,7 @@ print(Path("allowed").read_text(), end="")
             sandboxID: wrapper.id,
             cwd: "/workspaces/.scratch/selected",
             env: { PATH: "/usr/bin:/bin" },
-            writableRoots: wrapper.writeFootprint?.kind === "roots" ? wrapper.writeFootprint.roots : null,
+            useRoots: [],
           },
         })
         for (let i = 0; sandboxed.state !== "exited" && i < 300; i++) {
@@ -301,7 +301,7 @@ test.skipIf(!image)(
             args: ["-c", "cat source > result; printf changed >> result; printf once >> effects"],
             cwd: target,
             env: {},
-            writableRoots: [target],
+            useRoots: [target],
           },
         })
         for (let attempt = 0; operation.state !== "exited" && attempt < 500; attempt++) {
@@ -568,7 +568,7 @@ test.skipIf(!image)(
             args: ["-c", "printf once >> result; printf completed"],
             cwd: resources.directory!,
             env: {},
-            writableRoots: [resources.directory!],
+            useRoots: [resources.directory!],
           },
         })
         for (let attempt = 0; execution.state !== "exited" && attempt < 300; attempt++) {

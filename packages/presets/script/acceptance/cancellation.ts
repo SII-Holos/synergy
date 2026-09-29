@@ -125,7 +125,7 @@ export function cancellations(input: unknown, targets: Target[] = ["native", "re
                     args: ["-e", code, token],
                     cwd: resources.directory!,
                     env: {},
-                    writableRoots: [resources.directory!],
+                    useRoots: [resources.directory!],
                     cooperative: stage === "blocker",
                   },
                 })

@@ -111,7 +111,7 @@ export function resourceCycles(input: unknown): Driver {
               ],
               cwd: project,
               env: { PATH: process.env.PATH ?? "" },
-              writableRoots: [project],
+              useRoots: [project],
               cooperative: true,
             },
           })

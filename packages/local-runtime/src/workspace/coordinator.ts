@@ -35,6 +35,7 @@ const Claim = z.object({
   drained: z.boolean().optional(),
   cooperative: z.boolean().optional(),
   transient: z.boolean().optional(),
+  overlappingWrites: z.boolean().optional(),
   state: z.enum(["waiting", "active"]),
 })
 const Ledger = z.object({ version: z.union([z.literal(1), z.literal(2), z.literal(3)]), claims: z.array(Claim) })
@@ -121,6 +122,9 @@ function conflicts(request: Claim, held: Claim, claims: readonly Claim[]) {
     held.owner === request.owner
   )
     return false
+  // Older runtimes retain unbounded writer receipts until their original recovery completes.
+  if (request.kind === "process" && held.roots === null) return true
+  if (held.kind === "process" && request.roots === null) return true
   return overlaps(request.roots, held.roots)
 }
 
@@ -366,6 +370,35 @@ export class WorkspaceCoordinator {
               )
             if (blockers.length) return false
             current.state = "active"
+            if (current.kind !== "use" && current.kind !== "exclusive") {
+              const view = (claim: Claim) =>
+                claim.kind === "process" && claim.roots?.length === 0 ? claim.useRoots : claim.roots
+              const related = (claim: Claim, ancestor: Claim) => {
+                const visited = new Set<string>()
+                while (claim.parentClaim && !visited.has(claim.id)) {
+                  visited.add(claim.id)
+                  const parent = ledger.claims.find(
+                    (item) => item.id === claim.parentClaim && item.owner === claim.owner,
+                  )
+                  if (!parent) break
+                  if (parent.id === ancestor.id) return true
+                  claim = parent
+                }
+                return false
+              }
+              for (const held of ledger.claims) {
+                if (
+                  held.id === current.id ||
+                  held.state !== "active" ||
+                  held.kind === "use" ||
+                  held.kind === "exclusive"
+                )
+                  continue
+                if (related(current, held) || related(held, current) || !overlaps(view(current), view(held))) continue
+                held.overlappingWrites = true
+                current.overlappingWrites = true
+              }
+            }
             return true
           },
           { signal: input.signal, timeoutMs: Math.max(1, deadline - Date.now()) },
@@ -410,7 +443,7 @@ export class WorkspaceCoordinator {
       if (
         !claim?.durable ||
         claim.state !== "active" ||
-        !covers(claim.roots, [
+        !covers(claim.roots === null ? null : [...claim.roots, ...claim.useRoots], [
           {
             path: process.platform === "win32" ? canonical.toLowerCase() : canonical,
             physicalID: identity.physicalID,
@@ -418,7 +451,15 @@ export class WorkspaceCoordinator {
           },
         ])
       )
-        throw new Error("Checkpoint has no retained writer covering this Workspace")
+        throw new Error("Checkpoint has no retained use covering this Workspace")
+    })
+  }
+
+  async isolated(reference: { id: string; token: string }) {
+    return this.update((ledger) => {
+      const claim = ledger.claims.find((item) => item.id === reference.id && item.token === reference.token)
+      if (!claim || claim.state !== "active") throw new Error("Workspace observation claim is unavailable")
+      return !claim.overlappingWrites
     })
   }
 
@@ -427,6 +468,7 @@ export class WorkspaceCoordinator {
     return {
       id,
       recovery: durable ? { id, token } : undefined,
+      isolated: () => this.isolated({ id, token }),
       release: (beforeRelease?: () => Promise<void>) =>
         (releasing ??= this.release(id, token, beforeRelease).finally(() => {
           releasing = undefined
