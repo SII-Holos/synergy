@@ -20,12 +20,19 @@ beforeAll(async () => {
     path.join(directory, "index.html"),
     '<div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
+  await Bun.write(
+    path.join(directory, "platform.ts"),
+    `export const usePlatform = () => ({ platform: "desktop", desktopWindow: { chrome: "native" } })`,
+  )
   await Bun.write(path.join(directory, "decision.tsx"), "export const SessionDecisionOutlet = () => null")
   await Bun.write(
     path.join(directory, "main.tsx"),
     `
     import { createSignal, Show } from "solid-js"
     import { render } from "solid-js/web"
+    import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
+    import { DesktopNativeTitlebar } from ${JSON.stringify(`/@fs/${source}/components/app-shell/desktop-native-titlebar.tsx`)}
+    import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
     import { DefaultSession } from ${JSON.stringify(`/@fs/${source}/plugin/default-session.tsx`)}
     import { PromptDock } from ${JSON.stringify(`/@fs/${source}/components/session/prompt-dock.tsx`)}
     import { createPromptDockHeight } from ${JSON.stringify(`/@fs/${source}/components/session/prompt-dock-height.ts`)}
@@ -48,7 +55,7 @@ beforeAll(async () => {
       const composer = { input: () => input, mount: dock.mount, ready: () => true, isNewSession: fresh,
         readOnly: () => false, isGlobal: () => true, pendingText: () => "", scopeName: () => "Home",
         branch: () => undefined, lastModified: () => undefined, links: () => [],
-        render: part => part === "inbox" && !fresh() ? <div class="session-inbox-anchor"><button data-inbox style="width:36px;height:36px">Inbox</button></div> : null }
+        render: part => part === "status" ? <button data-status>Connection details</button> : part === "inbox" && !fresh() ? <div class="session-inbox-anchor"><button data-inbox style="width:36px;height:36px">Inbox</button></div> : null }
       return <div style="height:100dvh"><DefaultSession context={{layout: {
         minimumWidth: () => undefined, promptHeight: height,
         render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
@@ -57,7 +64,20 @@ beforeAll(async () => {
           </Show></div> : null,
       }}} /></div>
     }
-    render(() => <App />, document.getElementById("root"))
+    function ChromeFixture() {
+      const query = new URLSearchParams(location.search)
+      const [collapsed, setCollapsed] = createSignal(false)
+      const [custom, setCustom] = createSignal(false)
+      const route = () => <><div class="stb-root"><div class="stb-left"><button class="stb-selector-btn">Model</button></div><button>Panel</button></div><div data-ui-part="conversation" /></>
+      return <div class="app-shell app-shell--desktop-native-chrome" classList={{ "app-shell--sidebar-collapsed": collapsed() }} style="height:100dvh;display:flex;flex-direction:column">
+        <DesktopNativeTitlebar />
+        <Show when={!custom()} fallback={<div data-custom>Third-party Shell</div>}>
+          <DefaultShell context={{shell: {render: part => part === "navigation" ? <aside classList={{"sb-collapsed":collapsed()}} style={{width: collapsed() ? "48px" : "260px", "flex-shrink": 0}}><div class="sb-header" style="display:flex"><div class="sb-logo">Brand</div><div class="sb-header-actions"><button data-sidebar-toggle onClick={() => setCollapsed(!collapsed())}>Toggle</button></div></div></aside> : part === "route" ? route() : null}}} />
+        </Show>
+        <button data-shell-switch onClick={() => setCustom(true)} style="position:fixed;bottom:0;right:0">Switch Shell</button>
+      </div>
+    }
+    render(() => new URLSearchParams(location.search).has("chrome") ? <ChromeFixture /> : <App />, document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -68,6 +88,7 @@ beforeAll(async () => {
     resolve: {
       alias: [
         { find: /^\.\/decision-surface$/, replacement: path.join(directory, "decision.tsx") },
+        { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
         { find: "@", replacement: source },
       ],
     },
@@ -102,6 +123,13 @@ async function open(width = 1440, height = 900) {
 async function bounds(selector: string) {
   return page.locator(selector).evaluate((element) => element.getBoundingClientRect().toJSON())
 }
+
+test("new and existing tasks keep their status actions available", async () => {
+  await open()
+  expect(await page.getByRole("button", { name: "Connection details" }).isVisible()).toBe(true)
+  await page.locator("[data-send]").click()
+  expect(await page.getByRole("button", { name: "Connection details" }).isVisible()).toBe(true)
+})
 
 test("first send keeps the composer anchored and the editor mounted", async () => {
   await open()
@@ -160,4 +188,28 @@ test("long input grows upward and keeps actions in a short or narrow viewport", 
     expect(editor.height).toBeLessThanOrEqual(Math.min(240, size.height * 0.4))
     expect(editor.scroll).toBeGreaterThan(editor.height)
   }
+}, 20_000)
+
+test("native host controls share the built-in row and retain third-party Shell space", async () => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(url + "?chrome")
+  for (const collapsed of [false, true]) {
+    if (collapsed) await page.locator("[data-sidebar-toggle]").click()
+    await page.locator(".stb-root").waitFor()
+    const native = await bounds(".desktop-native-titlebar")
+    const header = await bounds(".stb-root")
+    const model = await bounds(".stb-selector-btn")
+    const toggle = await bounds("[data-sidebar-toggle]")
+    expect(native.height).toBe(48)
+    expect(native.top).toBe(header.top)
+    expect(model.left).toBeGreaterThanOrEqual(native.right)
+    expect(collapsed ? toggle.top >= native.bottom : toggle.left >= native.right).toBe(true)
+    expect(await page.locator(".sb-logo").isVisible()).toBe(false)
+    expect(
+      await page.locator(".stb-selector-btn").evaluate((el) => getComputedStyle(el).getPropertyValue("app-region")),
+    ).toBe("no-drag")
+  }
+  await page.locator("[data-shell-switch]").click()
+  await page.locator("[data-custom]").waitFor({ state: "attached", timeout: 2000 })
+  expect((await bounds("[data-custom]")).top).toBe((await bounds(".desktop-native-titlebar")).bottom)
 }, 20_000)

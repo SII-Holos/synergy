@@ -14478,6 +14478,66 @@ msgid "session.rollback.restoreTooltip"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.starter.addFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.prompt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.draftChanged"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.openProject"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceAction"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.prompt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.prompt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
 msgstr ""
 
@@ -14838,6 +14898,14 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.workContext.environmentUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.workContext.label"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.

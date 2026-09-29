@@ -43,7 +43,11 @@ function PromptStartModeItem(props: { option: PromptStartOption }) {
   )
 }
 
-export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[] }) {
+export function PromptStartModeSelector(props: {
+  groups: PromptStartOptionGroup[]
+  label?: string
+  disabled?: boolean
+}) {
   const { i18n } = useLocale()
   const options = () => props.groups.flatMap((group) => group.options)
   const selectedOption = () => props.groups.flatMap((group) => group.options).find((option) => option.selected)
@@ -61,11 +65,12 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
               {...triggerProps}
               type="button"
               aria-label={i18n._(PI.startMode)}
+              disabled={props.disabled}
               class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
             >
               <Icon name={selectedOption()?.icon ?? "circle"} size="small" class="shrink-0 text-icon-base" />
               <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
-                {selectedOption()?.label ?? i18n._(PI.startDefault)}
+                {props.label ?? selectedOption()?.label ?? i18n._(PI.startDefault)}
               </span>
               <span class="prompt-input-compact-chevron">
                 <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />

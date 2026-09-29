@@ -78,7 +78,8 @@ import { PromptAttachments } from "@/components/prompt-input/attachments"
 import { PromptPopover } from "@/components/prompt-input/popover"
 import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
 import { PromptAddMenu, type PromptAddMenuSection } from "@/components/prompt-input/add-menu"
-import { PromptStartModeSelector, type PromptStartOptionGroup } from "@/components/prompt-input/start-options"
+import type { PromptStartOptionGroup } from "@/components/prompt-input/start-options"
+import { SessionWorkContext } from "@/components/session/work-context"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
@@ -2009,18 +2010,6 @@ export function createPromptInputController(props: PromptInputProps) {
   const views: Record<PluginInputViewPart, () => import("solid-js").JSX.Element> = {
     leading: () => (
       <>
-        <Show when={params.id}>
-          <div class="absolute -top-3 right-5 z-20 hidden md:flex items-center gap-1.5">
-            <SessionAgendaWakeIndicator sessionID={params.id!} />
-            <QuickActions
-              class="relative"
-              onCommand={(id) => command.trigger(id)}
-              onRuntimeCommand={runRuntimeCommand}
-              commandsDisabled={working()}
-              commands={command.options}
-            />
-          </div>
-        </Show>
         <Show when={store.popover}>
           <PromptPopover
             mode={() => store.popover}
@@ -2036,6 +2025,27 @@ export function createPromptInputController(props: PromptInputProps) {
           />
         </Show>
         <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
+        <SessionWorkContext
+          environmentID={props.newSessionEnvironmentID}
+          workspaceSelection={props.newSessionWorkspaceSelection}
+          onEnvironmentChange={props.onNewSessionEnvironmentChange}
+          startOptions={newSessionStartOptions()}
+          disabled={!!props.readOnly || composerSubmitting() || !!props.sessionTransitionPending}
+        >
+          {" "}
+          <Show when={params.id}>
+            <div class="relative z-20 ml-auto hidden md:flex items-center gap-1.5">
+              <SessionAgendaWakeIndicator sessionID={params.id!} />
+              <QuickActions
+                class="relative"
+                onCommand={(id) => command.trigger(id)}
+                onRuntimeCommand={runRuntimeCommand}
+                commandsDisabled={working()}
+                commands={command.options}
+              />
+            </div>
+          </Show>
+        </SessionWorkContext>
       </>
     ),
     context: () => (
@@ -2171,7 +2181,7 @@ export function createPromptInputController(props: PromptInputProps) {
                   </div>
                 </Show>
                 <Show when={sessionMeta().canSelectModel}>
-                  <div class="min-w-0 max-w-full md:hidden">
+                  <div class="prompt-input-mobile-model min-w-0 max-w-full md:hidden">
                     <Show
                       when={!modelLocked()}
                       fallback={
@@ -2264,7 +2274,6 @@ export function createPromptInputController(props: PromptInputProps) {
                 <ComposerSlotOutlet slot="composer.add-menu" sessionId={params.id} class="contents" />
                 <PromptAddMenu sections={addMenuSections()} />
                 <ComposerSlotOutlet slot="composer.start-option" sessionId={params.id} class="contents" />
-                <PromptStartModeSelector groups={newSessionStartOptions()} />
               </Match>
             </Switch>
           </div>
@@ -2542,6 +2551,10 @@ export function createPromptInputController(props: PromptInputProps) {
   }
   return {
     input: composerInput,
+    pickFiles() {
+      requireEditable()
+      fileInputRef.click()
+    },
     extensions: () => <ComposerExtensionOutlet controller={composerDocument} sessionId={params.id} />,
   }
 }

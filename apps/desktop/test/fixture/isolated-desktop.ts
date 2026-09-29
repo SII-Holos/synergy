@@ -43,6 +43,7 @@ if (import.meta.main) {
     }
   }
   const log = Bun.file(path.join(options.directory, "desktop.log"))
+  await Bun.write(log, "")
   const child = Bun.spawn([path.resolve(import.meta.dir, "../../node_modules/.bin/electron"), options.wrapper], {
     cwd: path.resolve(import.meta.dir, "../.."),
     env: {

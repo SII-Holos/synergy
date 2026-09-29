@@ -12,7 +12,7 @@ function templateOf(index = 0) {
   return electronMockState.builtTemplates[index] as Array<{
     label?: string
     role?: string
-    submenu?: Array<{ label?: string; click?: () => void }>
+    submenu?: Array<{ label?: string; role?: string; click?: () => void }>
   }>
 }
 
@@ -61,6 +61,19 @@ describe("desktop app menu", () => {
     expect(help?.submenu?.[0]).toMatchObject({ label: "Synergy dev", enabled: false })
     expect(electronMockState.applicationMenus).toHaveLength(1)
     expect(electronMockState.aboutPanels).toEqual([{ applicationName: "Synergy" }])
+  })
+
+  test("keeps the native fullscreen action reachable in production", () => {
+    platform = "darwin"
+    installAppMenu({
+      channel: "stable",
+      debug: false,
+      getMainWindow: () => null,
+      getZoomFactor: () => 1,
+      setZoomFactor: () => {},
+    })
+    const view = templateOf().find((item) => item.label === "View")
+    expect(view?.submenu?.some((item) => item.role === "togglefullscreen")).toBe(true)
   })
 
   test("adds reload and devtools items only in debug mode", () => {

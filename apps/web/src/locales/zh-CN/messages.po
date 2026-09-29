@@ -14478,6 +14478,66 @@ msgid "session.rollback.restoreTooltip"
 msgstr "恢复已回退的消息"
 
 #. js-lingui-explicit-id
+msgid "session.starter.addFiles"
+msgstr "添加文件"
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.description"
+msgstr "理解代码、设计方案，把想法变成实现。"
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.prompt"
+msgstr "帮我开发这个项目。请先理解相关代码，再提出实施方案。我的目标是："
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.title"
+msgstr "开发项目"
+
+#. js-lingui-explicit-id
+msgid "session.starter.draftChanged"
+msgstr "草稿已发生变化，请重新选择任务入口，以使用最新草稿。"
+
+#. js-lingui-explicit-id
+msgid "session.starter.openProject"
+msgstr "打开项目"
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceAction"
+msgstr "使用任务引导"
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceDescription"
+msgstr "附件和工作位置会保留，不会发送任何内容。"
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceTitle"
+msgstr "替换草稿正文？"
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.description"
+msgstr "查找资料、比较证据，形成清晰的结论。"
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.prompt"
+msgstr "请研究以下问题，比较可靠来源，解释证据并注明引用。我的问题是："
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.title"
+msgstr "研究问题"
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.description"
+msgstr "整理思路、起草内容，让表达更准确。"
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.prompt"
+msgstr "帮我起草一份清晰、有条理的内容。主题、读者和期望的形式是："
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.title"
+msgstr "撰写内容"
+
+#. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
 msgstr "正在审计 Blueprint"
 
@@ -14839,6 +14899,14 @@ msgstr "会话初始化需要处理"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.starting"
 msgstr "正在启动会话"
+
+#. js-lingui-explicit-id
+msgid "session.workContext.environmentUnavailable"
+msgstr "执行环境不可用"
+
+#. js-lingui-explicit-id
+msgid "session.workContext.label"
+msgstr "工作位置"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

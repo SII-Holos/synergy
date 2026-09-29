@@ -49,6 +49,9 @@ export const SemanticIconToken = {
   // Session runtime
   "session.default": "message-square",
   "session.new": "square-pen",
+  "task.develop": "code-xml",
+  "task.research": "telescope",
+  "task.write": "pen",
   "session.running": "loader-circle",
   "session.idle": "circle",
   "session.waiting": "hourglass",

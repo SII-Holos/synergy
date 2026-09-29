@@ -29,8 +29,9 @@ export function desktopWindowChromeOptions(
 > {
   if (options.platform === "darwin") {
     return {
+      // Native controls share the 48px workbench row: https://www.electronjs.org/docs/latest/tutorial/custom-title-bar
       titleBarStyle: "hiddenInset",
-      trafficLightPosition: { x: 12, y: 10 },
+      trafficLightPosition: { x: 12, y: 17 },
     }
   }
 

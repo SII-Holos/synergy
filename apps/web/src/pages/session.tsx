@@ -4,6 +4,8 @@ import { SessionPreparation } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import { StatusBar } from "@/components/status-bar"
 import { NewSessionGreeting } from "@/components/session/session-new-view"
+import { prepareTaskStarter } from "@/components/session/task-starter"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
@@ -176,6 +178,7 @@ function SessionPageContent() {
   const dataView = useSessionDataView()
   const terminal = useTerminal()
   const dialog = useDialog()
+  const confirm = useConfirm()
   const command = useCommand()
   const params = useParams()
   const navigate = useNavigate()
@@ -1610,6 +1613,62 @@ function SessionPageContent() {
       : undefined,
   )
 
+  let starterDisposed = false
+  onCleanup(() => {
+    starterDisposed = true
+  })
+  const startTask = (text: string) => {
+    const owner = composer()?.input
+    if (!owner || owner.readOnly() || owner.composing() || owner.submitting()) return
+    const request = prepareTaskStarter(
+      owner,
+      () => (starterDisposed || params.id ? undefined : composer()?.input),
+      text,
+    )
+    const focus = () =>
+      requestAnimationFrame(() => {
+        if (!starterDisposed && composer()?.input === owner) inputRef?.focus()
+      })
+    const apply = async () => {
+      const applied = await request.apply()
+      if (!applied)
+        showToast({
+          type: "error",
+          description: i18n._({
+            id: "session.starter.draftChanged",
+            message: "Your draft changed. Choose a task starter again to use the latest draft.",
+          }),
+        })
+      return applied
+    }
+    if (request.requiresConfirmation) {
+      let applied = false
+      confirm.show({
+        title: { id: "session.starter.replaceTitle", message: "Replace the draft text?" },
+        description: {
+          id: "session.starter.replaceDescription",
+          message: "Your attachments and working location will stay the same. Nothing will be sent.",
+        },
+        confirmLabel: { id: "session.starter.replaceAction", message: "Use task starter" },
+        tone: "neutral",
+        onConfirm: async () => {
+          applied = await apply()
+        },
+        onConfirmed: () => {
+          if (applied) focus()
+        },
+      })
+      return
+    }
+    void apply()
+      .then((applied) => {
+        if (applied) focus()
+      })
+      .catch((error) =>
+        showToast({ type: "error", description: error instanceof Error ? error.message : String(error) }),
+      )
+  }
+
   const session: PluginSessionService = {
     current: currentSession,
     messages,
@@ -1824,7 +1883,18 @@ function SessionPageContent() {
       if (part === "greeting")
         return (
           <>
-            <NewSessionGreeting />
+            <NewSessionGreeting
+              disabled={
+                !composer()?.input.ready() ||
+                composer()?.input.readOnly() ||
+                composer()?.input.submitting() ||
+                composer()?.input.composing() ||
+                composer()?.input.current().mode !== "normal"
+              }
+              onStart={startTask}
+              onProject={() => command.trigger("project.open")}
+              onFiles={() => composer()?.pickFiles()}
+            />
             <SlotOutlet slot="session.empty" sessionId={params.id} />
           </>
         )
@@ -1864,12 +1934,6 @@ function SessionPageContent() {
     conversation: () => (
       <div data-ui-part="conversation" class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
         <SessionTopBar
-          newSessionEnvironmentID={
-            store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
-          }
-          onEnvironmentSelectionChange={(id) => setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id })}
-          newSessionWorkspaceSelection={newSessionWorkspaceSelection()}
-          onWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
           onWorkspaceTransition={startWorkspaceTransition}
           sessionTransitionPending={sessionTransitionPending}
         />

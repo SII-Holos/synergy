@@ -69,7 +69,7 @@ bun apps/desktop/test/fixture/isolated-desktop.ts "$DEV_HOME" http://127.0.0.1:3
 
 Choose free ports first. Both Web fixtures validate the server's actual Home before mutation; seeding refuses an existing manifest. The provider records chat, auxiliary and embedding calls separately at `/journal`, and `[long]` selects a delayed long response. Keep the manifest and logs private. The Desktop helper sets isolated Electron `userData` before importing main and acquiring the single-instance lock, writes its child PID/log under the selected Home, and forwards termination only to that child. Reuse that Home for restart/persistence checks. A real-provider check and native IME check remain separate evidence.
 
-For final acceptance, build Web and point Desktop at the isolated server's production Web origin. Record source revision, lockfile hash, viewport/zoom/theme, fixture manifest and observed result. Stop only the helper/server/provider processes whose PID and Home were recorded, then verify their ports are free.
+For final acceptance, build Web and point Desktop at the isolated server's production Web origin. Record source revision, lockfile hash, viewport/zoom/theme, fixture manifest and observed result. Exercise the same built origin in Web and Desktop, including real status details on new tasks, project context, task starters, draft/attachment preservation, native chrome and split-pane menus. Save light/dark screenshots and a short hover/menu/split recording; isolated component tests do not establish whole-page visual acceptance. Stop only the helper/server/provider processes whose PID and Home were recorded, then verify their ports are free.
 
 ## Preserve Desktop Renderer Lifecycle
 

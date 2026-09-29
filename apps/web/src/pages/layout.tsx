@@ -458,8 +458,10 @@ function LayoutContent(
       <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
-      <ModelUnavailableBanner />
-      <ConnectionBanner />
+      <div class="app-shell-notices">
+        <ModelUnavailableBanner />
+        <ConnectionBanner />
+      </div>
       <SkinRoot>
         <ShellOutlet shell={shell} workbench={workbench} />
       </SkinRoot>

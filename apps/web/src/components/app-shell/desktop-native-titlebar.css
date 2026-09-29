@@ -22,3 +22,60 @@
   align-self: stretch;
   min-width: 0;
 }
+
+/* The host retains the native button region even when the built-in Shell shares its top row. */
+.app-shell--desktop-native-chrome:has([data-default-shell]) > .desktop-native-titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--desktop-native-titlebar-traffic-width);
+  height: 48px;
+  min-height: 48px;
+  background: transparent;
+}
+
+.app-shell--desktop-native-chrome:has([data-default-shell]) {
+  .sb-header {
+    height: 48px;
+    padding: 8px 12px 8px 90px;
+    -webkit-app-region: drag;
+  }
+  .sb-header .sb-logo {
+    display: none;
+  }
+  .sb-header-actions {
+    margin-left: auto;
+  }
+  .sb-collapsed .sb-header {
+    height: 88px;
+    padding: 48px 8px 8px;
+  }
+  .sb-collapsed-logo {
+    display: none;
+  }
+  .sb-collapsed-toggle-icon {
+    opacity: 1;
+  }
+  .stb-root {
+    -webkit-app-region: drag;
+    pointer-events: auto;
+  }
+  .stb-root button,
+  .sb-header button {
+    -webkit-app-region: no-drag;
+  }
+  .stb-root [data-component="tooltip-trigger"],
+  .sb-header [data-component="tooltip-trigger"] {
+    -webkit-app-region: no-drag;
+  }
+  .app-shell-notices:has(> *) {
+    padding-top: 48px;
+  }
+  [data-ui-part="content"]:not(:has([data-ui-part="conversation"])) {
+    padding-top: 48px;
+  }
+}
+
+.app-shell--desktop-native-chrome.app-shell--sidebar-collapsed:has([data-default-shell]) .stb-root {
+  padding-left: 58px;
+}

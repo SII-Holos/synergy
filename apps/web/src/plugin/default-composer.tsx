@@ -7,7 +7,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
   const report = (error: unknown) =>
     showToast({ type: "error", description: error instanceof Error ? error.message : String(error) })
   return (
-    <div class="relative z-0 w-full flex flex-col gap-3 overflow-visible" data-ui-part="composer">
+    <div class="relative z-0 w-full flex flex-col overflow-visible" data-ui-part="composer">
       {input.render("leading")}
       <form
         onSubmit={(event) => {

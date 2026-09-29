@@ -19,6 +19,7 @@ export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Ko
   title?: JSXElement
   description?: JSXElement
   variant?: "default" | "menu"
+  portalMount?: HTMLElement
   class?: ComponentProps<"div">["class"]
   classList?: ComponentProps<"div">["classList"]
 }
@@ -32,6 +33,7 @@ export function Popover(props: PopoverProps) {
     "title",
     "description",
     "variant",
+    "portalMount",
     "class",
     "classList",
     "children",
@@ -49,7 +51,7 @@ export function Popover(props: PopoverProps) {
       >
         {(trigger) => <Kobalte.Trigger as={trigger()} data-slot="popover-trigger" />}
       </Show>
-      <Kobalte.Portal mount={parentLayer()}>
+      <Kobalte.Portal mount={local.portalMount ?? parentLayer()}>
         <PortalStyleOwner>
           <OverlayLayerProvider layer={layer}>
             <Kobalte.Content

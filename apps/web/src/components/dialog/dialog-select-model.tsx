@@ -13,6 +13,7 @@ import "./dialog-select-model.css"
 export const ModelSelectorPopover: Component<{
   provider?: string
   triggerAs: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
+  placement?: "top-start" | "bottom-start"
 }> = (props) => {
   const dialogContext = useDialog()
   const { _ } = useLingui()
@@ -21,6 +22,7 @@ export const ModelSelectorPopover: Component<{
     <ToolbarSelectorPopover
       triggerAs={props.triggerAs}
       title={_(dialog.selectModel)}
+      placement={props.placement}
       contentClass="model-selector-popover"
     >
       {(close) => (

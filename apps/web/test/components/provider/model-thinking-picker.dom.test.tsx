@@ -4,6 +4,7 @@ import path from "node:path"
 import { chromium, type Browser } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import tailwind from "@tailwindcss/vite"
 
 let browser: Browser
 let server: ViteDevServer
@@ -28,6 +29,7 @@ beforeAll(async () => {
       import { setupI18n } from "@lingui/core"
       import { I18nProvider } from "@lingui/solid"
       import { ModelVariantPicker } from ${JSON.stringify(`/@fs/${source}/components/provider/model-thinking-picker.tsx`)}
+      import "@ericsanchezok/synergy-ui/styles"
       const core = setupI18n({ locale: "en", messages: { en: {} } })
       const [value, setValue] = createSignal("high")
       render(() => <I18nProvider i18n={core}>
@@ -43,7 +45,7 @@ beforeAll(async () => {
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, "vite-cache"),
-    plugins: [solidPlugin()],
+    plugins: [solidPlugin(), tailwind()],
     resolve: {
       alias: [
         { find: "@ericsanchezok/synergy-ui/icon", replacement: icons },
@@ -75,6 +77,7 @@ test("thinking choices stay above the composer, distinguish Default from Off, an
   try {
     await page.goto(url)
     await page.getByRole("button", { name: "Select thinking effort: high", exact: true }).click({ timeout: 10000 })
+    expect(await page.getByRole("dialog").getAttribute("data-component")).toBe("popover-content")
     await page.getByRole("button", { name: /^Off/ }).click({ timeout: 5000 })
     expect(await page.getByLabel("Saved thinking").textContent()).toBe("off")
     const trigger = page.getByRole("button", { name: "Select thinking effort: Off", exact: true })

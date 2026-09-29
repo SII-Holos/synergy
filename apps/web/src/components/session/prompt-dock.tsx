@@ -49,23 +49,7 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
           </Show>
         </Show>
         <div class="session-prompt-dock-footer">
-          <Show when={layout.isNewSession() && !layout.isGlobal()}>
-            <div class="flex items-center justify-center gap-1.5 text-12-regular text-text-subtle pointer-events-none">
-              <Icon name={getSemanticIcon("workspace.main")} size="small" class="text-icon-base" />
-              <span class="text-text-base">{layout.scopeName()}</span>
-              <Show when={layout.branch()}>
-                <span>·</span>
-                <span>{layout.branch()}</span>
-              </Show>
-              <Show when={layout.lastModified()}>
-                <span>·</span>
-                <span>{layout.lastModified()}</span>
-              </Show>
-            </div>
-          </Show>
-          <Show when={!layout.isNewSession()}>
-            <div class="pointer-events-auto">{layout.render("status")}</div>
-          </Show>
+          <div class="pointer-events-auto">{layout.render("status")}</div>
         </div>
       </div>
     </div>

@@ -12,7 +12,7 @@ The default theme defines neutral light and dark surface families in the existin
 
 The default Sidebar width is 260px. The existing resized flag retains explicit user widths and needs no persistence migration. Rows and shared floating controls use the existing typography and motion roles. Keyboard and touch reveal the same actions as hover. Reduced motion removes overlay spatial animations.
 
-The greeting, conversation and Composer share one column. The greeting occupies the empty conversation region, while the Composer retains its bottom position and reserves the status footer. Editor and attachment growth is bounded separately. The existing domain controllers retain drafts, IME and submission semantics; presentation changes do not add another message or draft store.
+The greeting, conversation and Composer share one column. The greeting occupies the empty conversation region, while the Composer retains its bottom position and renders applicable status information for both new and existing tasks. A content-driven footer replaces empty reserved space. Editor and attachment growth is bounded separately. The existing domain controllers retain drafts, IME and submission semantics; presentation changes do not add another message or draft store.
 
 The durable presentation requirements live in the [Web product rules](../../../../apps/web/PRODUCT.md); palette ownership remains in [Frontend themes and color](../../../reference/frontend-theming.md).
 
@@ -24,6 +24,10 @@ Plain-text insertion participates in the browser's edit history. Clipboard text 
 
 Composer selectors use the shared owned Popover with a menu variant, one row-padding owner, compact rows and the same entrance/exit timing. Menu and Tooltip shadows derive from existing surface tokens without weakening modal backdrops. Compact controls hide the entire optional icon box, not only its SVG, and retain a centered square hit area. Acceptance exercises the real Add and start selectors, including geometry, focus return and open-state Tooltip suppression.
 
+The working location strip owns project, Environment and Workspace entry points above the editor. Existing binding selectors retain their restrictions, and pending new-task choices remain distinct from bound resources. Runtime and service details remain visible below the editor even before a session exists.
+
+The built-in macOS Shell shares the native control row with its own header. The host keeps native traffic lights and third-party Shell protection; only the built-in layout opts into integration. The native View menu retains a fullscreen action so exiting fullscreen remains reachable when traffic lights auto-hide. This avoids a new Plugin UI API or macOS window-state broadcast. Web and other desktop platforms retain their own chrome.
+
 ## Alternatives considered
 
 **Component-local palettes.** They would diverge from user themes, plugin surfaces and startup fallbacks, so the structured theme remains the only color source.
@@ -34,7 +38,7 @@ Composer selectors use the shared owned Popover with a menu variant, one row-pad
 
 **Center the new-task Composer and move it after sending.** The travel breaks the user's input reference point. A stable bottom position makes the first send the same interaction as subsequent sends.
 
-**Rotating greetings and examples.** They add visual changes unrelated to the user's task. A stable prompt leaves attention available for drafting and reading.
+**Rotating greetings and examples.** They add visual changes unrelated to the user's task. Stable task starters provide useful drafting and project/file actions without timed changes. They reuse revision-checked input edits, require confirmation before replacing text, and preserve attachments and working location.
 
 **Direct DOM insertion for plain-text paste.** It bypasses native undo. The existing contenteditable editor retains a tested native editing command rather than adding a second custom history owner.
 

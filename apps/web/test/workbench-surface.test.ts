@@ -20,17 +20,7 @@ const questionPromptCss = await Bun.file(
 ).text()
 const questionPrompt = await Bun.file(new URL("../src/components/session/question-prompt.tsx", import.meta.url)).text()
 const sidebarCss = await Bun.file(new URL("../src/components/sidebar/sidebar.css", import.meta.url)).text()
-const nativeTitlebarCss = await Bun.file(
-  new URL("../src/components/app-shell/desktop-native-titlebar.css", import.meta.url),
-).text()
-const nativeTitlebar = await Bun.file(
-  new URL("../src/components/app-shell/desktop-native-titlebar.tsx", import.meta.url),
-).text()
-const sessionTopBarCss = await Bun.file(
-  new URL("../src/components/top-bar/session-top-bar.css", import.meta.url),
-).text()
-const sessionTopBar = await Bun.file(new URL("../src/components/top-bar/session-top-bar.tsx", import.meta.url)).text()
-const defaultSession = await Bun.file(new URL("../src/plugin/default-session.tsx", import.meta.url)).text()
+
 const sessionPage = await Bun.file(new URL("../src/pages/session.tsx", import.meta.url)).text()
 const workbenchSurface = await Bun.file(
   new URL("../src/components/workspace/workbench-surface.tsx", import.meta.url),
@@ -61,10 +51,6 @@ function walkSourceFiles(dir: string): string[] {
 function escapeClassName(className: string) {
   return `.${className.replace(/:/g, "\\:").replace(/\//g, "\\/")}`
 }
-
-const workspaceLocationButton = await Bun.file(
-  new URL("../src/components/top-bar/workspace-location-button.tsx", import.meta.url),
-).text()
 
 describe("workbench surface polarity", () => {
   test("workbench surfaces derive from the shared theme instead of a local blue-gray ramp", () => {
@@ -119,62 +105,6 @@ describe("workbench surface polarity", () => {
     for (const source of [marketplaceCss, libraryCss, agendaCss, questionPromptCss, sidebarCss]) {
       expect(source).not.toContain("light-dark(rgb(")
     }
-  })
-
-  test("macOS native chrome keeps a narrow draggable header above the Holos sidebar", () => {
-    expect(nativeTitlebar).toContain("desktopWindowNativeChromeActive(platform)")
-    expect(nativeTitlebar).not.toContain('getSemanticIcon("app.sidebar")')
-    expect(nativeTitlebar).not.toContain('getSemanticIcon("action.search")')
-    expect(nativeTitlebarCss).toContain("position: relative;")
-    expect(nativeTitlebarCss).toContain("flex: 0 0 var(--desktop-native-titlebar-height);")
-    expect(nativeTitlebarCss).toContain("-webkit-app-region: drag;")
-    // The native titlebar strip must paint the page background itself instead
-    // of relying on the Electron window layer, or a mismatched strip appears
-    // at the top when the desktop theme is changed. Both surfaces below the
-    // strip (sidebar header and session top bar) use --background-base, so
-    // the strip matches them with a single uniform color.
-    expect(nativeTitlebarCss).toContain("background: var(--background-base, var(--synergy-boot-bg));")
-    expect(nativeTitlebarCss).not.toContain("background: transparent;")
-    expect(nativeTitlebarCss).not.toContain(".desktop-native-titlebar::before")
-    expect(css).not.toContain("--desktop-native-titlebar-sidebar-width")
-    expect(css).toContain("--desktop-native-titlebar-height: 18px;")
-    expect(css).toContain("--desktop-native-titlebar-traffic-width: 90px;")
-    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
-    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__drag-region")
-    expect(defaultSession).toContain("session-workbench-pane")
-    expect(sessionTopBar).not.toContain('import { Portal } from "solid-js/web"')
-    expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome .stb-root")
-    expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome.app-shell--sidebar-collapsed .stb-root")
-    expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-header")
-    expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-actions")
-    expect(sidebarCss).not.toContain("--sb-native-titlebar-height")
-  })
-
-  test("desktop session top bar pairs the project name with the folder icon", () => {
-    expect(workspaceLocationButton).toContain('class="stb-project-name"')
-    expect(workspaceLocationButton).toContain('"workspace.main"')
-    expect(sessionTopBar).toContain("resolveProjectScope(directory()")
-    expect(sessionTopBar).toContain("getScopeLabel(projectScope()")
-    expect(sessionTopBarCss).toContain(".stb-project-name")
-    expect(sessionTopBarCss).toContain(".stb-folder")
-    expect(sessionTopBarCss).toContain("text-overflow: ellipsis;")
-  })
-
-  test("desktop session top bar shares one type scale and baseline across the left cluster", () => {
-    expect(workspaceLocationButton).toContain('class="stb-selector-btn stb-location-btn"')
-    expect(sessionTopBarCss).toContain(".stb-project {")
-    expect(sessionTopBarCss).toContain("font-size: var(--font-size-base);")
-    expect(sessionTopBarCss).toContain("font-size: var(--font-size-small);")
-    expect(sessionTopBarCss).toContain("line-height: 20px;")
-    expect(sessionTopBarCss).toContain("font-weight: var(--font-weight-semibold);")
-    expect(sessionTopBarCss).toContain("font-weight: var(--font-weight-medium);")
-    expect(sessionTopBarCss).not.toContain("font-family: var(--font-family-mono);")
-    expect(sessionTopBarCss).not.toContain("font-size: 18px;")
-    expect(sessionTopBarCss).not.toContain("font-size: 21px;")
-    expect(sessionTopBarCss).not.toContain("font-size: 15px;")
-    expect(sessionTopBarCss).not.toContain("font-weight: 650;")
-    expect(sessionTopBarCss).not.toContain("font-weight: 520;")
-    expect(sessionTopBarCss).not.toContain("margin-left: -4px;")
   })
 
   test("workbench panel tabs keep close and add controls compact", () => {

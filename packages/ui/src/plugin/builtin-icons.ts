@@ -57,6 +57,7 @@ const builtinIconNames = [
   "clock",
   "cloud-upload",
   "code",
+  "code-xml",
   "compass",
   "contact-round",
   "copy",

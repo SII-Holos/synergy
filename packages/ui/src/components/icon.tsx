@@ -6,6 +6,7 @@ import { splitProps, type ComponentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import {
   Activity,
+  CodeXml,
   AlignRight,
   Archive,
   ArchiveRestore,
@@ -297,6 +298,7 @@ const icons = {
   clock: Clock,
   "cloud-upload": CloudUpload,
   code: Code,
+  "code-xml": CodeXml,
   compass: Compass,
   "contact-round": ContactRound,
   copy: Copy,

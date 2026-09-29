@@ -14478,6 +14478,66 @@ msgid "session.rollback.restoreTooltip"
 msgstr "Restore the rewound messages"
 
 #. js-lingui-explicit-id
+msgid "session.starter.addFiles"
+msgstr "Add files"
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.description"
+msgstr "Understand code, plan a change, build something."
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.prompt"
+msgstr "Help me develop this project. First understand the relevant code and propose an implementation plan. My goal is: "
+
+#. js-lingui-explicit-id
+msgid "session.starter.develop.title"
+msgstr "Develop a project"
+
+#. js-lingui-explicit-id
+msgid "session.starter.draftChanged"
+msgstr "Your draft changed. Choose a task starter again to use the latest draft."
+
+#. js-lingui-explicit-id
+msgid "session.starter.openProject"
+msgstr "Open a project"
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceAction"
+msgstr "Use task starter"
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceDescription"
+msgstr "Your attachments and working location will stay the same. Nothing will be sent."
+
+#. js-lingui-explicit-id
+msgid "session.starter.replaceTitle"
+msgstr "Replace the draft text?"
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.description"
+msgstr "Find sources, compare evidence, draw conclusions."
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.prompt"
+msgstr "Research the following question. Compare reliable sources, explain the evidence and cite references. My question is: "
+
+#. js-lingui-explicit-id
+msgid "session.starter.research.title"
+msgstr "Research a question"
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.description"
+msgstr "Shape an idea, draft content, refine the wording."
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.prompt"
+msgstr "Help me write a clear, well-structured draft. The topic, audience and desired format are: "
+
+#. js-lingui-explicit-id
+msgid "session.starter.write.title"
+msgstr "Write something"
+
+#. js-lingui-explicit-id
 msgid "session.state.auditingBlueprint"
 msgstr "Auditing Blueprint"
 
@@ -14839,6 +14899,14 @@ msgstr "Conversation setup needs attention"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.transition.title.starting"
 msgstr "Starting session"
+
+#. js-lingui-explicit-id
+msgid "session.workContext.environmentUnavailable"
+msgstr "Environment unavailable"
+
+#. js-lingui-explicit-id
+msgid "session.workContext.label"
+msgstr "Working location"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
