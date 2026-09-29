@@ -143,11 +143,16 @@ function Editor() {
         <div
           id="editor"
           contentEditable
+          style={{ "white-space": "pre-wrap" }}
           ref={(el) => {
             setNode(el)
             onCleanup(() => setNode(undefined))
           }}
           onInput={editor.handleInput}
+          onPaste={(event) => {
+            event.preventDefault()
+            editor.addPart({ type: "text", content: event.clipboardData?.getData("text/plain") ?? "", start: 0, end: 0 })
+          }}
         />
       </Show>
     </>

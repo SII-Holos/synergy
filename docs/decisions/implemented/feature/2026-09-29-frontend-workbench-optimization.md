@@ -20,6 +20,8 @@ Narrow chat panes reposition the floating inbox above the input rather than outs
 
 Theme and color-scheme selection retain their existing immediate behavior. Staged preferences such as fonts and language still use Save/Cancel; the product documentation distinguishes these boundaries explicitly.
 
+Plain-text insertion participates in the browser's edit history. Clipboard text becomes escaped text nodes and normalized line breaks before a native editing command inserts it; clipboard markup remains literal text. Browser tests cover selection replacement, long input, blank lines, deletion, undo and redo through the existing draft owner.
+
 ## Alternatives considered
 
 **Component-local palettes.** They would diverge from user themes, plugin surfaces and startup fallbacks, so the structured theme remains the only color source.
@@ -31,6 +33,8 @@ Theme and color-scheme selection retain their existing immediate behavior. Stage
 **Center the new-task Composer and move it after sending.** The travel breaks the user's input reference point. A stable bottom position makes the first send the same interaction as subsequent sends.
 
 **Rotating greetings and examples.** They add visual changes unrelated to the user's task. A stable prompt leaves attention available for drafting and reading.
+
+**Direct DOM insertion for plain-text paste.** It bypasses native undo. The existing contenteditable editor retains a tested native editing command rather than adding a second custom history owner.
 
 ## Consequences
 

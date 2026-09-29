@@ -85,3 +85,33 @@ test("headless edits survive native editor replacement and native range selectio
   await page.click("#edit")
   expect(await page.locator("#value").textContent()).toBe("h你好o")
 })
+
+test("plain-text paste replaces the selection and participates in native undo and redo", async () => {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
+  for (const text of [
+    "第一行\nSecond line",
+    '<img src="missing" onerror="alert(1)"> & <script>throw 1</script>',
+    "第一行\r\n\r\nLast line\n",
+    "  if (ready) {\n    work()  \n  }\n",
+    "中文 English 123，长文本粘贴验收。".repeat(500),
+  ]) {
+    await page.reload()
+    await page.click("#seed")
+    await page.click("#mount")
+    await page.click("#select")
+    await page.evaluate((text) => navigator.clipboard.writeText(text), text)
+    await page.locator("#editor").press("ControlOrMeta+v")
+    const expected = `h${text.replace(/\r\n?/g, "\n")}o`
+    expect(await page.locator("#value").textContent()).toBe(expected)
+    expect(await page.locator("#editor img, #editor script").count()).toBe(0)
+    await page.locator("#editor").press("ControlOrMeta+z")
+    expect(await page.locator("#value").textContent()).toBe("hello")
+    await page.locator("#editor").press("ControlOrMeta+Shift+z")
+    expect(await page.locator("#value").textContent()).toBe(expected)
+    await page.locator("#editor").press("ControlOrMeta+a")
+    await page.locator("#editor").press("Backspace")
+    expect(await page.locator("#value").textContent()).toBe("")
+    await page.locator("#editor").press("ControlOrMeta+z")
+    expect(await page.locator("#value").textContent()).toBe(expected)
+  }
+}, 20_000)
