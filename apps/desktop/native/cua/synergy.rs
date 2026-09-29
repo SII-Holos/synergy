@@ -323,17 +323,3 @@ mod tests {
         ));
     }
 }
-
-
-// https://developer.apple.com/documentation/appkit/nsapplication/activationpolicy-swift.enum/prohibited
-pub fn run_background_loop() {
-    use objc2::{class, msg_send, runtime::AnyObject};
-    let _main = objc2_foundation::MainThreadMarker::new().expect("Computer loop requires the main thread");
-    unsafe {
-        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
-        let prohibited: bool = msg_send![app, setActivationPolicy: 2i64];
-        assert!(prohibited, "Computer worker must not activate");
-        let _: () = msg_send![app, finishLaunching];
-        let _: () = msg_send![app, run];
-    }
-}

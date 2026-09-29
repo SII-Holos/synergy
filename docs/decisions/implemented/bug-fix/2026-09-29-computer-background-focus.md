@@ -12,7 +12,7 @@ Synergy's guarded pixel actions select target-activation suppression and cannot 
 
 The coordinate-to-AX optimization only presses elements that advertise `AXPress`. An AX hit on a window or another container without that action must continue to the admitted pointer route; a successful AX return code alone does not prove a supported press or a visible effect.
 
-Guarded actions do not arm upstream focus-restoration leases: a user may deliberately switch applications during an operation. The private worker disables the cursor overlay and keeps an AppKit run loop with the [prohibited activation policy](https://developer.apple.com/documentation/appkit/nsapplication/activationpolicy-swift.enum/prohibited), which cannot create windows or activate. Desktop remains the owner of permission and progress presentation.
+Guarded actions do not arm upstream focus-restoration leases: a user may deliberately switch applications during an operation. The private worker disables the cursor overlay and reuses Cua’s [AppKit loop without an overlay window](https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/crates/platform-macos/src/pip/mod.rs). It creates no driver window and makes no activation request. Desktop remains the owner of permission and progress presentation.
 
 Disposable native fixtures open behind the user's application. Acceptance records application-activation notifications, foreground changes and Space changes across observation and mutation, including transient changes later restored. The real-model acceptance uses the same independent event oracle alongside its visual code, target counter and submitted image receipt.
 

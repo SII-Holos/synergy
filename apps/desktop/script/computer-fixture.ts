@@ -11,6 +11,7 @@ const Window = z.object({
   hits: z.number(),
   width: z.number(),
   height: z.number(),
+  onActiveSpace: z.boolean(),
   targetX: z.number(),
   targetY: z.number(),
 })

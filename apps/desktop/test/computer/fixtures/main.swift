@@ -57,7 +57,7 @@ final class FixtureWindow: NSObject, NSWindowDelegate {
         let target = canvas.convert(canvas.target, to: nil)
         let screenTarget = window.convertToScreen(target)
         return ["windowId": window.windowNumber, "title": window.title, "axToken": token, "nonce": canvas.nonce,
-                "clicks": clicks, "hits": canvas.hits, "visible": window.isVisible,
+                "clicks": clicks, "hits": canvas.hits, "visible": window.isVisible, "onActiveSpace": window.isOnActiveSpace,
                 "width": frame.width, "height": frame.height,
                 "targetX": screenTarget.midX - frame.minX, "targetY": frame.maxY - screenTarget.midY]
     }
