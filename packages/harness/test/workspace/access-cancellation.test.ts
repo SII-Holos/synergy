@@ -5,7 +5,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
-test("process admission uses the compiled write footprint separately from binding lifetime", async () => {
+test("process admission separates resource use from bounded mutation claims", async () => {
   const requests: WorkspaceAccess.ClaimInput[] = []
   await using runtime = await testRuntime({
     register: () =>
@@ -17,23 +17,22 @@ test("process admission uses the compiled write footprint separately from bindin
       }),
   })
   await runtime.run(async () => {
-    for (const roots of [[], ["/controlled-temp"]]) {
-      requests.length = 0
-      await WorkspaceAccess.task(
-        { workspace: { type: "directory", scopeID: "scope", path: "/workspace" } },
-        async () => {
-          const lease = await WorkspaceAccess.process(roots)
-          expect(requests.find((request) => request.kind === "process")).toMatchObject({
-            roots,
-            useRoots: ["/workspace"],
-          })
-          const writes = requests.filter((request) => request.kind === "task")
-          expect(writes.length).toBe(roots.length ? 1 : 0)
-          if (writes.length) expect(writes[0]!.roots).toEqual(roots)
-          await lease.release()
-        },
-      )
-    }
+    for (const useRoots of [[], ["/additional-resource"]])
+      for (const mutationRoots of [[], ["/managed-output"]]) {
+        requests.length = 0
+        await WorkspaceAccess.task(
+          { workspace: { type: "directory", scopeID: "scope", path: "/workspace" } },
+          async () => {
+            const lease = await WorkspaceAccess.process(useRoots, undefined, { mutationRoots })
+            expect(requests.find((request) => request.kind === "process")).toMatchObject({
+              roots: mutationRoots,
+              useRoots: ["/workspace", ...useRoots],
+            })
+            expect(requests.filter((request) => request.kind === "task")).toHaveLength(0)
+            await lease.release()
+          },
+        )
+      }
   })
 })
 
