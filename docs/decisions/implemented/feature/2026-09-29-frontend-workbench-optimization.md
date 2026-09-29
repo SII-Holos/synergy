@@ -35,3 +35,5 @@ Theme and color-scheme selection retain their existing immediate behavior. Stage
 ## Consequences
 
 Shared colors change dependent pages as well as the main workbench, requiring both theme regression and real-surface inspection. Supporting text is deliberately stronger, while borders and decorative emphasis remain quiet. Custom themes and user font choices retain their ownership.
+
+The static startup surface shows the product name before locale activation; transient English copy must not precede a saved Chinese interface. The workbench provider fixture recognizes scenario markers across user messages so appended runtime reminders do not silently downgrade a long-response acceptance run.

@@ -46,8 +46,9 @@ export function startWorkbenchProvider(port = 0) {
         chunks: 0,
       }
       journal.push(record)
-      const lastUser = input.messages?.findLast((message) => message.role === "user")
-      const long = (JSON.stringify(lastUser?.content) ?? "").includes("[long]")
+      const long = input.messages?.some(
+        (message) => message.role === "user" && (JSON.stringify(message.content) ?? "").includes("[long]"),
+      )
       const text = auxiliary
         ? "Workbench acceptance"
         : long
@@ -85,7 +86,7 @@ export function startWorkbenchProvider(port = 0) {
                 if (request.signal.aborted) break
                 send({ content })
                 record.chunks++
-                if (!auxiliary) await Bun.sleep(long ? 180 : 120)
+                if (!auxiliary) await Bun.sleep(long ? 1000 : 120)
               }
               send({}, "stop")
               controller.enqueue(encoder.encode("data: [DONE]\n\n"))
