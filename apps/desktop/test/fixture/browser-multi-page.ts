@@ -16,6 +16,12 @@ async function run() {
   const server = createServer(async (req, res) => {
     let body = ""
     for await (const chunk of req) body += chunk
+    if (req.url === "/download") {
+      res.setHeader("Content-Disposition", "attachment; filename=fixture.csv")
+      res.setHeader("Content-Type", "text/csv")
+      res.end("value\nfixture\n")
+      return
+    }
     res.setHeader("Content-Type", "text/html")
     res.end(
       `<title>${req.url}</title><h1>${req.url}</h1><script>window.received=${JSON.stringify(body)}; window.messages=[]; onmessage=e=>messages.push(e.data)</script>`,
@@ -29,6 +35,7 @@ async function run() {
   const window = new BrowserWindow({ width: 1000, height: 720, show: false })
   const popups: BrowserNativePageHandle[] = []
   const events: string[] = []
+  let download: import("@ericsanchezok/synergy-browser-core").BrowserHostDownloadEntry | undefined
   const base: Omit<BrowserNativePageInput, "page"> = {
     ownerKey: "task-one",
     profile: { id: "personal", partition: "persist:synergy-browser-multi-personal", revision: 0 },
@@ -36,6 +43,10 @@ async function run() {
     downloadDir: app.getPath("temp"),
     emit: (event) => {
       events.push(event.type)
+      if (event.type === "download.updated") {
+        download = { ...event.entry }
+        console.log("download", download.state)
+      }
       if (event.type === "page.error") console.log(event)
     },
     onPopup: (_input, page) => {
@@ -105,6 +116,12 @@ async function run() {
   })
   assert.equal(await evaluate(pages[3]!, "window.marker"), 3)
   console.log("await pool.destroy")
+  views[3]!.webContents.downloadURL(`${url}/download`)
+  await until(() => download?.state === "awaiting_approval")
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  assert.equal(download?.state, "awaiting_approval")
+  await pages[3]!.execute({ type: "download.accept", id: download!.id })
+  await until(() => download?.state === "completed")
   await pool.destroy()
   window.destroy()
   server.close()

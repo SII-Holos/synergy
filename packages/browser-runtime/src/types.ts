@@ -41,7 +41,7 @@ export interface BrowserSession {
   readonly status: "empty" | "suspended" | "active" | "failed"
   readonly annotations: BrowserAnnotation[]
 
-  openPage(input: { url?: string; profileId?: string }): Promise<BrowserPageBackend>
+  openPage(input: { url?: string; profileId?: string; requestId?: string }): Promise<BrowserPageBackend>
   resumePage(pageId: string): Promise<BrowserPageBackend>
   closePage(pageId: string): Promise<void>
   suspendProfile(profileId: string): Promise<void>

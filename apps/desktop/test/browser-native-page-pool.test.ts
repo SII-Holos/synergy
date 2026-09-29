@@ -163,6 +163,7 @@ const { BrowserNativePagePool, MAX_RECOVERY_BUDGET } = await import("../src/brow
 function input(ownerKey: string, emit: (event: any) => void = () => undefined) {
   return {
     ownerKey,
+    profile: { id: ownerKey, partition: `persist:synergy-browser-${ownerKey}`, revision: 0 },
     page: { id: `page-${ownerKey}`, url: "https://example.com", title: "", isLoading: false, lastActiveAt: null },
     networkProxy: { server: "http://127.0.0.1:1234", username: "user", password: "password" },
     downloadDir: "/tmp",

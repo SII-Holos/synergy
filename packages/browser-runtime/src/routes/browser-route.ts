@@ -213,7 +213,7 @@ export const BrowserRoute = () =>
         try {
           const state = await routeState(c, true)
           const browser = await BrowserWorkspace.ensureSession(state.owner)
-          const page = await browser.openPage(c.req.valid("json"))
+          const page = await BrowserRuntime.withinOwner(state.owner, () => browser.openPage(c.req.valid("json")))
           return c.json(browser.pages.find((item) => item.id === page.id)!)
         } catch (error) {
           return c.json(protocolError(error, "browser_open_failed"), 400)

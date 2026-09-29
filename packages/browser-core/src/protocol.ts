@@ -667,6 +667,9 @@ const BrowserFileChooserCommandSchema = z
   })
   .strict()
 
+const BrowserDownloadAcceptCommandSchema = z.object({ type: z.literal("download.accept"), id: nonEmpty }).strict()
+const BrowserDownloadCancelCommandSchema = z.object({ type: z.literal("download.cancel"), id: nonEmpty }).strict()
+
 const browserUserCommandSchemas = [
   BrowserUserNavigateCommandSchema,
   BrowserUserHistoryCommandSchema,
@@ -677,6 +680,8 @@ const browserUserCommandSchemas = [
   BrowserViewportCommandSchema,
   BrowserDialogResponseCommandSchema,
   BrowserFileChooserCommandSchema,
+  BrowserDownloadCancelCommandSchema,
+  BrowserDownloadAcceptCommandSchema,
 ] as const
 
 export const BrowserUserCommandSchema = z.discriminatedUnion("type", browserUserCommandSchemas)
@@ -873,8 +878,6 @@ const backendOnlyCommands = [
       if (value.action === "capture" && value.checkpoint)
         ctx.addIssue({ code: "custom", path: ["checkpoint"], message: "checkpoint is valid only for restore." })
     }),
-  z.object({ type: z.literal("download.cancel"), id: nonEmpty }).strict(),
-  z.object({ type: z.literal("download.accept"), id: nonEmpty }).strict(),
 ] as const
 
 const BrowserBackendNavigateCommandSchema = z
@@ -896,6 +899,8 @@ export const BrowserBackendCommandSchema = z.discriminatedUnion("type", [
   BrowserViewportCommandSchema,
   BrowserDialogResponseCommandSchema,
   BrowserFileChooserCommandSchema,
+  BrowserDownloadCancelCommandSchema,
+  BrowserDownloadAcceptCommandSchema,
   ...backendOnlyCommands,
 ])
 export type BrowserBackendCommand = z.input<typeof BrowserBackendCommandSchema>
@@ -1166,6 +1171,7 @@ export type BrowserSessionPage = z.infer<typeof BrowserSessionPageSchema>
 
 export const BrowserOpenPageSchema = z
   .object({
+    requestId: nonEmpty,
     url: z.string().max(20_000).optional(),
     profileId: BrowserProfileIdSchema.optional(),
   })

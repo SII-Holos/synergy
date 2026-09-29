@@ -49,11 +49,13 @@ interface PendingFileChooser {
 
 export class BrowserHostDiagnostics {
   private readonly session: Electron.Session
+  private downloadDirectory?: string
   private staging = new BrowserStagingLeasePool()
   private pendingDialogs = new Map<string, ReturnType<typeof setTimeout>>()
   private pendingPrompts = new Map<string, { event: Electron.IpcMainEvent; timer: ReturnType<typeof setTimeout> }>()
   private pendingFileChoosers = new Map<string, PendingFileChooser>()
   private pendingDownloads = new Map<string, Electron.DownloadItem>()
+  private waitingDownloads = new Map<string, BrowserHostDownloadEntry>()
   private readonly onDebuggerMessage: (event: Electron.Event, method: string, params: unknown) => void
   private readonly onDownload: (
     event: Electron.Event,
@@ -73,6 +75,7 @@ export class BrowserHostDiagnostics {
 
   async start(): Promise<void> {
     const { contents } = this.options
+    if (this.options.downloadDir) this.downloadDirectory = await this.downloadRoot()
     contents.ipc.on("synergy:browser:prompt", this.onPrompt)
     installBrowserContentPermissions(contents.session)
     registerDownloadListener(contents.session, contents.id, this.onDownload)
@@ -100,6 +103,10 @@ export class BrowserHostDiagnostics {
       if (savePath) cleanup.push(fs.rm(savePath, { force: true }))
     }
     this.pendingDownloads.clear()
+    for (const entry of this.waitingDownloads.values()) {
+      if (entry.path) cleanup.push(fs.rm(entry.path, { force: true }))
+    }
+    this.waitingDownloads.clear()
     cleanup.push(this.staging.dispose())
     const cleanupResults = await Promise.allSettled(cleanup)
     if (!contents.isDestroyed()) {
@@ -144,16 +151,26 @@ export class BrowserHostDiagnostics {
 
   async acceptDownload(id: string): Promise<void> {
     const item = this.pendingDownloads.get(id)
-    if (!item) throw new Error("Download is no longer waiting. List downloads to check its state.")
-    item.resume()
+    const entry = this.waitingDownloads.get(id)
+    if (!entry) throw new Error("Download is no longer waiting. List downloads to check its state.")
+    this.waitingDownloads.delete(id)
+    entry.state = item ? "in_progress" : "completed"
+    this.emitDownload(entry)
+    item?.resume()
   }
 
   async cancelDownload(id: string): Promise<void> {
     const item = this.pendingDownloads.get(id)
-    if (!item) throw new Error(`Download ${id} is no longer active.`)
-    const savePath = item.getSavePath()
-    item.cancel()
+    const entry = this.waitingDownloads.get(id)
+    if (!item && !entry) throw new Error(`Download ${id} is no longer active.`)
+    const savePath = item?.getSavePath() ?? entry?.path
     this.pendingDownloads.delete(id)
+    this.waitingDownloads.delete(id)
+    item?.cancel()
+    if (entry) {
+      entry.state = "cancelled"
+      this.emitDownload(entry)
+    }
     if (savePath) await fs.rm(savePath, { force: true })
   }
 
@@ -309,20 +326,23 @@ export class BrowserHostDiagnostics {
     }
 
     try {
-      const root = await this.downloadRoot()
+      const root = this.downloadDirectory
+      if (!root) throw new Error("Managed Browser download storage is unavailable.")
       const target = path.join(root, `${id}-${fileName}`)
       if (!target.startsWith(`${root}${path.sep}`)) throw new Error("Managed download escaped its owner directory.")
-      const marker = await fs.open(target, "wx", 0o600)
-      await marker.close()
-      await fs.unlink(target)
       item.setSavePath(target)
       entry.path = target
       this.pendingDownloads.set(id, item)
+      this.waitingDownloads.set(id, entry)
       this.emitDownload(entry)
       let oversized = false
       item.on("updated", (_event, state) => {
         if (oversized) return
-        entry.state = state === "interrupted" ? "interrupted" : "in_progress"
+        entry.state = this.waitingDownloads.has(id)
+          ? "awaiting_approval"
+          : state === "interrupted"
+            ? "interrupted"
+            : "in_progress"
         entry.totalBytes = browserByteCount(item.getTotalBytes())
         entry.receivedBytes = browserByteCount(item.getReceivedBytes())
         if (browserDownloadExceedsLimit(entry.totalBytes, entry.receivedBytes)) {
@@ -335,7 +355,10 @@ export class BrowserHostDiagnostics {
       })
       item.on("done", (_event, state) => {
         this.pendingDownloads.delete(id)
-        entry.state = oversized ? "blocked" : state
+        // Chromium can finish a buffered response despite pause(); release the staged file only after acceptance.
+        const awaitingApproval = !oversized && state === "completed" && this.waitingDownloads.has(id)
+        if (!awaitingApproval) this.waitingDownloads.delete(id)
+        entry.state = oversized ? "blocked" : awaitingApproval ? "awaiting_approval" : state
         entry.totalBytes = browserByteCount(item.getTotalBytes())
         entry.receivedBytes = browserByteCount(item.getReceivedBytes())
         if (oversized) {

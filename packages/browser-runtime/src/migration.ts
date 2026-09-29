@@ -121,7 +121,7 @@ export namespace BrowserMigration {
   async function migrateState(state: StoredState, digest: string): Promise<BrowserStorage.SessionState> {
     const page = pageFromState(state)
     const profile = page ? await BrowserProfiles.legacyDigest(digest) : null
-    return {
+    return BrowserStorage.validate({
       version: 5,
       timestamp: typeof state.timestamp === "number" ? state.timestamp : Date.now(),
       pages: page && profile ? [{ ...page, profileId: profile.id, isLoading: false, status: "suspended" }] : [],
@@ -129,7 +129,7 @@ export namespace BrowserMigration {
       downloads: Array.isArray(state.downloads)
         ? (state.downloads as NonNullable<BrowserStorage.SessionState["downloads"]>)
         : [],
-    }
+    })
   }
 
   async function migrateRecord(owner: BrowserOwner.Info, key: string[]): Promise<Result> {
@@ -172,7 +172,7 @@ export namespace BrowserMigration {
         key[3] === "scope"
           ? { mode: "scope", scopeID, directory: "" }
           : { mode: "session", scopeID, sessionID: key[4], directory: "" }
-      await migrateRecord(owner, key)
+      if (!(await readState(BrowserStorage.keyForOwner(owner)))) await migrateRecord(owner, key)
       progress?.(++current, keys.length)
     }
     if (!keys.length) progress?.(0, 0)

@@ -151,7 +151,11 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
                   class="max-w-44 truncate px-2 py-1 text-12 text-text-base"
                   onClick={() => browser.selectPage(page.id)}
                 >
-                  {page.isLoading ? "◌ " : ""}
+                  {page.isLoading ||
+                  browser.activities[page.id]?.kind === "acting" ||
+                  browser.activities[page.id]?.kind === "reading"
+                    ? "◌ "
+                    : ""}
                   {page.title || page.url || "about:blank"}
                   {browser.dialogs[page.id] || browser.fileChoosers[page.id] ? " •" : ""}
                 </button>

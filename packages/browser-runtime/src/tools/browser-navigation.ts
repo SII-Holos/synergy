@@ -1,3 +1,4 @@
+import { BrowserRuntime } from "../runtime"
 import { z } from "zod"
 import { BrowserPageIdSchema, BrowserProfileIdSchema, BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -58,7 +59,20 @@ export const BrowserNavigationTool = Tool.define<
         : await BrowserProfiles.defaultProfile()
       await BrowserToolHelper.authorize(ctx, profile.id, params.url ?? "about:blank", "access")
       ctx.abort.throwIfAborted()
-      const page = await browser.openPage({ url: params.url, profileId: profile.id })
+      const page = await BrowserRuntime.withinOwner(owner, async () => {
+        const fresh = await BrowserProfiles.requireEnabled(profile.id)
+        if (fresh.revision !== profile.revision)
+          throw new BrowserProtocolError({
+            code: "browser_permission_changed",
+            message: "Identity permissions changed. Review the page before continuing.",
+            retryable: true,
+          })
+        return browser.openPage({
+          url: params.url,
+          profileId: profile.id,
+          requestId: `${ctx.callID ?? ctx.messageID}:open`,
+        })
+      })
       const state = browser.pages.find((item) => item.id === page.id)!
       return {
         title: "Browser page opened",

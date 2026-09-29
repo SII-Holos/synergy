@@ -234,6 +234,7 @@ export function formatSettleSummary(input: FormatSettleInput): string | undefine
  * dispatched and what the page was observed to do, never business completion.
  */
 export function formatActionEvidenceNote(input: { snapshotAvailable: boolean; settleSkipped?: boolean }): string {
+  if (input.settleSkipped) return "Settle skipped. Verify the page before continuing."
   return input.snapshotAvailable
     ? "Verify completion in the observed page state."
     : "Action dispatched. Inspect the page to verify completion."

@@ -8,7 +8,7 @@ import type {
   BrowserPresentationSelection,
 } from "@ericsanchezok/synergy-browser-core"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
-import { createStore, type SetStoreFunction } from "solid-js/store"
+import { createStore, reconcile, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
 export type BrowserPage = BrowserAPISessionPage
@@ -115,7 +115,8 @@ export function createBrowserStore() {
   const [fileChoosers, setFileChoosers] = createStore<Record<string, FileChooserRequest | undefined>>({})
   const [controlsOpen, setControlsOpen] = createSignal(false)
   const [dialogs, setDialogs] = createStore<Record<string, DialogRequest | undefined>>({})
-  const [browserErrorState, setBrowserErrorState] = createSignal<BrowserErrorState | null>(null)
+  const [pageErrors, setPageErrors] = createStore<Record<string, BrowserErrorState | undefined>>({})
+  const [activities, setActivities] = createStore<Record<string, AgentActivity | undefined>>({})
   const [annotationMode, setAnnotationMode] = createSignal(false)
   const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
@@ -136,7 +137,7 @@ export function createBrowserStore() {
     if (session.pages.some((page) => page.id === id)) setSession("selectedPageId", id)
   }
   function replacePages(pages: BrowserPage[]) {
-    setSession("pages", pages)
+    setSession("pages", reconcile(pages, { key: "id" }))
     if (!pages.some((page) => page.id === session.selectedPageId)) setSession("selectedPageId", pages[0]?.id ?? null)
   }
   function openPage(url = "about:blank", profileId?: string) {
@@ -144,14 +145,10 @@ export function createBrowserStore() {
   }
 
   function browserError(): BrowserErrorState | null {
-    const error = browserErrorState()
-    const currentPageId = pageId()
-    if (error?.pageId && error.pageId !== currentPageId) return null
-    return error
+    return pageErrors[pageId() ?? ""] ?? pageErrors["global"] ?? null
   }
-
   function setBrowserError(error: BrowserErrorState | null) {
-    setBrowserErrorState(error)
+    setPageErrors(error?.pageId ?? pageId() ?? "global", error ?? undefined)
   }
 
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
@@ -210,6 +207,8 @@ export function createBrowserStore() {
     replacePages(session.pages.filter((page) => page.id !== id))
     setDialogs(id, undefined)
     setFileChoosers(id, undefined)
+    setPageErrors(id, undefined)
+    setActivities(id, undefined)
   }
 
   function toggleDevPanel(panel: DevPanel) {
@@ -255,6 +254,7 @@ export function createBrowserStore() {
 
   function applyAgentActivity(activity: AgentActivity) {
     setAgentActivity(activity)
+    if (activity.pageId) setActivities(activity.pageId, activity)
   }
 
   function addDownload(nextPageId: string, entry: DownloadEntry) {
@@ -321,6 +321,7 @@ export function createBrowserStore() {
     devPanel,
     setDevPanel,
     agentActivity,
+    activities,
     setAgentActivity,
     annotationMode,
     setAnnotationMode,

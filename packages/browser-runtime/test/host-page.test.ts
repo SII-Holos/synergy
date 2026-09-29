@@ -1,3 +1,4 @@
+import { BrowserProfiles } from "../src/profiles"
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
@@ -87,6 +88,7 @@ beforeEach(() =>
     })
     BrowserBroker.prepare(owner, "home", "native")
     browserPage = await BrowserHostPage.create({
+      profile: await BrowserProfiles.defaultProfile(),
       owner,
       id: page.id,
       url: page.url,

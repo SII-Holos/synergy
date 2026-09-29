@@ -308,7 +308,6 @@ function BrowserPanelInner(props: {
                   clientPresentation={props.clientPresentation}
                   onRetryNative={retryNative}
                   recovering={recovering()}
-                  recoveryVersion={recoveryVersion()}
                 />
               </Show>
             }

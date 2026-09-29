@@ -63803,6 +63803,11 @@
       "BrowserOpenPage": {
         "type": "object",
         "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
           "url": {
             "type": "string",
             "maxLength": 20000
@@ -63814,6 +63819,7 @@
             "pattern": "^[a-zA-Z0-9._-]+$"
           }
         },
+        "required": ["requestId"],
         "additionalProperties": false
       },
       "BrowserProfile": {
@@ -64922,6 +64928,38 @@
                   }
                 },
                 "required": ["type", "requestId", "files"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "download.cancel"
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": ["type", "id"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "download.accept"
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": ["type", "id"],
                 "additionalProperties": false
               }
             ]

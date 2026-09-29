@@ -107,6 +107,7 @@ function createBrowserHttpControlSender(
           {
             ...route,
             browserOpenPage: {
+              requestId: typeof msg.commandId === "string" ? msg.commandId : createBrowserCommandId(),
               url: String(msg.url ?? "about:blank"),
               ...(typeof msg.profileId === "string" ? { profileId: msg.profileId } : {}),
             },
@@ -170,7 +171,7 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           ownerKey: options.ownerKey,
           onState(state) {
             const pageId = store.pageId()
-            if (pageId)
+            if (pageId && (state.phase !== "ready" || store.page()?.status === "active"))
               store.setHostStatus(
                 pageId,
                 state.phase === "ready" ? "ready" : state.phase === "failed" ? "failed" : "restarting",

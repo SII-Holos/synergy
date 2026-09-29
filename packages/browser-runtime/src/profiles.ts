@@ -114,6 +114,8 @@ export namespace BrowserProfiles {
     const parsed = BrowserProfileCreateSchema.parse(input)
     return exclusive(async () => {
       const value = await catalog()
+      if (value.profiles.filter((profile) => !profile.id.startsWith("legacy-")).length + state().temporary.size >= 256)
+        throw new Error("Delete an unused identity before creating another (256 identity limit).")
       const profile = make(randomUUID(), parsed.name, parsed.kind ?? "persistent", value.storeId)
       if (profile.kind === "temporary") state().temporary.set(profile.id, profile)
       else {
@@ -159,6 +161,8 @@ export namespace BrowserProfiles {
       const value = await catalog()
       const profile = value.profiles.find((item) => item.id === id)
       if (!profile) throw missing(id)
+      if (parsed && !(key in profile.origins) && Object.keys(profile.origins).length >= 256)
+        throw new Error("Remove an unused website rule before adding another (256 rule limit).")
       if (parsed) profile.origins[key] = parsed
       else delete profile.origins[key]
       profile.revision++

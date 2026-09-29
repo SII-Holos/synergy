@@ -32,9 +32,7 @@ export function BrowserSurface(props: {
   ownerKey: string
   clientPresentation: "native"
   onRetryNative?: () => void
-  onRetryRemote?: () => void
   recovering?: boolean
-  recoveryVersion?: number
 }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined

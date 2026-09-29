@@ -90,6 +90,10 @@ export namespace BrowserStorage {
   }
 
   /** Persist session state. Creates parent dirs if needed. */
+  export function validate(state: unknown) {
+    return StoredSessionSchema.parse(state)
+  }
+
   export async function save(owner: BrowserOwner.Info, state: SessionState): Promise<void> {
     const sanitized = StoredSessionSchema.parse({
       ...state,

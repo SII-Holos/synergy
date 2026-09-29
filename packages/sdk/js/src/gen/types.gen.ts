@@ -10838,6 +10838,7 @@ export type BrowserApiSessionPage = {
 }
 
 export type BrowserOpenPage = {
+  requestId: string
   url?: string
   profileId?: string
 }
@@ -11146,6 +11147,14 @@ export type BrowserControlRequest = {
           mimeType: string
           dataBase64: string
         }>
+      }
+    | {
+        type: "download.cancel"
+        id: string
+      }
+    | {
+        type: "download.accept"
+        id: string
       }
   commandId: string
   traceId?: string

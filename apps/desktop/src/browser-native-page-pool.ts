@@ -603,11 +603,10 @@ export class BrowserNativePagePool {
         await entry.recovery?.catch(() => undefined)
         const profileSession = entry.generation.session
         await this.closeGeneration(entry.generation)
+        this.entries.delete(ownerKey)
         if (
           !entry.input.profile.partition.startsWith("persist:") &&
-          ![...this.entries.values()].some(
-            (other) => other !== entry && other.input.profile.id === entry.input.profile.id,
-          )
+          ![...this.entries.values()].some((other) => other.input.profile.id === entry.input.profile.id)
         ) {
           await profileSession.clearStorageData()
         }

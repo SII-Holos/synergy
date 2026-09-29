@@ -40,6 +40,7 @@ export class BrowserSessionImpl implements BrowserSession {
   private _annotations: BrowserAnnotation[] = []
   private saveTail: Promise<void> = Promise.resolve()
   private disposed = false
+  private openings = new Map<string, { fingerprint: string; result: Promise<BrowserPageBackend> }>()
 
   constructor(
     readonly owner: BrowserOwner.Info,
@@ -72,7 +73,36 @@ export class BrowserSessionImpl implements BrowserSession {
     return this.entries.get(id)?.live
   }
 
-  async openPage(input: { url?: string; profileId?: string }): Promise<BrowserPageBackend> {
+  async openPage(input: { url?: string; profileId?: string; requestId?: string }): Promise<BrowserPageBackend> {
+    if (!input.requestId) return this.openRequested(input)
+    const fingerprint = JSON.stringify({ url: input.url ?? "about:blank", profileId: input.profileId })
+    const existing = this.openings.get(input.requestId)
+    if (existing) {
+      if (existing.fingerprint !== fingerprint)
+        throw new BrowserProtocolError({
+          code: "browser_command_id_conflict",
+          message: "This open request was already used with different arguments.",
+          retryable: false,
+        })
+      const page = await existing.result
+      const entry = this.entries.get(page.id)
+      if (!entry || !page.isAlive())
+        throw new BrowserProtocolError({
+          code: "browser_page_suspended",
+          message: "The opened page has closed or suspended. List pages before continuing.",
+          retryable: false,
+          pageId: page.id,
+        })
+      await BrowserProfiles.requireEnabled(entry.state.profileId)
+      return page
+    }
+    const result = this.openRequested(input)
+    this.openings.set(input.requestId, { fingerprint, result })
+    if (this.openings.size > 256) this.openings.delete(this.openings.keys().next().value!)
+    return result
+  }
+
+  private async openRequested(input: { url?: string; profileId?: string }): Promise<BrowserPageBackend> {
     const profile = input.profileId
       ? await BrowserProfiles.requireEnabled(input.profileId)
       : await BrowserProfiles.defaultProfile()
@@ -317,7 +347,7 @@ export class BrowserSessionImpl implements BrowserSession {
               state: "blocked" as const,
               warning: "Download blocked because this Browser owner reached the 10,000-record limit.",
             }
-            if (entry.state === "in_progress") {
+            if (entry.state === "in_progress" || entry.state === "awaiting_approval") {
               void page.execute({ type: "download.cancel", id: entry.id }).catch((error) => {
                 BrowserEvent.publish(this.owner, {
                   type: "page.error",
