@@ -493,11 +493,12 @@ export function SessionTopBar(props: {
         </div>
 
         {/* Desktop layout */}
-        <div class="hidden md:flex w-full items-center justify-between pointer-events-auto">
+        <div class="stb-desktop hidden md:flex w-full items-center justify-between pointer-events-auto">
           <div class="stb-left">
             <ModelSelectorButton />
             <VariantSelectorButton />
           </div>
+          <div class="stb-drag-region" aria-hidden="true" />
           <div class="stb-right">
             <Show when={actionVisibility().menu || compact()}>
               <SessionActionMenu

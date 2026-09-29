@@ -25,6 +25,10 @@
   color: var(--icon-base);
 }
 
+.stb-drag-region {
+  display: none;
+}
+
 .stb-project {
   display: flex;
   align-items: center;

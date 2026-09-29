@@ -102,14 +102,35 @@ try {
       const overlay = (
         navigator as Navigator & { windowControlsOverlay: { getTitlebarAreaRect: () => DOMRect; visible: boolean } }
       ).windowControlsOverlay
+      const dragRegions = [...document.querySelectorAll<HTMLElement>("body *")].filter(
+        (element) => getComputedStyle(element).getPropertyValue("app-region") === "drag",
+      )
+      const dragObstructions = [
+        ...document.querySelectorAll<HTMLElement>(
+          "[data-sidebar-navigation] button, .session-workbench-controls button, .stb-root button",
+        ),
+      ].flatMap((button) => {
+        const target = button.getBoundingClientRect()
+        if (!target.width || !target.height) return []
+        return dragRegions.flatMap((region) => {
+          if (region.contains(button)) return []
+          const area = region.getBoundingClientRect()
+          const overlaps =
+            Math.min(target.right, area.right) > Math.max(target.left, area.left) &&
+            Math.min(target.bottom, area.bottom) > Math.max(target.top, area.top)
+          return overlaps ? [`${button.getAttribute("aria-label")}: ${region.className}`] : []
+        })
+      })
       return {
         native: rect(".desktop-native-titlebar"),
         toggle: rect("[data-sidebar-toggle]"),
         sidebar: rect(".sb-root"),
         header: rect(".stb-root"),
         workspaceToggle: rect(".session-workbench-controls button"),
+        headerDrag: rect(".stb-drag-region"),
         overlay: { x: overlay.getTitlebarAreaRect().x, visible: overlay.visible },
         viewport: innerWidth,
+        dragObstructions,
       }
     })
   for (const scheme of ["light", "dark"] as const) {
@@ -139,6 +160,11 @@ try {
         await page.waitForTimeout(250)
         const state = await geometry()
         check(
+          state.dragObstructions.length === 0,
+          `${scheme}/${fullscreen}/${expanded}: controls clear sibling drag regions (${state.dragObstructions.join(", ")})`,
+        )
+        check(state.headerDrag.width > 100 && state.headerDrag.height === 48, "empty titlebar space remains draggable")
+        check(
           fullscreen ? state.native.width === 0 : state.native.width > 60,
           `${scheme}/${fullscreen}/${expanded}: native safe area`,
         )
@@ -164,6 +190,7 @@ try {
         await page.getByRole("button", { name: /打开侧边工作区|Open side workspace/ }).click()
         await page.waitForTimeout(350)
         const split = await geometry()
+        check(split.dragObstructions.length === 0, "split controls clear sibling drag regions")
         measurements.push({ scheme, fullscreen, expanded, split: true, ...split })
         check(
           Math.abs(split.workspaceToggle.x - state.workspaceToggle.x) <= 1 &&

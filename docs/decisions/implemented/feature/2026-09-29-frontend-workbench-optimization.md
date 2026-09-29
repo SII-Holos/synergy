@@ -32,6 +32,8 @@ The built-in Shell now fully hides its sidebar and relocates restore, Search and
 
 Native safe space comes from Electron Window Controls Overlay, not fixed offsets or application window-state events. Electron 42.5.0 [computes the native button rectangle and clears it in fullscreen](https://github.com/electron/electron/blob/v42.5.0/shell/browser/native_window_mac.mm#L1870-L1896); its [custom titlebar contract](https://www.electronjs.org/docs/latest/tutorial/custom-title-bar) exposes that geometry to CSS. The 48px row retains native traffic lights, while `env(titlebar-area-x)` drives the left inset. Narrow headers use the existing action menu for Search and the bottom workspace; the side-workspace toggle remains directly reachable at the outer corner.
 
+The session header marks only its empty flex span as draggable. Its padding and full-width container stay outside native drag hit testing, leaving relocated navigation and the portaled workspace toggle clickable. Electron [excludes pointer events inside draggable rectangles](https://www.electronjs.org/docs/latest/tutorial/custom-window-interactions#custom-draggable-regions); control geometry must therefore avoid overlapping independent drag regions, regardless of visual stacking order.
+
 Configuration remains directly reachable with differentiated emphasis: model name and one chevron, secondary thinking text, Agent name, and permission icon with its current state. Work location removes redundant chevrons. Add becomes the first circular control, and its existing section data now drives a grouped list. Model popovers use natural content height with a bounded, independently scrolling result area. These are presentation changes over existing domain controllers, without new persistence, HTTP or Plugin UI contracts.
 
 The side-workspace toggle belongs to the full built-in session rather than the resizing conversation pane. A private App context provides its stable DOM mount; a Portal preserves the existing controller and focus while both header and tab row reserve the same corner. Custom session layouts keep their local controls, without extending the Plugin UI API. Thinking displays only the current level, with its purpose retained in Tooltip and accessible text. Working-location labels inherit one type role, and quick-switch rows reserve a trailing selection column so choosing a model cannot displace its metadata badge. The model catalog passes its reactive array to List so recent entries refresh with selection. Shared List selection uses its existing key contract instead of object identity, keeping the check visible when catalog entries are rebuilt after a selection or search.
@@ -55,6 +57,8 @@ The side-workspace toggle belongs to the full built-in session rather than the r
 **Broadcast macOS fullscreen or infer it from size.** Native transitions across Spaces are asynchronous. Overlay geometry already owns native control exclusion and avoids restoring the unsafe broadcast path.
 
 **Give every selector a chevron.** Identical emphasis obscures the primary choice. Accessible names, expanded state, focus and selected surfaces preserve discoverability while visual forms differ.
+
+**Make the full header draggable and layer independent controls above it.** Native hit testing can still consume clicks on controls outside that header's subtree. A dedicated empty flex span preserves window dragging without duplicating navigation widths or depending on z-index to resolve native input.
 
 ## Consequences
 

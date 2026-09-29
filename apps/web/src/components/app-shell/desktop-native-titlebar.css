@@ -40,8 +40,22 @@
     display: none;
   }
   .stb-root {
-    -webkit-app-region: drag;
     pointer-events: auto;
+  }
+  .stb-desktop {
+    height: 100%;
+  }
+  .stb-left {
+    flex: 0 1 auto;
+  }
+  /* Keep native hit testing inside the empty span, clear of sibling navigation and portaled controls.
+     https://www.electronjs.org/docs/latest/tutorial/custom-window-interactions#custom-draggable-regions */
+  .stb-drag-region {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
+    -webkit-app-region: drag;
   }
   .stb-root button,
   .sb-navigation button {
