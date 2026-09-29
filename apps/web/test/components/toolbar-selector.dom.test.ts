@@ -233,6 +233,17 @@ test("compact start selector keeps its icon centered through hover, focus and op
   expect(errors).toEqual([])
 })
 
+test("reduced motion disables the actual open menu animation", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.getByRole("button", { name: "Add", exact: true }).click()
+  const surface = page.getByRole("dialog", { name: "Add", exact: true })
+  await surface.waitFor()
+  expect(await surface.evaluate((el) => getComputedStyle(el).animationName)).toBe("none")
+  await page.keyboard.press("Escape")
+  await surface.waitFor({ state: "detached" })
+  expect(errors).toEqual([])
+})
+
 test("typing outside controls focuses the composer while sidebar keys retain their owner", async () => {
   const projects = page.getByRole("button", { name: "Projects", exact: true })
   await projects.focus()

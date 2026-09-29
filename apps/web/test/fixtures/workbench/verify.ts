@@ -30,6 +30,7 @@ const route = (scope: string, session = "") =>
   `${url.origin}/${Buffer.from(scope).toString("base64url")}/session${session ? `/${session}` : ""}`
 const editor = page.getByRole("textbox", { name: /发送消息|Send message/ })
 const checks: string[] = []
+const measurements: unknown[] = []
 const check = (value: unknown, name: string) => {
   assert.ok(value, name)
   checks.push(name)
@@ -67,6 +68,7 @@ async function geometry(trigger: Locator, name: string) {
       Math.abs(iconBefore.x - iconOpened.x) <= 1 && Math.abs(iconBefore.y - iconOpened.y) <= 1,
       `${name}: icon geometry`,
     )
+  measurements.push({ name, before, hovered, opened, iconBefore, iconOpened, popup: box })
   await page.keyboard.press("Escape")
   await popup.waitFor({ state: "hidden" })
   check(await trigger.evaluate((el) => el === document.activeElement), `${name}: Escape focus`)
@@ -83,7 +85,19 @@ try {
   await page.locator('[data-component="popover-content"]').waitFor()
   checks.push("real status details open")
   await page.keyboard.press("Escape")
-  await page.locator('input[type="file"]').setInputFiles(path.join(home, "fixture.txt"))
+  await page
+    .locator(".session-starter-actions")
+    .getByRole("button", { name: /打开项目|Open a project/ })
+    .click()
+  await page.getByRole("dialog").waitFor()
+  checks.push("home project entry opens the real project selector")
+  await page.keyboard.press("Escape")
+  const chooser = page.waitForEvent("filechooser")
+  await page
+    .locator(".session-starter-actions")
+    .getByRole("button", { name: /添加文件|Add files/ })
+    .click()
+  await (await chooser).setFiles(path.join(home, "fixture.txt"))
   await page.getByText("fixture.txt", { exact: true }).first().waitFor()
   await editor.fill("Keep this draft")
   await page.locator(".session-starter-card").nth(0).click()
@@ -106,6 +120,7 @@ try {
       ["Add", page.getByRole("button", { name: /^(添加|Add)$/ })],
       ["Start", page.getByRole("button", { name: /^(启动模式|Start mode)$/ })],
       ["Thinking", page.getByRole("button", { name: /选择思考强度|Select thinking/ })],
+      ["Model", page.getByRole("button", { name: "Workbench Chat", exact: true })],
     ] as const)
       await geometry(trigger, `${scheme}/${name}`)
     await page.getByRole("button", { name: /^(添加|Add)$/ }).click()
@@ -134,23 +149,45 @@ try {
     await geometry(page.getByRole("button", { name: /^(添加|Add)$/ }), `width ${size.width}/Add`)
   }
   await page.setViewportSize({ width: 1440, height: 900 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.getByRole("button", { name: /^(添加|Add)$/ }).click()
+  const reducedMotion = await page.locator('[data-component="popover-content"]').evaluate((el) => {
+    const style = getComputedStyle(el)
+    return { animation: style.animationName, transition: style.transitionDuration, transform: style.transform }
+  })
+  check(
+    reducedMotion.animation === "none" && reducedMotion.transform === "none",
+    "reduced motion removes menu transforms",
+  )
+  measurements.push({ name: "reduced motion", ...reducedMotion })
+  await page.keyboard.press("Escape")
+  await page.emulateMedia({ reducedMotion: "no-preference" })
   await open(manifest.scopes[1])
   check(
     !/^(Home|全局)$/.test(await page.locator(".session-work-context-button").first().innerText()),
     "project new task context",
   )
   check((await page.locator(".session-status-bar button").count()) >= 3, "project new task real status")
+  await page.getByRole("button", { name: /^(启动模式|Start mode)$/ }).click()
+  await page.getByRole("button", { name: /^(主工作区|Main checkout)$/ }).click()
   await editor.fill("[short] Workbench completion acceptance")
   await page.locator(".prompt-input-submit").click()
   await page.waitForURL(/\/session\/[^/]+$/)
   await page.locator(".session-conversation-content").waitFor()
   check((await page.locator(".session-starter-card").count()) === 0, "first send replaces greeting")
   check((await page.locator(".session-status-bar button").count()) >= 3, "existing session real status")
+  await page.getByText("已收到测试任务。", { exact: true }).waitFor({ timeout: 30_000 })
+  await page.getByText("浅色与深色使用同一套语义角色", { exact: true }).waitFor()
+  await page
+    .locator(".session-status-bar")
+    .getByRole("button", { name: /运行时：空闲|Runtime: Idle/i })
+    .waitFor()
+  checks.push("first send completes a streamed reply through the real server and returns to idle")
   await page.screenshot({ path: path.join(output, "existing-session.png") })
   check(failures.length === 0, `no page errors: ${failures.join("; ")}`)
   await Bun.write(
     path.join(output, "result.json"),
-    JSON.stringify({ origin: url.origin, checks, passed: true }, null, 2),
+    JSON.stringify({ origin: url.origin, checks, measurements, passed: true }, null, 2),
   )
   console.log(`Passed ${checks.length} composed-workbench checks; evidence: ${output}`)
 } catch (error) {

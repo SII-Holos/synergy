@@ -134,7 +134,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-component="popover-content"] {
+  [data-component="popover-content"][data-expanded],
+  [data-component="popover-content"][data-closed] {
     animation: none;
   }
 }
