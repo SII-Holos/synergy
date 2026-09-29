@@ -11,6 +11,9 @@ import type {
 } from "@ericsanchezok/synergy-browser-core"
 
 export type BrowserNativeViewBridge = {
+  pageAction?(
+    input: import("@ericsanchezok/synergy-browser-core").BrowserPageActionRequest,
+  ): Promise<import("@ericsanchezok/synergy-browser-core").BrowserPageActionResult>
   attachView(input: BrowserNativeAttachRequest): Promise<void>
   detachView(input: BrowserNativePageRequest): Promise<void>
   focusView(input: BrowserNativePageRequest): Promise<void>

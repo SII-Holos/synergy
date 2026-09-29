@@ -23,6 +23,11 @@ import type { DesktopBadgeState } from "./ipc-contract.js"
 import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from "./power-save.js"
 
 const browserNative = {
+  pageAction(input: import("@ericsanchezok/synergy-browser-core").BrowserPageActionRequest) {
+    return ipcRenderer.invoke("browserNative.pageAction", input) as Promise<
+      import("@ericsanchezok/synergy-browser-core").BrowserPageActionResult
+    >
+  },
   attachView(input: BrowserNativeAttachRequest) {
     return ipcRenderer.invoke("browserNative.attach", input) as Promise<void>
   },

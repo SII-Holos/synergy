@@ -265,6 +265,14 @@ export const BrowserNativePresentationTicketResultSchema = z.discriminatedUnion(
 export type BrowserNativePresentationTicketResult = z.infer<typeof BrowserNativePresentationTicketResultSchema>
 
 export const BrowserNativeViewEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("native.shortcut"),
+      protocolVersion,
+      pageId,
+      action: z.enum(["newTab", "closeTab", "address", "find", "reload", "zoomIn", "zoomOut", "zoomReset", "print"]),
+    })
+    .strict(),
   z.object({ type: z.literal("native.loading"), protocolVersion, pageId, url: browserURL.optional() }).strict(),
   z
     .object({

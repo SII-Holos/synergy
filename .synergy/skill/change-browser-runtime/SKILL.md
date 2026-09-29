@@ -44,6 +44,8 @@ Use the workbench's semantic theme tokens, shared controls, localized descriptor
 
 ## Focused regressions
 
+- Concurrent input: hold an Agent observation while a real human gesture navigates; never use the lifetime of an Agent command to suppress human gestures. Native find, zoom, print and shortcuts target the explicit page and must leave ordinary input alone. Do not add takeover, hand-back or control-owner state.
+
 - Workspace transition: held commands, page close acknowledgements, failed-close retries, cancellation and local-file recovery rejection.
 - Authorization: profile disablement across tasks, cached command revocation, policy changes during approval, and every control profile's ask/deny semantics.
 - Migration: fresh home, real v4 owner mapping, annotations/downloads, invalid identifiers, exact partition mapping, rerun preservation and untouched retired data.

@@ -1216,6 +1216,10 @@ msgid "app.browser.console.empty"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.copyLink"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.assets"
 msgstr ""
 
@@ -1253,6 +1257,10 @@ msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.network.description"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.developerTools"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -1364,6 +1372,22 @@ msgid "app.browser.error.uploadTooLarge"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.next"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.previous"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.importData"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.agentNavigation"
 msgstr ""
 
@@ -1452,6 +1476,14 @@ msgid "app.browser.network.empty"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.openExternal"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.print"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.remote.status.connecting"
 msgstr ""
 
@@ -1489,6 +1521,14 @@ msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.savePDF"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.screenshot"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
@@ -1545,6 +1585,22 @@ msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.viewport.width.placeholder"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.in"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.out"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.reset"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -2,7 +2,8 @@ import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { runtimeFeatureAvailable } from "../runtime-features"
 import { createEffect, createMemo, lazy, Show, Suspense, onCleanup, type ParentProps } from "solid-js"
-import { useParams } from "@solidjs/router"
+import { useNavigate, useParams } from "@solidjs/router"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useSDK } from "@/context/sdk"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { browserWorkbenchRoute } from "./browser/browser-workbench-model"
@@ -25,6 +26,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const platform = usePlatform()
   const sdk = useSDK()
   const params = useParams()
+  const navigate = useNavigate()
   const workbench = useWorkbenchPanels()
   const browserRoute = createMemo(() =>
     params.id
@@ -146,14 +148,34 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         icon: getSemanticIcon("browser.main"),
         surface: "side",
         cardinality: "multi",
-        requiresSession: true,
+        requiresSession: false,
         pluginId: "builtin",
         order: 20,
         loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
         async createTab() {
           const route = browserRoute()
-          if (!route) return
           const { openBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
+          if (!route) {
+            const scopeKey = sdk.scopeKey
+            const created = await sdk.client.session.create({ workspace: { mode: "current" } }, { throwOnError: true })
+            if (!created.data || params.id || sdk.scopeKey !== scopeKey) return
+            const newRoute = {
+              sessionID: created.data.id,
+              path_directory: sdk.directory ?? sdk.scopeID ?? scopeKey,
+              query_directory: sdk.directory,
+              scopeID: sdk.scopeID,
+            }
+            const tab = await openBrowserWorkbenchPage({
+              client: sdk.client,
+              serverUrl: sdk.url,
+              bridge: platform.browserNative,
+              route: newRoute,
+            })
+            if (params.id || sdk.scopeKey !== scopeKey) return
+            navigate(`/${base64Encode(scopeKey)}/session/${created.data.id}`)
+            queueMicrotask(() => void workbench.openPanel("browser", { init: tab }))
+            return
+          }
           return openBrowserWorkbenchPage({
             client: sdk.client,
             serverUrl: sdk.url,

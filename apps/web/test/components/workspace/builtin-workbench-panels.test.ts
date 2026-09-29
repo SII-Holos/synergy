@@ -18,7 +18,10 @@ mock.module("@/context/global-sdk", () => ({
 }))
 
 const [activeLocale, setActiveLocale] = createSignal("en")
-mock.module("@solidjs/router", () => ({ useParams: () => ({ dir: "home", id: "session-one" }) }))
+mock.module("@solidjs/router", () => ({
+  useParams: () => ({ dir: "home", id: "session-one" }),
+  useNavigate: () => () => {},
+}))
 mock.module("@/context/sdk", () => ({
   useSDK: () => ({ scopeID: "home", scopeKey: "home", url: "http://localhost", client: { browser: {} } }),
 }))

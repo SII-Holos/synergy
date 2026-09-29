@@ -296,6 +296,32 @@ function BrowserPanelInner(props: {
           onReload={() => sendPageCommand({ type: "reload" })}
           onStop={() => sendPageCommand({ type: "stop" })}
           onNavigate={browser.navigate}
+          onNewTab={() => void workbench.openPanel("browser", { forceNew: true })}
+          onCloseTab={() => void workbench.closeTab(props.tab.id)}
+          onExternal={() => {
+            const url = page()?.url
+            if (url && /^https?:/.test(url)) platform.openLink(url)
+          }}
+          onShortcut={(handler) =>
+            platform.browserNative?.onEvent?.((event) => {
+              if (event.type === "native.shortcut" && event.pageId === browser.pageId()) handler(event.action)
+            }) ?? (() => {})
+          }
+          onPageAction={async (action) => {
+            const pageId = browser.pageId()
+            if (!pageId || !platform.browserNative?.pageAction) return
+            try {
+              return await platform.browserNative.pageAction({
+                protocolVersion: BROWSER_PROTOCOL_VERSION,
+                ownerKey,
+                pageId,
+                action,
+              })
+            } catch (error) {
+              const normalized = normalizeBrowserError(error, "Page action failed. Retry.")
+              browser.setBrowserError({ pageId, severity: "error", message: normalized.message, code: normalized.code })
+            }
+          }}
           onRequestDiagnostics={(action) => void requestDiagnostics(action)}
           onSettings={() =>
             dialog.show(() => (
@@ -331,9 +357,16 @@ function BrowserPanelInner(props: {
                     <div class="browser-empty-title">
                       <Trans id={B.noPage.id} message={B.noPage.message} />
                     </div>
-                    <div class="browser-empty-text">
-                      <Trans id={B.nextNavigation.id} message={B.nextNavigation.message} />
-                    </div>
+                    <input
+                      class="mt-4 w-full max-w-md rounded-full border border-border-weak-base bg-surface-raised-base px-5 py-3 text-14 outline-none focus:border-border-interactive-base"
+                      aria-label={_(B.enterUrl)}
+                      placeholder={_(B.enterUrl)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" || event.isComposing || !event.currentTarget.value.trim()) return
+                        event.preventDefault()
+                        browser.navigate(event.currentTarget.value.trim())
+                      }}
+                    />
                   </div>
                 }
               >

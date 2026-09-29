@@ -153,10 +153,10 @@ export class BrowserWebContentsControl {
     }
     this.committedListener = (_event, url) => this.navigation.noteCommitted(url)
     this.mouseListener = (_event, input) => {
-      if (!this.commandInFlight && input.type === "mouseDown") this.navigation.noteUserGesture()
+      if (input.type === "mouseDown") this.navigation.noteUserGesture()
     }
     this.keyListener = (_event, input) => {
-      if (!this.commandInFlight && input.type === "keyDown") this.navigation.noteUserGesture()
+      if (input.type === "keyDown") this.navigation.noteUserGesture()
     }
     const contents = target.contents()
     contents?.on("will-navigate", this.navigationListener)

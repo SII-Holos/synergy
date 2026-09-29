@@ -170,6 +170,7 @@ test("shared Browser menu returns focus on Escape and native view resumes only a
   await page.goto(url)
   const menu = page.getByRole("button", { name: "Browser options", exact: true })
   await menu.click()
+  await page.getByText("Developer tools", { exact: true }).click()
   await page.getByRole("switch").waitFor()
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
   await page.evaluate(() =>

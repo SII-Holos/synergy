@@ -15,13 +15,15 @@ import {
   Tray,
   type BrowserWindowConstructorOptions,
 } from "electron"
-import { readFile } from "node:fs/promises"
+import { readFile, writeFile } from "node:fs/promises"
 import { randomBytes } from "node:crypto"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { BrowserNativeViewManager } from "./browser-native-view.js"
 import { BrowserHostBrokerClient } from "./browser-host-broker.js"
 import { BrowserNativePagePool } from "./browser-native-page-pool.js"
+import { runBrowserPageAction } from "./browser-page-actions.js"
+import { BrowserPageActionRequestSchema } from "@ericsanchezok/synergy-browser-core"
 import { BrowserNativeLease } from "@ericsanchezok/synergy-browser-core/native-lease"
 import {
   BROWSER_PROTOCOL_VERSION,
@@ -657,6 +659,20 @@ async function syncLocalComputerBroker(force = false) {
 }
 
 function registerIpcHandlers() {
+  registerNativeViewHandlers("browserNative.pageAction", async (input) => {
+    const request = BrowserPageActionRequestSchema.parse(input)
+    const page = nativePagePool?.find(request.ownerKey, request.pageId)
+    if (!page || page.failed || page.closing) throw new Error("Page is unavailable. Resume it and retry.")
+    return runBrowserPageAction(page.generation.contents, request.action, async (data) => {
+      const selected = await dialog.showSaveDialog(mainWindow!, {
+        defaultPath: path.join(app.getPath("downloads"), "page.pdf"),
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      })
+      if (selected.canceled || !selected.filePath) return false
+      await writeFile(selected.filePath, data)
+      return true
+    })
+  })
   registerNativeViewHandlers("browserNative.attach", async (input) => {
     await nativeViews?.attach(parseBrowserNativeAttach(input))
   })

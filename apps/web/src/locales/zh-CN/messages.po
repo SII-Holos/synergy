@@ -1216,6 +1216,10 @@ msgid "app.browser.console.empty"
 msgstr "没有控制台记录"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.copyLink"
+msgstr "复制链接"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.assets"
 msgstr "资源"
 
@@ -1254,6 +1258,10 @@ msgstr "网络"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.network.description"
 msgstr "请求"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.developerTools"
+msgstr "开发者工具"
 
 #. js-lingui-explicit-id
 msgid "app.browser.dialog.alert"
@@ -1364,6 +1372,22 @@ msgid "app.browser.error.uploadTooLarge"
 msgstr "最多选择 20 个文件，每个不超过 25 MB，总计不超过 50 MB。"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find"
+msgstr "在页面中查找"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.next"
+msgstr "下一个匹配项"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.previous"
+msgstr "上一个匹配项"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.importData"
+msgstr "导入浏览器数据"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.agentNavigation"
 msgstr "智能体导航"
 
@@ -1452,6 +1476,14 @@ msgid "app.browser.network.empty"
 msgstr "没有网络请求"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.openExternal"
+msgstr "在默认浏览器中打开"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.print"
+msgstr "打印"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.remote.status.connecting"
 msgstr "正在连接远程浏览器"
 
@@ -1490,6 +1522,14 @@ msgstr "恢复后会使用此页面的身份重新加载网址，未保存的表
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
 msgstr "重试"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.savePDF"
+msgstr "另存为 PDF"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.screenshot"
+msgstr "截取屏幕截图"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.settings"
@@ -1546,6 +1586,22 @@ msgstr "视口宽度"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.viewport.width.placeholder"
 msgstr "宽"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom"
+msgstr "缩放"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.in"
+msgstr "放大"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.out"
+msgstr "缩小"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.reset"
+msgstr "重置缩放"
 
 #. js-lingui-explicit-id
 msgid "app.cancel"

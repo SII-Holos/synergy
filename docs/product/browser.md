@@ -12,6 +12,8 @@ The address bar, history controls, viewport choices, annotations and diagnostic 
 
 ## Saved website logins
 
+The page menu provides find, webpage zoom, printing and PDF saving. Diagnostic panels and viewport presets live under Developer tools. Native webpage shortcuts use Command on macOS and Control on Windows/Linux. The person and Agent may operate the same page concurrently; no takeover or hand-back is required. If navigation invalidates an Agent observation, the Agent reads the page again instead of replaying an uncertain submission.
+
 Website logins are remembered automatically and reused by other tasks and Scopes in the same Desktop installation. Ordinary browsing needs no account setup in Synergy. Browser options → Browser settings contains login profiles and website permissions. Add a separate profile only when another account needs an independent login store. Opening a page copy with that profile creates a new peer tab; existing pages retain their original profile.
 
 Temporary identities have no persistent login store and are discarded when their last page closes. They are excluded from task recovery. Website login remains a direct user interaction; the Agent can continue after the user completes login, including popup-based authentication.

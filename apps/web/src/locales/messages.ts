@@ -202,6 +202,20 @@ export const rawMessages = {
 // ── Browser ──────────────────────────────────────────────────────────────────
 
 export const browser = {
+  screenshot: { id: "app.browser.screenshot", message: "Take screenshot" },
+  find: { id: "app.browser.find", message: "Find in page" },
+  findNext: { id: "app.browser.find.next", message: "Next match" },
+  findPrevious: { id: "app.browser.find.previous", message: "Previous match" },
+  print: { id: "app.browser.print", message: "Print" },
+  savePDF: { id: "app.browser.savePDF", message: "Save as PDF" },
+  zoom: { id: "app.browser.zoom", message: "Zoom" },
+  zoomIn: { id: "app.browser.zoom.in", message: "Zoom in" },
+  zoomOut: { id: "app.browser.zoom.out", message: "Zoom out" },
+  zoomReset: { id: "app.browser.zoom.reset", message: "Reset zoom" },
+  developerTools: { id: "app.browser.developerTools", message: "Developer tools" },
+  openExternal: { id: "app.browser.openExternal", message: "Open in default browser" },
+  copyLink: { id: "app.browser.copyLink", message: "Copy link" },
+  importData: { id: "app.browser.importData", message: "Import browser data" },
   settings: { id: "app.browser.settings", message: "Browser settings" },
   newTab: { id: "browser.tabs.empty", message: "New tab" },
   ready: { id: "app.browser.empty.ready", message: "Browser ready" },

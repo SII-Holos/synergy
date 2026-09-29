@@ -268,6 +268,33 @@ describe("Browser WebContents control", () => {
     expect(target.state.blocked).toHaveLength(1)
   })
 
+  test("allows human navigation while an agent observation is pending", async () => {
+    let finish!: (value: unknown) => void
+    let held = false
+    const contents = new MockContents({
+      handler: (method) => {
+        if (method === "Runtime.evaluate" && !held) {
+          held = true
+          return new Promise((resolve) => {
+            finish = resolve
+          })
+        }
+        return { result: { value: { url: "https://example.com", title: "Example" } } }
+      },
+    })
+    const target = targetFor(contents)
+    const control = new BrowserWebContentsControl(target as never)
+    contents.emit("did-navigate", {}, "https://example.com")
+    const pending = control.execute({ type: "evaluate", expression: "document.title", mode: "trusted" })
+    await Bun.sleep(0)
+    contents.emit("before-mouse-event", {}, { type: "mouseDown" })
+    let prevented = false
+    contents.emit("will-navigate", { preventDefault: () => (prevented = true) }, "https://other.example/")
+    finish({ result: { value: "Example" } })
+    await pending
+    expect(prevented).toBe(false)
+  })
+
   test("keeps dispatching commands after gesture events fire", async () => {
     const contents = new MockContents()
     const control = new BrowserWebContentsControl(targetFor(contents) as never)
