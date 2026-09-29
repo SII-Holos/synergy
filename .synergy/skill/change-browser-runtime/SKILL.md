@@ -54,6 +54,7 @@ Use the workbench's semantic theme tokens, shared controls, localized descriptor
 - Authorization: profile disablement across tasks, cached command revocation, policy changes during approval, and every control profile's ask/deny semantics.
 - Migration: fresh home, real v4 owner mapping, annotations/downloads, invalid identifiers, exact partition mapping, rerun preservation and untouched retired data.
 - Recovery: renderer exit, CDP timeout, in-flight resume sharing, failure budget, native Retry and no action replay.
+  In native crash fixtures, observe the page's restarting/ready transition and replacement WebContents before evaluating the recovered document. Verify the crashed page loses its JavaScript heap while another page preserves its state; an immediately successful read can still come from the old renderer.
 - Overlays: prompt defaults/empty text/cancellation, file chooser, overlapping menus/dialogs, focus return and preservation of the original native page.
 - Agent evidence: settle defaults/caps, structured current/list output, ambiguity candidates, screenshot delivery to image/text-only model paths and bounded redaction.
 

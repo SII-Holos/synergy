@@ -40,6 +40,7 @@ async function run() {
   const window = new BrowserWindow({ width: 1000, height: 720, show: false })
   const popups: BrowserNativePageHandle[] = []
   const events: string[] = []
+  const recovery: string[] = []
   let download: import("@ericsanchezok/synergy-browser-core").BrowserHostDownloadEntry | undefined
   const base: Omit<BrowserNativePageInput, "page"> = {
     ownerKey: "task-one",
@@ -52,6 +53,10 @@ async function run() {
         download = { ...event.entry }
       }
       if (event.type === "page.error") console.log(event)
+      if (event.type === "host.status" && event.pageId === "page-2") {
+        recovery.push(event.status)
+        console.log(`Recovery: ${event.status}`)
+      }
     },
     onPopup: (_input, page) => {
       popups.push(page)
@@ -156,14 +161,21 @@ async function run() {
   assert.equal(await evaluate(pages[0]!, "window.marker"), 0)
   await pages[1]!.destroy()
   assert.equal(await evaluate(popups[1]!, "window.received"), "token=fixture-value")
-  views[2]!.webContents.forcefullyCrashRenderer()
-  await until(async () => {
-    try {
-      return (await evaluate(pages[2]!, "document.title")) === "/2"
-    } catch {
-      return false
-    }
+  const crashed = views[2]!.webContents
+  const crashedId = crashed.id
+  let replacementId: number | undefined
+  const stopObserving = pool.onGeneration(base.ownerKey, "page-2", (view) => {
+    replacementId = view.webContents.id
   })
+  crashed.forcefullyCrashRenderer()
+  await until(() => recovery.includes("ready"))
+  stopObserving()
+  assert.deepEqual(recovery, ["restarting", "ready"])
+  assert.notEqual(replacementId, undefined)
+  assert.notEqual(replacementId, crashedId)
+  assert.equal(crashed.isDestroyed(), true)
+  assert.equal(await evaluate(pages[2]!, "document.title"), "/2")
+  assert.equal(await evaluate(pages[2]!, "typeof window.marker"), "undefined")
   assert.equal(await evaluate(pages[3]!, "window.marker"), 3)
   views[3]!.webContents.downloadURL(`${url}/download`)
   await until(() => download?.state === "awaiting_approval")
