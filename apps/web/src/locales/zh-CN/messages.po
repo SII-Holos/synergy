@@ -20969,7 +20969,7 @@ msgstr "辅助功能"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.actions"
-msgstr "观测时支持的操作"
+msgstr "可用操作"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.available"
@@ -20985,7 +20985,7 @@ msgstr "点击"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.delivery"
-msgstr "模型图片输入"
+msgstr "模型输入"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.diagnostics"

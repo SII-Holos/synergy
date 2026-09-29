@@ -20969,7 +20969,7 @@ msgstr "Accessibility"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.actions"
-msgstr "Actions supported at observation"
+msgstr "Actions"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.available"
@@ -20985,7 +20985,7 @@ msgstr "Click"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.delivery"
-msgstr "Model image input"
+msgstr "Model input"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.diagnostics"

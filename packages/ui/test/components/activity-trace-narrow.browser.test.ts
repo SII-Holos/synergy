@@ -51,6 +51,41 @@ afterAll(async () => {
   await browser?.close()
 })
 
+test("wrapped Computer status values remain fully readable at phone width", async () => {
+  const css = await Bun.file(path.resolve(import.meta.dir, "../../src/components/message-part.css")).text()
+  const narrow = await browser.newPage({ viewport: { width: 375, height: 844 } })
+  try {
+    await narrow.setContent(`
+      <style>
+        :root { --font-size-small: 14px; --font-family-mono: monospace; --line-height-large: 20px; }
+        ${css}
+      </style>
+      <div data-component="anchored-summary" data-wrap="true" style="width: 295px">
+        <div data-slot="anchored-summary-row">
+          <span data-slot="anchored-summary-label">Execution</span>
+          <span data-slot="anchored-summary-value">Background preferred</span>
+        </div>
+        <div data-slot="anchored-summary-row">
+          <span data-slot="anchored-summary-label">Accessibility</span>
+          <span data-slot="anchored-summary-value">Partial results</span>
+        </div>
+        <div data-slot="anchored-summary-row">
+          <span data-slot="anchored-summary-label">Model input</span>
+          <span data-slot="anchored-summary-value">Sent with model request</span>
+        </div>
+      </div>
+    `)
+    const clipped = await narrow
+      .locator('[data-slot="anchored-summary-value"]')
+      .evaluateAll((values) =>
+        values.filter((value) => value.scrollWidth > value.clientWidth + 1).map((value) => value.textContent),
+      )
+    expect(clipped).toEqual([])
+  } finally {
+    await narrow.close()
+  }
+})
+
 describe("activity trace narrow layout", () => {
   test("long step titles stay inside the trace container", async () => {
     const metrics = await page.evaluate(() => {

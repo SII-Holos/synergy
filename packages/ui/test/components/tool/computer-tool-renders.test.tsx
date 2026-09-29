@@ -99,12 +99,10 @@ test("image delivery and native availability remain separate in the quality card
     })
     expect(rows.find((row) => row.label === "Window image")?.value).toBe("Verified image")
     expect(rows.find((row) => row.label === "Accessibility")?.value).toBe("Partial results")
-    expect(String(rows.find((row) => row.label === "Actions supported at observation")?.value).includes("Drag")).toBe(
-      stage === "submitted",
-    )
+    expect(String(rows.find((row) => row.label === "Actions")?.value).includes("Drag")).toBe(stage === "submitted")
   }
   registrations.get("computer_observe")!({ metadata: { computerObservation }, attachments: [], input: {} })
-  expect(rows.find((row) => row.label === "Model image input")?.value).toBe("Image attachment unavailable")
+  expect(rows.find((row) => row.label === "Model input")?.value).toBe("Image attachment unavailable")
 })
 
 test("cards distinguish explicit foreground dispatch from background preference", () => {

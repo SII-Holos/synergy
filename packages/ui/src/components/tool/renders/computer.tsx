@@ -115,7 +115,7 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
             ],
           }}
         >
-          <SummaryGrid rows={rows()} />
+          <SummaryGrid rows={rows()} wrap />
           <details>
             <summary>{_(D.diagnostics)}</summary>
             <RawOutput output={diagnostics()} />
