@@ -111,7 +111,7 @@
   height: 4px;
 }
 .browser-import-error {
-  color: var(--text-critical-base);
+  color: var(--text-on-critical-base);
 }
 .browser-import-footer {
   display: flex;

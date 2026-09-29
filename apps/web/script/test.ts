@@ -12,6 +12,7 @@ const root = path.resolve(import.meta.dir, "..")
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
   "test/components/workspace/builtin-workbench-panels.test.ts",
+  "test/components/workspace/browser/browser-draft.test.ts",
   "test/components/workspace/browser/browser-ws-reconnect.test.ts",
   "test/components/sidebar/sidebar-collections.dom.test.tsx",
   "test/components/agenda/series-list.dom.test.tsx",

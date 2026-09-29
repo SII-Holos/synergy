@@ -29,7 +29,7 @@ beforeAll(async () => {
       attachView: async input => window.attachments.push(input), resizeView: async () => {},
       dataAction: async ({action}) => {
         window.dataActions.push(action);
-        if (action.type === "state") return {type:"state",passwordStorage:true,passwords:[],history:[]};
+        if (action.type === "state") return window.dataState ?? {type:"state",passwordStorage:true,passwords:[],history:[]};
         if (action.type === "importSources") return {type:"sources",sources:[{id:"chrome-work",browser:"chrome",profile:"Work",mode:"direct",kinds:["passwords","cookies"]},{id:"safari",browser:"safari",mode:"file",kinds:["passwords"]},{id:"file",browser:"file",mode:"file",kinds:["passwords","cookies"]}]};
         if (action.type === "import") return window.importResult ?? {type:"import", imported:2,skipped:1,failed:0,cancelled:false,issues:[],items:action.kinds.map(kind=>({kind,imported:1,skipped:0,failed:0}))};
         return {type:"done"};
@@ -51,6 +51,7 @@ beforeAll(async () => {
     import { setupI18n } from "@lingui/core"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { BrowserImportDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-import-dialog.tsx`)}
+    import { BrowserDataDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-data-settings.tsx`)}
     import { BrowserResultDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-result-dialog.tsx`)}
     import { BrowserPageDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/page-dialog.tsx`)}
     import { NativeBrowserSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/native-browser-surface.tsx`)}
@@ -75,6 +76,7 @@ beforeAll(async () => {
       return <div class="synergy-workbench-canvas">
         <button onClick={() => window.showPageDialog("prompt")}>Open prompt</button>
         <button onClick={() => dialog.show(() => <BrowserImportDialog ownerKey="owner-one" pageId="page-one" />)}>Open import</button>
+        <button onClick={() => dialog.show(() => <BrowserDataDialog ownerKey="owner-one" pageId="page-one" url="https://example.test/login" section="passwords" />)}>Open passwords</button>
         <button onClick={() => dialog.show(() => <BrowserResultDialog initial={{type:"capture", dataUrl:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4xkAAAAASUVORK5CYII=",width:100,height:100,url:"https://example.test/page",title:"Capture",capturedAt:1}} recapture={async () => {throw new Error("Unused")}} attach={async (file,text) => {window.captureResult = {name:file.name,type:file.type,text}}} />)}>Open screenshot</button>
         <div class="browser-workspace" style="height:500px">
           <AddressBar onPageAction={async action => {window.commands.push(action);return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
@@ -263,6 +265,39 @@ test("screenshot keyboard mark remains in image bounds and keeps feedback with i
   expect(result?.text).toContain("(50, 50) of 100 × 100")
   expect(result?.text).toContain("Feedback: Keep this feedback")
   expect(result?.text).toContain("https://example.test/page")
+})
+
+test("saved accounts filter by website and only the current origin can fill a login", async () => {
+  await page.goto(url)
+  await page.evaluate(() => {
+    Object.assign(window, {
+      dataState: {
+        type: "state",
+        passwordStorage: true,
+        history: [],
+        passwords: [
+          { id: "current", origin: "https://example.test", username: "alice" },
+          { id: "other", origin: "https://other.test", username: "bob" },
+        ],
+      },
+    })
+  })
+  await page.getByRole("button", { name: "Open passwords", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Passwords and autofill", exact: true })
+  const filter = dialog.getByRole("searchbox", { name: "Search websites or usernames" })
+  await dialog.getByText("alice", { exact: true }).waitFor()
+  expect(await dialog.getByRole("button", { name: "Fill login", exact: true }).count()).toBe(1)
+  await filter.fill("bob")
+  await dialog.getByText("alice", { exact: true }).waitFor({ state: "hidden" })
+  expect(await dialog.getByText("bob", { exact: true }).isVisible()).toBe(true)
+  expect(await dialog.getByRole("button", { name: "Fill login", exact: true }).count()).toBe(0)
+  await filter.fill("alice")
+  await dialog.getByRole("button", { name: "Fill login", exact: true }).click()
+  await dialog.waitFor({ state: "hidden" })
+  expect(await page.evaluate(() => Reflect.get(window, "dataActions"))).toEqual([
+    { type: "state" },
+    { type: "fillLogin", id: "current" },
+  ])
 })
 
 test("a suspended page does not probe unavailable native navigation controls", async () => {
