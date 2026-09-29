@@ -114,7 +114,7 @@ describe("workbench surface polarity", () => {
     expect(libraryCss).toContain("--library-control-bg: var(--workbench-control-bg);")
     expect(agendaCss).toContain("--agenda-content-bg: var(--workbench-row-bg, var(--surface-raised-base));")
     expect(questionPromptCss).toContain("--question-content-bg: var(--workbench-row-bg, var(--surface-base));")
-    expect(sidebarCss).toContain("--sb-bg: var(--background-base);")
+    expect(sidebarCss).toContain("--sb-bg: var(--background-weak);")
 
     for (const source of [marketplaceCss, libraryCss, agendaCss, questionPromptCss, sidebarCss]) {
       expect(source).not.toContain("light-dark(rgb(")

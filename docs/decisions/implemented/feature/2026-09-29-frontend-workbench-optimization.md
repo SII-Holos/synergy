@@ -16,6 +16,10 @@ The greeting, conversation and Composer share one column. The greeting occupies 
 
 The durable presentation requirements live in the [Web product rules](../../../../apps/web/PRODUCT.md); palette ownership remains in [Frontend themes and color](../../../reference/frontend-theming.md).
 
+Narrow chat panes reposition the floating inbox above the input rather than outside the viewport. Visible message timestamps use the caption text role at full opacity. The isolated acceptance fixtures keep the real server and SDK path, classify foreground and auxiliary inference separately, and isolate Electron userData before acquiring its single-instance lock.
+
+Theme and color-scheme selection retain their existing immediate behavior. Staged preferences such as fonts and language still use Save/Cancel; the product documentation distinguishes these boundaries explicitly.
+
 ## Alternatives considered
 
 **Component-local palettes.** They would diverge from user themes, plugin surfaces and startup fallbacks, so the structured theme remains the only color source.

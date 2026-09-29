@@ -31,6 +31,7 @@ beforeAll(async () => {
     import { createPromptDockHeight } from ${JSON.stringify(`/@fs/${source}/components/session/prompt-dock-height.ts`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
+    import ${JSON.stringify(`/@fs/${source}/components/session/session-inbox.css`)}
     function App() {
       const [fresh, setFresh] = createSignal(true)
       const [height, setHeight] = createSignal(0)
@@ -41,12 +42,13 @@ beforeAll(async () => {
         setComposing: () => {}, dragOver: () => {}, dragLeave: () => {}, drop: async () => {},
         editor: { label: () => "Message", completion: () => undefined, placeholder: () => undefined,
           mount: () => () => {}, beforeInput: () => {}, input: () => {}, paste: async () => {}, keyDown: () => {} },
-        render: part => part === "toolbar" ? <div class="prompt-input-toolbar"><button type="submit" data-send>Send</button></div> : null,
+        render: part => part === "toolbar" ? <div class="prompt-input-toolbar"><button class="prompt-input-submit" type="submit" data-send>Send</button></div> : null,
       }
       const greeting = () => <div data-greeting>Start a task</div>
       const composer = { input: () => input, mount: dock.mount, ready: () => true, isNewSession: fresh,
         readOnly: () => false, isGlobal: () => true, pendingText: () => "", scopeName: () => "Home",
-        branch: () => undefined, lastModified: () => undefined, links: () => [], render: part => part === "greeting" ? greeting() : null }
+        branch: () => undefined, lastModified: () => undefined, links: () => [],
+        render: part => part === "inbox" && !fresh() ? <div class="session-inbox-anchor"><button data-inbox style="width:36px;height:36px">Inbox</button></div> : null }
       return <div style="height:100dvh"><DefaultSession context={{layout: {
         minimumWidth: () => undefined, promptHeight: height,
         render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
@@ -117,6 +119,21 @@ test("first send keeps the composer anchored and the editor mounted", async () =
   expect(Math.abs(content.left - column.left)).toBeLessThanOrEqual(1)
   expect(Math.abs(content.width - column.width)).toBeLessThanOrEqual(1)
   expect(await page.locator('[role="textbox"]').count()).toBe(1)
+}, 20_000)
+
+test("inbox remains within a narrow chat pane and touch actions retain their hit area", async () => {
+  for (const width of [1440, 768, 375]) {
+    await open(width, 812)
+    await page.locator("[data-send]").click()
+    const inbox = await bounds("[data-inbox]")
+    expect(inbox.left).toBeGreaterThanOrEqual(0)
+    expect(inbox.right).toBeLessThanOrEqual(width)
+    if (width === 375) {
+      const send = await bounds("[data-send]")
+      expect(send.width).toBeGreaterThanOrEqual(44)
+      expect(send.height).toBeGreaterThanOrEqual(44)
+    }
+  }
 }, 20_000)
 
 test("long input grows upward and keeps actions in a short or narrow viewport", async () => {

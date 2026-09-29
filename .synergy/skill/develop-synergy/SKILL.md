@@ -14,15 +14,14 @@ Read [Development reference](../../../docs/reference/development.md) before choo
 ## Prepare an Isolated Home
 
 1. Choose a dedicated parent directory and explicit free ports. Check listeners with `lsof -nP -iTCP -sTCP:LISTEN` or the platform equivalent; do not assume `4097` and `3001` are free.
-2. Create the required `.synergy` parent and copy configuration:
+2. Create the required `.synergy` parent:
 
 ```bash
 DEV_HOME=/tmp/synergy-dev-<short-name>
 mkdir -p "$DEV_HOME/.synergy"
-cp -R ~/.synergy/config "$DEV_HOME/.synergy/config"
 ```
 
-3. Copying configuration preserves provider settings but does not copy the separate credential store. Do not copy sessions, daemon state, locks, logs, cache, or Library data — the two model catalog files in step 4 are the sole cache exception. Seed only the fixture credentials a test requires inside the isolated home; never copy or overwrite the live credential store implicitly.
+3. Start with minimal fixture configuration. Select only the provider configuration and credential needed for an explicit real-provider check; never copy the entire live configuration or credential store implicitly. Do not copy sessions, daemon state, locks, logs, cache, or Library data — the two model catalog files in step 4 are the sole cache exception. Seed only the fixture credentials a test requires inside the isolated home; never copy or overwrite the live credential store implicitly.
 4. Copy model catalog data from the main home when the isolated environment cannot reach models.dev (offline or restricted-network debugging machines), so the isolated model list does not depend on a live models.dev fetch:
 
 ```bash
@@ -56,6 +55,21 @@ Use `server` for backend/CLI work, `web` for normal full-stack work, `desktop` f
 Development process lifecycle is owned by the root orchestrator. Both serial build-and-run workflows and parallel workflows tag their descendants at spawn time so cleanup can recover nested process groups even after package wrappers exit. A managed Desktop server arms parent-process liveness monitoring before startup becomes healthy and shuts down if its Electron parent disappears, because forced application termination cannot run Electron quit handlers.
 
 Managed Desktop captures the user's login-shell `PATH` once and passes only its normalized value to the managed server, preserving inherited absolute entries as fallbacks. It does not import arbitrary profile variables. Verify the effective value and fixed command resolutions in developer-mode Settings → Observability; a Desktop-process source indicates that the login-shell probe safely fell back. Do not replace this startup boundary by making Bash tool execution use a login shell: Bash remains ordinary `shell -c` under the sandbox environment allowlist.
+
+## Reproducible Workbench Acceptance
+
+With the isolated server and App running, seed synthetic projects and tasks through the generated SDK. The local provider replaces only inference; the real server, submission, synchronization and UI still run.
+
+```bash
+bun apps/web/test/fixtures/workbench/provider.ts "$DEV_HOME" http://127.0.0.1:4097 4098
+bun apps/web/test/fixtures/workbench/seed.ts "$DEV_HOME" http://127.0.0.1:4097
+bun run --cwd apps/desktop build
+bun apps/desktop/test/fixture/isolated-desktop.ts "$DEV_HOME" http://127.0.0.1:3001
+```
+
+Choose free ports first. Both Web fixtures validate the server's actual Home before mutation; seeding refuses an existing manifest. The provider records chat, auxiliary and embedding calls separately at `/journal`, and `[long]` selects a delayed long response. Keep the manifest and logs private. The Desktop helper sets isolated Electron `userData` before importing main and acquiring the single-instance lock, writes its child PID/log under the selected Home, and forwards termination only to that child. Reuse that Home for restart/persistence checks. A real-provider check and native IME check remain separate evidence.
+
+For final acceptance, build Web and point Desktop at the isolated server's production Web origin. Record source revision, lockfile hash, viewport/zoom/theme, fixture manifest and observed result. Stop only the helper/server/provider processes whose PID and Home were recorded, then verify their ports are free.
 
 ## Preserve Desktop Renderer Lifecycle
 

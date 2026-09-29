@@ -92,8 +92,8 @@ test("mobile workspace contains focus, fits the viewport and returns to its entr
     return box?.width === innerWidth && box.height === innerHeight
   })
   const box = (await page.getByRole("dialog").boundingBox())!
-  expect(box.width).toBe(375)
-  expect(box.height).toBe(812)
+  expect(box.width).toBeCloseTo(375, 1)
+  expect(box.height).toBeCloseTo(812, 1)
   await page.keyboard.press("Escape")
   await page.getByRole("dialog").waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.textContent === "Open mobile workspace")

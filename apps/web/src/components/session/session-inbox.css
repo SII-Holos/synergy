@@ -23,6 +23,14 @@
     color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
+@container (max-width: 56rem) {
+  .session-inbox-anchor {
+    top: -2.875rem;
+    right: 0.75rem;
+    transform: none;
+  }
+}
+
 .session-inbox-trigger[data-active="true"] {
   color: var(--icon-base);
   border-color: color-mix(in srgb, var(--border-strong-base) 74%, transparent);

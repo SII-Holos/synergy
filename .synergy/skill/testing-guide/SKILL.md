@@ -17,6 +17,10 @@ Distinguish model disconnects from watchdog timeouts. Hold an actual upstream re
 
 Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
 
+## Workbench Presentation Acceptance
+
+Use the isolated provider and synthetic-data workflow in `develop-synergy` for the real new-task → first-send → reply → switch-and-return path. Keep component fixtures for failure injection and geometry, but do not label them end-to-end or real-provider evidence. Register browser suites with their owning serial runner. Measure the actual Composer, status footer, floating inbox and menu bounds in both wide and narrow chat panes; a full-width browser can still contain a narrow pane. Allow subpixel rounding rather than exact floating-point width equality. Native IME, real 200% zoom, reduced motion and visual focus each need explicit evidence; pasted text or a resized viewport is not a substitute.
+
 ## Local Joint Acceptance
 
 Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.

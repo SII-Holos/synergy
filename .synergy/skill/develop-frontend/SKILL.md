@@ -14,6 +14,8 @@ description: Implement or review Synergy Web and shared UI changes across apps/w
 
 ## Settings recovery
 
+Theme and color-scheme selections apply immediately, while fonts, locale and other staged preferences use the footer Save/Cancel flow. Verify both boundaries rather than assuming every appearance setting shares one commit policy. Test same-mode theme changes on already-mounted content and portals.
+
 Keep section resource dependencies explicit and lazy. Verify that a failing model or agent request cannot block unrelated sections, refresh failures preserve readable snapshots and staged fields, and retries only reload affected resources. Search indexes should reuse field descriptors; test real scrolling, focus and highlight cleanup after late mount or selection replacement. Route every dismissal through one guard, close the parent only after its discard confirmation has closed, and test server error responses through generated SDK calls with error propagation enabled.
 
 ## Library and statistics recovery
