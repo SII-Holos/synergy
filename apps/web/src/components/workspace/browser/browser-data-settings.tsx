@@ -117,7 +117,7 @@ export function BrowserDataSettings(props: Props) {
   return (
     <div class="flex flex-col gap-5 text-13">
       <Show when={error()}>
-        <p role="alert" class="text-text-critical-base">
+        <p role="alert" class="text-text-on-critical-base">
           {error()}
         </p>
         <Button size="small" onClick={() => void run(refresh)}>

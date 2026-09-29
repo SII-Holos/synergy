@@ -120,7 +120,7 @@ export function BrowserResultDialog(props: {
           onInput={(event) => setComment(event.currentTarget.value)}
         />
         <Show when={error()}>
-          <p role="alert" class="text-12 text-text-critical-base">
+          <p role="alert" class="text-12 text-text-on-critical-base">
             {error()}
           </p>
         </Show>

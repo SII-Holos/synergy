@@ -365,7 +365,7 @@ export function BrowserSettings(props: {
           </details>
         </Show>
         <Show when={error()}>
-          <p role="alert" class="text-12 text-text-danger-base">
+          <p role="alert" class="text-12 text-text-on-critical-base">
             {error()}{" "}
             <Button size="small" onClick={() => void run(refresh)}>
               {_(M.retry)}

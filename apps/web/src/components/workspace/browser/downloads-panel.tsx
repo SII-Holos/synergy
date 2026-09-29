@@ -86,7 +86,7 @@ export function DownloadsPanel(props: { onArtifact(id: string, operation: "save"
   return (
     <div class="flex h-full flex-col overflow-auto p-4">
       <Show when={error()}>
-        <p role="alert" class="mb-3 text-12 text-text-critical-base">
+        <p role="alert" class="mb-3 text-12 text-text-on-critical-base">
           {error()}
         </p>
       </Show>

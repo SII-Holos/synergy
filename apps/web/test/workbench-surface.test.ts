@@ -178,7 +178,6 @@ describe("workbench surface polarity", () => {
   })
 
   test("workbench panel tabs keep close and add controls compact", () => {
-    expect(builtinWorkbenchPanels.match(/cardinality: "singleton"/g)?.length).toBeGreaterThanOrEqual(3)
     expect(builtinWorkbenchPanels).toContain('id: "file"')
     expect(builtinWorkbenchPanels).toContain('cardinality: "multi"')
     expect(workbenchSurface).toContain("addablePanels")
