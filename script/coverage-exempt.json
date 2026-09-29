@@ -763,10 +763,6 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
-          "glob": "src/components/workspace/browser/remote-browser-surface.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
-        },
-        {
           "glob": "src/components/workspace/browser/viewport-selector.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
@@ -1233,10 +1229,6 @@
         "functions": 75
       },
       "exempt": [
-        {
-          "glob": "src/driver.ts",
-          "reason": "requires a real browser runtime"
-        },
         {
           "glob": "src/page.ts",
           "reason": "requires a real browser runtime"
