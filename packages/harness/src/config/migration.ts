@@ -1068,7 +1068,6 @@ export const migrations: Migration[] = [
     scope: "global",
     execution: "startup",
     id: "20260929-config-retire-synergy-link",
-    dependsOn: ["scope/20260921-scope-local-binding"],
     description: "Remove retired Link concurrency and permission settings",
     async up(progress) {
       const files = await findRetiredLinkConfigFiles()
