@@ -17,7 +17,11 @@ export async function assertHarnessIdentity(generation: Pick<InstalledGeneration
   return fs.realpath(Bun.resolveSync(`${harness}/lifecycle`, generation.directory))
 }
 
-function selectedPackages(generation: InstalledGeneration, selection?: Readonly<Record<string, string>>, desktop = false) {
+function selectedPackages(
+  generation: InstalledGeneration,
+  selection?: Readonly<Record<string, string>>,
+  desktop = false,
+) {
   const packages = new Map<string, InstalledPackage & { metadata: ComponentPackage }>()
   for (const pkg of Object.values(generation.packages)) {
     if (pkg.metadata?.kind === "component" && !core.has(pkg.metadata.id))

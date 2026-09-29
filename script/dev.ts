@@ -13,16 +13,7 @@ const DEV_PROCESS_OWNER_ENV = "SYNERGY_DEV_PROCESS_OWNER"
 const devProcessOwners = new WeakMap<object, string>()
 
 export interface DevProcessSpec {
-  label:
-    | "server"
-    | "app"
-    | "desktop"
-    | "send"
-    | "build"
-    | "install"
-    | "generate"
-    | "sandbox"
-    | "build:plugin"
+  label: "server" | "app" | "desktop" | "send" | "build" | "install" | "generate" | "sandbox" | "build:plugin"
   command: string[]
   cwd: string
   env?: Record<string, string | undefined>
