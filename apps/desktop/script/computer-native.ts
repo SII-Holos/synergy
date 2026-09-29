@@ -203,7 +203,7 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
           (value) => value.windows[0]!.clicks === 1,
         )
         observed = await observe()
-        await act(
+        const typed = await act(
           {
             action: "type",
             observationId: observed.observationId!,
@@ -212,6 +212,7 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
           },
           observed,
         )
+        assert(typed.metadata.route === "accessibility", "Native text fixture did not use exact AX insertion")
         await eventually(
           () => command("refresh"),
           (value) => value.windows[0]!.text === "Synergy 你好",

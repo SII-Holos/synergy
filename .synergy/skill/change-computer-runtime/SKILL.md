@@ -19,7 +19,7 @@ Read [Native Computer Use](../../../docs/architecture/computer-use.md), the near
 
 Use a logged-in macOS session and an isolated Home with separate ports and Electron userData. `bun dev desktop --server-port 5147 --app-port 3147` starts the matching server and native host; `--attach` alone does not register a Computer host. Never borrow the live runtime or silently copy credentials. Existing user authorization to copy a specific provider is sufficient; copy only that provider's configuration and credential into the test Home.
 
-Run the fixtures serially; they share the physical desktop even across isolated Homes:
+Run the fixtures serially, separately from headed Electron/browser tests; they share the physical desktop even across isolated Homes and worktrees. Preserve interference failures and never stop another task's runtime to make a test pass:
 
 ```bash
 bun run test:computer-native
