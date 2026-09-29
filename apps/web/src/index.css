@@ -21,7 +21,7 @@ a {
 
 .app-shell--desktop-native-chrome {
   --desktop-native-titlebar-height: 48px;
-  --desktop-native-titlebar-traffic-width: 90px;
+  --desktop-native-titlebar-traffic-width: env(titlebar-area-x, 0px);
 }
 
 [data-slot="dialog-container"]:has(.dialog-session-export) {

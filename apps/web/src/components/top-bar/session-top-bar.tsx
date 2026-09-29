@@ -1,7 +1,7 @@
 import { useLingui } from "@lingui/solid"
 import { PI } from "@/components/prompt-input/prompt-input-i18n"
-import { topBar } from "@/locales/messages"
-import { Show, createMemo, createSignal, type Accessor } from "solid-js"
+import { sidebar, topBar } from "@/locales/messages"
+import { Show, createMemo, createSignal, onMount, onCleanup, type Accessor } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -43,6 +43,7 @@ const selectionToolTurn = { id: "session.modelSelection.toolTurn", message: "App
 const selectionRetry = { id: "session.modelSelection.retry", message: "Could not save. Retry" }
 
 function SessionActionMenu(props: {
+  tools?: { search: () => void; bottom: () => void; side: () => void; bottomLabel: string; sideLabel: string }
   visibility: ReturnType<typeof sessionActionVisibility>
   isWorktree: () => boolean
   worktreeDisabled: () => boolean
@@ -79,9 +80,10 @@ function SessionActionMenu(props: {
       onOpenChange={setOpen}
       placement="bottom-end"
       gutter={8}
+      variant="menu"
       class="stb-menu-popover"
       triggerAs={(triggerProps) => (
-        <Tooltip value={_(topBar.sessionActions)} placement="bottom">
+        <Tooltip value={_(topBar.sessionActions)} placement="bottom" open={open() ? false : undefined}>
           <button
             {...triggerProps}
             type="button"
@@ -96,6 +98,24 @@ function SessionActionMenu(props: {
       )}
     >
       <div class="stb-menu-list" role="menu">
+        <Show when={props.tools}>
+          {(tools) => (
+            <>
+              <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(tools().search)}>
+                <Icon name={getSemanticIcon("action.search")} size="small" />
+                <span>{_(sidebar.search)}</span>
+              </button>
+              <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(tools().bottom)}>
+                <Icon name={getSemanticIcon("app.bottomSpace")} size="small" />
+                <span>{tools().bottomLabel}</span>
+              </button>
+              <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(tools().side)}>
+                <Icon name={getSemanticIcon("app.sideWorkspace")} size="small" />
+                <span>{tools().sideLabel}</span>
+              </button>
+            </>
+          )}
+        </Show>
         <Show when={props.visibility.rename}>
           <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
             <Icon name={getSemanticIcon("action.rename")} size="small" />
@@ -183,6 +203,14 @@ export function SessionTopBar(props: {
   const sync = useSync()
   const view = useSessionDataView()
   const workbench = useWorkbenchPanels()
+  let header: HTMLDivElement | undefined
+  const [compact, setCompact] = createSignal(false)
+  onMount(() => {
+    if (!header) return
+    const observer = new ResizeObserver(() => setCompact(header!.getBoundingClientRect().width < 640))
+    observer.observe(header)
+    onCleanup(() => observer.disconnect())
+  })
   const sideSurface = createMemo(() => workbench.surface("side"))
   const bottomSurface = createMemo(() => workbench.surface("bottom"))
 
@@ -366,7 +394,7 @@ export function SessionTopBar(props: {
   )
 
   return (
-    <div class="stb-root">
+    <div ref={header} class="stb-root" data-compact={compact() ? "" : undefined}>
       {/* Mobile layout */}
       <div class="md:hidden flex w-full items-center justify-between pointer-events-auto">
         <div class="flex items-center gap-1">
@@ -442,8 +470,19 @@ export function SessionTopBar(props: {
           <VariantSelectorButton />
         </div>
         <div class="stb-right">
-          <Show when={actionVisibility().menu}>
+          <Show when={actionVisibility().menu || compact()}>
             <SessionActionMenu
+              tools={
+                compact()
+                  ? {
+                      search: () => command.trigger("session.list"),
+                      bottom: () => bottomSurface().toggle(),
+                      side: () => sideSurface().toggle(),
+                      bottomLabel: bottomSurface().opened() ? _(topBar.hideBottomSpace) : _(topBar.openBottomSpace),
+                      sideLabel: sideSurface().opened() ? _(topBar.hideSideWorkspace) : _(topBar.openSideWorkspace),
+                    }
+                  : undefined
+              }
               visibility={actionVisibility()}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
@@ -475,36 +514,38 @@ export function SessionTopBar(props: {
               }
             />
           </Show>
-          <Tooltip
-            value={bottomSurface().opened() ? _(topBar.hideBottomSpace) : _(topBar.openBottomSpace)}
-            placement="bottom"
-          >
-            <button
-              type="button"
-              class="stb-icon-btn"
-              classList={{ "stb-icon-btn--active": bottomSurface().opened() }}
-              aria-label={bottomSurface().opened() ? _(topBar.hideBottomSpace) : _(topBar.openBottomSpace)}
-              aria-pressed={bottomSurface().opened()}
-              onClick={() => bottomSurface().toggle()}
+          <Show when={!compact()}>
+            <Tooltip
+              value={bottomSurface().opened() ? _(topBar.hideBottomSpace) : _(topBar.openBottomSpace)}
+              placement="bottom"
             >
-              <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
-            </button>
-          </Tooltip>
-          <Tooltip
-            value={sideSurface().opened() ? _(topBar.hideSideWorkspace) : _(topBar.openSideWorkspace)}
-            placement="bottom"
-          >
-            <button
-              type="button"
-              class="stb-icon-btn"
-              classList={{ "stb-icon-btn--active": sideSurface().opened() }}
-              aria-label={sideSurface().opened() ? _(topBar.hideSideWorkspace) : _(topBar.openSideWorkspace)}
-              aria-pressed={sideSurface().opened()}
-              onClick={() => sideSurface().toggle()}
+              <button
+                type="button"
+                class="stb-icon-btn"
+                classList={{ "stb-icon-btn--active": bottomSurface().opened() }}
+                aria-label={bottomSurface().opened() ? _(topBar.hideBottomSpace) : _(topBar.openBottomSpace)}
+                aria-pressed={bottomSurface().opened()}
+                onClick={() => bottomSurface().toggle()}
+              >
+                <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
+              </button>
+            </Tooltip>
+            <Tooltip
+              value={sideSurface().opened() ? _(topBar.hideSideWorkspace) : _(topBar.openSideWorkspace)}
+              placement="bottom"
             >
-              <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
-            </button>
-          </Tooltip>
+              <button
+                type="button"
+                class="stb-icon-btn"
+                classList={{ "stb-icon-btn--active": sideSurface().opened() }}
+                aria-label={sideSurface().opened() ? _(topBar.hideSideWorkspace) : _(topBar.openSideWorkspace)}
+                aria-pressed={sideSurface().opened()}
+                onClick={() => sideSurface().toggle()}
+              >
+                <Icon name={getSemanticIcon("app.sideWorkspace")} size="normal" />
+              </button>
+            </Tooltip>
+          </Show>
         </div>
         <SlotOutlet slot="session.header.actions" sessionId={params.id} />
       </div>

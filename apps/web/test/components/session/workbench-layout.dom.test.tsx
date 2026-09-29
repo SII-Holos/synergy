@@ -30,6 +30,8 @@ beforeAll(async () => {
     `
     import { createSignal, Show } from "solid-js"
     import { render } from "solid-js/web"
+    import { SidebarNavigation } from  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar-navigation.tsx`)}
+    import  ${JSON.stringify(`/@fs/${source}/components/sidebar/sidebar.css`)}
     import { DefaultShell } from ${JSON.stringify(`/@fs/${source}/plugin/default-shell.tsx`)}
     import { DesktopNativeTitlebar } from ${JSON.stringify(`/@fs/${source}/components/app-shell/desktop-native-titlebar.tsx`)}
     import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
@@ -69,10 +71,10 @@ beforeAll(async () => {
       const [collapsed, setCollapsed] = createSignal(false)
       const [custom, setCustom] = createSignal(false)
       const route = () => <><div class="stb-root"><div class="stb-left"><button class="stb-selector-btn">Model</button></div><button>Panel</button></div><div data-ui-part="conversation" /></>
-      return <div class="app-shell app-shell--desktop-native-chrome" classList={{ "app-shell--sidebar-collapsed": collapsed() }} style="height:100dvh;display:flex;flex-direction:column">
+      return <div class="app-shell app-shell--desktop-native-chrome" classList={{ "app-shell--sidebar-collapsed": collapsed() }} style="height:100dvh;display:flex;flex-direction:column;--desktop-native-titlebar-traffic-width:90px">
         <DesktopNativeTitlebar />
         <Show when={!custom()} fallback={<div data-custom>Third-party Shell</div>}>
-          <DefaultShell context={{shell: {render: part => part === "navigation" ? <aside classList={{"sb-collapsed":collapsed()}} style={{width: collapsed() ? "48px" : "260px", "flex-shrink": 0}}><div class="sb-header" style="display:flex"><div class="sb-logo">Brand</div><div class="sb-header-actions"><button data-sidebar-toggle onClick={() => setCollapsed(!collapsed())}>Toggle</button></div></div></aside> : part === "route" ? route() : null}}} />
+          <DefaultShell context={{shell: {render: part => part === "navigation" ? <aside class="sb-root sb-integrated" classList={{"sb-collapsed":collapsed()}} style={{width: collapsed() ? "0px" : "260px", "flex-shrink": 0}}><SidebarNavigation expanded={!collapsed()} labels={{expand:"Expand",collapse:"Collapse",search:"Search",newSession:"New task"}} onToggle={() => setCollapsed(!collapsed())} onSearch={()=>{}} onNew={()=>{}}><span class="sb-logo">Brand</span></SidebarNavigation></aside> : part === "route" ? route() : null}}} />
         </Show>
         <button data-shell-switch onClick={() => setCustom(true)} style="position:fixed;bottom:0;right:0">Switch Shell</button>
       </div>
@@ -203,12 +205,23 @@ test("native host controls share the built-in row and retain third-party Shell s
     expect(native.height).toBe(48)
     expect(native.top).toBe(header.top)
     expect(model.left).toBeGreaterThanOrEqual(native.right)
-    expect(collapsed ? toggle.top >= native.bottom : toggle.left >= native.right).toBe(true)
+    expect(toggle.left).toBeGreaterThanOrEqual(native.right)
+    expect(toggle.top).toBeLessThan(native.bottom)
+    await page.waitForFunction(
+      (width) => Math.abs(document.querySelector(".sb-root")!.getBoundingClientRect().width - width) < 0.01,
+      collapsed ? 0 : 260,
+    )
+    expect((await bounds(".sb-root")).width).toBe(collapsed ? 0 : 260)
     expect(await page.locator(".sb-logo").isVisible()).toBe(false)
     expect(
       await page.locator(".stb-selector-btn").evaluate((el) => getComputedStyle(el).getPropertyValue("app-region")),
     ).toBe("no-drag")
   }
+  await page
+    .locator(".app-shell")
+    .evaluate((el) => (el as HTMLElement).style.setProperty("--desktop-native-titlebar-traffic-width", "0px"))
+  expect((await bounds("[data-sidebar-toggle]")).left).toBeLessThan(20)
+  expect((await bounds(".desktop-native-titlebar")).width).toBe(0)
   await page.locator("[data-shell-switch]").click()
   await page.locator("[data-custom]").waitFor({ state: "attached", timeout: 2000 })
   expect((await bounds("[data-custom]")).top).toBe((await bounds(".desktop-native-titlebar")).bottom)

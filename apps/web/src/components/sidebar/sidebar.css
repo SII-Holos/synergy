@@ -1742,3 +1742,96 @@ button.sb-session-group-header:focus-visible,
     min-height: 44px;
   }
 }
+
+.sb-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.sb-integrated {
+  z-index: 30;
+}
+.sb-integrated.sb-collapsed {
+  width: 0;
+  border-right-width: 0;
+}
+.sb-integrated .sb-panel {
+  overflow: hidden;
+}
+.sb-integrated.sb-collapsed .sb-panel {
+  visibility: hidden;
+  pointer-events: none;
+}
+.sb-navigation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  flex: 0 0 48px;
+  padding: 8px 12px;
+  padding-left: max(12px, var(--workbench-native-inset, 0px));
+  white-space: nowrap;
+  -webkit-app-region: drag;
+}
+.sb-navigation .sb-icon-btn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  position: relative;
+}
+.sb-navigation-brand {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+}
+.sb-expanded .sb-navigation-search {
+  margin-left: auto;
+}
+.sb-collapsed .sb-navigation {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.sb-collapsed .sb-navigation-brand {
+  display: none;
+}
+.sb-navigation button,
+.sb-navigation a,
+.sb-navigation [data-component="tooltip-trigger"] {
+  -webkit-app-region: no-drag;
+}
+.sb-navigation button:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
+}
+.sb-navigation-notice {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--icon-warning-base);
+}
+.app-shell--sidebar-collapsed:has([data-default-shell]) {
+  --collapsed-navigation-width: 104px;
+}
+.app-shell--sidebar-collapsed:has([data-default-shell]) .stb-root {
+  padding-left: calc(max(12px, var(--workbench-native-inset, 0px)) + var(--collapsed-navigation-width) + 12px);
+}
+.app-shell--sidebar-collapsed:has([data-default-shell]):has(.stb-root[data-compact]) {
+  --collapsed-navigation-width: 68px;
+  .sb-navigation-search {
+    display: none;
+  }
+}
+.app-shell--sidebar-collapsed:has([data-default-shell])
+  [data-ui-part="content"]:not(:has([data-ui-part="conversation"])) {
+  padding-top: 48px;
+}
+@media (max-width: 767px) {
+  .app-shell--sidebar-collapsed:has([data-default-shell]) .stb-root {
+    padding-left: 12px;
+  }
+}

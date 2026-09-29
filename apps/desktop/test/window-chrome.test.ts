@@ -79,6 +79,7 @@ describe("desktop window chrome", () => {
     ).toEqual({
       titleBarStyle: "hiddenInset",
       trafficLightPosition: { x: 12, y: 17 },
+      titleBarOverlay: { height: 48 },
     })
     expect(desktopDevIconPath("darwin", "/app/dist")).toBeUndefined()
   })

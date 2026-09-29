@@ -434,7 +434,10 @@ function LayoutContent(
   const pluginHost = usePluginHost()
   const workbench = createWorkbenchService(useWorkbenchPanels())
   const route = createMemo(() => props.children)
-  const navigation = createMemo(() => (layout.isDesktop() ? <Sidebar onSearchOpen={props.onSearchOpen} /> : null))
+  const [builtinMounts, setBuiltinMounts] = createSignal(0)
+  const navigation = createMemo(() =>
+    layout.isDesktop() ? <Sidebar integrated={builtinMounts() > 0} onSearchOpen={props.onSearchOpen} /> : null,
+  )
   const shell: PluginShellService = {
     page: () => pluginHost.environment.route().page,
     render(view) {
@@ -463,7 +466,14 @@ function LayoutContent(
         <ConnectionBanner />
       </div>
       <SkinRoot>
-        <ShellOutlet shell={shell} workbench={workbench} />
+        <ShellOutlet
+          onBuiltinMount={() => {
+            setBuiltinMounts((count) => count + 1)
+            return () => setBuiltinMounts((count) => count - 1)
+          }}
+          shell={shell}
+          workbench={workbench}
+        />
       </SkinRoot>
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
       <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />

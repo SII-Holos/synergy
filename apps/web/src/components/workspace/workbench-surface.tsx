@@ -17,7 +17,7 @@ import {
   isWorkbenchPanelLaunchable,
   workbenchPanelMountKey,
 } from "@/context/workbench/panel-model"
-import { sidebarOccupancy, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
+import { WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import { useLayout } from "@/context/layout"
 import type {
   WorkbenchPanelContentProps,
@@ -431,9 +431,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
     })
   })
   const maxSideWidth = () => {
-    const width =
-      available.width -
-      (available.container ? 0 : sidebarOccupancy(layout.isDesktop(), layout.sidebar.opened(), layout.sidebar.width()))
+    const width = available.width - (available.container ? 0 : layout.sidebar.occupiedWidth())
     return Math.max(0, width - WORKSPACE_SESSION_MIN_WIDTH)
   }
   const maxBottomHeight = () => Math.max(0, available.height * 0.6)
