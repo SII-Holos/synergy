@@ -1118,6 +1118,7 @@ export namespace ToolResolver {
         abort: sessionAbort,
         messageID: input.processor.message.id,
         callID: options.toolCallId,
+        inputImages: () => input.processor.inputImages(options.toolCallId),
         captureResult: RolloutTool.capture,
         openProcessEvidence: RolloutTool.openProcess,
         extra: {

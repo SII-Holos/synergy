@@ -190,7 +190,7 @@ export class ComputerRuntime {
           `${input.action} is unavailable: ${availability.reason ?? "target_unverified"}. Observe again or use an available action.`,
         )
       if (input.action === "point") {
-        if (!command.imageReceipt || command.imageReceipt.sha256 !== observed.quality.image.sha256)
+        if (!command.imageReceipt || !command.imageReceipt.sha256.includes(observed.quality.image.sha256!))
           throw new ComputerError(
             "computer_image_not_delivered",
             "This image was not included in the model request that selected this action. Observe again with an image-capable model.",

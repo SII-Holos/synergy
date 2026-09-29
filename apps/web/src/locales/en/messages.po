@@ -20963,6 +20963,98 @@ msgstr "messages"
 msgid "stats.rank.unit.sessions"
 msgstr "sessions"
 
+#. js-lingui-explicit-id
+msgid "tool.computer.accessibility"
+msgstr "Accessibility"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.actions"
+msgstr "Actions supported at observation"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.available"
+msgstr "Available"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.click"
+msgstr "Element click"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.delivery"
+msgstr "Model image input"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.diagnostics"
+msgstr "Observation details"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.image"
+msgstr "Window image"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.included"
+msgstr "Included in model input"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.invalid"
+msgstr "Image rejected"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.key"
+msgstr "Press key"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.missing"
+msgstr "Image attachment unavailable"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.omitted"
+msgstr "Omitted from model input"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.partial"
+msgstr "Partial results"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.point"
+msgstr "Image point"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.saved"
+msgstr "Saved; model input pending"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.scroll"
+msgstr "Scroll"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.submitted"
+msgstr "Sent with model request"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.target"
+msgstr "Window"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.type"
+msgstr "Type text"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unavailable"
+msgstr "Unavailable"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unknown"
+msgstr "Quality was not recorded"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unverified"
+msgstr "Image not verified"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.valid"
+msgstr "Verified image"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.agents"
 msgstr "{count, plural, one {# agent} other {# agents}}"

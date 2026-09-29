@@ -37,3 +37,9 @@ Protocol version 2 carries separate AX, image and per-action availability. Deskt
 The native patch compares process start time, retained AX window identity and geometry again inside Cua's per-process mutation lease. Pixel routes require valid capture evidence even when selected internally by a semantic click. Desktop references use monotonic expiry, are consumed before action validation, and cannot survive native resets or replacement observations. The [observation admission decision](../decisions/implemented/bug-fix/2026-09-29-computer-observation-admission.md) records the tradeoffs.
 
 `SYNERGY_DESKTOP_USER_DATA_DIR` selects an absolute Electron user directory before single-instance locking. Source development derives this directory under an explicitly selected Home, isolating cookies and browser profiles as well as runtime state. It does not isolate the physical macOS desktop.
+
+## Model delivery and presentation
+
+Harness records image hashes at the final provider transform and at the existing request transport. The tool executor reads the receipt for the model call that emitted that tool call; it never borrows a previous call’s image evidence. Coordinate clicks require the observed image hash among that request’s submitted images. A saved attachment or a model capability flag alone is not submission evidence. Unknown wire formats and streaming request bodies without a byte receipt remain unverified. Receipt fields are optional for historical rollout attempts.
+
+Computer attachments retain their original image dimensions and digest. Text-only models receive a concise attachment summary and cannot supply point admission. The shared tool card presents the target, AX quality, image validation, delivery stage and observed action support separately. Historical observations show unknown quality; missing attachments never imply model delivery. Raw observation text stays in the expandable details.

@@ -7871,6 +7871,12 @@ export type RolloutAttemptRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   httpStatus?: number
+  inputImages?: Array<{
+    sha256: string
+    status: "included" | "omitted"
+    reason?: string
+  }>
+  requestImages?: Array<string>
   responseModel?: string
   usage?: {
     version: 1

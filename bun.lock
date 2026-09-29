@@ -939,6 +939,7 @@
       "name": "@ericsanchezok/synergy-ui",
       "version": "1.1.26",
       "dependencies": {
+        "@ericsanchezok/synergy-computer-protocol": "workspace:*",
         "@ericsanchezok/synergy-plugin": "workspace:*",
         "@ericsanchezok/synergy-sdk": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",

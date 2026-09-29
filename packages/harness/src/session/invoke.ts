@@ -823,6 +823,17 @@ export namespace SessionInvoke {
               const deliveryMetadata = channelDeliveryMetadata(msgs, lastFinishedIndex)
               const toolDisplayByName = new Map<string, ToolDisplay>()
               const processor = SessionProcessor.create({
+                imageAttachments: msgs.flatMap((message) =>
+                  message.parts.flatMap((part) => {
+                    if (part.type !== "tool" || part.state.status !== "completed") return []
+                    return (part.state.attachments ?? []).flatMap((attachment) => {
+                      const sha256 = attachment.metadata?.imageInput?.sha256
+                      return typeof sha256 === "string" && /^[a-f0-9]{64}$/.test(sha256)
+                        ? [{ messageID: message.info.id, partID: part.id, attachmentID: attachment.id, sha256 }]
+                        : []
+                    })
+                  }),
+                ),
                 assistantMessage: (await Session.updateMessage({
                   id: Identifier.ascending("message"),
                   parentID: R.id,

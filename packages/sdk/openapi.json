@@ -54260,6 +54260,37 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "inputImages": {
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["included", "omitted"]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 100
+                }
+              },
+              "required": ["sha256", "status"],
+              "additionalProperties": false
+            }
+          },
+          "requestImages": {
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
           "responseModel": {
             "type": "string",
             "maxLength": 256

@@ -14,6 +14,8 @@ The pinned Cua 0.30.4 source receives a small macOS patch beside Desktop's nativ
 
 Desktop emits one bounded AX representation, while typed status and diagnostic evidence remain outside model prose. An explicit Desktop user-data directory is configured before the single-instance lock; source development derives one from its isolated Home.
 
+Image delivery uses generic Harness receipts at the final provider transform and existing rollout transport. The originating model call is captured at tool-call admission; neither Computer nor the UI parses provider request bodies. Attachment metadata distinguishes saved, included, submitted and omitted images. The UI consumes the canonical observation schema and withholds coordinate support without a submitted image receipt. Unknown historical records remain unknown.
+
 ## Alternatives considered
 
 **Only improve screenshot display.** This would retain invalid action admission and would not establish that the model receives the image used for coordinates.

@@ -87,7 +87,7 @@ export function describeObservation(input: {
     expiresAt: input.capturedAt + 60_000,
     ax: {
       status: !axAvailable ? "unavailable" : metadata.elements_complete === true ? "available" : "partial",
-      truncated: metadata.walk_truncated === true || metadata.walk_timed_out === true,
+      truncated: metadata.truncated === true || metadata.timed_out === true,
       ...(!axAvailable ? { reason: "accessibility_unavailable" } : {}),
       ...(input.query ? { query: input.query } : {}),
     },

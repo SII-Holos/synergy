@@ -61,7 +61,7 @@ export const ComputerCommandSchema = z.discriminatedUnion("type", [
       type: z.literal("action"),
       input: ComputerActionSchema,
       imageReceipt: z
-        .object({ sha256: z.string().regex(/^[a-f0-9]{64}$/), callID: Ref })
+        .object({ sha256: z.array(z.string().regex(/^[a-f0-9]{64}$/)).max(128), callID: Ref })
         .strict()
         .optional(),
     })

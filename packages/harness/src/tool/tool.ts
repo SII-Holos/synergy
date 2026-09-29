@@ -50,6 +50,7 @@ export namespace Tool {
     callID?: string
     environmentID?: string | null
     resources?: import("../environment/resources").EnvironmentResources.Resolved
+    inputImages?(): Promise<import("../session/rollout/input-images").InputImages.Receipt | undefined>
     captureResult?(result: unknown): Promise<void>
     openProcessEvidence?(id: string): Promise<RolloutProcess.Writer>
     extra?: { [key: string]: any }

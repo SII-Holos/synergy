@@ -65,7 +65,12 @@ test("successful observation stores screenshots as durable attachments for a tex
     const execute = spyOn(computerBroker(), "execute").mockResolvedValue({
       output: "Window observed",
       observationId: "observation-1",
-      images: [{ mimeType: "image/png", data: Buffer.from("image-content").toString("base64") }],
+      images: [
+        {
+          mimeType: "image/png",
+          data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6j8AAAAASUVORK5CYII=",
+        },
+      ],
       metadata: {},
     })
     await using tmp = await tmpdir({ git: true })
@@ -98,11 +103,18 @@ test("successful observation stores screenshots as durable attachments for a tex
             },
           )
           expect(result.output).toBe("Window observed")
+          expect(result.attachments![0]!.model).toMatchObject({
+            mode: "summary",
+            summary: expect.stringContaining("Pixel actions are unavailable"),
+          })
           expect(result.metadata).toMatchObject({ observationId: "observation-1", deliveryMode: "background" })
           expect(result.attachments).toHaveLength(1)
           expect(result.attachments![0]!.url).toStartWith("asset://")
           expect(result.attachments![0]!.model?.mode).toBe("summary")
-          expect(await Bun.file(result.attachments![0]!.localPath!).text()).toBe("image-content")
+          expect(new Uint8Array(await Bun.file(result.attachments![0]!.localPath!).arrayBuffer()).slice(0, 4)).toEqual(
+            new Uint8Array([137, 80, 78, 71]),
+          )
+          expect(result.attachments![0]!.metadata?.imageInput?.stage).toBe("omitted")
           expect(execute.mock.calls[0]?.[1]).toEqual({ type: "observe", pid: 12, windowId: 34 })
           await Session.remove(session.id)
         },
