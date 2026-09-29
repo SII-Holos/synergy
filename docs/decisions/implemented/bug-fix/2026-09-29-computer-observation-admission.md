@@ -16,6 +16,10 @@ Desktop emits one bounded AX representation, while typed status and diagnostic e
 
 Image delivery uses generic Harness receipts at the final provider transform and existing rollout transport. The originating model call is captured at tool-call admission; neither Computer nor the UI parses provider request bodies. Attachment metadata distinguishes saved, included, submitted and omitted images. The UI consumes the canonical observation schema and withholds coordinate support without a submitted image receipt. Unknown historical records remain unknown.
 
+The native fixture measures application state independently of the worker response. Model acceptance keeps its random canvas code outside AX and model context and checks the clicked window's counter. Image receipts recognize final SDK binary/base64 file parts and nested tool-result images; wire hashes establish actual submission. The native and model scripts emit machine-readable pass/fail/blocked reports and retain private evidence under ignored artifact directories.
+
+Provenance: [Cua's pinned native implementation](https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver). Local adaptation: retain its private worker and action serialization, add the logical-window and image proof guards, and adopt the independent AppKit oracle pattern without importing its agent prompts.
+
 ## Alternatives considered
 
 **Only improve screenshot display.** This would retain invalid action admission and would not establish that the model receives the image used for coordinates.

@@ -31,7 +31,7 @@ export async function prepareComputerDriver() {
   const recipe = digest(
     JSON.stringify({
       ...release,
-      arch: process.arch,
+      arch: "universal",
       patch: await hashFile(path.join(native, "observation.patch")),
       module: await hashFile(path.join(native, "synergy.rs")),
     }),
@@ -51,9 +51,10 @@ export async function prepareComputerDriver() {
     (await hashFile(executable)) === receipt.data.sha256
   )
     return
-  const cache = path.resolve(root, "../../.artifacts/computer-build", recipe)
+  const cacheRoot = path.resolve(root, "../../.artifacts/computer-build")
+  const cache = path.join(cacheRoot, recipe)
   await mkdir(cache, { recursive: true })
-  const archive = path.join(cache, "source.tar.gz")
+  const archive = path.join(cacheRoot, `source-${release.commit}.tar.gz`)
   if (!(await Bun.file(archive).exists()) || (await hashFile(archive)) !== release.sourceSha256) {
     const response = await fetch(`https://codeload.github.com/trycua/cua/tar.gz/${release.commit}`, {
       signal: AbortSignal.timeout(300_000),
@@ -75,19 +76,46 @@ export async function prepareComputerDriver() {
   const source = path.join(cache, `cua-${release.commit}/libs/cua-driver/rust`)
   if (!(await Bun.file(path.join(source, ".synergy-patched")).exists())) {
     await run(["tar", "-xzf", archive, "-C", cache, `cua-${release.commit}/libs/cua-driver`], root)
-    await run(["git", "apply", "--unsafe-paths", path.join(native, "observation.patch")], source)
+    await run(["patch", "-p1", "-N", "-f", "-i", path.join(native, "observation.patch")], source)
     await copyFile(path.join(native, "synergy.rs"), path.join(source, "crates/platform-macos/src/synergy.rs"))
     await Bun.write(path.join(source, ".synergy-patched"), recipe)
   }
-  await run(
-    ["cargo", `+${release.rust}`, "build", "--locked", "--release", "-p", "cua-driver", "--bin", "cua-driver"],
-    source,
-  )
+  const targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+  const targetDirectory = path.join(cacheRoot, "target")
+  await run(["rustup", "target", "add", "--toolchain", release.rust, ...targets], source)
+  for (const target of targets)
+    await run(
+      [
+        "cargo",
+        `+${release.rust}`,
+        "build",
+        "--locked",
+        "--release",
+        "--target-dir",
+        targetDirectory,
+        "--target",
+        target,
+        "-p",
+        "cua-driver",
+        "--bin",
+        "cua-driver",
+      ],
+      source,
+    )
   const stage = await mkdtemp(path.join(destination, "stage-"))
   try {
-    const binary = path.join(source, "target/release/cua-driver")
     const pending = path.join(stage, "cua-driver")
-    await copyFile(binary, pending)
+    await run(
+      [
+        "lipo",
+        "-create",
+        ...targets.map((target) => path.join(targetDirectory, target, "release/cua-driver")),
+        "-output",
+        pending,
+      ],
+      source,
+    )
+    for (const architecture of ["arm64", "x86_64"]) await run(["lipo", pending, "-verify_arch", architecture], source)
     await chmod(pending, 0o755)
     for (const name of ["LICENSE.txt", "NOTICE.txt"])
       await copyFile(path.join(root, "build/computer-notices", name), path.join(destination, name))
@@ -95,7 +123,7 @@ export async function prepareComputerDriver() {
       version: 1,
       recipe,
       sha256: await hashFile(pending),
-      architecture: process.arch,
+      architecture: "universal",
       source: release.commit,
       rust: release.rust,
     })

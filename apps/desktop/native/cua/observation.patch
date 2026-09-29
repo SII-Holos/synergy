@@ -58,7 +58,30 @@
          window_id,
 --- a/crates/platform-macos/src/tools/get_window_state.rs
 +++ b/crates/platform-macos/src/tools/get_window_state.rs
-@@ -314,16 +314,8 @@
+@@ -294,6 +294,7 @@
+             .unwrap_or(crate::ax::tree::DEFAULT_MAX_DEPTH);
+         let timeout_ms = cua_driver_core::tool_schema::resolve_timeout_ms(args.get("timeout_ms"));
+
++        let synergy_capture = args["synergy"] == true;
+         let (tree_result, prepared_snapshot) = if want_tree {
+             let q = query.clone();
+             // `timeout_ms` bounds the walk itself: it returns the partial tree
+@@ -301,12 +302,13 @@
+             // for an AX call that ignores the per-element messaging timeout
+             // (dropping a spawn_blocking JoinHandle cannot cancel it).
+             let walk_future = tokio::task::spawn_blocking(move || {
+-                let tree = crate::ax::tree::walk_tree_budgeted(
++                let tree = crate::ax::tree::walk_tree_scoped(
+                     pid,
+                     Some(window_id),
+                     q.as_deref(),
+                     max_depth,
+                     cua_driver_core::walk_budget::WalkBudget::new(timeout_ms, max_elements),
++                    !synergy_capture,
+                 );
+                 let payload = crate::ax::cache::CachedSnapshot::from_nodes(&tree.nodes);
+                 (tree, payload)
+@@ -314,16 +316,8 @@
              let backstop = std::time::Duration::from_millis(timeout_ms) + AX_WALK_BACKSTOP_GRACE;
              match tokio::time::timeout(backstop, walk_future).await {
                  Ok(Ok((tree, payload))) => (Some(tree), Some(payload)),
@@ -77,15 +100,7 @@
              }
          } else {
              (None, None)
-@@ -363,6 +355,7 @@
-         // Returns the exact delivered PNG bytes, optional file path, delivered
-         // and native dimensions, the WindowServer bounds it was validated
-         // against, and the raw capture's backing scale.
-+        let synergy_capture = args["synergy"] == true;
-         let mut screenshot_frame_error = None;
-         let mut screenshot_resize_scale = None;
-         let screenshot = if should_capture {
-@@ -383,7 +376,7 @@
+@@ -383,7 +377,7 @@
                  let bounds = crate::windows::window_bounds_by_id(window_id)
                      .filter(|b| b.width > 0.0 && b.height > 0.0)
                      .ok_or(super::px_frame::PxFrameError::WindowNotFound { window_id })?;
@@ -151,7 +166,19 @@
              element_cache: Arc::new(ElementCache::new()),
              cursor_registry: Arc::new(CursorRegistry::new()),
              zoom_registry: Arc::new(ZoomRegistry::new()),
-@@ -834,9 +837,7 @@
+@@ -809,9 +812,11 @@
+         let zoom_registry = state.zoom_registry.clone();
+         let cursor_registry = state.cursor_registry.clone();
+         let capture_bindings = state.capture_bindings.clone();
++        let observations = state.synergy.clone();
+         let registration =
+             cua_driver_core::session::register_scoped_session_end_hook(move |session_id| {
+                 session_config.clear(session_id);
++                observations.retire_session(session_id);
+                 zoom_registry.retire_session(session_id);
+                 element_cache.retire_session_screenshots(session_id);
+                 capture_bindings.retire_session(session_id);
+@@ -834,9 +839,7 @@
 
      registry.register(Box::new(list_apps::ListAppsTool));
      registry.register(Box::new(list_windows::ListWindowsTool));
@@ -162,7 +189,7 @@
      registry.register(Box::new(
          cua_driver_core::expectation::VerifyStateTool::new(Arc::new(
              cua_driver_core::expectation::ToolObservationProvider::new(
-@@ -855,7 +856,7 @@
+@@ -855,7 +858,7 @@
      registry.register(Box::new(set_window_frame::SetWindowFrameTool));
      registry.register(Box::new(invoke_menu::InvokeMenuTool));
      registry.register(pid_window_guarded(
@@ -171,7 +198,7 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
-@@ -871,11 +872,11 @@
+@@ -871,11 +874,11 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
@@ -185,7 +212,7 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
-@@ -887,7 +888,7 @@
+@@ -887,7 +890,7 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
@@ -194,3 +221,32 @@
          &pid_window_candidates,
      ));
      cua_driver_core::clipboard::register_clipboard_tools(
+--- a/crates/platform-macos/src/ax/tree.rs
++++ b/crates/platform-macos/src/ax/tree.rs
+@@ -208,7 +208,18 @@
+     window_id: Option<u32>,
+     query: Option<&str>,
+     max_depth: usize,
++    budget: WalkBudget,
++) -> TreeWalkResult {
++    walk_tree_scoped(pid, window_id, query, max_depth, budget, true)
++}
++
++pub(crate) fn walk_tree_scoped(
++    pid: i32,
++    window_id: Option<u32>,
++    query: Option<&str>,
++    max_depth: usize,
+     mut budget: WalkBudget,
++    include_app_surfaces: bool,
+ ) -> TreeWalkResult {
+     let mut nodes: Vec<AXNode> = Vec::new();
+     let mut lines: Vec<(usize, String)> = Vec::new(); // (depth, line)
+@@ -303,6 +314,7 @@
+             let walk = decision
+                 .walk
+                 .iter()
++                .filter(|&&index| include_app_surfaces || candidates[index].ax_window_id == Some(wid))
+                 .map(|&index| top_level[index])
+                 .collect();
+             window_scope = Some(decision.scope);

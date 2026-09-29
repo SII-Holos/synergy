@@ -37,6 +37,7 @@
       },
       "devDependencies": {
         "@electron/asar": "3.4.1",
+        "@ericsanchezok/synergy-sdk": "workspace:*",
         "@types/node": "catalog:",
         "@types/unzipper": "0.10.11",
         "electron": "42.5.0",

@@ -33,6 +33,10 @@ export namespace InputImages {
   function model(value: unknown): string[] {
     if (!Array.isArray(value)) return []
     const hashes = new Set<string>()
+    function add(image: unknown) {
+      const hash = data(image)
+      if (hash && hashes.size < 128) hashes.add(hash)
+    }
     for (const message of value) {
       const content = record(message)?.content
       if (!Array.isArray(content)) continue
@@ -44,8 +48,21 @@ export namespace InputImages {
             : item?.type === "file" && typeof item.mediaType === "string" && item.mediaType.startsWith("image/")
               ? item.data
               : undefined
-        const hash = data(image)
-        if (hash) hashes.add(hash)
+        if (typeof image === "string" && /^[A-Za-z0-9+/]+={0,2}$/.test(image)) add(`data:image/png;base64,${image}`)
+        else add(image)
+        const output = item?.type === "tool-result" ? record(item.output) : undefined
+        if (output?.type !== "content" || !Array.isArray(output.value)) continue
+        for (const value of output.value) {
+          const part = record(value)
+          if (part?.type === "image-url") add(part.url)
+          if (
+            (part?.type === "image-data" || part?.type === "media") &&
+            typeof part.mediaType === "string" &&
+            part.mediaType.startsWith("image/") &&
+            typeof part.data === "string"
+          )
+            add(`data:${part.mediaType};base64,${part.data}`)
+        }
       }
     }
     return [...hashes].slice(0, 128)

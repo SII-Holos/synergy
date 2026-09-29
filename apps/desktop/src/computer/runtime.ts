@@ -42,8 +42,8 @@ type Observation = {
 }
 type Run = { session: string; observation?: Observation; updated: number }
 
-// Cua v0.30.4: exact-window snapshots and per-PID background mutation serialization.
-// https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver
+// Provenance: https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver
+// Local adaptation: bounded exact-window observations and one-use background action admission.
 export class ComputerRuntime {
   private generation = 0
   private readonly runs = new Map<string, Run>()
@@ -166,12 +166,24 @@ export class ComputerRuntime {
           quality: described.observation,
           expires: performance.now() + 60_000,
         }
+        const captureError = z
+          .object({
+            code: z.string().max(100).optional(),
+            reason: z
+              .string()
+              .transform((value) => value.slice(0, 2000))
+              .optional(),
+          })
+          .safeParse(result.metadata.screenshot_error)
         return {
           output: described.output,
           observationId: id,
           observation: described.observation,
           images: described.images,
-          metadata: { computerObservation: described.observation },
+          metadata: {
+            computerObservation: described.observation,
+            ...(captureError.success ? { computerDiagnostics: { captureError: captureError.data } } : {}),
+          },
         }
       }
       const observed = run.observation
@@ -269,6 +281,11 @@ export class ComputerRuntime {
     const text = result.content.flatMap((x) => (x.type === "text" ? [x.text] : [])).join("\n")
     const metadata = result.structuredContent ?? {}
     if (result.isError) {
+      if (metadata.code === "window_id_not_found" || metadata.code === "window_owner_pid_mismatch")
+        throw new ComputerError(
+          "computer_window_unavailable",
+          "This window no longer belongs to the selected app. Use computer_apps to find its current pid and windowId, then observe it.",
+        )
       const refusal = z.object({ code: z.string().regex(/^[a-zA-Z0-9_]{1,100}$/) }).safeParse(metadata.refusal)
       const code = refusal.success ? refusal.data.code : "computer_native_error"
       throw new ComputerError(

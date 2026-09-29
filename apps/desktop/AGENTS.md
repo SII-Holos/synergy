@@ -24,7 +24,7 @@ For startup progress changes, also run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test 
 
 Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
 
-For native Computer changes, read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts` and verify exact-window background actions in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.
+For native Computer changes, load `change-computer-runtime` and read [Native Computer Use](../../docs/architecture/computer-use.md); run `bun test test/computer/*.test.ts`, `test:computer-native` and `test:computer-acceptance` in an isolated Desktop. `bun run test:coverage` includes both top-level and Computer suites and is the root coverage manifest entry point.
 
 For keep-awake changes, run `bun test test/power-save.test.ts` and verify in an isolated Desktop that the assertion appears while a task runs, survives closing the window, and leaves nothing behind after quitting (macOS: `pmset -g assertions`).
 

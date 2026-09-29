@@ -95,7 +95,7 @@ Report the isolated home label without exposing secrets, chosen mode and ports, 
 
 ## Native Computer Verification
 
-For macOS Computer changes, use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. `SYNERGY_COMPUTER_DRIVER_PATH` may point to a verified development binary; production builds use the pinned driver. Exercise discovery, observation, a background action in a disposable native app, image delivery, profile denial, cancellation, and reconnect. Check the target app state and frontmost app independently; a successful input dispatch alone is insufficient. Never replace a missing OS grant with another application's authority.
+For macOS Computer changes, load [change-computer-runtime](../change-computer-runtime/SKILL.md) for native and real-model fixtures, packaged candidate acceptance and visual checks. Use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. The full `bun dev desktop` orchestrator registers the Computer host; `--attach` alone does not. `SYNERGY_COMPUTER_DRIVER_PATH` may select a verified development binary; candidate acceptance must use its bundled worker. Never replace a missing OS grant with another application's authority.
 
 For OS permission verification, launch the isolated app through macOS LaunchServices and inspect its actual permission state. A terminal-spawned Electron can inherit the terminal host's TCC responsibility, so a successful preflight does not establish that the standalone Desktop app has its own grants. Use a clearly named isolated app bundle; never modify another app's identity or reuse its grants to make a test pass.
 

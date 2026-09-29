@@ -1,5 +1,5 @@
-// The source pin and local patch preserve Cua's capture bindings and per-PID actuator gates.
-// https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver
+// Provenance: https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver
+// Local adaptation: pinned MIT worker plus exact-window proof and dispatch guards; no upstream agent prompts.
 export const CUA_DRIVER_RELEASE = {
   version: "0.30.4",
   commit: "bf6c76786d938070f4ecf1e44004752f69f518b8",

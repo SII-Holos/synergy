@@ -172,3 +172,36 @@ test("overlapping calls on the same process are refused without a desktop-wide l
   unblock()
   await first
 })
+
+test("missing or foreign windows tell the agent to rediscover the target", async () => {
+  for (const code of ["window_id_not_found", "window_owner_pid_mismatch"]) {
+    const runtime = new ComputerRuntime(async () => ({
+      isError: true,
+      content: [],
+      structuredContent: { code, suggestion: "internal native procedure" },
+    }))
+    await expect(runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })).rejects.toMatchObject({
+      code: "computer_window_unavailable",
+      message: expect.stringContaining("computer_apps"),
+    })
+  }
+})
+
+test("capture diagnostics stay bounded outside model-facing observation text", async () => {
+  const runtime = new ComputerRuntime(async () => ({
+    content: [],
+    structuredContent: {
+      ...metadata,
+      screenshot_error: {
+        code: "px_capture_unavailable",
+        reason: "capture permission rejected",
+        suggestion: "native-only procedure",
+      },
+    },
+  }))
+  const result = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  expect(result.metadata.computerDiagnostics).toEqual({
+    captureError: { code: "px_capture_unavailable", reason: "capture permission rejected" },
+  })
+  expect(result.output).not.toContain("native-only procedure")
+})
