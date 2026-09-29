@@ -4,7 +4,7 @@
   "productName": "Synergy",
   "icon": "build/icon.png",
   "asar": true,
-  "asarUnpack": ["**/*.node", "**/*.dylib"],
+  "asarUnpack": ["**/*.node", "**/*.dylib", "node_modules/@trycua/**", "node_modules/@ubjs/**"],
   "afterPack": "script/after-pack.cjs",
   "directories": {
     "buildResources": "build",

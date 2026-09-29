@@ -25,12 +25,12 @@ pub(crate) struct Identity {
     cg_frame: [f64; 4],
 }
 impl Identity {
-    fn matches(&self, other: &Self) -> bool {
+    fn matches(&self, other: &Self, pixels: bool) -> bool {
         self.pid == other.pid
             && self.window_id == other.window_id
             && self.process_start == other.process_start
             && self.frame == other.frame
-            && self.cg_frame == other.cg_frame
+            && (!pixels || self.cg_frame == other.cg_frame)
             && unsafe {
                 CFEqual(
                     self.window.as_ptr() as CFTypeRef,
@@ -140,7 +140,8 @@ pub(crate) async fn check(pid: i32, window_id: u32, pixels: bool) -> Result<(), 
         return Err(refusal("capture_unavailable_for_action"));
     }
     let valid = tokio::task::spawn_blocking(move || {
-        let same = identity(pid, window_id).is_some_and(|now| observed.identity.matches(&now));
+        let same =
+            identity(pid, window_id).is_some_and(|now| observed.identity.matches(&now, pixels));
         same && (!pixels
             || crate::capture::screenshot_window_bytes_verified(pid, window_id).is_ok())
     })
@@ -192,14 +193,18 @@ impl<T: Tool> Tool for GuardedTool<T> {
             let stable = before
                 .as_ref()
                 .zip(after.as_ref())
-                .is_some_and(|(a, b)| a.matches(b));
+                .is_some_and(|(a, b)| a.matches(b, false));
+            let pixels_stable = before
+                .as_ref()
+                .zip(after.as_ref())
+                .is_some_and(|(a, b)| a.matches(b, true));
             let mut quality = json!({"image_status":"unavailable", "reason":"capture_unavailable", "source":"screencapturekit_window"});
             let image = result.content.iter().find_map(|c| match c {
                 Content::Image { data, .. } => STANDARD.decode(data).ok(),
                 _ => None,
             });
             if let Some(bytes) = image {
-                if stable && bytes.len() <= 6 * 1024 * 1024 {
+                if pixels_stable && bytes.len() <= 6 * 1024 * 1024 {
                     if let Ok(decoded) =
                         image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
                     {

@@ -245,6 +245,19 @@ export class ComputerRuntime {
       const result = await this.native(tool, args, signal)
       return {
         ...result,
+        images: [],
+        metadata: {
+          ...result.metadata,
+          ...(input.action === "point" && command.imageReceipt
+            ? {
+                imageAdmission: {
+                  callID: command.imageReceipt.callID,
+                  sha256: observed.quality.image.sha256,
+                  observationId: observed.id,
+                },
+              }
+            : {}),
+        },
         output: "Action dispatched. Observe again to verify the result before another action.",
       }
     } finally {

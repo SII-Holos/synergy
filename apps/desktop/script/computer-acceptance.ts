@@ -3,6 +3,7 @@ import { createHash } from "node:crypto"
 import { mkdir, realpath } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { z } from "zod"
 import { assert, startFixture, stageManagerEnabled, type Check } from "./computer-fixture"
 
 export async function runComputerAcceptance(options: {
@@ -128,6 +129,28 @@ export async function runComputerAcceptance(options: {
         )
       }),
       "An observed attachment must have a durable submitted receipt for the exact bytes",
+    )
+    const admission = z
+      .object({ callID: z.string(), sha256: z.string(), observationId: z.string() })
+      .safeParse(actions[0]?.state.status === "completed" ? actions[0].state.metadata?.imageAdmission : undefined)
+    check(
+      "point evidence identifies its selecting model call",
+      admission.success &&
+        observes.some(
+          (part) =>
+            part.state.status === "completed" &&
+            part.state.metadata?.observationId === admission.data.observationId &&
+            part.state.attachments?.some((attachment) => attachment.artifact?.sha256 === admission.data.sha256),
+        ) &&
+        messages.some((message) =>
+          message.parts.some(
+            (part) =>
+              part.type === "step-finish" &&
+              part.accounting?.kind === "rollout" &&
+              part.accounting.callIDs.includes(admission.success ? admission.data.callID : ""),
+          ),
+        ),
+      "The point must retain its observation hash and originating rollout call",
     )
     const stage = await stageManagerEnabled()
     await Bun.write(

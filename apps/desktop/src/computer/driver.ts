@@ -2,6 +2,7 @@ import { access } from "node:fs/promises"
 import type { CuaDriver } from "@trycua/cua-driver"
 import { ComputerError, type ComputerCommand } from "@ericsanchezok/synergy-computer-protocol"
 import { ComputerRuntime, type ComputerPermissions } from "./runtime.js"
+import { nativeSdkEntry } from "./sdk-entry.js"
 
 export class ComputerDriver {
   private client?: CuaDriver
@@ -57,7 +58,9 @@ export class ComputerDriver {
   private async start(): Promise<CuaDriver> {
     try {
       await access(this.executable)
-      const { CuaDriver, SessionPermissionMode } = await import("@trycua/cua-driver")
+      const { CuaDriver, SessionPermissionMode } = (await import(
+        nativeSdkEntry(import.meta.resolve("@trycua/cua-driver"))
+      )) as typeof import("@trycua/cua-driver")
       if (this.closed) throw new Error("Computer host has closed.")
       // The official private worker owns its stdin lifecycle without a daemon
       // endpoint or the standalone installation's global PID file.

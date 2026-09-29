@@ -77,8 +77,15 @@ test("image point admission binds sent bytes, pixel bounds and the native captur
         ? {}
         : { imageReceipt: { callID: "current-call", sha256: [mode === "wrong" ? "0".repeat(64) : sha256] } }),
     })
-    if (mode === "valid") await action
-    else
+    if (mode === "valid") {
+      const result = await action
+      expect(result.images).toEqual([])
+      expect(result.metadata.imageAdmission).toEqual({
+        callID: "current-call",
+        sha256,
+        observationId: observed.observationId,
+      })
+    } else
       await expect(action).rejects.toMatchObject({
         code: mode === "outside" ? "computer_point_out_of_bounds" : "computer_image_not_delivered",
       })

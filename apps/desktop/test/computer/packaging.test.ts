@@ -2,6 +2,22 @@ import { expect, test } from "bun:test"
 import { CUA_DRIVER_RELEASE } from "../../src/computer/release"
 import config from "../../electron-builder.json"
 import manifest from "../../package.json"
+import { nativeSdkEntry } from "../../src/computer/sdk-entry"
+
+test("the packaged SDK resolves native libraries from physical package directories", () => {
+  expect(
+    nativeSdkEntry(
+      "file:///Applications/Synergy.app/Contents/Resources/app.asar/node_modules/@trycua/cua-driver/dist/index.js",
+    ),
+  ).toBe(
+    "file:///Applications/Synergy.app/Contents/Resources/app.asar.unpacked/node_modules/@trycua/cua-driver/dist/index.js",
+  )
+  expect(nativeSdkEntry("file:///development/node_modules/@trycua/cua-driver/dist/index.js")).toBe(
+    "file:///development/node_modules/@trycua/cua-driver/dist/index.js",
+  )
+  expect(config.asarUnpack).toContain("node_modules/@trycua/**")
+  expect(config.asarUnpack).toContain("node_modules/@ubjs/**")
+})
 
 test("macOS packages the source-pinned worker and unpacks both native SDK library formats", async () => {
   expect(manifest.dependencies["@trycua/cua-driver"]).toBe(CUA_DRIVER_RELEASE.version)

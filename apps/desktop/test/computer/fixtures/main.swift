@@ -96,6 +96,9 @@ final class App: NSObject, NSApplicationDelegate {
         case "move": fixture.window.setFrameOrigin(NSPoint(x: command["x"] as? Double ?? 100, y: command["y"] as? Double ?? 120))
         case "hide": fixture.window.orderOut(nil)
         case "show": fixture.window.orderFront(nil)
+        case "foreground":
+            fixture.window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         case "background": priorFrontmost?.activate(options: [])
         case "close": fixture.window.close()
         case "refresh": break

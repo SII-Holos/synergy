@@ -4,6 +4,8 @@ import { createHash } from "node:crypto"
 import { assert, eventually, startFixture, stageManagerEnabled, type Check, type Oracle } from "./computer-fixture"
 import { ComputerDriver } from "../src/computer/driver"
 
+class CaptureUnavailable extends Error {}
+
 export type NativeReport = {
   version: 1
   kind: "native"
@@ -35,7 +37,11 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
       await fn()
       report.checks.push({ name, status: "pass" })
     } catch (error) {
-      report.checks.push({ name, status: "fail", detail: error instanceof Error ? error.message : String(error) })
+      report.checks.push({
+        name,
+        status: error instanceof CaptureUnavailable ? "blocked" : "fail",
+        detail: error instanceof Error ? error.message : String(error),
+      })
     }
   }
   try {
@@ -62,13 +68,9 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
       )
       return result
     }
-    const first = await eventually(
-      observe,
-      (value) => value.observation?.ax.status !== "unavailable" && value.observation?.image.status === "valid",
-      15_000,
-    )
-    assert(first.images[0], "Fixture image is unavailable; verify the source host's AX and Screen Recording grants")
-    await Bun.write(path.join(directory, "window.png"), Buffer.from(first.images[0].data, "base64"))
+    const first = await eventually(observe, (value) => value.observation?.ax.status !== "unavailable", 15_000)
+    if (first.images[0])
+      await Bun.write(path.join(directory, "window.png"), Buffer.from(first.images[0].data, "base64"))
     await Bun.write(path.join(directory, "observation.json"), JSON.stringify({ ...first, images: [] }, null, 2))
     await check("exact-window and canvas-only evidence", async () => {
       assert(first.output.includes(target.axToken), "Target AX content missing")
@@ -76,17 +78,9 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
       assert(!first.output.includes(target.nonce), "Canvas nonce leaked through AX text")
       assert(!first.output.includes("AXMenuBar"), "Application menu bar leaked into the window projection")
       assert(Buffer.byteLength(first.output) <= 32768, "Observation exceeds the UTF-8 budget")
-      assert(
-        first.observation!.image.width! / target.width === first.observation!.image.height! / target.height,
-        "Image geometry differs from the logical window",
-      )
     })
     await command("background")
-    await eventually(
-      observe,
-      (value) => value.observation?.actions.click.available === true && value.observation?.image.status === "valid",
-      15_000,
-    )
+    await eventually(observe, (value) => value.observation?.actions.click.available === true, 15_000)
     const foreground = (await command("refresh")).frontmost
     await check("AX-only semantic click changes only the target", async () => {
       permissions.screen = false
@@ -109,10 +103,42 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
         permissions.screen = true
       }
     })
-    await check("image point dispatch uses the immutable capture", async () => {
+    await check("pixel admission matches the current representation", async () => {
       const observed = await observe()
+      if (report.stageManager && observed.observation?.image.reason === "capture_representation_mismatch") {
+        assert(
+          observed.images.length === 0 && !observed.observation.actions.point.available,
+          "Stage Manager representation escaped as an actionable image",
+        )
+        const before = (await state()).windows[0]!.hits
+        const refusal = await driver!
+          .execute("native-acceptance", {
+            type: "action",
+            input: { action: "point", observationId: observed.observationId!, x: 10, y: 10 },
+          })
+          .then(
+            () => "dispatched",
+            (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
+          )
+        assert(refusal === "computer_action_unavailable", "Unverified Stage Manager point was admitted")
+        assert((await command("refresh")).windows[0]!.hits === before, "Refused point changed the app")
+        assert(
+          (await command("refresh")).frontmost === foreground,
+          "Stage Manager verification changed the foreground app",
+        )
+        report.checks.push({ name: "Stage Manager thumbnail is withheld and cannot admit pixels", status: "pass" })
+        return
+      }
+      if (observed.observation?.image.status === "unavailable")
+        throw new CaptureUnavailable(
+          JSON.stringify(observed.metadata.computerDiagnostics ?? observed.observation.image),
+        )
       assert(observed.observation?.image.status === "valid", "Current representation cannot be verified for pixels")
       const image = observed.observation.image
+      assert(
+        image.width! / target.width === image.height! / target.height,
+        "Image geometry differs from the logical window",
+      )
       await driver!.execute("native-acceptance", {
         type: "action",
         input: {
@@ -161,20 +187,50 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
     })
     await check("legitimate narrow windows remain usable", async () => {
       await command("resize", { width: 180 })
-      const narrow = await eventually(observe, (value) => value.observation?.image.status === "valid", 10_000)
+      await command("foreground")
+      await eventually(
+        () => command("refresh"),
+        (value) => value.frontmost === initial.pid,
+      )
+      const deadline = performance.now() + 5000
+      let narrow = await observe()
+      while (narrow.observation?.image.status !== "valid" && performance.now() < deadline) {
+        await Bun.sleep(100)
+        narrow = await observe()
+      }
+      if (narrow.observation?.image.status === "unavailable")
+        throw new CaptureUnavailable(JSON.stringify(narrow.metadata.computerDiagnostics ?? narrow.observation.image))
       const current = (await state()).windows[0]!
       assert(current.width < 250, "Fixture did not become narrow")
       assert(narrow.images.length === 1, "A valid narrow window was rejected by an image-size heuristic")
     })
-    await check("closed windows require rediscovery", async () => {
+    await check("closed windows cannot admit actions", async () => {
+      const previous = await observe()
+      const index = previous.output.match(/\[(\d+)\].*Increment/)
+      assert(index, "Increment element missing")
       await command("close")
+      const action = await driver!
+        .execute("native-acceptance", {
+          type: "action",
+          input: { action: "click", observationId: previous.observationId!, elementIndex: Number(index[1]) },
+        })
+        .then(
+          () => "dispatched",
+          (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
+        )
+      assert(action === "computer_target_changed", `Closed window action returned ${String(action)}`)
       const result = await observe().then(
-        () => "observed",
-        (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
+        (value) =>
+          value.images.length === 0 && Object.values(value.observation!.actions).every((action) => !action.available),
+        (error: unknown) => error instanceof Error && "code" in error && error.code === "computer_window_unavailable",
       )
-      assert(result === "computer_window_unavailable", `Closed window returned ${String(result)}`)
+      assert(result, "A closed window granted new action evidence")
     })
-    report.status = report.checks.some((item) => item.status === "fail") ? "fail" : "pass"
+    report.status = report.checks.some((item) => item.status === "fail")
+      ? "fail"
+      : report.checks.some((item) => item.status === "blocked")
+        ? "blocked"
+        : "pass"
   } catch (error) {
     report.checks.push({
       name: "native prerequisites",

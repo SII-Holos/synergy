@@ -196,3 +196,5 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 ## Native Computer Driver
 
 macOS Desktop builds run `desktop:prepare-computer` to prepare the Cua release pinned in `apps/desktop/src/computer/release.ts`. Both archive and executable digests must match before packaging. The `mac.extraResources` entry includes the executable and MIT notices from `build/computer`, and `mac.binaries` includes the executable for nested signing. Keep the notices with every distributed copy; the driver runs as a private child of Desktop for host-attributed macOS permissions. Other platforms do not bundle this driver.
+
+The complete Cua and UniFFI SDK packages must resolve under `app.asar.unpacked`; native extension unpacking alone does not give Rust a physical library path. Exercise the copied application outside the checkout through its own managed server and verify the loaded SDK and worker paths. The [Computer development workflow](../../.synergy/skill/change-computer-runtime/SKILL.md) defines native and real-model acceptance; local ad-hoc signing does not satisfy distribution signing or notarization.
