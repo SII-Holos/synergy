@@ -28,7 +28,7 @@ import { ModelSelectorPopover } from "@/components/dialog/dialog-select-model"
 import { topBar } from "@/locales/messages"
 import { useInput, type ControlProfileId } from "@/context/input"
 import { useFullAccessAcknowledgement } from "@/composables/use-full-access-acknowledgement"
-import { useFile } from "@/context/file"
+import { useFile, useProjectFiles } from "@/context/file"
 import {
   DEFAULT_PROMPT,
   isPromptEqual,
@@ -210,6 +210,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const input = useInput()
   const local = useLocal()
   const files = useFile()
+  const projectFiles = useProjectFiles()
   const prompt = usePrompt()
   const layout = useLayout()
   const workbench = useWorkbenchPanels()
@@ -538,7 +539,7 @@ export function createPromptInputController(props: PromptInputProps) {
   onCleanup(() => pendingUploads.clear())
   const attachmentsUploading = createMemo(() => pendingUploads.uploading())
   const canSubmit = createMemo(() => {
-    if (props.readOnly || submitPending()) return false
+    if (props.readOnly || props.locationPending || submitPending()) return false
     const intent = resolvePromptSubmitIntent({
       text: promptText(),
       working: working(),
@@ -1486,8 +1487,11 @@ export function createPromptInputController(props: PromptInputProps) {
     onKeyDown: atOnKeyDown,
   } = useFilteredList<AtOption>({
     items: async (query) => {
-      const paths = await files.searchFilesAndDirectories(query)
-      return paths.map((path): AtOption => ({ type: "file", path, display: path }))
+      const results = await projectFiles.search(query)
+      return results.map(({ path, workspace }): AtOption => {
+        const absolute = workspace.path ? `${workspace.path.replace(/[\\/]$/, "")}/${path}` : path
+        return { type: "file", path: absolute, display: absolute }
+      })
     },
     deferInitialLoad: true,
     key: atKey,
@@ -1973,10 +1977,13 @@ export function createPromptInputController(props: PromptInputProps) {
     editor: editorElement,
     queueScroll,
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
-    beforeSubmit: () => composerDocument!.beforeSubmit(),
+    beforeSubmit: async () => {
+      await props.onValidateLocation?.()
+      await composerDocument!.beforeSubmit()
+    },
   })
   const handleSubmit = (event: Event) => {
-    if (abandonPending() || (continuePending() && !working())) {
+    if (props.locationPending || abandonPending() || (continuePending() && !working())) {
       event.preventDefault()
       return
     }
@@ -2059,6 +2066,10 @@ export function createPromptInputController(props: PromptInputProps) {
         </Show>
         <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
         <SessionWorkContext
+          directories={props.projectDirectories}
+          directoryError={props.projectDirectoryError}
+          onRefresh={props.onProjectDirectoriesRefresh}
+          onSelect={props.onNewSessionWorkspaceSelectionChange}
           uploading={attachmentsUploading()}
           onWorkspaceTransition={props.onWorkspaceTransition}
           running={working()}

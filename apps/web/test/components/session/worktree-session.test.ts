@@ -163,13 +163,13 @@ describe("workspace transition progress model", () => {
     ])
 
     const success = createWorkspaceTransitionSuccessProgress({ operation: "enter" })
-    expect(translateProgressCopy(success.title)).toBe("Using an independent copy")
-    expect(translateProgressCopy(success.description)).toContain("independent copy")
+    expect(translateProgressCopy(success.title)).toBe("Using a Worktree")
+    expect(translateProgressCopy(success.description)).toContain("Worktree")
     expect(success.steps.every((step) => step.state === "complete")).toBe(true)
 
     const error = createWorkspaceTransitionErrorProgress({ operation: "enter", message: "Failed" })
     expect(error).toMatchObject({ phase: "error", kind: "enter-worktree" })
-    expect(translateProgressCopy(error.title)).toBe("Could not use the independent copy")
+    expect(translateProgressCopy(error.title)).toBe("Could not use the Worktree")
     expect(error.description).toBe("Failed")
     expect("retry" in error).toBe(false)
     expect("dismiss" in error).toBe(false)
@@ -217,13 +217,13 @@ describe("workspace transition progress model", () => {
     const i18n = englishI18n()
     const createProgress = createNewSessionWorkspaceProgress({ selection: { mode: "create" }, stage: "workspace" })
     expect(createProgress).toMatchObject({ kind: "new-worktree-session", phase: "loading" })
-    expect(translateProgressCopy(createProgress.title)).toBe("Starting task in an independent copy")
+    expect(translateProgressCopy(createProgress.title)).toBe("Starting task in a Worktree")
     expect(translateProgressCopy(createProgress.description)).toBe(
-      "Preparing the independent copy and sending your first message.",
+      "Preparing the Worktree and sending your first message.",
     )
     expect(createProgress.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
-      ["Create independent copy", "active"],
+      ["Create Worktree", "active"],
       ["Submit message", "pending"],
     ])
 
@@ -240,11 +240,11 @@ describe("workspace transition progress model", () => {
     const createSuccess = createNewSessionWorkspaceSuccessProgress({ selection: { mode: "create" } })
     expect(createSuccess).toMatchObject({ kind: "new-worktree-session", phase: "success" })
     expect(translateProgressCopy(createSuccess.description)).toBe(
-      "The independent copy is ready and your first message is queued.",
+      "The Worktree is ready and your first message is queued.",
     )
     expect(createSuccess.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
-      ["Create independent copy", "complete"],
+      ["Create Worktree", "complete"],
       ["Submit message", "complete"],
       ["Initialize execution", "complete"],
     ])
@@ -256,7 +256,7 @@ describe("workspace transition progress model", () => {
     )
     expect(createAccepted.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
-      ["Create independent copy", "complete"],
+      ["Create Worktree", "complete"],
       ["Submit message", "complete"],
       ["Initialize execution", "active"],
     ])

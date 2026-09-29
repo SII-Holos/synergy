@@ -30,6 +30,7 @@ import { normalizeWorkspacePath, pdfPreviewAction, pdfPreviewBytes } from "@/com
 import { releaseFileSourceWorkspace } from "@/components/file-workbench/source-model-cache"
 import {
   fileWorkspace,
+  projectFileWorkspaces,
   selectedFileWorkspace,
   fileWorkspaceKey,
   workspaceFileOwner,
@@ -1232,10 +1233,17 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const params = useParams()
     const owner = getOwner()
     const entries = new Map<string, { value: WorkspaceFiles; dispose: VoidFunction; users: number }>()
+    const [taskWorkspace, setTaskWorkspace] = createSignal<FileWorkspace | null | undefined>(undefined, {
+      equals: (a, b) =>
+        a === b ||
+        (!!a && !!b && a.id === b.id && a.generation === b.generation && a.path === b.path && a.scopeID === b.scopeID),
+    })
     const selected = createMemo(() =>
       params.id
         ? selectedFileWorkspace(sync.session.get(params.id), sync.data.workspaces)
-        : fileWorkspace(sync.data.path.workspace),
+        : taskWorkspace() === undefined
+          ? fileWorkspace(sync.data.path.workspace)
+          : (taskWorkspace() ?? undefined),
     )
     const selectedKey = () => fileWorkspaceKey(sdk.url, sdk.scopeID, fileWorkspace(selected()) ?? null)
     const prune = (keep?: string) => {
@@ -1266,7 +1274,32 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
       for (const entry of entries.values()) entry.dispose()
       entries.clear()
     })
+    const roots = createMemo(() => projectFileWorkspaces(selected(), sync.data.workspaces))
     return {
+      roots,
+      setTaskWorkspace,
+      open: (workspace: FileWorkspace, path: string) => getEntry(workspace).value.openWorkspaceFile(path),
+      async search(query: string, signal?: AbortSignal) {
+        return (
+          await Promise.all(
+            roots().map(async (workspace) => {
+              const entry = getEntry(workspace)
+              entry.users++
+              try {
+                const result = await entry.value.searchFiles(query, { signal, limit: 100 })
+                return (result?.items ?? []).flatMap((item) =>
+                  item.kind === "file" && item.type === "file" ? [{ path: item.path, name: item.name, workspace }] : [],
+                )
+              } finally {
+                entry.users--
+                prune()
+              }
+            }),
+          )
+        )
+          .flat()
+          .slice(0, 100)
+      },
       retain(workspace: FileWorkspace | null) {
         const entry = getEntry(workspace)
         entry.users++
@@ -1283,7 +1316,7 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
   },
 })
 
-export { FileProvider }
+export { FileProvider, useFileManager as useProjectFiles }
 export function useFile() {
   return useContext(FileOverride) ?? useFileManager().current
 }

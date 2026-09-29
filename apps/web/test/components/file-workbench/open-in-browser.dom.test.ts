@@ -32,6 +32,7 @@ beforeAll(async () => {
       fileStubPath,
       `
         export const FileWorkspaceProvider = (props) => props.children
+        export const useProjectFiles = () => ({ roots: () => [], search: async () => [], open: async () => {} })
         export const useFile = () => ({
           draft: { backupUnavailable: () => false, get: () => undefined, dirty: () => false, begin() {}, discard() {} },
           workspace: { id: "wsp_demo", generation: 1, scopeID: "project", path: "/workspace/demo", type: "directory" },

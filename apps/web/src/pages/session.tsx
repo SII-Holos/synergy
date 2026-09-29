@@ -1,3 +1,6 @@
+import { catalogFileWorkspace } from "@/context/file/workspace"
+import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
+import { projectTaskIntent } from "@/components/session/project-task-intent"
 import { handleComposerTypingAutofocus } from "@/components/prompt-input/typing-autofocus"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { SessionPreparation } from "@/components/session/session-preparation"
@@ -25,13 +28,25 @@ import { PluginPageOutlet } from "@/plugin/shell-outlet"
 import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
 import { SessionDecisionHost } from "@/components/session/decision-surface"
-import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup, untrack, type JSX } from "solid-js"
+import {
+  Show,
+  Match,
+  Switch,
+  createMemo,
+  createResource,
+  createEffect,
+  createSignal,
+  on,
+  onCleanup,
+  untrack,
+  type JSX,
+} from "solid-js"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocal } from "@/context/local"
-import { useFile, type SelectedLineRange } from "@/context/file"
+import { useFile, useProjectFiles, type SelectedLineRange } from "@/context/file"
 import { createStore } from "solid-js/store"
 import { hasSpecialUserMessageRenderer } from "@ericsanchezok/synergy-ui/special-user-message"
 
@@ -171,9 +186,11 @@ export default function Page() {
 }
 
 function SessionPageContent() {
+  const globalSDK = useGlobalSDK()
   const layout = useLayout()
   const local = useLocal()
   const file = useFile()
+  const projectFiles = useProjectFiles()
   const sync = useSync()
   const dataView = useSessionDataView()
   const terminal = useTerminal()
@@ -920,18 +937,61 @@ function SessionPageContent() {
     return mergeTimelineMessages([...turns, ...mailbox, ...actionCommands])
   }, emptyTimeline)
 
-  const scopeRoot = createMemo(() => sync.scope?.local?.worktree ?? sync.data.path.directory)
-  const newSessionWorkspacePreference = createMemo<NewSessionWorkspacePreference>(() =>
-    sync.scope?.local?.vcs === "git" ? (sync.data.config.defaultSessionWorkspace ?? "main") : "main",
+  const [projectDirectories, { refetch: refreshProjectDirectories, mutate: updateProjectDirectories }] = createResource(
+    () =>
+      !sdk.isHome && globalSDK.capabilities.has("workbench") ? { client: sdk.client, scopeID: sdk.scopeID } : false,
+    async ({ client, scopeID }) => {
+      try {
+        return { data: (await client.project.directories({ scopeID }, { throwOnError: true })).data, error: "" }
+      } catch (error) {
+        return { data: undefined, error: error instanceof Error ? error.message : String(error) }
+      }
+    },
   )
+  const mainFolder = createMemo(() =>
+    projectDirectories()?.data?.folders.find(
+      (folder) => folder.workspaceID === projectDirectories()?.data?.mainWorkspaceID,
+    ),
+  )
+  const scopeRoot = createMemo(() => mainFolder()?.path ?? sync.scope?.local?.worktree ?? sync.data.path.directory)
   const newSessionWorkspaceSelection = createMemo(() =>
-    defaultNewSessionWorkspaceSelection({
-      selected: store.newSessionWorkspaceSelection,
-      currentDirectory: sync.data.path.directory ?? undefined,
-      canonicalDirectory: scopeRoot() ?? undefined,
-      preference: newSessionWorkspacePreference(),
-    }),
+    globalSDK.capabilities.has("workbench") && !sdk.isHome
+      ? projectTaskIntent({
+          directories: projectDirectories()?.data,
+          selected: store.newSessionWorkspaceSelection,
+          preference: sync.data.config.defaultSessionWorkspace ?? "main",
+        })
+      : defaultNewSessionWorkspaceSelection({ selected: store.newSessionWorkspaceSelection, preference: "main" }),
   )
+  createEffect(() => {
+    if (params.id || !globalSDK.capabilities.has("workbench")) {
+      projectFiles.setTaskWorkspace(undefined)
+      return
+    }
+    const choice = newSessionWorkspaceSelection()
+    const id =
+      choice.mode === "workspace" ? choice.workspaceID : choice.mode === "create" ? choice.sourceWorkspaceID : undefined
+    const record = sync.data.workspaces.find(
+      (item) =>
+        item.id === id ||
+        (choice.mode === "existing" && [item.metadata.worktreeID, item.binding.path].includes(choice.target)),
+    )
+    const folder = projectDirectories()?.data?.folders.find((item) => item.workspaceID === id)
+    projectFiles.setTaskWorkspace(
+      record
+        ? catalogFileWorkspace(record)
+        : folder?.available
+          ? {
+              id: folder.workspaceID,
+              scopeID: sdk.scopeID,
+              generation: folder.generation,
+              path: folder.path,
+              type: "directory",
+            }
+          : null,
+    )
+  })
+  onCleanup(() => projectFiles.setTaskWorkspace(undefined))
   const scopeName = createMemo(() => getFilename(scopeRoot() ?? ""))
   const branch = createMemo(() => sync.data.vcs?.branch)
   const lastModified = createMemo(() => {
@@ -1580,6 +1640,36 @@ function SessionPageContent() {
             get readOnly() {
               return sessionMeta().isReadOnly
             },
+            get locationPending() {
+              return (
+                !params.id &&
+                !sdk.isHome &&
+                globalSDK.capabilities.has("workbench") &&
+                (!projectDirectories()?.data || projectDirectories.loading || !!projectDirectories()?.error)
+              )
+            },
+            onValidateLocation: async () => {
+              if (params.id || sdk.isHome || !globalSDK.capabilities.has("workbench")) return
+              const expected = projectDirectories()?.data?.revision
+              const result = (await sdk.client.project.directories({ scopeID: sdk.scopeID }, { throwOnError: true }))
+                .data
+              if (expected === result.revision) return
+              updateProjectDirectories({ data: result, error: "" })
+              setStore(
+                "newSessionWorkspaceSelection",
+                store.newSessionWorkspaceSelection?.mode === "create" ? { mode: "create" } : undefined,
+              )
+              throw new Error(i18n._(projectEntryCopy.changed))
+            },
+            get projectDirectories() {
+              return projectDirectories()?.data
+            },
+            get projectDirectoryError() {
+              return projectDirectories()?.error
+            },
+            onProjectDirectoriesRefresh: () => {
+              void refreshProjectDirectories()
+            },
             get newSessionEnvironmentID() {
               return store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
             },
@@ -1587,7 +1677,9 @@ function SessionPageContent() {
               return store.newSessionEnvironment?.scopeID === sdk.scopeID &&
                 store.newSessionEnvironment.profile !== undefined
                 ? store.newSessionEnvironment.profile
-                : sync.data.config.defaultSessionEnvironmentProfile
+                : sync.data.config.defaultSessionEnvironmentProfile === undefined
+                  ? "native"
+                  : sync.data.config.defaultSessionEnvironmentProfile
             },
             onNewSessionEnvironmentProfileChange: (profile) =>
               setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id: undefined, profile }),
@@ -1601,7 +1693,7 @@ function SessionPageContent() {
               return sync.data.path.directory ?? undefined
             },
             get newSessionCanCreateWorktree() {
-              return sync.scope?.local?.vcs === "git"
+              return mainFolder()?.git ?? sync.scope?.local?.vcs === "git"
             },
             onNewSessionEnvironmentChange: (id) => setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id }),
             onNewSessionWorkspaceSelectionChange: (selection) => setStore("newSessionWorkspaceSelection", selection),

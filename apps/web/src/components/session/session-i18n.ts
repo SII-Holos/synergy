@@ -441,9 +441,9 @@ export const S = {
   worktreeStepPending: { id: "session.worktree.step.pending", message: "Pending" },
 
   // worktree-transition-card.tsx
-  worktreeCardMainCheckout: { id: "session.worktree.card.mainCheckout", message: "Project files" },
-  worktreeCardSessionWorktree: { id: "session.worktree.card.sessionWorktree", message: "Independent copy" },
-  worktreeCardWorktreeSession: { id: "session.worktree.card.worktreeSession", message: "Task in an independent copy" },
+  worktreeCardMainCheckout: { id: "session.worktree.card.mainCheckout", message: "Main folder" },
+  worktreeCardSessionWorktree: { id: "session.worktree.card.sessionWorktree", message: "Worktree" },
+  worktreeCardWorktreeSession: { id: "session.worktree.card.worktreeSession", message: "Worktree session" },
   worktreeCardDismissAria: { id: "session.worktree.card.dismissAria", message: "Dismiss copy status" },
   worktreeCardDismissTitle: { id: "session.worktree.card.dismissTitle", message: "Dismiss" },
   worktreeCardRetry: { id: "session.worktree.card.retry", message: "Retry" },
@@ -515,7 +515,7 @@ export const S = {
   worktreeDialogCreate: { id: "session.worktree.dialog.create", message: "Create worktree" },
 
   // worktree-session.ts — factory step labels
-  worktreeStepCreateCheckout: { id: "session.worktree.step.createCheckout", message: "Create independent copy" },
+  worktreeStepCreateCheckout: { id: "session.worktree.step.createCheckout", message: "Create Worktree" },
   worktreeStepBindWorktree: { id: "session.worktree.step.bindWorktree", message: "Use existing copy" },
   worktreeStepPrepareSession: { id: "session.worktree.step.prepareSession", message: "Prepare session" },
   worktreeStepSendPrompt: { id: "session.worktree.step.sendPrompt", message: "Send prompt" },
@@ -526,7 +526,7 @@ export const S = {
   // worktree-session.ts — factory detail strings
   worktreeDetailPreparingWorktree: {
     id: "session.worktree.detail.preparingWorktree",
-    message: "Preparing an independent copy of the project files.",
+    message: "Preparing a Worktree of the project files.",
   },
   worktreeDetailUsingCheckout: { id: "session.worktree.detail.usingCheckout", message: "Using the selected copy." },
   worktreeDetailUpdatingWorkspace: {
@@ -559,7 +559,7 @@ export const S = {
   },
   worktreeDetailWorkspaceSetupComplete: {
     id: "session.worktree.detail.workspaceSetupComplete",
-    message: "Independent copy is ready.",
+    message: "Worktree is ready.",
   },
   worktreeDetailPromptDispatched: {
     id: "session.worktree.detail.promptDispatched",
@@ -572,20 +572,20 @@ export const S = {
     id: "session.worktree.desc.leaving",
     message: "Returning this task to the project files.",
   },
-  worktreeTitleMoving: { id: "session.worktree.title.moving", message: "Preparing an independent copy" },
+  worktreeTitleMoving: { id: "session.worktree.title.moving", message: "Preparing a Worktree" },
   worktreeDescMoving: {
     id: "session.worktree.desc.moving",
-    message: "Creating an independent copy for this task.",
+    message: "Creating a Worktree for this task.",
   },
   worktreeTitleMainActive: { id: "session.worktree.title.mainActive", message: "Using project files" },
   worktreeDescMainActive: {
     id: "session.worktree.desc.mainActive",
-    message: "This task now uses the project files. The independent copy remains available.",
+    message: "This task now uses the project files. The Worktree remains available.",
   },
-  worktreeTitleWorktreeActive: { id: "session.worktree.title.worktreeActive", message: "Using an independent copy" },
+  worktreeTitleWorktreeActive: { id: "session.worktree.title.worktreeActive", message: "Using a Worktree" },
   worktreeDescWorktreeActive: {
     id: "session.worktree.desc.worktreeActive",
-    message: "This task now uses the independent copy.",
+    message: "This task now uses the Worktree.",
   },
   worktreeTitleRefreshing: {
     id: "session.worktree.title.refreshing",
@@ -604,21 +604,21 @@ export const S = {
     message: "The file location changed, but the task status could not be refreshed. {message}",
   },
   worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Could not return to project files" },
-  worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Could not use the independent copy" },
-  worktreeTitleSetupFailed: { id: "session.worktree.title.setupFailed", message: "Independent copy setup failed" },
+  worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Could not use the Worktree" },
+  worktreeTitleSetupFailed: { id: "session.worktree.title.setupFailed", message: "Worktree setup failed" },
   worktreeSetupCommandFailed: {
     id: "session.worktree.setupCommandFailed",
-    message: "The independent copy setup command failed.",
+    message: "The Worktree setup command failed.",
   },
-  worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting task in an independent copy" },
+  worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting task in a Worktree" },
   worktreeDescStarting: {
     id: "session.worktree.desc.starting",
-    message: "Preparing the independent copy and sending your first message.",
+    message: "Preparing the Worktree and sending your first message.",
   },
-  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Independent copy task accepted" },
+  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree task accepted" },
   worktreeDescStarted: {
     id: "session.worktree.desc.started",
-    message: "The independent copy is ready and your first message is queued.",
+    message: "The Worktree is ready and your first message is queued.",
   },
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },

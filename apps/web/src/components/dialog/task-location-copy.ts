@@ -39,10 +39,10 @@ export const locationCopy = {
   },
   title: { id: "task.location.title", message: "Working location" },
   description: { id: "task.location.description", message: "Choose the files and execution location for this task." },
-  files: { id: "task.location.files", message: "Project files" },
+  files: { id: "task.location.files", message: "Main folder" },
   noFiles: { id: "task.location.noFiles", message: "No project files" },
-  copy: { id: "task.location.copy", message: "Independent copy" },
-  planned: { id: "task.location.planned", message: "Independent copy on start" },
+  copy: { id: "task.location.copy", message: "Worktree" },
+  planned: { id: "task.location.planned", message: "Worktree on start" },
   chooseFiles: { id: "task.location.chooseFiles", message: "Use another folder or file collection" },
   fileDescription: {
     id: "task.location.fileDescription",

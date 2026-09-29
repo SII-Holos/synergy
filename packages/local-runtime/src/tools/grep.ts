@@ -16,7 +16,10 @@ export const GrepTool = Tool.define(
     description: DESCRIPTION,
     parameters: z.object({
       pattern: z.string().describe("The regex pattern to search for in file contents"),
-      path: z.string().optional().describe("The directory to search in. Defaults to the current working directory."),
+      path: z
+        .string()
+        .optional()
+        .describe("The directory to search in. Defaults to the task’s main and shared project folders."),
       include: z.string().optional().describe('File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")'),
     }),
     async execute(params, ctx) {
@@ -34,7 +37,7 @@ export const GrepTool = Tool.define(
         },
       })
 
-      const searchPath = FileView.resolve(params.path ?? ".")
+      const searchPaths = await FileView.searchRoots(params.path)
 
       const matches: Array<{ path: string; lineNum: number; lineText: string }> = []
       let truncated = false
@@ -43,7 +46,7 @@ export const GrepTool = Tool.define(
         for await (const match of Ripgrep.matches({
           cwd: FileView.directory(),
           pattern: params.pattern,
-          paths: [searchPath],
+          paths: searchPaths,
           glob: params.include ? [params.include] : undefined,
           sortModifiedDesc: true,
           signal: ctx.abort,

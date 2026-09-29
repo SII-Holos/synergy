@@ -63,3 +63,32 @@ export function workspaceFileOwner(tab: { state?: unknown; resourceId?: string }
 export function fileWorkspaceKey(server: string, scopeID: string, workspace: FileWorkspace | null) {
   return JSON.stringify([server, scopeID, workspace?.id ?? null, workspace?.generation ?? null])
 }
+
+export function catalogFileWorkspace(record: WorkspaceInfo): FileWorkspace | undefined {
+  if (!record.binding.path && record.backend?.provider !== "objects") return
+  return fileWorkspace({
+    ...record.metadata,
+    id: record.id,
+    generation: record.binding.generation,
+    scopeID: record.scopeID,
+    type: record.type,
+    path: record.binding.path ?? "",
+    bindingState: record.binding.state,
+    lifecycle: record.lifecycle,
+  })
+}
+
+export function projectFileWorkspaces(primary: FileWorkspace | undefined, records: WorkspaceInfo[]): FileWorkspace[] {
+  if (!primary) return []
+  const record = records.find((item) => item.id === primary.id)
+  const shared = new Set(record?.sharedWritableWorkspaceIDs ?? [])
+  return [
+    primary,
+    ...records
+      .filter((item) => item.scopeID === primary.scopeID && item.id !== primary.id && shared.has(item.id))
+      .flatMap((item) => {
+        const workspace = catalogFileWorkspace(item)
+        return workspace ? [workspace] : []
+      }),
+  ]
+}

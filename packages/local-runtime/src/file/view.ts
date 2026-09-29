@@ -1,5 +1,6 @@
 import path from "node:path"
 import fs from "node:fs/promises"
+import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { WorkspaceContent, type BlobStore } from "@ericsanchezok/synergy-harness/workspace/content"
@@ -17,6 +18,12 @@ export namespace FileView {
   export function directory() {
     if (native()) return EnvironmentResources.current()?.directory ?? ScopeContext.current.directory
     return EnvironmentResources.current()?.directory ?? ""
+  }
+
+  export async function searchRoots(input?: string) {
+    if (input !== undefined || !native()) return [resolve(input ?? ".")]
+    const roots = await Scope.Root.executionRoots(ScopeContext.current.scope, ScopeContext.current.workspace)
+    return roots.length ? roots : [resolve(".")]
   }
 
   function paths() {
