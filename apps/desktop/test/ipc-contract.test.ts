@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { BrowserWindow, OpenDialogOptions, WebContents } from "electron"
 import { mapSelectDirectoryDialogResponse, selectDirectoryWithNativeDialog } from "../src/directory-picker.js"
 import {
   parseBrowserNativeAttach,
@@ -178,6 +179,27 @@ describe("desktop ipc contract", () => {
         rawRequest: {},
       }),
     ).rejects.toThrow("managed local server")
+  })
+
+  test("lets users create a folder in both native selection modes", async () => {
+    const { window, webContents } = mainWindowFixture()
+    for (const multiple of [false, true]) {
+      let properties: OpenDialogOptions["properties"]
+      await selectDirectoryWithNativeDialog({
+        mainWindow: window as unknown as BrowserWindow,
+        sender: webContents as WebContents,
+        serverStatus: managedRunningStatus,
+        rawRequest: { multiple },
+        probePortalFileAccess: async () => "allowed",
+        showOpenDialog: async (_window, options) => {
+          properties = options.properties
+          return { canceled: true, filePaths: [] }
+        },
+      })
+      expect(properties).toContain("createDirectory")
+      expect(properties).toContain("openDirectory")
+      expect(properties?.includes("multiSelections")).toBe(multiple)
+    }
   })
 
   test("maps native directory picker dialog results", async () => {

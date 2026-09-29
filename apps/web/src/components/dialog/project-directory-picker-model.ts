@@ -15,6 +15,7 @@ export type ProjectDirectoryPickerToast = (toast: { type: "error"; title: string
 
 export interface ProjectDirectoryPickerRuntime {
   platform: Platform
+  serverUrl?: string
   showErrorToast: ProjectDirectoryPickerToast
   translate(descriptor: AppMessageDescriptor): string
   pickServer(options: PickProjectDirectoriesOptions): Promise<PickProjectDirectoriesResult | null>
@@ -25,12 +26,14 @@ export interface ProjectDirectoryPickerRuntime {
 export function canUseNativeProjectDirectoryPicker(
   platform: Platform,
   status: Awaited<ReturnType<NonNullable<Platform["desktopServer"]>["status"]>> | undefined,
+  serverUrl?: string,
 ): boolean {
   return (
     platform.platform === "desktop" &&
     !!platform.openDirectoryPickerDialog &&
     status?.mode === "managed" &&
-    status.state === "running"
+    status.state === "running" &&
+    (serverUrl === undefined || status.url?.replace(/\/+$/, "") === serverUrl.replace(/\/+$/, ""))
   )
 }
 
@@ -56,7 +59,7 @@ export async function pickProjectDirectoriesWithRuntime(
   runtime.setPending(true)
   try {
     const status = await runtime.platform.desktopServer?.status().catch(() => null)
-    if (canUseNativeProjectDirectoryPicker(runtime.platform, status)) {
+    if (canUseNativeProjectDirectoryPicker(runtime.platform, status, runtime.serverUrl)) {
       try {
         const selected = await runtime.platform.openDirectoryPickerDialog!({
           title: options.title,

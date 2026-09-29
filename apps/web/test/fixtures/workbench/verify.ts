@@ -119,7 +119,6 @@ try {
       ["Agent", page.getByRole("button", { name: /选择智能体:|Select agent:/ })],
       ["Permission", page.getByRole("button", { name: /权限模式|permission mode/i })],
       ["Add", page.getByRole("button", { name: /^(添加|Add)$/ })],
-      ["Start", page.getByRole("button", { name: /^(启动模式|Start mode)$/ })],
       ["Thinking", page.getByRole("button", { name: /选择思考强度|Select thinking/ })],
       ["Model", page.getByRole("button", { name: "Workbench Chat", exact: true })],
     ] as const)
@@ -130,7 +129,9 @@ try {
     await page.getByRole("button", { name: /打开侧边工作区|Open side workspace/ }).click()
     await page.waitForTimeout(350)
     await page.screenshot({ path: path.join(output, `${scheme}-split.png`) })
-    await geometry(page.getByRole("button", { name: /^(启动模式|Start mode)$/ }), `${scheme}/split Start`)
+    await page.locator(".session-work-context-more").click()
+    await page.getByRole("dialog", { name: /工作位置|Working location/ }).waitFor()
+    await page.keyboard.press("Escape")
     const hideSide = page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ })
     if (await hideSide.isVisible()) await hideSide.click()
     else {
@@ -174,8 +175,8 @@ try {
     "project new task context",
   )
   check((await page.locator(".session-status-bar button").count()) >= 3, "project new task real status")
-  await page.getByRole("button", { name: /^(启动模式|Start mode)$/ }).click()
-  await page.getByRole("button", { name: /^(主工作区|Main checkout)$/ }).click()
+  await page.locator(".session-work-context-more").click()
+  await page.getByRole("button", { name: /^(项目文件|Project files)$/ }).click()
   await editor.fill("[short] Workbench completion acceptance")
   await page.locator(".prompt-input-submit").click()
   await page.waitForURL(/\/session\/[^/]+$/)
