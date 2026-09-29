@@ -54,3 +54,7 @@ Use the workbench's semantic theme tokens, shared controls, localized descriptor
 - Agent evidence: settle defaults/caps, structured current/list output, ambiguity candidates, screenshot delivery to image/text-only model paths and bounded redaction.
 
 Report the implemented behavior, local commits, generated contracts, automated checks and observed Desktop acceptance. Do not substitute mock-only checks for native behavior.
+
+## Local browser data
+
+Keep password values inside Desktop’s OS-encrypted store and native form operation. Never return them through IPC results, logs or Agent tools; sanitize page-controlled exceptions from filling. Filling requires the exact website origin and never submits. Website data clearing preserves saved passwords and history; profile removal explicitly clears them. File imports are bounded, cancellable, preserve duplicates by default and report unsupported rows without secret values. Test temporary profiles, interrupted imports, exact-origin matching and unavailable system encryption.

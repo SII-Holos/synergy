@@ -1480,6 +1480,10 @@ msgid "app.browser.openExternal"
 msgstr "在默认浏览器中打开"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.passwords"
+msgstr "密码和自动填充"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.print"
 msgstr "打印"
 
@@ -9505,12 +9509,180 @@ msgid "brand.workbench.synergy"
 msgstr "Synergy 工作台"
 
 #. js-lingui-explicit-id
+msgid "browser.capture.add"
+msgstr "加入草稿"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.comment"
+msgstr "描述你想修改或检查的内容…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copied"
+msgstr "图片已复制。"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copy"
+msgstr "复制图片"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.full"
+msgstr "完整页面"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.hint"
+msgstr "点击图片标记位置，准备好后将反馈加入草稿。"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.loading"
+msgstr "正在截图…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.mark"
+msgstr "标记位置"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.reset"
+msgstr "移除标记"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.save"
+msgstr "保存图片"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.title"
+msgstr "截图和反馈"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.viewport"
+msgstr "当前可见页面"
+
+#. js-lingui-explicit-id
+msgid "browser.data.cancelled"
+msgstr "导入已停止，已完成的记录会保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.choose"
+msgstr "选择文件并导入"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clear"
+msgstr "清除最近访问"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clearHint"
+msgstr "清除当前浏览器账号的最近访问？密码和网站登录状态会保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.cookieFile"
+msgstr "Cookie（JSON）"
+
+#. js-lingui-explicit-id
+msgid "browser.data.empty"
+msgstr "还没有保存的密码"
+
+#. js-lingui-explicit-id
+msgid "browser.data.failures"
+msgstr "失败记录包含无效数据或不支持的 Cookie 属性，其他记录已保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.fill"
+msgstr "填充"
+
+#. js-lingui-explicit-id
+msgid "browser.data.importHint"
+msgstr "导入 Chrome、Edge、Safari 导出的密码，或 Cookie JSON 文件。只导入所选数据类型到当前浏览器账号，部分网站仍需重新登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.importing"
+msgstr "正在导入…"
+
+#. js-lingui-explicit-id
+msgid "browser.data.overwrite"
+msgstr "替换已有的相同记录"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordFile"
+msgstr "密码（CSV 或 Safari ZIP）"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordHint"
+msgstr "选择账号以填充当前网站，填写后由你确认登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwords"
+msgstr "密码和自动填充"
+
+#. js-lingui-explicit-id
+msgid "browser.data.progress"
+msgstr "已处理 {processed} / {total}"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recent"
+msgstr "最近访问"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recentHint"
+msgstr "当前浏览器账号保留最近 100 个地址，临时浏览不保存访问记录。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.remove"
+msgstr "删除密码"
+
+#. js-lingui-explicit-id
+msgid "browser.data.removeHint"
+msgstr "删除这个浏览器账号保存的密码，保留网站当前登录状态。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.result"
+msgstr "已导入 {imported} · 已跳过 {skipped} · 失败 {failed}"
+
+#. js-lingui-explicit-id
+msgid "browser.data.save"
+msgstr "保存当前登录信息"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveConfirm"
+msgstr "保存这个网站的登录信息？"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saved"
+msgstr "登录信息已保存。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveHint"
+msgstr "请先在网页中填写用户名和密码，再保存。已有的同一账号将被更新。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.search"
+msgstr "搜索网站或用户名"
+
+#. js-lingui-explicit-id
+msgid "browser.data.title"
+msgstr "浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "browser.data.unavailable"
+msgstr "保存密码需要持久浏览器账号，以及已解锁的系统密码存储。你仍可正常浏览并手动登录。"
+
+#. js-lingui-explicit-id
 msgid "browser.downloads.accept"
 msgstr "接收"
 
 #. js-lingui-explicit-id
 msgid "browser.downloads.cancel"
 msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.draft"
+msgstr "加入草稿"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.open"
+msgstr "保存并打开"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.save"
+msgstr "另存为…"
 
 #. js-lingui-explicit-id
 msgid "browser.downloads.waiting"
@@ -9639,6 +9811,10 @@ msgstr "超时"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "未稳定"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.advanced"
+msgstr "独立账号和高级设置"
 
 #. js-lingui-explicit-id
 msgid "browser.settings.disabled"

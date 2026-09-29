@@ -1,5 +1,5 @@
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
-import { For, Show, createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -13,6 +13,7 @@ import { useBrowser } from "./browser-store"
 import { browser as B } from "@/locales/messages"
 
 export type AddressBarProps = {
+  recent?: () => Array<{ url: string; title: string }>
   activeUrl: () => string
   isLoading: () => boolean
   hasPage: () => boolean
@@ -22,6 +23,7 @@ export type AddressBarProps = {
   onStop: () => void
   onSettings?: () => void
   onImport?: () => void
+  onPasswords?: () => void
   onNewTab?: () => void
   onCloseTab?: () => void
   onExternal?: () => void
@@ -41,6 +43,14 @@ export function AddressBar(props: AddressBarProps) {
   let findInput: HTMLInputElement | undefined
   const [draft, setDraft] = createSignal("")
   const [editing, setEditing] = createSignal(false)
+  const [submitted, setSubmitted] = createSignal<string>()
+  const suggestions = createMemo(() => {
+    const query = draft() === props.activeUrl() ? "" : draft().toLowerCase()
+    return (props.recent?.() ?? [])
+      .filter((entry) => `${entry.title} ${entry.url}`.toLowerCase().includes(query))
+      .slice(0, 8)
+  })
+  createEffect(() => browser.setAddressSuggestionsOpen(editing() && suggestions().length > 0))
   const [findOpen, setFindOpen] = createSignal(false)
   const [query, setQuery] = createSignal("")
   const [matches, setMatches] = createSignal({ active: 0, matches: 0 })
@@ -57,7 +67,10 @@ export function AddressBar(props: AddressBarProps) {
 
   createEffect(() => {
     const url = props.activeUrl()
-    if (!editing()) setDraft(url === "about:blank" ? "" : url)
+    if (!editing() && submitted() !== url) {
+      setDraft(url === "about:blank" ? "" : url)
+      setSubmitted(undefined)
+    }
   })
   createEffect(() => {
     props.activeUrl()
@@ -138,6 +151,7 @@ export function AddressBar(props: AddressBarProps) {
     })
   })
   onCleanup(() => {
+    browser.setAddressSuggestionsOpen(false)
     clearTimeout(timer)
     browser.setControlsOpen(false)
     if (findOpen()) void props.onPageAction?.({ type: "stopFind" })
@@ -167,27 +181,56 @@ export function AddressBar(props: AddressBarProps) {
           disabled={!props.hasPage()}
           onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
         />
-        <input
-          ref={address}
-          aria-label={_(B.enterUrl)}
-          class="browser-address-input h-7 min-w-0 flex-1 rounded-md px-2.5 text-12 outline-none"
-          value={draft()}
-          placeholder={_(B.enterUrl)}
-          spellcheck={false}
-          onFocus={() => setEditing(true)}
-          onBlur={() => setEditing(false)}
-          onInput={(event) => setDraft(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              setDraft(props.activeUrl() === "about:blank" ? "" : props.activeUrl())
+        <div class="relative min-w-0 flex-1">
+          <input
+            ref={address}
+            aria-label={_(B.enterUrl)}
+            class="browser-address-input h-7 w-full rounded-md px-2.5 text-12 outline-none"
+            value={draft()}
+            placeholder={_(B.enterUrl)}
+            spellcheck={false}
+            onFocus={() => setEditing(true)}
+            onBlur={() => setEditing(false)}
+            onInput={(event) => setDraft(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setSubmitted(undefined)
+                setDraft(props.activeUrl() === "about:blank" ? "" : props.activeUrl())
+                address.blur()
+              }
+              if (event.key !== "Enter" || event.isComposing || !draft().trim()) return
+              event.preventDefault()
+              setSubmitted(props.activeUrl())
+              props.onNavigate(draft().trim())
               address.blur()
-            }
-            if (event.key !== "Enter" || event.isComposing || !draft().trim()) return
-            event.preventDefault()
-            props.onNavigate(draft().trim())
-            address.blur()
-          }}
-        />
+            }}
+          />
+          <Show when={editing() && suggestions().length > 0}>
+            <div
+              class="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-border-weak-base bg-surface-raised-stronger-non-alpha p-1 shadow-sm"
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <For each={suggestions()}>
+                {(entry) => (
+                  <button
+                    type="button"
+                    class="block w-full truncate rounded px-3 py-2 text-left text-12 hover:bg-surface-raised-base"
+                    title={entry.url}
+                    onClick={() => {
+                      setDraft(entry.url)
+                      setSubmitted(props.activeUrl())
+                      props.onNavigate(entry.url)
+                      address.blur()
+                    }}
+                  >
+                    <div class="truncate">{entry.title || entry.url}</div>
+                    <div class="truncate text-11 text-text-weak">{entry.url}</div>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
         <Show when={props.onExternal}>
           <IconButton
             icon={getSemanticIcon("action.external")}
@@ -299,6 +342,11 @@ export function AddressBar(props: AddressBarProps) {
               >
                 {_(B.devDownloads)}
               </button>
+              <Show when={props.onPasswords}>
+                <button class="browser-menu-row" onClick={() => menu(() => props.onPasswords?.())}>
+                  {_(B.passwords)}
+                </button>
+              </Show>
             </div>
             <details class="browser-menu-section">
               <summary class="browser-menu-row cursor-pointer">{_(B.developerTools)}</summary>

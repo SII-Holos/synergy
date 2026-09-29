@@ -80,6 +80,7 @@ export class BrowserNativePagePool {
       unresponsiveGraceMs?: number
       navigationTimeoutMs?: number
       resumeRecoveryCooldownMs?: number
+      onVisit?(partition: string, url: string, title: string): Promise<void>
     } = {},
   ) {}
 
@@ -345,6 +346,9 @@ export class BrowserNativePagePool {
       // single automatic retry and reload forever.
       generation.navigationRetries = 0
       input.emit({ type: "page.loaded", page: generation.state() })
+      void this.options.onVisit?.(input.profile.partition, contents.getURL(), contents.getTitle()).catch(() => {
+        input.emit({ type: "page.error", pageId: input.page.id, message: "Recent browser history could not be saved." })
+      })
     }
     const updated = () => input.emit({ type: "page.updated", page: generation.state() })
     const failed = (_event: Electron.Event, _code: number, message: string, url: string) => {

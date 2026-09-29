@@ -19,6 +19,7 @@ export interface BrowserHostBrokerOptions {
   nativePool?: BrowserNativePagePool
   theme: DesktopThemeSnapshot
   onStatus?(status: BrowserNativeBrokerStatus): void
+  clearSavedData?(partition: string): Promise<void>
 }
 
 type ManagedPage = BrowserNativePageHandle
@@ -148,6 +149,10 @@ export class BrowserHostBrokerClient {
         await profile.clearCache()
         await profile.clearAuthCache()
         await profile.closeAllConnections()
+        if (message.removeSavedData) {
+          if (!this.options.clearSavedData) throw new Error("Saved browser data cleanup is unavailable.")
+          await this.options.clearSavedData(message.partition)
+        }
         this.result(message.requestId, { type: "void" })
       } catch (error) {
         this.failure(message.requestId, error)

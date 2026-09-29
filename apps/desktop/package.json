@@ -31,6 +31,7 @@
     "@ericsanchezok/synergy-util": "workspace:*",
     "@trycua/cua-driver": "0.23.2",
     "electron-updater": "6.6.8",
+    "fflate": "0.8.3",
     "zod": "catalog:"
   },
   "devDependencies": {

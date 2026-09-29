@@ -1480,6 +1480,10 @@ msgid "app.browser.openExternal"
 msgstr "Open in default browser"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.passwords"
+msgstr "Passwords and autofill"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.print"
 msgstr "Print"
 
@@ -9505,12 +9509,180 @@ msgid "brand.workbench.synergy"
 msgstr "Synergy workspace"
 
 #. js-lingui-explicit-id
+msgid "browser.capture.add"
+msgstr "Add to draft"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.comment"
+msgstr "Describe what you want to change or check…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copied"
+msgstr "Image copied."
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copy"
+msgstr "Copy image"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.full"
+msgstr "Full page"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.hint"
+msgstr "Click the image to mark a location. Add feedback to your draft when ready."
+
+#. js-lingui-explicit-id
+msgid "browser.capture.loading"
+msgstr "Capturing…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.mark"
+msgstr "Marked location"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.reset"
+msgstr "Remove mark"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.save"
+msgstr "Save image"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.title"
+msgstr "Screenshot and feedback"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.viewport"
+msgstr "Visible page"
+
+#. js-lingui-explicit-id
+msgid "browser.data.cancelled"
+msgstr "Import stopped. Entries already imported have been kept."
+
+#. js-lingui-explicit-id
+msgid "browser.data.choose"
+msgstr "Choose file and import"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clear"
+msgstr "Clear recent history"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clearHint"
+msgstr "Remove recent addresses from this browser profile? Passwords and website logins are kept."
+
+#. js-lingui-explicit-id
+msgid "browser.data.cookieFile"
+msgstr "Cookies (JSON)"
+
+#. js-lingui-explicit-id
+msgid "browser.data.empty"
+msgstr "No saved passwords"
+
+#. js-lingui-explicit-id
+msgid "browser.data.failures"
+msgstr "Failed rows contain invalid data or unsupported cookie attributes. Other entries were preserved."
+
+#. js-lingui-explicit-id
+msgid "browser.data.fill"
+msgstr "Fill login"
+
+#. js-lingui-explicit-id
+msgid "browser.data.importHint"
+msgstr "Import a Chrome, Edge or Safari password export, or a Cookie JSON file. Only the selected data type is imported into this browser profile. Some websites will still require sign-in."
+
+#. js-lingui-explicit-id
+msgid "browser.data.importing"
+msgstr "Importing…"
+
+#. js-lingui-explicit-id
+msgid "browser.data.overwrite"
+msgstr "Replace matching existing entries"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordFile"
+msgstr "Passwords (CSV or Safari ZIP)"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordHint"
+msgstr "Choose an account to fill this website. Sign-in forms are never submitted automatically."
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwords"
+msgstr "Passwords and autofill"
+
+#. js-lingui-explicit-id
+msgid "browser.data.progress"
+msgstr "Processed {processed} of {total}"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recent"
+msgstr "Recently visited"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recentHint"
+msgstr "The last 100 addresses are kept in this browser profile. Temporary browsing leaves no recent history."
+
+#. js-lingui-explicit-id
+msgid "browser.data.remove"
+msgstr "Delete saved password"
+
+#. js-lingui-explicit-id
+msgid "browser.data.removeHint"
+msgstr "This removes the saved password from this browser profile. Existing website sessions are kept."
+
+#. js-lingui-explicit-id
+msgid "browser.data.result"
+msgstr "Imported: {imported} · Skipped: {skipped} · Failed: {failed}"
+
+#. js-lingui-explicit-id
+msgid "browser.data.save"
+msgstr "Save current login"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveConfirm"
+msgstr "Save this website's login?"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saved"
+msgstr "Login saved."
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveHint"
+msgstr "Enter your username and password on the webpage before saving. An existing entry for this account will be updated."
+
+#. js-lingui-explicit-id
+msgid "browser.data.search"
+msgstr "Search websites or usernames"
+
+#. js-lingui-explicit-id
+msgid "browser.data.title"
+msgstr "Browser data"
+
+#. js-lingui-explicit-id
+msgid "browser.data.unavailable"
+msgstr "Password storage requires a persistent browser profile and an unlocked system password store. You can continue browsing and sign in manually."
+
+#. js-lingui-explicit-id
 msgid "browser.downloads.accept"
 msgstr "Download"
 
 #. js-lingui-explicit-id
 msgid "browser.downloads.cancel"
 msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.draft"
+msgstr "Add to draft"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.open"
+msgstr "Save and open"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.save"
+msgstr "Save as…"
 
 #. js-lingui-explicit-id
 msgid "browser.downloads.waiting"
@@ -9639,6 +9811,10 @@ msgstr "timeout"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "unsettled"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.advanced"
+msgstr "Separate accounts and advanced settings"
 
 #. js-lingui-explicit-id
 msgid "browser.settings.disabled"

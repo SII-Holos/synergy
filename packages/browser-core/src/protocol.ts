@@ -267,6 +267,18 @@ export type BrowserNativePresentationTicketResult = z.infer<typeof BrowserNative
 export const BrowserNativeViewEventSchema = z.discriminatedUnion("type", [
   z
     .object({
+      type: z.literal("native.cover"),
+      protocolVersion,
+      pageId,
+      url: browserURL,
+      dataUrl: z
+        .string()
+        .max(2 * 1024 * 1024)
+        .startsWith("data:image/jpeg;base64,"),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("native.shortcut"),
       protocolVersion,
       pageId,
@@ -1366,6 +1378,7 @@ export const BrowserHostMessageSchema = z
         requestId: nonEmpty,
         profileId: BrowserProfileIdSchema,
         partition: z.string().min(1).max(250),
+        removeSavedData: z.boolean().optional(),
       })
       .strict(),
     z

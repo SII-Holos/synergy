@@ -4,6 +4,36 @@ import type { BrowserNativeAttachRequest } from "@ericsanchezok/synergy-browser-
 const { BrowserNativeViewManager } = await import("../src/browser-native-view.js")
 
 describe("Browser native view manager", () => {
+  test("keeps a bounded still image while browser chrome covers the native page", async () => {
+    const events: unknown[] = []
+    const view = {
+      webContents: {
+        focus() {},
+        getTitle: () => "Test",
+        getURL: () => "https://example.com",
+        on() {},
+        off() {},
+        capturePage: async () => ({ isEmpty: () => false, toJPEG: () => Buffer.from("preview") }),
+      },
+      setBounds() {},
+      setVisible() {},
+    }
+    const manager = new BrowserNativeViewManager(
+      { webContents: { getZoomFactor: () => 1 } } as never,
+      { attach: () => view, detach() {} } as never,
+      (event) => events.push(event),
+    )
+    const request = { protocolVersion: 4 as const, ownerKey: "owner", pageId: "page" }
+    await manager.attach(request)
+    await manager.attach({ ...request, visible: false })
+    expect(events).toContainEqual({
+      type: "native.cover",
+      protocolVersion: 4,
+      pageId: "page",
+      url: "https://example.com",
+      dataUrl: "data:image/jpeg;base64,cHJldmlldw==",
+    })
+  })
   test("updates visibility without detaching or recreating the native page", async () => {
     const visibility: boolean[] = []
     let attachCount = 0

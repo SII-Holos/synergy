@@ -330,3 +330,7 @@ Native Browser Retry addresses the existing page and retains its identity. Keep 
 Stored Workspaces use the same chooser, file tree and editor as directories. Show the Workspace name without implying a controller path. Creating a Workspace selects a storage profile; execution belongs to the independent Environment choice. Open file tabs retain their original Workspace identity across selection changes.
 
 The working-location menu exposes Environment selection independently from Workspace files. Choosing a profile does not start compute. Keep activity and recovery inside that chooser, preserve failed selections and new-session retry intent, and distinguish a result awaiting confirmation from one awaiting saving. Release saves files before reclaiming unused compute.
+
+## Browser daily-use controls
+
+Browser pages share the workbench tab strip. Normal browsing exposes search/navigation, find, zoom, print/PDF, screenshots, downloads and data settings. Native Cmd/Ctrl shortcuts work both in the webpage and the app; Cmd/Ctrl+T from Home creates an empty task and page without executing an Agent. Account separation is advanced configuration, while ordinary sessions reuse the default login store. Screenshot feedback and download attachments enter editable drafts and never submit automatically. Use the shared dialog size presets and scrollable body so action buttons remain reachable at narrow widths. An overlay may display a bounded, noninteractive native still image while the same WebContentsView is hidden; it must disappear when real content resumes.

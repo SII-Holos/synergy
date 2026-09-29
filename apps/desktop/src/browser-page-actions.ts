@@ -13,6 +13,8 @@ export async function runBrowserPageAction(
 ): Promise<BrowserPageActionResult> {
   const action = BrowserPageActionSchema.parse(input)
   switch (action.type) {
+    case "capture":
+      throw new Error("Capture requires the native page controller.")
     case "state":
       return {
         type: "state",
@@ -50,7 +52,7 @@ export async function runBrowserPageAction(
         contents.on("found-in-page", found)
         contents.once("destroyed", destroyed)
         try {
-          requestId = contents.findInPage(action.text, { forward: action.forward, findNext: action.next })
+          requestId = contents.findInPage(action.text, { forward: action.forward, findNext: !action.next })
         } catch (error) {
           cleanup()
           reject(error)

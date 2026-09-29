@@ -109,6 +109,8 @@ import type {
   BrowserDiagnosticsErrors,
   BrowserDiagnosticsRequest,
   BrowserDiagnosticsResponses,
+  BrowserDownloadArtifactErrors,
+  BrowserDownloadArtifactResponses,
   BrowserManageProfile,
   BrowserManageProfileErrors,
   BrowserManageProfileResponses,
@@ -12876,6 +12878,69 @@ export class Browser extends HeyApiClient {
     )
     return (options?.client ?? this.client).post<BrowserDiagnosticsResponses, BrowserDiagnosticsErrors, ThrowOnError>({
       url: "/{directory}/browser/diagnostics",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Prepare a completed Browser download
+   */
+  public downloadArtifact<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { in: "body", key: "id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BrowserDownloadArtifactResponses,
+      BrowserDownloadArtifactErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/download-artifact",
       ...options,
       ...params,
       headers: {

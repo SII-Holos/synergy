@@ -23,3 +23,15 @@ Reimplementing browser operations inside the webpage was rejected because native
 The renderer controls presentation and invokes narrow native methods; it does not obtain arbitrary Electron or CDP access. OS-specific dialogs remain native. Existing task permissions, page identity and uncertain-action rules remain authoritative.
 
 Behavioral tests cover native action results, matching find requests, platform keyboard modifiers and human navigation during an in-flight Agent observation. Real Desktop acceptance is required in addition to transport tests.
+
+## Local data boundary
+
+Desktop owns a versioned local profile data store for recent visits and OS-encrypted passwords. The first store format is version 1; no previous plaintext store exists to migrate. Website data clearing keeps passwords and recent history, while profile deletion explicitly removes saved data through the host protocol. Temporary profiles cannot persist this data.
+
+File-based import is the cross-platform contract. CSV and Safari ZIP password exports plus Cookie JSON cover explicit transfers without tying the product to external browser encryption databases. Imports preserve existing entries by default and return counts without credentials. The native bridge exposes metadata and origin-scoped fill/save actions, never decrypted password retrieval. See [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage) and [Safari export format](https://developer.apple.com/documentation/safariservices/importing-data-exported-from-safari).
+
+## Result delivery and native overlays
+
+Task-owned completed downloads are copied into the established Asset store only after owner, state, path and bounded-file checks. The generated `browser.downloadArtifact` endpoint remains usable when the source page is closed. Screenshot feedback uses historical image coordinates and source metadata in the editable composer; it does not write hidden Session annotations or auto-submit. Draft capture prevents asynchronous results from landing in another conversation.
+
+Native child views render above ordinary DOM overlays. While an overlay is visible, the application shows a bounded, noninteractive still image of the hidden native view; resuming the view discards it. This preserves visual context without introducing screenshot streaming or a second control transport. The source remains the same real WebContentsView.

@@ -1,4 +1,4 @@
-import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, Show, onCleanup, onMount } from "solid-js"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { usePlatform } from "@/context/platform"
@@ -35,6 +35,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
   const browser = useBrowser()
   const dialog = useDialog()
   const platform = usePlatform()
+  const [cover, setCover] = createSignal<{ pageId: string; url: string; dataUrl: string }>()
   let attachedPageId: string | null = null
   let disposed = false
 
@@ -48,7 +49,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
       appDialogOpen: Boolean(dialog.active),
       fileChooserOpen: Boolean(browser.fileChooserRequest()),
       pageDialogOpen: Boolean(browser.dialogRequest()),
-      controlsOpen: browser.controlsOpen(),
+      controlsOpen: browser.controlsOpen() || browser.addressSuggestionsOpen(),
       errorOpen: Boolean(browser.browserError()),
       annotationOpen: Boolean(browser.annotationTarget()),
     }),
@@ -81,6 +82,10 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
     const unsubscribeNative = platform.browserNative?.onEvent?.((event) => {
       if (event.pageId !== browser.pageId()) return
       switch (event.type) {
+        case "native.cover": {
+          if (!visible()) setCover(event)
+          break
+        }
         case "native.loading": {
           browser.setPageLoading(event.pageId, true)
           if (event.url) {
@@ -146,6 +151,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
 
   createEffect(() => {
     browser.pageId()
+    if (visible()) setCover(undefined)
     browser.viewportWidth()
     browser.viewportHeight()
     syncBounds()
@@ -174,5 +180,11 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
     })
   }
 
-  return <div class="absolute inset-0" onPointerDown={focusNativeView} />
+  return (
+    <div class="absolute inset-0" onPointerDown={focusNativeView}>
+      <Show when={!visible() && cover()?.pageId === browser.pageId() && cover()?.url === browser.page()?.url}>
+        <img src={cover()?.dataUrl} alt="" aria-hidden="true" class="pointer-events-none h-full w-full object-fill" />
+      </Show>
+    </div>
+  )
 }

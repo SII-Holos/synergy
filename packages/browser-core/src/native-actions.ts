@@ -10,6 +10,7 @@ export const BrowserPageActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("zoom"), factor: z.number().min(0.25).max(5) }).strict(),
   z.object({ type: z.literal("print") }).strict(),
   z.object({ type: z.literal("pdf") }).strict(),
+  z.object({ type: z.literal("capture"), fullPage: z.boolean() }).strict(),
 ])
 export type BrowserPageAction = z.infer<typeof BrowserPageActionSchema>
 export const BrowserPageActionRequestSchema = BrowserNativePageRequestSchema.extend({
@@ -20,6 +21,7 @@ export type BrowserPageActionResult =
   | { type: "state"; back: boolean; forward: boolean; zoom: number }
   | { type: "find"; matches: number; active: number }
   | { type: "zoom"; factor: number }
+  | { type: "capture"; dataUrl: string; width: number; height: number; url: string; title: string; capturedAt: number }
   | { type: "done"; cancelled?: boolean }
 
 export type BrowserShortcut =
@@ -63,3 +65,13 @@ export function browserShortcut(
       return "zoomReset"
   }
 }
+
+export const BrowserFileActionSchema = z
+  .object({
+    operation: z.enum(["save", "open", "copyImage"]),
+    filename: z.string().min(1).max(1_024),
+    mime: z.string().min(1).max(256),
+    data: z.string().max(140 * 1024 * 1024),
+  })
+  .strict()
+export type BrowserFileAction = z.infer<typeof BrowserFileActionSchema>

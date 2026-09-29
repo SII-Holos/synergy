@@ -235,7 +235,7 @@ export namespace BrowserRuntime {
     const profile = await BrowserProfiles.get(id)
     const wasDefault = (await BrowserProfiles.list()).defaultProfileId === id
     await BrowserProfiles.update(id, { enabled: false })
-    await BrowserBroker.clearProfile(profile)
+    await BrowserBroker.clearProfile(profile, !restoreEnabled)
     if (profile.enabled && restoreEnabled) {
       await BrowserProfiles.update(id, { enabled: true })
       if (wasDefault) await BrowserProfiles.setDefault(id)

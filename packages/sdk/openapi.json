@@ -25940,6 +25940,173 @@
         ]
       }
     },
+    "/{directory}/browser/download-artifact": {
+      "post": {
+        "operationId": "browser.downloadArtifact",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Prepare a completed Browser download",
+        "responses": {
+          "200": {
+            "description": "Managed attachment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "filename": {
+                      "type": "string"
+                    },
+                    "mime": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "url", "filename", "mime", "size"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Download is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.downloadArtifact({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/{directory}/browser/session": {
       "get": {
         "operationId": "browser.session",

@@ -366,13 +366,14 @@ export namespace BrowserBroker {
     }
   }
 
-  export async function clearProfile(profile: BrowserProfiles.Stored): Promise<void> {
+  export async function clearProfile(profile: BrowserProfiles.Stored, removeSavedData = false): Promise<void> {
     await request({
       type: "profile.clear",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
       requestId: nextRequestId(),
       profileId: profile.id,
       partition: profile.partition,
+      ...(removeSavedData ? { removeSavedData: true } : {}),
     })
   }
 

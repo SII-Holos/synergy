@@ -23,6 +23,14 @@ import type { DesktopBadgeState } from "./ipc-contract.js"
 import type { DesktopPowerEvent, DesktopPowerSnapshot, DesktopPowerUpdate } from "./power-save.js"
 
 const browserNative = {
+  fileAction(input: import("@ericsanchezok/synergy-browser-core").BrowserFileAction) {
+    return ipcRenderer.invoke("browserNative.fileAction", input) as Promise<{ cancelled: boolean }>
+  },
+  dataAction(input: import("@ericsanchezok/synergy-browser-core").BrowserDataRequest) {
+    return ipcRenderer.invoke("browserNative.dataAction", input) as Promise<
+      import("@ericsanchezok/synergy-browser-core").BrowserDataResult
+    >
+  },
   pageAction(input: import("@ericsanchezok/synergy-browser-core").BrowserPageActionRequest) {
     return ipcRenderer.invoke("browserNative.pageAction", input) as Promise<
       import("@ericsanchezok/synergy-browser-core").BrowserPageActionResult

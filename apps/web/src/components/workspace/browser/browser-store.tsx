@@ -37,7 +37,7 @@ export interface AccessibilityElement {
   children: AccessibilityElement[]
 }
 
-export type DownloadEntry = BrowserDownloadEntry
+export type DownloadEntry = BrowserDownloadEntry & { pageId?: string }
 
 export interface AgentActivity {
   pageId: string | null
@@ -114,6 +114,7 @@ export function createBrowserStore() {
   const [followAgent, setFollowAgentSignal] = createSignal(false)
   const [fileChoosers, setFileChoosers] = createStore<Record<string, FileChooserRequest | undefined>>({})
   const [controlsOpen, setControlsOpen] = createSignal(false)
+  const [addressSuggestionsOpen, setAddressSuggestionsOpen] = createSignal(false)
   const [dialogs, setDialogs] = createStore<Record<string, DialogRequest | undefined>>({})
   const [pageErrors, setPageErrors] = createStore<Record<string, BrowserErrorState | undefined>>({})
   const [activities, setActivities] = createStore<Record<string, AgentActivity | undefined>>({})
@@ -261,6 +262,11 @@ export function createBrowserStore() {
   }
 
   function addDownload(nextPageId: string, entry: DownloadEntry) {
+    entry = { ...entry, pageId: nextPageId }
+    for (const [key, entries] of Object.entries(downloads)) {
+      const index = entries.findIndex((item) => item.id === entry.id)
+      if (index !== -1) setDownloads(key, index, entry)
+    }
     const current = downloads[nextPageId] ?? []
     const index = current.findIndex((item) => item.id === entry.id)
     if (index === -1) {
@@ -349,6 +355,8 @@ export function createBrowserStore() {
     setFileChooserRequest,
     controlsOpen,
     setControlsOpen,
+    addressSuggestionsOpen,
+    setAddressSuggestionsOpen,
     dialogRequest,
     setDialogRequest,
     browserError,

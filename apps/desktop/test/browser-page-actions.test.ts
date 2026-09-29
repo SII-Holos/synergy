@@ -5,7 +5,10 @@ import { runBrowserPageAction, browserShortcut } from "../src/browser-page-actio
 describe("native browser page actions", () => {
   test("find waits for the matching final result and removes listeners", async () => {
     const contents = Object.assign(new EventEmitter(), {
-      findInPage: () => 7,
+      findInPage: (_text: string, options: { findNext: boolean }) => {
+        expect(options.findNext).toBe(true)
+        return 7
+      },
       stopFindInPage: () => {},
     })
     const result = runBrowserPageAction(contents as never, { type: "find", text: "needle", forward: true, next: false })

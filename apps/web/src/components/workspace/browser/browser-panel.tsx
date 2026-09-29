@@ -1,4 +1,7 @@
 import { BrowserSettings } from "./browser-settings"
+import { BrowserResultDialog, type BrowserCapture } from "./browser-result-dialog"
+import { useBrowserDraft } from "./browser-draft"
+import { BrowserDataDialog } from "./browser-data-settings"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
@@ -111,7 +114,13 @@ function BrowserPanelInner(props: {
   const sdk = useSDK()
   const platform = usePlatform()
   const { _ } = useLingui()
+  const draft = useBrowserDraft(props.sessionID)
   const ownerKey = props.initial.ownerKey
+  const openData = (section: "import" | "passwords") => {
+    const page = browser.page()
+    if (!page || !platform.browserNative?.dataAction) return
+    dialog.show(() => <BrowserDataDialog ownerKey={ownerKey} pageId={page.id} url={page.url} section={section} />)
+  }
   browser.replacePages(props.initial.pages)
   if (props.tab.resourceId) browser.setSession("selectedPageId", props.tab.resourceId)
   browser.setSession("seq", props.initial.seq)
@@ -190,6 +199,22 @@ function BrowserPanelInner(props: {
   )
 
   const showDevPanel = () => browser.devPanel() !== "closed"
+  const [recent, setRecent] = createSignal<Array<{ url: string; title: string; time: number }>>([])
+  createEffect(() => {
+    const current = page()
+    if (!current || current.isLoading || !platform.browserNative?.dataAction) return
+    void platform.browserNative
+      .dataAction({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey,
+        pageId: current.id,
+        action: { type: "state" },
+      })
+      .then((result) => {
+        if (result.type === "state" && browser.pageId() === current.id) setRecent(result.history)
+      })
+      .catch(() => setRecent([]))
+  })
 
   const requestDiagnostics = async (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => {
     const pageId = browser.pageId()
@@ -241,44 +266,61 @@ function BrowserPanelInner(props: {
     browser.setAnnotationMode(false)
   }
 
-  const handleAnnotationSubmit = async (comment: string, styleFeedback?: Record<string, string>) => {
-    const target = browser.annotationTarget()
-    const pageId = browser.pageId()
-    const routeDirectory = props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
-    if (target && pageId && routeDirectory) {
-      void sdk.client.browser
-        .createAnnotation({
-          path_directory: routeDirectory,
-          query_directory: sdk.directory,
-          scopeID: sdk.scopeID,
-          mode: "session",
-          sessionID: props.sessionID,
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          presentation: "native",
-          nativeTicket: await ws.createNativeTicket(),
-          browserAnnotationRequest: {
-            protocolVersion: BROWSER_PROTOCOL_VERSION,
-            pageId,
-            x: target.pageX,
-            y: target.pageY,
-            comment,
-            styleFeedback,
-          },
-        })
-        .then((response) => {
-          if (!response.data) throw response.error ?? new Error("Browser annotation failed")
-        })
-        .catch((error) => {
-          const normalized = normalizeBrowserError(error, "Browser annotation failed")
-          browser.setBrowserError({
-            pageId,
-            severity: "error",
-            message: normalized.message,
-            code: normalized.code,
-          })
-        })
-    }
+  const handleAnnotationSubmit = async (comment: string) => {
+    await draft.text(`Browser feedback: ${browser.page()?.url ?? ""}\n${comment}`)
     dismissAnnotation()
+  }
+  const capturePage = async (fullPage: boolean): Promise<BrowserCapture> => {
+    const pageId = browser.pageId()
+    if (!pageId) throw new Error("Open a page before capturing it.")
+    const result = await platform.browserNative?.pageAction?.({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey,
+      pageId,
+      action: { type: "capture", fullPage },
+    })
+    if (result?.type !== "capture") throw new Error("Screenshot is unavailable. Retry the page.")
+    return result
+  }
+  const openCapture = async () => {
+    try {
+      const initial = await capturePage(false)
+      dialog.show(() => <BrowserResultDialog initial={initial} recapture={capturePage} attach={draft.attach} />)
+    } catch (error) {
+      browser.setBrowserError({
+        pageId: browser.pageId() ?? undefined,
+        severity: "error",
+        message: normalizeBrowserError(error, "Screenshot failed").message,
+      })
+    }
+  }
+  const downloadArtifact = async (id: string, operation: "save" | "open" | "draft") => {
+    const prepare = async () => {
+      const result = await sdk.client.browser.downloadArtifact({
+        path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+        query_directory: sdk.directory,
+        scopeID: sdk.scopeID,
+        mode: "session",
+        sessionID: props.sessionID,
+        presentation: "native",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        nativeTicket: await ws.createNativeTicket(),
+        id,
+      })
+      if (!result.data) throw result.error ?? new Error("Download is unavailable.")
+      return result.data
+    }
+    if (operation === "draft") return draft.artifact(prepare)
+    const file = await prepare()
+    const response = await sdk.client.asset.get({ id: file.id }, { parseAs: "blob" })
+    if (!(response.data instanceof Blob)) throw new Error("Download could not be read. Retry.")
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(new Error("Download could not be read."))
+      reader.onload = () => resolve(String(reader.result).split(",")[1]!)
+      reader.readAsDataURL(response.data as Blob)
+    })
+    await platform.browserNative?.fileAction?.({ operation, filename: file.filename, mime: file.mime, data })
   }
 
   const showAnnotation = () => {
@@ -289,6 +331,7 @@ function BrowserPanelInner(props: {
     <BrowserStoreProvider store={browser}>
       <div class="browser-workspace flex h-full flex-col">
         <AddressBar
+          recent={recent}
           activeUrl={() => page()?.url ?? ""}
           isLoading={() => page()?.isLoading ?? false}
           hasPage={() => Boolean(page())}
@@ -296,6 +339,9 @@ function BrowserPanelInner(props: {
           onReload={() => sendPageCommand({ type: "reload" })}
           onStop={() => sendPageCommand({ type: "stop" })}
           onNavigate={browser.navigate}
+          onImport={() => openData("import")}
+          onPasswords={() => openData("passwords")}
+          onScreenshot={() => void openCapture()}
           onNewTab={() => void workbench.openPanel("browser", { forceNew: true })}
           onCloseTab={() => void workbench.closeTab(props.tab.id)}
           onExternal={() => {
@@ -327,6 +373,7 @@ function BrowserPanelInner(props: {
             dialog.show(() => (
               <BrowserStoreProvider store={browser}>
                 <BrowserSettings
+                  ownerKey={ownerKey}
                   sessionID={props.sessionID}
                   routeDirectory={props.routeDirectory}
                   createTicket={ws.createNativeTicket}
@@ -367,6 +414,9 @@ function BrowserPanelInner(props: {
                         browser.navigate(event.currentTarget.value.trim())
                       }}
                     />
+                    <Button size="small" variant="ghost" class="mt-6" onClick={() => openData("import")}>
+                      <Trans id={B.importData.id} message={B.importData.message} />
+                    </Button>
                   </div>
                 }
               >
@@ -381,7 +431,7 @@ function BrowserPanelInner(props: {
               </Show>
             }
           >
-            <DevPanelContent panel={browser.devPanel()!} />
+            <DevPanelContent panel={browser.devPanel()!} downloadArtifact={downloadArtifact} />
           </Show>
           <AgentAssistant />
           <Show when={showAnnotation()}>
@@ -403,7 +453,10 @@ function BrowserPanelInner(props: {
   )
 }
 
-function DevPanelContent(props: { panel: string }) {
+function DevPanelContent(props: {
+  panel: string
+  downloadArtifact(id: string, operation: "save" | "open" | "draft"): Promise<void>
+}) {
   return (
     <div class="h-full overflow-hidden">
       <Show when={props.panel === "console"}>
@@ -416,7 +469,7 @@ function DevPanelContent(props: { panel: string }) {
         <ElementsPanel />
       </Show>
       <Show when={props.panel === "downloads"}>
-        <DownloadsPanel />
+        <DownloadsPanel onArtifact={props.downloadArtifact} />
       </Show>
       <Show when={props.panel === "assets"}>
         <AssetsPanel />

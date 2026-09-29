@@ -208,6 +208,7 @@ test("browser settings returns focus to its durable menu trigger and preserves t
   await menu.click()
   await page.getByRole("button", { name: "Browser settings", exact: true }).click()
   const settings = page.getByRole("dialog", { name: "Browser settings", exact: true })
+  await settings.getByText("Separate accounts and advanced settings", { exact: true }).click()
   await settings.getByRole("button", { name: "Add browser profile", exact: true }).waitFor()
   await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === false)
   await settings.press("Escape")

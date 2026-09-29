@@ -202,6 +202,7 @@ export const rawMessages = {
 // ── Browser ──────────────────────────────────────────────────────────────────
 
 export const browser = {
+  passwords: { id: "app.browser.passwords", message: "Passwords and autofill" },
   screenshot: { id: "app.browser.screenshot", message: "Take screenshot" },
   find: { id: "app.browser.find", message: "Find in page" },
   findNext: { id: "app.browser.find.next", message: "Next match" },

@@ -408,6 +408,47 @@ export const BrowserRoute = () =>
         }
       },
     )
+    .post(
+      "/:directory/browser/download-artifact",
+      describeRoute({
+        summary: "Prepare a completed Browser download",
+        operationId: "browser.downloadArtifact",
+        responses: {
+          200: {
+            description: "Managed attachment",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.object({
+                    id: z.string(),
+                    url: z.string(),
+                    filename: z.string(),
+                    mime: z.string(),
+                    size: z.number(),
+                  }),
+                ),
+              },
+            },
+          },
+          400: {
+            description: "Download is unavailable",
+            content: { "application/json": { schema: resolver(BrowserAPIErrorSchema) } },
+          },
+        },
+      }),
+      limitBrowserBody(MAX_DIAGNOSTICS_BYTES),
+      validator("query", BrowserRouteQuery),
+      validator("json", z.object({ id: z.string().min(1).max(200) }).strict()),
+      async (c) => {
+        try {
+          const state = await routeState(c, true)
+          await BrowserWorkspace.ensureSession(state.owner)
+          return c.json(await BrowserDownloads.artifact(state.owner, c.req.valid("json").id))
+        } catch (error) {
+          return c.json(protocolError(error, "browser_download_unavailable"), 400)
+        }
+      },
+    )
     .get(
       "/:directory/browser/session",
       describeRoute({
@@ -631,6 +672,7 @@ async function diagnosticsData(
   if (body.action === "downloads") {
     return BrowserDownloads.list(owner).map((record) => ({
       id: record.id,
+      pageId: record.pageID,
       url: record.url,
       fileName: record.suggestedFilename,
       mimeType: record.mimeType ?? "application/octet-stream",

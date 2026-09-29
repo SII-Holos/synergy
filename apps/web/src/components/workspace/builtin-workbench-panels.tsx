@@ -1,7 +1,7 @@
 import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { runtimeFeatureAvailable } from "../runtime-features"
-import { createEffect, createMemo, lazy, Show, Suspense, onCleanup, type ParentProps } from "solid-js"
+import { createEffect, createMemo, lazy, Show, Suspense, onCleanup, onMount, type ParentProps } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useSDK } from "@/context/sdk"
@@ -28,6 +28,24 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const params = useParams()
   const navigate = useNavigate()
   const workbench = useWorkbenchPanels()
+  let openingBrowser = false
+  onMount(() => {
+    const key = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.altKey ||
+        event.shiftKey ||
+        event.key.toLowerCase() !== "t" ||
+        !(navigator.platform.includes("Mac") ? event.metaKey : event.ctrlKey)
+      )
+        return
+      if (!platform.browserNative || !runtimeFeatureAvailable("panel", "browser", capabilities.has)) return
+      event.preventDefault()
+      void workbench.openPanel("browser", { forceNew: true })
+    }
+    window.addEventListener("keydown", key)
+    onCleanup(() => window.removeEventListener("keydown", key))
+  })
   const browserRoute = createMemo(() =>
     params.id
       ? {
@@ -153,42 +171,57 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 20,
         loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
         async createTab() {
-          const route = browserRoute()
-          const { openBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
-          if (!route) {
-            const scopeKey = sdk.scopeKey
-            const created = await sdk.client.session.create({ workspace: { mode: "current" } }, { throwOnError: true })
-            if (!created.data || params.id || sdk.scopeKey !== scopeKey) return
-            const newRoute = {
-              sessionID: created.data.id,
-              path_directory: sdk.directory ?? sdk.scopeID ?? scopeKey,
-              query_directory: sdk.directory,
-              scopeID: sdk.scopeID,
+          if (openingBrowser) return
+          openingBrowser = true
+          try {
+            const route = browserRoute()
+            const { openBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
+            if (!route) {
+              const scopeKey = sdk.scopeKey
+              const created = await sdk.client.session.create(
+                { workspace: { mode: "current" } },
+                { throwOnError: true },
+              )
+              if (!created.data || params.id || sdk.scopeKey !== scopeKey) return
+              const newRoute = {
+                sessionID: created.data.id,
+                path_directory: sdk.directory ?? sdk.scopeID ?? scopeKey,
+                query_directory: sdk.directory,
+                scopeID: sdk.scopeID,
+              }
+              const tab = await openBrowserWorkbenchPage({
+                client: sdk.client,
+                serverUrl: sdk.url,
+                bridge: platform.browserNative,
+                route: newRoute,
+              })
+              if (params.id || sdk.scopeKey !== scopeKey) return
+              navigate(`/${base64Encode(scopeKey)}/session/${created.data.id}`)
+              queueMicrotask(() => void workbench.openPanel("browser", { init: tab }))
+              return
             }
-            const tab = await openBrowserWorkbenchPage({
+            return openBrowserWorkbenchPage({
               client: sdk.client,
               serverUrl: sdk.url,
               bridge: platform.browserNative,
-              route: newRoute,
+              route,
+            }).catch((error) => {
+              showToast({
+                type: "error",
+                title: i18n._(B.issue),
+                description: normalizeBrowserError(error, "Page could not be opened. Retry.").message,
+              })
+              return undefined
             })
-            if (params.id || sdk.scopeKey !== scopeKey) return
-            navigate(`/${base64Encode(scopeKey)}/session/${created.data.id}`)
-            queueMicrotask(() => void workbench.openPanel("browser", { init: tab }))
-            return
-          }
-          return openBrowserWorkbenchPage({
-            client: sdk.client,
-            serverUrl: sdk.url,
-            bridge: platform.browserNative,
-            route,
-          }).catch((error) => {
+          } catch (error) {
             showToast({
               type: "error",
               title: i18n._(B.issue),
               description: normalizeBrowserError(error, "Page could not be opened. Retry.").message,
             })
-            return undefined
-          })
+          } finally {
+            openingBrowser = false
+          }
         },
         async onCloseTab(tab) {
           if (!tab.resourceId) return

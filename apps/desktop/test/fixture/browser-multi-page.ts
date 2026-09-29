@@ -1,6 +1,10 @@
-import { app, BrowserWindow } from "electron"
+import { app, BrowserWindow, safeStorage } from "electron"
 import { createServer } from "node:http"
 import assert from "node:assert/strict"
+import { BrowserDataStore } from "../../src/browser-data-store"
+import { BrowserDataActions } from "../../src/browser-data-actions"
+import { runBrowserPageAction } from "../../src/browser-page-actions"
+import path from "node:path"
 import { rm } from "node:fs/promises"
 import {
   BrowserNativePagePool,
@@ -63,6 +67,61 @@ async function run() {
   )
   const views = pages.map((page) => pool.attach(window, base.ownerKey, page.state().id))
   assert.equal(new Set(views.map((view) => view.webContents.id)).size, 8)
+  pool.attach(window, base.ownerKey, "page-0")
+  window.show()
+  const first = views[0]!.webContents
+  assert.equal(
+    (await runBrowserPageAction(first, { type: "find", text: "/0", forward: true, next: false })).type,
+    "find",
+  )
+  await runBrowserPageAction(first, { type: "stopFind" })
+  assert.deepEqual(await runBrowserPageAction(first, { type: "zoom", factor: 1.25 }), { type: "zoom", factor: 1.25 })
+  await runBrowserPageAction(first, { type: "zoom", factor: 1 })
+  assert.equal((await pages[0]!.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+  let syntheticGestures = 0
+  const key = () => {
+    syntheticGestures++
+  }
+  first.on("before-input-event", key)
+  await first.debugger.sendCommand("Input.dispatchKeyEvent", {
+    type: "keyDown",
+    key: "a",
+    code: "KeyA",
+    windowsVirtualKeyCode: 65,
+  })
+  await first.debugger.sendCommand("Input.dispatchKeyEvent", {
+    type: "keyUp",
+    key: "a",
+    code: "KeyA",
+    windowsVirtualKeyCode: 65,
+  })
+  first.off("before-input-event", key)
+  assert.equal(syntheticGestures, 0, "Agent CDP input must not become a human navigation grant")
+  const store = new BrowserDataStore(path.join(app.getPath("userData"), "browser-data"), {
+    available: () => safeStorage.isAsyncEncryptionAvailable(),
+    encrypt: (value) => safeStorage.encryptStringAsync(value),
+    decrypt: async (value) => (await safeStorage.decryptStringAsync(value)).result,
+  })
+  const data = new BrowserDataActions({
+    store,
+    target: () => ({ partition: base.profile.partition, contents: first }),
+    chooseFile: async () => undefined,
+  })
+  await first.executeJavaScript(
+    'document.body.insertAdjacentHTML("beforeend",`<form><input autocomplete="username" value="fixture"><input type="password" value="fixture-pass"></form>`)',
+  )
+  await data.execute({ protocolVersion: 4, ownerKey: base.ownerKey, pageId: "page-0", action: { type: "saveLogin" } })
+  const state = await store.list(base.profile.partition)
+  assert.equal(state.passwords.length, 1)
+  await first.executeJavaScript('document.querySelector("input[type=password]").value=""')
+  await data.execute({
+    protocolVersion: 4,
+    ownerKey: base.ownerKey,
+    pageId: "page-0",
+    action: { type: "fillLogin", id: state.passwords[0]!.id },
+  })
+  assert.equal(await first.executeJavaScript('document.querySelector("input[type=password]").value'), "fixture-pass")
+
   for (let i = 0; i < pages.length; i++) await evaluate(pages[i]!, `window.marker=${i}`)
   for (let i = 0; i < pages.length; i++) assert.equal(await evaluate(pages[i]!, "window.marker"), i)
   await evaluate(pages[0]!, 'document.cookie="identity=personal; path=/"')

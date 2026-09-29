@@ -24613,6 +24613,55 @@ export type BrowserDiagnosticsResponses = {
 
 export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
 
+export type BrowserDownloadArtifactData = {
+  body?: {
+    id: string
+  }
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/download-artifact"
+}
+
+export type BrowserDownloadArtifactErrors = {
+  /**
+   * Download is unavailable
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDownloadArtifactError = BrowserDownloadArtifactErrors[keyof BrowserDownloadArtifactErrors]
+
+export type BrowserDownloadArtifactResponses = {
+  /**
+   * Managed attachment
+   */
+  200: {
+    id: string
+    url: string
+    filename: string
+    mime: string
+    size: number
+  }
+}
+
+export type BrowserDownloadArtifactResponse = BrowserDownloadArtifactResponses[keyof BrowserDownloadArtifactResponses]
+
 export type BrowserSessionData = {
   body?: never
   path: {

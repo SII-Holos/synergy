@@ -1480,6 +1480,10 @@ msgid "app.browser.openExternal"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.passwords"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.print"
 msgstr ""
 
@@ -9505,11 +9509,179 @@ msgid "brand.workbench.synergy"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "browser.capture.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.comment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.full"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.mark"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.viewport"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.clearHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.cookieFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.failures"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.fill"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.importHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.importing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.overwrite"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwords"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.progress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.recent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.recentHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.removeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.result"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveConfirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "browser.downloads.accept"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.downloads.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.draft"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.save"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -9638,6 +9810,10 @@ msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.advanced"
 msgstr ""
 
 #. js-lingui-explicit-id
