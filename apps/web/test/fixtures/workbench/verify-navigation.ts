@@ -71,6 +71,40 @@ try {
   await expanded(true)
   check((await page.locator(".sb-root").boundingBox())!.width === savedWidth, "expanded width survives collapse")
   check((await scroll.evaluate((element) => element.scrollTop)) === savedScroll, "collection scroll survives collapse")
+  for (const sidebarOpen of [true, false]) {
+    await expanded(sidebarOpen)
+    const toggle = page.getByRole("button", { name: /打开侧边工作区|Open side workspace/ })
+    const before = (await toggle.boundingBox())!
+    await toggle.click()
+    await page.waitForTimeout(350)
+    const close = page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ })
+    const after = (await close.boundingBox())!
+    check(
+      Math.abs(before.x - after.x) <= 1 && Math.abs(before.y - after.y) <= 1,
+      "side toggle stays at the window corner across opening",
+    )
+    check(after.x + after.width > 1440 - 60, "side toggle remains at the outer right edge")
+    const side = page.locator(".workbench-surface--side")
+    if (sidebarOpen) await side.getByRole("button", { name: /^笔记|^Notes/ }).click()
+    const tabs = side.getByRole("tablist")
+    const lastAction = await tabs.getByRole("button", { name: /添加侧边面板|Add side panel/ }).boundingBox()
+    check(lastAction && lastAction.x + lastAction.width < after.x, "workspace tabs leave the corner control clear")
+    await close.press("Space")
+    await page.waitForTimeout(350)
+    check(
+      await toggle.evaluate((element) => document.activeElement === element),
+      "side toggle retains focus after keyboard collapse",
+    )
+    check(await editorNode!.evaluate((element) => element.isConnected), "side toggle preserves the editor instance")
+    await toggle.click()
+    check(
+      await side.getByRole("tab", { name: /^笔记|^Notes/ }).isVisible(),
+      "reopening retains the selected workspace tab",
+    )
+    await close.click()
+    await page.waitForTimeout(350)
+  }
+  await expanded(true)
   for (const route of [/^日程$|^Agenda$/, /^知识库$|^Library$/]) {
     await page.locator(".sb-globals").getByRole("button", { name: route }).click()
     await expanded(false)
@@ -91,6 +125,21 @@ try {
     await page.screenshot({ path: path.join(output, `${scheme}-expanded.png`) })
     await expanded(false)
     await page.screenshot({ path: path.join(output, `${scheme}-collapsed.png`) })
+    const thinking = page.getByRole("button", { name: /选择思考强度|Select thinking effort/ }).filter({ visible: true })
+    check(
+      (await thinking.innerText()) === (await thinking.locator(".settings-model-variant-label").innerText()),
+      "thinking toolbar shows only its current value",
+    )
+    const typography = await page.locator(".session-work-context button > span").evaluateAll((labels) =>
+      labels.map((label) => {
+        const style = getComputedStyle(label)
+        return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.color].join("|")
+      }),
+    )
+    check(
+      typography.length === 3 && new Set(typography).size === 1,
+      "working location labels share typography and emphasis",
+    )
     const add = page.getByRole("button", { name: /^(添加|Add)$/ })
     check(
       (await page.locator(".prompt-input-toolbar-main button").first().getAttribute("aria-label")) ===
@@ -108,9 +157,58 @@ try {
     const popup = page.locator(".model-selector-popover")
     await popup.waitFor()
     await page.waitForTimeout(210)
+    const badges = await popup
+      .locator("[data-component=tag]")
+      .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().right))
+    check(
+      badges.length >= 2 && Math.max(...badges) - Math.min(...badges) <= 1,
+      "model badges align independently of selection",
+    )
+    const selectedRow = popup.locator('[data-slot="list-item"]:has([data-slot="list-item-selected-icon"])')
+    const selectedGeometry = await selectedRow.evaluate((row) => {
+      const marker = row.querySelector('[data-slot="list-item-selected-icon"]')!.getBoundingClientRect()
+      const label = row.querySelector(".model-manager-name")!.getBoundingClientRect()
+      return {
+        markerLeft: marker.left,
+        markerRight: marker.right,
+        labelRight: label.right,
+        rowRight: row.getBoundingClientRect().right,
+      }
+    })
+    check(
+      selectedGeometry.markerLeft >= selectedGeometry.labelRight + 4 &&
+        selectedGeometry.rowRight - selectedGeometry.markerRight <= 16,
+      "model check owns a separate trailing column",
+    )
+    await page.waitForTimeout(210)
     const bounds = (await popup.boundingBox())!
     check(bounds.height < 330, "few models use natural menu height")
     await page.screenshot({ path: path.join(output, `${scheme}-model-menu.png`) })
+    await popup
+      .getByRole("button", { name: /^Workbench Auxiliary/ })
+      .last()
+      .click()
+    await page.getByRole("button", { name: "Workbench Auxiliary", exact: true }).click()
+    await popup.waitFor()
+    await page.waitForTimeout(210)
+    const switchedBadges = await popup
+      .locator("[data-component=tag]")
+      .evaluateAll((items) => items.map((item) => item.getBoundingClientRect().right))
+    check(
+      switchedBadges.every((right) => Math.abs(right - badges[0]) <= 1),
+      "changing the selected model does not move metadata badges",
+    )
+    check(
+      (await popup.locator('[data-slot="list-item"]:has([data-slot="list-item-selected-icon"])').innerText()).includes(
+        "Workbench Auxiliary",
+      ),
+      "the selection marker follows the chosen model",
+    )
+    await popup
+      .getByRole("button", { name: /^Workbench Chat/ })
+      .last()
+      .click()
+    await page.getByRole("button", { name: "Workbench Chat", exact: true }).click()
     await popup.getByRole("textbox").fill("no-model-matches-this-query")
     await page.waitForTimeout(200)
     check((await popup.boundingBox())!.height < bounds.height, "empty model search releases unused space")
@@ -132,9 +230,21 @@ try {
       `no overflow ${size.width}x${size.height}`,
     )
     await page.screenshot({ path: path.join(output, `viewport-${size.width}x${size.height}.png`) })
-    if (size.width >= 768)
+    if (size.width >= 768) {
       check(await page.locator("[data-sidebar-toggle]").isVisible(), "desktop restore remains available")
-    else {
+      const toggle = page.getByRole("button", { name: /打开侧边工作区|Open side workspace/ })
+      const before = (await toggle.boundingBox())!
+      await toggle.click()
+      await page.waitForTimeout(350)
+      const close = page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ })
+      const after = (await close.boundingBox())!
+      check(
+        Math.abs(before.x - after.x) <= 1 && Math.abs(before.y - after.y) <= 1,
+        `workspace control remains fixed at ${size.width}x${size.height}`,
+      )
+      await page.screenshot({ path: path.join(output, `viewport-${size.width}x${size.height}-split.png`) })
+      await close.click()
+    } else {
       await page.getByRole("button", { name: /打开导航|Open navigation/ }).click()
       await page.getByRole("dialog").waitFor()
       checks.push("375px retains the mobile navigation drawer")

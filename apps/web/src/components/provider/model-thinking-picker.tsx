@@ -92,9 +92,6 @@ export function ModelVariantPicker(props: {
             aria-label={`${_(selectVariantLabel)}: ${label()}`}
             data-appearance={props.appearance}
           >
-            <Show when={props.appearance === "toolbar"}>
-              <span class="stb-thinking-prefix">{_({ id: "session.thinking.prefix", message: "Thinking: " })}</span>
-            </Show>
             <span class="settings-model-variant-label">{label()}</span>
             <Show when={props.appearance !== "toolbar"}>
               <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="settings-model-trigger-icon" />

@@ -96,13 +96,13 @@ test("thinking choices stay above the composer, distinguish Default from Off, an
   }
 }, 30_000)
 
-test("toolbar thinking keeps a descriptive label without a form chevron", async () => {
+test("toolbar thinking shows only its value while retaining the accessible purpose", async () => {
   const page = await browser.newPage()
   try {
     await page.goto(`${url}?toolbar`)
     const trigger = page.getByRole("button", { name: "Select thinking effort: high", exact: true })
     await trigger.waitFor()
-    expect(await trigger.textContent()).toBe("Thinking: high")
+    expect(await trigger.textContent()).toBe("high")
     await trigger.press("Enter")
     await page.getByRole("button", { name: /^Off/ }).click()
     expect(await page.getByLabel("Saved thinking").textContent()).toBe("off")

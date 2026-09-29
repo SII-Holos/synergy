@@ -107,6 +107,7 @@ try {
         toggle: rect("[data-sidebar-toggle]"),
         sidebar: rect(".sb-root"),
         header: rect(".stb-root"),
+        workspaceToggle: rect(".session-workbench-controls button"),
         overlay: { x: overlay.getTitlebarAreaRect().x, visible: overlay.visible },
         viewport: innerWidth,
       }
@@ -164,6 +165,12 @@ try {
         await page.waitForTimeout(350)
         const split = await geometry()
         measurements.push({ scheme, fullscreen, expanded, split: true, ...split })
+        check(
+          Math.abs(split.workspaceToggle.x - state.workspaceToggle.x) <= 1 &&
+            Math.abs(split.workspaceToggle.y - state.workspaceToggle.y) <= 1 &&
+            split.viewport - split.workspaceToggle.right <= 32,
+          `${scheme}/${fullscreen}/${expanded}: workspace toggle stays at the outer corner`,
+        )
         check(split.sidebar.width === state.sidebar.width, "split workspace retains navigation occupancy")
         check(split.toggle.x === Math.max(12, split.native.right), "split workspace keeps the native navigation anchor")
         const model = (await page.locator(".stb-selector-label").filter({ visible: true }).boundingBox())!
@@ -177,12 +184,7 @@ try {
             `${scheme}-${fullscreen ? "fullscreen" : "window"}-${expanded ? "expanded" : "collapsed"}-split.png`,
           ),
         })
-        const hideSide = page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ })
-        if (await hideSide.isVisible()) await hideSide.click()
-        else {
-          await page.getByRole("button", { name: /会话操作|Session actions/ }).click()
-          await page.getByRole("menuitem", { name: /隐藏侧边工作区|Hide side workspace/ }).click()
-        }
+        await page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ }).click()
         await page.waitForTimeout(350)
       }
       if (fullscreen) {

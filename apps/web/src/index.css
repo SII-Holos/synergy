@@ -394,11 +394,15 @@ a {
   padding: 0 8px;
   border-radius: 8px;
   color: var(--text-weak);
+  font-family: var(--font-family-sans);
   font-size: 12px;
+  font-weight: var(--font-weight-regular);
   line-height: 20px;
 }
 .session-work-context-button > span,
 .session-work-context .prompt-input-compact-label {
+  font: inherit;
+  color: inherit;
   min-width: 0;
   max-width: 200px;
   overflow: hidden;

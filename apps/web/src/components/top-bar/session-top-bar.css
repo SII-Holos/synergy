@@ -317,9 +317,25 @@
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
 }
-.stb-root[data-compact] .stb-thinking-prefix {
+
+.session-workbench-controls {
   display: none;
 }
-.stb-thinking-prefix {
-  white-space: pre;
+@media (min-width: 768px) {
+  .session-workbench-controls {
+    position: absolute;
+    z-index: 31;
+    top: 0;
+    right: 22px;
+    display: flex;
+    height: 48px;
+    align-items: center;
+    -webkit-app-region: no-drag;
+  }
+  [data-default-session]:not(:has(.workbench-surface--side.workbench-surface--open)) .stb-root {
+    padding-right: 64px;
+  }
+  [data-default-session] .workbench-surface--side .workbench-surface-tabs {
+    padding-right: 64px;
+  }
 }
