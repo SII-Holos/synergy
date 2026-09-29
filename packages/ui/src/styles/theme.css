@@ -66,6 +66,10 @@
   --radius-full: 9999px;
 
   --shadow-sm: 0 1px 2px var(--surface-overlay), 0 1px 1px var(--surface-overlay);
+  --shadow-popover:
+    0 8px 24px color-mix(in srgb, var(--surface-overlay) 24%, transparent),
+    0 2px 6px color-mix(in srgb, var(--surface-overlay) 18%, transparent);
+  --shadow-tooltip: 0 3px 10px color-mix(in srgb, var(--surface-overlay) 22%, transparent);
 
   --shadow-xs:
     0 1px 2px -0.5px var(--surface-overlay), 0 0.5px 1.5px 0 var(--surface-overlay), 0 1px 3px 0 var(--surface-overlay);

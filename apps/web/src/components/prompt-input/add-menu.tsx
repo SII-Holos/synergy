@@ -33,7 +33,7 @@ function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
     <div
       title={props.item.title}
       classList={{
-        "flex items-center justify-between gap-3 px-2 py-1.5": true,
+        "flex items-center justify-between gap-3": true,
         "opacity-45": !!props.item.ariaDisabled || !!props.item.disabled,
         ...(props.item.classList ?? {}),
       }}
@@ -59,7 +59,11 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
   return (
     <ToolbarSelectorPopover
       triggerAs={(triggerProps) => (
-        <Tooltip placement="top" value={i18n._(PI.addLabel)}>
+        <Tooltip
+          placement="top"
+          value={i18n._(PI.addLabel)}
+          open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
+        >
           <button
             {...triggerProps}
             type="button"

@@ -22,6 +22,8 @@ Theme and color-scheme selection retain their existing immediate behavior. Stage
 
 Plain-text insertion participates in the browser's edit history. Clipboard text becomes escaped text nodes and normalized line breaks before a native editing command inserts it; clipboard markup remains literal text. Browser tests cover selection replacement, long input, blank lines, deletion, undo and redo through the existing draft owner.
 
+Composer selectors use the shared owned Popover with a menu variant, one row-padding owner, compact rows and the same entrance/exit timing. Menu and Tooltip shadows derive from existing surface tokens without weakening modal backdrops. Compact controls hide the entire optional icon box, not only its SVG, and retain a centered square hit area. Acceptance exercises the real Add and start selectors, including geometry, focus return and open-state Tooltip suppression.
+
 ## Alternatives considered
 
 **Component-local palettes.** They would diverge from user themes, plugin surfaces and startup fallbacks, so the structured theme remains the only color source.

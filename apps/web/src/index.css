@@ -161,7 +161,7 @@ a {
   --workbench-selected-bg: color-mix(in srgb, var(--surface-interactive-selected) 88%, transparent);
   --workbench-selected-bg-hover: var(--surface-interactive-selected);
   --workbench-border: var(--border-weaker-base);
-  --workbench-popover-shadow: 0 14px 34px var(--surface-overlay);
+  --workbench-popover-shadow: var(--shadow-popover);
   --workbench-tab-shadow: none;
   --shadow-xs-border: inset 0 0 0 1px var(--workbench-border);
   --shadow-xs-border-base: inset 0 0 0 1px var(--workbench-border);
@@ -890,8 +890,9 @@ a {
 
 @container prompt-input (max-width: 560px) {
   .synergy-workbench-canvas .prompt-input-compact-control {
-    width: 28px;
-    flex: 0 0 28px;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
     justify-content: center;
     gap: 0;
     padding-inline: 0;

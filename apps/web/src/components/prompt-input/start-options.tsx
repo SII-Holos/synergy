@@ -28,7 +28,7 @@ function PromptStartModeItem(props: { option: PromptStartOption }) {
   const row = (
     <div
       title={props.option.tooltip}
-      classList={{ "flex items-center justify-between gap-3 px-2 py-1.5": true, "opacity-45": disabled() }}
+      classList={{ "flex items-center justify-between gap-3": true, "opacity-45": disabled() }}
     >
       <div class="flex min-w-0 items-center gap-2">
         <Icon name={props.option.icon} size="small" class="shrink-0 text-icon-base" />
@@ -52,7 +52,11 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
     <Show when={props.groups.length > 0}>
       <ToolbarSelectorPopover
         triggerAs={(triggerProps) => (
-          <Tooltip placement="top" value={i18n._(PI.startMode)}>
+          <Tooltip
+            placement="top"
+            value={i18n._(PI.startMode)}
+            open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
+          >
             <button
               {...triggerProps}
               type="button"
@@ -63,7 +67,9 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
               <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
                 {selectedOption()?.label ?? i18n._(PI.startDefault)}
               </span>
-              <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
+              <span class="prompt-input-compact-chevron">
+                <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
+              </span>
             </button>
           </Tooltip>
         )}

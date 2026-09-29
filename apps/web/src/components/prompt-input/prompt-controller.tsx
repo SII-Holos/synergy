@@ -2152,7 +2152,7 @@ export function createPromptInputController(props: PromptInputProps) {
                               >
                                 <div
                                   classList={{
-                                    "flex items-center justify-between gap-3 px-2 py-1.5": true,
+                                    "flex items-center justify-between gap-3": true,
                                     "opacity-45": sessionHasMessages() && !!agent.external,
                                   }}
                                 >

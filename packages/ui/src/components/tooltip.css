@@ -24,7 +24,7 @@
   padding: 6px 12px;
   border: 1px solid var(--workbench-border, var(--border-weak-base));
 
-  box-shadow: var(--workbench-popover-shadow, var(--shadow-md));
+  box-shadow: var(--shadow-tooltip);
   pointer-events: none !important;
   transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
 
