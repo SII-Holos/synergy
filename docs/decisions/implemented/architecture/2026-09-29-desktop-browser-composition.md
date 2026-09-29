@@ -20,4 +20,4 @@ Desktop's managed server and local development orchestrator set the Desktop brow
 
 ## Consequences
 
-Browser hosting is a Desktop composition choice. This is the first independently tested part of the [page and identity implementation](../../proposed/architecture/2026-09-29-desktop-browser-pages-and-identities.md); engine, presentation and distribution cleanup remain tracked there until completed. Source catalog and development planner tests verify product selection independently of a running browser.
+Browser hosting is a Desktop composition choice. The [page and identity implementation](2026-09-29-desktop-browser-pages-and-identities.md) owns native page collections, profile persistence and the workbench UI; engine and distribution selection stay in this composition boundary. Source catalog and development planner tests verify product selection independently of a running browser.

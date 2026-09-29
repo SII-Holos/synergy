@@ -202,6 +202,8 @@ export const rawMessages = {
 // ── Browser ──────────────────────────────────────────────────────────────────
 
 export const browser = {
+  settings: { id: "app.browser.settings", message: "Browser settings" },
+  newTab: { id: "browser.tabs.empty", message: "New tab" },
   ready: { id: "app.browser.empty.ready", message: "Browser ready" },
   waitingForSurface: { id: "app.browser.empty.waiting", message: "Waiting for the page surface." },
   connecting: { id: "app.browser.connecting", message: "Connecting to Browser" },
@@ -229,8 +231,8 @@ export const browser = {
     id: "app.browser.native.recoveryHint",
     message: "Synergy is reconnecting to the browser. You can retry now.",
   },
-  noPage: { id: "app.browser.empty.noPage", message: "No page open" },
-  nextNavigation: { id: "app.browser.empty.nextNavigation", message: "The next navigation will appear here." },
+  noPage: { id: "app.browser.empty.noPage", message: "Start browsing" },
+  nextNavigation: { id: "app.browser.empty.nextNavigation", message: "Enter a URL or search in the address bar." },
   chooseFile: { id: "app.browser.upload.chooseFile", message: "Choose file for upload" },
   chooseFilesDescription: {
     id: "app.browser.upload.description",

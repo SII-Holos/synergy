@@ -100,7 +100,7 @@ Rewind and redo must converge through the server's effective message window, inc
 
 ## Preserve Loading Boundaries
 
-1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
+1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell. Browser pages are resource tabs in that same strip; follow [change-browser-runtime](../change-browser-runtime/SKILL.md) for page reconciliation and settings. Do not nest another Browser tab strip or expose backend profile terminology in the everyday toolbar.
 2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
 3. Do not evaluate JSX child getters to detect detail presence: use an explicit availability value or property presence, then instantiate children only inside the mounted disclosure. Test closed → open → closed imperative-renderer counts. Bound tool previews and retained expanded-render caches by capacity; use resource identity to open full content on demand. See [bounded tool rendering](../../../docs/decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 4. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.

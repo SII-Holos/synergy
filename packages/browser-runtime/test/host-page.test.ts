@@ -187,3 +187,37 @@ describe("BrowserHostPage recovery gate", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+test("adopts an already-loaded popup with its native title and loading state", () =>
+  runtime.run(async () => {
+    const popupState = { ...page, id: "popup-loaded-before-adoption", title: "Signed in", lastActiveAt: 12 }
+    let adopt!: () => void
+    const admission = new Promise<void>((resolve) => {
+      adopt = resolve
+    })
+    let adopted!: BrowserHostPage
+    let done!: () => void
+    const ready = new Promise<void>((resolve) => {
+      done = resolve
+    })
+    BrowserBroker.onPopup(owner, async (input) => {
+      await admission
+      adopted = BrowserHostPage.adopt({ owner, ...input, events: {} })
+      done()
+    })
+    BrowserBroker.handle(host, {
+      type: "page.opened",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey: "scope:scope-host-page:session:session-host-page",
+      openerId: browserPage.id,
+      page: popupState,
+    })
+    adopt()
+    await ready
+    expect({ title: adopted.title, loading: adopted.loading, lastActiveAt: adopted.lastActiveAt }).toEqual({
+      title: "Signed in",
+      loading: false,
+      lastActiveAt: 12,
+    })
+    await adopted.close()
+  }))

@@ -209,7 +209,7 @@ export namespace BrowserBroker {
       }
       active.pages.add(key)
       instanceState.profiles.set(key, profileId)
-      instanceState.bufferedEvents.set(key, [])
+      instanceState.bufferedEvents.set(key, [{ type: "page.updated", page: message.page }])
       void listener({ id: message.page.id, url: message.page.url, openerId: message.openerId })
         .catch(() => closePage(preference.owner, message.page.id))
         .catch(() => undefined)

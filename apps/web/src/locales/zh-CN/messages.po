@@ -1329,11 +1329,11 @@ msgstr "获取页面快照后即可检查元素"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.nextNavigation"
-msgstr "下一次导航将显示在这里。"
+msgstr "在地址栏输入网址或搜索内容。"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.noPage"
-msgstr "未打开页面"
+msgstr "开始浏览"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.ready"
@@ -1490,6 +1490,10 @@ msgstr "恢复后会使用此页面的身份重新加载网址，未保存的表
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
 msgstr "重试"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.settings"
+msgstr "浏览器设置"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.suspended"
@@ -9474,11 +9478,11 @@ msgstr "清除网站数据"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.confirm"
-msgstr "这会关闭该身份的页面，并退出已登录的网站。是否继续？"
+msgstr "这会关闭使用此资料的页面，并退出已登录的网站。是否继续？"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.create"
-msgstr "创建身份"
+msgstr "添加登录资料"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.currentDefault"
@@ -9505,28 +9509,20 @@ msgid "browser.identities.enable"
 msgstr "启用"
 
 #. js-lingui-explicit-id
-msgid "browser.identities.explanation"
-msgstr "身份可跨任务复用网站登录。切换身份会打开新页面；临时身份在最后一个页面关闭后清除。"
-
-#. js-lingui-explicit-id
 msgid "browser.identities.inherit"
 msgstr "沿用任务权限"
 
 #. js-lingui-explicit-id
-msgid "browser.identities.manage"
-msgstr "身份"
-
-#. js-lingui-explicit-id
 msgid "browser.identities.name"
-msgstr "身份名称"
+msgstr "资料名称"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.openAs"
-msgstr "使用其他身份打开副本"
+msgstr "用此资料打开当前页面副本"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.origin"
-msgstr "网站来源"
+msgstr "网站"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.originPlaceholder"
@@ -9534,11 +9530,11 @@ msgstr "https://example.com"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.policyNote"
-msgstr "规则约束智能体，且仍受任务权限限制。完全访问模式跳过审批规则；停用的身份始终不可用。"
+msgstr "规则约束使用此资料的智能体，仍受任务权限限制。完全访问模式跳过审批规则；停用的资料始终不可用。"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.remove"
-msgstr "删除身份"
+msgstr "删除资料"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.retry"
@@ -9554,11 +9550,7 @@ msgstr "保存"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.temporary"
-msgstr "临时身份"
-
-#. js-lingui-explicit-id
-msgid "browser.identities.unavailable"
-msgstr "身份不可用"
+msgstr "临时浏览"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.uploads"
@@ -9591,6 +9583,34 @@ msgstr "超时"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "未稳定"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.disabled"
+msgstr "已停用"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.login"
+msgstr "登录与网站权限"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.loginHint"
+msgstr "网站登录会在任务间保留。只有需要使用其他账号时，才需要添加独立的浏览器资料。"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.manage"
+msgstr "管理此资料"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.permissions"
+msgstr "智能体网站权限"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.profiles"
+msgstr "登录资料"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.temporaryHint"
+msgstr "临时浏览不会使用已有登录；关闭最后一个页面后会清除网站数据。"
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.condition"
@@ -9636,17 +9656,9 @@ msgstr "URL"
 msgid "browser.summary.value-length"
 msgstr "输入长度"
 
-#. js-lingui-explicit-id
-msgid "browser.tabs.close"
-msgstr "关闭页面"
-
-#. js-lingui-explicit-id
-msgid "browser.tabs.new"
-msgstr "新建页面"
-
-#. js-lingui-explicit-id
-msgid "browser.tabs.pages"
-msgstr "浏览器页面"
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.tabs.empty"
+msgstr "新标签页"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"

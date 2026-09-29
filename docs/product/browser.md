@@ -4,19 +4,19 @@ Browser is the Desktop workspace for using websites alongside a task. Each task 
 
 ## Pages
 
-Opening the panel shows the task's existing pages without opening a website. The plus button opens a page; entering an address when the browser is empty opens the first one. Tabs show page titles, activity and pending prompts. Arrow keys, Home and End move between tabs. Closing a tab closes only that page. Website popups become separate tabs and retain normal login-window behavior.
+Choose Browser from the workbench's plus menu to create a new page. Each webpage is a peer tab beside files and other panels, with its website title or New tab. Website popups become peer tabs and retain normal login-window behavior. Closing a tab closes that page; switching tabs or hiding the side workspace keeps its native context alive. Restoring the workbench reads existing pages without opening new ones.
 
 The user's selected tab stays selected while the Agent works elsewhere. The follow-agent action is an explicit way to inspect the Agent's page. Human interaction does not pause an entire identity or task. Page dialogs, file selections and errors stay with their own page when switching tabs.
 
 The address bar, history controls, viewport choices, annotations and diagnostic panels operate on the selected page. Agent tools use explicit page IDs returned by their page list. A task supports 16 active pages and 64 saved pages, within a Desktop-wide limit of 64 active pages; capacity errors ask for an unused page to be closed.
 
-## Website identities
+## Saved website logins
 
-Personal is the initial persistent identity. Its logins can be reused by other tasks and Scopes in the same Desktop installation. Create a named identity to keep work, personal or another account separate. Choose “Open a copy as” to open the current address under a different identity. Existing pages retain their original identity.
+Website logins are remembered automatically and reused by other tasks and Scopes in the same Desktop installation. Ordinary browsing needs no account setup in Synergy. Browser options → Browser settings contains login profiles and website permissions. Add a separate profile only when another account needs an independent login store. Opening a page copy with that profile creates a new peer tab; existing pages retain their original profile.
 
 Temporary identities have no persistent login store and are discarded when their last page closes. They are excluded from task recovery. Website login remains a direct user interaction; the Agent can continue after the user completes login, including popup-based authentication.
 
-The identity manager supports naming, default selection, enablement, website-data clearing and deletion. Disabling an identity suspends its pages across tasks and blocks Agent use. Clearing website data signs out its websites after closing live pages. Deleting an identity also removes its catalog entry. Neither operation changes another identity's data. These controls do not import passwords from external browsers or provide a password manager.
+Browser settings supports profile naming and default selection, with enablement, website-data clearing and deletion under Manage this profile. Disabling an identity suspends its pages across tasks and blocks Agent use. Clearing website data signs out its websites after closing live pages. Deleting an identity also removes its catalog entry. Neither operation changes another identity's data. These controls do not import passwords from external browsers or provide a password manager.
 
 ## Website permissions and files
 

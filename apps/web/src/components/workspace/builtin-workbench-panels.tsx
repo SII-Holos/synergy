@@ -1,15 +1,21 @@
 import { usePlatform } from "@/context/platform"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { runtimeFeatureAvailable } from "../runtime-features"
-import { createEffect, onCleanup, type ParentProps } from "solid-js"
+import { createEffect, createMemo, lazy, Show, Suspense, onCleanup, type ParentProps } from "solid-js"
+import { useParams } from "@solidjs/router"
+import { useSDK } from "@/context/sdk"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { browserWorkbenchRoute } from "./browser/browser-workbench-model"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { normalizeBrowserError } from "./browser/browser-error"
 import { useTerminal } from "@/context/terminal"
 import { workspaceFilePath } from "@/context/file/workspace"
 import { useFile } from "@/context/file"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
-import { panels as P } from "@/locales/messages"
+import { panels as P, browser as B } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
 import { createContextWorkbenchPanel } from "./context-panel-entry"
 import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
@@ -17,6 +23,30 @@ import { createBossWorkbenchPanel } from "./boss-panel-entry"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const { capabilities } = useGlobalSDK()
   const platform = usePlatform()
+  const sdk = useSDK()
+  const params = useParams()
+  const workbench = useWorkbenchPanels()
+  const browserRoute = createMemo(() =>
+    params.id
+      ? {
+          sessionID: params.id,
+          path_directory: params.dir ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+          query_directory: sdk.directory,
+          scopeID: sdk.scopeID,
+        }
+      : undefined,
+  )
+  const browserSync = createMemo(() =>
+    Boolean(
+      browserRoute() &&
+        platform.browserNative &&
+        runtimeFeatureAvailable("panel", "browser", capabilities.has) &&
+        workbench
+          .surface("side")
+          .tabs()
+          .some((tab) => tab.panelId === "browser"),
+    ),
+  )
   const register = (entry: Parameters<typeof registerWorkbenchPanel>[0]) =>
     runtimeFeatureAvailable("panel", entry.id, capabilities.has) &&
     (entry.id !== "browser" || Boolean(platform.browserNative))
@@ -115,11 +145,52 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         label: i18n._(P.browser),
         icon: getSemanticIcon("browser.main"),
         surface: "side",
-        cardinality: "singleton",
+        cardinality: "multi",
         requiresSession: true,
         pluginId: "builtin",
         order: 20,
         loader: async () => ({ default: (await import("./tool-browser")).BrowserWorkbenchContent }),
+        async createTab() {
+          const route = browserRoute()
+          if (!route) return
+          const { openBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
+          return openBrowserWorkbenchPage({
+            client: sdk.client,
+            serverUrl: sdk.url,
+            bridge: platform.browserNative,
+            route,
+          }).catch((error) => {
+            showToast({
+              type: "error",
+              title: i18n._(B.issue),
+              description: normalizeBrowserError(error, "Page could not be opened. Retry.").message,
+            })
+            return undefined
+          })
+        },
+        async onCloseTab(tab) {
+          if (!tab.resourceId) return
+          const route = browserWorkbenchRoute(tab.state) ?? browserRoute()
+          if (!route) return false
+          const { closeBrowserWorkbenchPage } = await import("./browser/browser-workbench-api")
+          return closeBrowserWorkbenchPage({
+            client: sdk.client,
+            serverUrl: sdk.url,
+            bridge: platform.browserNative,
+            route,
+            pageId: tab.resourceId,
+          }).catch((error) => {
+            showToast({
+              type: "error",
+              title: i18n._(B.issue),
+              description: normalizeBrowserError(error, "Page could not be closed. Retry.").message,
+            })
+            return false
+          })
+        },
+        title(tab) {
+          return tab.title && tab.title !== "about:blank" ? tab.title : i18n._(B.newTab)
+        },
       }),
       register({
         id: "terminal",
@@ -157,5 +228,15 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
     for (const dispose of disposers.splice(0)) dispose()
   })
 
-  return props.children
+  const BrowserSync = lazy(() =>
+    import("./browser/browser-workbench-sync").then((module) => ({ default: module.BrowserWorkbenchSync })),
+  )
+  return [
+    props.children,
+    <Show when={browserSync()}>
+      <Suspense>
+        <BrowserSync route={browserRoute()!} />
+      </Suspense>
+    </Show>,
+  ]
 }

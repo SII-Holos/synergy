@@ -1492,6 +1492,10 @@ msgid "app.browser.retry"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.settings"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.suspended"
 msgstr ""
 
@@ -9505,15 +9509,7 @@ msgid "browser.identities.enable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "browser.identities.explanation"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "browser.identities.inherit"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.identities.manage"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -9557,10 +9553,6 @@ msgid "browser.identities.temporary"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "browser.identities.unavailable"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "browser.identities.uploads"
 msgstr ""
 
@@ -9590,6 +9582,34 @@ msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.login"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.loginHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.manage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.permissions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.profiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.temporaryHint"
 msgstr ""
 
 #. ── Browser tool summaries ──────────────────────────────────────────
@@ -9636,16 +9656,8 @@ msgstr ""
 msgid "browser.summary.value-length"
 msgstr ""
 
-#. js-lingui-explicit-id
-msgid "browser.tabs.close"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.tabs.new"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.tabs.pages"
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.tabs.empty"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

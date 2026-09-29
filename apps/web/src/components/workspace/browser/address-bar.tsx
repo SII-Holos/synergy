@@ -17,6 +17,7 @@ export type AddressBarProps = {
   onHistory: (direction: "back" | "forward") => void
   onReload: () => void
   onStop: () => void
+  onSettings?: () => void
   onRequestDiagnostics: (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => void
 }
 
@@ -80,6 +81,7 @@ function displayUrl(url: string) {
 
 export function AddressBar(props: AddressBarProps) {
   let inputEl: HTMLInputElement | undefined
+  let optionsTrigger: HTMLButtonElement | undefined
   const browser = useBrowser()
   const lingui = useLingui()
   const menuOpen = browser.controlsOpen
@@ -218,6 +220,10 @@ export function AddressBar(props: AddressBarProps) {
         triggerAs={(triggerProps) => (
           <IconButton
             {...triggerProps}
+            ref={(element) => {
+              optionsTrigger = element
+              if (typeof triggerProps.ref === "function") triggerProps.ref(element)
+            }}
             icon={getSemanticIcon("action.more")}
             variant="ghost"
             title={lingui._(B.options.id)}
@@ -226,6 +232,23 @@ export function AddressBar(props: AddressBarProps) {
         )}
       >
         <div class="browser-options-menu browser-workspace text-12" onClick={() => setMenuOpen(false)}>
+          <Show when={props.onSettings}>
+            <div class="browser-menu-section">
+              <button
+                type="button"
+                class="browser-menu-row"
+                onClick={() => {
+                  setMenuOpen(false)
+                  optionsTrigger?.focus()
+                  props.onSettings?.()
+                }}
+              >
+                <span class="browser-menu-row-title">
+                  <Trans id={B.settings.id} message={B.settings.message} />
+                </span>
+              </button>
+            </div>
+          </Show>
           <div class="browser-menu-section">
             <button
               type="button"

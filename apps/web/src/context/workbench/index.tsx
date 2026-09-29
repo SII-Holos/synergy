@@ -24,6 +24,7 @@ import {
 } from "./panel-model"
 
 export interface OpenWorkbenchPanelOptions {
+  activate?: boolean
   forceNew?: boolean
   reuseExisting?: boolean
   replaceEmpty?: boolean
@@ -140,8 +141,10 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       })
 
       target.setTabs(next.tabs)
-      target.setActive(next.active)
-      target.open()
+      if (options.activate !== false) {
+        target.setActive(next.active)
+        target.open()
+      } else if (!target.active()) target.setActive(next.active)
       return next.tabs.find((tab) => tab.id === next.active)
     }
 

@@ -1329,11 +1329,11 @@ msgstr "Request a snapshot to inspect elements"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.nextNavigation"
-msgstr "The next navigation will appear here."
+msgstr "Enter a URL or search in the address bar."
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.noPage"
-msgstr "No page open"
+msgstr "Start browsing"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.ready"
@@ -1490,6 +1490,10 @@ msgstr "Resume to reload this address using its saved identity. Unsaved forms ar
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
 msgstr "Retry"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.settings"
+msgstr "Browser settings"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.suspended"
@@ -9474,11 +9478,11 @@ msgstr "Clear website data"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.confirm"
-msgstr "This closes this identity's pages and signs out of its websites. Continue?"
+msgstr "This closes this profile's pages and signs out of its websites. Continue?"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.create"
-msgstr "Create identity"
+msgstr "Add browser profile"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.currentDefault"
@@ -9505,28 +9509,20 @@ msgid "browser.identities.enable"
 msgstr "Enable"
 
 #. js-lingui-explicit-id
-msgid "browser.identities.explanation"
-msgstr "Identities share logins across tasks. Changing identity opens a new page. Temporary identities are discarded after their last page closes."
-
-#. js-lingui-explicit-id
 msgid "browser.identities.inherit"
 msgstr "Use task permissions"
 
 #. js-lingui-explicit-id
-msgid "browser.identities.manage"
-msgstr "Identities"
-
-#. js-lingui-explicit-id
 msgid "browser.identities.name"
-msgstr "Identity name"
+msgstr "Profile name"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.openAs"
-msgstr "Open a copy as"
+msgstr "Open this page with this profile"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.origin"
-msgstr "Website origin"
+msgstr "Website"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.originPlaceholder"
@@ -9534,11 +9530,11 @@ msgstr "https://example.com"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.policyNote"
-msgstr "These rules apply to agents. Task permissions still apply; Full Access bypasses approval rules. Disabled identities stay unavailable."
+msgstr "Rules apply to agents using this profile. Task permissions still apply. Full Access bypasses approval rules; disabled profiles stay unavailable."
 
 #. js-lingui-explicit-id
 msgid "browser.identities.remove"
-msgstr "Delete identity"
+msgstr "Delete profile"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.retry"
@@ -9554,11 +9550,7 @@ msgstr "Save"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.temporary"
-msgstr "Temporary identity"
-
-#. js-lingui-explicit-id
-msgid "browser.identities.unavailable"
-msgstr "Identity unavailable"
+msgstr "Browse temporarily"
 
 #. js-lingui-explicit-id
 msgid "browser.identities.uploads"
@@ -9591,6 +9583,34 @@ msgstr "timeout"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "unsettled"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.disabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.login"
+msgstr "Saved logins"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.loginHint"
+msgstr "Website logins are remembered across tasks. Add a separate browser profile only when you need another account."
+
+#. js-lingui-explicit-id
+msgid "browser.settings.manage"
+msgstr "Manage this profile"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.permissions"
+msgstr "Agent website permissions"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.profiles"
+msgstr "Browser profile"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.temporaryHint"
+msgstr "Temporary browsing starts signed out and clears website data when its last page closes."
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.condition"
@@ -9636,17 +9656,9 @@ msgstr "URL"
 msgid "browser.summary.value-length"
 msgstr "Value length"
 
-#. js-lingui-explicit-id
-msgid "browser.tabs.close"
-msgstr "Close page"
-
-#. js-lingui-explicit-id
-msgid "browser.tabs.new"
-msgstr "New page"
-
-#. js-lingui-explicit-id
-msgid "browser.tabs.pages"
-msgstr "Browser pages"
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.tabs.empty"
+msgstr "New tab"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"

@@ -32,15 +32,20 @@ beforeAll(async () => {
   `,
   )
   await Bun.write(
+    path.join(directory, "sdk.ts"),
+    `export const useSDK = () => ({ scopeID: "home", client: { browser: { profiles: async () => ({data: { defaultProfileId: "personal", profiles: [{id: "personal", name: "Personal", enabled: true, kind: "persistent", origins: {}}] }}) } } })`,
+  )
+  await Bun.write(
     path.join(directory, "main.tsx"),
     `
     import { render } from "solid-js/web"
     import { createSignal, Show } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
-    import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { BrowserPageDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/page-dialog.tsx`)}
     import { NativeBrowserSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/native-browser-surface.tsx`)}
+    import { BrowserSettings } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-settings.tsx`)}
     import { AddressBar } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/address-bar.tsx`)}
     import { BrowserStoreProvider, createBrowserStore } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-store.tsx`)}
     import { messages } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
@@ -48,18 +53,20 @@ beforeAll(async () => {
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({locale:"en",messages:{en:messages}})
     const store = createBrowserStore()
-    store.setSession("page", {id:"page-one",url:"about:blank",title:"Test",isLoading:false,lastActiveAt:null})
-    store.setPresentation({kind:"native",protocolVersion:3,capabilities:{native:true,webrtc:true},reason:"desktop-local"})
+    store.replacePages([{id:"page-one",profileId:"personal",status:"active",url:"about:blank",title:"Test",isLoading:false,lastActiveAt:null}])
+    store.setHostStatus("page-one", "ready")
+    store.setPresentation({kind:"native",protocolVersion:4,capabilities:{native:true},reason:"desktop-local"})
     store._setSend(command => window.commands.push(command))
     window.browserFixture = store
     function App() {
       let container
+      const dialog = useDialog()
       const [request,setRequest] = createSignal()
       window.showPageDialog = (type, defaultValue = "Default draft") => setRequest({type,defaultValue,pageId:"page-one",requestId:"request-one",message:"Name this draft"})
       return <div class="synergy-workbench-canvas">
         <button onClick={() => window.showPageDialog("prompt")}>Open prompt</button>
         <div class="browser-workspace" style="height:500px">
-          <AddressBar activeUrl={() => "about:blank"} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} />
+          <AddressBar activeUrl={() => "about:blank"} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
           <div ref={container} style="position:relative;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div>
         </div>
         <Show when={request()} keyed>{request => <BrowserPageDialog request={request} onRespond={(accept,promptText) => {window.commands.push({accept,promptText});setRequest(undefined)}} />}</Show>
@@ -73,7 +80,13 @@ beforeAll(async () => {
     root: directory,
     cacheDir: path.join(directory, "vite-cache"),
     plugins: [solidPlugin(), tailwindcss(), ...lingui()],
-    resolve: { alias: { "@/context/platform": path.join(directory, "platform.ts"), "@": source } },
+    resolve: {
+      alias: {
+        "@/context/sdk": path.join(directory, "sdk.ts"),
+        "@/context/platform": path.join(directory, "platform.ts"),
+        "@": source,
+      },
+    },
     optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid", "zod"] },
     server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
   })
@@ -179,4 +192,29 @@ test("shared Browser menu returns focus on Escape and native view resumes only a
     await page.evaluate(() => [...new Set((window as unknown as Fixture).attachments.map((x) => x.pageId))]),
   ).toEqual(["page-one"])
   expect(errors).toEqual([])
+})
+
+test("page content never introduces a nested tab strip or profile management", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Identities", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("tablist").count()).toBe(0)
+})
+
+test("browser settings returns focus to its durable menu trigger and preserves the native page", async () => {
+  await page.goto(url)
+  const menu = page.getByRole("button", { name: "Browser options", exact: true })
+  await menu.click()
+  await page.getByRole("button", { name: "Browser settings", exact: true }).click()
+  const settings = page.getByRole("dialog", { name: "Browser settings", exact: true })
+  await settings.getByRole("button", { name: "Add browser profile", exact: true }).waitFor()
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === false)
+  await settings.press("Escape")
+  await settings.waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("title") === "Browser options", undefined, {
+    timeout: 2000,
+  })
+  expect(await menu.evaluate((node) => document.activeElement === node)).toBe(true)
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible === true)
+  expect(await page.evaluate(() => (window as unknown as Fixture).detachments)).toEqual([])
 })

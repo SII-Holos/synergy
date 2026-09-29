@@ -1,9 +1,10 @@
-import { BrowserTabs } from "./browser-tabs"
+import { BrowserSettings } from "./browser-settings"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, createResource, createSignal, lazy, Show } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, lazy, Show, on, untrack } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
@@ -15,6 +16,8 @@ import { AnnotationInput } from "./annotation-input"
 import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { browserPageTab } from "./browser-workbench-model"
 import { createBrowserCommandId } from "./browser-command"
 import { normalizeBrowserError } from "./browser-error"
 import { browser as B } from "@/locales/messages"
@@ -58,7 +61,7 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
   return (
     <Show
       keyed
-      when={initial()}
+      when={!initial.loading ? initial() : undefined}
       fallback={
         <div class="browser-workspace flex h-full flex-col items-center justify-center gap-3 p-4 text-text-weak">
           <div class="browser-empty-mark">
@@ -103,11 +106,14 @@ function BrowserPanelInner(props: {
   tab: WorkbenchPanelTab
 }) {
   const browser = props.browser
+  const dialog = useDialog()
+  const workbench = useWorkbenchPanels()
   const sdk = useSDK()
   const platform = usePlatform()
   const { _ } = useLingui()
   const ownerKey = props.initial.ownerKey
   browser.replacePages(props.initial.pages)
+  if (props.tab.resourceId) browser.setSession("selectedPageId", props.tab.resourceId)
   browser.setSession("seq", props.initial.seq)
   browser.setSession("epoch", props.initial.epoch)
   browser.setPresentation(props.clientPresentation === "native" ? null : props.initial.presentation)
@@ -128,6 +134,29 @@ function BrowserPanelInner(props: {
     routeDirectory: props.routeDirectory,
     presentation: props.clientPresentation,
   })
+
+  createEffect(
+    on(
+      browser.pageId,
+      (id) => {
+        if (!id || id === props.tab.resourceId) return
+        const page = browser.session.pages.find((page) => page.id === id)
+        if (!page || workbench.surface("side").active() !== props.tab.id) return
+        untrack(
+          () =>
+            void workbench.openPanel("browser", {
+              init: browserPageTab(page, {
+                sessionID: props.sessionID,
+                path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+                query_directory: sdk.directory,
+                scopeID: sdk.scopeID,
+              }),
+            }),
+        )
+      },
+      { defer: true },
+    ),
+  )
 
   const [handledNavigationNonce, setHandledNavigationNonce] = createSignal<number | undefined>(undefined)
   createEffect(() => {
@@ -156,7 +185,9 @@ function BrowserPanelInner(props: {
       })
   }
 
-  const page = createMemo(() => browser.page())
+  const page = createMemo(() =>
+    !props.tab.resourceId || browser.pageId() === props.tab.resourceId ? browser.page() : null,
+  )
 
   const showDevPanel = () => browser.devPanel() !== "closed"
 
@@ -257,11 +288,6 @@ function BrowserPanelInner(props: {
   return (
     <BrowserStoreProvider store={browser}>
       <div class="browser-workspace flex h-full flex-col">
-        <BrowserTabs
-          sessionID={props.sessionID}
-          routeDirectory={props.routeDirectory}
-          createTicket={ws.createNativeTicket}
-        />
         <AddressBar
           activeUrl={() => page()?.url ?? ""}
           isLoading={() => page()?.isLoading ?? false}
@@ -271,6 +297,17 @@ function BrowserPanelInner(props: {
           onStop={() => sendPageCommand({ type: "stop" })}
           onNavigate={browser.navigate}
           onRequestDiagnostics={(action) => void requestDiagnostics(action)}
+          onSettings={() =>
+            dialog.show(() => (
+              <BrowserStoreProvider store={browser}>
+                <BrowserSettings
+                  sessionID={props.sessionID}
+                  routeDirectory={props.routeDirectory}
+                  createTicket={ws.createNativeTicket}
+                />
+              </BrowserStoreProvider>
+            ))
+          }
         />
         <Show when={browser.session.connectionStatus === "failed"}>
           <div role="status" class="flex items-center justify-between gap-2 px-3 py-2 text-text-weak">
@@ -285,7 +322,7 @@ function BrowserPanelInner(props: {
             when={showDevPanel()}
             fallback={
               <Show
-                when={page()}
+                when={page() && page()?.url !== "about:blank"}
                 fallback={
                   <div class="browser-empty-state">
                     <div class="browser-empty-mark">
@@ -297,7 +334,6 @@ function BrowserPanelInner(props: {
                     <div class="browser-empty-text">
                       <Trans id={B.nextNavigation.id} message={B.nextNavigation.message} />
                     </div>
-                    <div class="browser-status-pill">{browser.session.connectionStatus}</div>
                   </div>
                 }
               >
