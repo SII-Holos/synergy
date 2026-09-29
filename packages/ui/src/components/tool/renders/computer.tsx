@@ -59,10 +59,14 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
       }
       const rows = () => {
         const observed = observation()
+        const execution = mode()
+          ? [{ label: _(D.mode), value: _(mode() === "foreground" ? D.foreground : D.background) }]
+          : []
         if (!observed) {
-          if (name === "computer_observe") return [{ label: _(D.image), value: _(D.unknown) }]
+          if (name === "computer_observe") return [...execution, { label: _(D.image), value: _(D.unknown) }]
           const target = ComputerObservationSchema.shape.target.safeParse(props.metadata?.computerTarget)
           return [
+            ...execution,
             ...(target.success ? [{ label: _(D.target), value: `${target.data.app} · ${target.data.title}` }] : []),
             ...(name === "computer_action" && props.status === "completed"
               ? [{ label: _(D.result), value: _(D.dispatched) }]
@@ -73,6 +77,7 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
           (action) => observed.actions[action].available && (action !== "drag" || stage() === "submitted"),
         )
         return [
+          ...execution,
           { label: _(D.target), value: `${observed.target.app} · ${observed.target.title}` },
           {
             label: _(D.accessibility),

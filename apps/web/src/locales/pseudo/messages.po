@@ -21024,6 +21024,10 @@ msgid "tool.computer.missing"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "tool.computer.mode"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.computer.omitted"
 msgstr ""
 

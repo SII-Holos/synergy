@@ -118,6 +118,9 @@ test("cards distinguish explicit foreground dispatch from background preference"
     expect(JSON.stringify(card?.trigger)).toContain(
       deliveryMode === "foreground" ? "Foreground operation" : "Background preferred",
     )
+    expect(rows.find((row) => row.label === "Execution")?.value).toBe(
+      deliveryMode === "foreground" ? "Foreground operation" : "Background preferred",
+    )
     expect(rows.some((row) => row.value === "Dispatched; observe to confirm")).toBe(true)
   }
 })

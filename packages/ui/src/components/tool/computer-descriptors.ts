@@ -20,6 +20,7 @@ export const COMPUTER_DESC = {
   click: { id: "tool.computer.click", message: "Click" },
   foreground: { id: "tool.computer.foreground", message: "Foreground operation" },
   background: { id: "tool.computer.background", message: "Background preferred" },
+  mode: { id: "tool.computer.mode", message: "Execution" },
   result: { id: "tool.computer.result", message: "Result" },
   dispatched: { id: "tool.computer.dispatched", message: "Dispatched; observe to confirm" },
   type: { id: "tool.computer.type", message: "Type text" },

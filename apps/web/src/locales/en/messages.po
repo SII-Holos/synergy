@@ -21024,6 +21024,10 @@ msgid "tool.computer.missing"
 msgstr "Image attachment unavailable"
 
 #. js-lingui-explicit-id
+msgid "tool.computer.mode"
+msgstr "Execution"
+
+#. js-lingui-explicit-id
 msgid "tool.computer.omitted"
 msgstr "Omitted from model input"
 

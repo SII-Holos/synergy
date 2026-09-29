@@ -21024,6 +21024,10 @@ msgid "tool.computer.missing"
 msgstr "图片附件不可用"
 
 #. js-lingui-explicit-id
+msgid "tool.computer.mode"
+msgstr "执行方式"
+
+#. js-lingui-explicit-id
 msgid "tool.computer.omitted"
 msgstr "未纳入模型输入"
 
