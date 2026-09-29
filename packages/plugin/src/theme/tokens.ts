@@ -201,6 +201,7 @@ export const THEME_TOKEN_NAMES = [
   "surface-interactive-weak",
   "surface-interactive-weak-hover",
   "surface-overlay",
+  "surface-shadow",
   "surface-raised-base",
   "surface-raised-base-active",
   "surface-raised-base-hover",

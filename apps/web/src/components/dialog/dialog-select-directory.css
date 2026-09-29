@@ -5,8 +5,8 @@
   gap: 8px;
   min-width: 0;
 }
-.directory-navigation-path [data-component="text-field"],
-.directory-navigation-search [data-component="text-field"] {
+.directory-navigation-path [data-component="input"],
+.directory-navigation-search [data-component="input"] {
   flex: 1;
   min-width: 0;
 }
@@ -29,7 +29,7 @@
   outline: 2px solid var(--border-focus);
 }
 .directory-navigation-list {
-  border: 1px solid var(--border-weaker-base);
+  border: 1px solid var(--border-weak-base);
   border-radius: 12px;
   padding: 4px;
   max-height: min(360px, 40dvh);
@@ -63,7 +63,7 @@
   .directory-navigation-path {
     flex-wrap: wrap;
   }
-  .directory-navigation-path [data-component="text-field"] {
+  .directory-navigation-path [data-component="input"] {
     flex-basis: 50%;
   }
 }

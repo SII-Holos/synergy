@@ -1,3 +1,4 @@
+import { ProjectDirectories } from "./directories"
 import path from "node:path"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -38,8 +39,11 @@ export namespace ProjectTaskDefaults {
       throw new Invalid({
         message: "This project inherits global settings because it has no project configuration directory.",
       })
-    if (parsed.defaults.defaultSessionWorkspace === "worktree" && ScopeContext.current.scope.local?.vcs !== "git")
-      throw new Invalid({ message: "Independent copies require a Git project." })
+    if (parsed.defaults.defaultSessionWorkspace === "worktree") {
+      const folders = await ProjectDirectories.get(ScopeContext.current.scope.id)
+      if (!folders.folders.some((folder) => folder.workspaceID === folders.mainWorkspaceID && folder.git))
+        throw new Invalid({ message: "Worktree requires a Git main folder." })
+    }
     const profile = parsed.defaults.defaultSessionEnvironmentProfile
     if (profile && !(await ResourceProfiles.list()).environments.some((item) => item.name === profile))
       throw new Invalid({ message: "The selected execution profile is unavailable. Choose a configured location." })

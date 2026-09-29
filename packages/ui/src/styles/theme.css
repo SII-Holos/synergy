@@ -65,30 +65,17 @@
   --radius-2xl: 0.875rem;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px var(--surface-overlay), 0 1px 1px var(--surface-overlay);
-  --shadow-popover:
-    0 8px 24px color-mix(in srgb, var(--surface-overlay) 24%, transparent),
-    0 2px 6px color-mix(in srgb, var(--surface-overlay) 18%, transparent);
-  --shadow-tooltip: 0 3px 10px color-mix(in srgb, var(--surface-overlay) 22%, transparent);
-
-  --shadow-xs:
-    0 1px 2px -0.5px var(--surface-overlay), 0 0.5px 1.5px 0 var(--surface-overlay), 0 1px 3px 0 var(--surface-overlay);
-  --shadow-md:
-    0 6px 12px -2px var(--surface-overlay), 0 4px 8px -2px var(--surface-overlay), 0 1px 2px var(--surface-overlay);
-  --shadow-lg:
-    0 16px 48px -6px var(--surface-overlay), 0 6px 12px -2px var(--surface-overlay), 0 1px 2.5px var(--surface-overlay);
-  --shadow-xs-border:
-    0 0 0 1px var(--border-base), 0 1px 2px -1px var(--surface-overlay), 0 1px 2px 0 var(--surface-overlay),
-    0 1px 3px 0 var(--surface-overlay);
-  --shadow-xs-border-base:
-    0 0 0 1px var(--border-weak-base), 0 1px 2px -1px var(--surface-overlay), 0 1px 2px 0 var(--surface-overlay),
-    0 1px 3px 0 var(--surface-overlay);
-  --shadow-xs-border-select:
-    0 0 0 3px var(--border-weak-selected), 0 0 0 1px var(--border-selected), 0 1px 2px -1px var(--surface-overlay),
-    0 1px 2px 0 var(--surface-overlay), 0 1px 3px 0 var(--surface-overlay);
-  --shadow-xs-border-focus:
-    0 0 0 1px var(--border-base), 0 1px 2px -1px var(--surface-overlay), 0 1px 2px 0 var(--surface-overlay),
-    0 1px 3px 0 var(--surface-overlay), 0 0 0 2px var(--background-weak), 0 0 0 3px var(--border-selected);
+  --shadow-sm: 0 1px 3px var(--surface-shadow);
+  --shadow-popover: 0 8px 24px var(--surface-shadow), 0 2px 6px var(--surface-shadow);
+  --shadow-tooltip: 0 3px 10px var(--surface-shadow);
+  --shadow-dialog: 0 16px 48px var(--surface-shadow), 0 4px 12px var(--surface-shadow);
+  --shadow-xs: 0 1px 2px var(--surface-shadow);
+  --shadow-md: 0 6px 16px var(--surface-shadow);
+  --shadow-lg: var(--shadow-dialog);
+  --shadow-xs-border: 0 0 0 1px var(--border-base);
+  --shadow-xs-border-base: 0 0 0 1px var(--border-weak-base);
+  --shadow-xs-border-select: 0 0 0 1px var(--border-selected);
+  --shadow-xs-border-focus: 0 0 0 1px var(--border-selected), 0 0 0 3px var(--surface-focus);
 
   --motion-duration-fast: 120ms;
   --motion-duration-base: 180ms;

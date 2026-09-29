@@ -292,10 +292,12 @@ export namespace Session {
       z.object({
         mode: z.literal("existing"),
         target: z.string().min(1),
+        sourceWorkspaceID: z.string().optional(),
         force: z.boolean().optional(),
       }),
       z.object({
         mode: z.literal("create"),
+        sourceWorkspaceID: z.string().optional(),
         name: z.string().optional(),
         baseRef: z.enum(["current", "fresh"]).optional(),
         baseRevision: z.string().min(1).optional(),
@@ -697,6 +699,7 @@ export namespace Session {
       await SessionWorkspaceRuntime.get().createWorktree({
         sessionID,
         name: selection.name,
+        sourceWorkspaceID: selection.sourceWorkspaceID,
         baseRef: selection.baseRef ?? "current",
         baseRevision: selection.baseRevision,
         bind: true,
@@ -706,6 +709,7 @@ export namespace Session {
     await SessionWorkspaceRuntime.get().enterWorktree({
       sessionID,
       target: selection.target,
+      sourceWorkspaceID: selection.sourceWorkspaceID,
       force: selection.force ?? false,
     })
     return get(sessionID)

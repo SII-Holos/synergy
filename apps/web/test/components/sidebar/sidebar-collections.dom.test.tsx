@@ -58,6 +58,7 @@ beforeAll(async () => {
     export const usePlatform = () => ({platform:"web"})
     export const useTheme = () => ({mode:()=>query.get("mode")||"dark"})
     export const useDialog = () => ({show:()=>{}})
+    export const useCommand = () => ({ trigger() {} })
     export const useConfirm = () => async()=>false
     export const useHolosAgentActions = () => ({})
     export const useProjectDirectoryPicker = () => ({pickProjectDirectories:async()=>undefined})
@@ -101,6 +102,7 @@ beforeAll(async () => {
     "@/context/global-sdk",
     "@/context/holos",
     "@/context/platform",
+    "@/context/command",
     "@/context/product-update",
     "@/components/holos/agent-actions",
     "@/components/dialog/project-directory-picker",
@@ -129,7 +131,10 @@ beforeAll(async () => {
         { find: "@", replacement: source },
       ],
     },
-    optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
+    optimizeDeps: {
+      noDiscovery: true,
+      include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid", "fuzzysort"],
+    },
     server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()

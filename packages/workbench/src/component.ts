@@ -1,3 +1,4 @@
+import { registerProjectMigrations } from "./project/migration"
 import { PushBridge } from "./push/bridge"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -37,6 +38,7 @@ export function workbench(): RuntimeComponent {
     adapters: { cli: new URL("./cli-adapter.ts", import.meta.url), http: new URL("./http.ts", import.meta.url) },
     register() {
       registerConfig()
+      registerProjectMigrations()
       registerWorkbenchAgents()
       registerProjectTools()
       registerProjectStartup()

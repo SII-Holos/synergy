@@ -171,12 +171,13 @@ export async function createSession(
     deferredEnvironment && workspace?.mode === "create"
       ? await Worktree.create({
           name: workspace.name,
+          sourceWorkspaceID: workspace.sourceWorkspaceID,
           baseRef: workspace.baseRef ?? "current",
           baseRevision: workspace.baseRevision,
           bind: false,
         })
       : deferredEnvironment && workspace?.mode === "existing"
-        ? await Worktree.resolve(workspace.target)
+        ? await Worktree.withSource(workspace.sourceWorkspaceID, () => Worktree.resolve(workspace.target))
         : undefined
   if (preparedWorktree?.setupFailed)
     throw new Worktree.StartCommandFailedError({

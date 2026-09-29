@@ -1,3 +1,4 @@
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
@@ -47,6 +48,8 @@ export namespace Worktree {
       branch: z.string().optional(),
       path: z.string(),
       scopeID: z.string(),
+      sourceWorkspaceID: z.string().optional(),
+      sourceDirectory: z.string().optional(),
       head: z.string().optional(),
       baseRef: z.string().optional(),
       baseRevision: z.string().optional(),
@@ -84,6 +87,7 @@ export namespace Worktree {
   export const PublicCreateInput = z
     .object({
       name: z.string().optional(),
+      sourceWorkspaceID: z.string().optional(),
       sessionID: z.string().optional(),
       baseRef: z.enum(["current", "fresh"]).optional().default("current"),
       baseRevision: z.string().min(1).optional(),
@@ -101,6 +105,7 @@ export namespace Worktree {
     .object({
       sessionID: z.string(),
       target: z.string().min(1),
+      sourceWorkspaceID: z.string().optional(),
       force: z.boolean().optional().default(false),
     })
     .meta({ ref: "WorktreeTargetInput" })
@@ -109,6 +114,7 @@ export namespace Worktree {
   export const RemoveInput = z
     .object({
       target: z.string().min(1),
+      sourceWorkspaceID: z.string().optional(),
       force: z.boolean().optional().default(false),
     })
     .meta({ ref: "WorktreeRemoveInput" })
@@ -439,14 +445,53 @@ export namespace Worktree {
     return [outputText(result.stderr), outputText(result.stdout)].filter(Boolean).join("\n")
   }
 
+  const sourceContext = RuntimeContext.createAsyncContext<{
+    scopeID: string
+    workspace: WorkspaceCatalog.Info
+    directory: string
+  }>()
+
+  export async function withSource<T>(sourceWorkspaceID: string | undefined, action: () => Promise<T>): Promise<T> {
+    if (!sourceWorkspaceID) return action()
+    const scope = ScopeContext.current.scope
+    const workspace = await WorkspaceCatalog.get(sourceWorkspaceID, scope.id)
+    const location = await WorkspaceBinding.validate(sourceWorkspaceID, scope.id)
+    const git = await $`git rev-parse --show-toplevel`.cwd(location.path).quiet().nothrow()
+    if (git.exitCode !== 0 || canonicalDirectory(outputText(git.stdout)) !== location.path)
+      throw new NotGitError({ message: "The selected main folder is not a Git repository." })
+    return sourceContext.run({ scopeID: scope.id, workspace, directory: location.path }, action)
+  }
+
+  async function withTarget<T>(target: string, action: () => Promise<T>): Promise<T> {
+    if (sourceContext.getStore()) return action()
+    const records = await WorkspaceCatalog.list(ScopeContext.current.scope.id)
+    const record = records.find(
+      (item) =>
+        item.type === "git_worktree" &&
+        [item.binding.path, item.metadata.worktreeID, item.metadata.name, item.metadata.branch].includes(target),
+    )
+    const sourceID =
+      typeof record?.metadata.sourceWorkspaceID === "string"
+        ? record.metadata.sourceWorkspaceID
+        : records.find((item) => item.binding.path === record?.metadata.originalCheckout)?.id
+    if (record && !sourceID)
+      throw new NotGitError({
+        message: "The original repository for this Worktree is unavailable. Restore its folder before continuing.",
+      })
+    return withSource(sourceID, action)
+  }
+
   function ensureGitScope() {
     const scope = ScopeContext.current.scope
-    if (!EnvironmentResources.localFiles())
+    if (!sourceContext.getStore() && !EnvironmentResources.localFiles())
       throw new NotGitError({ message: "Git worktree management requires a native directory Workspace." })
-    if (scope.type !== "project" || scope.local?.vcs !== "git") {
+    const source = sourceContext.getStore()
+    if (source && source.scopeID !== scope.id)
+      throw new NotGitError({ message: "Worktree source belongs to another project." })
+    if (scope.type !== "project" || (!source && scope.local?.vcs !== "git")) {
       throw new NotGitError({ message: "Current scope is not a Git repository; git worktree is unavailable." })
     }
-    return { scope, repoRoot: canonicalDirectory(ScopeContext.current.worktree) }
+    return { scope, repoRoot: source?.directory ?? canonicalDirectory(ScopeContext.current.worktree) }
   }
 
   function canonicalDirectory(directory: string): string {
@@ -599,6 +644,8 @@ export namespace Worktree {
       branch: registry?.branch ?? entry.branch,
       path: resolved,
       scopeID,
+      sourceDirectory: registry?.sourceDirectory ?? repoRoot,
+      sourceWorkspaceID: registry?.sourceWorkspaceID ?? sourceContext.getStore()?.workspace.id,
       head: entry.head,
       baseRef: registry?.baseRef,
       baseRevision: registry?.baseRevision,
@@ -895,9 +942,11 @@ export namespace Worktree {
 
   export const create = fn(CreateInput.optional(), async (input) => {
     const parsed = CreateInput.parse(input ?? {})
-    return parsed.sessionID
-      ? SessionWorkspaceRuntime.withBinding(parsed.sessionID, () => createBound(parsed), WorkspaceAccess.signal())
-      : createBound(parsed)
+    return withSource(parsed.sourceWorkspaceID, () =>
+      parsed.sessionID
+        ? SessionWorkspaceRuntime.withBinding(parsed.sessionID, () => createBound(parsed), WorkspaceAccess.signal())
+        : createBound(parsed),
+    )
   })
 
   async function nativeSession(sessionID: string) {
@@ -962,6 +1011,8 @@ export namespace Worktree {
         name: info.name,
         path: path.resolve(info.directory),
         scopeID: scope.id,
+        sourceDirectory: repoRoot,
+        sourceWorkspaceID: sourceContext.getStore()?.workspace.id,
         baseRef: parsed.baseRef,
         baseRevision: parsed.baseRevision,
         resolvedBaseCommit: base.resolvedCommit,
@@ -973,6 +1024,17 @@ export namespace Worktree {
         updatedAt: now,
         lastUsedAt: now,
       })
+      const adopted = await WorkspaceBinding.adopt(workspace(registry), scope.id)
+      const sourceID = sourceContext.getStore()?.workspace.id
+      const shared = sourceID ? (await WorkspaceCatalog.get(sourceID, scope.id)).sharedWritableWorkspaceIDs : []
+      if (adopted?.id && shared.length) {
+        const record = await WorkspaceCatalog.get(adopted.id, scope.id)
+        await WorkspaceBinding.setSharing(record.id, {
+          scopeID: scope.id,
+          expectedRevision: record.revision,
+          workspaceIDs: shared,
+        })
+      }
       const result = await withUse(registry.path, parsed.sessionID, async () => {
         const setup = await setupInfo(repoRoot)
         try {
@@ -1019,7 +1081,11 @@ export namespace Worktree {
     return info.id === target || info.name === target || info.branch === target || info.path === target
   }
 
-  export async function resolve(target: string) {
+  export async function resolve(target: string): Promise<Info> {
+    return withTarget(target, () => resolveBound(target))
+  }
+
+  async function resolveBound(target: string) {
     const { items } = await inventory()
     const found = items.find((item) => match(item, target))
     if (!found) throw new NotFoundError({ message: `Worktree not found: ${target}` })
@@ -1063,7 +1129,8 @@ export namespace Worktree {
       baseRef: info.baseRef,
       baseRevision: info.baseRevision,
       resolvedBaseCommit: info.resolvedBaseCommit,
-      originalCheckout: path.resolve(repoRoot),
+      originalCheckout: info.sourceDirectory ?? path.resolve(repoRoot),
+      sourceWorkspaceID: info.sourceWorkspaceID,
     }
   }
 
@@ -1081,6 +1148,10 @@ export namespace Worktree {
   }
 
   export async function enter(input: TargetInput) {
+    return withSource(input.sourceWorkspaceID, () => withTarget(input.target, () => enterBound(input)))
+  }
+
+  async function enterBound(input: TargetInput) {
     return SessionWorkspaceRuntime.withBinding(
       input.sessionID,
       async () => {
@@ -1184,6 +1255,10 @@ export namespace Worktree {
   }
 
   export async function remove(input: RemoveInput & { sessionID?: string }, options?: { insideCallerTurn?: boolean }) {
+    return withSource(input.sourceWorkspaceID, () => withTarget(input.target, () => removeBound(input, options)))
+  }
+
+  async function removeBound(input: RemoveInput & { sessionID?: string }, options?: { insideCallerTurn?: boolean }) {
     const sessionID = input.sessionID
     // Internal fact, never a wire field: only the caller that owns the running
     // turn may exclude itself from the guards below.
@@ -1362,6 +1437,10 @@ export namespace Worktree {
   )
 
   export async function lock(directory: string, sessionID?: string): Promise<LockResult> {
+    return withTarget(directory, () => lockBound(directory, sessionID))
+  }
+
+  async function lockBound(directory: string, sessionID?: string): Promise<LockResult> {
     const instanceState = runtimeState()
     const resolved = canonicalDirectory(directory)
     let state = instanceState.activeLocks.get(resolved)
@@ -1481,6 +1560,10 @@ export namespace Worktree {
   }
 
   export async function unlock(directory: string) {
+    return withTarget(directory, () => unlockBound(directory))
+  }
+
+  async function unlockBound(directory: string) {
     const instanceState = runtimeState()
     const resolved = canonicalDirectory(directory)
     const state = instanceState.activeLocks.get(resolved)
@@ -1515,6 +1598,10 @@ export namespace Worktree {
    * from one a user wrote by hand, so it is reported instead of guessed at.
    */
   export async function releaseLockForRemoval(directory: string): Promise<boolean> {
+    return withTarget(directory, () => releaseLockForRemovalBound(directory))
+  }
+
+  async function releaseLockForRemovalBound(directory: string): Promise<boolean> {
     const instanceState = runtimeState()
 
     const resolved = canonicalDirectory(directory)
@@ -1750,6 +1837,10 @@ export namespace Worktree {
   }
 
   export async function markLifecycle(id: string, lifecycle: RegistryInfo["lifecycle"]) {
+    return withTarget(id, () => markLifecycleBound(id, lifecycle))
+  }
+
+  async function markLifecycleBound(id: string, lifecycle: RegistryInfo["lifecycle"]) {
     const { repoRoot } = ensureGitScope()
     const current = await readJson(registryPath({ id }, repoRoot), RegistryInfo)
     if (!current) return

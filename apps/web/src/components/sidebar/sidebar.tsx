@@ -25,7 +25,7 @@ import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-asset
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
-import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
+import { useCommand } from "@/context/command"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveProjectConfirm } from "@/components/dialog/confirm-copy"
@@ -93,7 +93,7 @@ export function Sidebar(props: SidebarProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const params = useParams()
-  const { pickProjectDirectories } = useProjectDirectoryPicker()
+  const command = useCommand()
   const productUpdate = useProductUpdate()
   const { _ } = useLingui()
 
@@ -410,16 +410,7 @@ export function Sidebar(props: SidebarProps) {
     layout.scopes.pinScope(scope)
   }
 
-  const handleAddProject = async () => {
-    const result = await pickProjectDirectories({
-      title: _(sidebar.addProjectDialogTitle),
-      multiple: true,
-    })
-    if (!result) return
-    for (const dir of result.directoryPaths) {
-      layout.scopes.open(dir)
-    }
-  }
+  const handleAddProject = () => command.trigger("project.create")
 
   const handleSessionClick = (scope: LocalScope, entry: NavEntry) => {
     navigate(`/${base64Encode(scope.id)}/session/${entry.id}`)

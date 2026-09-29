@@ -1,3 +1,5 @@
+import type { Accessor } from "solid-js"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLingui } from "@lingui/solid"
@@ -12,7 +14,7 @@ import {
   type PickProjectDirectoriesResult,
 } from "./project-directory-picker-model"
 
-export function useProjectDirectoryPicker(): {
+export function useProjectDirectoryPicker(connection?: Accessor<string>): {
   pickProjectDirectories(options: PickProjectDirectoriesOptions): Promise<PickProjectDirectoriesResult | null>
 } {
   const platform = usePlatform()
@@ -27,6 +29,8 @@ export function useProjectDirectoryPicker(): {
       // dialog (e.g. the project edit dialog) instead of closing it and
       // losing unsaved edits. With no active dialog, push behaves like show.
       <DialogSelectDirectory
+        client={connection ? createSynergyClient({ baseUrl: connection(), fetch: platform.fetch }) : undefined}
+        serverUrl={connection?.()}
         title={options.title}
         multiple={options.multiple}
         onSelect={(result) => {
@@ -42,7 +46,7 @@ export function useProjectDirectoryPicker(): {
     return pickProjectDirectoriesWithRuntime(
       {
         platform,
-        serverUrl: sdk.url,
+        serverUrl: connection?.() ?? sdk.url,
         pickServer,
         showErrorToast: showToast,
         translate: _,

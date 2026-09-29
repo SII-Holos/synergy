@@ -10553,6 +10553,170 @@ msgid "plugin.textAction.unavailable"
 msgstr "This editing action is unavailable."
 
 #. js-lingui-explicit-id
+msgid "project.entry.addFolder"
+msgstr "Add folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.changed"
+msgstr "Project folders changed. Review the selected main folder, then start the task again."
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolders"
+msgstr "Choose folders"
+
+#. js-lingui-explicit-id
+msgid "project.entry.computer"
+msgstr "Computer"
+
+#. js-lingui-explicit-id
+msgid "project.entry.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "project.entry.create"
+msgstr "New project"
+
+#. js-lingui-explicit-id
+msgid "project.entry.createAction"
+msgstr "Create project"
+
+#. js-lingui-explicit-id
+msgid "project.entry.created"
+msgstr "Project created"
+
+#. js-lingui-explicit-id
+msgid "project.entry.creating"
+msgstr "Creating…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.deleteDescription"
+msgstr "Remove this checkout from disk. Worktrees with changes are kept."
+
+#. js-lingui-explicit-id
+msgid "project.entry.deleteWorktree"
+msgstr "Remove Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.developer"
+msgstr "Developer settings"
+
+#. js-lingui-explicit-id
+msgid "project.entry.emptyWorktrees"
+msgstr "No Worktrees yet"
+
+#. js-lingui-explicit-id
+msgid "project.entry.existing"
+msgstr "This folder already belongs to a project."
+
+#. js-lingui-explicit-id
+msgid "project.entry.failed"
+msgstr "Could not save project"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderActions"
+msgstr "Folder actions"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderImpact"
+msgstr "The main folder applies to new tasks. Other folders are shared with existing tasks; disk files will not be moved or deleted."
+
+#. js-lingui-explicit-id
+msgid "project.entry.folders"
+msgstr "Folders"
+
+#. js-lingui-explicit-id
+msgid "project.entry.loading"
+msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.main"
+msgstr "Main folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.mainRemove"
+msgstr "Choose another main folder before removing this one."
+
+#. js-lingui-explicit-id
+msgid "project.entry.manageComputers"
+msgstr "Manage computers"
+
+#. js-lingui-explicit-id
+msgid "project.entry.manageWorktrees"
+msgstr "Manage Worktrees"
+
+#. js-lingui-explicit-id
+msgid "project.entry.name"
+msgstr "Project name"
+
+#. js-lingui-explicit-id
+msgid "project.entry.namePlaceholder"
+msgstr "Name your project"
+
+#. js-lingui-explicit-id
+msgid "project.entry.newWorktree"
+msgstr "New Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.onSend"
+msgstr "Created when you start the task."
+
+#. js-lingui-explicit-id
+msgid "project.entry.openExisting"
+msgstr "Open existing project"
+
+#. js-lingui-explicit-id
+msgid "project.entry.originalMain"
+msgstr "Previous main folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.remove"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "project.entry.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "project.entry.setMain"
+msgstr "Set as main folder"
+
+#. js-lingui-explicit-id
+msgid "project.entry.settings"
+msgstr "Project settings"
+
+#. js-lingui-explicit-id
+msgid "project.entry.shared"
+msgstr "Based on {folder}; {count} other folders stay shared."
+
+#. js-lingui-explicit-id
+msgid "project.entry.stale"
+msgstr "Folder unavailable"
+
+#. js-lingui-explicit-id
+msgid "project.entry.start"
+msgstr "Start new tasks in"
+
+#. js-lingui-explicit-id
+msgid "project.entry.unavailable"
+msgstr "Unavailable"
+
+#. js-lingui-explicit-id
+msgid "project.entry.unsupported"
+msgstr "This task uses a custom location. Manage it in developer settings."
+
+#. js-lingui-explicit-id
+msgid "project.entry.use"
+msgstr "Use Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.using"
+msgstr "{count} linked tasks"
+
+#. js-lingui-explicit-id
+msgid "project.entry.worktrees"
+msgstr "Worktrees"
+
+#. js-lingui-explicit-id
 msgid "project.flow.cancel"
 msgstr "Cancel"
 
@@ -15080,7 +15244,7 @@ msgstr "Dismiss"
 
 #. worktree-transition-card.tsx
 msgid "session.worktree.card.mainCheckout"
-msgstr "Project files"
+msgstr "Main folder"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15090,12 +15254,12 @@ msgstr "Retry"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.card.sessionWorktree"
-msgstr "Independent copy"
+msgstr "Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.card.worktreeSession"
-msgstr "Task in an independent copy"
+msgstr "Worktree session"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15105,12 +15269,12 @@ msgstr "Returning this task to the project files."
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.mainActive"
-msgstr "This task now uses the project files. The independent copy remains available."
+msgstr "This task now uses the project files. The Worktree remains available."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.moving"
-msgstr "Creating an independent copy for this task."
+msgstr "Creating a Worktree for this task."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15125,17 +15289,17 @@ msgstr "The file location changed. Updating the task status."
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
-msgstr "The independent copy is ready and your first message is queued."
+msgstr "The Worktree is ready and your first message is queued."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.starting"
-msgstr "Preparing the independent copy and sending your first message."
+msgstr "Preparing the Worktree and sending your first message."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.worktreeActive"
-msgstr "This task now uses the independent copy."
+msgstr "This task now uses the Worktree."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15154,7 +15318,7 @@ msgstr "Dispatching your first message."
 
 #. worktree-session.ts — factory detail strings
 msgid "session.worktree.detail.preparingWorktree"
-msgstr "Preparing an independent copy of the project files."
+msgstr "Preparing a Worktree of the project files."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15184,7 +15348,7 @@ msgstr "Using the selected copy."
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.workspaceSetupComplete"
-msgstr "Independent copy is ready."
+msgstr "Worktree is ready."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15223,7 +15387,7 @@ msgstr "Move session to worktree?"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.setupCommandFailed"
-msgstr "The independent copy setup command failed."
+msgstr "The Worktree setup command failed."
 
 #. worktree-progress-components.tsx
 msgid "session.worktree.step.active"
@@ -15246,7 +15410,7 @@ msgstr "Create and use copy"
 
 #. worktree-session.ts — factory step labels
 msgid "session.worktree.step.createCheckout"
-msgstr "Create independent copy"
+msgstr "Create Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15290,12 +15454,12 @@ msgstr "Using project files"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moveFailed"
-msgstr "Could not use the independent copy"
+msgstr "Could not use the Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
-msgstr "Preparing an independent copy"
+msgstr "Preparing a Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15310,22 +15474,22 @@ msgstr "Refreshing file location"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.setupFailed"
-msgstr "Independent copy setup failed"
+msgstr "Worktree setup failed"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.started"
-msgstr "Independent copy task accepted"
+msgstr "Worktree task accepted"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.starting"
-msgstr "Starting task in an independent copy"
+msgstr "Starting task in a Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.worktreeActive"
-msgstr "Using an independent copy"
+msgstr "Using a Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.account.actions.create"
@@ -15905,7 +16069,7 @@ msgstr "Interface Language"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.row.newSessionWorkspace"
-msgstr "Files for new tasks"
+msgstr "New task starting point"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.general.row.notifications"
@@ -17225,19 +17389,19 @@ msgstr "Refresh this browser when the server has newer Web assets."
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
-msgstr "Use project files or create an independent copy for each new Git task. Projects can override this default."
+msgstr "Use the main folder or create a Worktree for each new Git task. Projects can override this default."
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.main"
-msgstr "Project files"
+msgstr "Main folder"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.title"
-msgstr "Files for new tasks"
+msgstr "New task starting point"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.worktree"
-msgstr "Independent copy"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -21161,7 +21325,7 @@ msgstr "Continue an existing copy"
 
 #. js-lingui-explicit-id
 msgid "task.location.copy"
-msgstr "Independent copy"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "task.location.copyDescription"
@@ -21229,7 +21393,7 @@ msgstr "Choose files for this task without changing another task’s folder."
 
 #. js-lingui-explicit-id
 msgid "task.location.files"
-msgstr "Project files"
+msgstr "Main folder"
 
 #. js-lingui-explicit-id
 msgid "task.location.incompatible"
@@ -21277,7 +21441,7 @@ msgstr "No command execution"
 
 #. js-lingui-explicit-id
 msgid "task.location.planned"
-msgstr "Independent copy on start"
+msgstr "Worktree on start"
 
 #. js-lingui-explicit-id
 msgid "task.location.readOnlyDefaults"

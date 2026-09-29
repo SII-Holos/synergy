@@ -85,6 +85,7 @@ export function resolveThemeVariant(variant: ThemeVariant, isDark: boolean): Res
   tokens["surface-hover"] = layer(1, 3)
   tokens["surface-hover-base"] = layer(1, 2)
   tokens["surface-overlay"] = isDark ? "#0000007a" : "#00000057"
+  tokens["surface-shadow"] = isDark ? "#00000066" : "#1418201f"
 
   tokens["surface-brand-base"] = primary[8]
   const brandForeground = pickReadableColor(tokens["surface-brand-base"] as HexColor, ["#000000", "#ffffff"])

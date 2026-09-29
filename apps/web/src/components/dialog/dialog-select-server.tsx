@@ -28,6 +28,7 @@ async function checkHealth(url: string, fetch?: typeof globalThis.fetch): Promis
 
 interface DialogSelectServerProps {
   onSelected?: () => void
+  onChoose?: (url: string) => void
 }
 
 export function DialogSelectServer(props: DialogSelectServerProps = {}) {
@@ -91,6 +92,11 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
   function select(value: string, persist?: boolean) {
     if (!persist && store.status[value]?.healthy === false) return
     dialogContext.close()
+    if (props.onChoose) {
+      if (persist) server.add(value, false)
+      props.onChoose(value)
+      return
+    }
     if (persist) {
       server.add(value)
       props.onSelected?.()

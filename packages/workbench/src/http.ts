@@ -1,3 +1,4 @@
+import { ProjectDirectoriesRoute } from "./project/routes/directories"
 import { ProjectTaskDefaultsRoute } from "./project/routes/task-defaults"
 import { Vcs } from "./project/vcs"
 import { GitRoute } from "./project/routes/git"
@@ -13,7 +14,10 @@ export function registerHttp() {
   Server.registerContributions(
     {
       routes: {
-        "global-tools": new Hono().route("/global/git", GitRoute()).route("/global/stats", StatsRoute()),
+        "global-tools": new Hono()
+          .route("/global/project", ProjectDirectoriesRoute())
+          .route("/global/git", GitRoute())
+          .route("/global/stats", StatsRoute()),
         "global-performance": new Hono().route("/global", PerformanceRoute()),
         "global-services": new Hono().route("/push", PushRoute()),
         "scoped-version-control": new Hono().route("/project/task-defaults", ProjectTaskDefaultsRoute()).get(

@@ -28,6 +28,8 @@ export const SemanticIconToken = {
   "plugins.permission.shell": "crosshair",
   "plugins.permission.hostUi": "building-2",
   "plugins.permission.diff": "diff",
+  "computer.main": "laptop",
+  "project.main": "briefcase-business",
   "workspace.main": "folder",
   "workspace.worktree": "git-fork",
   "workspace.enterWorktree": "worktree-enter",

@@ -48,7 +48,7 @@
 
   &[data-size="compact"] {
     --dialog-width: min(calc(100vw - 32px), 440px);
-    --dialog-max-height: min(calc(100vh - 40px), 520px);
+    --dialog-max-height: min(calc(100vh - 40px), 640px);
   }
 
   &[data-size="form"] {
@@ -57,12 +57,12 @@
   }
 
   &[data-size="list"] {
-    --dialog-width: min(calc(100vw - 32px), 620px);
+    --dialog-width: min(calc(100vw - 32px), 640px);
     --dialog-max-height: min(calc(100vh - 40px), 640px);
   }
 
   &[data-size="wide"] {
-    --dialog-width: min(calc(100vw - 40px), 700px);
+    --dialog-width: min(calc(100vw - 40px), 720px);
     --dialog-max-height: min(calc(100vh - 48px), 720px);
   }
 
@@ -93,9 +93,7 @@
       border: 1px solid var(--dialog-border);
       background: var(--dialog-surface);
       border-radius: 16px;
-      box-shadow:
-        0 20px 60px var(--surface-overlay),
-        0 1px 0 color-mix(in oklch, var(--border-base) 24%, transparent);
+      box-shadow: var(--shadow-dialog);
       font-family: var(--font-family-sans);
       font-feature-settings: var(--font-family-sans--font-feature-settings);
       letter-spacing: var(--letter-spacing-normal);
@@ -123,10 +121,10 @@
           min-width: 0;
           color: var(--text-strong);
           font-family: var(--font-family-sans);
-          font-size: var(--type-ui-page-title-size, 18px);
+          font-size: 20px;
           font-style: normal;
           font-weight: var(--font-weight-semibold, 600);
-          line-height: var(--type-ui-page-title-line-height, 26px);
+          line-height: 28px;
           letter-spacing: 0;
         }
 
@@ -190,12 +188,10 @@
     flex: 0 1 auto;
   }
 
-  &[data-size="list"] [data-slot="dialog-container"],
   &[data-size="command"] [data-slot="dialog-container"] {
     height: var(--dialog-max-height);
   }
 
-  &[data-size="list"] [data-slot="dialog-content"],
   &[data-size="command"] [data-slot="dialog-content"] {
     height: 100%;
   }
@@ -357,7 +353,7 @@
   }
 
   [data-component="button"][data-size="large"] {
-    height: 36px;
+    height: 40px;
     padding: 0 15px;
     font-size: var(--type-ui-body-size, 14px);
     line-height: var(--type-ui-body-line-height, 20px);

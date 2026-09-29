@@ -36,6 +36,7 @@
   --surface-hover: #F0F0F0;
   --surface-hover-base: #F0F0F0;
   --surface-overlay: #00000057;
+  --surface-shadow: #1418201f;
   --surface-brand-base: #3b82f6;
   --surface-brand-hover: #549cff;
   --surface-interactive-base: #d9edff;
@@ -315,6 +316,7 @@
     --surface-hover: #292929;
     --surface-hover-base: #292929;
     --surface-overlay: #0000007a;
+    --surface-shadow: #00000066;
     --surface-brand-base: #3b82f6;
     --surface-brand-hover: #549cff;
     --surface-interactive-base: #0a1a34;

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import type { DirectoryPage } from "@ericsanchezok/synergy-sdk/client"
+import type { DirectoryPage, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -21,6 +21,8 @@ export interface DialogSelectDirectoryResult {
   directory: string | string[]
 }
 interface DialogSelectDirectoryProps {
+  client?: SynergyClient
+  serverUrl?: string
   title?: string
   multiple?: boolean
   onSelect: (result: DialogSelectDirectoryResult | null) => void
@@ -31,8 +33,10 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const sync = useGlobalSync()
   const dialog = useDialog()
   const { _ } = useLingui()
-  const client = sdk.client
-  const home = () => sync.data.paths.home || "/"
+  const client = props.client ?? sdk.client
+  const [home, setHome] = createSignal(
+    props.serverUrl && props.serverUrl !== sdk.url ? "/" : sync.data.paths.home || "/",
+  )
   const [path, setPath] = createSignal(home())
   const [draft, setDraft] = createSignal(home())
   const [query, setQuery] = createSignal("")
@@ -46,7 +50,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   let request: AbortController | undefined
   onCleanup(() => request?.abort())
   createEffect(() => {
-    if (sdk.client !== client) dialog.close()
+    if (!props.client && sdk.client !== client) dialog.close()
   })
   const crumbs = createMemo(() => {
     const current = path()
@@ -144,11 +148,19 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
     props.onSelect({ directory: props.multiple ? paths : paths[0] })
     dialog.close()
   }
-  onMount(() => void load(home()))
+  onMount(() => {
+    void (async () => {
+      if (props.serverUrl && props.serverUrl !== sdk.url) {
+        const paths = await client.global.paths.get().catch(() => undefined)
+        if (paths?.data?.home) setHome(paths.data.home)
+      }
+      await load(home())
+    })()
+  })
   return (
     <Dialog
       title={props.title ?? _(copy.title)}
-      description={_({ ...copy.service, values: { service: serverDisplayName(sdk.url) } })}
+      description={_({ ...copy.service, values: { service: serverDisplayName(props.serverUrl ?? sdk.url) } })}
       footer={
         <div data-slot="dialog-actions">
           <Button variant="ghost" onClick={() => dialog.close()}>
@@ -162,7 +174,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           </Button>
         </div>
       }
-      size="list"
+      size="wide"
       class="directory-navigation"
     >
       <div data-slot="dialog-form" class="project-flow">

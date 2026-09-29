@@ -502,11 +502,21 @@ import type {
   PluginStatusResponses,
   PluginUpdateConfigErrors,
   PluginUpdateConfigResponses,
+  ProjectCreateErrors,
+  ProjectCreateInput,
+  ProjectCreateResponses,
+  ProjectDirectoriesErrors,
+  ProjectDirectoriesResponses,
+  ProjectDirectoriesUpdate,
   ProjectTaskDefaultsGetErrors,
   ProjectTaskDefaultsGetResponses,
   ProjectTaskDefaultsInput,
   ProjectTaskDefaultsUpdateErrors,
   ProjectTaskDefaultsUpdateResponses,
+  ProjectUpdateDirectoriesErrors,
+  ProjectUpdateDirectoriesResponses,
+  ProjectWorktreesErrors,
+  ProjectWorktreesResponses,
   ProviderAuthErrors,
   ProviderAuthGithubIdentityErrors,
   ProviderAuthGithubIdentityResponses,
@@ -4763,6 +4773,178 @@ export class Global extends HeyApiClient {
   nav = new Nav({ client: this.client })
 }
 
+export class TaskDefaults extends HeyApiClient {
+  /**
+   * Get project new-task defaults
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ProjectTaskDefaultsGetResponses,
+      ProjectTaskDefaultsGetErrors,
+      ThrowOnError
+    >({
+      url: "/project/task-defaults",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save project new-task defaults
+   *
+   * Updates only Web and Desktop new-task defaults. Existing sessions and runtime creation rules are unchanged.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      projectTaskDefaultsInput?: ProjectTaskDefaultsInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "projectTaskDefaultsInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      ProjectTaskDefaultsUpdateResponses,
+      ProjectTaskDefaultsUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/project/task-defaults",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Project extends HeyApiClient {
+  /**
+   * Create a project from folders
+   */
+  public create<ThrowOnError extends boolean = false>(
+    parameters?: {
+      projectCreateInput?: ProjectCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "projectCreateInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<ProjectCreateResponses, ProjectCreateErrors, ThrowOnError>({
+      url: "/global/project",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get project folders
+   */
+  public directories<ThrowOnError extends boolean = false>(
+    parameters: {
+      scopeID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "scopeID" }] }])
+    return (options?.client ?? this.client).get<ProjectDirectoriesResponses, ProjectDirectoriesErrors, ThrowOnError>({
+      url: "/global/project/{scopeID}/directories",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save main and additional project folders
+   */
+  public updateDirectories<ThrowOnError extends boolean = false>(
+    parameters: {
+      scopeID: string
+      projectDirectoriesUpdate?: ProjectDirectoriesUpdate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "scopeID" },
+            { key: "projectDirectoriesUpdate", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      ProjectUpdateDirectoriesResponses,
+      ProjectUpdateDirectoriesErrors,
+      ThrowOnError
+    >({
+      url: "/global/project/{scopeID}/directories",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List project Worktrees with their original repositories
+   */
+  public worktrees<ThrowOnError extends boolean = false>(
+    parameters: {
+      scopeID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "scopeID" }] }])
+    return (options?.client ?? this.client).get<ProjectWorktreesResponses, ProjectWorktreesErrors, ThrowOnError>({
+      url: "/global/project/{scopeID}/worktrees",
+      ...options,
+      ...params,
+    })
+  }
+
+  taskDefaults = new TaskDefaults({ client: this.client })
+}
+
 export class Diagnostics extends HeyApiClient {
   /**
    * Get local diagnostics summary
@@ -8605,85 +8787,6 @@ export class Worktree extends HeyApiClient {
       },
     })
   }
-}
-
-export class TaskDefaults extends HeyApiClient {
-  /**
-   * Get project new-task defaults
-   */
-  public get<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).get<
-      ProjectTaskDefaultsGetResponses,
-      ProjectTaskDefaultsGetErrors,
-      ThrowOnError
-    >({
-      url: "/project/task-defaults",
-      ...options,
-      ...params,
-    })
-  }
-
-  /**
-   * Save project new-task defaults
-   *
-   * Updates only Web and Desktop new-task defaults. Existing sessions and runtime creation rules are unchanged.
-   */
-  public update<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      projectTaskDefaultsInput?: ProjectTaskDefaultsInput
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { key: "projectTaskDefaultsInput", map: "body" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).patch<
-      ProjectTaskDefaultsUpdateResponses,
-      ProjectTaskDefaultsUpdateErrors,
-      ThrowOnError
-    >({
-      url: "/project/task-defaults",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-}
-
-export class Project extends HeyApiClient {
-  taskDefaults = new TaskDefaults({ client: this.client })
 }
 
 export class Vcs extends HeyApiClient {
@@ -14685,6 +14788,8 @@ export class SynergyClient extends HeyApiClient {
 
   global = new Global({ client: this.client })
 
+  project = new Project({ client: this.client })
+
   observability = new Observability({ client: this.client })
 
   performance = new Performance({ client: this.client })
@@ -14720,8 +14825,6 @@ export class SynergyClient extends HeyApiClient {
   worktree = new Worktree({ client: this.client })
 
   session = new Session({ client: this.client })
-
-  project = new Project({ client: this.client })
 
   vcs = new Vcs({ client: this.client })
 

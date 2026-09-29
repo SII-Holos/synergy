@@ -10553,6 +10553,170 @@ msgid "plugin.textAction.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "project.entry.addFolder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.changed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolders"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.computer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.connected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.createAction"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.created"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.creating"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.deleteDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.deleteWorktree"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.developer"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.emptyWorktrees"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.existing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderActions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderImpact"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.folders"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.main"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.mainRemove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.manageComputers"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.manageWorktrees"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.namePlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.newWorktree"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.onSend"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.openExisting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.originalMain"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.setMain"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.settings"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.shared"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.stale"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.start"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.unsupported"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.use"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.using"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.worktrees"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "project.flow.cancel"
 msgstr ""
 

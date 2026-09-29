@@ -1,4 +1,11 @@
-import { onCleanup } from "solid-js"
+import { createMediaQuery } from "@solid-primitives/media"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { useGlobalSync } from "@/context/global-sync"
+import { useServer } from "@/context/server"
+import { DialogCreateProject } from "../dialog/dialog-create-project"
+import { projectEntryCopy } from "../dialog/project-entry-copy"
+import { ProjectMenuContent } from "../dialog/dialog-select-project"
+import { createSignal, onCleanup } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -14,7 +21,12 @@ import { useConfirm } from "../dialog/confirm-dialog"
 import { DialogSelectProject } from "../dialog/dialog-select-project"
 import { projectFlowCopy as copy } from "../dialog/project-flow-copy"
 
-export function ProjectTaskButton(props: { label: string; disabled: boolean; uploading?: boolean }) {
+export function ProjectTaskButton(props: {
+  label: string
+  disabled: boolean
+  uploading?: boolean
+  onSettings?: () => void
+}) {
   const { _ } = useLingui()
   const sdk = useSDK()
   const sync = useSync()
@@ -28,8 +40,46 @@ export function ProjectTaskButton(props: { label: string; disabled: boolean; upl
   onCleanup(() => {
     disposed = true
   })
-  const open = () => dialog.show(() => <DialogSelectProject selected={sdk.scopeID} onSelect={select} />)
+  const [opened, setOpened] = createSignal(false)
+  const desktop = createMediaQuery("(min-width: 640px)")
+  const server = useServer()
+  const globalSync = useGlobalSync()
+  const create = () => {
+    setOpened(false)
+    dialog.show(() => (
+      <DialogCreateProject
+        onCreated={async (id, url) => {
+          if (url !== server.url) {
+            server.setActive(url)
+            navigate(`/${base64Encode(id)}/session`)
+            return
+          }
+          await globalSync.refreshScopes()
+          server.scopes.open(id)
+          return select(id)
+        }}
+      />
+    ))
+  }
+  const settings = props.onSettings
+    ? () => {
+        setOpened(false)
+        props.onSettings?.()
+      }
+    : undefined
+  const open = () =>
+    desktop()
+      ? setOpened(true)
+      : dialog.show(() => (
+          <DialogSelectProject selected={sdk.scopeID} onSelect={select} onCreate={create} onSettings={settings} />
+        ))
   command.register(() => [
+    {
+      id: "project.create",
+      title: _(projectEntryCopy.create),
+      disabled: props.disabled || props.uploading,
+      onSelect: create,
+    },
     {
       id: "project.select",
       title: _(copy.choose),
@@ -64,18 +114,53 @@ export function ProjectTaskButton(props: { label: string; disabled: boolean; upl
     navigate(`/${base64Encode(scopeID)}/session`)
   }
   return (
-    <Tooltip value={props.uploading ? _(copy.uploading) : params.id ? _(copy.newTask) : _(copy.choose)} placement="top">
-      <button
-        type="button"
-        class="session-work-context-button"
-        data-project-task-selector
-        disabled={props.disabled || props.uploading}
-        aria-label={params.id ? _(copy.newTask) : _(copy.choose)}
-        onClick={open}
-      >
-        <Icon name={getSemanticIcon("workspace.main")} size="small" />
-        <span>{sdk.isHome ? _(copy.choose) : props.label}</span>
-      </button>
-    </Tooltip>
+    <Popover
+      variant="menu"
+      title={_(copy.choose)}
+      placement="top-start"
+      open={opened()}
+      onOpenChange={setOpened}
+      class="project-select-popover"
+      triggerAs={(attributes) => (
+        <Tooltip
+          value={
+            opened() || dialog.active
+              ? ""
+              : props.uploading
+                ? _(copy.uploading)
+                : params.id
+                  ? _(copy.newTask)
+                  : _(copy.choose)
+          }
+          placement="top"
+        >
+          <button
+            {...attributes}
+            type="button"
+            class="session-work-context-button"
+            data-project-task-selector
+            disabled={props.disabled || props.uploading}
+            aria-label={params.id ? _(copy.newTask) : _(copy.choose)}
+            onClick={(event) => {
+              if (!desktop()) {
+                event.preventDefault()
+                open()
+              } else setOpened((value) => !value)
+            }}
+          >
+            <Icon name={getSemanticIcon("project.main")} size="small" />
+            <span>{sdk.isHome ? _(copy.choose) : props.label}</span>
+          </button>
+        </Tooltip>
+      )}
+    >
+      <ProjectMenuContent
+        selected={sdk.scopeID}
+        onSelect={select}
+        onCreate={create}
+        onClose={() => setOpened(false)}
+        onSettings={settings}
+      />
+    </Popover>
   )
 }

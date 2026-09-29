@@ -10553,6 +10553,170 @@ msgid "plugin.textAction.unavailable"
 msgstr "此编辑操作当前不可用。"
 
 #. js-lingui-explicit-id
+msgid "project.entry.addFolder"
+msgstr "添加文件夹"
+
+#. js-lingui-explicit-id
+msgid "project.entry.changed"
+msgstr "项目文件夹已更改。请确认当前主目录，再开始任务。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.chooseFolders"
+msgstr "选择文件夹"
+
+#. js-lingui-explicit-id
+msgid "project.entry.computer"
+msgstr "电脑"
+
+#. js-lingui-explicit-id
+msgid "project.entry.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "project.entry.create"
+msgstr "新建项目"
+
+#. js-lingui-explicit-id
+msgid "project.entry.createAction"
+msgstr "创建项目"
+
+#. js-lingui-explicit-id
+msgid "project.entry.created"
+msgstr "项目已创建"
+
+#. js-lingui-explicit-id
+msgid "project.entry.creating"
+msgstr "正在创建…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.deleteDescription"
+msgstr "从磁盘移除此 Worktree。有未保存改动的 Worktree 会保留。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.deleteWorktree"
+msgstr "移除 Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.developer"
+msgstr "开发者设置"
+
+#. js-lingui-explicit-id
+msgid "project.entry.emptyWorktrees"
+msgstr "暂无 Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.existing"
+msgstr "这个主目录已属于一个项目。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.failed"
+msgstr "未能保存项目"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderActions"
+msgstr "文件夹操作"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folderImpact"
+msgstr "更换主目录只影响新任务。其他文件夹与已有任务共享；不会移动或删除磁盘文件。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.folders"
+msgstr "文件夹"
+
+#. js-lingui-explicit-id
+msgid "project.entry.loading"
+msgstr "正在加载…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.main"
+msgstr "主目录"
+
+#. js-lingui-explicit-id
+msgid "project.entry.mainRemove"
+msgstr "请先将其他文件夹设为主目录。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.manageComputers"
+msgstr "管理电脑"
+
+#. js-lingui-explicit-id
+msgid "project.entry.manageWorktrees"
+msgstr "管理 Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.name"
+msgstr "项目名称"
+
+#. js-lingui-explicit-id
+msgid "project.entry.namePlaceholder"
+msgstr "为项目命名"
+
+#. js-lingui-explicit-id
+msgid "project.entry.newWorktree"
+msgstr "新建 Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.onSend"
+msgstr "开始任务时创建。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.openExisting"
+msgstr "打开已有项目"
+
+#. js-lingui-explicit-id
+msgid "project.entry.originalMain"
+msgstr "原主目录"
+
+#. js-lingui-explicit-id
+msgid "project.entry.remove"
+msgstr "移除"
+
+#. js-lingui-explicit-id
+msgid "project.entry.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "project.entry.setMain"
+msgstr "设为主目录"
+
+#. js-lingui-explicit-id
+msgid "project.entry.settings"
+msgstr "项目设置"
+
+#. js-lingui-explicit-id
+msgid "project.entry.shared"
+msgstr "基于 {folder} 创建，其他 {count} 个文件夹继续共享。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.stale"
+msgstr "文件夹不可用"
+
+#. js-lingui-explicit-id
+msgid "project.entry.start"
+msgstr "新任务起点"
+
+#. js-lingui-explicit-id
+msgid "project.entry.unavailable"
+msgstr "不可用"
+
+#. js-lingui-explicit-id
+msgid "project.entry.unsupported"
+msgstr "此任务使用自定义位置，可在开发者设置中管理。"
+
+#. js-lingui-explicit-id
+msgid "project.entry.use"
+msgstr "使用 Worktree"
+
+#. js-lingui-explicit-id
+msgid "project.entry.using"
+msgstr "{count} 个关联任务"
+
+#. js-lingui-explicit-id
+msgid "project.entry.worktrees"
+msgstr "Worktree"
+
+#. js-lingui-explicit-id
 msgid "project.flow.cancel"
 msgstr "取消"
 
@@ -15090,12 +15254,12 @@ msgstr "重试"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.card.sessionWorktree"
-msgstr "独立副本"
+msgstr "Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.card.worktreeSession"
-msgstr "独立副本任务"
+msgstr "Worktree任务"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15105,12 +15269,12 @@ msgstr "正在将此任务切回项目文件。"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.mainActive"
-msgstr "此任务现在使用项目文件，原独立副本仍然可用。"
+msgstr "此任务现在使用项目文件，原Worktree仍然可用。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.moving"
-msgstr "正在为此任务创建独立副本。"
+msgstr "正在为此任务创建Worktree。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15125,17 +15289,17 @@ msgstr "文件位置已更改，正在更新任务状态。"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
-msgstr "独立副本已准备完成，第一条消息已排队。"
+msgstr "Worktree已准备完成，第一条消息已排队。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.starting"
-msgstr "正在准备独立副本并发送第一条消息。"
+msgstr "正在准备Worktree并发送第一条消息。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.worktreeActive"
-msgstr "此任务现在使用独立副本。"
+msgstr "此任务现在使用Worktree。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15154,7 +15318,7 @@ msgstr "正在发送你的第一条消息。"
 
 #. worktree-session.ts — factory detail strings
 msgid "session.worktree.detail.preparingWorktree"
-msgstr "正在准备项目文件的独立副本。"
+msgstr "正在准备项目文件的Worktree。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15184,7 +15348,7 @@ msgstr "正在使用选中的副本。"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.workspaceSetupComplete"
-msgstr "独立副本已准备完成。"
+msgstr "Worktree已准备完成。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15223,7 +15387,7 @@ msgstr "将会话移至隔离工作区？"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.setupCommandFailed"
-msgstr "独立副本的准备命令失败。"
+msgstr "Worktree的准备命令失败。"
 
 #. worktree-progress-components.tsx
 msgid "session.worktree.step.active"
@@ -15246,7 +15410,7 @@ msgstr "创建并使用副本"
 
 #. worktree-session.ts — factory step labels
 msgid "session.worktree.step.createCheckout"
-msgstr "创建独立副本"
+msgstr "创建Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15290,12 +15454,12 @@ msgstr "已使用项目文件"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moveFailed"
-msgstr "无法使用独立副本"
+msgstr "无法使用Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
-msgstr "正在准备独立副本"
+msgstr "正在准备Worktree"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15310,22 +15474,22 @@ msgstr "正在刷新文件位置"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.setupFailed"
-msgstr "独立副本准备失败"
+msgstr "Worktree准备失败"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.started"
-msgstr "独立副本任务已接受"
+msgstr "Worktree任务已接受"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.starting"
-msgstr "正在独立副本中启动任务"
+msgstr "正在Worktree中启动任务"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.worktreeActive"
-msgstr "已使用独立副本"
+msgstr "已使用Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.account.actions.create"
@@ -16301,11 +16465,11 @@ msgstr "语音 | 听写 | 语音转文字 | 文字转语音 | 识别 | 合成"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.description"
-msgstr "查看项目独立副本、状态和关联任务，清理不再需要的副本。"
+msgstr "查看项目Worktree、状态和关联任务，清理不再需要的副本。"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.label"
-msgstr "独立副本"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.searchTerms"
@@ -17225,7 +17389,7 @@ msgstr "服务器有更新的 Web 资源时，刷新此浏览器。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.description"
-msgstr "使用项目文件，或为每个新的 Git 任务创建独立副本。项目可以覆盖此默认设置。"
+msgstr "使用项目文件，或为每个新的 Git 任务创建Worktree。项目可以覆盖此默认设置。"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.main"
@@ -17237,7 +17401,7 @@ msgstr "新任务使用的文件"
 
 #. js-lingui-explicit-id
 msgid "settings.general.workspace.worktree"
-msgstr "独立副本"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.general.zoom.aria"
@@ -21001,7 +21165,7 @@ msgstr "查看项目副本、文件与关联任务。"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.page.title"
-msgstr "独立副本"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "settings.worktrees.refresh"
@@ -21161,7 +21325,7 @@ msgstr "继续已有副本"
 
 #. js-lingui-explicit-id
 msgid "task.location.copy"
-msgstr "独立副本"
+msgstr "Worktree"
 
 #. js-lingui-explicit-id
 msgid "task.location.copyDescription"
@@ -21277,7 +21441,7 @@ msgstr "不执行命令"
 
 #. js-lingui-explicit-id
 msgid "task.location.planned"
-msgstr "开始时创建独立副本"
+msgstr "开始时创建Worktree"
 
 #. js-lingui-explicit-id
 msgid "task.location.readOnlyDefaults"

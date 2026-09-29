@@ -22,6 +22,8 @@ The detailed presentation requirements live in the [Web product rules](../../../
 
 Renaming three selectors would retain the same mandatory mental model. Reusing global configuration updates could silently change unrelated projects. Allocating a default Environment and rebinding after file selection would violate reuse ownership. Treating localhost as a local-computer capability would choose paths on the wrong machine for external connections.
 
+The combined-summary presentation is refined by [computer, project and main-folder task flow](2026-09-29-computer-project-main-folder-flow.md). Draft-transfer and service-ownership decisions remain applicable.
+
 ## Consequences
 
 Advanced operations remain discoverable but require an extra panel. Projects without a configuration folder inherit defaults read-only instead of acquiring a new persistence model. Failed and incompatible references remain visible for repair. The additional scoped defaults and read-only directory routes require generated OpenAPI/SDK updates but no entity or Plugin UI version changes.

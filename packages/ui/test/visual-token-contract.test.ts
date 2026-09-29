@@ -184,6 +184,7 @@ function buildP0ValidTokenSet(): Set<string> {
     "radius-2xl",
     "shadow-xs",
     "shadow-md",
+    "shadow-dialog",
     "shadow-lg",
     "shadow-xs-border",
     "shadow-xs-border-base",
