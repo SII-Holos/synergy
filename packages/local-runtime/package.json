@@ -133,7 +133,7 @@
     "@ai-sdk/perplexity": "2.0.22",
     "@ai-sdk/togetherai": "1.0.30",
     "@ai-sdk/vercel": "1.0.31",
-    "@ai-sdk/xai": "2.0.42",
+    "@ai-sdk/xai": "2.0.98",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
