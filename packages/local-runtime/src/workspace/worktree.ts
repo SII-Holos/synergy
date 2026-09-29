@@ -1019,7 +1019,7 @@ export namespace Worktree {
     return info.id === target || info.name === target || info.branch === target || info.path === target
   }
 
-  async function find(target: string) {
+  export async function resolve(target: string) {
     const { items } = await inventory()
     const found = items.find((item) => match(item, target))
     if (!found) throw new NotFoundError({ message: `Worktree not found: ${target}` })
@@ -1051,10 +1051,10 @@ export namespace Worktree {
     })
   }
 
-  async function bindSession(sessionID: string, info: Info) {
+  export function workspace(info: Info) {
     const { repoRoot } = ensureGitScope()
-    const workspace = {
-      type: "git_worktree",
+    return {
+      type: "git_worktree" as const,
       path: info.path,
       scopeID: info.scopeID,
       worktreeID: info.id,
@@ -1065,9 +1065,14 @@ export namespace Worktree {
       resolvedBaseCommit: info.resolvedBaseCommit,
       originalCheckout: path.resolve(repoRoot),
     }
+  }
+
+  async function bindSession(sessionID: string, info: Info) {
+    const { repoRoot } = ensureGitScope()
+    const selected = workspace(info)
     await updateBinding(info, sessionID, "add")
     try {
-      const session = await Session.updateWorkspace(sessionID, workspace)
+      const session = await Session.updateWorkspace(sessionID, selected)
       ScopeContext.refreshWorkspace(session.workspace)
     } catch (error) {
       await updateBinding(info, sessionID, "remove").catch(() => undefined)
@@ -1080,9 +1085,9 @@ export namespace Worktree {
       input.sessionID,
       async () => {
         await nativeSession(input.sessionID)
-        const info = await find(input.target)
+        const info = await resolve(input.target)
         return withUse(info.path, input.sessionID, async () => {
-          const current = await find(input.target)
+          const current = await resolve(input.target)
           await bindSession(input.sessionID, current)
           return current
         })
@@ -1124,7 +1129,9 @@ export namespace Worktree {
     const session = await Session.get(sessionID)
     const workspace = session.workspace
     const item =
-      workspace?.type === "git_worktree" && workspace.worktreeID ? await find(String(workspace.worktreeID)) : undefined
+      workspace?.type === "git_worktree" && workspace.worktreeID
+        ? await resolve(String(workspace.worktreeID))
+        : undefined
     const directory = workspace?.path ?? null
     return {
       workspace,
@@ -1182,11 +1189,11 @@ export namespace Worktree {
     // turn may exclude itself from the guards below.
     const excludeSessionID = options?.insideCallerTurn ? sessionID : undefined
     const parsed = RemoveInput.parse(input)
-    const initial = await find(parsed.target)
+    const initial = await resolve(parsed.target)
     if (initial.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
     const finishRemoval = beginRemoval(initial, excludeSessionID)
     try {
-      const info = await find(parsed.target)
+      const info = await resolve(parsed.target)
       if (info.stale) {
         await leaveBoundSessions(info, sessionID, { excludeRunning: excludeSessionID })
         if (info.managed) await removeRegistry(info.id)
@@ -1659,7 +1666,7 @@ export namespace Worktree {
       let finishRemoval: (() => void) | undefined
       try {
         finishRemoval = beginRemoval(item)
-        const current = await find(item.id)
+        const current = await resolve(item.id)
         const lock = lockOwner(current.locked)
         if (lock !== "none" || (await running(current))) {
           report.skipped.push({
@@ -1715,7 +1722,7 @@ export namespace Worktree {
           continue
         }
         finishRemoval = beginRemoval(item)
-        const current = await find(item.id)
+        const current = await resolve(item.id)
         const decision = await probe(current)
         if (!decision.eligible) {
           report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })

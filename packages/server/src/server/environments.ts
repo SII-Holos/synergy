@@ -27,7 +27,7 @@ export const EnvironmentsRoute = () =>
           ...errors(400),
         },
       }),
-      async (c) => c.json(await ResourceProfiles.list()),
+      async (c) => c.json(await ResourceProfiles.list(ScopeContext.current.scope.id)),
     )
     .get(
       "/",

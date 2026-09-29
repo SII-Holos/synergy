@@ -240,7 +240,9 @@ function SessionPageContent() {
   const [store, setStore] = createStore({
     messageId: undefined as string | undefined,
     turnStart: 0,
-    newSessionEnvironment: undefined as { scopeID: string; id: string | null | undefined } | undefined,
+    newSessionEnvironment: undefined as
+      | { scopeID: string; id: string | null | undefined; profile?: string | null }
+      | undefined,
     newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
     promptHeight: 0,
     mobileReviewOpen: false,
@@ -1581,6 +1583,14 @@ function SessionPageContent() {
             get newSessionEnvironmentID() {
               return store.newSessionEnvironment?.scopeID === sdk.scopeID ? store.newSessionEnvironment.id : undefined
             },
+            get newSessionEnvironmentProfile() {
+              return store.newSessionEnvironment?.scopeID === sdk.scopeID &&
+                store.newSessionEnvironment.profile !== undefined
+                ? store.newSessionEnvironment.profile
+                : sync.data.config.defaultSessionEnvironmentProfile
+            },
+            onNewSessionEnvironmentProfileChange: (profile) =>
+              setStore("newSessionEnvironment", { scopeID: sdk.scopeID, id: undefined, profile }),
             get newSessionWorkspaceSelection() {
               return newSessionWorkspaceSelection()
             },
@@ -1598,6 +1608,7 @@ function SessionPageContent() {
             onNewSessionWorkspaceSelectionReset: () =>
               setStore({ newSessionWorkspaceSelection: undefined, newSessionEnvironment: undefined }),
             onNewSessionTransitionChange: setNewSessionTransition,
+            onWorkspaceTransition: startWorkspaceTransition,
             get sessionTransitionPending() {
               return sessionTransitionPending()
             },
@@ -1892,7 +1903,7 @@ function SessionPageContent() {
                 composer()?.input.current().mode !== "normal"
               }
               onStart={startTask}
-              onProject={() => command.trigger("project.open")}
+              onProject={() => command.trigger("project.select")}
               onFiles={() => composer()?.pickFiles()}
             />
             <SlotOutlet slot="session.empty" sessionId={params.id} />

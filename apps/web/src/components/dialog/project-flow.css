@@ -1,0 +1,122 @@
+.project-flow {
+  min-width: 0;
+}
+.project-flow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: auto;
+  max-height: min(440px, 52dvh);
+  overscroll-behavior: contain;
+}
+.project-flow-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  min-height: 48px;
+  border-radius: 10px;
+  text-align: start;
+  color: var(--text-base);
+}
+.project-flow-row:hover:not(:disabled),
+.project-flow-row[aria-pressed="true"] {
+  background: var(--surface-hover-base);
+}
+.project-flow-row:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+.project-flow-row:disabled {
+  opacity: 0.5;
+}
+.project-flow-row-copy {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+.project-flow-row-copy strong {
+  font-weight: var(--font-weight-medium);
+}
+.project-flow-row-copy small {
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+}
+.project-flow-row-copy > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-flow-check {
+  flex: 0 0 20px;
+  width: 20px;
+}
+.project-flow-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-block: 16px;
+  border-bottom: 1px solid var(--border-weaker-base);
+}
+.project-flow-section:first-child {
+  padding-top: 0;
+}
+.project-flow-section h3 {
+  font-weight: var(--font-weight-medium);
+  color: var(--text-strong);
+}
+.project-flow-section p,
+.project-flow details {
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+}
+.project-flow-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.project-flow [role="alert"] {
+  color: var(--text-error);
+  overflow-wrap: anywhere;
+}
+.project-flow-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.project-flow-field select {
+  font: inherit;
+  color: var(--text-base);
+  background: var(--surface-base);
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  min-height: 36px;
+  padding: 6px 10px;
+  width: 100%;
+}
+.project-flow-field select:focus-visible {
+  outline: 2px solid var(--border-focus);
+}
+.project-flow-path,
+.project-flow dl dd {
+  overflow-wrap: anywhere;
+}
+.project-flow-folder {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.project-flow-folder > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.project-flow summary {
+  cursor: pointer;
+  padding-block: 8px;
+}

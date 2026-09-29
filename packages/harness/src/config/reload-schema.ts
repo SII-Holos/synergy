@@ -116,4 +116,12 @@ export function formatCompactReloadResult(result: RuntimeSchema.ReloadResult): s
   return lines.join("\n")
 }
 
-export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale", "defaultSessionWorkspace"])
+export const CONFIG_CLIENT_SIDE = new Set([
+  "theme",
+  "keybinds",
+  "layout",
+  "toast",
+  "locale",
+  "defaultSessionWorkspace",
+  "defaultSessionEnvironmentProfile",
+])

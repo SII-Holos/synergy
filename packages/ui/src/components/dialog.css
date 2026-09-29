@@ -225,6 +225,19 @@
     padding-top: 6px;
   }
 
+  [data-slot="dialog-footer"] {
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 12px 24px 20px;
+    border-top: 1px solid var(--dialog-border-weak);
+    background: var(--dialog-surface);
+  }
+
+  [data-slot="dialog-footer"] [data-slot="dialog-actions"] {
+    padding-top: 0;
+    flex-wrap: wrap;
+  }
+
   [data-slot="dialog-meta-list"] {
     display: flex;
     width: 100%;

@@ -270,3 +270,7 @@ Message rollback changes the effective transcript through history events. It doe
 - Anchored tags prove a file snapshot; seen-line tracking proves the agent observed an edit range.
 - Formatting and diagnostics run after the persisted write and can change the final returned tag/diff.
 - Transcript rollback and file restoration are separate explicit operations.
+
+## Service directory navigation
+
+The global read-only directory-list endpoint returns a normalized path, parent, directory entries and an opaque continuation cursor. Cursors retain directory and hidden-entry policy; changing either rejects the cursor. Missing paths, non-directories, denied access and unreadable locations are structured errors. The existing fuzzy-search endpoint remains separate and compatible. Both inspect the connected Local Runtime filesystem, not arbitrary Environment providers or object-backed file stores.

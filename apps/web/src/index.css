@@ -1267,3 +1267,23 @@ a {
     height: 44px;
   }
 }
+
+.session-work-context-summary {
+  flex: 1;
+}
+.session-work-context-summary > span {
+  max-width: none;
+}
+.session-work-context-more {
+  margin-inline-start: auto;
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.session-work-context-button[data-project-task-selector] {
+  color: var(--text-base);
+}
+.session-work-context-button[data-unavailable="true"] {
+  color: var(--text-error);
+}

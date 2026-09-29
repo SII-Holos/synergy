@@ -131,7 +131,7 @@ const BUILTIN_SETTINGS_COPY = {
       { id: "settings.general.monoFont.title", message: "Monospace font" },
       { id: "settings.catalog.general.row.interfaceLanguage", message: "Interface Language" },
       { id: "settings.catalog.general.row.activityDisplay", message: "Activity display" },
-      { id: "settings.catalog.general.row.newSessionWorkspace", message: "New Session Workspace" },
+      { id: "settings.catalog.general.row.newSessionWorkspace", message: "Files for new tasks" },
       { id: "settings.catalog.general.row.productUpdates", message: "Product Updates" },
       { id: "settings.catalog.general.row.notifications", message: "Notifications" },
       { id: "settings.catalog.general.row.toastDuration", message: "Toast Duration" },
@@ -517,10 +517,11 @@ const BUILTIN_SETTINGS_COPY = {
     },
   },
   worktrees: {
-    label: { id: "settings.catalog.worktrees.label", message: "Worktrees" },
+    label: { id: "settings.catalog.worktrees.label", message: "Independent copies" },
     description: {
       id: "settings.catalog.worktrees.description",
-      message: "Browse and remove git worktrees across project scopes.",
+      message:
+        "Review independent project copies, their status and associated tasks, and clean up copies you no longer need.",
     },
     searchTerms: {
       id: "settings.catalog.worktrees.searchTerms",

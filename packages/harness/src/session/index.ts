@@ -554,6 +554,7 @@ export namespace Session {
       workspace?: import("./types").Workspace | null
       workspaceID?: string | null
       environmentID?: string | null
+      environmentSelection?: import("../environment/provider").EnvironmentProviders.Default
       forkedFrom?: Info["forkedFrom"]
       completionNotice?: {
         silent?: boolean
@@ -641,10 +642,11 @@ export namespace Session {
         scopeID: scope.id,
         ownerID: result.id,
         workspaceID: result.workspaceID,
+        selection: input?.environmentSelection,
         environmentID:
           input?.environmentID !== undefined
             ? input.environmentID
-            : parent?.scope.id === scope.id
+            : !input?.environmentSelection && parent?.scope.id === scope.id
               ? parent.environmentID
               : undefined,
       })

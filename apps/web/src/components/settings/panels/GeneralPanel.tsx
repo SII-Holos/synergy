@@ -101,13 +101,14 @@ const copy = {
   activityFull: { id: "settings.general.activityDisplay.full", message: "Full" },
   activityBalanced: { id: "settings.general.activityDisplay.balanced", message: "Balanced" },
   activityMinimal: { id: "settings.general.activityDisplay.minimal", message: "Minimal" },
-  workspaceTitle: { id: "settings.general.workspace.title", message: "New session workspace" },
+  workspaceTitle: { id: "settings.general.workspace.title", message: "Files for new tasks" },
   workspaceDescription: {
     id: "settings.general.workspace.description",
-    message: "Start new sessions in the main checkout or an isolated git worktree",
+    message:
+      "Use project files or create an independent copy for each new Git task. Projects can override this default.",
   },
-  workspaceMain: { id: "settings.general.workspace.main", message: "Main checkout" },
-  workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Worktree" },
+  workspaceMain: { id: "settings.general.workspace.main", message: "Project files" },
+  workspaceWorktree: { id: "settings.general.workspace.worktree", message: "Independent copy" },
   compactReasoningTitle: { id: "settings.general.compactReasoning.title", message: "Compact reasoning" },
   compactReasoningDescription: {
     id: "settings.general.compactReasoning.description",

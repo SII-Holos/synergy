@@ -2,6 +2,7 @@ import {
   abandonSession,
   continueSession,
   createSession,
+  SessionLocationError,
   submitInput,
   retryInput,
   restoreInput,
@@ -395,7 +396,17 @@ export const SessionRoute = () =>
         description: "Create a new Synergy session for interacting with AI assistants and managing conversations.",
         operationId: "session.create",
         responses: {
-          ...errors(400),
+          ...errors(404, 409),
+          400: {
+            description: "Invalid working location",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.union([BadRequestError, SessionLocationError.Schema, Worktree.StartCommandFailedError.Schema]),
+                ),
+              },
+            },
+          },
           200: {
             description: "Successfully created session",
             content: {
@@ -417,12 +428,16 @@ export const SessionRoute = () =>
             controlProfile: ControlProfileId.optional(),
             workspace: Session.WorkspaceSelection.optional(),
             environmentID: z.string().min(1).nullable().optional(),
+            environmentProfile: z.string().min(1).optional(),
             completionNotice: z
               .object({
                 silent: z.boolean().optional(),
               })
               .strict()
               .optional(),
+          })
+          .refine((input) => input.environmentProfile === undefined || input.environmentID === undefined, {
+            message: "environmentProfile and environmentID are mutually exclusive",
           })
           .optional(),
       ),

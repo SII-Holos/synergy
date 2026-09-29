@@ -1,3 +1,4 @@
+import { ProjectTaskDefaultsRoute } from "./project/routes/task-defaults"
 import { Vcs } from "./project/vcs"
 import { GitRoute } from "./project/routes/git"
 import { StatsRoute } from "./stats/routes/stats"
@@ -15,7 +16,7 @@ export function registerHttp() {
         "global-tools": new Hono().route("/global/git", GitRoute()).route("/global/stats", StatsRoute()),
         "global-performance": new Hono().route("/global", PerformanceRoute()),
         "global-services": new Hono().route("/push", PushRoute()),
-        "scoped-version-control": new Hono().get(
+        "scoped-version-control": new Hono().route("/project/task-defaults", ProjectTaskDefaultsRoute()).get(
           "/vcs",
           describeRoute({
             summary: "Get VCS info",
@@ -48,7 +49,7 @@ export function registerHttp() {
           projectOnly: true,
         },
       },
-      isScopeRequiredRoute: (pathname) => matchesPath(pathname, ["/vcs"]),
+      isScopeRequiredRoute: (pathname) => matchesPath(pathname, ["/vcs", "/project/task-defaults"]),
     },
     "workbench",
   )

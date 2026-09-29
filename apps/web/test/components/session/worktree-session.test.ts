@@ -46,13 +46,13 @@ describe("new session workspace selection", () => {
     ).toEqual({ mode: "current" })
   })
 
-  test("defaults to the existing worktree when the URL is already in a worktree", () => {
+  test("does not implicitly reuse a previous worktree for a new task", () => {
     expect(
       defaultNewSessionWorkspaceSelection({
         currentDirectory: "/repo/.synergy/worktrees/feature",
         canonicalDirectory: "/repo",
       }),
-    ).toEqual({ mode: "existing", target: "/repo/.synergy/worktrees/feature" })
+    ).toEqual({ mode: "current" })
   })
 
   test("defaults to a new worktree when the persisted preference is worktree", () => {
@@ -86,14 +86,14 @@ describe("new session workspace selection", () => {
     ).toEqual({ mode: "current" })
   })
 
-  test("an existing worktree directory still wins over the persisted main preference", () => {
+  test("a previous worktree does not override the project default", () => {
     expect(
       defaultNewSessionWorkspaceSelection({
         currentDirectory: "/repo/.synergy/worktrees/feature",
         canonicalDirectory: "/repo",
         preference: "main",
       }),
-    ).toEqual({ mode: "existing", target: "/repo/.synergy/worktrees/feature" })
+    ).toEqual({ mode: "current" })
   })
 
   test("preserves an explicit create-new selection", () => {
@@ -159,17 +159,17 @@ describe("workspace transition progress model", () => {
     expect(loading.phase).toBe("loading")
     expect(loading.kind).toBe("enter-worktree")
     expect(loading.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
-      ["Create and bind checkout", "active"],
+      ["Create and use copy", "active"],
     ])
 
     const success = createWorkspaceTransitionSuccessProgress({ operation: "enter" })
-    expect(translateProgressCopy(success.title)).toBe("Worktree active")
-    expect(translateProgressCopy(success.description)).toContain("isolated checkout")
+    expect(translateProgressCopy(success.title)).toBe("Using an independent copy")
+    expect(translateProgressCopy(success.description)).toContain("independent copy")
     expect(success.steps.every((step) => step.state === "complete")).toBe(true)
 
     const error = createWorkspaceTransitionErrorProgress({ operation: "enter", message: "Failed" })
     expect(error).toMatchObject({ phase: "error", kind: "enter-worktree" })
-    expect(translateProgressCopy(error.title)).toBe("Move to worktree failed")
+    expect(translateProgressCopy(error.title)).toBe("Could not use the independent copy")
     expect(error.description).toBe("Failed")
     expect("retry" in error).toBe(false)
     expect("dismiss" in error).toBe(false)
@@ -181,15 +181,15 @@ describe("workspace transition progress model", () => {
     const refreshing = createWorkspaceTransitionRefreshProgress({ operation: "enter" })
 
     expect(refreshing).toMatchObject({ phase: "loading", kind: "enter-worktree" })
-    expect(translateProgressCopy(refreshing.title)).toBe("Refreshing workspace status")
+    expect(translateProgressCopy(refreshing.title)).toBe("Refreshing file location")
     expect(refreshing.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
-      ["Refresh workspace status", "active"],
+      ["Refresh file location", "active"],
     ])
 
     const failed = createWorkspaceTransitionRefreshErrorProgress({ operation: "enter", message: "Network error" })
     expect(failed).toMatchObject({ phase: "error", kind: "enter-worktree" })
-    expect(translateProgressCopy(failed.title)).toBe("Workspace status refresh failed")
-    expect(translateProgressCopy(failed.description)).toContain("changed successfully")
+    expect(translateProgressCopy(failed.title)).toBe("Could not refresh file location")
+    expect(translateProgressCopy(failed.description)).toContain("location changed")
     expect(translateProgressCopy(failed.description)).toContain("Network error")
   })
 
@@ -202,14 +202,14 @@ describe("workspace transition progress model", () => {
     })
 
     expect(loading.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
-      ["Return to main checkout", "active"],
+      ["Return to project files", "active"],
     ])
 
     const success = createWorkspaceTransitionSuccessProgress({ operation: "leave" })
-    expect(translateProgressCopy(success.title)).toBe("Main checkout active")
-    expect(translateProgressCopy(success.description)).toContain("main checkout")
+    expect(translateProgressCopy(success.title)).toBe("Using project files")
+    expect(translateProgressCopy(success.description)).toContain("project files")
     expect(success.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
-      ["Return to main checkout", "complete"],
+      ["Return to project files", "complete"],
     ])
   })
 
@@ -217,13 +217,13 @@ describe("workspace transition progress model", () => {
     const i18n = englishI18n()
     const createProgress = createNewSessionWorkspaceProgress({ selection: { mode: "create" }, stage: "workspace" })
     expect(createProgress).toMatchObject({ kind: "new-worktree-session", phase: "loading" })
-    expect(translateProgressCopy(createProgress.title)).toBe("Starting worktree session")
+    expect(translateProgressCopy(createProgress.title)).toBe("Starting task in an independent copy")
     expect(translateProgressCopy(createProgress.description)).toBe(
-      "Preparing the workspace and submitting your first message.",
+      "Preparing the independent copy and sending your first message.",
     )
     expect(createProgress.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
-      ["Create checkout", "active"],
+      ["Create independent copy", "active"],
       ["Submit message", "pending"],
     ])
 
@@ -233,18 +233,18 @@ describe("workspace transition progress model", () => {
     })
     expect(existingProgress.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
-      ["Bind worktree", "complete"],
+      ["Use existing copy", "complete"],
       ["Submit message", "active"],
     ])
 
     const createSuccess = createNewSessionWorkspaceSuccessProgress({ selection: { mode: "create" } })
     expect(createSuccess).toMatchObject({ kind: "new-worktree-session", phase: "success" })
     expect(translateProgressCopy(createSuccess.description)).toBe(
-      "The workspace is ready and your first message is queued for processing.",
+      "The independent copy is ready and your first message is queued.",
     )
     expect(createSuccess.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
-      ["Create checkout", "complete"],
+      ["Create independent copy", "complete"],
       ["Submit message", "complete"],
       ["Initialize execution", "complete"],
     ])
@@ -256,7 +256,7 @@ describe("workspace transition progress model", () => {
     )
     expect(createAccepted.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
-      ["Create checkout", "complete"],
+      ["Create independent copy", "complete"],
       ["Submit message", "complete"],
       ["Initialize execution", "active"],
     ])
@@ -266,7 +266,7 @@ describe("workspace transition progress model", () => {
     })
     expect(existingSuccess.steps.map((step) => translateDescriptor(step.label, i18n))).toEqual([
       "Prepare session",
-      "Bind worktree",
+      "Use existing copy",
       "Submit message",
       "Initialize execution",
     ])

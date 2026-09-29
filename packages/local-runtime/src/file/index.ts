@@ -10,10 +10,102 @@ import ignore from "ignore"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import fuzzysort from "fuzzysort"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { WorkspaceFileIndexer } from "../workspace-file/indexer"
 
 export namespace File {
   const log = Log.create({ service: "file" })
+  export const DirectoryError = NamedError.create(
+    "DirectoryBrowseError",
+    z.object({
+      code: z.enum(["not_found", "not_directory", "permission_denied", "invalid_cursor", "unavailable"]),
+      path: z.string(),
+      message: z.string(),
+    }),
+  )
+  export const DirectoryPage = z
+    .object({
+      path: z.string(),
+      parent: z.string().nullable(),
+      entries: z.array(z.object({ name: z.string(), path: z.string() })),
+      nextCursor: z.string().optional(),
+    })
+    .meta({ ref: "DirectoryPage" })
+
+  export async function directories(input: {
+    path: string
+    hidden?: boolean
+    cursor?: string
+    limit?: number
+  }): Promise<z.infer<typeof DirectoryPage>> {
+    const directory = normalizeBrowsePath(input.path)
+    const hidden = input.hidden ?? false
+    let after: string | undefined
+    if (input.cursor) {
+      try {
+        const cursor = z
+          .object({ path: z.string(), hidden: z.boolean(), after: z.string() })
+          .parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString()))
+        if (cursor.path !== directory || cursor.hidden !== hidden) throw new Error("mismatch")
+        after = cursor.after
+      } catch {
+        throw new DirectoryError({
+          path: directory,
+          code: "invalid_cursor",
+          message: "The folder listing changed. Refresh this folder.",
+        })
+      }
+    }
+    try {
+      const stat = await fs.promises.stat(directory)
+      if (!stat.isDirectory())
+        throw new DirectoryError({
+          path: directory,
+          code: "not_directory",
+          message: "The selected path is not a folder.",
+        })
+      const children = (await fs.promises.readdir(directory, { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory() && (hidden || !entry.name.startsWith(".")))
+        .map((entry) => entry.name)
+        .sort()
+        .filter((name) => after === undefined || name > after)
+      const limit = Math.min(200, Math.max(1, input.limit ?? 100))
+      const names = children.slice(0, limit)
+      const parent = path.dirname(directory)
+      return {
+        path: directory,
+        parent: parent === directory ? null : parent,
+        entries: names.map((name) => ({ name, path: path.join(directory, name) })),
+        ...(children.length > limit
+          ? {
+              nextCursor: Buffer.from(JSON.stringify({ path: directory, hidden, after: names.at(-1) })).toString(
+                "base64url",
+              ),
+            }
+          : {}),
+      }
+    } catch (error) {
+      if (error instanceof DirectoryError) throw error
+      const code = (error as NodeJS.ErrnoException).code
+      throw new DirectoryError({
+        path: directory,
+        code:
+          code === "ENOENT"
+            ? "not_found"
+            : code === "EACCES" || code === "EPERM"
+              ? "permission_denied"
+              : code === "ENOTDIR"
+                ? "not_directory"
+                : "unavailable",
+        message:
+          code === "ENOENT"
+            ? "This folder no longer exists."
+            : code === "EACCES" || code === "EPERM"
+              ? "Permission to browse this folder was denied."
+              : "This folder could not be read.",
+      })
+    }
+  }
 
   export const Info = z
     .object({

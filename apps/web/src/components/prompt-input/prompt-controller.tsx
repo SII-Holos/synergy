@@ -1,3 +1,4 @@
+import { DialogIndependentCopy } from "../dialog/dialog-independent-copy"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { DialogWorkspace } from "@/components/dialog/dialog-workspace"
 import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
@@ -79,6 +80,8 @@ import { PromptPopover } from "@/components/prompt-input/popover"
 import { PermissionModeSelector } from "@/components/prompt-input/permission-selector"
 import { PromptAddMenu, type PromptAddMenuSection } from "@/components/prompt-input/add-menu"
 import type { PromptStartOptionGroup } from "@/components/prompt-input/start-options"
+import { projectFlowCopy } from "../dialog/project-flow-copy"
+import { locationCopy } from "../dialog/task-location-copy"
 import { SessionWorkContext } from "@/components/session/work-context"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
@@ -106,7 +109,7 @@ import {
   resolveBlueprintSlotDisplay,
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
-import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
+import { isWorktreeWorkspaceSelection } from "@/components/session/worktree-session"
 import { restoreNewSessionRecovery } from "@/components/session/new-session-recovery"
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
@@ -1181,7 +1184,7 @@ export function createPromptInputController(props: PromptInputProps) {
     if (params.id) return []
 
     const workspaceSelection = props.newSessionWorkspaceSelection ?? { mode: "current" as const }
-    const worktreeSelected = isWorktreeWorkspaceSelection(workspaceSelection)
+    const worktreeSelected = workspaceSelection.mode === "create"
     const canCreateWorktree = props.newSessionCanCreateWorktree ?? (!sdk.isHome && !!sdk.directory)
     const mainLabel = isHomeScope(sdk.scopeKey) ? i18n._(PI.wsLabelHome) : i18n._(PI.wsLabelMainCheckout)
     const localDescription = isHomeScope(sdk.scopeKey) ? i18n._(PI.wsDescGlobal) : i18n._(PI.wsDescCurrent)
@@ -1213,7 +1216,13 @@ export function createPromptInputController(props: PromptInputProps) {
             selected: workspaceSelection.mode === "workspace" || workspaceSelection.mode === "none",
             onSelect: () =>
               workflowDialog.show(() => (
-                <DialogWorkspace selection={workspaceSelection} onSelect={props.onNewSessionWorkspaceSelectionChange} />
+                <DialogWorkspace
+                  environmentProfile={props.newSessionEnvironmentProfile}
+                  environmentID={props.newSessionEnvironmentID}
+                  mode="select"
+                  selection={workspaceSelection}
+                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                />
               )),
           },
           {
@@ -1225,14 +1234,37 @@ export function createPromptInputController(props: PromptInputProps) {
             disabled: !canCreateWorktree,
             tooltip: canCreateWorktree ? i18n._(PI.wsWorktreeTooltipCan) : i18n._(PI.wsWorktreeTooltipCannot),
             onSelect: () =>
-              props.onNewSessionWorkspaceSelectionChange?.(
-                worktreeOptionSelection({
-                  currentDirectory: props.newSessionCurrentDirectory,
-                  canonicalDirectory: props.newSessionCanonicalDirectory,
-                }),
-              ),
+              workflowDialog.show(() => (
+                <DialogIndependentCopy
+                  deferred
+                  source={props.newSessionCanonicalDirectory ?? sdk.directory ?? ""}
+                  onConfirm={(name) => props.onNewSessionWorkspaceSelectionChange?.({ mode: "create", name })}
+                />
+              )),
           },
-        ],
+          {
+            id: "workspace.existing",
+            label: i18n._(locationCopy.continueCopy),
+            icon: getSemanticIcon("workspace.worktree"),
+            selected:
+              workspaceSelection.mode === "existing" ||
+              (workspaceSelection.mode === "workspace" &&
+                sync.data.workspaces.some(
+                  (item) => item.id === workspaceSelection.workspaceID && item.type === "git_worktree",
+                )),
+            onSelect: () =>
+              workflowDialog.show(() => (
+                <DialogWorkspace
+                  environmentProfile={props.newSessionEnvironmentProfile}
+                  environmentID={props.newSessionEnvironmentID}
+                  mode="select"
+                  copiesOnly
+                  selection={workspaceSelection}
+                  onSelect={props.onNewSessionWorkspaceSelectionChange}
+                />
+              )),
+          },
+        ].filter((option) => option.id !== "workspace.worktree" || canCreateWorktree),
       },
     ]
   })
@@ -1967,6 +1999,7 @@ export function createPromptInputController(props: PromptInputProps) {
         setStore("mode", mode)
       },
       setEnvironment: (id) => props.onNewSessionEnvironmentChange?.(id),
+      setEnvironmentProfile: (profile) => props.onNewSessionEnvironmentProfileChange?.(profile),
       setWorkspaceSelection: (selection) => props.onNewSessionWorkspaceSelectionChange?.(selection),
       setControlProfile: input.setControlProfile,
       setPlan: setPendingPlan,
@@ -2026,7 +2059,12 @@ export function createPromptInputController(props: PromptInputProps) {
         </Show>
         <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
         <SessionWorkContext
+          uploading={attachmentsUploading()}
+          onWorkspaceTransition={props.onWorkspaceTransition}
+          running={working()}
           environmentID={props.newSessionEnvironmentID}
+          environmentProfile={props.newSessionEnvironmentProfile}
+          onEnvironmentProfileChange={props.onNewSessionEnvironmentProfileChange}
           workspaceSelection={props.newSessionWorkspaceSelection}
           onEnvironmentChange={props.onNewSessionEnvironmentChange}
           startOptions={newSessionStartOptions()}
@@ -2057,6 +2095,15 @@ export function createPromptInputController(props: PromptInputProps) {
               <span class="text-14-regular">{i18n._(PI.dropZone)}</span>
             </div>
           </div>
+        </Show>
+        <Show
+          when={[...prompt.current(), ...prompt.context.items()].some(
+            (part) => part.type === "file" && part.originScopeID && part.originScopeID !== sdk.scopeID,
+          )}
+        >
+          <p role="alert" class="px-3 pt-3 text-small text-text-error">
+            {i18n._(projectFlowCopy.unavailableReference)}
+          </p>
         </Show>
         <Show when={prompt.context.items().length > 0}>
           <div class="flex flex-wrap items-center gap-2 px-3 pt-3">

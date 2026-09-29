@@ -1,6 +1,9 @@
 import type { ControlProfileId } from "@/context/input"
 import type { MessageDescriptor } from "@lingui/core"
-import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
+import type {
+  SessionWorkspaceTransitionRequest,
+  NewSessionWorkspaceSelection,
+} from "@/components/session/worktree-session"
 import type {
   SessionTransitionActions,
   SessionTransitionProgress,
@@ -43,10 +46,13 @@ export type PromptInputStore = {
 }
 
 export interface PromptInputProps {
+  onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   readOnly?: boolean
   class?: string
   ref?: (el: HTMLDivElement) => void
   newSessionEnvironmentID?: string | null
+  newSessionEnvironmentProfile?: string | null
+  onNewSessionEnvironmentProfileChange?: (profile: string | null | undefined) => void
   newSessionWorkspaceSelection?: NewSessionWorkspaceSelection
   newSessionCanonicalDirectory?: string
   newSessionCurrentDirectory?: string

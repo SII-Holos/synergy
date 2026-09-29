@@ -226,6 +226,8 @@ import type {
   GlobalDisposeResponses,
   GlobalFilesystemBrowseErrors,
   GlobalFilesystemBrowseResponses,
+  GlobalFilesystemDirectoriesErrors,
+  GlobalFilesystemDirectoriesResponses,
   GlobalGitInitErrors,
   GlobalGitInitResponses,
   GlobalHealthErrors,
@@ -500,6 +502,11 @@ import type {
   PluginStatusResponses,
   PluginUpdateConfigErrors,
   PluginUpdateConfigResponses,
+  ProjectTaskDefaultsGetErrors,
+  ProjectTaskDefaultsGetResponses,
+  ProjectTaskDefaultsInput,
+  ProjectTaskDefaultsUpdateErrors,
+  ProjectTaskDefaultsUpdateResponses,
   ProviderAuthErrors,
   ProviderAuthGithubIdentityErrors,
   ProviderAuthGithubIdentityResponses,
@@ -916,6 +923,42 @@ export class Paths extends HeyApiClient {
 }
 
 export class Filesystem extends HeyApiClient {
+  /**
+   * List server directory children
+   */
+  public directories<ThrowOnError extends boolean = false>(
+    parameters: {
+      path: string
+      hidden?: boolean
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "path" },
+            { in: "query", key: "hidden" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      GlobalFilesystemDirectoriesResponses,
+      GlobalFilesystemDirectoriesErrors,
+      ThrowOnError
+    >({
+      url: "/global/filesystem/directories",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Browse server directories
    *
@@ -2724,6 +2767,7 @@ export class Session extends HeyApiClient {
       controlProfile?: "guarded" | "autonomous" | "full_access"
       workspace?: SessionWorkspaceSelection
       environmentID?: string | null
+      environmentProfile?: string
       completionNotice?: {
         silent?: boolean
       }
@@ -2744,6 +2788,7 @@ export class Session extends HeyApiClient {
             { in: "body", key: "controlProfile" },
             { in: "body", key: "workspace" },
             { in: "body", key: "environmentID" },
+            { in: "body", key: "environmentProfile" },
             { in: "body", key: "completionNotice" },
           ],
         },
@@ -8560,6 +8605,85 @@ export class Worktree extends HeyApiClient {
       },
     })
   }
+}
+
+export class TaskDefaults extends HeyApiClient {
+  /**
+   * Get project new-task defaults
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      ProjectTaskDefaultsGetResponses,
+      ProjectTaskDefaultsGetErrors,
+      ThrowOnError
+    >({
+      url: "/project/task-defaults",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Save project new-task defaults
+   *
+   * Updates only Web and Desktop new-task defaults. Existing sessions and runtime creation rules are unchanged.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      projectTaskDefaultsInput?: ProjectTaskDefaultsInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "projectTaskDefaultsInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      ProjectTaskDefaultsUpdateResponses,
+      ProjectTaskDefaultsUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/project/task-defaults",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
+export class Project extends HeyApiClient {
+  taskDefaults = new TaskDefaults({ client: this.client })
 }
 
 export class Vcs extends HeyApiClient {
@@ -14596,6 +14720,8 @@ export class SynergyClient extends HeyApiClient {
   worktree = new Worktree({ client: this.client })
 
   session = new Session({ client: this.client })
+
+  project = new Project({ client: this.client })
 
   vcs = new Vcs({ client: this.client })
 
