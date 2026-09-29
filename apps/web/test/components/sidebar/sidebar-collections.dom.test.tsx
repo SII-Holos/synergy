@@ -40,7 +40,7 @@ beforeAll(async () => {
     const background = [entry("background-one","background","Background session")]
     const scope = {id:"project-one",directory:"/fixture/project",name:"Project one",worktree:"/fixture/project",get expanded(){return expanded()},time:{created:1,updated:1}}
     export const useLayout = () => ({
-      sidebar:{opened,width,resize,close:()=>setOpened(false),toggle:()=>setOpened(!opened())},
+      sidebar:{opened,width,resize,setOccupiedWidth:()=>{},close:()=>setOpened(false),toggle:()=>setOpened(!opened())},
       nav:{recentEntries:()=>recent,hasMoreRecent:()=>!loaded(),loadMoreNav:()=>setLoaded(true),
         rootNavEntries:kind=>({home,channel,background})[kind]||[],hasMoreRootNavSection:()=>false,
         scopeIndexLoaded:()=>true,navEntries:()=>({"project-one":{items:[]}}),

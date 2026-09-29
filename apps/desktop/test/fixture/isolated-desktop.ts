@@ -1,4 +1,4 @@
-import { mkdir, realpath } from "node:fs/promises"
+import { mkdir, realpath, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import path from "node:path"
 
@@ -12,7 +12,7 @@ export async function prepareIsolatedDesktop(home: string, appURL: string) {
   const userData = path.join(directory, "user-data")
   await mkdir(userData, { recursive: true })
   const wrapper = path.join(directory, "entry.mjs")
-  await Bun.write(
+  await writeFile(
     wrapper,
     [
       'import { app } from "electron"',

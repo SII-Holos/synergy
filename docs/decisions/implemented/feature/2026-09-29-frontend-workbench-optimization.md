@@ -28,6 +28,12 @@ The working location strip owns project, Environment and Workspace entry points 
 
 The built-in macOS Shell shares the native control row with its own header. The host keeps native traffic lights and third-party Shell protection; only the built-in layout opts into integration. The native View menu retains a fullscreen action so exiting fullscreen remains reachable when traffic lights auto-hide. This avoids a new Plugin UI API or macOS window-state broadcast. Web and other desktop platforms retain their own chrome.
 
+The built-in Shell now fully hides its sidebar and relocates restore, Search and New into one horizontal row. A retained inert body preserves scroll and disclosure identity; the App reports actual navigation occupancy for split sizing. The Shell registration boundary opts into this behavior by the built-in loader identity, including fallback rendering, rather than comparing registry entry objects (registration copies those objects). Other Shells retain their navigation behavior and host protection.
+
+Native safe space comes from Electron Window Controls Overlay, not fixed offsets or application window-state events. Electron 42.5.0 [computes the native button rectangle and clears it in fullscreen](https://github.com/electron/electron/blob/v42.5.0/shell/browser/native_window_mac.mm#L1870-L1896); its [custom titlebar contract](https://www.electronjs.org/docs/latest/tutorial/custom-title-bar) exposes that geometry to CSS. The 48px row retains native traffic lights, while `env(titlebar-area-x)` drives the left inset. Narrow headers use the existing action menu for Search and secondary panels.
+
+Configuration remains directly reachable with differentiated emphasis: model name and one chevron, secondary thinking text, Agent name, and permission icon with its current state. Work location removes redundant chevrons. Add becomes the first circular control, and its existing section data now drives a grouped list. Model popovers use natural content height with a bounded, independently scrolling result area. These are presentation changes over existing domain controllers, without new persistence, HTTP or Plugin UI contracts.
+
 ## Alternatives considered
 
 **Component-local palettes.** They would diverge from user themes, plugin surfaces and startup fallbacks, so the structured theme remains the only color source.
@@ -41,6 +47,12 @@ The built-in macOS Shell shares the native control row with its own header. The 
 **Rotating greetings and examples.** They add visual changes unrelated to the user's task. Stable task starters provide useful drafting and project/file actions without timed changes. They reuse revision-checked input edits, require confirmation before replacing text, and preserve attachments and working location.
 
 **Direct DOM insertion for plain-text paste.** It bypasses native undo. The existing contenteditable editor retains a tested native editing command rather than adding a second custom history owner.
+
+**Keep a collapsed icon rail.** It retains an otherwise unused column and separates restore/New from the session header. The built-in Shell uses zero occupancy; custom Shells retain their prior contract.
+
+**Broadcast macOS fullscreen or infer it from size.** Native transitions across Spaces are asynchronous. Overlay geometry already owns native control exclusion and avoids restoring the unsafe broadcast path.
+
+**Give every selector a chevron.** Identical emphasis obscures the primary choice. Accessible names, expanded state, focus and selected surfaces preserve discoverability while visual forms differ.
 
 ## Consequences
 

@@ -2115,24 +2115,27 @@ export function createPromptInputController(props: PromptInputProps) {
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
+                <PromptAddMenu sections={addMenuSections()} />
                 <Show when={!props.hideAgentSelector}>
                   <div class="min-w-0 shrink-0">
                     <ToolbarSelectorPopover
                       triggerAs={(triggerProps) => (
-                        <button
-                          {...triggerProps}
-                          type="button"
-                          class="prompt-input-toolbar-button flex items-center gap-1.5"
+                        <Tooltip
+                          value={i18n._(PI.selectAgent)}
+                          placement="top"
+                          open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
                         >
-                          <span class="text-12-medium text-text-base whitespace-nowrap">
-                            {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
-                          </span>
-                          <Icon
-                            name={getSemanticIcon("navigation.collapse")}
-                            size="small"
-                            class="text-icon-weak-base shrink-0"
-                          />
-                        </button>
+                          <button
+                            {...triggerProps}
+                            type="button"
+                            aria-label={`${i18n._(PI.selectAgent)}: ${translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}`}
+                            class="prompt-input-toolbar-button flex items-center gap-1.5"
+                          >
+                            <span class="text-12-medium text-text-base whitespace-nowrap">
+                              {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
+                            </span>
+                          </button>
+                        </Tooltip>
                       )}
                       title={i18n._(PI.selectAgent)}
                       contentClass="w-52 max-h-80"
@@ -2272,7 +2275,6 @@ export function createPromptInputController(props: PromptInputProps) {
                   />
                 </Show>
                 <ComposerSlotOutlet slot="composer.add-menu" sessionId={params.id} class="contents" />
-                <PromptAddMenu sections={addMenuSections()} />
                 <ComposerSlotOutlet slot="composer.start-option" sessionId={params.id} class="contents" />
               </Match>
             </Switch>

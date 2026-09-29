@@ -324,7 +324,12 @@ export function SessionTopBar(props: {
         <ModelSelectorPopover
           placement="bottom-start"
           triggerAs={(triggerProps) => (
-            <TooltipKeybind placement="bottom" title={_(topBar.chooseModel)} keybind={command.keybind("model.choose")}>
+            <TooltipKeybind
+              open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
+              placement="bottom"
+              title={_(topBar.chooseModel)}
+              keybind={command.keybind("model.choose")}
+            >
               <button {...triggerProps} type="button" class="stb-selector-btn">
                 <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
                 <Show when={local.model.current()?.catalogState === "retained"}>
@@ -332,7 +337,7 @@ export function SessionTopBar(props: {
                     <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
                   </Tooltip>
                 </Show>
-                <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
+                <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="stb-chevron" />
               </button>
             </TooltipKeybind>
           )}
@@ -344,6 +349,7 @@ export function SessionTopBar(props: {
   const VariantSelectorButton = () => (
     <Show when={modelControlVisibility().variant}>
       <ModelVariantPicker
+        appearance="toolbar"
         value={local.model.variant.displayed()}
         availableVariants={local.model.variant.list()}
         onChange={(value) => local.model.variant.set(value || undefined)}

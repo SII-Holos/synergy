@@ -65,7 +65,7 @@ export function ShellOutlet(props: {
         if (entry().pluginId) host.shell.failed(entry().id)
       }}
       entry={entry()}
-      loader={entry() === builtin ? builtinLoader : entry().loader}
+      loader={entry().loader === builtin.loader ? builtinLoader : entry().loader}
       workbench={props.workbench}
       shell={props.shell}
       fallback={IntegratedShell}

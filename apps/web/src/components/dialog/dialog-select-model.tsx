@@ -26,9 +26,9 @@ export const ModelSelectorPopover: Component<{
       contentClass="model-selector-popover"
     >
       {(close) => (
-        <div class="flex h-full min-h-0 flex-col p-1">
+        <div class="model-selector-content flex min-h-0 flex-col p-1">
           <QuickSwitcherList provider={props.provider} onSelect={close} />
-          <div class="px-2 pb-2 pt-1 flex items-center justify-between gap-2">
+          <div class="model-selector-footer shrink-0 px-2 pb-2 pt-1 flex items-center justify-between gap-2">
             <Button
               variant="ghost"
               class="model-selector-popover-footer-action h-7 px-2.5 text-12-medium text-text-base"

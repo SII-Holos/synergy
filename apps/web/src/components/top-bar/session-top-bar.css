@@ -242,6 +242,7 @@
   .stb-root {
     height: 48px;
     padding: 0 12px;
+    padding-left: max(12px, var(--workbench-native-inset, 0px));
     gap: 8px;
   }
 
@@ -305,4 +306,20 @@
     white-space: nowrap;
     line-height: 14px;
   }
+}
+
+.stb-selector-btn[aria-expanded="true"] {
+  background: var(--surface-raised-base-hover);
+}
+.stb-selector-btn[data-appearance="toolbar"] {
+  gap: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+}
+.stb-root[data-compact] .stb-thinking-prefix {
+  display: none;
+}
+.stb-thinking-prefix {
+  white-space: pre;
 }

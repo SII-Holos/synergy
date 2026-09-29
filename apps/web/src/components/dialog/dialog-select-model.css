@@ -1,7 +1,7 @@
 .model-selector-popover {
   display: flex;
   width: 28rem;
-  height: 24rem;
+  height: auto;
   max-width: calc(100vw - 2rem);
   max-height: calc(100dvh - 2rem);
   flex-direction: column;
@@ -11,10 +11,25 @@
 @media (max-width: 767px) {
   .model-selector-popover {
     width: calc(100vw - 1rem);
-    height: min(22rem, calc(100dvh - 2rem));
   }
 
   .model-selector-popover-footer-action {
     min-height: 2.75rem;
   }
+}
+
+.model-selector-popover[data-component="popover-content"] {
+  max-height: min(30rem, var(--kb-popper-content-available-height, calc(100dvh - 2rem)));
+}
+.model-selector-popover [data-slot="popover-body"] {
+  overflow: hidden;
+}
+.model-selector-content,
+.model-selector-popover [data-component="list"],
+.model-selector-popover [data-slot="list-scroll"] {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+.model-selector-popover [data-slot="list-search"] {
+  margin-bottom: 0;
 }

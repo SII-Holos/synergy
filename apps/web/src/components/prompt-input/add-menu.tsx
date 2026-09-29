@@ -1,3 +1,4 @@
+import { createMemo } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -53,7 +54,11 @@ function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
 
 export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
   const { i18n } = useLocale()
-  const items = () => props.sections.flatMap((section) => section.items)
+  const items = createMemo(() =>
+    props.sections.flatMap((section, sectionIndex) =>
+      section.items.map((item) => ({ ...item, section: section.label ?? "", sectionIndex })),
+    ),
+  )
   const currentItem = () => items().find((item) => item.selected)
 
   return (
@@ -68,14 +73,14 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
             {...triggerProps}
             type="button"
             aria-label={i18n._(PI.addLabel)}
-            class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
+            class="prompt-input-toolbar-icon-button prompt-input-add-button flex items-center justify-center text-icon-base"
           >
             <Icon name={getSemanticIcon("action.add")} size="small" />
           </button>
         </Tooltip>
       )}
       title={i18n._(PI.addLabel)}
-      contentClass="w-52 max-h-80"
+      contentClass="prompt-add-menu w-52 max-h-80"
       placement="top-start"
     >
       {(close) => (
@@ -83,6 +88,8 @@ export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
           class="p-1"
           items={items()}
           key={(item) => item.id}
+          groupBy={(item) => item.section}
+          sortGroupsBy={(a, b) => a.items[0]!.sectionIndex - b.items[0]!.sectionIndex}
           current={currentItem()}
           onSelect={(item) => {
             if (!item) return

@@ -14782,6 +14782,10 @@ msgstr "Retry"
 msgid "session.tags.saveFailed"
 msgstr "Could not save tags"
 
+#. js-lingui-explicit-id
+msgid "session.thinking.prefix"
+msgstr "Thinking: "
+
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"
 msgstr "Dismiss session progress"

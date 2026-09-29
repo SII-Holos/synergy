@@ -14782,6 +14782,10 @@ msgstr "重试"
 msgid "session.tags.saveFailed"
 msgstr "无法保存标签"
 
+#. js-lingui-explicit-id
+msgid "session.thinking.prefix"
+msgstr "思考："
+
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"
 msgstr "关闭会话进度"

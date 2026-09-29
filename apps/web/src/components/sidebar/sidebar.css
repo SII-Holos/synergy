@@ -1760,6 +1760,7 @@ button.sb-session-group-header:focus-visible,
   overflow: hidden;
 }
 .sb-integrated.sb-collapsed .sb-panel {
+  opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
@@ -1832,6 +1833,6 @@ button.sb-session-group-header:focus-visible,
 }
 @media (max-width: 767px) {
   .app-shell--sidebar-collapsed:has([data-default-shell]) .stb-root {
-    padding-left: 12px;
+    padding-left: max(12px, var(--workbench-native-inset, 0px));
   }
 }

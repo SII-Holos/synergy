@@ -156,7 +156,7 @@ test("sidebar disclosure supports native Enter and Space and announces its state
   expect(errors).toEqual([])
 })
 
-test("Add menu is continuous while preserving action guards and keyboard dismissal", async () => {
+test("Add menu preserves sections, action guards and keyboard dismissal", async () => {
   const trigger = page.getByRole("button", { name: "Add", exact: true })
   await trigger.click()
   const list = page.locator('[data-component="list"]')
@@ -178,8 +178,8 @@ test("Add menu is continuous while preserving action guards and keyboard dismiss
     "Lattice",
     "Boss",
   ])
-  expect(await list.getByText("Context", { exact: true }).count()).toBe(0)
-  expect(await list.getByText("Workflow", { exact: true }).count()).toBe(0)
+  expect(await list.getByText("Context", { exact: true }).count()).toBe(1)
+  expect(await list.getByText("Workflow", { exact: true }).count()).toBe(1)
   const gaps = await list
     .locator('[data-slot="list-item"]')
     .evaluateAll((items) =>
@@ -187,7 +187,7 @@ test("Add menu is continuous while preserving action guards and keyboard dismiss
         .slice(1)
         .map((item, index) => item.getBoundingClientRect().top - items[index]!.getBoundingClientRect().bottom),
     )
-  expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1)
+  expect(gaps[0]).toBeGreaterThan(gaps[1]! + 4)
   for (const name of ["Plan", "Lattice"]) {
     await list.getByText(name, { exact: true }).click()
     expect(await page.locator("output").textContent()).toBe("None")
@@ -291,4 +291,17 @@ test("submission notices distinguish pending, failed, unknown and settled decisi
   await page.getByRole("button", { name: "State idle", exact: true }).click()
   expect(await page.locator('div[role="status"]').count()).toBe(0)
   expect(await page.getByRole("alert").count()).toBe(0)
+})
+
+test("Add is a circular standalone control with stable geometry", async () => {
+  const trigger = page.getByRole("button", { name: "Add", exact: true })
+  const before = await trigger.boundingBox()
+  expect(before?.width).toBe(32)
+  expect(before?.height).toBe(32)
+  expect(await trigger.evaluate((element) => getComputedStyle(element).borderRadius)).toBe("50%")
+  await trigger.hover()
+  expect(await trigger.boundingBox()).toEqual(before)
+  await trigger.click()
+  expect(await trigger.boundingBox()).toEqual(before)
+  expect(await page.getByRole("tooltip").count()).toBe(0)
 })

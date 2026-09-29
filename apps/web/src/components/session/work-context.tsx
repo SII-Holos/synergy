@@ -131,7 +131,6 @@ export function SessionWorkContext(props: {
         >
           <Icon name={getSemanticIcon("providers.main")} size="small" />
           <span>{environmentLabel()}</span>
-          <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
         </button>
       </Tooltip>
       <Show

@@ -16,6 +16,7 @@
     "noEmit": false,
     "emitDeclarationOnly": true,
     "outDir": "node_modules/.ts-dist",
+    "rootDir": "../..",
     "isolatedModules": true,
     "paths": {
       "@/*": ["./src/*"]
@@ -26,6 +27,7 @@
     "script",
     "test",
     "package.json",
+    "../desktop/test/fixture/isolated-desktop.ts",
     "../../script/shared/test-runner.ts",
     "../../packages/testing/src/env.ts"
   ],

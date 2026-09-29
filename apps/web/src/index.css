@@ -1236,3 +1236,30 @@ a {
     min-height: 44px;
   }
 }
+
+.prompt-input-add-button,
+.synergy-workbench-canvas .prompt-input-add-button {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 50%;
+  background: transparent;
+}
+.synergy-workbench-canvas .prompt-input-toolbar-button[aria-expanded="true"],
+.prompt-input-add-button:hover,
+.prompt-input-add-button[aria-expanded="true"] {
+  background-color: var(--surface-inset-base-hover);
+}
+.prompt-add-menu [data-slot="list-group"] + [data-slot="list-group"] {
+  border-top: 1px solid var(--border-weaker-base);
+  padding-top: 4px;
+}
+@media (pointer: coarse) {
+  .prompt-input-add-button,
+  .synergy-workbench-canvas .prompt-input-add-button {
+    width: 44px;
+    height: 44px;
+  }
+}

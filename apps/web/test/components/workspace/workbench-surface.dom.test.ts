@@ -46,7 +46,7 @@ beforeAll(async () => {
       surface: id => states[id], panels: () => entries, panelForTab: tab => entries.find(x => x.id === tab?.panelId),
       panelTitle: tab => tab.panelId, openPanel: () => {}, closeTab: () => {}, closeOtherTabs: () => {}, moveTab: () => {}
     })
-    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => false, width: () => 250 } })
+    export const useLayout = () => ({ isDesktop: () => true, sidebar: { opened: () => false, width: () => 250, occupiedWidth: () => 0 } })
   `,
   )
   await Bun.write(
@@ -214,7 +214,7 @@ test("resizing available space constrains both panels without overwriting prefer
   const bottom = page.locator(".workbench-surface--bottom")
   await page.setViewportSize({ width: 850, height: 600 })
   await page.waitForFunction(
-    () => parseFloat((document.querySelector(".workbench-surface--side") as HTMLElement).style.width) <= 452,
+    () => parseFloat((document.querySelector(".workbench-surface--side") as HTMLElement).style.width) === 500,
   )
   expect(await bottom.evaluate((node) => parseFloat((node as HTMLElement).style.height))).toBeLessThanOrEqual(360)
   expect(await page.evaluate(() => (window as unknown as WorkbenchWindow).fixture.size("side"))).toBe(640)

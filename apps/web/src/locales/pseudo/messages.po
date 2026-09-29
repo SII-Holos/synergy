@@ -14782,6 +14782,10 @@ msgstr ""
 msgid "session.tags.saveFailed"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "session.thinking.prefix"
+msgstr ""
+
 #. session-transition-card.tsx — generic transition card
 msgid "session.transition.card.dismissAria"
 msgstr ""

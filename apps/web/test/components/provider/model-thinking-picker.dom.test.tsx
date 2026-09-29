@@ -30,11 +30,12 @@ beforeAll(async () => {
       import { I18nProvider } from "@lingui/solid"
       import { ModelVariantPicker } from ${JSON.stringify(`/@fs/${source}/components/provider/model-thinking-picker.tsx`)}
       import "@ericsanchezok/synergy-ui/styles"
+      import ${JSON.stringify(`/@fs/${source}/components/top-bar/session-top-bar.css`)}
       const core = setupI18n({ locale: "en", messages: { en: {} } })
       const [value, setValue] = createSignal("high")
       render(() => <I18nProvider i18n={core}>
         <style>{"body { margin: 0; } header { position: relative; z-index: 30; height: 40px; } .composer { position: relative; z-index: 40; height: 400px; background: white; } .z-70 { z-index: 70; width: 256px; max-width: calc(100vw - 32px); background: white; } [data-slot=list-item] { display: block; width: 100%; height: 44px; }"}</style>
-        <header><ModelVariantPicker value={value()} availableVariants={["off", "low", "high"]} onChange={setValue} /></header>
+        <header><ModelVariantPicker appearance={location.search ? "toolbar" : undefined} triggerClass={location.search ? "stb-selector-btn" : undefined} value={value()} availableVariants={["off", "low", "high"]} onChange={setValue} /></header>
         <div class="composer">Composer</div>
         <output aria-label="Saved thinking">{value() || "provider-default"}</output>
       </I18nProvider>, document.querySelector("#root")!)
@@ -90,6 +91,21 @@ test("thinking choices stay above the composer, distinguish Default from Off, an
     await page.keyboard.press("Escape")
     expect(await defaultTrigger.getAttribute("aria-expanded")).toBe("false")
     expect(await defaultTrigger.evaluate((element) => document.activeElement === element)).toBe(true)
+  } finally {
+    await page.close()
+  }
+}, 30_000)
+
+test("toolbar thinking keeps a descriptive label without a form chevron", async () => {
+  const page = await browser.newPage()
+  try {
+    await page.goto(`${url}?toolbar`)
+    const trigger = page.getByRole("button", { name: "Select thinking effort: high", exact: true })
+    await trigger.waitFor()
+    expect(await trigger.textContent()).toBe("Thinking: high")
+    await trigger.press("Enter")
+    await page.getByRole("button", { name: /^Off/ }).click()
+    expect(await page.getByLabel("Saved thinking").textContent()).toBe("off")
   } finally {
     await page.close()
   }

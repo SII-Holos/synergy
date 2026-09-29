@@ -1,8 +1,9 @@
 import { useLingui } from "@lingui/solid"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { createMemo, createSignal } from "solid-js"
+import { createMemo, createSignal, Show } from "solid-js"
 import { thinkingChoices } from "@/context/prompt/model-selection"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
@@ -26,6 +27,7 @@ export function ModelVariantPicker(props: {
   popoverLayer?: HTMLElement
   onChange: (variant: string) => void
   triggerClass?: string
+  appearance?: "toolbar"
 }) {
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(false)
@@ -77,15 +79,28 @@ export function ModelVariantPicker(props: {
       portalMount={props.popoverLayer}
       title={_(selectVariantLabel)}
       triggerAs={(triggerProps) => (
-        <button
-          {...triggerProps}
-          type="button"
-          class={props.triggerClass ?? "settings-model-variant"}
-          aria-label={`${_(selectVariantLabel)}: ${label()}`}
+        <Tooltip
+          placement="bottom"
+          value={_(selectVariantLabel)}
+          open={open() ? false : undefined}
+          inactive={props.appearance !== "toolbar"}
         >
-          <span class="settings-model-variant-label">{label()}</span>
-          <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="settings-model-trigger-icon" />
-        </button>
+          <button
+            {...triggerProps}
+            type="button"
+            class={props.triggerClass ?? "settings-model-variant"}
+            aria-label={`${_(selectVariantLabel)}: ${label()}`}
+            data-appearance={props.appearance}
+          >
+            <Show when={props.appearance === "toolbar"}>
+              <span class="stb-thinking-prefix">{_({ id: "session.thinking.prefix", message: "Thinking: " })}</span>
+            </Show>
+            <span class="settings-model-variant-label">{label()}</span>
+            <Show when={props.appearance !== "toolbar"}>
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="settings-model-trigger-icon" />
+            </Show>
+          </button>
+        </Tooltip>
       )}
     >
       {content()}

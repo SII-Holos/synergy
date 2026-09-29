@@ -63,7 +63,6 @@ export function WorkspaceLocationButton(props: {
             }
           >
             <span>{props.location.name || stateLabel()}</span>
-            <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
           </Show>
         </button>
       )}

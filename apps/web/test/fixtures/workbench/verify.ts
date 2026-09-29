@@ -43,7 +43,8 @@ async function open(scope = "home", session = "") {
 async function geometry(trigger: Locator, name: string) {
   const before = await trigger.boundingBox()
   assert.ok(before)
-  const iconBefore = await trigger.locator('[data-component="icon"]').first().boundingBox()
+  const icon = trigger.locator('[data-component="icon"]').first()
+  const iconBefore = (await icon.count()) ? await icon.boundingBox() : null
   await trigger.hover()
   await page.waitForTimeout(450)
   const hovered = await trigger.boundingBox()
@@ -61,7 +62,7 @@ async function geometry(trigger: Locator, name: string) {
     `${name}: popup within viewport`,
   )
   const opened = await trigger.boundingBox()
-  const iconOpened = await trigger.locator('[data-component="icon"]').first().boundingBox()
+  const iconOpened = (await icon.count()) ? await icon.boundingBox() : null
   check(opened && Math.abs(before.x - opened.x) <= 1 && Math.abs(before.y - opened.y) <= 1, `${name}: open geometry`)
   if (iconBefore && iconOpened)
     check(
@@ -115,7 +116,7 @@ try {
     await page.waitForTimeout(250)
     await page.screenshot({ path: path.join(output, `${scheme}-home.png`) })
     for (const [name, trigger] of [
-      ["Agent", page.locator('.prompt-input-toolbar-main button[aria-haspopup="dialog"]').first()],
+      ["Agent", page.getByRole("button", { name: /选择智能体:|Select agent:/ })],
       ["Permission", page.getByRole("button", { name: /权限模式|permission mode/i })],
       ["Add", page.getByRole("button", { name: /^(添加|Add)$/ })],
       ["Start", page.getByRole("button", { name: /^(启动模式|Start mode)$/ })],
@@ -130,7 +131,12 @@ try {
     await page.waitForTimeout(350)
     await page.screenshot({ path: path.join(output, `${scheme}-split.png`) })
     await geometry(page.getByRole("button", { name: /^(启动模式|Start mode)$/ }), `${scheme}/split Start`)
-    await page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ }).click()
+    const hideSide = page.getByRole("button", { name: /隐藏侧边工作区|Hide side workspace/ })
+    if (await hideSide.isVisible()) await hideSide.click()
+    else {
+      await page.getByRole("button", { name: /会话操作|Session actions/ }).click()
+      await page.getByRole("menuitem", { name: /隐藏侧边工作区|Hide side workspace/ }).click()
+    }
     await page.waitForTimeout(350)
   }
   for (const size of [

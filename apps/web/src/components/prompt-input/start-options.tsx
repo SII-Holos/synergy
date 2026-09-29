@@ -72,9 +72,6 @@ export function PromptStartModeSelector(props: {
               <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
                 {props.label ?? selectedOption()?.label ?? i18n._(PI.startDefault)}
               </span>
-              <span class="prompt-input-compact-chevron">
-                <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
-              </span>
             </button>
           </Tooltip>
         )}
