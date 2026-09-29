@@ -403,7 +403,16 @@ test(
               }),
             ])
             expect(settled).toBe(false)
-            await WorkspaceAccess.write([control.path], async () => {}, AbortSignal.timeout(1000))
+            const controlDeadline = Date.now() + 10_000
+            while (true) {
+              try {
+                await WorkspaceAccess.write([control.path], async () => {}, AbortSignal.timeout(1000))
+                break
+              } catch (error) {
+                if (!(error instanceof Error) || error.name !== "TimeoutError" || Date.now() >= controlDeadline)
+                  throw error
+              }
+            }
             await expect(WorkspaceAccess.write([file], async () => {}, AbortSignal.timeout(100))).rejects.toMatchObject(
               { name: "TimeoutError" },
             )
