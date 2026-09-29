@@ -26,7 +26,7 @@ bun run test:computer-native
 SYNERGY_HOME=/absolute/isolated-home SYNERGY_COMPUTER_SERVER_URL=http://127.0.0.1:5147 bun run test:computer-acceptance
 ```
 
-The native script uses two disposable AppKit windows with independent counters for clicks, directed text, values, scrolling, double/right clicks, keys, shortcuts and drag. It checks background observation, explicit foreground recovery, AX-independent capture, occlusion, narrow windows and stale targets. Only read-only observation may repeat while a transition settles; never replay a mutation to make a counter pass.
+The native script uses two disposable AppKit windows with independent counters for clicks, directed text, values, scrolling, double/right clicks, keys, shortcuts and drag. Background text uses a standard editable `NSTextView` to exercise Cua's exact AX insertion. A control that rejects AX insertion can require foreground delivery when process-wide keys might reach a sibling window; preserve Cua's refusal and never weaken sibling-window checks. It checks background observation, explicit foreground recovery, AX-independent capture, occlusion, narrow windows and stale targets. Only read-only observation may repeat while a transition settles; never replay a mutation to make a counter pass.
 
 Keep default-background cases and explicit-foreground cases separate. Fixtures initially open behind the user. Foreground setup and actions must go through the public `foreground:true` path and be recorded as such; they are allowed. Check focus events over the background interval, not over a run that deliberately includes foreground operations. Preserve Cua's activation and restoration policies rather than adding a parallel focus manager. Foreground input excludes other input only while in flight.
 

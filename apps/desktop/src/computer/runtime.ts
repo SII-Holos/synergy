@@ -386,7 +386,14 @@ export class ComputerRuntime {
           "computer_foreground_unavailable",
           "The target could not receive foreground input. Observe again before deciding whether to retry.",
         )
-      if (metadata.code === "background_unavailable" || metadata.code === "off_space_or_ax_unresolved")
+      if (
+        [
+          "background_unavailable",
+          "off_space_or_ax_unresolved",
+          "same_pid_keyboard_ambiguity",
+          "minimized_or_hidden_window",
+        ].includes(String(metadata.code))
+      )
         throw new ComputerError(
           "computer_background_unavailable",
           "Background input is unavailable for this control. Observe again, then use foreground:true if needed.",
@@ -397,6 +404,8 @@ export class ComputerRuntime {
           "window_owner_pid_mismatch",
           "window_target_not_found",
           "window_target_resolution_failed",
+          "window_not_found",
+          "owner_pid_mismatch",
         ].includes(String(metadata.code))
       )
         throw new ComputerError(

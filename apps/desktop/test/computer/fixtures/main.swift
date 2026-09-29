@@ -52,10 +52,10 @@ final class Canvas: NSView {
     }
 }
 
-final class FixtureWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate {
+final class FixtureWindow: NSObject, NSWindowDelegate, NSTextViewDelegate {
     let window: NSWindow
     let canvas: Canvas
-    let field = NSTextField(string: "")
+    let field = NSTextView()
     let slider = NSSlider(value: 10, minValue: 0, maxValue: 100, target: nil, action: nil)
     let scroll = NSScrollView()
     let token = "AX-" + String(UUID().uuidString.prefix(8))
@@ -86,6 +86,7 @@ final class FixtureWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate {
         scroll.setAccessibilityLabel("Rows")
         let document = NSTextView(frame: NSRect(x: 0, y: 0, width: 160, height: 1400))
         document.isEditable = false
+        document.setAccessibilityLabel("Rows")
         document.string = (1...60).map { "Row \($0)" }.joined(separator: "\n")
         scroll.documentView = document
         scroll.contentView.scroll(to: .zero)
@@ -95,7 +96,7 @@ final class FixtureWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate {
         canvas.changed = { [weak self] in self?.changed?() }
     }
     @objc func increment() { clicks += 1; changed?() }
-    func controlTextDidChange(_ notification: Notification) { changed?() }
+    func textDidChange(_ notification: Notification) { changed?() }
     func windowDidResize(_ notification: Notification) { changed?() }
     func windowDidMove(_ notification: Notification) { changed?() }
     func report() -> [String: Any] {
@@ -103,7 +104,7 @@ final class FixtureWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate {
         let target = canvas.convert(canvas.target, to: nil)
         let screenTarget = window.convertToScreen(target)
         return ["windowId": window.windowNumber, "title": window.title, "axToken": token, "nonce": canvas.nonce,
-                "clicks": clicks, "hits": canvas.hits, "text": field.stringValue, "value": slider.doubleValue,
+                "clicks": clicks, "hits": canvas.hits, "text": field.string, "value": slider.doubleValue,
                 "scrollY": scroll.contentView.bounds.origin.y, "doubleClicks": canvas.doubleClicks,
                 "rightClicks": canvas.rightClicks, "drags": canvas.drags, "keys": canvas.keys, "shortcuts": canvas.shortcuts, "visible": window.isVisible, "onActiveSpace": window.isOnActiveSpace,
                 "width": frame.width, "height": frame.height,

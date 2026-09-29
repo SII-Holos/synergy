@@ -18,6 +18,8 @@ Observation reads an exact window without activating it by default. `computer_ob
 
 `computer_action` has six operations: `click`, `type`, `key`, `scroll`, `drag`, and `set_value`. A target is either a returned `{elementIndex}` or an image `{x,y}` point. Click supports button and count; text requires a target; keys accept modifiers and an optional target; scrolling accepts an optional target; dragging accepts two image points. `set_value` requires an element and stays semantic. Element requests carry the exact snapshot to Cua. There is no separate point command or legacy execution alias. The [current delivery decision](../decisions/implemented/feature/2026-09-29-computer-background-preferred.md) records the scope and tradeoffs.
 
+Exact-element text uses Cua's AX insertion when the control supports it. If AX insertion is unavailable and process keyboard events could reach a sibling window, the host reports background unavailability; it does not bypass Cua's same-process ambiguity check. A fresh observation can precede an explicit foreground attempt.
+
 The private worker runs Cua's AppKit loop without its cursor overlay. Desktop owns permission and progress presentation.
 
 ## Concurrency and lifecycle

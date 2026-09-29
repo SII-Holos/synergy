@@ -160,7 +160,12 @@ test("native failure consumes the action reference without replay", async () => 
   expect(attempts).toBe(1)
 })
 
-test("unsupported background input is reported without foreground escalation or replay", async () => {
+test.each([
+  "background_unavailable",
+  "off_space_or_ax_unresolved",
+  "same_pid_keyboard_ambiguity",
+  "minimized_or_hidden_window",
+])("background refusal %s never escalates or replays input", async (code) => {
   const deliveries: unknown[] = []
   const runtime = new ComputerRuntime(async (name, args) => {
     if (name === "get_window_state") return { content: [], structuredContent: metadata }
@@ -168,7 +173,7 @@ test("unsupported background input is reported without foreground escalation or 
     return {
       isError: true,
       content: [{ type: "text", text: "Retry with delivery_mode:foreground" }],
-      structuredContent: { code: "background_unavailable", escalation: { recommended: "foreground" } },
+      structuredContent: { code, escalation: { recommended: "foreground" } },
     }
   })
   const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
@@ -198,7 +203,7 @@ test("overlapping calls on the same process are refused without a desktop-wide l
 })
 
 test("missing or foreign windows tell the agent to rediscover the target", async () => {
-  for (const code of ["window_id_not_found", "window_owner_pid_mismatch"]) {
+  for (const code of ["window_id_not_found", "window_owner_pid_mismatch", "window_not_found", "owner_pid_mismatch"]) {
     const runtime = new ComputerRuntime(async () => ({
       isError: true,
       content: [],

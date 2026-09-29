@@ -86,12 +86,13 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
       return result
     }
     const element = (output: string, name: string) => {
-      const match = output
-        .split("\n")
-        .find((line) => line.includes(name))
-        ?.match(/\[(\d+)\]/)
-      assert(match, `Element missing: ${name}`)
-      return { elementIndex: Number(match[1]) }
+      let index: number | undefined
+      for (const line of output.split("\n")) {
+        const match = line.match(/^\s*- \[(\d+)\]/)
+        if (match) index = Number(match[1])
+        if (index !== undefined && line.includes(name)) return { elementIndex: index }
+      }
+      throw Error(`Element missing: ${name}`)
     }
     const act = async (
       input: import("@ericsanchezok/synergy-computer-protocol").ComputerAction,
@@ -235,7 +236,7 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
           {
             action: "scroll",
             observationId: observed.observationId!,
-            target: element(observed.output, "AXTextArea"),
+            target: element(observed.output, "Rows"),
             direction: "down",
             amount: 5,
           },
