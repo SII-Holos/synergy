@@ -17,7 +17,7 @@ export async function assertHarnessIdentity(generation: Pick<InstalledGeneration
   return fs.realpath(Bun.resolveSync(`${harness}/lifecycle`, generation.directory))
 }
 
-function selectedPackages(generation: InstalledGeneration, selection?: Readonly<Record<string, string>>) {
+function selectedPackages(generation: InstalledGeneration, selection?: Readonly<Record<string, string>>, desktop = false) {
   const packages = new Map<string, InstalledPackage & { metadata: ComponentPackage }>()
   for (const pkg of Object.values(generation.packages)) {
     if (pkg.metadata?.kind === "component" && !core.has(pkg.metadata.id))
@@ -25,6 +25,7 @@ function selectedPackages(generation: InstalledGeneration, selection?: Readonly<
   }
   const selected = new Set<string>()
   function visit(id: string) {
+    if (id === "browser-runtime" && !desktop) return
     if (core.has(id) || selected.has(id)) return
     const pkg = packages.get(id)
     if (!pkg) throw new Error(`Component is not installed: ${id}`)
@@ -49,8 +50,9 @@ const requirements = (value: Readonly<Record<string, string>> = {}) =>
 export async function loadInstalledComponents(
   generation: InstalledGeneration,
   selection?: Readonly<Record<string, string>>,
+  options: { desktop?: boolean } = {},
 ): Promise<RuntimeComponent[]> {
-  const packages = selectedPackages(generation, selection)
+  const packages = selectedPackages(generation, selection, options.desktop)
   const canonical = await assertHarnessIdentity(generation)
   for (const pkg of packages) {
     const resolved = await fs.realpath(

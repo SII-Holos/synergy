@@ -1,5 +1,4 @@
 import { acp } from "@ericsanchezok/synergy-acp/component"
-import { browser } from "@ericsanchezok/synergy-browser-runtime/component"
 import { codeTools } from "@ericsanchezok/synergy-code-tools/component"
 import { computer } from "@ericsanchezok/synergy-computer-runtime/component"
 import { connections } from "@ericsanchezok/synergy-connections/component"
@@ -20,7 +19,6 @@ import { server } from "@ericsanchezok/synergy-server/component"
 export function fullComponents() {
   return [
     acp(),
-    browser(),
     codeTools(),
     computer(),
     connections(),
@@ -38,4 +36,9 @@ export function fullComponents() {
     dataManagement(),
     server(),
   ]
+}
+
+export async function desktopComponents() {
+  const { browser } = await import("@ericsanchezok/synergy-browser-runtime/component")
+  return [...fullComponents(), browser()]
 }

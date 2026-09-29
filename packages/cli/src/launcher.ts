@@ -97,6 +97,7 @@ export async function launch() {
           process.env.SYNERGY_COMPONENTS
             ? z.record(z.string(), z.string()).parse(JSON.parse(process.env.SYNERGY_COMPONENTS))
             : undefined,
+          { desktop: process.env.SYNERGY_DESKTOP_BROWSER === "1" },
         )
   await cli.main(components, resumeWorker)
 }

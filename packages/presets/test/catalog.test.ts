@@ -4,7 +4,7 @@ import {
   presetPackage,
   resolveBuiltinPackage,
 } from "@ericsanchezok/synergy-plugin-host/installation/catalog"
-import { fullComponents } from "../src/components"
+import { desktopComponents, fullComponents } from "../src/components"
 import { SynergyPackage } from "@ericsanchezok/synergy-plugin/package"
 
 test("published component metadata agrees with the source composition", async () => {
@@ -31,6 +31,7 @@ test("core, full, Web and Desktop describe distinct installable selections", () 
   expect(full["@ericsanchezok/synergy-server"]).toBe(version)
   expect(full["@ericsanchezok/synergy-mcp"]).toBe(version)
   expect(full["@ericsanchezok/synergy-plugin-kit"]).toBe(version)
+  expect(full["@ericsanchezok/synergy-browser-runtime"]).toBeUndefined()
   expect(Object.keys(full).some((name) => /web-app|desktop-app/.test(name))).toBe(false)
   expect(presetPackage("web", version).synergy.packages).toEqual({
     "@ericsanchezok/synergy-full": version,
@@ -39,13 +40,19 @@ test("core, full, Web and Desktop describe distinct installable selections", () 
   expect(presetPackage("desktop", version).synergy.packages).toEqual({
     "@ericsanchezok/synergy-web": version,
     "@ericsanchezok/synergy-desktop-app": version,
+    "@ericsanchezok/synergy-browser-runtime": version,
   })
 })
 
 test("built-in shortcuts resolve to concrete versioned packages and preserve external sources", () => {
   expect(resolveBuiltinPackage("mcp", "2.0.0")).toBe("@ericsanchezok/synergy-mcp@2.0.0")
-  expect(resolveBuiltinPackage("browser", "2.0.0")).toBe("@ericsanchezok/synergy-browser-runtime@2.0.0")
+  expect(resolveBuiltinPackage("browser", "2.0.0")).toBe("@ericsanchezok/synergy-desktop@2.0.0")
   expect(resolveBuiltinPackage("desktop", "2.0.0")).toBe("@ericsanchezok/synergy-desktop@2.0.0")
   expect(resolveBuiltinPackage("@company/tools@3.0.0", "2.0.0")).toBe("@company/tools@3.0.0")
   expect(resolveBuiltinPackage("github:company/tools#release", "2.0.0")).toBe("github:company/tools#release")
+})
+
+test("only the explicit Desktop composition includes browser hosting", async () => {
+  expect(fullComponents().some((component) => component.id === "browser-runtime")).toBe(false)
+  expect((await desktopComponents()).filter((component) => component.id === "browser-runtime")).toHaveLength(1)
 })
