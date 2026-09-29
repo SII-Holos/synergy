@@ -37,6 +37,7 @@ export function describeObservation(input: {
   windowId: number
   query?: string
   capturedAt: number
+  screenPermission: boolean
   result: ComputerResult
 }) {
   const { result } = input
@@ -53,6 +54,7 @@ export function describeObservation(input: {
   const axAvailable = !!snapshotId && (tree.length > 0 || indices.length > 0)
   const image = result.images[0]
   const validImage =
+    input.screenPermission &&
     !!image &&
     guard?.image_status === "valid" &&
     !!guard.width &&
@@ -61,14 +63,18 @@ export function describeObservation(input: {
     createHash("sha256").update(Buffer.from(image.data, "base64")).digest("hex") === guard.sha256 &&
     typeof metadata.capture_id === "string" &&
     metadata.screenshot_frame_valid !== false
-  const imageStatus = validImage
-    ? "valid"
-    : guard?.image_status === "valid"
-      ? "invalid"
-      : (guard?.image_status ?? "unverified")
+  const imageStatus = !input.screenPermission
+    ? "unavailable"
+    : validImage
+      ? "valid"
+      : guard?.image_status === "valid"
+        ? "invalid"
+        : (guard?.image_status ?? "unverified")
   const imageReason = validImage
     ? undefined
-    : (guard?.reason ?? (image ? "capture_proof_missing" : "capture_unavailable"))
+    : !input.screenPermission
+      ? "screen_recording_permission_required"
+      : (guard?.reason ?? (image ? "capture_proof_missing" : "capture_unavailable"))
   const action = (enabled: boolean, reason: string) =>
     !guard?.token
       ? { available: false, reason: "target_unverified" }
@@ -119,7 +125,11 @@ export function describeObservation(input: {
       : []),
     ...(validImage ? ["Coordinates are pixels in this image."] : []),
     ...(imageStatus !== "valid"
-      ? ["If an image is needed, observe with foreground:true to bring this window forward and capture again."]
+      ? [
+          !input.screenPermission
+            ? "Enable Screen Recording for Synergy in macOS System Settings, then restart Synergy and observe again."
+            : "If an image is needed, observe with foreground:true to bring this window forward and capture again.",
+        ]
       : []),
   ].join("\n")
   const output = boundedText(header + (tree ? `\n${tree}` : ""))

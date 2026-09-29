@@ -8,7 +8,7 @@ Computer Use operates existing macOS application windows through local Synergy D
 
 ## Authorization and targeting
 
-Both Computer capabilities require Full Access. The central enforcement gate denies other profiles even if a permission rule would allow the capability. The command service resolves the effective profile again before native dispatch. macOS Accessibility and Screen Recording grants are observed independently. A missing Screen Recording grant disables capture while preserving available AX results and semantic actions. Missing grants are ordinary runtime failures; Full Access does not supply an OS grant.
+Both Computer capabilities require Full Access. The central enforcement gate denies other profiles even if a permission rule would allow the capability. The command service resolves the effective profile again before native dispatch. macOS Accessibility and Screen Recording grants are observed independently. A missing Screen Recording grant disables capture while preserving available AX results and semantic actions. The observation identifies the missing grant and requests permission followed by an app restart; foreground capture cannot repair an absent OS grant. Missing grants are ordinary runtime failures; Full Access does not supply an OS grant.
 
 The core connects to exactly one authenticated local Desktop host through `/computer/host/broker`. A random registration secret is passed out of band by the managed Desktop or development orchestrator. Browser-origin WebSocket clients cannot register. Desktop only connects its Computer host to loopback servers.
 

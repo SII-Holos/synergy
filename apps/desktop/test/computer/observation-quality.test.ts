@@ -131,8 +131,11 @@ test("AX-only observation preserves semantic routes and forwards independent gra
   expect(args).toMatchObject({ include_screenshot: false, include_accessibility_tree: true })
   expect(result.metadata.computerObservation).toMatchObject({
     ax: { truncated: true },
+    image: { status: "unavailable", reason: "screen_recording_permission_required" },
     actions: { click: { available: true }, drag: { available: false } },
   })
+  expect(result.output).toContain("Enable Screen Recording for Synergy")
+  expect(result.output).not.toContain("observe with foreground:true")
   await expect(
     runtime.execute("task", {
       type: "action",

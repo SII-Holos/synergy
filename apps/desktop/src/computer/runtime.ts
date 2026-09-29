@@ -199,6 +199,7 @@ export class ComputerRuntime {
           windowId: command.windowId,
           query: command.query,
           capturedAt: Date.now(),
+          screenPermission: permissions.screen,
           result,
         })
         run.observation = {
