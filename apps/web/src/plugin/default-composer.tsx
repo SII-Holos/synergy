@@ -7,7 +7,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
   const report = (error: unknown) =>
     showToast({ type: "error", description: error instanceof Error ? error.message : String(error) })
   return (
-    <div class="relative z-0 size-full _max-h-[320px] flex flex-col gap-3 overflow-visible" data-ui-part="composer">
+    <div class="relative z-0 w-full flex flex-col gap-3 overflow-visible" data-ui-part="composer">
       {input.render("leading")}
       <form
         onSubmit={(event) => {
@@ -20,7 +20,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
           void input.drop(event).catch(report)
         }}
         classList={{
-          "prompt-input-shell bg-surface-raised-stronger-non-alpha relative overflow-hidden": true,
+          "prompt-input-shell bg-input-base relative overflow-hidden": true,
           "prompt-input-shell-dragging": input.dragging(),
           "border border-border-base": !input.dragging(),
           "border border-icon-info-active border-dashed": input.dragging(),
@@ -28,7 +28,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
         }}
         style={{ "z-index": 1 }}
       >
-        {input.render("context")}
+        <div class="session-composer-context">{input.render("context")}</div>
         <DefaultComposerEditor context={{ input }} onError={report} />
         {input.render("toolbar")}
       </form>

@@ -1113,6 +1113,7 @@ function SidebarProjectGroup(props: {
               <button
                 type="button"
                 class="sb-project-plus-btn"
+                aria-label={props._(sidebar.newSession)}
                 onClick={(event) => {
                   const scope = props.scope()
                   if (scope) props.onProjectPlus(event, scope)

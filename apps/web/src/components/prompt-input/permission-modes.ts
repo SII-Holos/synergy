@@ -31,7 +31,7 @@ export const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: P.modeGuardedShort,
     description: P.modeGuardedDesc,
     icon: "permission.guarded",
-    iconClass: "text-icon-success-base",
+    iconClass: "text-text-on-success-base",
   },
   {
     id: "autonomous",
@@ -39,7 +39,7 @@ export const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: P.modeAutonomousShort,
     description: P.modeAutonomousDesc,
     icon: "permission.autonomous",
-    iconClass: "text-icon-interactive-base",
+    iconClass: "text-text-interactive-base",
   },
   {
     id: "full_access",
@@ -47,7 +47,7 @@ export const PERMISSION_MODES: PermissionModeVisual[] = [
     shortLabel: P.modeFullAccessShort,
     description: P.modeFullAccessDesc,
     icon: "permission.fullAccess",
-    iconClass: "text-icon-warning-base",
+    iconClass: "text-text-on-warning-base",
   },
 ]
 

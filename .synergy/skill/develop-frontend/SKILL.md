@@ -82,6 +82,10 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 
 ## Preserve Product Presentation
 
+For workbench visual changes, read the column, input anchor, surface and motion rules in [PRODUCT.md](../../../apps/web/PRODUCT.md) before changing a component. Compare the real new-task → first-send → reply → switch-and-return flow in both themes, with the same data and viewport. Check the actual computed surface after workbench overrides and portal scoping, not just the theme source. Reserve trailing action space and verify hover, focus and touch without changing the title's width. Keep greeting and Composer extension views mounted once.
+
+Use `test/components/session/workbench-layout.dom.test.tsx` for input anchoring, bounded growth and shared-column geometry, and the existing draft, submit-lock, attachment and editor tests for state ownership. Run DOM suites through the App runner or one file per process. Record real native IME separately from synthetic composition events; pasted Chinese text does not establish candidate-confirmation behavior. At 375px, short height, 200% zoom and reduced motion, verify the final action remains reachable. Update this workflow and the owning product rule when an accepted visual decision changes; do not copy a page-local palette or introduce a second layout constant to patch drift.
+
 For retained resource tabs, display the resource's owning Workspace independently of the Session's current selection. Keep encoded resource identifiers in persistence and routing; use the resolved panel title for visible labels, tooltips and accessible tab/close names. Verify the visible directory, file tree and recovered draft after switching and reloading.
 
 Derive activity steps and counts from canonical tool parts. Display preferences must not schedule background inference or make session completion depend on presentation work; historical derived summary metadata does not control grouping.
@@ -111,7 +115,7 @@ Rewind and redo must converge through the server's effective message window, inc
 
 Read `docs/reference/frontend-theming.md` before changing the color contract, adding a semantic token, integrating an imperative renderer, or authoring a selectable theme.
 
-1. Use `packages/ui/src/theme/tokens.ts` as the exhaustive color-token catalog and `resolve.ts` as the only palette resolver. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
+1. Use `packages/plugin/src/theme/tokens.ts` as the exhaustive color-token catalog and its `resolve.ts` as the only palette resolver. The UI theme package re-exports the public contract and owns runtime application. A theme supplies light/dark seeds plus optional typed overrides; do not create a parallel CSS palette.
 2. Use a canonical token in Tailwind utilities and CSS variables. If the required meaning is absent, add it to the token catalog and resolver before using it. Do not invent consumer aliases such as `surface-*-soft`, `surface-muted`, or unregistered status text names.
 3. Edit `packages/ui/src/theme/themes/synergy.json` for Synergy-specific seed or override values. Run `bun run --cwd packages/ui generate:theme`; never hand-edit `theme.generated.css`, `tailwind/colors.css`, or `theme.schema.json`.
 4. Keep common text/background and status foreground/surface pairs at WCAG AA contrast in both modes. Preserve the product polarity rule independently of accent hue.
@@ -163,7 +167,7 @@ Report state ownership, API path, semantic icon token, shared primitives, access
 
 Read [frontend plugin ownership](../../../docs/architecture/frontend-plugin-platform.md) before changing Shell, conversation, composer, resource or overlay composition. Keep domain owners above replaceable presentation and test their public services with native and external views. Capture draft identity before asynchronous work and restore only at an unchanged owning revision. Dispose DOM references, pending UI work and portals by surface identity; accepted server work keeps its domain lifetime.
 
-For UI API 5 changes, build the production App and run bun run plugin-ui:test. Its public preview helper installs extracted archives into an isolated real host. Also run the owning App/UI tests, private HTTP smoke, typecheck, localization and package gates. Browser fixtures must pre-discover their actual module entry so dependency optimization cannot reload the page during interaction assertions. Verify styles on ordinary inherited text and protected portals, not only elements that explicitly restate font variables.
+For UI API changes, build the production App and run bun run plugin-ui:test. Its public preview helper installs extracted archives into an isolated real host. Also run the owning App/UI tests, private HTTP smoke, typecheck, localization and package gates. Browser fixtures must pre-discover their actual module entry so dependency optimization cannot reload the page during interaction assertions. Verify styles on ordinary inherited text and protected portals, not only elements that explicitly restate font variables.
 
 Keep question and permission ownership above replaceable session pages. Native presentation may register an inline outlet; a missing outlet must retain an accessible host surface automatically. Bound the combined decision region, reset plugin style ownership, and verify both native and custom-page composition.
 

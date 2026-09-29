@@ -67,7 +67,6 @@ import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/syner
 import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
 import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
-import { PLACEHOLDERS, PLACEHOLDERS_GLOBAL } from "@/components/prompt-input/placeholders"
 import type {
   AtOption,
   BlueprintSlot,
@@ -228,7 +227,6 @@ export function createPromptInputController(props: PromptInputProps) {
     popover: null,
     historyIndex: -1,
     savedPrompt: null,
-    placeholder: Math.floor(Math.random() * PLACEHOLDERS.length),
     dragging: false,
     mode: "normal",
     applyingHistory: false,
@@ -1429,11 +1427,6 @@ export function createPromptInputController(props: PromptInputProps) {
   createEffect(() => {
     params.id
     editorElement()?.focus()
-    if (params.id) return
-    const interval = setInterval(() => {
-      setStore("placeholder", (prev) => (prev + 1) % PLACEHOLDERS.length)
-    }, 6500)
-    onCleanup(() => clearInterval(interval))
   })
 
   const [composing, setComposing] = createSignal(false)
@@ -2443,12 +2436,7 @@ export function createPromptInputController(props: PromptInputProps) {
         if (prompt.dirty()) return
         if (store.mode === "shell") return i18n._(PI.placeholderShell)
         if (planActive()) return i18n._(PI.placeholderPlan)
-        return isHomeScope(sdk.scopeKey)
-          ? i18n._({
-              ...PI.placeholderExampleGlobal,
-              values: { example: i18n._(PLACEHOLDERS_GLOBAL[store.placeholder % PLACEHOLDERS_GLOBAL.length]) },
-            })
-          : i18n._({ ...PI.placeholderExampleProject, values: { example: i18n._(PLACEHOLDERS[store.placeholder]) } })
+        return i18n._({ id: "prompt.placeholder.task", message: "Describe a task, or type / for commands" })
       },
     },
     readOnly: () => !!props.readOnly,

@@ -11496,6 +11496,10 @@ msgstr "查找并修复安全漏洞"
 msgid "prompt.placeholder.shell"
 msgstr "输入 Shell 命令…"
 
+#. js-lingui-explicit-id
+msgid "prompt.placeholder.task"
+msgstr "描述任务，或输入 / 查看命令"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -13471,6 +13475,10 @@ msgstr "引导当前运行"
 msgid "session.conversation.guideRunTitle"
 msgstr "引导当前运行"
 
+#. js-lingui-explicit-id
+msgid "session.conversation.latest"
+msgstr "回到最新消息"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.loadEarlier"
@@ -13627,100 +13635,12 @@ msgid "session.fork.confirm.title"
 msgstr "从此消息分叉会话"
 
 #. js-lingui-explicit-id
-msgid "session.greeting.afternoonFlowState"
-msgstr "进入午后的专注时刻"
+msgid "session.greeting.taskHint"
+msgstr "描述你的任务，或添加文件开始。"
 
 #. js-lingui-explicit-id
-msgid "session.greeting.askAnythingILlFigureItOut"
-msgstr "告诉我你的问题，一起找到答案。"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.bugsToSquashFeaturesToBuild"
-msgstr "想修复问题，还是开发新功能？"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.buildingSomethingGreat"
-msgstr "一起构建新的可能"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.coffeeLoadedReadyToBuild"
-msgstr "咖啡就绪，准备开工"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.deepWorkHours"
-msgstr "专注做好眼前的事"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.dropSomeContextLetSGo"
-msgstr "给我一些背景，我们开始吧。"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.earlyBirdEarlyMerge"
-msgstr "早点动手，早点完成"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.eveningCodingSession"
-msgstr "开启晚间编程时光"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.freshStartFreshCode"
-msgstr "全新开始，写点新代码"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.keepTheMomentumGoing"
-msgstr "保持节奏，继续推进"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.lateNightInspiration"
-msgstr "捕捉深夜的灵感"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.letSMakeSomethingHappen"
-msgstr "一起把想法变成现实。"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.letSShipIt"
-msgstr "准备好，让想法落地"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.morningMomentum"
-msgstr "带着晨间活力出发"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.needABreakthroughLetSBrainstorm"
-msgstr "需要新思路？一起想想。"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.nightOwlMode"
-msgstr "夜间专注模式"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.oneMoreThingBeforeBed"
-msgstr "睡前再完成一件事"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.quietHoursDeepFocus"
-msgstr "夜深人静，静心创造"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.readyWhenYouAre"
-msgstr "准备好了，随时开始。"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.riseAndShip"
-msgstr "开始新的一天，动手构建"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.whatAreWeBuildingToday"
-msgstr "今天想做些什么？"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.whatSOnYourMind"
-msgstr "有什么想法？"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.writeDebugShipRepeat"
-msgstr "编写、调试、交付，持续推进。"
+msgid "session.greeting.taskTitle"
+msgstr "想开始什么任务？"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

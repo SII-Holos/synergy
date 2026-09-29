@@ -140,7 +140,7 @@ function HolosIconButton() {
       gutter={8}
       trigger={
         <Tooltip placement="top" value={label()}>
-          <button type="button" classList={iconButtonClass()}>
+          <button type="button" aria-label={label()} classList={iconButtonClass()}>
             <Icon name={getSemanticIcon("holos.main")} size="small" class="translate-y-px" />
             <div
               classList={{
@@ -760,7 +760,7 @@ export function StatusBar() {
             gutter={8}
             trigger={
               <Tooltip placement="top" value={i18n._(copy.details)}>
-                <button type="button" classList={iconButtonClass()}>
+                <button type="button" aria-label={i18n._(copy.details)} classList={iconButtonClass()}>
                   <Icon name={getSemanticIcon("app.statusBar.toggle")} size="small" />
                 </button>
               </Tooltip>

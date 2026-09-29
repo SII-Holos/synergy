@@ -36,7 +36,6 @@ export type PromptInputStore = {
   popover: PromptPopoverMode
   historyIndex: number
   savedPrompt: import("@/context/prompt").Prompt | null
-  placeholder: number
   dragging: boolean
   mode: PromptInputMode
   applyingHistory: boolean

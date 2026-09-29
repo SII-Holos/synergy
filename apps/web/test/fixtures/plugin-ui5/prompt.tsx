@@ -21,7 +21,6 @@ function Editor() {
     dragging: false,
     historyIndex: -1,
     savedPrompt: null,
-    placeholder: 0,
     applyingHistory: false,
     switchingProfile: false,
   })

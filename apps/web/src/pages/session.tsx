@@ -1939,7 +1939,11 @@ function SessionPageContent() {
                 </Match>
               </Switch>
             </Match>
-            <Match when={true}>{null}</Match>
+            <Match when={true}>
+              <div class="session-empty-view">
+                <div class="session-content-column">{composerLayout.render("greeting")}</div>
+              </div>
+            </Match>
           </Switch>
         </div>
       </div>

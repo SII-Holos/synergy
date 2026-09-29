@@ -12,18 +12,10 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
   return (
     <div
       ref={layout.mount}
-      classList={{
-        "relative md:absolute md:inset-x-0 md:bottom-0 flex flex-col justify-center items-center z-50 px-0 pointer-events-none safe-bottom pb-0 md:pb-3": true,
-        "md:pt-12": !layout.isNewSession(),
-      }}
-      style={{
-        transform: layout.isNewSession() ? "translateY(-35vh)" : "translateY(0)",
-        transition: "transform 400ms ease-out",
-      }}
+      class="session-prompt-dock relative md:absolute md:inset-x-0 md:bottom-0 flex flex-col items-center z-50 pointer-events-none safe-bottom"
     >
-      <div class="session-prompt-dock-content w-full min-w-0 px-3 md:px-6 pointer-events-auto relative">
+      <div class="session-prompt-dock-content session-content-column pointer-events-auto relative">
         {layout.render("priority")}
-        <Show when={layout.isNewSession()}>{layout.render("greeting")}</Show>
         <Show
           when={layout.ready()}
           fallback={
@@ -40,7 +32,7 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
                   <Tooltip value={link.title} placement="top">
                     <button
                       type="button"
-                      class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full border border-border-base text-12-medium text-text-weak hover:text-text-base active:scale-95 transition-all duration-150"
+                      class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full border border-border-base text-12-medium text-text-weak hover:text-text-base transition-colors"
                       onClick={link.open}
                     >
                       <Icon name={getSemanticIcon(link.icon)} size="small" />
@@ -56,23 +48,25 @@ export function PromptDock(props: PluginComponentProps<PluginComposerLayoutServi
             </div>
           </Show>
         </Show>
-        <Show when={layout.isNewSession() && !layout.isGlobal()}>
-          <div class="flex items-center justify-center gap-1.5 pt-3 text-12-regular text-text-subtle pointer-events-none">
-            <Icon name={getSemanticIcon("workspace.main")} size="small" class="text-icon-base" />
-            <span class="text-text-base">{layout.scopeName()}</span>
-            <Show when={layout.branch()}>
-              <span>·</span>
-              <span>{layout.branch()}</span>
-            </Show>
-            <Show when={layout.lastModified()}>
-              <span>·</span>
-              <span>{layout.lastModified()}</span>
-            </Show>
-          </div>
-        </Show>
-        <Show when={!layout.isNewSession()}>
-          <div class="pointer-events-auto">{layout.render("status")}</div>
-        </Show>
+        <div class="session-prompt-dock-footer">
+          <Show when={layout.isNewSession() && !layout.isGlobal()}>
+            <div class="flex items-center justify-center gap-1.5 text-12-regular text-text-subtle pointer-events-none">
+              <Icon name={getSemanticIcon("workspace.main")} size="small" class="text-icon-base" />
+              <span class="text-text-base">{layout.scopeName()}</span>
+              <Show when={layout.branch()}>
+                <span>·</span>
+                <span>{layout.branch()}</span>
+              </Show>
+              <Show when={layout.lastModified()}>
+                <span>·</span>
+                <span>{layout.lastModified()}</span>
+              </Show>
+            </div>
+          </Show>
+          <Show when={!layout.isNewSession()}>
+            <div class="pointer-events-auto">{layout.render("status")}</div>
+          </Show>
+        </div>
       </div>
     </div>
   )

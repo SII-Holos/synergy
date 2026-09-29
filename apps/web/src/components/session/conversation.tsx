@@ -51,10 +51,8 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
           </div>
         </Show>
       }
-      contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-5 px-4 text-sm md:text-base transition-[margin] md:px-5"
+      contentClass="session-conversation-content session-content-column flex flex-col items-start justify-start gap-5"
       contentClassList={{
-        "max-w-full": true,
-        "md:max-w-[60rem]": true,
         "pb-6 md:pb-[calc(var(--prompt-height,10rem)+96px)]": true,
       }}
     >
@@ -133,7 +131,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                   message={assistantMessage()}
                   classes={{
                     root: "min-w-0 w-full relative",
-                    container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1",
+                    container: "w-full min-w-0 max-w-full pb-1",
                   }}
                 />
                 <MessageSlotOutlet
@@ -171,7 +169,7 @@ export function SessionConversation(input: PluginComponentProps<PluginConversati
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",
-                  container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 md:max-w-[60rem] md:mx-auto",
+                  container: "w-full min-w-0 max-w-full pb-1",
                 }}
               />
             </div>

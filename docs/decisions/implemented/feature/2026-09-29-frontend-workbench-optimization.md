@@ -12,6 +12,8 @@ The default theme defines neutral light and dark surface families in the existin
 
 The default Sidebar width is 260px. The existing resized flag retains explicit user widths and needs no persistence migration. Rows and shared floating controls use the existing typography and motion roles. Keyboard and touch reveal the same actions as hover. Reduced motion removes overlay spatial animations.
 
+The greeting, conversation and Composer share one column. The greeting occupies the empty conversation region, while the Composer retains its bottom position and reserves the status footer. Editor and attachment growth is bounded separately. The existing domain controllers retain drafts, IME and submission semantics; presentation changes do not add another message or draft store.
+
 The durable presentation requirements live in the [Web product rules](../../../../apps/web/PRODUCT.md); palette ownership remains in [Frontend themes and color](../../../reference/frontend-theming.md).
 
 ## Alternatives considered
@@ -21,6 +23,10 @@ The durable presentation requirements live in the [Web product rules](../../../.
 **Reset every saved Sidebar width.** This would erase a deliberate user preference. Only widths that were never explicitly resized adopt the new default.
 
 **Additional animation libraries.** These changes need interruptible CSS feedback and the existing overlay lifecycle, not another motion owner.
+
+**Center the new-task Composer and move it after sending.** The travel breaks the user's input reference point. A stable bottom position makes the first send the same interaction as subsequent sends.
+
+**Rotating greetings and examples.** They add visual changes unrelated to the user's task. A stable prompt leaves attention available for drafting and reading.
 
 ## Consequences
 

@@ -11496,6 +11496,10 @@ msgstr ""
 msgid "prompt.placeholder.shell"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "prompt.placeholder.task"
+msgstr ""
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -13471,6 +13475,10 @@ msgstr ""
 msgid "session.conversation.guideRunTitle"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "session.conversation.latest"
+msgstr ""
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.loadEarlier"
@@ -13627,99 +13635,11 @@ msgid "session.fork.confirm.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.greeting.afternoonFlowState"
+msgid "session.greeting.taskHint"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.greeting.askAnythingILlFigureItOut"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.bugsToSquashFeaturesToBuild"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.buildingSomethingGreat"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.coffeeLoadedReadyToBuild"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.deepWorkHours"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.dropSomeContextLetSGo"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.earlyBirdEarlyMerge"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.eveningCodingSession"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.freshStartFreshCode"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.keepTheMomentumGoing"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.lateNightInspiration"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.letSMakeSomethingHappen"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.letSShipIt"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.morningMomentum"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.needABreakthroughLetSBrainstorm"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.nightOwlMode"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.oneMoreThingBeforeBed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.quietHoursDeepFocus"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.readyWhenYouAre"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.riseAndShip"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.whatAreWeBuildingToday"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.whatSOnYourMind"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.greeting.writeDebugShipRepeat"
+msgid "session.greeting.taskTitle"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.

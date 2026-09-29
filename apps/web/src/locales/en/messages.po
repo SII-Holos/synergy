@@ -11496,6 +11496,10 @@ msgstr "Find and fix security vulnerabilities"
 msgid "prompt.placeholder.shell"
 msgstr "Enter shell command..."
 
+#. js-lingui-explicit-id
+msgid "prompt.placeholder.task"
+msgstr "Describe a task, or type / for commands"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -13471,6 +13475,10 @@ msgstr "Guide current run"
 msgid "session.conversation.guideRunTitle"
 msgstr "Guide current run"
 
+#. js-lingui-explicit-id
+msgid "session.conversation.latest"
+msgstr "Back to latest"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.loadEarlier"
@@ -13627,100 +13635,12 @@ msgid "session.fork.confirm.title"
 msgstr "Fork session from this message"
 
 #. js-lingui-explicit-id
-msgid "session.greeting.afternoonFlowState"
-msgstr "Afternoon flow state"
+msgid "session.greeting.taskHint"
+msgstr "Describe a task or add files to get started."
 
 #. js-lingui-explicit-id
-msgid "session.greeting.askAnythingILlFigureItOut"
-msgstr "Ask anything. I'll figure it out."
-
-#. js-lingui-explicit-id
-msgid "session.greeting.bugsToSquashFeaturesToBuild"
-msgstr "Bugs to squash? Features to build?"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.buildingSomethingGreat"
-msgstr "Building something great"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.coffeeLoadedReadyToBuild"
-msgstr "Coffee loaded, ready to build"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.deepWorkHours"
-msgstr "Deep work hours"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.dropSomeContextLetSGo"
-msgstr "Drop some context, let's go."
-
-#. js-lingui-explicit-id
-msgid "session.greeting.earlyBirdEarlyMerge"
-msgstr "Early bird, early merge"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.eveningCodingSession"
-msgstr "Evening coding session"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.freshStartFreshCode"
-msgstr "Fresh start, fresh code"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.keepTheMomentumGoing"
-msgstr "Keep the momentum going"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.lateNightInspiration"
-msgstr "Late night inspiration"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.letSMakeSomethingHappen"
-msgstr "Let's make something happen."
-
-#. js-lingui-explicit-id
-msgid "session.greeting.letSShipIt"
-msgstr "Let's ship it"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.morningMomentum"
-msgstr "Morning momentum"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.needABreakthroughLetSBrainstorm"
-msgstr "Need a breakthrough? Let's brainstorm."
-
-#. js-lingui-explicit-id
-msgid "session.greeting.nightOwlMode"
-msgstr "Night owl mode"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.oneMoreThingBeforeBed"
-msgstr "One more thing before bed"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.quietHoursDeepFocus"
-msgstr "Quiet hours, deep focus"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.readyWhenYouAre"
-msgstr "Ready when you are."
-
-#. js-lingui-explicit-id
-msgid "session.greeting.riseAndShip"
-msgstr "Rise and ship"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.whatAreWeBuildingToday"
-msgstr "What are we building today?"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.whatSOnYourMind"
-msgstr "What's on your mind?"
-
-#. js-lingui-explicit-id
-msgid "session.greeting.writeDebugShipRepeat"
-msgstr "Write, debug, ship. Repeat."
+msgid "session.greeting.taskTitle"
+msgstr "What would you like to work on?"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

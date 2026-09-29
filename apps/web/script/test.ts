@@ -11,6 +11,7 @@ const root = path.resolve(import.meta.dir, "..")
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/session/workbench-layout.dom.test.tsx",
   "test/components/sidebar/sidebar-collections.dom.test.tsx",
   "test/components/agenda/series-list.dom.test.tsx",
   "test/components/app-shell/mobile-tools-drawer.dom.test.tsx",

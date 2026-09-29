@@ -1,6 +1,6 @@
 .sb-root {
   --sb-bg: var(--background-weak);
-  --sb-hover-bg: var(--surface-hover-base);
+  --sb-hover-bg: var(--surface-inset-base-hover);
   --sb-control-hover-bg: var(--surface-inset-base-hover);
   --sb-active-bg: var(--surface-interactive-selected);
   --sb-popover-bg: var(--surface-raised-stronger-non-alpha);
