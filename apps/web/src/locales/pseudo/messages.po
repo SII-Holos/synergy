@@ -9557,14 +9557,6 @@ msgid "browser.capture.viewport"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "browser.data.cancelled"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.data.choose"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "browser.data.clear"
 msgstr ""
 
@@ -9573,35 +9565,11 @@ msgid "browser.data.clearHint"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "browser.data.cookieFile"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "browser.data.empty"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "browser.data.failures"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "browser.data.fill"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.data.importHint"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.data.importing"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.data.overwrite"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.data.passwordFile"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -9610,10 +9578,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.data.passwords"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.data.progress"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -9630,10 +9594,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.data.removeHint"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.data.result"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -9782,6 +9742,134 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.identities.uploads"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.access"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookieHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookies"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.done"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.encrypted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.file"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.fileHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.format"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.importing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.local"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.locked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.options"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwordHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwords"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.progress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.reading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.replace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.result"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.safari"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.start"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.stop"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.stopped"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupported"
 msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────

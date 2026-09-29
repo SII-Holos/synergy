@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -24,9 +24,16 @@ beforeAll(async () => {
   await Bun.write(
     path.join(directory, "platform.ts"),
     `
-    window.attachments = []; window.detachments = []; window.commands = [];
+    window.attachments = []; window.detachments = []; window.commands = []; window.dataActions = [];
     export const usePlatform = () => ({browserNative: {
       attachView: async input => window.attachments.push(input), resizeView: async () => {},
+      dataAction: async ({action}) => {
+        window.dataActions.push(action);
+        if (action.type === "state") return {type:"state",passwordStorage:true,passwords:[],history:[]};
+        if (action.type === "importSources") return {type:"sources",sources:[{id:"chrome-work",browser:"chrome",profile:"Work",mode:"direct",kinds:["passwords","cookies"]},{id:"safari",browser:"safari",mode:"file",kinds:["passwords"]},{id:"file",browser:"file",mode:"file",kinds:["passwords","cookies"]}]};
+        if (action.type === "import") return window.importResult ?? {type:"import", imported:2,skipped:1,failed:0,cancelled:false,issues:[],items:action.kinds.map(kind=>({kind,imported:1,skipped:0,failed:0}))};
+        return {type:"done"};
+      },
       detachView: async input => window.detachments.push(input), focusView: async () => {}, onEvent: () => () => {}
     }})
   `,
@@ -43,6 +50,7 @@ beforeAll(async () => {
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+    import { BrowserImportDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-import-dialog.tsx`)}
     import { BrowserResultDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-result-dialog.tsx`)}
     import { BrowserPageDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/page-dialog.tsx`)}
     import { NativeBrowserSurface } from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/native-browser-surface.tsx`)}
@@ -66,6 +74,7 @@ beforeAll(async () => {
       window.showPageDialog = (type, defaultValue = "Default draft") => setRequest({type,defaultValue,pageId:"page-one",requestId:"request-one",message:"Name this draft"})
       return <div class="synergy-workbench-canvas">
         <button onClick={() => window.showPageDialog("prompt")}>Open prompt</button>
+        <button onClick={() => dialog.show(() => <BrowserImportDialog ownerKey="owner-one" pageId="page-one" />)}>Open import</button>
         <button onClick={() => dialog.show(() => <BrowserResultDialog initial={{type:"capture", dataUrl:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4xkAAAAASUVORK5CYII=",width:100,height:100,url:"https://example.test/page",title:"Capture",capturedAt:1}} recapture={async () => {throw new Error("Unused")}} attach={async (file,text) => {window.captureResult = {name:file.name,type:file.type,text}}} />)}>Open screenshot</button>
         <div class="browser-workspace" style="height:500px">
           <AddressBar onPageAction={async action => {window.commands.push(action);return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
@@ -100,6 +109,12 @@ beforeAll(async () => {
   await page.goto(url)
   await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
 }, 60000)
+
+beforeEach(async () => {
+  await page.close()
+  page = await browser.newPage()
+  page.on("pageerror", (error) => errors.push(error.message))
+})
 
 afterAll(async () => {
   await browser?.close()
@@ -271,4 +286,69 @@ test("a suspended page does not probe unavailable native navigation controls", a
   })
   await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
   expect(await page.evaluate(() => (window as unknown as Fixture).commands)).toEqual([])
+})
+
+test("import chooses a browser and independent data types without exposing implementation controls", async () => {
+  await page.setViewportSize({ width: 900, height: 800 })
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open import", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Import browser data", exact: true })
+  await dialog.getByRole("button", { name: "From: Google Chrome · Work", exact: true }).waitFor()
+  expect(await dialog.getByRole("heading", { name: "Import browser data", exact: true }).count()).toBe(1)
+  await dialog.getByRole("switch", { name: "Passwords", exact: true }).focus()
+  await dialog.getByRole("switch", { name: "Passwords", exact: true }).press("Space")
+  await dialog.getByRole("button", { name: "Import", exact: true }).click()
+  await dialog.getByRole("button", { name: "Done", exact: true }).waitFor()
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as { dataActions: unknown[] }).dataActions.find(
+        (a: unknown) => (a as { type: string }).type === "import",
+      ),
+    ),
+  ).toMatchObject({ sourceId: "chrome-work", kinds: ["cookies"], overwrite: false })
+  await dialog.getByRole("button", { name: "Done", exact: true }).click()
+  await page.getByRole("button", { name: "Open import", exact: true }).waitFor()
+})
+
+test("Safari shows an honest export path and import dialog stays within a narrow viewport", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open import", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Import browser data", exact: true })
+  await dialog.getByRole("button", { name: "From: Google Chrome · Work", exact: true }).click()
+  await page.getByRole("option", { name: "Safari", exact: true }).click()
+  expect(await dialog.getByRole("switch", { name: "Cookies", exact: true }).isDisabled()).toBe(true)
+  await dialog
+    .getByText(
+      "In Safari, choose File → Export Browsing Data, include passwords, then select the exported ZIP or CSV here.",
+      { exact: true },
+    )
+    .waitFor()
+  const bounds = await dialog.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(375)
+  await dialog.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "hidden" })
+})
+
+test("partial import keeps successful counts visible alongside the recovery reason", async () => {
+  await page.goto(url)
+  await page.evaluate(() => {
+    Object.assign(window, {
+      importResult: {
+        type: "import",
+        imported: 3,
+        skipped: 0,
+        failed: 0,
+        cancelled: false,
+        issues: [],
+        items: [{ kind: "passwords", imported: 3, skipped: 0, failed: 0, error: "unavailable" }],
+      },
+    })
+  })
+  await page.getByRole("button", { name: "Open import", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Import browser data", exact: true })
+  await dialog.getByRole("button", { name: "Import", exact: true }).click()
+  expect(await dialog.getByRole("status").textContent()).toContain("3 imported · 0 skipped · 0 failed")
+  expect(await dialog.getByRole("status").textContent()).toContain("This data could not be read.")
 })

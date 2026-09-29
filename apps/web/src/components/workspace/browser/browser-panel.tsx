@@ -404,26 +404,27 @@ function BrowserPanelInner(props: {
               <Show
                 when={page() && page()?.url !== "about:blank"}
                 fallback={
-                  <div class="browser-empty-state">
-                    <div class="browser-empty-mark">
-                      <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+                  <div class="browser-new-tab">
+                    <div class="browser-new-tab-center">
+                      <div class="browser-new-tab-search">
+                        <Icon name={getSemanticIcon("action.search")} size="small" />
+                        <input
+                          aria-label={_(B.enterUrl)}
+                          placeholder={_(B.enterUrl)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" || event.isComposing || !event.currentTarget.value.trim()) return
+                            event.preventDefault()
+                            browser.navigate(event.currentTarget.value.trim())
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div class="browser-empty-title">
-                      <Trans id={B.noPage.id} message={B.noPage.message} />
+                    <div class="browser-new-tab-footer">
+                      <Button size="small" variant="secondary" onClick={() => openData("import")}>
+                        <Icon name={getSemanticIcon("action.import")} size="small" />
+                        <Trans id={B.importData.id} message={B.importData.message} />
+                      </Button>
                     </div>
-                    <input
-                      class="mt-4 w-full max-w-md rounded-full border border-border-weak-base bg-surface-raised-base px-5 py-3 text-14 outline-none focus:border-border-interactive-base"
-                      aria-label={_(B.enterUrl)}
-                      placeholder={_(B.enterUrl)}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" || event.isComposing || !event.currentTarget.value.trim()) return
-                        event.preventDefault()
-                        browser.navigate(event.currentTarget.value.trim())
-                      }}
-                    />
-                    <Button size="small" variant="ghost" class="mt-6" onClick={() => openData("import")}>
-                      <Trans id={B.importData.id} message={B.importData.message} />
-                    </Button>
                   </div>
                 }
               >

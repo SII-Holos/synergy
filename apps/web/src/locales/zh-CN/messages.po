@@ -9557,14 +9557,6 @@ msgid "browser.capture.viewport"
 msgstr "当前可见页面"
 
 #. js-lingui-explicit-id
-msgid "browser.data.cancelled"
-msgstr "导入已停止，已完成的记录会保留。"
-
-#. js-lingui-explicit-id
-msgid "browser.data.choose"
-msgstr "选择文件并导入"
-
-#. js-lingui-explicit-id
 msgid "browser.data.clear"
 msgstr "清除最近访问"
 
@@ -9573,36 +9565,12 @@ msgid "browser.data.clearHint"
 msgstr "清除当前浏览器账号的最近访问？密码和网站登录状态会保留。"
 
 #. js-lingui-explicit-id
-msgid "browser.data.cookieFile"
-msgstr "Cookie（JSON）"
-
-#. js-lingui-explicit-id
 msgid "browser.data.empty"
 msgstr "还没有保存的密码"
 
 #. js-lingui-explicit-id
-msgid "browser.data.failures"
-msgstr "失败记录包含无效数据或不支持的 Cookie 属性，其他记录已保留。"
-
-#. js-lingui-explicit-id
 msgid "browser.data.fill"
 msgstr "填充"
-
-#. js-lingui-explicit-id
-msgid "browser.data.importHint"
-msgstr "导入 Chrome、Edge、Safari 导出的密码，或 Cookie JSON 文件。只导入所选数据类型到当前浏览器账号，部分网站仍需重新登录。"
-
-#. js-lingui-explicit-id
-msgid "browser.data.importing"
-msgstr "正在导入…"
-
-#. js-lingui-explicit-id
-msgid "browser.data.overwrite"
-msgstr "替换已有的相同记录"
-
-#. js-lingui-explicit-id
-msgid "browser.data.passwordFile"
-msgstr "密码（CSV 或 Safari ZIP）"
 
 #. js-lingui-explicit-id
 msgid "browser.data.passwordHint"
@@ -9611,10 +9579,6 @@ msgstr "选择账号以填充当前网站，填写后由你确认登录。"
 #. js-lingui-explicit-id
 msgid "browser.data.passwords"
 msgstr "密码和自动填充"
-
-#. js-lingui-explicit-id
-msgid "browser.data.progress"
-msgstr "已处理 {processed} / {total}"
 
 #. js-lingui-explicit-id
 msgid "browser.data.recent"
@@ -9631,10 +9595,6 @@ msgstr "删除密码"
 #. js-lingui-explicit-id
 msgid "browser.data.removeHint"
 msgstr "删除这个浏览器账号保存的密码，保留网站当前登录状态。"
-
-#. js-lingui-explicit-id
-msgid "browser.data.result"
-msgstr "已导入 {imported} · 已跳过 {skipped} · 失败 {failed}"
 
 #. js-lingui-explicit-id
 msgid "browser.data.save"
@@ -9783,6 +9743,134 @@ msgstr "临时浏览"
 #. js-lingui-explicit-id
 msgid "browser.identities.uploads"
 msgstr "上传"
+
+#. js-lingui-explicit-id
+msgid "browser.import.access"
+msgstr "未获得访问权限。请重新授权，或选择导出的文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.choose"
+msgstr "选择文件并导入"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookieHint"
+msgstr "网站登录状态和偏好设置"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookies"
+msgstr "Cookie"
+
+#. js-lingui-explicit-id
+msgid "browser.import.done"
+msgstr "完成"
+
+#. js-lingui-explicit-id
+msgid "browser.import.encrypted"
+msgstr "导入的密码会在此设备上加密保存。部分网站可能仍需要重新登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.error"
+msgstr "暂时无法导入。请重新打开浏览器页面后重试。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.failed"
+msgstr "部分条目未能导入，原有数据已保留。你可以使用导出的文件，或在网站上重新登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.file"
+msgstr "导出的文件"
+
+#. js-lingui-explicit-id
+msgid "browser.import.fileHint"
+msgstr "支持密码 CSV、Safari ZIP 和 Cookie JSON。每种所选数据分别选择一个文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.format"
+msgstr "请选择小于 32 MB 的密码 CSV、Safari ZIP 或 Cookie JSON 文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.hint"
+msgstr "将已有密码和网站登录状态导入 Synergy。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.importing"
+msgstr "正在导入…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.loading"
+msgstr "正在查找浏览器…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.local"
+msgstr "Mac 可能会请求访问权限。导入的密码会在此设备上加密保存。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.locked"
+msgstr "请使用非临时浏览器配置，并解锁系统密码存储。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.options"
+msgstr "导入选项"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwordHint"
+msgstr "用于登录网站的已保存账号"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwords"
+msgstr "密码"
+
+#. js-lingui-explicit-id
+msgid "browser.import.progress"
+msgstr "已处理 {processed} / {total} 条"
+
+#. js-lingui-explicit-id
+msgid "browser.import.reading"
+msgstr "正在读取所选数据…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replace"
+msgstr "替换已有的匹配条目"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceHint"
+msgstr "匹配的已保存密码和 Cookie 将被导入的数据替换，其他条目会保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceTitle"
+msgstr "替换匹配的浏览器数据？"
+
+#. js-lingui-explicit-id
+msgid "browser.import.result"
+msgstr "已导入 {imported} 条 · 跳过 {skipped} 条 · 失败 {failed} 条"
+
+#. js-lingui-explicit-id
+msgid "browser.import.safari"
+msgstr "在 Safari 中选择「文件 → 导出浏览数据」，勾选密码，再在这里选择导出的 ZIP 或 CSV。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.source"
+msgstr "来源"
+
+#. js-lingui-explicit-id
+msgid "browser.import.start"
+msgstr "导入"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stop"
+msgstr "停止导入"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stopped"
+msgstr "导入已停止，已经导入的条目已保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.unavailable"
+msgstr "无法读取这些数据。请退出来源浏览器后重试，或使用导出的文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupported"
+msgstr "此来源不支持"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"

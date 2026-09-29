@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onCleanup, For, onMount, Show } from "solid-js"
+import { createSignal, For, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -9,13 +9,11 @@ import {
   BROWSER_PROTOCOL_VERSION,
   type BrowserDataAction,
   type BrowserDataState,
-  type BrowserImportResult,
 } from "@ericsanchezok/synergy-browser-core"
 import { browser as B } from "@/locales/messages"
-import { createBrowserCommandId } from "./browser-command"
+import { BrowserImportDialog } from "./browser-import-dialog"
 
 const M = {
-  progress: { id: "browser.data.progress", message: "Processed {processed} of {total}" },
   data: { id: "browser.data.title", message: "Browser data" },
   passwords: { id: "browser.data.passwords", message: "Passwords and autofill" },
   passwordHint: {
@@ -42,22 +40,6 @@ const M = {
     message:
       "Password storage requires a persistent browser profile and an unlocked system password store. You can continue browsing and sign in manually.",
   },
-  passwordFile: { id: "browser.data.passwordFile", message: "Passwords (CSV or Safari ZIP)" },
-  cookieFile: { id: "browser.data.cookieFile", message: "Cookies (JSON)" },
-  importHint: {
-    id: "browser.data.importHint",
-    message:
-      "Import a Chrome, Edge or Safari password export, or a Cookie JSON file. Only the selected data type is imported into this browser profile. Some websites will still require sign-in.",
-  },
-  overwrite: { id: "browser.data.overwrite", message: "Replace matching existing entries" },
-  choose: { id: "browser.data.choose", message: "Choose file and import" },
-  importing: { id: "browser.data.importing", message: "Importing…" },
-  result: { id: "browser.data.result", message: "Imported: {imported} · Skipped: {skipped} · Failed: {failed}" },
-  cancelled: { id: "browser.data.cancelled", message: "Import stopped. Entries already imported have been kept." },
-  failures: {
-    id: "browser.data.failures",
-    message: "Failed rows contain invalid data or unsupported cookie attributes. Other entries were preserved.",
-  },
   recent: { id: "browser.data.recent", message: "Recently visited" },
   recentHint: {
     id: "browser.data.recentHint",
@@ -79,6 +61,7 @@ type Props = {
   onNavigate?(url: string): void
 }
 export function BrowserDataDialog(props: Props) {
+  if (props.section === "import") return <BrowserImportDialog ownerKey={props.ownerKey} pageId={props.pageId} />
   const { _ } = useLingui()
   return (
     <Dialog title={_(props.section === "passwords" ? M.passwords : B.importData)} size="form">
@@ -98,11 +81,6 @@ export function BrowserDataSettings(props: Props) {
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal("")
   const [notice, setNotice] = createSignal("")
-  const [kind, setKind] = createSignal<"passwords" | "cookies">("passwords")
-  const [overwrite, setOverwrite] = createSignal(false)
-  const [result, setResult] = createSignal<BrowserImportResult>()
-  const [progress, setProgress] = createSignal({ processed: 0, total: 0 })
-  const [job, setJob] = createSignal<string>()
   const [filter, setFilter] = createSignal("")
   const action = (action: BrowserDataAction) =>
     platform.browserNative!.dataAction!({
@@ -111,19 +89,6 @@ export function BrowserDataSettings(props: Props) {
       pageId: props.pageId,
       action,
     })
-  createEffect(() => {
-    const requestId = job()
-    if (!requestId) return
-    setProgress({ processed: 0, total: 0 })
-    const timer = setInterval(() => {
-      void action({ type: "importProgress", requestId })
-        .then((value) => {
-          if (value.type === "progress" && job() === requestId) setProgress(value)
-        })
-        .catch(() => undefined)
-    }, 500)
-    onCleanup(() => clearInterval(timer))
-  })
   const refresh = async () => {
     const next = await action({ type: "state" })
     if (next.type === "state") setData(next)
@@ -165,78 +130,17 @@ export function BrowserDataSettings(props: Props) {
         </p>
       </Show>
       <Show when={props.section !== "passwords"}>
-        <section class="flex flex-col gap-3">
-          <h3 class="text-14-medium text-text-strong">{_(B.importData)}</h3>
-          <p class="text-12 text-text-weak">{_(M.importHint)}</p>
-          <select
-            class="rounded-md border border-border-weak-base bg-surface-base px-3 py-2"
-            aria-label={_(B.importData)}
-            value={kind()}
-            disabled={busy()}
-            onChange={(event) => setKind(event.currentTarget.value as "passwords" | "cookies")}
-          >
-            <option value="passwords">{_(M.passwordFile)}</option>
-            <option value="cookies">{_(M.cookieFile)}</option>
-          </select>
-          <label class="flex items-center gap-2 text-12">
-            <input
-              type="checkbox"
-              checked={overwrite()}
-              disabled={busy()}
-              onChange={(event) => setOverwrite(event.currentTarget.checked)}
-            />
-            {_(M.overwrite)}
-          </label>
-          <div class="flex flex-wrap gap-2">
-            <Button
-              size="small"
-              disabled={busy() || !data() || (kind() === "passwords" && !data()?.passwordStorage)}
-              onClick={() =>
-                void run(async () => {
-                  const requestId = createBrowserCommandId()
-                  setJob(requestId)
-                  setResult(undefined)
-                  try {
-                    const imported = await action({ type: "import", kind: kind(), overwrite: overwrite(), requestId })
-                    if (imported.type === "import") setResult(imported)
-                    await refresh()
-                  } finally {
-                    setJob(undefined)
-                  }
-                })
-              }
-            >
-              {_(job() ? M.importing : M.choose)}
-            </Button>
-            <Show when={job()}>
-              <Button
-                size="small"
-                variant="ghost"
-                onClick={() => void action({ type: "cancelImport", requestId: job()! })}
-              >
-                {_(B.cancel)}
-              </Button>
-            </Show>
-          </div>
-          <Show when={job() && progress().total}>
-            <p role="status" class="text-12 text-text-weak">
-              {_({ id: M.progress.id, message: M.progress.message, values: progress() })}
-            </p>
-          </Show>
-          <Show when={result()}>
-            {(result) => (
-              <div role="status" class="text-12 text-text-weak">
-                <p>{_({ id: M.result.id, message: M.result.message, values: result() })}</p>
-                <Show when={result().cancelled}>
-                  <p>{_(M.cancelled)}</p>
-                </Show>
-                <Show when={result().failed}>
-                  <p>{_(M.failures)}</p>
-                </Show>
-              </div>
-            )}
-          </Show>
-        </section>
+        <Button
+          variant="secondary"
+          onClick={() =>
+            dialog.push(
+              () => <BrowserImportDialog ownerKey={props.ownerKey} pageId={props.pageId} />,
+              () => void run(refresh),
+            )
+          }
+        >
+          {_(B.importData)}
+        </Button>
       </Show>
       <Show when={data() && !data()?.passwordStorage}>
         <p class="text-12 text-text-weak">{_(M.unavailable)}</p>

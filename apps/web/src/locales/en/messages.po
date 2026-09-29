@@ -9557,14 +9557,6 @@ msgid "browser.capture.viewport"
 msgstr "Visible page"
 
 #. js-lingui-explicit-id
-msgid "browser.data.cancelled"
-msgstr "Import stopped. Entries already imported have been kept."
-
-#. js-lingui-explicit-id
-msgid "browser.data.choose"
-msgstr "Choose file and import"
-
-#. js-lingui-explicit-id
 msgid "browser.data.clear"
 msgstr "Clear recent history"
 
@@ -9573,36 +9565,12 @@ msgid "browser.data.clearHint"
 msgstr "Remove recent addresses from this browser profile? Passwords and website logins are kept."
 
 #. js-lingui-explicit-id
-msgid "browser.data.cookieFile"
-msgstr "Cookies (JSON)"
-
-#. js-lingui-explicit-id
 msgid "browser.data.empty"
 msgstr "No saved passwords"
 
 #. js-lingui-explicit-id
-msgid "browser.data.failures"
-msgstr "Failed rows contain invalid data or unsupported cookie attributes. Other entries were preserved."
-
-#. js-lingui-explicit-id
 msgid "browser.data.fill"
 msgstr "Fill login"
-
-#. js-lingui-explicit-id
-msgid "browser.data.importHint"
-msgstr "Import a Chrome, Edge or Safari password export, or a Cookie JSON file. Only the selected data type is imported into this browser profile. Some websites will still require sign-in."
-
-#. js-lingui-explicit-id
-msgid "browser.data.importing"
-msgstr "Importing…"
-
-#. js-lingui-explicit-id
-msgid "browser.data.overwrite"
-msgstr "Replace matching existing entries"
-
-#. js-lingui-explicit-id
-msgid "browser.data.passwordFile"
-msgstr "Passwords (CSV or Safari ZIP)"
 
 #. js-lingui-explicit-id
 msgid "browser.data.passwordHint"
@@ -9611,10 +9579,6 @@ msgstr "Choose an account to fill this website. Sign-in forms are never submitte
 #. js-lingui-explicit-id
 msgid "browser.data.passwords"
 msgstr "Passwords and autofill"
-
-#. js-lingui-explicit-id
-msgid "browser.data.progress"
-msgstr "Processed {processed} of {total}"
 
 #. js-lingui-explicit-id
 msgid "browser.data.recent"
@@ -9631,10 +9595,6 @@ msgstr "Delete saved password"
 #. js-lingui-explicit-id
 msgid "browser.data.removeHint"
 msgstr "This removes the saved password from this browser profile. Existing website sessions are kept."
-
-#. js-lingui-explicit-id
-msgid "browser.data.result"
-msgstr "Imported: {imported} · Skipped: {skipped} · Failed: {failed}"
 
 #. js-lingui-explicit-id
 msgid "browser.data.save"
@@ -9783,6 +9743,134 @@ msgstr "Browse temporarily"
 #. js-lingui-explicit-id
 msgid "browser.identities.uploads"
 msgstr "Uploads"
+
+#. js-lingui-explicit-id
+msgid "browser.import.access"
+msgstr "Access was not granted. Retry the system prompt or choose an exported file."
+
+#. js-lingui-explicit-id
+msgid "browser.import.choose"
+msgstr "Choose file and import"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookieHint"
+msgstr "Website logins and preferences"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookies"
+msgstr "Cookies"
+
+#. js-lingui-explicit-id
+msgid "browser.import.done"
+msgstr "Done"
+
+#. js-lingui-explicit-id
+msgid "browser.import.encrypted"
+msgstr "Imported passwords stay encrypted on this device. Some websites may ask you to sign in again."
+
+#. js-lingui-explicit-id
+msgid "browser.import.error"
+msgstr "Import is unavailable. Reopen the browser page and try again."
+
+#. js-lingui-explicit-id
+msgid "browser.import.failed"
+msgstr "Some entries could not be imported. Existing entries were preserved. You can use an exported file or sign in on the website."
+
+#. js-lingui-explicit-id
+msgid "browser.import.file"
+msgstr "Exported file"
+
+#. js-lingui-explicit-id
+msgid "browser.import.fileHint"
+msgstr "Use a password CSV or Safari ZIP, or a Cookie JSON file. You’ll choose one file for each selected type."
+
+#. js-lingui-explicit-id
+msgid "browser.import.format"
+msgstr "Choose a supported file under 32 MB: password CSV, Safari ZIP or Cookie JSON."
+
+#. js-lingui-explicit-id
+msgid "browser.import.hint"
+msgstr "Bring your saved passwords and website logins into Synergy."
+
+#. js-lingui-explicit-id
+msgid "browser.import.importing"
+msgstr "Importing…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.loading"
+msgstr "Finding browsers…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.local"
+msgstr "Your Mac may ask for permission. Imported passwords stay encrypted on this device."
+
+#. js-lingui-explicit-id
+msgid "browser.import.locked"
+msgstr "Use a persistent browser profile and unlock the system password store."
+
+#. js-lingui-explicit-id
+msgid "browser.import.options"
+msgstr "Import options"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwordHint"
+msgstr "Saved accounts for signing in"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwords"
+msgstr "Passwords"
+
+#. js-lingui-explicit-id
+msgid "browser.import.progress"
+msgstr "{processed} of {total} entries"
+
+#. js-lingui-explicit-id
+msgid "browser.import.reading"
+msgstr "Reading selected data…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replace"
+msgstr "Replace matching existing entries"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceHint"
+msgstr "Matching saved passwords and cookies will be replaced by the imported entries. Other entries are kept."
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceTitle"
+msgstr "Replace matching browser data?"
+
+#. js-lingui-explicit-id
+msgid "browser.import.result"
+msgstr "{imported} imported · {skipped} skipped · {failed} failed"
+
+#. js-lingui-explicit-id
+msgid "browser.import.safari"
+msgstr "In Safari, choose File → Export Browsing Data, include passwords, then select the exported ZIP or CSV here."
+
+#. js-lingui-explicit-id
+msgid "browser.import.source"
+msgstr "From"
+
+#. js-lingui-explicit-id
+msgid "browser.import.start"
+msgstr "Import"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stop"
+msgstr "Stop import"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stopped"
+msgstr "Import stopped. Entries already imported have been kept."
+
+#. js-lingui-explicit-id
+msgid "browser.import.unavailable"
+msgstr "This data could not be read. Quit the source browser and retry, or use an exported file."
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupported"
+msgstr "Not available from this source"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
