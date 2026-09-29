@@ -341,7 +341,6 @@
       "dependencies": {
         "@clack/prompts": "1.0.0-alpha.1",
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@ericsanchezok/synergy-workflows": "workspace:*",
@@ -358,7 +357,6 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@ericsanchezok/synergy-link": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
@@ -424,7 +422,6 @@
       "version": "1.1.26",
       "dependencies": {
         "@ai-sdk/provider": "2.0.3",
-        "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-secret-detection": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@zip.js/zip.js": "2.8.26",
@@ -489,35 +486,6 @@
         "@ericsanchezok/synergy-server",
       ],
     },
-    "packages/link-client": {
-      "name": "@ericsanchezok/synergy-link-client",
-      "version": "1.1.26",
-      "dependencies": {
-        "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-link-protocol": "workspace:*",
-        "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "@hono/standard-validator": "^0.2.0",
-        "hono": "catalog:",
-        "hono-openapi": "catalog:",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@ericsanchezok/synergy-connections": "workspace:*",
-        "@ericsanchezok/synergy-sdk": "workspace:*",
-        "@ericsanchezok/synergy-testing": "workspace:*",
-        "@tsconfig/bun": "catalog:",
-        "@types/bun": "catalog:",
-        "@types/node": "catalog:",
-        "@typescript/native-preview": "catalog:",
-        "typescript": "catalog:",
-      },
-      "peerDependencies": {
-        "@ericsanchezok/synergy-server": "workspace:*",
-      },
-      "optionalPeers": [
-        "@ericsanchezok/synergy-server",
-      ],
-    },
     "packages/local-runtime": {
       "name": "@ericsanchezok/synergy-local-runtime",
       "version": "1.1.26",
@@ -540,7 +508,6 @@
         "@ai-sdk/vercel": "1.0.31",
         "@ai-sdk/xai": "2.0.42",
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
         "@openrouter/ai-sdk-provider": "1.5.2",
         "@parcel/watcher": "2.5.6",
@@ -685,7 +652,6 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@tsconfig/bun": "catalog:",
@@ -807,7 +773,6 @@
         "@ericsanchezok/synergy-formatter": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-library": "workspace:*",
-        "@ericsanchezok/synergy-link-client": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-lsp": "workspace:*",
         "@ericsanchezok/synergy-mcp": "workspace:*",
@@ -826,7 +791,6 @@
         "zod": "catalog:",
       },
       "devDependencies": {
-        "@ericsanchezok/synergy-link-protocol": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@tsconfig/bun": "catalog:",
@@ -887,38 +851,6 @@
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@typescript/native-preview": "7.0.0-dev.20251207.1",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/synergy-link": {
-      "name": "@ericsanchezok/synergy-link",
-      "version": "2.0.0",
-      "bin": {
-        "synergy-link": "./src/cli.ts",
-      },
-      "dependencies": {
-        "@clack/prompts": "1.0.0-alpha.1",
-        "@ericsanchezok/synergy-link-protocol": "workspace:*",
-        "@ericsanchezok/synergy-util": "workspace:*",
-        "jsonc-parser": "3.3.1",
-        "picocolors": "1.1.1",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@tsconfig/node22": "catalog:",
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
-      },
-    },
-    "packages/synergy-link-protocol": {
-      "name": "@ericsanchezok/synergy-link-protocol",
-      "version": "2.0.0",
-      "dependencies": {
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@tsconfig/node22": "catalog:",
-        "@types/node": "catalog:",
         "typescript": "catalog:",
       },
     },
@@ -1352,12 +1284,6 @@
     "@ericsanchezok/synergy-harness": ["@ericsanchezok/synergy-harness@workspace:packages/harness"],
 
     "@ericsanchezok/synergy-library": ["@ericsanchezok/synergy-library@workspace:packages/library"],
-
-    "@ericsanchezok/synergy-link": ["@ericsanchezok/synergy-link@workspace:packages/synergy-link"],
-
-    "@ericsanchezok/synergy-link-client": ["@ericsanchezok/synergy-link-client@workspace:packages/link-client"],
-
-    "@ericsanchezok/synergy-link-protocol": ["@ericsanchezok/synergy-link-protocol@workspace:packages/synergy-link-protocol"],
 
     "@ericsanchezok/synergy-local-runtime": ["@ericsanchezok/synergy-local-runtime@workspace:packages/local-runtime"],
 

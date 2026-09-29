@@ -584,46 +584,6 @@ describe("EnforcementGate shell classification", () => {
     }))
 })
 
-describe("EnforcementGate Synergy Link classification", () => {
-  test("bash with any remote selector gets shell_remote_execute", () =>
-    runtime.run(async () => {
-      const gate = await EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-      })
-
-      for (const args of [
-        { command: "echo remote", linkID: "link_test" },
-        { command: "echo remote", targetID: "target_test" },
-        { command: "echo remote", linkID: "malformed-but-still-remote-intent" },
-      ]) {
-        const result = gate.classify("bash", args)
-        const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
-        expect(remote).toBeDefined()
-        expect(remote.nonBypassable).toBe(true)
-      }
-    }))
-
-  test("process with any remote selector gets shell_remote_execute", () =>
-    runtime.run(async () => {
-      const gate = await EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-      })
-
-      for (const args of [
-        { action: "list", linkID: "link_test" },
-        { action: "list", targetID: "target_test" },
-        { action: "list", linkID: "malformed-but-still-remote-intent" },
-      ]) {
-        const result = gate.classify("process", args)
-        const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
-        expect(remote).toBeDefined()
-        expect(remote.nonBypassable).toBe(true)
-      }
-    }))
-})
-
 // ------------------------------------------------------------------
 // 2b. destructive boundary correctness
 // ------------------------------------------------------------------
@@ -3281,56 +3241,6 @@ describe("EnforcementGate new tool classification", () => {
       const cap = result.capabilities.find((c: any) => c.class === "shell")!
       expect(cap).toBeDefined()
       expect(cap.nonBypassable).toBe(false)
-    }))
-
-  // ── Connect tool action-based classification ──────────────────
-
-  test("connect list action classifies as file_read", () =>
-    runtime.run(async () => {
-      const gate = await EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-      })
-      const result = gate.classify("connect", { action: "list" })
-      const cap = result.capabilities.find((c: any) => c.class === "file_read")!
-      expect(cap).toBeDefined()
-      expect(cap.nonBypassable).toBe(false)
-    }))
-
-  test("connect status action classifies as file_read", () =>
-    runtime.run(async () => {
-      const gate = await EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-      })
-      const result = gate.classify("connect", { action: "status", linkID: "link_abc123" })
-      const cap = result.capabilities.find((c: any) => c.class === "file_read")!
-      expect(cap).toBeDefined()
-      expect(cap.nonBypassable).toBe(false)
-    }))
-
-  test("connect open action classifies as network_request + nonBypassable", () =>
-    runtime.run(async () => {
-      const gate = await EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-      })
-      const result = gate.classify("connect", { action: "open", linkID: "link_abc123" })
-      const cap = result.capabilities.find((c: any) => c.class === "network_request")!
-      expect(cap).toBeDefined()
-      expect(cap.nonBypassable).toBe(true)
-    }))
-
-  test("connect close action classifies as network_request + nonBypassable", () =>
-    runtime.run(async () => {
-      const gate = await EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-      })
-      const result = gate.classify("connect", { action: "close", linkID: "link_abc123" })
-      const cap = result.capabilities.find((c: any) => c.class === "network_request")!
-      expect(cap).toBeDefined()
-      expect(cap.nonBypassable).toBe(true)
     }))
 
   // ── Profile integration: guarded profile partially allows medium risk ──

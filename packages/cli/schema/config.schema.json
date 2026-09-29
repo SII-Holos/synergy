@@ -351,7 +351,7 @@
           "type": "object",
           "propertyNames": {
             "type": "string",
-            "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+            "enum": ["local_process", "file", "plugin", "mcp", "browser", "control_plane"]
           },
           "additionalProperties": { "type": "integer", "exclusiveMinimum": 0, "maximum": 512 }
         }

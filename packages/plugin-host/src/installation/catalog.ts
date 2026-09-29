@@ -12,7 +12,6 @@ export const FULL_COMPONENTS = [
   "external-agents",
   "formatter",
   "library",
-  "link-client",
   "lsp",
   "mcp",
   "media",

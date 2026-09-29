@@ -14,7 +14,6 @@ export async function checkInstalledComposition(archiveDirectory: string) {
       SYNERGY_HOME: path.join(directory, "home"),
       SYNERGY_RUNTIME_ROOT: root,
       SYNERGY_TEST_HOME: path.join(directory, "home"),
-      SYNERGY_LINK_HOME: path.join(directory, "link"),
       SYNERGY_BUN_EXECUTABLE: process.execPath,
       SYNERGY_FIXTURE_VERSION: version,
       SYNERGY_CONFIG_CONTENT: JSON.stringify({

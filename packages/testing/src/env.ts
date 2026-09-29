@@ -31,7 +31,6 @@ export async function createIsolatedTestEnv(): Promise<{
   delete env.BUN_FEATURE_FLAG_NO_ORPHANS
   env.SYNERGY_TEST_HOME = home
   env.SYNERGY_TEST_ROOT = fixtures
-  env.SYNERGY_LINK_HOME = path.join(fixtures, "link")
   // Deterministic locale: zh_CN `ps -o lstart` output breaks process-lock
   // identity parsing in suites that shell out (coverage-check.ts forces
   // LC_ALL=C for the same reason).

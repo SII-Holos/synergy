@@ -185,7 +185,7 @@ describe("document ownership", () => {
   })
 })
 
-test("current documentation rejects retired workspace paths without rejecting public Link packages", () => {
+test("current documentation rejects retired workspace paths", () => {
   expect(
     findRetiredWorkspacePaths("bun test --cwd packages/app\n./packages/synergy/script/build.ts\npackages/desktop"),
   ).toEqual([
@@ -194,6 +194,10 @@ test("current documentation rejects retired workspace paths without rejecting pu
     { path: "packages/desktop", line: 3 },
   ])
   expect(
-    findRetiredWorkspacePaths("packages/synergy-link packages/synergy-link-protocol packages/app-builder-lib"),
-  ).toEqual([])
+    findRetiredWorkspacePaths("packages/synergy-link packages/synergy-link-protocol packages/link-client"),
+  ).toEqual([
+    { path: "packages/synergy-link", line: 1 },
+    { path: "packages/synergy-link-protocol", line: 1 },
+    { path: "packages/link-client", line: 1 },
+  ])
 })

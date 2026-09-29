@@ -1,10 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import type {
-  SynergyLinkBash,
-  SynergyLinkClient,
-  SynergyLinkProcess,
-  SynergyLinkSession,
-} from "@ericsanchezok/synergy-link-protocol"
 import { mkdir, readdir, stat } from "node:fs/promises"
 import path from "node:path"
 import { NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
@@ -13,7 +7,6 @@ import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { BashTool } from "@ericsanchezok/synergy-local-runtime/tools/bash"
 import { BashVirtualFile } from "@ericsanchezok/synergy-local-runtime/tools/bash/virtual-file"
-import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -405,64 +398,6 @@ describe("bash note virtual paths", () => {
 
         expect(stagingRoot).toBeString()
         expect(await Bun.file(stagingRoot!).exists()).toBe(false)
-      })
-    }))
-
-  test("leaves remote Link commands virtual and does not materialize local files", () =>
-    runtime.run(async () => {
-      let forwarded: SynergyLinkBash.ExecutePayload | undefined
-      let prepared = false
-      const client: SynergyLinkClient.ExecutionClient = {
-        async executeBash(_linkID, input) {
-          forwarded = input
-          return { title: "Remote", metadata: { backend: "remote", exit: 0 }, output: "remote" }
-        },
-        async executeProcess(): Promise<SynergyLinkProcess.Result> {
-          throw new Error("unexpected process execution")
-        },
-        async executeSession(): Promise<SynergyLinkSession.Result> {
-          throw new Error("unexpected session execution")
-        },
-      }
-      SynergyLinkExecution.setClient(client)
-      SynergyLinkExecution.upsertSession({
-        linkID: "link_test",
-        targetAgentID: "remote-agent",
-        sourceAgent: "test-strategist",
-        sessionID: "session_test",
-        status: "opened",
-        openedAt: Date.now(),
-        lastUsedAt: Date.now(),
-        lastVerifiedAt: Date.now(),
-      })
-
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          try {
-            const bash = await BashTool.init()
-            const command = "cat /synergy/note/nte_remote"
-            const result = await bash.execute(
-              { command, description: "Read remote note path", linkID: "link_test" },
-              {
-                ...baseContext,
-                extra: {
-                  sandboxPrepare: async () => {
-                    prepared = true
-                    throw new Error("local sandbox should not be prepared")
-                  },
-                },
-              },
-            )
-
-            expect(result.metadata.backend).toBe("remote")
-            expect(forwarded?.command).toBe(command)
-            expect(prepared).toBe(false)
-          } finally {
-            SynergyLinkExecution.setClient(null)
-          }
-        },
       })
     }))
 })

@@ -10,7 +10,7 @@ The [sealed GLM study](../../../research/context-efficiency/2026-09-23-local24-g
 
 ## Decision
 
-Process, Bash and synergy-max guidance recommends useful independent work while a command runs, otherwise blocking waits when completion gates progress. The process description supplies a 300-second local example for known long builds and installations; existing defaults and the 25-second Synergy Link cap remain authoritative. A still-running result means wait or work elsewhere, not immediately refresh logs or restart the command. Services use readiness checks.
+Process, Bash and synergy-max guidance recommends useful independent work while a command runs, otherwise blocking waits when completion gates progress. The process description supplies a 300-second example for known long builds and installations; existing defaults remain authoritative. A still-running result means wait or work elsewhere, not immediately refresh logs or restart the command. Services use readiness checks.
 
 Delayed follow-up uses one existing Agenda timed watch and yields the turn. Visible running subagents retain automatic notifications and the existing watch rejection. APIs, scheduling, process output, history projection, compaction, tool visibility and editing behavior are unchanged.
 

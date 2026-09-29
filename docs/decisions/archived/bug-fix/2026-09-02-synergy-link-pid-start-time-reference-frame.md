@@ -1,6 +1,7 @@
 # Decision Record: Derive synergy-link pid start times without timezone parsing
 
 Status: implemented
+Archived: 2026-09-29
 
 ## Problem
 

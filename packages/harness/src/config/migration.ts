@@ -696,6 +696,69 @@ async function findConfigDomainDirs(): Promise<string[]> {
   return [...dirs]
 }
 
+async function findRetiredLinkConfigFiles(): Promise<string[]> {
+  const files = new Set(await findConfigFiles())
+  if (Flag.SYNERGY_CONFIG) files.add(Flag.SYNERGY_CONFIG)
+  const domainDirs = new Set(await findConfigDomainDirs())
+
+  for (const rawID of await Storage.scan(StoragePath.scopeRoot())) {
+    const scope = await Storage.read<unknown>(StoragePath.scope(Identifier.asScopeID(rawID)))
+    if (!isRecord(scope)) continue
+    const local = isRecord(scope.local) ? scope.local : undefined
+    for (const location of [local?.directory, local?.worktree, scope.directory, scope.worktree]) {
+      if (typeof location !== "string" || !path.isAbsolute(location)) continue
+      let current = path.resolve(location)
+      while (true) {
+        const configRoot = path.join(current, ".synergy")
+        files.add(path.join(configRoot, "synergy.jsonc"))
+        files.add(path.join(configRoot, "synergy.json"))
+        domainDirs.add(path.join(configRoot, "synergy.d"))
+        const parent = path.dirname(current)
+        if (parent === current) break
+        current = parent
+      }
+    }
+  }
+
+  for (const dir of domainDirs) {
+    for (const entry of await fs.readdir(dir, { withFileTypes: true }).catch(() => [])) {
+      if (entry.isFile() && /\.jsonc?$/.test(entry.name)) files.add(path.join(dir, entry.name))
+    }
+  }
+  return [...files]
+}
+
+async function migrateRetiredLinkConfigFile(filepath: string): Promise<boolean> {
+  const file = Bun.file(filepath)
+  if (!(await file.exists())) return false
+  const raw = await file.text()
+  const config = parseJsonc(raw)
+  if (!isRecord(config)) return false
+
+  const paths: string[][] = []
+  if (isRecord(config.execution) && isRecord(config.execution.toolExecutorConcurrency)) {
+    if (Object.hasOwn(config.execution.toolExecutorConcurrency, "link"))
+      paths.push(["execution", "toolExecutorConcurrency", "link"])
+  }
+  if (isRecord(config.permission) && Object.hasOwn(config.permission, "shell_remote_execute")) {
+    paths.push(["permission", "shell_remote_execute"])
+  }
+  if (isRecord(config.agent)) {
+    for (const [name, agent] of Object.entries(config.agent)) {
+      if (isRecord(agent) && isRecord(agent.permission) && Object.hasOwn(agent.permission, "shell_remote_execute"))
+        paths.push(["agent", name, "permission", "shell_remote_execute"])
+    }
+  }
+  if (paths.length === 0) return false
+
+  const formattingOptions = { tabSize: 2, insertSpaces: true, eol: "\n" } as const
+  let text = raw
+  for (const key of paths) text = applyEdits(text, modify(text, key, undefined, { formattingOptions }))
+  await Bun.write(filepath, text)
+  log.info("removed retired Link config", { path: filepath, count: paths.length })
+  return true
+}
+
 async function migrateLibraryDomainFile(libraryFile: string, generalFile: string): Promise<boolean> {
   const current = await readConfigObject(libraryFile)
   if (!current) return false
@@ -1001,6 +1064,20 @@ export async function migrateExecutionConfigFile(filepath: string): Promise<bool
 }
 
 export const migrations: Migration[] = [
+  {
+    scope: "global",
+    execution: "startup",
+    id: "20260929-config-retire-synergy-link",
+    dependsOn: ["scope/20260921-scope-local-binding"],
+    description: "Remove retired Link concurrency and permission settings",
+    async up(progress) {
+      const files = await findRetiredLinkConfigFiles()
+      for (const [index, filepath] of files.entries()) {
+        await migrateRetiredLinkConfigFile(filepath)
+        progress(index + 1, files.length)
+      }
+    },
+  },
   {
     scope: "global",
     id: "20260907-config-execution-domains",

@@ -4,7 +4,7 @@ Execution protocol version 2 separates explicit `useRoots` and Workspace capture
 
 Docker inspection distinguishes partial creation from loss of an acknowledged container using its incarnation receipt. Leftover staging volumes do not turn a lost allocation into pending creation. Lost Workspace views remain unavailable and retain their unresolved ownership; repeated loss observations do not advance the catalog revision.
 
-An Environment identifies an execution destination independently of a Session, Scope and Workspace. Harness owns the catalog in Agent Storage; native and remote resource owners implement providers. Synergy Link does not supply Environment transport or identity.
+An Environment identifies an execution destination independently of a Session, Scope and Workspace. Harness owns the catalog in Agent Storage; native and remote resource owners implement providers.
 
 ## Identity and lifetime
 

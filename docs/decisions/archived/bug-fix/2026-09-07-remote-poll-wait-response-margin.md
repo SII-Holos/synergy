@@ -1,6 +1,7 @@
 # Decision Record: Remote blocking poll waits reserve the transport response margin
 
 Status: implemented
+Archived: 2026-09-29
 
 ## Problem
 

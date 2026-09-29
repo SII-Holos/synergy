@@ -1121,12 +1121,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         args,
       }
     }
-    case "connect":
-      return {
-        icon: "cable",
-        title: TOOL_TITLE_DESC["connect"],
-        subtitle: input.linkID,
-      }
     // inspire — SII 启智平台 (native tools)
     case "inspire_status": {
       const args: string[] = []

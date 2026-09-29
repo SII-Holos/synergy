@@ -376,7 +376,6 @@ describe("relocated coverage enforcement", () => {
       "formatter",
       "acp",
       "external-agents",
-      "link-client",
       "code-tools",
       "plugin-host",
       "media",
