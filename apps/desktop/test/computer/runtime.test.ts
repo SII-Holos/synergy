@@ -160,6 +160,30 @@ test("native failure consumes the action reference without replay", async () => 
   expect(attempts).toBe(1)
 })
 
+test("unsupported background input is reported without foreground escalation or replay", async () => {
+  const deliveries: unknown[] = []
+  const runtime = new ComputerRuntime(async (name, args) => {
+    if (name === "get_window_state") return { content: [], structuredContent: metadata }
+    deliveries.push(args.delivery_mode)
+    return {
+      isError: true,
+      content: [{ type: "text", text: "Retry with delivery_mode:foreground" }],
+      structuredContent: { code: "background_unavailable", escalation: { recommended: "foreground" } },
+    }
+  })
+  const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+  const command = {
+    type: "action",
+    input: { action: "key", key: "return", observationId: observed.observationId! },
+  } as const
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({
+    code: "computer_background_unavailable",
+    message: expect.stringContaining("report the limitation"),
+  })
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({ code: "computer_observation_stale" })
+  expect(deliveries).toEqual(["background"])
+})
+
 test("overlapping calls on the same process are refused without a desktop-wide lease", async () => {
   let unblock!: () => void
   const barrier = new Promise<void>((resolve) => (unblock = resolve))

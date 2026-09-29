@@ -67,21 +67,42 @@ final class App: NSObject, NSApplicationDelegate {
     let root = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SYNERGY_COMPUTER_FIXTURE_DIR"]!)
     var windows: [FixtureWindow] = []
     var lastCommand = ""
-    let priorFrontmost = NSWorkspace.shared.frontmostApplication
+    var activationCount = 0
+    var spaceChangeCount = 0
+    var frontmostHistory: [Int32] = []
+    var observers: [NSObjectProtocol] = []
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let notifications = NSWorkspace.shared.notificationCenter
+        observers.append(notifications.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let self, let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            self.recordFrontmost(app.processIdentifier)
+            self.save()
+        })
+        observers.append(notifications.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            self.spaceChangeCount += 1
+            self.save()
+        })
         windows = [FixtureWindow("A", x: 80), FixtureWindow("B", x: 650)]
         for fixture in windows {
             fixture.changed = { [weak self] in self?.save() }
-            fixture.window.orderFront(nil)
+            fixture.window.orderBack(nil)
         }
-        windows[0].window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
         save()
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.command() }
     }
+    func applicationDidBecomeActive(_ notification: Notification) {
+        activationCount += 1
+        save()
+    }
+    func recordFrontmost(_ pid: Int32) {
+        if frontmostHistory.last != pid && frontmostHistory.count < 256 { frontmostHistory.append(pid) }
+    }
     func save() {
+        let frontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+        recordFrontmost(frontmost)
         let value: [String: Any] = ["pid": ProcessInfo.processInfo.processIdentifier, "windows": windows.map { $0.report() }, "command": lastCommand,
-                                  "frontmost": NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0,
+                                  "frontmost": frontmost, "frontmostHistory": frontmostHistory, "activationCount": activationCount, "spaceChangeCount": spaceChangeCount,
                                   "displays": NSScreen.screens.map { ["scale": $0.backingScaleFactor, "width": $0.frame.width, "height": $0.frame.height] }]
         if let data = try? JSONSerialization.data(withJSONObject: value) { try? data.write(to: root.appendingPathComponent("oracle.json"), options: .atomic) }
     }
@@ -95,11 +116,7 @@ final class App: NSObject, NSApplicationDelegate {
         case "resize": fixture.window.setContentSize(NSSize(width: command["width"] as? Double ?? 480, height: 300))
         case "move": fixture.window.setFrameOrigin(NSPoint(x: command["x"] as? Double ?? 100, y: command["y"] as? Double ?? 120))
         case "hide": fixture.window.orderOut(nil)
-        case "show": fixture.window.orderFront(nil)
-        case "foreground":
-            fixture.window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-        case "background": priorFrontmost?.activate(options: [])
+        case "show": fixture.window.orderBack(nil)
         case "close": fixture.window.close()
         case "refresh": break
         case "quit": NSApp.terminate(nil)

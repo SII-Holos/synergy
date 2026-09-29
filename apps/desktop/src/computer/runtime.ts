@@ -294,6 +294,11 @@ export class ComputerRuntime {
     const text = result.content.flatMap((x) => (x.type === "text" ? [x.text] : [])).join("\n")
     const metadata = result.structuredContent ?? {}
     if (result.isError) {
+      if (metadata.code === "background_unavailable")
+        throw new ComputerError(
+          "computer_background_unavailable",
+          "This control cannot receive background input. Use an available accessibility action or report the limitation.",
+        )
       if (metadata.code === "window_id_not_found" || metadata.code === "window_owner_pid_mismatch")
         throw new ComputerError(
           "computer_window_unavailable",

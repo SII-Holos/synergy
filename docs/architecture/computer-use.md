@@ -14,6 +14,10 @@ The core connects to exactly one authenticated local Desktop host through `/comp
 
 A model cannot select the driver session, change delivery mode, execute scripts, launch an application, or target the whole desktop. Desktop injects a random driver session per task and the process/window/snapshot from its own observation record. References expire after one minute, permit one action, and are discarded on replacement or host reconnect.
 
+Observation and action use background window routes. Guarded pixel clicks suppress target activation and cannot select Cua's activation-without-raise prologue or foreground assistance. Missing background support does not authorize switching apps, raising a window, switching Spaces, moving the hardware pointer, or briefly taking focus and restoring it. Application effects still require a fresh observation. The [background focus decision](../decisions/implemented/bug-fix/2026-09-29-computer-background-focus.md) records this restriction.
+
+Guarded actions do not restore a previously active application when the user changes focus. The private worker runs AppKit without activation or its own overlay windows; Desktop owns permission and progress presentation. An unsupported background route returns a concise limitation without recommending foreground escalation.
+
 ## Concurrency and lifecycle
 
 Independent applications may run concurrently. An in-flight operation excludes another operation targeting the same process; it does not reserve the desktop or app for an entire task. Cua additionally serializes native background mutations per process. New observations invalidate older references for the same window across tasks. Shared application state remains shared with the user and other tasks.
@@ -33,6 +37,8 @@ Native Computer tools require a Session selecting the native Environment as well
 ## Observation quality
 
 Protocol version 2 carries separate AX, image and per-action availability. Desktop returns one AX rendering bounded to 32 KiB of UTF-8; `query` narrows the returned accessibility projection without renumbering elements. Missing or partial AX content does not establish absence. Native captures are capped at a 2048-pixel long edge and bind the exact delivered bytes to an immutable Cua capture. A screenshot is usable only when native decoding, logical window geometry, content-plane geometry and byte digest agree. Invalid or unverified captures do not become normal model attachments.
+
+An unavailable capture suggests one fresh observation after the window settles, then an available AX action or an explicit limitation. This recovery reads a new observation; it never retries a mutation or weakens image validation.
 
 The native patch compares process start time, retained AX window identity and logical geometry again inside Cua's per-process mutation lease. Pixel routes additionally verify WindowServer geometry and the captured content plane, even when selected internally by a semantic click. Display transforms may invalidate pixels while preserving independent AX actions. Desktop references use monotonic expiry, are consumed before action validation, and cannot survive native resets or replacement observations. The [observation admission decision](../decisions/implemented/bug-fix/2026-09-29-computer-observation-admission.md) records the tradeoffs.
 

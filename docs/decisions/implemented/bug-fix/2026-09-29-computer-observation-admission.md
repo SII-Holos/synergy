@@ -14,6 +14,8 @@ The pinned Cua 0.30.4 source receives a small macOS patch beside Desktop's nativ
 
 Desktop emits one bounded AX representation, while typed status and diagnostic evidence remain outside model prose. An explicit Desktop user-data directory is configured before the single-instance lock; source development derives one from its isolated Home.
 
+Unavailable images carry a concise suggestion to observe once more after a window transition. Each new observation must independently satisfy the same image proof; repeated failure requires AX or reporting the limitation, and no action is automatically retried.
+
 Packaged Desktop imports the official SDK from its physical unpacked package. Unpacking only native file extensions is insufficient because Rust resolves the SDK library from the platform package manifest path.
 
 Image delivery uses generic Harness receipts at the final provider transform and existing rollout transport. The originating model call is captured at tool-call admission; neither Computer nor the UI parses provider request bodies. Attachment metadata distinguishes saved, included, submitted and omitted images. The UI consumes the canonical observation schema and withholds coordinate support without a submitted image receipt. Unknown historical records remain unknown.

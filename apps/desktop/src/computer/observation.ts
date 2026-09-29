@@ -119,6 +119,11 @@ export function describeObservation(input: {
       ? ["AX results may be incomplete; missing text does not establish absence."]
       : []),
     ...(validImage ? ["Point coordinates use this image; the current model request must include it."] : []),
+    ...(imageStatus === "unavailable"
+      ? [
+          "If pixels are needed, observe once more after the window settles. If capture remains unavailable, use AX or report the limitation.",
+        ]
+      : []),
   ].join("\n")
   const output = boundedText(header + (tree ? `\n${tree}` : ""))
   observation.ax.truncated ||= output.truncated

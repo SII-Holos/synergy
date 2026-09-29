@@ -20,12 +20,14 @@
  time = { workspace = true }
 --- a/crates/platform-macos/src/lib.rs
 +++ b/crates/platform-macos/src/lib.rs
-@@ -40,6 +40,8 @@
+@@ -40,6 +40,10 @@
  pub mod terminal;
  #[cfg(target_os = "macos")]
  pub mod tools;
 +#[cfg(target_os = "macos")]
 +pub(crate) mod synergy;
++#[cfg(target_os = "macos")]
++pub use synergy::run_background_loop;
  #[cfg(target_os = "macos")]
  pub mod video_sckit;
  #[cfg(target_os = "macos")]
@@ -131,7 +133,20 @@
          tokio::task::spawn_blocking(move || crate::input::pointer_toolkit::detect(pid))
 --- a/crates/platform-macos/src/tools/click.rs
 +++ b/crates/platform-macos/src/tools/click.rs
-@@ -639,6 +639,8 @@
+@@ -139,8 +139,11 @@
+     button: &str,
+     effective_foreground: bool,
+     has_window: bool,
++    strict_background: bool,
+ ) -> PixelActivationPolicy {
+-    if effective_foreground {
++    if strict_background {
++        PixelActivationPolicy::SuppressTarget
++    } else if effective_foreground {
+         PixelActivationPolicy::ForegroundAssist
+     } else if button == "left" && has_window {
+         PixelActivationPolicy::AllowTargetWithoutRaise
+@@ -639,6 +642,8 @@
              } else {
                  None
              };
@@ -140,6 +155,84 @@
              // The selection fallback delivers a routed window-local pixel
              // click — a stricter (WindowPointer) rung than the semantic gate
              // above. In background, drop the fallback rather than silently
+@@ -1025,10 +1030,12 @@
+                     }
+                     let delivered = if focus_only {
+                         crate::input::ax_actions::focus_element(element as usize).is_ok()
+-                    } else {
++                    } else if copy_action_names(element).iter().any(|action| action == "AXPress") {
+                         let press = core_foundation::string::CFString::new("AXPress");
+                         AXUIElementPerformAction(element, press.as_concrete_TypeRef())
+                             == kAXErrorSuccess
++                    } else {
++                        false
+                     };
+                     CFRelease(element as _);
+                     Ok(delivered)
+@@ -1081,7 +1088,12 @@
+                 Ok(route) => route,
+                 Err(refusal) => return refusal,
+             };
+-            let activation_policy = pixel_activation_policy(&button_str, fg, window_id.is_some());
++            let activation_policy = pixel_activation_policy(
++                &button_str,
++                fg,
++                window_id.is_some(),
++                args["synergy_guard"].is_string(),
++            );
+ 
+             // ── Focus-suppression wrap (Swift WindowChangeDetector + FocusGuard) ──
+             // A pixel click can land on a "Sign In" button that opens a sheet
+@@ -1660,6 +1672,20 @@
+         );
+     }
+ 
++    #[test]
++    fn synergy_pixel_routes_never_activate_the_target() {
++        for button in ["left", "right", "middle"] {
++            for foreground in [false, true] {
++                for has_window in [false, true] {
++                    assert_eq!(
++                        pixel_activation_policy(button, foreground, has_window, true),
++                        PixelActivationPolicy::SuppressTarget
++                    );
++                }
++            }
++        }
++    }
++
+     /// Regression for the Swift→Rust port gap: only a raw background left
+     /// click with an exact window may intentionally activate the target
+     /// without raising it. Other background buttons retain strict suppression,
+@@ -1667,23 +1693,23 @@
+     #[test]
+     fn raw_background_left_click_restores_focus_without_raise_policy() {
+         assert_eq!(
+-            pixel_activation_policy("left", false, true),
++            pixel_activation_policy("left", false, true, false),
+             PixelActivationPolicy::AllowTargetWithoutRaise
+         );
+         assert_eq!(
+-            pixel_activation_policy("left", false, false),
++            pixel_activation_policy("left", false, false, false),
+             PixelActivationPolicy::SuppressTarget
+         );
+         assert_eq!(
+-            pixel_activation_policy("right", false, true),
++            pixel_activation_policy("right", false, true, false),
+             PixelActivationPolicy::SuppressTarget
+         );
+         assert_eq!(
+-            pixel_activation_policy("middle", false, true),
++            pixel_activation_policy("middle", false, true, false),
+             PixelActivationPolicy::SuppressTarget
+         );
+         assert_eq!(
+-            pixel_activation_policy("left", true, true),
++            pixel_activation_policy("left", true, true, false),
+             PixelActivationPolicy::ForegroundAssist
+         );
+     }
 --- a/crates/platform-macos/src/tools/mod.rs
 +++ b/crates/platform-macos/src/tools/mod.rs
 @@ -206,6 +206,7 @@
@@ -250,3 +343,52 @@
                  .map(|&index| top_level[index])
                  .collect();
              window_scope = Some(decision.scope);
+--- a/crates/platform-macos/src/focus_guard.rs
++++ b/crates/platform-macos/src/focus_guard.rs
+@@ -83,6 +83,10 @@
+     F: FnOnce() -> Fut,
+     Fut: std::future::Future<Output = R>,
+ {
++    if crate::synergy::guarded() {
++        return f().await;
++    }
++
+     // Decide whether to arm a targeted lease. Three conditions must hold:
+     //   1. We have a known target pid (Some).
+     //   2. We have a prior frontmost to restore to (Some).
+--- a/crates/platform-macos/src/window_change_detector.rs
++++ b/crates/platform-macos/src/window_change_detector.rs
+@@ -251,7 +251,7 @@
+         // login window), we skip the lease; foreground-change tracking
+         // still runs.
+         let lease = prior_front
+-            .filter(|_| suppress_focus)
++            .filter(|_| suppress_focus && !crate::synergy::guarded())
+             .map(|restore_to| match allowed_pid {
+                 Some(pid) => focus_steal::begin_suppression_allowing(
+                     pid,
+--- a/crates/cua-driver/src/main.rs
++++ b/crates/cua-driver/src/main.rs
+@@ -497,7 +497,7 @@
+             std::process::exit(code);
+         });
+         if initialized_rx.recv().unwrap_or(false) {
+-            platform_macos::cursor::overlay::run_on_main_thread();
++            platform_macos::run_background_loop();
+         }
+         return;
+     }
+--- a/crates/cua-driver/src/private_worker.rs
++++ b/crates/cua-driver/src/private_worker.rs
+@@ -118,7 +118,10 @@
+     let driver = match CuaDriver::try_create_configured_for_host(
+         initialization.configured_driver,
+         DriverHostOptions {
+-            cursor: cursor_overlay::CursorConfig::default(),
++            cursor: cursor_overlay::CursorConfig {
++                enabled: false,
++                ..cursor_overlay::CursorConfig::default()
++            },
+             host_owns_permission_ux: true,
+             host_bundle_id: Some(initialization.host_bundle_id.clone()),
+             claude_code_compatibility: false,

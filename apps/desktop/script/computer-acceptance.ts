@@ -4,7 +4,7 @@ import { mkdir, realpath } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { z } from "zod"
-import { assert, startFixture, stageManagerEnabled, type Check } from "./computer-fixture"
+import { assert, startFixture, stageManagerEnabled, stayedInBackground, type Check } from "./computer-fixture"
 
 export async function runComputerAcceptance(options: {
   directory: string
@@ -93,6 +93,11 @@ export async function runComputerAcceptance(options: {
     function check(name: string, valid: boolean, detail: string) {
       checks.push({ name, status: valid ? "pass" : "fail", ...(valid ? {} : { detail }) })
     }
+    check(
+      "background execution without transient activation or Space changes",
+      stayedInBackground(initial, after),
+      "The fixture must stay inactive throughout observation and action; restoring foreground afterward is insufficient",
+    )
     check(
       "canvas-only visual nonce",
       text.includes(target.nonce) &&

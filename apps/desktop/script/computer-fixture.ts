@@ -18,6 +18,9 @@ const Oracle = z.object({
   pid: z.number(),
   command: z.string(),
   frontmost: z.number(),
+  frontmostHistory: z.array(z.number()),
+  activationCount: z.number(),
+  spaceChangeCount: z.number(),
   windows: z.array(Window),
   displays: z.array(z.object({ scale: z.number(), width: z.number(), height: z.number() })),
 })
@@ -26,6 +29,15 @@ export type Oracle = z.infer<typeof Oracle>
 
 export function assert(condition: unknown, reason: string): asserts condition {
   if (!condition) throw Error(reason)
+}
+export function stayedInBackground(before: Oracle, after: Oracle) {
+  return (
+    before.frontmost !== before.pid &&
+    after.frontmost === before.frontmost &&
+    after.activationCount === 0 &&
+    after.spaceChangeCount === 0 &&
+    after.frontmostHistory.every((pid) => pid === before.frontmost)
+  )
 }
 export async function eventually<T>(read: () => Promise<T>, accept: (value: T) => boolean, milliseconds = 5000) {
   const deadline = performance.now() + milliseconds
@@ -70,6 +82,7 @@ export async function startFixture(directory: string) {
   }
   try {
     const initial = await eventually(state, (value) => value.windows.length === 2)
+    await Bun.write(path.join(directory, "initial.json"), JSON.stringify(initial, null, 2))
     return {
       initial,
       state,

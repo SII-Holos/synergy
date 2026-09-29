@@ -1,7 +1,15 @@
 import { mkdir } from "node:fs/promises"
 import path from "node:path"
 import { createHash } from "node:crypto"
-import { assert, eventually, startFixture, stageManagerEnabled, type Check, type Oracle } from "./computer-fixture"
+import {
+  assert,
+  eventually,
+  startFixture,
+  stageManagerEnabled,
+  stayedInBackground,
+  type Check,
+  type Oracle,
+} from "./computer-fixture"
 import { ComputerDriver } from "../src/computer/driver"
 
 class CaptureUnavailable extends Error {}
@@ -42,6 +50,12 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
         status: error instanceof CaptureUnavailable ? "blocked" : "fail",
         detail: error instanceof Error ? error.message : String(error),
       })
+    } finally {
+      if (fixture)
+        await Bun.write(
+          path.join(directory, `checkpoint-${report.checks.length}.json`),
+          JSON.stringify(await fixture.command("refresh"), null, 2),
+        )
     }
   }
   try {
@@ -79,7 +93,6 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
       assert(!first.output.includes("AXMenuBar"), "Application menu bar leaked into the window projection")
       assert(Buffer.byteLength(first.output) <= 32768, "Observation exceeds the UTF-8 budget")
     })
-    await command("background")
     await eventually(observe, (value) => value.observation?.actions.click.available === true, 15_000)
     const foreground = (await command("refresh")).frontmost
     await check("AX-only semantic click changes only the target", async () => {
@@ -187,11 +200,6 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
     })
     await check("legitimate narrow windows remain usable", async () => {
       await command("resize", { width: 180 })
-      await command("foreground")
-      await eventually(
-        () => command("refresh"),
-        (value) => value.frontmost === initial.pid,
-      )
       const deadline = performance.now() + 5000
       let narrow = await observe()
       while (narrow.observation?.image.status !== "valid" && performance.now() < deadline) {
@@ -225,6 +233,11 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
         (error: unknown) => error instanceof Error && "code" in error && error.code === "computer_window_unavailable",
       )
       assert(result, "A closed window granted new action evidence")
+    })
+    await check("no activation or Space change throughout the background workflow", async () => {
+      const after = await command("refresh")
+      await Bun.write(path.join(directory, "focus.json"), JSON.stringify(after, null, 2))
+      assert(stayedInBackground(initial, after), "Activation or Space events occurred during the background workflow")
     })
     report.status = report.checks.some((item) => item.status === "fail")
       ? "fail"
