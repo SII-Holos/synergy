@@ -1,6 +1,8 @@
 import z from "zod"
 
-export const BROWSER_PROTOCOL_VERSION = 3 as const
+import { BrowserProfileIdSchema } from "./profile.js"
+
+export const BROWSER_PROTOCOL_VERSION = 4 as const
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -62,7 +64,7 @@ const settleResultFields = {
   inflightRequests: z.number().int().nonnegative().optional(),
 }
 
-export const BrowserSessionStatusSchema = z.enum(["empty", "suspended", "active", "migrating", "failed"])
+export const BrowserSessionStatusSchema = z.enum(["empty", "suspended", "active", "failed"])
 export type BrowserSessionStatus = z.infer<typeof BrowserSessionStatusSchema>
 
 export const BrowserHostStatusSchema = z.enum([
@@ -1061,6 +1063,7 @@ export type BrowserHostPageEvent = z.infer<typeof BrowserHostPageEventSchema>
 
 export const BrowserControlRequestSchema = z
   .object({
+    pageId,
     protocolVersion,
     command: BrowserUserCommandSchema,
     commandId: nonEmpty,
@@ -1198,13 +1201,31 @@ export const BrowserProtocolErrorSchema = z
   .meta({ ref: "BrowserProtocolError" })
 export type BrowserProtocolErrorData = z.infer<typeof BrowserProtocolErrorSchema>
 
+export const BrowserSessionPageSchema = BrowserPageSchema.extend({
+  profileId: BrowserProfileIdSchema,
+  openerId: BrowserPageIdSchema.optional(),
+  status: z.enum(["active", "suspended", "failed"]),
+  error: BrowserProtocolErrorSchema.optional(),
+})
+  .strict()
+  .meta({ ref: "BrowserSessionPage" })
+export type BrowserSessionPage = z.infer<typeof BrowserSessionPageSchema>
+
+export const BrowserOpenPageSchema = z
+  .object({
+    url: z.string().max(20_000).optional(),
+    profileId: BrowserProfileIdSchema.optional(),
+  })
+  .strict()
+  .meta({ ref: "BrowserOpenPage" })
+
 export const BrowserSessionStateSchema = z
   .object({
     type: z.literal("session.state"),
     protocolVersion,
     ownerKey: nonEmpty,
     status: BrowserSessionStatusSchema,
-    page: BrowserPageSchema.nullable(),
+    pages: z.array(BrowserSessionPageSchema).max(64),
     presentation: BrowserPresentationSchema.nullable(),
     hostStatus: BrowserHostStatusSchema,
     seq: z.number().int().nonnegative(),
@@ -1232,7 +1253,7 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,
-      page: BrowserPageSchema,
+      page: BrowserSessionPageSchema,
     })
     .strict(),
   z
@@ -1241,7 +1262,7 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,
-      page: BrowserPageSchema,
+      page: BrowserSessionPageSchema,
     })
     .strict(),
   z
@@ -1269,7 +1290,7 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
       protocolVersion,
       seq: z.number().int().nonnegative(),
       epoch: nonEmpty,
-      page: BrowserPageSchema,
+      page: BrowserSessionPageSchema,
     })
     .strict(),
   z
@@ -1501,6 +1522,15 @@ export const BrowserHostMessageSchema = z
     z.object({ type: z.literal("host.registered"), protocolVersion, hostId: nonEmpty }).strict(),
     z
       .object({
+        type: z.literal("page.opened"),
+        protocolVersion,
+        ownerKey: nonEmpty,
+        openerId: pageId,
+        page: BrowserPageSchema,
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("page.create"),
         protocolVersion,
         requestId: nonEmpty,
@@ -1516,6 +1546,13 @@ export const BrowserHostMessageSchema = z
         routeDirectory: nonEmpty,
         presentation: BrowserPresentationKindSchema,
         page: BrowserPageSchema,
+        profile: z
+          .object({
+            id: BrowserProfileIdSchema,
+            partition: z.string().min(1).max(250),
+            revision: z.number().int().nonnegative(),
+          })
+          .strict(),
         networkProxy: z.object({ server: nonEmpty, username: nonEmpty, password: nonEmpty }).strict(),
         downloadDir: nonEmpty,
         signalingTicket: nonEmpty.optional(),

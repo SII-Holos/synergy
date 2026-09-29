@@ -17,6 +17,7 @@ import {
   type BrowserPresentationCapabilities,
   type BrowserPresentationKind,
 } from "@ericsanchezok/synergy-browser-core"
+import { BrowserProfiles } from "./profiles.js"
 import { BrowserOwner } from "./owner.js"
 import { BrowserNetworkGateway } from "./network-gateway.js"
 import { BrowserStorage } from "./storage.js"
@@ -50,6 +51,9 @@ interface Connection {
 const runtimeState = RuntimeContext.state(() => ({
   connection: null as Connection | null,
   requestSequence: 0,
+  profiles: new Map<string, string>(),
+  popupListeners: new Map<string, (input: { id: string; url: string; openerId: string }) => Promise<unknown>>(),
+  bufferedEvents: new Map<string, BrowserHostPageEvent[]>(),
   registrationSecret: BrowserRegistrationSecretSchema.parse(
     RuntimeContext.current().host.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET || randomBytes(32).toString("hex"),
   ),
@@ -145,7 +149,6 @@ export namespace BrowserBroker {
       return { routeDirectory: explicit.routeDirectory, presentation: explicit.presentation }
     }
     if (ready("native")) return { routeDirectory: owner.scopeID, presentation: "native" }
-    if (ready("webrtc")) return { routeDirectory: owner.scopeID, presentation: "webrtc" }
     return null
   }
 
@@ -163,7 +166,7 @@ export namespace BrowserBroker {
       socket.close(1008, "Invalid Browser Host registration secret")
       throw new Error("Invalid Browser Host registration secret")
     }
-    if (!message.capabilities.native && !message.capabilities.webrtc) {
+    if (!message.capabilities.native) {
       socket.close(1008, "Browser Host registered no capabilities")
       throw new Error("Browser Host must register at least one presentation capability.")
     }
@@ -202,6 +205,39 @@ export namespace BrowserBroker {
 
     if (instanceState.connection?.socket !== socket) throw new Error("Browser Host broker is not registered.")
     const message = BrowserHostMessageSchema.parse(input)
+    if (message.type === "page.opened") {
+      const active = instanceState.connection
+      const parentKey = `${message.ownerKey}:${message.openerId}`
+      const key = `${message.ownerKey}:${message.page.id}`
+      const profileId = instanceState.profiles.get(parentKey)
+      const preference = instanceState.preferences.get(message.ownerKey)
+      const listener = instanceState.popupListeners.get(message.ownerKey)
+      if (
+        !active.pages.has(parentKey) ||
+        !profileId ||
+        !preference ||
+        !listener ||
+        active.pages.has(key) ||
+        active.pages.size >= 64 ||
+        [...active.pages].filter((key) => key.startsWith(`${message.ownerKey}:`)).length >= 16
+      ) {
+        void request({
+          type: "page.close",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          requestId: nextRequestId(),
+          ownerKey: message.ownerKey,
+          pageId: message.page.id,
+        }).catch(() => undefined)
+        return
+      }
+      active.pages.add(key)
+      instanceState.profiles.set(key, profileId)
+      instanceState.bufferedEvents.set(key, [])
+      void listener({ id: message.page.id, url: message.page.url, openerId: message.openerId })
+        .catch(() => closePage(preference.owner, message.page.id))
+        .catch(() => undefined)
+      return
+    }
     if (message.type === "page.event") {
       const now = Date.now()
       if (now - instanceState.connection.eventWindowStartedAt >= 1_000) {
@@ -233,6 +269,8 @@ export namespace BrowserBroker {
           ObservabilityBrowserTelemetry.recordHostStatus(message.event.status, preference.owner)
         }
       }
+      const buffered = instanceState.bufferedEvents.get(key)
+      if (buffered && buffered.length < 256) buffered.push(message.event)
       for (const listener of instanceState.eventListeners.get(key) ?? []) listener(message.event)
       return
     }
@@ -262,6 +300,7 @@ export namespace BrowserBroker {
     routeDirectory: string
     presentation: BrowserPresentationKind
     pageId: string
+    profile: BrowserProfiles.Stored
     url?: string
   }): Promise<BrowserBackendResult> {
     const instanceState = runtimeState()
@@ -270,21 +309,22 @@ export namespace BrowserBroker {
     const active = instanceState.connection
     if (!active) throw new Error("Browser Host broker is unavailable.")
     const ownerKey = BrowserOwner.key(input.owner)
-    if (Array.from(active.pages).some((key) => key.startsWith(`${ownerKey}:`))) {
+    if (active.pages.size >= 64)
       throw new BrowserProtocolError({
-        code: "browser_owner_page_exists",
-        message: "Browser owner already has an active Host page.",
+        code: "browser_desktop_page_limit",
+        message: "Close a page before opening another (64 active pages per Desktop).",
         retryable: false,
-        pageId: input.pageId,
       })
-    }
+    if (active.pages.has(pageKey(input.owner, input.pageId))) throw new Error("Browser page already exists.")
+    prepare(input.owner, input.routeDirectory, "native")
     const reservedPageKey = pageKey(input.owner, input.pageId)
     active.pages.add(reservedPageKey)
+    instanceState.profiles.set(reservedPageKey, input.profile.id)
     notifyActivity()
     let createSent = false
     try {
       await BrowserStorage.ensureOwnerDirs(input.owner)
-      const networkProxy = await BrowserNetworkGateway.proxyFor(input.owner)
+      const networkProxy = await BrowserNetworkGateway.proxyFor(input.profile.id)
       const downloadDir = await BrowserDownloads.managedDirectory(input.owner)
       const signalingTicket =
         input.presentation === "webrtc" ? BrowserTicket.issue(input.owner, input.pageId, "host") : null
@@ -309,6 +349,7 @@ export namespace BrowserBroker {
           isLoading: false,
           lastActiveAt: null,
         },
+        profile: { id: input.profile.id, partition: input.profile.partition, revision: input.profile.revision },
         networkProxy,
         downloadDir,
         ...(signalingTicket ? { signalingTicket: signalingTicket.ticket } : {}),
@@ -331,7 +372,7 @@ export namespace BrowserBroker {
           .then(() => {
             const instanceState = runtimeState()
 
-            if (instanceState.connection === active) active.pages.delete(reservedPageKey)
+            if (instanceState.connection === active) releasePage(active, reservedPageKey)
             BrowserTicket.revoke(input.owner, input.pageId)
             notifyActivity()
             ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "ok")
@@ -341,7 +382,7 @@ export namespace BrowserBroker {
             ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "failed")
           })
       } else {
-        active.pages.delete(reservedPageKey)
+        releasePage(active, reservedPageKey)
         BrowserTicket.revoke(input.owner, input.pageId)
         notifyActivity()
         ObservabilityBrowserTelemetry.recordResourceCleanup(input.owner, "ok")
@@ -375,7 +416,7 @@ export namespace BrowserBroker {
       ownerKey: BrowserOwner.key(owner),
       pageId,
     })
-    instanceState.connection?.pages.delete(pageKey(owner, pageId))
+    if (instanceState.connection) releasePage(instanceState.connection, pageKey(owner, pageId))
     BrowserTicket.revoke(owner, pageId)
     notifyActivity()
     ObservabilityBrowserTelemetry.recordResourceCleanup(owner, "ok")
@@ -392,6 +433,8 @@ export namespace BrowserBroker {
     const listeners = instanceState.eventListeners.get(key) ?? new Set()
     listeners.add(listener)
     instanceState.eventListeners.set(key, listeners)
+    for (const event of instanceState.bufferedEvents.get(key) ?? []) listener(event)
+    instanceState.bufferedEvents.delete(key)
     return () => {
       const instanceState = runtimeState()
 
@@ -400,11 +443,19 @@ export namespace BrowserBroker {
     }
   }
 
+  export function onPopup(
+    owner: BrowserOwner.Info,
+    listener: (input: { id: string; url: string; openerId: string }) => Promise<unknown>,
+  ): void {
+    runtimeState().popupListeners.set(BrowserOwner.key(owner), listener)
+  }
+
   export function release(owner: BrowserOwner.Info): void {
     const instanceState = runtimeState()
 
     const ownerKey = BrowserOwner.key(owner)
     instanceState.preferences.delete(ownerKey)
+    instanceState.popupListeners.delete(ownerKey)
     BrowserTicket.revoke(owner)
     for (const key of instanceState.eventListeners.keys()) {
       if (key.startsWith(`${ownerKey}:`)) instanceState.eventListeners.delete(key)
@@ -423,6 +474,18 @@ export namespace BrowserBroker {
     instanceState.preferences.clear()
     instanceState.eventListeners.clear()
     instanceState.activityListeners.clear()
+  }
+}
+
+function releasePage(connection: Connection, key: string) {
+  const state = runtimeState()
+  connection.pages.delete(key)
+  const profileId = state.profiles.get(key)
+  state.profiles.delete(key)
+  state.bufferedEvents.delete(key)
+  if (profileId && ![...state.profiles.values()].includes(profileId)) {
+    BrowserNetworkGateway.revoke(profileId)
+    BrowserProfiles.releaseTemporary(profileId)
   }
 }
 

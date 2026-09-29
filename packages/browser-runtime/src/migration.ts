@@ -5,6 +5,7 @@ import { Global } from "@ericsanchezok/synergy-harness/global"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import type { Migration } from "@ericsanchezok/synergy-harness/migration/types"
 import { BrowserOwner } from "./owner.js"
+import { BrowserProfiles } from "./profiles.js"
 import { BrowserStorage } from "./storage.js"
 import {
   BrowserCheckpointSchema,
@@ -172,23 +173,18 @@ export namespace BrowserMigration {
     )
   }
 
-  function migrateState(state: StoredState): BrowserStorage.SessionState {
+  async function migrateState(state: StoredState, digest: string): Promise<BrowserStorage.SessionState> {
     const page = pageFromState(state)
-    const checkpoint = checkpointFromState(state, page)
-    const error = migratedError(state.error)
-    const next: BrowserStorage.SessionState = {
-      version: BrowserStorage.CURRENT_VERSION,
-      status: error ? "failed" : page ? "suspended" : "empty",
-      page,
-      panelWidth:
-        typeof state.panelWidth === "number" ? Math.min(16_384, Math.max(1, Math.round(state.panelWidth))) : 400,
-      timestamp: typeof state.timestamp === "number" && state.timestamp >= 0 ? Math.round(state.timestamp) : Date.now(),
+    const profile = page ? await BrowserProfiles.legacyDigest(digest) : null
+    return {
+      version: 5,
+      timestamp: typeof state.timestamp === "number" ? state.timestamp : Date.now(),
+      pages: page && profile ? [{ ...page, profileId: profile.id, isLoading: false, status: "suspended" }] : [],
       annotations: annotationsFromState(state),
-      downloads: [],
-      ...(checkpoint ? { checkpoint } : {}),
-      ...(error ? { error } : {}),
+      downloads: Array.isArray(state.downloads)
+        ? (state.downloads as NonNullable<BrowserStorage.SessionState["downloads"]>)
+        : [],
     }
-    return next
   }
 
   function migratedError(value: unknown): BrowserProtocolErrorData | undefined {
@@ -207,7 +203,7 @@ export namespace BrowserMigration {
   async function migrateRecord(owner: BrowserOwner.Info, key: string[]): Promise<Result> {
     const state = await readState(key)
     if (!state) return { ownerKey: BrowserOwner.key(owner), changed: false, version: BrowserStorage.CURRENT_VERSION }
-    const next = migrateState(state)
+    const next = await migrateState(state, BrowserOwner.storageID(owner))
     const target = BrowserStorage.keyForOwner(owner)
     const moved = JSON.stringify(key) !== JSON.stringify(target)
     const changed = moved || JSON.stringify(state) !== JSON.stringify(next)
@@ -215,39 +211,26 @@ export namespace BrowserMigration {
       if (changed) await BrowserStorage.save(owner, next)
       if (moved) await Storage.remove(key)
     })
-    await removeRetiredProfilePath(state.storageStatePath)
-    await removeRetiredProfilePath(state.profileDir)
     return { ownerKey: BrowserOwner.key(owner), changed, version: BrowserStorage.CURRENT_VERSION }
-  }
-
-  async function removeRetiredProfilePath(value: unknown): Promise<void> {
-    if (typeof value !== "string" || !path.isAbsolute(value)) return
-    const browserRoot = path.resolve(Global.Path.data, "browser")
-    const target = path.resolve(value)
-    if (target === browserRoot || !target.startsWith(`${browserRoot}${path.sep}`)) return
-    let realTarget: string
-    try {
-      realTarget = await fs.realpath(target)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return
-      throw error
-    }
-    const realBrowserRoot = await fs.realpath(browserRoot)
-    if (realTarget === realBrowserRoot || !realTarget.startsWith(`${realBrowserRoot}${path.sep}`)) {
-      throw new Error("Retired Browser profile path escaped Browser storage.")
-    }
-    const info = await fs.lstat(target)
-    if (info.isSymbolicLink()) throw new Error("Retired Browser profile path must not be a symbolic link.")
-    await fs.rm(realTarget, { recursive: true, force: true })
   }
 
   export async function run(owner: BrowserOwner.Info): Promise<Result> {
     const current = BrowserStorage.keyForOwner(owner)
-    if (await readState(current)) return migrateRecord(owner, current)
+    if (await readState(current)) return { ownerKey: BrowserOwner.key(owner), changed: false, version: 5 }
+    const v4 = ["browser", "sessions-v4", BrowserOwner.storageID(owner)]
+    if (await readState(v4)) return migrateRecord(owner, v4)
     return migrateRecord(owner, legacyStateKey(owner))
   }
 
   export async function runAll(progress?: (current: number, total: number) => void): Promise<void> {
+    const records = await Storage.list(["browser", "sessions-v4"])
+    for (const key of records) {
+      const digest = key[2]!
+      const target = ["browser", "sessions-v5", digest]
+      if (await readState(target)) continue
+      const old = await readState(key)
+      if (old) await Storage.write(target, await migrateState(old, digest))
+    }
     const keys = await Storage.list(["browser", "sessions"])
     let current = 0
     for (const key of keys) {
@@ -273,8 +256,9 @@ function legacyComponent(value: string, label: string): string {
 
 export const migrations: Migration[] = [
   {
-    id: "20260710-browser-suspended-session-v4",
-    description: "Persist browser pages as suspended descriptors without restoring them during state reads",
+    id: "20260929-browser-pages-and-identities-v5",
+    description:
+      "Migrate browser pages to Desktop identities without merging native partitions or deleting retired profiles",
     domain: "browser",
     async up(progress) {
       await BrowserMigration.runAll(progress)

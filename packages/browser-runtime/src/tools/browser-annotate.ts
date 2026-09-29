@@ -34,6 +34,8 @@ const parameters = z
         message: "annotationId is valid only for read or resolve.",
       })
     }
+    if (value.action === "create" && !value.pageId)
+      ctx.addIssue({ code: "custom", path: ["pageId"], message: "Choose a pageId from browser_navigation list." })
     if (value.action === "create" && !value.comment) {
       ctx.addIssue({ code: "custom", path: ["comment"], message: "comment is required for create." })
     }
@@ -117,7 +119,7 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
         }
       }
       case "create": {
-        const page = await BrowserToolHelper.getPage(owner, params.pageId)
+        const page = await BrowserToolHelper.getPage(owner, params.pageId!)
         const input = {
           ref: params.ref,
           element: params.element,

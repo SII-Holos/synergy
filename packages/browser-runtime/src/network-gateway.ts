@@ -3,7 +3,6 @@ import http from "node:http"
 import net from "node:net"
 import { randomBytes, timingSafeEqual } from "node:crypto"
 import { BrowserProtocolError } from "@ericsanchezok/synergy-browser-core"
-import { BrowserOwner } from "./owner.js"
 
 interface OwnerGrant {
   username: string
@@ -41,14 +40,14 @@ export const BROWSER_TUNNEL_IDLE_TIMEOUT_MS = 30 * 60_000
 class BrowserProxyAuthenticationError extends Error {}
 
 export namespace BrowserNetworkGateway {
-  export async function proxyFor(owner: BrowserOwner.Info): Promise<BrowserProxyDescriptor> {
+  export async function proxyFor(profileId: string): Promise<BrowserProxyDescriptor> {
     const instanceState = runtimeState()
 
     while (true) {
       const current = await ensure()
       if (instanceState.stopping || instanceState.gateway !== current) continue
 
-      const ownerKey = BrowserOwner.key(owner)
+      const ownerKey = profileId
       let grant = instanceState.grantsByOwner.get(ownerKey)
       if (!grant) {
         grant = {
@@ -68,10 +67,10 @@ export namespace BrowserNetworkGateway {
     }
   }
 
-  export function revoke(owner: BrowserOwner.Info): void {
+  export function revoke(profileId: string): void {
     const instanceState = runtimeState()
 
-    const ownerKey = BrowserOwner.key(owner)
+    const ownerKey = profileId
     const grant = instanceState.grantsByOwner.get(ownerKey)
     instanceState.grantsByOwner.delete(ownerKey)
     if (!grant) return

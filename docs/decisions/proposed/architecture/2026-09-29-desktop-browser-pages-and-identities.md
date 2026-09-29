@@ -33,3 +33,7 @@ Implement in the current checkout with incremental commits: product composition 
 ## Risks
 
 Browser changes span the backend, Electron, shared UI and packaging. Persistent profiles do not preserve JavaScript heaps, unsaved forms or one-use authentication callbacks across process loss. Existing native profiles must retain their partition mapping; retired headless data must remain available without retaining its execution path.
+
+## Implementation checkpoints
+
+The page catalog and persistent identity catalog now have isolated behavioral tests for eight independent pages, profile reuse, disabled identities, temporary profiles, lazy restore, and the concurrent page limit. Protocol v4 introduces explicit page targets. Native view and broker integration are in progress; this checkpoint does not claim complete UI, migration, policy, packaging or Desktop acceptance.

@@ -1,14 +1,10 @@
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import path from "path"
 import fs from "fs/promises"
-import z from "zod"
+import { z } from "zod"
 import { BrowserOwner } from "./owner.js"
 import { Global } from "@ericsanchezok/synergy-harness/global"
-import {
-  BrowserCheckpointSchema,
-  BrowserPageIdSchema,
-  BrowserProtocolErrorSchema,
-} from "@ericsanchezok/synergy-browser-core"
+import { BrowserSessionPageSchema, BrowserPageIdSchema } from "@ericsanchezok/synergy-browser-core"
 
 const StoredAnnotationSchema = z
   .object({
@@ -40,40 +36,23 @@ const StoredDownloadSchema = z
 
 const StoredSessionSchema = z
   .object({
-    version: z.literal(4),
-    status: z.enum(["empty", "suspended", "active", "migrating", "failed"]),
-    page: z
-      .object({
-        id: BrowserPageIdSchema,
-        url: z.string().max(20_000),
-        title: z.string().max(20_000),
-        lastActiveAt: z.number().int().nonnegative().nullable().optional(),
-      })
-      .strict()
-      .nullable(),
-    panelWidth: z.number().int().min(1).max(16_384).optional(),
+    version: z.literal(5),
+    pages: z.array(BrowserSessionPageSchema).max(64),
     timestamp: z.number().int().nonnegative(),
     annotations: z.array(StoredAnnotationSchema).max(10_000).optional(),
     downloads: z.array(StoredDownloadSchema).max(10_000).optional(),
-    checkpoint: BrowserCheckpointSchema.optional(),
-    error: BrowserProtocolErrorSchema.optional(),
   })
   .strict()
-  .superRefine((value, ctx) => {
-    if (value.status === "failed" && !value.error) {
-      ctx.addIssue({ code: "custom", path: ["error"], message: "Failed Browser state requires a structured error." })
-    }
-  })
 
 export namespace BrowserStorage {
-  export const CURRENT_VERSION = 4
+  export const CURRENT_VERSION = 5
 
   export type StoredAnnotation = z.infer<typeof StoredAnnotationSchema>
   export type SessionState = Omit<z.infer<typeof StoredSessionSchema>, "version"> & { version?: number }
 
   export function keyForOwner(owner: BrowserOwner.Info): string[] {
     BrowserOwner.assertValid(owner)
-    return ["browser", "sessions-v4", BrowserOwner.storageID(owner)]
+    return ["browser", "sessions-v5", BrowserOwner.storageID(owner)]
   }
 
   export function profileDir(owner: BrowserOwner.Info): string {
@@ -107,7 +86,7 @@ export namespace BrowserStorage {
     const [raw] = await Storage.readMany([keyForOwner(owner)])
     if (raw === undefined) return null
     const state = StoredSessionSchema.parse(raw)
-    return { ...state, page: state.page ? { ...state.page, url: sanitizeUrl(state.page.url) } : null }
+    return { ...state, pages: state.pages.map((page) => ({ ...page, url: sanitizeUrl(page.url) })) }
   }
 
   /** Persist session state. Creates parent dirs if needed. */
@@ -115,15 +94,7 @@ export namespace BrowserStorage {
     const sanitized = StoredSessionSchema.parse({
       ...state,
       version: CURRENT_VERSION,
-      status:
-        state.page && (state.status === "active" || state.status === "migrating")
-          ? state.status
-          : state.status === "failed"
-            ? "failed"
-            : state.page
-              ? "suspended"
-              : "empty",
-      page: state.page ? { ...state.page, url: sanitizeUrl(state.page.url) } : null,
+      pages: state.pages.map((page) => ({ ...page, isLoading: false, url: sanitizeUrl(page.url) })),
     })
     await Storage.write(keyForOwner(owner), sanitized)
   }

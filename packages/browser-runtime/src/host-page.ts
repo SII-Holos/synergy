@@ -7,6 +7,7 @@ import {
   type BrowserHostStatus,
   type BrowserPresentationKind,
 } from "@ericsanchezok/synergy-browser-core"
+import type { BrowserProfiles } from "./profiles.js"
 import { BrowserBroker } from "./broker.js"
 import type { BrowserOwner } from "./owner.js"
 import type { BrowserPageBackend, BrowserPageEventHandlers } from "./page.js"
@@ -38,6 +39,7 @@ export class BrowserHostPage implements BrowserPageBackend {
 
   static async create(input: {
     owner: BrowserOwner.Info
+    profile: BrowserProfiles.Stored
     id: string
     url?: string
     presentation: BrowserPresentationKind
@@ -48,6 +50,7 @@ export class BrowserHostPage implements BrowserPageBackend {
     try {
       const result = await BrowserBroker.createPage({
         owner: input.owner,
+        profile: input.profile,
         routeDirectory: input.routeDirectory,
         presentation: input.presentation,
         pageId: input.id,
@@ -60,6 +63,17 @@ export class BrowserHostPage implements BrowserPageBackend {
       page.unsubscribe()
       throw error
     }
+  }
+
+  static adopt(input: {
+    owner: BrowserOwner.Info
+    id: string
+    url?: string
+    events: BrowserPageEventHandlers
+  }): BrowserHostPage {
+    const page = new BrowserHostPage(input.owner, input.id, input.url ?? "about:blank", input.events)
+    page._hostStatus = "ready"
+    return page
   }
 
   async execute(command: BrowserBackendCommand): Promise<BrowserBackendResult> {

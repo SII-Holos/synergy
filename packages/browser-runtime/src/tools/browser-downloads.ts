@@ -80,6 +80,7 @@ export const BrowserDownloadsTool = Tool.define<typeof parameters, BrowserDownlo
       if (!pending) throw new Error(`Download ${params.id} was not found for this browser owner.`)
       if (pending.state === "pending") {
         await BrowserCommandService.execute(owner, {
+          pageId: pending.pageID,
           commandId: `${ctx.callID ?? ctx.messageID}:download-cancel`,
           command: { type: "download.cancel", id: params.id! },
           signal: ctx.abort,

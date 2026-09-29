@@ -1,6 +1,5 @@
 import {
   BROWSER_PROTOCOL_VERSION,
-  BrowserIceServerSchema,
   BrowserHostMessageSchema,
   BrowserProtocolError,
   BrowserRegistrationSecretSchema,
@@ -9,7 +8,6 @@ import {
   type BrowserHostMessage,
   type BrowserHostPageEvent,
 } from "@ericsanchezok/synergy-browser-core"
-import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
 import { type DesktopThemeSnapshot } from "./theme.js"
 import { BrowserNativePagePool, type BrowserNativePageHandle } from "./browser-native-page-pool.js"
 
@@ -22,18 +20,10 @@ export interface BrowserHostBrokerOptions {
   onStatus?(status: BrowserNativeBrokerStatus): void
 }
 
-type ManagedPage = BrowserWebRTCHost | BrowserNativePageHandle
+type ManagedPage = BrowserNativePageHandle
 interface ManagedPageEntry {
   pageId: string
   page: ManagedPage
-}
-
-function isThemeAwarePage(page: ManagedPage): page is BrowserWebRTCHost {
-  return "setTheme" in page
-}
-
-function isWebRTCPage(page: ManagedPage): page is BrowserWebRTCHost {
-  return "updateSignalingTicket" in page
 }
 
 export class BrowserHostBrokerClient {
@@ -55,9 +45,6 @@ export class BrowserHostBrokerClient {
 
   setTheme(theme: DesktopThemeSnapshot): void {
     this.theme = theme
-    for (const entry of this.pages.values()) {
-      if (isThemeAwarePage(entry.page)) entry.page.setTheme(theme)
-    }
   }
 
   connect(): void {
@@ -75,7 +62,7 @@ export class BrowserHostBrokerClient {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: this.options.hostId ?? `browser-host-${process.pid}`,
         token: this.options.token,
-        capabilities: { native: Boolean(this.options.nativePool), webrtc: true },
+        capabilities: { native: Boolean(this.options.nativePool), webrtc: false },
       })
     })
     socket.addEventListener("message", (event) => void this.handle(event.data, epoch))
@@ -157,13 +144,14 @@ export class BrowserHostBrokerClient {
       await this.dispatch(message, epoch)
       return
     }
-    const previous = this.commandTails.get(message.ownerKey) ?? Promise.resolve()
+    const key = `${message.ownerKey}:${message.type === "page.create" ? message.page.id : message.pageId}`
+    const previous = this.commandTails.get(key) ?? Promise.resolve()
     const operation = previous.then(() => this.dispatch(message, epoch))
-    this.commandTails.set(message.ownerKey, operation)
+    this.commandTails.set(key, operation)
     try {
       await operation
     } finally {
-      if (this.commandTails.get(message.ownerKey) === operation) this.commandTails.delete(message.ownerKey)
+      if (this.commandTails.get(key) === operation) this.commandTails.delete(key)
     }
   }
 
@@ -175,19 +163,16 @@ export class BrowserHostBrokerClient {
     epoch: number,
   ): Promise<void> {
     if (epoch !== this.connectionEpoch) return
+    const key = `${message.ownerKey}:${message.type === "page.create" ? message.page.id : message.pageId}`
     if (message.type === "page.create") {
       try {
-        if (this.pages.has(message.ownerKey)) throw new Error("Browser owner already has an active Host page.")
-        const page =
-          message.presentation === "native"
-            ? await this.createNativePage(message)
-            : await this.createWebRTCPage(message)
+        if (this.pages.has(key)) throw new Error("Browser page already exists.")
+        const page = await this.createNativePage(message)
         if (epoch !== this.connectionEpoch || this.socket?.readyState !== WebSocket.OPEN) {
           await page.destroy()
           return
         }
-        if (isThemeAwarePage(page)) page.setTheme(this.theme)
-        this.pages.set(message.ownerKey, { pageId: message.page.id, page })
+        this.pages.set(key, { pageId: message.page.id, page })
         this.result(message.requestId, { type: "page", page: page.state() })
       } catch (error) {
         this.failure(message.requestId, error)
@@ -195,18 +180,18 @@ export class BrowserHostBrokerClient {
       return
     }
     if (message.type === "page.close") {
-      const entry = this.pages.get(message.ownerKey)
+      const entry = this.pages.get(key)
       if (!entry || entry.pageId !== message.pageId) {
         this.failure(message.requestId, new Error("Browser Host page was not found."))
         return
       }
       try {
         await entry.page.destroy()
-        this.pages.delete(message.ownerKey)
+        this.pages.delete(key)
         this.result(message.requestId, { type: "void" })
       } catch (error) {
         if (!entry.page.isAlive()) {
-          this.pages.delete(message.ownerKey)
+          this.pages.delete(key)
           console.error("Browser Host page closed with cleanup errors.", error)
           this.result(message.requestId, { type: "void" })
           return
@@ -215,16 +200,8 @@ export class BrowserHostBrokerClient {
       }
       return
     }
-    if (message.type === "page.signaling.ticket") {
-      const entry = this.pages.get(message.ownerKey)
-      if (entry?.pageId === message.pageId && isWebRTCPage(entry.page)) {
-        entry.page.updateSignalingTicket(message.signalingTicket)
-      }
-      return
-    }
-
     if (message.type !== "page.command") return
-    const entry = this.pages.get(message.ownerKey)
+    const entry = this.pages.get(key)
     if (!entry || entry.pageId !== message.pageId) {
       this.failure(message.requestId, new Error("Browser Host page was not found."))
       return
@@ -264,64 +241,28 @@ export class BrowserHostBrokerClient {
     return this.options.nativePool.create({
       ownerKey: message.ownerKey,
       page: message.page,
+      profile: message.profile,
+      onPopup: (input, page) => {
+        const key = `${message.ownerKey}:${input.page.id}`
+        this.pages.set(key, { pageId: input.page.id, page })
+        this.send({
+          type: "page.opened",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          ownerKey: message.ownerKey,
+          openerId: input.openerId,
+          page: input.page,
+        })
+      },
       networkProxy: message.networkProxy,
       downloadDir: message.downloadDir,
-      emit: (event) => this.event(message.ownerKey, message.page.id, event),
+      emit: (event) => this.event(message.ownerKey, "page" in event ? event.page.id : event.pageId, event),
     })
-  }
-
-  private async createWebRTCPage(
-    message: Extract<BrowserHostMessage, { type: "page.create" }>,
-  ): Promise<BrowserWebRTCHost> {
-    if (!message.signalingTicket) throw new Error("Browser Host signaling ticket is missing.")
-    const page = new BrowserWebRTCHost({
-      ownerKey: message.ownerKey,
-      serverUrl: this.options.serverUrl,
-      ownerMode: message.owner.mode,
-      sessionID: message.owner.sessionID,
-      pageId: message.page.id,
-      routeDirectory: message.routeDirectory,
-      url: message.page.url,
-      theme: this.theme,
-      iceServers: parseIceServers(process.env.SYNERGY_BROWSER_ICE_SERVERS),
-      networkProxy: message.networkProxy,
-      downloadDir: message.downloadDir,
-      signalingTicket: message.signalingTicket,
-      emitBrokerEvent: (event) => this.event(message.ownerKey, message.page.id, event),
-    })
-    try {
-      await page.start()
-      return page
-    } catch (error) {
-      try {
-        await page.destroy()
-      } catch (cleanupError) {
-        throw new AggregateError([error, cleanupError], "Browser Host page creation and cleanup both failed.")
-      }
-      throw error
-    }
   }
 
   private takePages(): ManagedPage[] {
     const pages = Array.from(this.pages.values(), (entry) => entry.page)
     this.pages.clear()
     return pages
-  }
-}
-
-function parseIceServers(
-  value: string | undefined,
-): Array<{ urls: string | string[]; username?: string; credential?: string }> {
-  if (!value) return []
-  try {
-    const parsed = JSON.parse(value)
-    if (!Array.isArray(parsed)) return []
-    return parsed.slice(0, 20).flatMap((entry) => {
-      const result = BrowserIceServerSchema.safeParse(entry)
-      return result.success ? [result.data] : []
-    })
-  } catch {
-    return []
   }
 }
 

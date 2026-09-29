@@ -3,12 +3,10 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { isSessionResourceTerminalEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { BrowserOwner } from "./owner.js"
-import { PlaywrightBrowserDriver } from "./playwright-driver.js"
-import type { BrowserDriver } from "./driver.js"
 import { BrowserBroker } from "./broker.js"
 import { BrowserHostPage } from "./host-page.js"
+import { BrowserProfiles } from "./profiles.js"
 import { BrowserNetworkGateway } from "./network-gateway.js"
-import { BrowserHostBrokerProcess } from "./host-broker-process.js"
 import { BrowserEvent } from "./event.js"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -52,7 +50,7 @@ export namespace BrowserRuntime {
     disposalPromises: new Map<string, Promise<void>>(),
     memberships: new Map<string, Map<string, BrowserSession>>(),
     running: false,
-    driver: null as BrowserDriver.Driver | null,
+    profileSubscription: undefined as (() => void) | undefined,
     reaperInstalled: false,
   }))
 
@@ -77,11 +75,10 @@ export namespace BrowserRuntime {
     await runtimeState().sessionPromises.get(key)
     await requireCommandExecutor().disposeOwner(owner, async () => {
       const session = runtimeState().sessions.get(key)
-      const pageID = session?.page?.id
+      const pageIDs = session?.pages.map((page) => page.id) ?? []
       await session?.dispose()
       forgetSession(key)
-      BrowserNetworkGateway.revoke(owner)
-      if (pageID) BrowserEvent.publish(owner, { type: "page.closed", pageId: pageID })
+      for (const pageId of pageIDs) BrowserEvent.publish(owner, { type: "page.closed", pageId })
     })
   }
 
@@ -115,9 +112,6 @@ export namespace BrowserRuntime {
     if (instanceState.running) return
     installSessionReaper()
 
-    const pwDriver = new PlaywrightBrowserDriver()
-    await pwDriver.ensure()
-    instanceState.driver = pwDriver
     instanceState.running = true
   }
 
@@ -137,7 +131,6 @@ export namespace BrowserRuntime {
       failures,
     )
     for (const session of instanceState.sessions.values()) {
-      BrowserNetworkGateway.revoke(session.owner)
       BrowserBroker.release(session.owner)
       BrowserEvent.remove(session.owner)
     }
@@ -145,18 +138,8 @@ export namespace BrowserRuntime {
     instanceState.sessionPromises.clear()
     executor.clear()
 
-    if (instanceState.driver) {
-      try {
-        await instanceState.driver.stop()
-      } catch (error) {
-        log.error("browser.playwright.stop.failed", { error })
-        failures.push(error)
-      }
-      instanceState.driver = null
-    }
-
     instanceState.running = false
-    for (const stop of [() => BrowserNetworkGateway.stop(), () => BrowserHostBrokerProcess.stop()]) {
+    for (const stop of [() => BrowserNetworkGateway.stop()]) {
       try {
         await stop()
       } catch (error) {
@@ -194,7 +177,6 @@ export namespace BrowserRuntime {
     if (!session) return
     await requireCommandExecutor().disposeOwner(owner, () => session.dispose())
     forgetSession(key)
-    BrowserNetworkGateway.revoke(owner)
     BrowserBroker.release(owner)
     BrowserEvent.remove(owner)
   }
@@ -218,25 +200,21 @@ export namespace BrowserRuntime {
       const instanceState = runtimeState()
 
       const { BrowserSessionImpl } = await import("./session.js")
-      const session = new BrowserSessionImpl(
-        owner,
-        driverForSession,
-        async (input) => {
-          if (input.backend !== "host") return null
-          const preference = BrowserBroker.preference(owner)
-          if (preference) {
-            return BrowserHostPage.create({
-              owner,
-              id: input.id ?? crypto.randomUUID(),
-              routeDirectory: preference.routeDirectory,
-              presentation: preference.presentation,
-              events: input.events,
-            })
-          }
-          return null
-        },
-        () => (BrowserBroker.preference(owner) ? "host" : "headless"),
-      )
+      const session = new BrowserSessionImpl(owner, async (input) => {
+        if (input.adopt) return BrowserHostPage.adopt({ ...input, owner })
+        return BrowserHostPage.create({
+          ...input,
+          owner,
+          routeDirectory: BrowserBroker.preference(owner)?.routeDirectory ?? owner.directory ?? "/",
+          presentation: "native",
+        })
+      })
+      instanceState.profileSubscription ??= BrowserProfiles.onChange(async (profileId) => {
+        const profile = await BrowserProfiles.get(profileId)
+        if (!profile.enabled)
+          await Promise.all([...instanceState.sessions.values()].map((value) => value.suspendProfile(profileId)))
+      })
+      BrowserBroker.onPopup(owner, (input) => withinOwner(owner, () => session.adoptPage(input)))
       instanceState.sessions.set(k, session)
       await session.restore()
       if (ScopeContext.current.workspace) {
@@ -257,29 +235,19 @@ export namespace BrowserRuntime {
     const instanceState = runtimeState()
 
     const values = [...instanceState.sessions.values()]
-    const activePages = values.filter((session) => session.page?.isAlive())
-    const hostPages = activePages.filter((session) => session.page?.backend === "host")
-    const headlessPages = activePages.filter((session) => session.page?.backend === "headless")
-    const host = BrowserHostBrokerProcess.resourceStats()
+    const pages = values.flatMap((session) => session.pages)
+    const activePages = pages.filter((page) => page.status === "active")
     return {
-      ...host,
-      processCount: host.processCount + (headlessPages.length > 0 ? 1 : 0),
+      status: BrowserBroker.ready("native") ? ("ready" as const) : ("unavailable" as const),
+      processCount: 0,
       ownerCount: values.length,
       sessionOwnerCount: values.filter((session) => session.owner.mode === "session").length,
       scopeOwnerCount: values.filter((session) => session.owner.mode === "scope").length,
       activePageCount: activePages.length,
-      hostPageCount: hostPages.length,
-      headlessPageCount: headlessPages.length,
-      suspendedPageCount: values.filter((session) => session.status === "suspended").length,
+      hostPageCount: activePages.length,
+      headlessPageCount: 0,
+      suspendedPageCount: pages.length - activePages.length,
     }
-  }
-
-  async function driverForSession(): Promise<BrowserDriver.Driver> {
-    const instanceState = runtimeState()
-
-    await ensure()
-    if (!instanceState.driver) throw new Error("Browser driver not running")
-    return instanceState.driver
   }
 
   function collectFailures(results: PromiseSettledResult<unknown>[], failures: unknown[]): void {
