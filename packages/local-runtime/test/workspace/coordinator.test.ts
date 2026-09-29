@@ -31,6 +31,73 @@ test("a legacy ledger rewrite cannot restore exclusive authorship after overlapp
   expect(await coordinator.inspect()).toHaveLength(0)
 })
 
+test("an exited durable process does not make later isolated work incomplete", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const coordinator = new WorkspaceCoordinator({ directory })
+  const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const stale = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    processID: child.pid,
+    retainAfterExit: true,
+    durable: true,
+    useRoots: [tmp.path],
+  })
+  child.kill()
+  await child.exited
+  const next = await coordinator.acquire({ ...request([]), kind: "process", useRoots: [tmp.path] })
+  try {
+    expect(await next.isolated()).toBe(true)
+    expect((await coordinator.inspect()).some((claim) => claim.id === stale.id && claim.durable)).toBe(true)
+  } finally {
+    await next.release()
+    await stale.release()
+  }
+})
+
+test("concurrent durable processes in one workspace remain overlapping", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const firstChild = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const secondChild = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const first = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    processID: firstChild.pid,
+    retainAfterExit: true,
+    durable: true,
+    useRoots: [tmp.path],
+  })
+  const second = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    processID: secondChild.pid,
+    retainAfterExit: true,
+    durable: true,
+    useRoots: [tmp.path],
+  })
+  try {
+    expect(await first.isolated()).toBe(false)
+    expect(await second.isolated()).toBe(false)
+  } finally {
+    firstChild.kill()
+    secondChild.kill()
+    await Promise.all([firstChild.exited, secondChild.exited])
+    await first.release()
+    await second.release()
+  }
+})
+
 test("a durable writer survives its owner and is released only with its saved recovery reference", async () => {
   await using tmp = await tmpdir()
   const directory = path.join(tmp.path, "locks")
