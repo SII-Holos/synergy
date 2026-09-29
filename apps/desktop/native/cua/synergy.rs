@@ -20,22 +20,30 @@ pub(crate) struct Identity {
     pid: i32,
     window_id: u32,
     process_start: (u64, u64),
-    window: RetainedElement,
-    pub frame: [f64; 4],
+    ax: Option<AxIdentity>,
     cg_frame: [f64; 4],
+}
+struct AxIdentity {
+    window: RetainedElement,
+    frame: [f64; 4],
 }
 impl Identity {
     fn matches(&self, other: &Self, pixels: bool) -> bool {
         self.pid == other.pid
             && self.window_id == other.window_id
             && self.process_start == other.process_start
-            && self.frame == other.frame
             && (!pixels || self.cg_frame == other.cg_frame)
-            && unsafe {
-                CFEqual(
-                    self.window.as_ptr() as CFTypeRef,
-                    other.window.as_ptr() as CFTypeRef,
-                ) != 0
+            && match (&self.ax, &other.ax) {
+                (Some(a), Some(b)) => {
+                    a.frame == b.frame
+                        && unsafe {
+                            CFEqual(
+                                a.window.as_ptr() as CFTypeRef,
+                                b.window.as_ptr() as CFTypeRef,
+                            ) != 0
+                        }
+                }
+                _ => true,
             }
     }
 }
@@ -59,33 +67,78 @@ pub(crate) fn identity(pid: i32, window_id: u32) -> Option<Identity> {
             return None;
         }
         let app = AXUIElementCreateApplication(pid);
-        if app.is_null() {
-            return None;
-        }
-        AXUIElementSetMessagingTimeout(app, 0.2);
-        let windows = copy_ax_windows_including(app, pid, window_id);
-        CFRelease(app as CFTypeRef);
+        let windows = if app.is_null() {
+            Vec::new()
+        } else {
+            AXUIElementSetMessagingTimeout(app, 0.2);
+            let windows = copy_ax_windows_including(app, pid, window_id);
+            CFRelease(app as CFTypeRef);
+            windows
+        };
         let mut selected = None;
         for window in windows {
             if selected.is_none() && ax_get_window_id(window) == Some(window_id) {
                 AXUIElementSetMessagingTimeout(window, 0.2);
                 if let Some(frame) = element_screen_rect(window) {
                     if frame.iter().all(|v| v.is_finite()) && frame[2] > 0.0 && frame[3] > 0.0 {
-                        selected = Some(Identity {
-                            pid,
-                            window_id,
-                            process_start: (info.pbi_start_tvsec, info.pbi_start_tvusec),
+                        selected = Some(AxIdentity {
                             window: RetainedElement::retain(window as usize),
                             frame,
-                            cg_frame: [cg.bounds.x, cg.bounds.y, cg.bounds.width, cg.bounds.height],
                         });
                     }
                 }
             }
             CFRelease(window as CFTypeRef);
         }
-        selected
+        Some(Identity {
+            pid,
+            window_id,
+            process_start: (info.pbi_start_tvsec, info.pbi_start_tvusec),
+            ax: selected,
+            cg_frame: [cg.bounds.x, cg.bounds.y, cg.bounds.width, cg.bounds.height],
+        })
     }
+}
+
+impl Identity {
+    pub(crate) fn capture_geometry_valid(&self, content: [f64; 4], scale: f64) -> bool {
+        // Stage Manager pairs the real window with a WindowManager container.
+        // Evidence: https://github.com/ewiner/backstage/blob/main/Sources/Backstage/WindowEnumerator.swift
+        let thumbnail = crate::windows::visible_windows().iter().any(|window| {
+            window.app_name == "WindowManager"
+                && same_plane(
+                    self.cg_frame,
+                    [
+                        window.bounds.x,
+                        window.bounds.y,
+                        window.bounds.width,
+                        window.bounds.height,
+                    ],
+                    scale,
+                )
+        });
+        capture_plane_valid(
+            self.cg_frame,
+            self.ax.as_ref().map(|ax| ax.frame),
+            content,
+            scale,
+            thumbnail,
+        )
+    }
+}
+
+fn capture_plane_valid(
+    frame: [f64; 4],
+    ax: Option<[f64; 4]>,
+    content: [f64; 4],
+    scale: f64,
+    thumbnail: bool,
+) -> bool {
+    !thumbnail
+        && frame[2] > 0.0
+        && frame[3] > 0.0
+        && same_plane([0.0, 0.0, frame[2], frame[3]], content, scale)
+        && ax.is_none_or(|logical| same_plane(logical, frame, scale))
 }
 
 pub(crate) fn same_plane(logical: [f64; 4], rendered: [f64; 4], scale: f64) -> bool {
@@ -114,10 +167,6 @@ impl Observations {
     }
 }
 tokio::task_local! { static ACTION: Arc<Observation>; }
-
-pub(crate) fn guarded() -> bool {
-    ACTION.try_with(|_| ()).is_ok()
-}
 
 pub(crate) fn allows_pixels() -> bool {
     ACTION.try_with(|o| o.pixels).unwrap_or(true)
@@ -168,6 +217,11 @@ impl<T: Tool> GuardedTool<T> {
         let mut def = inner.def().clone();
         def.input_schema["properties"]["synergy"] = json!({"type":"boolean"});
         def.input_schema["properties"]["synergy_guard"] = json!({"type":"string"});
+        if def.input_schema["properties"].get("x").is_some()
+            || def.input_schema["properties"].get("from_x").is_some()
+        {
+            def.input_schema["properties"]["capture_id"] = json!({"type":"string"});
+        }
         Self {
             inner,
             def,
@@ -281,11 +335,18 @@ impl<T: Tool> Tool for GuardedTool<T> {
             if observation.session != session
                 || observation.identity.pid != pid
                 || observation.identity.window_id != window_id
-                || args["delivery_mode"] != "background"
             {
                 return refusal("computer_target_mismatch");
             }
-            return ACTION.scope(observation, self.inner.invoke(args)).await;
+            let pixels = args.get("x").is_some() || args.get("from_x").is_some();
+            return ACTION
+                .scope(observation, async {
+                    if let Err(refusal) = check(pid, window_id, pixels).await {
+                        return refusal;
+                    }
+                    self.inner.invoke(args).await
+                })
+                .await;
         }
         self.inner.invoke(args).await
     }
@@ -294,6 +355,27 @@ impl<T: Tool> Tool for GuardedTool<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn capture_is_independent_of_ax_but_rejects_stage_containers() {
+        let frame = [100.0, 100.0, 120.0, 700.0];
+        let content = [0.0, 0.0, 120.0, 700.0];
+        assert!(capture_plane_valid(frame, None, content, 2.0, false));
+        assert!(!capture_plane_valid(frame, None, content, 2.0, true));
+        assert!(!capture_plane_valid(
+            frame,
+            Some([100.0, 100.0, 1200.0, 800.0]),
+            content,
+            2.0,
+            false
+        ));
+        assert!(!capture_plane_valid(
+            frame,
+            None,
+            [0.0, 0.0, 130.0, 700.0],
+            2.0,
+            false
+        ));
+    }
     #[test]
     fn representation_proof_preserves_narrow_windows_and_rounding() {
         assert!(same_plane(

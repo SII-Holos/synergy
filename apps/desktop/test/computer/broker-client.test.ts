@@ -17,7 +17,7 @@ test("the broker registers, reports native prerequisites, and rejects invalid co
         const message = JSON.parse(String(raw))
         if (message.type === "register") {
           registered.resolve(message)
-          socket.send(JSON.stringify({ type: "registered", version: 2 }))
+          socket.send(JSON.stringify({ type: "registered", version: 3 }))
           socket.send(JSON.stringify({ type: "cancel", id: "unknown" }))
           socket.send(JSON.stringify({ type: "command", id: "apps", owner: "task", command: { type: "apps" } }))
         } else {
@@ -41,7 +41,7 @@ test("the broker registers, reports native prerequisites, and rejects invalid co
   try {
     client.connect()
     client.connect()
-    expect(await registered.promise).toEqual({ type: "register", version: 2, token: "a".repeat(64) })
+    expect(await registered.promise).toEqual({ type: "register", version: 3, token: "a".repeat(64) })
     expect(await result.promise).toMatchObject({
       type: "error",
       id: "apps",

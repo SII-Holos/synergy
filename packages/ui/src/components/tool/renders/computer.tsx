@@ -26,6 +26,7 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
           })
           .find((item) => item.sha256 === observation()?.image.sha256)
       const stage = () => imageInput()?.stage
+      const mode = () => props.metadata?.deliveryMode
       const delivery = () => {
         const observed = observation()
         if (observed?.image.status !== "valid") return _(D.unavailable)
@@ -54,9 +55,18 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
       }
       const rows = () => {
         const observed = observation()
-        if (!observed) return name === "computer_observe" ? [{ label: _(D.image), value: _(D.unknown) }] : []
-        const actions = (["click", "point", "type", "key", "scroll"] as const).filter(
-          (action) => observed.actions[action].available && (action !== "point" || stage() === "submitted"),
+        if (!observed) {
+          if (name === "computer_observe") return [{ label: _(D.image), value: _(D.unknown) }]
+          const target = ComputerObservationSchema.shape.target.safeParse(props.metadata?.computerTarget)
+          return [
+            ...(target.success ? [{ label: _(D.target), value: `${target.data.app} · ${target.data.title}` }] : []),
+            ...(name === "computer_action" && props.status === "completed"
+              ? [{ label: _(D.result), value: _(D.dispatched) }]
+              : []),
+          ]
+        }
+        const actions = (["click", "type", "key", "scroll", "drag", "set_value"] as const).filter(
+          (action) => observed.actions[action].available && (action !== "drag" || stage() === "submitted"),
         )
         return [
           { label: _(D.target), value: `${observed.target.app} · ${observed.target.title}` },
@@ -83,13 +93,17 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
           {...props}
           trigger={{
             ...getComputerToolPresentation(name, props.input)!,
-            ...(observation()
-              ? {
-                  tags: [
-                    { label: imageLabel(), tone: observation()!.image.status === "valid" ? "success" : "warning" },
-                  ],
-                }
-              : {}),
+            tags: [
+              ...(mode() ? [{ label: _(mode() === "foreground" ? D.foreground : D.background) }] : []),
+              ...(observation()
+                ? [
+                    {
+                      label: imageLabel(),
+                      tone: observation()!.image.status === "valid" ? ("success" as const) : ("warning" as const),
+                    },
+                  ]
+                : []),
+            ],
           }}
         >
           <SummaryGrid rows={rows()} />

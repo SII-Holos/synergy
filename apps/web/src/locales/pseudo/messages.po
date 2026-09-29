@@ -20976,6 +20976,10 @@ msgid "tool.computer.available"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "tool.computer.background"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "tool.computer.click"
 msgstr ""
 
@@ -20985,6 +20989,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "tool.computer.diagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.dispatched"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.drag"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.foreground"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -21016,7 +21032,7 @@ msgid "tool.computer.partial"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "tool.computer.point"
+msgid "tool.computer.result"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -21025,6 +21041,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "tool.computer.scroll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.set_value"
 msgstr ""
 
 #. js-lingui-explicit-id

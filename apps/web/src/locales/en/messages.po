@@ -20976,8 +20976,12 @@ msgid "tool.computer.available"
 msgstr "Available"
 
 #. js-lingui-explicit-id
+msgid "tool.computer.background"
+msgstr "Background preferred"
+
+#. js-lingui-explicit-id
 msgid "tool.computer.click"
-msgstr "Element click"
+msgstr "Click"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.delivery"
@@ -20986,6 +20990,18 @@ msgstr "Model image input"
 #. js-lingui-explicit-id
 msgid "tool.computer.diagnostics"
 msgstr "Observation details"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.dispatched"
+msgstr "Dispatched; observe to confirm"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.drag"
+msgstr "Drag"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.foreground"
+msgstr "Foreground operation"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.image"
@@ -21016,8 +21032,8 @@ msgid "tool.computer.partial"
 msgstr "Partial results"
 
 #. js-lingui-explicit-id
-msgid "tool.computer.point"
-msgstr "Image point"
+msgid "tool.computer.result"
+msgstr "Result"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.saved"
@@ -21026,6 +21042,10 @@ msgstr "Saved; model input pending"
 #. js-lingui-explicit-id
 msgid "tool.computer.scroll"
 msgstr "Scroll"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.set_value"
+msgstr "Set value"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.submitted"

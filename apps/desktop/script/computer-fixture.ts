@@ -9,6 +9,14 @@ const Window = z.object({
   nonce: z.string(),
   clicks: z.number(),
   hits: z.number(),
+  text: z.string(),
+  value: z.number(),
+  scrollY: z.number(),
+  doubleClicks: z.number(),
+  rightClicks: z.number(),
+  drags: z.number(),
+  keys: z.number(),
+  shortcuts: z.number(),
   width: z.number(),
   height: z.number(),
   onActiveSpace: z.boolean(),
@@ -35,9 +43,11 @@ export function stayedInBackground(before: Oracle, after: Oracle) {
   return (
     before.frontmost !== before.pid &&
     after.frontmost === before.frontmost &&
-    after.activationCount === 0 &&
-    after.spaceChangeCount === 0 &&
-    after.frontmostHistory.every((pid) => pid === before.frontmost)
+    after.activationCount === before.activationCount &&
+    after.spaceChangeCount === before.spaceChangeCount &&
+    after.frontmostHistory
+      .slice(Math.max(0, before.frontmostHistory.length - 1))
+      .every((pid) => pid === before.frontmost)
   )
 }
 export async function eventually<T>(read: () => Promise<T>, accept: (value: T) => boolean, milliseconds = 5000) {

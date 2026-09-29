@@ -22,7 +22,7 @@ test("a native screenshot rejection never grants a point action", async () => {
   await expect(
     runtime.execute("task", {
       type: "action",
-      input: { action: "point", observationId: result.observationId!, x: 400, y: 400 },
+      input: { action: "click", observationId: result.observationId!, target: { x: 400, y: 400 } },
     }),
   ).rejects.toMatchObject({ code: "computer_action_unavailable" })
   expect(calls).toEqual(["get_window_state"])
@@ -72,7 +72,11 @@ test("image point admission binds sent bytes, pixel bounds and the native captur
     const observed = await runtime.execute("task", { type: "observe", pid: 10, windowId: 20 })
     const action = runtime.execute("task", {
       type: "action",
-      input: { action: "point", observationId: observed.observationId!, x: mode === "outside" ? 1 : 0, y: 0 },
+      input: {
+        action: "click",
+        observationId: observed.observationId!,
+        target: { x: mode === "outside" ? 1 : 0, y: 0 },
+      },
       ...(mode === "missing"
         ? {}
         : { imageReceipt: { callID: "current-call", sha256: [mode === "wrong" ? "0".repeat(64) : sha256] } }),
@@ -127,12 +131,54 @@ test("AX-only observation preserves semantic routes and forwards independent gra
   expect(args).toMatchObject({ include_screenshot: false, include_accessibility_tree: true })
   expect(result.metadata.computerObservation).toMatchObject({
     ax: { truncated: true },
-    actions: { click: { available: true }, point: { available: false } },
+    actions: { click: { available: true }, drag: { available: false } },
   })
   await expect(
     runtime.execute("task", {
       type: "action",
-      input: { action: "click", observationId: result.observationId!, elementIndex: 0 },
+      input: { action: "click", observationId: result.observationId!, target: { elementIndex: 0 } },
     }),
   ).resolves.toHaveProperty("output")
+})
+
+test("every coordinate input requires current image evidence and checks all endpoints", async () => {
+  const data = Buffer.from("image").toString("base64")
+  const sha256 = createHash("sha256").update("image").digest("hex")
+  const calls: string[] = []
+  const runtime = new ComputerRuntime(async (name) => {
+    calls.push(name)
+    return {
+      content: [{ type: "image", mimeType: "image/png", data }],
+      structuredContent: {
+        capture_id: "capture",
+        synergy: { token: "proof", image_status: "valid", width: 100, height: 100, sha256 },
+      },
+    }
+  })
+  const make = (
+    observationId: string,
+    point: { x: number; y: number },
+  ): import("@ericsanchezok/synergy-computer-protocol").ComputerAction[] => [
+    { action: "click", observationId, target: point },
+    { action: "type", observationId, target: point, text: "x" },
+    { action: "key", observationId, target: point, key: "return" },
+    { action: "scroll", observationId, target: point, direction: "down", amount: 1 },
+    { action: "drag", observationId, from: { x: 1, y: 1 }, to: point },
+  ]
+  for (const mode of ["missing", "outside"] as const) {
+    for (let index = 0; index < 5; index++) {
+      const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
+      const input = make(observed.observationId!, { x: mode === "outside" ? 100 : 1, y: 1 })[index]!
+      await expect(
+        runtime.execute("a", {
+          type: "action",
+          input,
+          ...(mode === "outside" ? { imageReceipt: { callID: "call", sha256: [sha256] } } : {}),
+        }),
+      ).rejects.toMatchObject({
+        code: mode === "outside" ? "computer_point_out_of_bounds" : "computer_image_not_delivered",
+      })
+    }
+  }
+  expect(calls.every((name) => name === "get_window_state")).toBe(true)
 })

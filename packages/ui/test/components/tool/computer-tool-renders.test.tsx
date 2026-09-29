@@ -64,7 +64,7 @@ test("historical observations never imply validated visual quality", () => {
 test("image delivery and native availability remain separate in the quality card", () => {
   const sha256 = "a".repeat(64)
   const computerObservation = {
-    version: 1,
+    version: 2,
     id: crypto.randomUUID(),
     target: { pid: 1, windowId: 2, app: "Fixture", title: "Window" },
     capturedAt: 1,
@@ -72,7 +72,7 @@ test("image delivery and native availability remain separate in the quality card
     ax: { status: "partial", truncated: true },
     image: { status: "valid", width: 10, height: 20, sha256 },
     actions: Object.fromEntries(
-      ["click", "point", "type", "key", "scroll"].map((action) => [action, { available: true }]),
+      ["click", "type", "key", "scroll", "drag", "set_value"].map((action) => [action, { available: true }]),
     ),
   }
   for (const stage of ["saved", "included", "submitted", "omitted"] as const) {
@@ -85,10 +85,25 @@ test("image delivery and native availability remain separate in the quality card
     })
     expect(rows.find((row) => row.label === "Window image")?.value).toBe("Verified image")
     expect(rows.find((row) => row.label === "Accessibility")?.value).toBe("Partial results")
-    expect(
-      String(rows.find((row) => row.label === "Actions supported at observation")?.value).includes("Image point"),
-    ).toBe(stage === "submitted")
+    expect(String(rows.find((row) => row.label === "Actions supported at observation")?.value).includes("Drag")).toBe(
+      stage === "submitted",
+    )
   }
   registrations.get("computer_observe")!({ metadata: { computerObservation }, attachments: [], input: {} })
   expect(rows.find((row) => row.label === "Model image input")?.value).toBe("Image attachment unavailable")
+})
+
+test("cards distinguish explicit foreground dispatch from background preference", () => {
+  for (const deliveryMode of ["background", "foreground"]) {
+    registrations.get("computer_action")!({
+      input: { input: { action: "click", target: { x: 10, y: 20 } } },
+      metadata: { deliveryMode },
+      output: "Action dispatched",
+      status: "completed",
+    })
+    expect(JSON.stringify(card?.trigger)).toContain(
+      deliveryMode === "foreground" ? "Foreground operation" : "Background preferred",
+    )
+    expect(rows.some((row) => row.value === "Dispatched; observe to confirm")).toBe(true)
+  }
 })

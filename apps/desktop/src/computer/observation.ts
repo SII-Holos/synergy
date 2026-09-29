@@ -15,7 +15,6 @@ const Guard = z.object({
     .optional(),
 })
 const Element = z.object({ element_index: z.number().int().nonnegative() })
-const Routes = z.object({ routes: z.array(z.object({ route: z.string(), status: z.string() })) })
 export const COMPUTER_TEXT_BYTES = 32 * 1024
 
 export function boundedText(text: string, budget = COMPUTER_TEXT_BYTES) {
@@ -44,9 +43,6 @@ export function describeObservation(input: {
   const metadata = result.metadata
   const parsed = Guard.safeParse(metadata.synergy)
   const guard = parsed.success ? parsed.data : undefined
-  const routes = Routes.safeParse(metadata.background_input)
-  const available = (route: string) =>
-    !!guard?.token && routes.success && routes.data.routes.some((x) => x.route === route && x.status === "available")
   const snapshotId =
     typeof metadata.snapshot_id === "string" && /^s[0-9a-f]{8}$/.test(metadata.snapshot_id)
       ? metadata.snapshot_id
@@ -73,9 +69,14 @@ export function describeObservation(input: {
   const imageReason = validImage
     ? undefined
     : (guard?.reason ?? (image ? "capture_proof_missing" : "capture_unavailable"))
-  const action = (enabled: boolean, reason: string) => (enabled ? { available: true } : { available: false, reason })
+  const action = (enabled: boolean, reason: string) =>
+    !guard?.token
+      ? { available: false, reason: "target_unverified" }
+      : enabled
+        ? { available: true }
+        : { available: false, reason }
   const observation: ComputerObservation = {
-    version: 1,
+    version: 2,
     id: input.id,
     target: {
       pid: input.pid,
@@ -97,14 +98,12 @@ export function describeObservation(input: {
       ...(validImage ? { width: guard.width, height: guard.height, sha256: guard.sha256, source: guard.source } : {}),
     },
     actions: {
-      click: action(
-        axAvailable && available("accessibility") && indices.length > 0,
-        "accessibility_action_unavailable",
-      ),
-      point: action(validImage && available("window_pointer"), imageReason ?? "window_pointer_unavailable"),
-      type: action(axAvailable && available("pid_keyboard"), "exact_keyboard_route_unavailable"),
-      key: action(axAvailable && available("pid_keyboard"), "exact_keyboard_route_unavailable"),
-      scroll: action(validImage && available("window_pointer"), imageReason ?? "window_pointer_unavailable"),
+      click: action(indices.length > 0 || validImage, "target_unavailable"),
+      type: action(indices.length > 0 || validImage, "target_unavailable"),
+      key: action(true, "target_unverified"),
+      scroll: action(true, "target_unverified"),
+      drag: action(validImage, imageReason ?? "capture_unavailable"),
+      set_value: action(indices.length > 0, "accessibility_unavailable"),
     },
   }
   const actions = Object.entries(observation.actions)
@@ -118,11 +117,9 @@ export function describeObservation(input: {
     ...(observation.ax.status === "partial"
       ? ["AX results may be incomplete; missing text does not establish absence."]
       : []),
-    ...(validImage ? ["Point coordinates use this image; the current model request must include it."] : []),
-    ...(imageStatus === "unavailable"
-      ? [
-          "If pixels are needed, observe once more after the window settles. If capture remains unavailable, use AX or report the limitation.",
-        ]
+    ...(validImage ? ["Coordinates are pixels in this image."] : []),
+    ...(imageStatus !== "valid"
+      ? ["If an image is needed, observe with foreground:true to bring this window forward and capture again."]
       : []),
   ].join("\n")
   const output = boundedText(header + (tree ? `\n${tree}` : ""))

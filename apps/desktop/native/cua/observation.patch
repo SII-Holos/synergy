@@ -8,6 +8,31 @@
   "tempfile",
   "thiserror 1.0.69",
   "time",
+--- a/crates/cua-driver/src/main.rs
++++ b/crates/cua-driver/src/main.rs
+@@ -497,7 +497,7 @@
+             std::process::exit(code);
+         });
+         if initialized_rx.recv().unwrap_or(false) {
+-            platform_macos::cursor::overlay::run_on_main_thread();
++            platform_macos::pip::run_appkit_main_loop();
+         }
+         return;
+     }
+--- a/crates/cua-driver/src/private_worker.rs
++++ b/crates/cua-driver/src/private_worker.rs
+@@ -118,7 +118,10 @@
+     let driver = match CuaDriver::try_create_configured_for_host(
+         initialization.configured_driver,
+         DriverHostOptions {
+-            cursor: cursor_overlay::CursorConfig::default(),
++            cursor: cursor_overlay::CursorConfig {
++                enabled: false,
++                ..cursor_overlay::CursorConfig::default()
++            },
+             host_owns_permission_ux: true,
+             host_bundle_id: Some(initialization.host_bundle_id.clone()),
+             claude_code_compatibility: false,
 --- a/crates/platform-macos/Cargo.toml
 +++ b/crates/platform-macos/Cargo.toml
 @@ -12,6 +12,7 @@
@@ -18,20 +43,38 @@
  async-trait = "0.1"
  uuid = { workspace = true }
  time = { workspace = true }
---- a/crates/platform-macos/src/lib.rs
-+++ b/crates/platform-macos/src/lib.rs
-@@ -40,6 +40,8 @@
- pub mod terminal;
- #[cfg(target_os = "macos")]
- pub mod tools;
-+#[cfg(target_os = "macos")]
-+pub(crate) mod synergy;
- #[cfg(target_os = "macos")]
- pub mod video_sckit;
- #[cfg(target_os = "macos")]
+--- a/crates/platform-macos/src/ax/tree.rs
++++ b/crates/platform-macos/src/ax/tree.rs
+@@ -208,7 +208,18 @@
+     window_id: Option<u32>,
+     query: Option<&str>,
+     max_depth: usize,
++    budget: WalkBudget,
++) -> TreeWalkResult {
++    walk_tree_scoped(pid, window_id, query, max_depth, budget, true)
++}
++
++pub(crate) fn walk_tree_scoped(
++    pid: i32,
++    window_id: Option<u32>,
++    query: Option<&str>,
++    max_depth: usize,
+     mut budget: WalkBudget,
++    include_app_surfaces: bool,
+ ) -> TreeWalkResult {
+     let mut nodes: Vec<AXNode> = Vec::new();
+     let mut lines: Vec<(usize, String)> = Vec::new(); // (depth, line)
+@@ -303,6 +314,7 @@
+             let walk = decision
+                 .walk
+                 .iter()
++                .filter(|&&index| include_app_surfaces || candidates[index].ax_window_id == Some(wid))
+                 .map(|&index| top_level[index])
+                 .collect();
+             window_scope = Some(decision.scope);
 --- a/crates/platform-macos/src/capture.rs
 +++ b/crates/platform-macos/src/capture.rs
-@@ -738,6 +738,24 @@
+@@ -738,6 +738,22 @@
  ///
  /// Tries ScreenCaptureKit first; falls back to the `screencapture` CLI on
  /// native error or empty output.
@@ -42,9 +85,7 @@
 +        let plan = build_window_capture_plan(window_id, expected)?;
 +        let rect = plan.filter.content_rect();
 +        let scale = f64::from(plan.filter.point_pixel_scale());
-+        let bounds = crate::windows::window_bounds_by_id(window_id).ok_or_else(|| anyhow::anyhow!("capture_identity_unverified"))?;
-+        if !crate::synergy::same_plane(before.frame, [bounds.x,bounds.y,bounds.width,bounds.height], scale)
-+            || !crate::synergy::same_plane([0.0,0.0,before.frame[2],before.frame[3]], [0.0,0.0,rect.size.width,rect.size.height], scale) {
++        if !before.capture_geometry_valid([0.0,0.0,rect.size.width,rect.size.height], scale) {
 +            anyhow::bail!("capture_representation_mismatch");
 +        }
 +        let bytes = capture_window_from_plan(window_id, &plan)?;
@@ -56,12 +97,90 @@
  pub fn screenshot_window_bytes(window_id: u32) -> anyhow::Result<Vec<u8>> {
      capture_window_with_backends(
          window_id,
+--- a/crates/platform-macos/src/input/skylight.rs
++++ b/crates/platform-macos/src/input/skylight.rs
+@@ -782,6 +782,8 @@
+         }
+     };
+ 
++    let frame_before = crate::windows::window_bounds_by_id(target_wid)
++        .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
+     let mut prev_psn = [0u8; 8];
+     let prev_ok = get_front_process_fn()
+         .map(|f| unsafe { f(prev_psn.as_mut_ptr() as *mut c_void) } == 0)
+@@ -802,7 +804,16 @@
+     make_exact_window_key(target_pid, target_wid);
+     await_window_focused(target_pid, target_wid);
+ 
+-    let result = body();
++    let result = (|| {
++        let frame_after = crate::windows::window_bounds_by_id(target_wid)
++            .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
++        if !crate::synergy::same_plane(
++            [frame_before.x, frame_before.y, frame_before.width, frame_before.height],
++            [frame_after.x, frame_after.y, frame_after.width, frame_after.height],
++            1.0,
++        ) { anyhow::bail!("computer_target_changed: observe again"); }
++        body()
++    })();
+ 
+     if prev_ok {
+         unsafe { set_front(prev_psn.as_ptr() as *const c_void, 0, 0x400) };
+@@ -866,6 +877,8 @@
+     let set_front = set_front_process_fn()
+         .ok_or_else(|| anyhow::anyhow!("foreground HID delivery is unavailable"))?;
+ 
++    let frame_before = crate::windows::window_bounds_by_id(target_wid)
++        .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
+     let mut prev_psn = [0u8; 8];
+     let prev_ok = get_front_process_fn()
+         .map(|f| unsafe { f(prev_psn.as_mut_ptr() as *mut c_void) } == 0)
+@@ -899,7 +912,16 @@
+         anyhow::bail!("exact target window did not become focused for foreground HID delivery");
+     }
+ 
+-    let result = action();
++    let result = (|| {
++        let frame_after = crate::windows::window_bounds_by_id(target_wid)
++            .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
++        if !crate::synergy::same_plane(
++            [frame_before.x, frame_before.y, frame_before.width, frame_before.height],
++            [frame_after.x, frame_after.y, frame_after.width, frame_after.height],
++            1.0,
++        ) { anyhow::bail!("computer_target_changed: observe again"); }
++        action()
++    })();
+     std::thread::sleep(std::time::Duration::from_millis(40));
+ 
+     if prev_ok {
+--- a/crates/platform-macos/src/lib.rs
++++ b/crates/platform-macos/src/lib.rs
+@@ -40,6 +40,8 @@
+ pub mod terminal;
+ #[cfg(target_os = "macos")]
+ pub mod tools;
++#[cfg(target_os = "macos")]
++pub(crate) mod synergy;
+ #[cfg(target_os = "macos")]
+ pub mod video_sckit;
+ #[cfg(target_os = "macos")]
+--- a/crates/platform-macos/src/tools/click.rs
++++ b/crates/platform-macos/src/tools/click.rs
+@@ -639,6 +639,8 @@
+             } else {
+                 None
+             };
++            if !crate::synergy::allows_pixels() { selection_pixel = None; }
++
+             // The selection fallback delivers a routed window-local pixel
+             // click — a stricter (WindowPointer) rung than the semantic gate
+             // above. In background, drop the fallback rather than silently
 --- a/crates/platform-macos/src/tools/get_window_state.rs
 +++ b/crates/platform-macos/src/tools/get_window_state.rs
 @@ -294,6 +294,7 @@
              .unwrap_or(crate::ax::tree::DEFAULT_MAX_DEPTH);
          let timeout_ms = cua_driver_core::tool_schema::resolve_timeout_ms(args.get("timeout_ms"));
-
+ 
 +        let synergy_capture = args["synergy"] == true;
          let (tree_result, prepared_snapshot) = if want_tree {
              let q = query.clone();
@@ -109,128 +228,6 @@
                      super::px_frame::PxFrameError::CaptureUnavailable {
                          window_id,
                          reason: e.to_string(),
---- a/crates/platform-macos/src/tools/type_text.rs
-+++ b/crates/platform-macos/src/tools/type_text.rs
-@@ -826,6 +826,7 @@
-         decide_background_input, BackgroundAction, BackgroundInputDecision, ExactWindowTarget,
-     };
-     let lease = super::acquire_background_mutation(pid).await;
-+    crate::synergy::check(pid, window_id, false).await?;
-     let element_guard =
-         element_ptr.map(|ptr| unsafe { crate::ax::cache::RetainedElement::retain(ptr) });
-     let facts = match tokio::task::spawn_blocking(move || {
---- a/crates/platform-macos/src/tools/pixel_route.rs
-+++ b/crates/platform-macos/src/tools/pixel_route.rs
-@@ -58,6 +58,7 @@
-     window_id: Option<u32>,
-     event_kind: &str,
- ) -> Result<PixelClickRoute, ToolResult> {
-+    if !crate::synergy::allows_pixels() { return Err(ToolResult::error("capture_unavailable_for_action. Observe again before using pixels.")); }
-     let has_window = window_id.is_some();
-     let toolkit = if !effective_foreground && has_window {
-         tokio::task::spawn_blocking(move || crate::input::pointer_toolkit::detect(pid))
---- a/crates/platform-macos/src/tools/click.rs
-+++ b/crates/platform-macos/src/tools/click.rs
-@@ -139,8 +139,11 @@
-     button: &str,
-     effective_foreground: bool,
-     has_window: bool,
-+    strict_background: bool,
- ) -> PixelActivationPolicy {
--    if effective_foreground {
-+    if strict_background {
-+        PixelActivationPolicy::SuppressTarget
-+    } else if effective_foreground {
-         PixelActivationPolicy::ForegroundAssist
-     } else if button == "left" && has_window {
-         PixelActivationPolicy::AllowTargetWithoutRaise
-@@ -639,6 +642,8 @@
-             } else {
-                 None
-             };
-+            if !crate::synergy::allows_pixels() { selection_pixel = None; }
-+
-             // The selection fallback delivers a routed window-local pixel
-             // click — a stricter (WindowPointer) rung than the semantic gate
-             // above. In background, drop the fallback rather than silently
-@@ -1025,10 +1030,12 @@
-                     }
-                     let delivered = if focus_only {
-                         crate::input::ax_actions::focus_element(element as usize).is_ok()
--                    } else {
-+                    } else if copy_action_names(element).iter().any(|action| action == "AXPress") {
-                         let press = core_foundation::string::CFString::new("AXPress");
-                         AXUIElementPerformAction(element, press.as_concrete_TypeRef())
-                             == kAXErrorSuccess
-+                    } else {
-+                        false
-                     };
-                     CFRelease(element as _);
-                     Ok(delivered)
-@@ -1081,7 +1088,12 @@
-                 Ok(route) => route,
-                 Err(refusal) => return refusal,
-             };
--            let activation_policy = pixel_activation_policy(&button_str, fg, window_id.is_some());
-+            let activation_policy = pixel_activation_policy(
-+                &button_str,
-+                fg,
-+                window_id.is_some(),
-+                args["synergy_guard"].is_string(),
-+            );
- 
-             // ── Focus-suppression wrap (Swift WindowChangeDetector + FocusGuard) ──
-             // A pixel click can land on a "Sign In" button that opens a sheet
-@@ -1660,6 +1672,20 @@
-         );
-     }
- 
-+    #[test]
-+    fn synergy_pixel_routes_never_activate_the_target() {
-+        for button in ["left", "right", "middle"] {
-+            for foreground in [false, true] {
-+                for has_window in [false, true] {
-+                    assert_eq!(
-+                        pixel_activation_policy(button, foreground, has_window, true),
-+                        PixelActivationPolicy::SuppressTarget
-+                    );
-+                }
-+            }
-+        }
-+    }
-+
-     /// Regression for the Swift→Rust port gap: only a raw background left
-     /// click with an exact window may intentionally activate the target
-     /// without raising it. Other background buttons retain strict suppression,
-@@ -1667,23 +1693,23 @@
-     #[test]
-     fn raw_background_left_click_restores_focus_without_raise_policy() {
-         assert_eq!(
--            pixel_activation_policy("left", false, true),
-+            pixel_activation_policy("left", false, true, false),
-             PixelActivationPolicy::AllowTargetWithoutRaise
-         );
-         assert_eq!(
--            pixel_activation_policy("left", false, false),
-+            pixel_activation_policy("left", false, false, false),
-             PixelActivationPolicy::SuppressTarget
-         );
-         assert_eq!(
--            pixel_activation_policy("right", false, true),
-+            pixel_activation_policy("right", false, true, false),
-             PixelActivationPolicy::SuppressTarget
-         );
-         assert_eq!(
--            pixel_activation_policy("middle", false, true),
-+            pixel_activation_policy("middle", false, true, false),
-             PixelActivationPolicy::SuppressTarget
-         );
-         assert_eq!(
--            pixel_activation_policy("left", true, true),
-+            pixel_activation_policy("left", true, true, false),
-             PixelActivationPolicy::ForegroundAssist
-         );
-     }
 --- a/crates/platform-macos/src/tools/mod.rs
 +++ b/crates/platform-macos/src/tools/mod.rs
 @@ -206,6 +206,7 @@
@@ -242,7 +239,7 @@
      }
  }
 @@ -617,6 +618,7 @@
-
+ 
  /// Shared state passed to all tools.
  pub struct ToolState {
 +    pub(crate) synergy: Arc<crate::synergy::Observations>,
@@ -270,7 +267,7 @@
                  element_cache.retire_session_screenshots(session_id);
                  capture_bindings.retire_session(session_id);
 @@ -834,9 +839,7 @@
-
+ 
      registry.register(Box::new(list_apps::ListAppsTool));
      registry.register(Box::new(list_windows::ListWindowsTool));
 -    registry.register(Box::new(get_window_state::GetWindowStateTool::new(
@@ -280,7 +277,7 @@
      registry.register(Box::new(
          cua_driver_core::expectation::VerifyStateTool::new(Arc::new(
              cua_driver_core::expectation::ToolObservationProvider::new(
-@@ -855,7 +858,7 @@
+@@ -855,11 +858,11 @@
      registry.register(Box::new(set_window_frame::SetWindowFrameTool));
      registry.register(Box::new(invoke_menu::InvokeMenuTool));
      registry.register(pid_window_guarded(
@@ -289,7 +286,17 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
-@@ -871,11 +874,11 @@
+-        double_click::DoubleClickTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(double_click::DoubleClickTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+@@ -867,27 +870,27 @@
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        drag::DragTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(drag::DragTool::new(state.clone()), state.synergy.clone()),
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
@@ -303,7 +310,13 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
-@@ -887,7 +890,7 @@
+-        hotkey::HotkeyTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(hotkey::HotkeyTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        set_value::SetValueTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(set_value::SetValueTool::new(state.clone()), state.synergy.clone()),
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
@@ -312,81 +325,23 @@
          &pid_window_candidates,
      ));
      cua_driver_core::clipboard::register_clipboard_tools(
---- a/crates/platform-macos/src/ax/tree.rs
-+++ b/crates/platform-macos/src/ax/tree.rs
-@@ -208,7 +208,18 @@
+--- a/crates/platform-macos/src/tools/pixel_route.rs
++++ b/crates/platform-macos/src/tools/pixel_route.rs
+@@ -58,6 +58,7 @@
      window_id: Option<u32>,
-     query: Option<&str>,
-     max_depth: usize,
-+    budget: WalkBudget,
-+) -> TreeWalkResult {
-+    walk_tree_scoped(pid, window_id, query, max_depth, budget, true)
-+}
-+
-+pub(crate) fn walk_tree_scoped(
-+    pid: i32,
-+    window_id: Option<u32>,
-+    query: Option<&str>,
-+    max_depth: usize,
-     mut budget: WalkBudget,
-+    include_app_surfaces: bool,
- ) -> TreeWalkResult {
-     let mut nodes: Vec<AXNode> = Vec::new();
-     let mut lines: Vec<(usize, String)> = Vec::new(); // (depth, line)
-@@ -303,6 +314,7 @@
-             let walk = decision
-                 .walk
-                 .iter()
-+                .filter(|&&index| include_app_surfaces || candidates[index].ax_window_id == Some(wid))
-                 .map(|&index| top_level[index])
-                 .collect();
-             window_scope = Some(decision.scope);
---- a/crates/platform-macos/src/focus_guard.rs
-+++ b/crates/platform-macos/src/focus_guard.rs
-@@ -83,6 +83,10 @@
-     F: FnOnce() -> Fut,
-     Fut: std::future::Future<Output = R>,
- {
-+    if crate::synergy::guarded() {
-+        return f().await;
-+    }
-+
-     // Decide whether to arm a targeted lease. Three conditions must hold:
-     //   1. We have a known target pid (Some).
-     //   2. We have a prior frontmost to restore to (Some).
---- a/crates/platform-macos/src/window_change_detector.rs
-+++ b/crates/platform-macos/src/window_change_detector.rs
-@@ -251,7 +251,7 @@
-         // login window), we skip the lease; foreground-change tracking
-         // still runs.
-         let lease = prior_front
--            .filter(|_| suppress_focus)
-+            .filter(|_| suppress_focus && !crate::synergy::guarded())
-             .map(|restore_to| match allowed_pid {
-                 Some(pid) => focus_steal::begin_suppression_allowing(
-                     pid,
---- a/crates/cua-driver/src/main.rs
-+++ b/crates/cua-driver/src/main.rs
-@@ -497,7 +497,7 @@
-             std::process::exit(code);
-         });
-         if initialized_rx.recv().unwrap_or(false) {
--            platform_macos::cursor::overlay::run_on_main_thread();
-+            platform_macos::pip::run_appkit_main_loop();
-         }
-         return;
-     }
---- a/crates/cua-driver/src/private_worker.rs
-+++ b/crates/cua-driver/src/private_worker.rs
-@@ -118,7 +118,10 @@
-     let driver = match CuaDriver::try_create_configured_for_host(
-         initialization.configured_driver,
-         DriverHostOptions {
--            cursor: cursor_overlay::CursorConfig::default(),
-+            cursor: cursor_overlay::CursorConfig {
-+                enabled: false,
-+                ..cursor_overlay::CursorConfig::default()
-+            },
-             host_owns_permission_ux: true,
-             host_bundle_id: Some(initialization.host_bundle_id.clone()),
-             claude_code_compatibility: false,
+     event_kind: &str,
+ ) -> Result<PixelClickRoute, ToolResult> {
++    if !crate::synergy::allows_pixels() { return Err(ToolResult::error("capture_unavailable_for_action. Observe again before using pixels.")); }
+     let has_window = window_id.is_some();
+     let toolkit = if !effective_foreground && has_window {
+         tokio::task::spawn_blocking(move || crate::input::pointer_toolkit::detect(pid))
+--- a/crates/platform-macos/src/tools/type_text.rs
++++ b/crates/platform-macos/src/tools/type_text.rs
+@@ -826,6 +826,7 @@
+         decide_background_input, BackgroundAction, BackgroundInputDecision, ExactWindowTarget,
+     };
+     let lease = super::acquire_background_mutation(pid).await;
++    crate::synergy::check(pid, window_id, false).await?;
+     let element_guard =
+         element_ptr.map(|ptr| unsafe { crate::ax::cache::RetainedElement::retain(ptr) });
+     let facts = match tokio::task::spawn_blocking(move || {

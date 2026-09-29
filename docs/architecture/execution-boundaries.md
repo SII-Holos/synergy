@@ -268,7 +268,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 
 ## Native Computer eligibility
 
-`computer_observe` and `computer_interact` require the `full_access` profile, including window discovery and screenshots. Ordinary permission rules and session approvals cannot enable these capabilities in another profile. Native OS permissions and app-specific background support remain runtime prerequisites. See [Native Computer Use](computer-use.md).
+`computer_observe` and `computer_interact` require the `full_access` profile, including window discovery and screenshots. Ordinary permission rules and session approvals cannot enable these capabilities in another profile. An observation with `foreground:true` is classified as `computer_interact` because it activates the selected window. Native OS permissions and app-specific background support remain runtime prerequisites. See [Native Computer Use](computer-use.md).
 
 Bash secret substitution keeps a standalone, unquoted local token in a quoted environment expansion so whitespace and metacharacters remain one argument. Quoted, embedded, heredoc and remote substitutions accept only shell-inert credential characters; other values fail explicitly instead of introducing shell syntax. Vault rotation rejects values already registered under another entry, preserving its policy and audit history. Secret API conflicts return 409; storage failures remain server errors rather than false 404 responses.
 

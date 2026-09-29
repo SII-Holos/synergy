@@ -1,6 +1,7 @@
 # Decision Record: Non-activating Computer background input
 
 Status: implemented
+Archived: 2026-09-29
 
 ## Problem
 

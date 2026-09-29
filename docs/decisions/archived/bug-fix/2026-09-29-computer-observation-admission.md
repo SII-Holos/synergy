@@ -1,6 +1,7 @@
 # Decision Record: Native Computer observation admission
 
 Status: implemented
+Archived: 2026-09-29
 
 ## Problem
 

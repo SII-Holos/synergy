@@ -20976,8 +20976,12 @@ msgid "tool.computer.available"
 msgstr "可用"
 
 #. js-lingui-explicit-id
+msgid "tool.computer.background"
+msgstr "后台优先"
+
+#. js-lingui-explicit-id
 msgid "tool.computer.click"
-msgstr "点击元素"
+msgstr "点击"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.delivery"
@@ -20986,6 +20990,18 @@ msgstr "模型图片输入"
 #. js-lingui-explicit-id
 msgid "tool.computer.diagnostics"
 msgstr "观测详情"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.dispatched"
+msgstr "动作已发送，请观察确认"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.drag"
+msgstr "拖动"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.foreground"
+msgstr "前台操作"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.image"
@@ -21016,8 +21032,8 @@ msgid "tool.computer.partial"
 msgstr "部分结果"
 
 #. js-lingui-explicit-id
-msgid "tool.computer.point"
-msgstr "图片坐标点击"
+msgid "tool.computer.result"
+msgstr "执行结果"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.saved"
@@ -21026,6 +21042,10 @@ msgstr "已保存，等待模型输入"
 #. js-lingui-explicit-id
 msgid "tool.computer.scroll"
 msgstr "滚动"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.set_value"
+msgstr "设置控件值"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.submitted"

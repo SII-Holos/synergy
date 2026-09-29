@@ -60,12 +60,12 @@ test("actions bind to the owning task and latest exact window observation", asyn
   await expect(
     runtime.execute("task-b", {
       type: "action",
-      input: { action: "click", observationId: observed.observationId!, elementIndex: 0 },
+      input: { action: "click", observationId: observed.observationId!, target: { elementIndex: 0 } },
     }),
   ).rejects.toThrow("Observe")
   await runtime.execute("task-a", {
     type: "action",
-    input: { action: "click", observationId: observed.observationId!, elementIndex: 0 },
+    input: { action: "click", observationId: observed.observationId!, target: { elementIndex: 0 } },
   })
   expect(calls.at(-1)).toEqual({
     name: "click",
@@ -80,7 +80,7 @@ test("actions bind to the owning task and latest exact window observation", asyn
   await expect(
     runtime.execute("task-a", {
       type: "action",
-      input: { action: "click", observationId: observed.observationId!, elementIndex: 0 },
+      input: { action: "click", observationId: observed.observationId!, target: { elementIndex: 0 } },
     }),
   ).rejects.toThrow("Observe")
 })
@@ -178,7 +178,7 @@ test("unsupported background input is reported without foreground escalation or 
   } as const
   await expect(runtime.execute("a", command)).rejects.toMatchObject({
     code: "computer_background_unavailable",
-    message: expect.stringContaining("report the limitation"),
+    message: expect.stringContaining("foreground:true"),
   })
   await expect(runtime.execute("a", command)).rejects.toMatchObject({ code: "computer_observation_stale" })
   expect(deliveries).toEqual(["background"])

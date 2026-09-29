@@ -6,7 +6,7 @@ const Dimension = z.number().int().positive().max(32768)
 
 export const ComputerObservationSchema = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     id: z.string().uuid(),
     target: z
       .object({
@@ -40,7 +40,14 @@ export const ComputerObservationSchema = z
       })
       .strict(),
     actions: z
-      .object({ click: Availability, point: Availability, type: Availability, key: Availability, scroll: Availability })
+      .object({
+        click: Availability,
+        type: Availability,
+        key: Availability,
+        scroll: Availability,
+        drag: Availability,
+        set_value: Availability,
+      })
       .strict(),
   })
   .strict()

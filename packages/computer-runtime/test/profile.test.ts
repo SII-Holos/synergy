@@ -71,7 +71,7 @@ test("successful observation stores screenshots as durable attachments for a tex
           data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a6j8AAAAASUVORK5CYII=",
         },
       ],
-      metadata: {},
+      metadata: { deliveryMode: "foreground" },
     })
     await using tmp = await tmpdir({ git: true })
     try {
@@ -107,7 +107,7 @@ test("successful observation stores screenshots as durable attachments for a tex
             mode: "summary",
             summary: expect.stringContaining("Pixel actions are unavailable"),
           })
-          expect(result.metadata).toMatchObject({ observationId: "observation-1", deliveryMode: "background" })
+          expect(result.metadata).toMatchObject({ observationId: "observation-1", deliveryMode: "foreground" })
           expect(result.attachments).toHaveLength(1)
           expect(result.attachments![0]!.url).toStartWith("asset://")
           expect(result.attachments![0]!.model?.mode).toBe("summary")

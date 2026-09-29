@@ -70,174 +70,304 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
     const target = initial.windows[0]!
     const other = initial.windows[1]!
     let observationSequence = 0
-    const observe = async () => {
+    const observe = async (foreground = false) => {
       const result = await driver!.execute("native-acceptance", {
         type: "observe",
         pid: initial.pid,
         windowId: target.windowId,
+        foreground,
       })
       await Bun.write(
         path.join(directory, `observation-${++observationSequence}.json`),
         JSON.stringify({ ...result, images: [] }, null, 2),
       )
+      if (result.images[0])
+        await Bun.write(path.join(directory, "window.png"), Buffer.from(result.images[0].data, "base64"))
       return result
     }
-    const first = await eventually(observe, (value) => value.observation?.ax.status !== "unavailable", 15_000)
-    if (first.images[0])
-      await Bun.write(path.join(directory, "window.png"), Buffer.from(first.images[0].data, "base64"))
-    await Bun.write(path.join(directory, "observation.json"), JSON.stringify({ ...first, images: [] }, null, 2))
-    await check("exact-window and canvas-only evidence", async () => {
-      assert(first.output.includes(target.axToken), "Target AX content missing")
-      assert(!first.output.includes(other.axToken), "Another window leaked into the observation")
-      assert(!first.output.includes(target.nonce), "Canvas nonce leaked through AX text")
-      assert(!first.output.includes("AXMenuBar"), "Application menu bar leaked into the window projection")
-      assert(Buffer.byteLength(first.output) <= 32768, "Observation exceeds the UTF-8 budget")
+    const element = (output: string, name: string) => {
+      const match = output
+        .split("\n")
+        .find((line) => line.includes(name))
+        ?.match(/\[(\d+)\]/)
+      assert(match, `Element missing: ${name}`)
+      return { elementIndex: Number(match[1]) }
+    }
+    const act = async (
+      input: import("@ericsanchezok/synergy-computer-protocol").ComputerAction,
+      observed: Awaited<ReturnType<typeof observe>>,
+    ) => {
+      const result = await driver!.execute("native-acceptance", {
+        type: "action",
+        input,
+        imageReceipt: {
+          callID: "native-fixture-no-model",
+          sha256: observed.observation?.image.sha256 ? [observed.observation.image.sha256] : [],
+        },
+      })
+      await Bun.write(path.join(directory, `action-${observationSequence}.json`), JSON.stringify(result, null, 2))
+      return result
+    }
+    const pixels = async (foreground = true) => {
+      const observed = await eventually(
+        () => observe(foreground),
+        (value) => value.observation?.image.status === "valid",
+        8000,
+      )
+      if (observed.observation?.image.status !== "valid")
+        throw new CaptureUnavailable(
+          JSON.stringify(observed.metadata.computerDiagnostics ?? observed.observation?.image),
+        )
+      const current = (await command("refresh")).windows[0]!
+      const image = observed.observation.image
+      return {
+        observed,
+        point: {
+          x: Math.round((current.targetX * image.width!) / current.width),
+          y: Math.round((current.targetY * image.height!) / current.height),
+        },
+      }
+    }
+    const background = async () => {
+      await command("background", { pid: initial.frontmost })
+      await eventually(
+        () => command("refresh"),
+        (value) => value.frontmost === initial.frontmost,
+      )
+      await Bun.sleep(1000)
+      return command("refresh")
+    }
+    await check("background observation and explicit foreground recovery", async () => {
+      const before = await command("refresh")
+      const observed = await observe()
+      assert(stayedInBackground(before, await command("refresh")), "Background observation activated the target")
+      if (observed.observation?.image.status !== "valid")
+        assert(observed.images.length === 0, "Invalid image was delivered")
+      const recovered = await observe(true)
+      assert(recovered.metadata.deliveryMode === "foreground", "Foreground mode missing")
+      assert(recovered.observation?.image.status === "valid", "Foreground capture did not recover")
+      assert(
+        recovered.output.includes(target.axToken) && !recovered.output.includes(other.axToken),
+        "AX evidence is not bound to the target window",
+      )
+      assert(
+        !recovered.output.includes(target.nonce) && !recovered.output.includes("AXMenuBar"),
+        "Non-window content leaked into AX text",
+      )
+      assert(Buffer.byteLength(recovered.output) <= 32768, "Observation exceeds its text budget")
     })
-    await eventually(observe, (value) => value.observation?.actions.click.available === true, 15_000)
-    const foreground = (await command("refresh")).frontmost
-    await check("AX-only semantic click changes only the target", async () => {
+    if (report.stageManager)
+      await check("Stage Manager rejects thumbnails without AX and recovers in foreground", async () => {
+        await background()
+        permissions.accessibility = false
+        try {
+          const observed = await observe()
+          assert(
+            observed.images.length === 0 && observed.observation?.image.status !== "valid",
+            "A Stage Manager thumbnail was delivered without AX proof",
+          )
+        } finally {
+          permissions.accessibility = true
+        }
+        const recovered = await eventually(
+          () => observe(true),
+          (value) => value.images.length === 1,
+          8000,
+        )
+        assert(recovered.metadata.deliveryMode === "foreground", "Recovery did not report foreground")
+      })
+    await check("capture remains available without accessibility results", async () => {
+      permissions.accessibility = false
+      try {
+        const observed = await observe()
+        assert(
+          observed.observation?.ax.status === "unavailable" && observed.images.length === 1,
+          "Capture incorrectly depends on AX content",
+        )
+      } finally {
+        permissions.accessibility = true
+      }
+    })
+    await check("background click, directed typing, value and scroll affect only the selected window", async () => {
+      const before = await background()
       permissions.screen = false
       try {
-        const observation = await observe()
-        assert(
-          observation.images.length === 0 && observation.observation?.actions.click.available,
-          "AX-only route was lost",
+        let observed = await observe()
+        await act(
+          { action: "click", observationId: observed.observationId!, target: element(observed.output, "Increment") },
+          observed,
         )
-        const index = observation.output.match(/\[(\d+)\].*Increment/)
-        assert(index, "Increment element missing")
-        await driver!.execute("native-acceptance", {
-          type: "action",
-          input: { action: "click", observationId: observation.observationId!, elementIndex: Number(index[1]) },
-        })
-        const after = await eventually(state, (value) => value.windows[0]!.clicks === 1)
-        assert(after.windows[1]!.clicks === 0, "Wrong window changed")
-        assert((await command("refresh")).frontmost === foreground, "Background action changed the foreground app")
+        await eventually(
+          () => command("refresh"),
+          (value) => value.windows[0]!.clicks === 1,
+        )
+        observed = await observe()
+        await act(
+          {
+            action: "type",
+            observationId: observed.observationId!,
+            target: element(observed.output, "Name"),
+            text: "Synergy 你好",
+          },
+          observed,
+        )
+        await eventually(
+          () => command("refresh"),
+          (value) => value.windows[0]!.text === "Synergy 你好",
+        )
+        observed = await observe()
+        await act(
+          {
+            action: "set_value",
+            observationId: observed.observationId!,
+            target: element(observed.output, "Level"),
+            value: "65",
+          },
+          observed,
+        )
+        await eventually(
+          () => command("refresh"),
+          (value) => value.windows[0]!.value === 65,
+        )
+        permissions.screen = true
+        observed = await observe()
+        await act(
+          {
+            action: "scroll",
+            observationId: observed.observationId!,
+            target: element(observed.output, "AXTextArea"),
+            direction: "down",
+            amount: 5,
+          },
+          observed,
+        )
+        const after = await eventually(
+          () => command("refresh"),
+          (value) => value.windows[0]!.scrollY > 0,
+        )
+        assert(
+          after.windows[1]!.clicks === 0 &&
+            after.windows[1]!.text === "" &&
+            after.windows[1]!.value === 10 &&
+            after.windows[1]!.scrollY === 0,
+          "A sibling window was changed",
+        )
+        assert(stayedInBackground(before, after), "Semantic background operations disturbed focus")
       } finally {
         permissions.screen = true
       }
     })
-    await check("pixel admission matches the current representation", async () => {
-      const observed = await observe()
-      if (report.stageManager && observed.observation?.image.reason === "capture_representation_mismatch") {
-        assert(
-          observed.images.length === 0 && !observed.observation.actions.point.available,
-          "Stage Manager representation escaped as an actionable image",
-        )
-        const before = (await state()).windows[0]!.hits
-        const refusal = await driver!
-          .execute("native-acceptance", {
-            type: "action",
-            input: { action: "point", observationId: observed.observationId!, x: 10, y: 10 },
-          })
-          .then(
-            () => "dispatched",
-            (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
-          )
-        assert(refusal === "computer_action_unavailable", "Unverified Stage Manager point was admitted")
-        assert((await command("refresh")).windows[0]!.hits === before, "Refused point changed the app")
-        assert(
-          (await command("refresh")).frontmost === foreground,
-          "Stage Manager verification changed the foreground app",
-        )
-        report.checks.push({ name: "Stage Manager thumbnail is withheld and cannot admit pixels", status: "pass" })
-        return
-      }
-      if (observed.observation?.image.status === "unavailable")
-        throw new CaptureUnavailable(
-          JSON.stringify(observed.metadata.computerDiagnostics ?? observed.observation.image),
-        )
-      assert(observed.observation?.image.status === "valid", "Current representation cannot be verified for pixels")
-      const image = observed.observation.image
+    await check("covered window capture preserves exact content", async () => {
+      await observe(true)
+      await command("cover")
+      const observed = await eventually(observe, (value) => value.images.length === 1, 8000)
       assert(
-        image.width! / target.width === image.height! / target.height,
-        "Image geometry differs from the logical window",
+        observed.images.length === 1 &&
+          observed.output.includes(target.axToken) &&
+          !observed.output.includes(other.axToken),
+        "Covered window observation was unavailable or selected the covering window",
       )
-      await driver!.execute("native-acceptance", {
-        type: "action",
-        input: {
-          action: "point",
-          observationId: observed.observationId!,
-          x: Math.round((target.targetX * image.width!) / target.width),
-          y: Math.round((target.targetY * image.height!) / target.height),
-        },
-        imageReceipt: { callID: "native-fixture-no-model", sha256: [image.sha256!] },
-      })
-      const after = await eventually(state, (value) => value.windows[0]!.hits === 1)
-      assert(after.windows[1]!.hits === 0, "Point changed the other window")
-      assert((await command("refresh")).frontmost === foreground, "Point changed the foreground app")
     })
-    await check("resized target rejects an old observation", async () => {
+    await check("foreground canvas click, double-click, right-click, key, shortcut and drag", async () => {
+      for (const action of ["single", "double", "right", "key", "shortcut", "drag"] as const) {
+        const { observed, point } = await pixels()
+        const before = (await command("refresh")).windows[0]!
+        const common = { observationId: observed.observationId!, foreground: true }
+        const input: import("@ericsanchezok/synergy-computer-protocol").ComputerAction =
+          action === "drag"
+            ? { ...common, action: "drag", from: point, to: { x: point.x + 90, y: point.y }, durationSeconds: 0.5 }
+            : action === "key"
+              ? { ...common, action: "key", key: "return" }
+              : action === "shortcut"
+                ? { ...common, action: "key", key: "k", modifiers: ["cmd"] }
+                : {
+                    ...common,
+                    action: "click",
+                    target: point,
+                    count: action === "double" ? 2 : 1,
+                    button: action === "right" ? "right" : "left",
+                  }
+        const result = await act(input, observed)
+        assert(result.metadata.deliveryMode === "foreground", "Executed foreground mode is not reported")
+        const counter =
+          action === "single"
+            ? "hits"
+            : action === "double"
+              ? "doubleClicks"
+              : action === "right"
+                ? "rightClicks"
+                : action === "key"
+                  ? "keys"
+                  : action === "shortcut"
+                    ? "shortcuts"
+                    : "drags"
+        const after = await eventually(
+          () => command("refresh"),
+          (value) => value.windows[0]![counter] === before[counter] + 1,
+        )
+        assert(
+          after.windows[1]!.hits === 0 &&
+            after.windows[1]!.rightClicks === 0 &&
+            after.windows[1]!.keys === 0 &&
+            after.windows[1]!.drags === 0,
+          "Foreground input reached the sibling window",
+        )
+      }
+    })
+    await check("resize and replacement reject stale observations without mutation", async () => {
       const observed = await observe()
-      const index = observed.output.match(/\[(\d+)\].*Increment/)
-      assert(index, "Increment element missing")
+      const targetElement = element(observed.output, "Increment")
       await command("resize", { width: 500 })
       const before = (await state()).windows[0]!.clicks
-      const result = await driver!
-        .execute("native-acceptance", {
-          type: "action",
-          input: { action: "click", observationId: observed.observationId!, elementIndex: Number(index[1]) },
-        })
-        .then(
-          () => "dispatched",
-          (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
-        )
-      assert(result === "computer_target_changed", `Expected target change refusal, got ${String(result)}`)
-      assert((await command("refresh")).windows[0]!.clicks === before, "A stale action mutated the app")
-    })
-    await check("replacement across tasks rejects the old reference", async () => {
+      const result = await act(
+        { action: "click", observationId: observed.observationId!, target: targetElement, foreground: true },
+        observed,
+      ).then(
+        () => "dispatched",
+        (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
+      )
+      assert(
+        result === "computer_observation_stale" || result === "computer_target_changed",
+        `Expected stale refusal, got ${String(result)}`,
+      )
+      assert((await command("refresh")).windows[0]!.clicks === before, "Stale action changed the app")
       const old = await observe()
       await driver!.execute("another-task", { type: "observe", pid: initial.pid, windowId: target.windowId })
-      const result = await driver!
-        .execute("native-acceptance", {
-          type: "action",
-          input: { action: "key", observationId: old.observationId!, key: "return" },
-        })
-        .then(
-          () => "dispatched",
-          (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
-        )
-      assert(result === "computer_observation_stale", "Cross-task replacement reused a reference")
+      const replaced = await act({ action: "key", observationId: old.observationId!, key: "return" }, old).then(
+        () => "dispatched",
+        (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
+      )
+      assert(replaced === "computer_observation_stale", "Replaced reference was reused")
     })
     await check("legitimate narrow windows remain usable", async () => {
       await command("resize", { width: 180 })
-      const deadline = performance.now() + 5000
-      let narrow = await observe()
-      while (narrow.observation?.image.status !== "valid" && performance.now() < deadline) {
-        await Bun.sleep(100)
-        narrow = await observe()
-      }
-      if (narrow.observation?.image.status === "unavailable")
-        throw new CaptureUnavailable(JSON.stringify(narrow.metadata.computerDiagnostics ?? narrow.observation.image))
+      const narrow = await eventually(
+        () => observe(true),
+        (value) => value.images.length === 1,
+      )
       const current = (await state()).windows[0]!
-      assert(current.width < 250, "Fixture did not become narrow")
-      assert(narrow.images.length === 1, "A valid narrow window was rejected by an image-size heuristic")
+      assert(current.width < 250 && narrow.observation?.image.status === "valid", "Narrow window was rejected")
     })
     await check("closed windows cannot admit actions", async () => {
       const previous = await observe()
-      const index = previous.output.match(/\[(\d+)\].*Increment/)
-      assert(index, "Increment element missing")
+      const targetElement = element(previous.output, "Increment")
       await command("close")
-      const action = await driver!
-        .execute("native-acceptance", {
-          type: "action",
-          input: { action: "click", observationId: previous.observationId!, elementIndex: Number(index[1]) },
-        })
-        .then(
-          () => "dispatched",
-          (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
-        )
-      assert(action === "computer_target_changed", `Closed window action returned ${String(action)}`)
-      const result = await observe().then(
-        (value) =>
-          value.images.length === 0 && Object.values(value.observation!.actions).every((action) => !action.available),
-        (error: unknown) => error instanceof Error && "code" in error && error.code === "computer_window_unavailable",
+      const result = await act(
+        { action: "click", observationId: previous.observationId!, target: targetElement },
+        previous,
+      ).then(
+        () => "dispatched",
+        (error: unknown) => (error instanceof Error && "code" in error ? error.code : "unknown"),
       )
-      assert(result, "A closed window granted new action evidence")
-    })
-    await check("no activation or Space change throughout the background workflow", async () => {
-      const after = await command("refresh")
-      await Bun.write(path.join(directory, "focus.json"), JSON.stringify(after, null, 2))
-      assert(stayedInBackground(initial, after), "Activation or Space events occurred during the background workflow")
+      assert(
+        [
+          "computer_window_unavailable",
+          "computer_observation_stale",
+          "computer_target_changed",
+          "computer_background_unavailable",
+        ].includes(String(result)),
+        `Closed window returned ${String(result)}`,
+      )
     })
     report.status = report.checks.some((item) => item.status === "fail")
       ? "fail"

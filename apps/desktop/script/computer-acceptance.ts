@@ -4,7 +4,7 @@ import { mkdir, realpath } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { z } from "zod"
-import { assert, startFixture, stageManagerEnabled, stayedInBackground, type Check } from "./computer-fixture"
+import { assert, startFixture, stageManagerEnabled, type Check } from "./computer-fixture"
 
 export async function runComputerAcceptance(options: {
   directory: string
@@ -62,7 +62,7 @@ export async function runComputerAcceptance(options: {
           parts: [
             {
               type: "text",
-              text: `Use only computer_observe and computer_action. Observe pid=${initial.pid}, windowId=${target.windowId} (${target.title}). Read the Canvas code from the image, then point at the blue CLICK circle once. Do not press Increment. Observe after the action and report the complete code and outcome. If an action fails, stop and report the error; do not retry.`,
+              text: `Use only computer_observe and computer_action. Observe pid=${initial.pid}, windowId=${target.windowId} (${target.title}). Read the Canvas code from the image, then click the blue CLICK circle once using image coordinates and foreground:true. If background capture is unavailable, observe with foreground:true first. Do not press Increment. Observe after the action and report the complete code and outcome. If an action fails, stop and report the error; do not retry.`,
             },
           ],
           tools: {
@@ -94,9 +94,11 @@ export async function runComputerAcceptance(options: {
       checks.push({ name, status: valid ? "pass" : "fail", ...(valid ? {} : { detail }) })
     }
     check(
-      "background execution without transient activation or Space changes",
-      stayedInBackground(initial, after),
-      "The fixture must stay inactive throughout observation and action; restoring foreground afterward is insufficient",
+      "explicit execution mode is preserved",
+      actions.length === 1 &&
+        actions[0]!.state.status === "completed" &&
+        actions[0]!.state.metadata?.deliveryMode === "foreground",
+      "The explicit foreground action must report its execution mode",
     )
     check(
       "canvas-only visual nonce",
@@ -105,7 +107,7 @@ export async function runComputerAcceptance(options: {
       "Code must be read from pixels and absent from AX/tool text",
     )
     check(
-      "one model-selected point with independent oracle",
+      "one model-selected coordinate click with independent oracle",
       actions.length === 1 &&
         actions[0]!.state.status === "completed" &&
         after.windows[0]!.hits === 1 &&
@@ -139,7 +141,7 @@ export async function runComputerAcceptance(options: {
       .object({ callID: z.string(), sha256: z.string(), observationId: z.string() })
       .safeParse(actions[0]?.state.status === "completed" ? actions[0].state.metadata?.imageAdmission : undefined)
     check(
-      "point evidence identifies its selecting model call",
+      "coordinate evidence identifies its selecting model call",
       admission.success &&
         observes.some(
           (part) =>

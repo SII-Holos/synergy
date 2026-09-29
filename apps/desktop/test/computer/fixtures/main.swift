@@ -5,6 +5,13 @@ import AppKit
 final class Canvas: NSView {
     let nonce = String(UUID().uuidString.prefix(8))
     var hits = 0
+    var doubleClicks = 0
+    var rightClicks = 0
+    var drags = 0
+    var keys = 0
+    var shortcuts = 0
+    var dragging = false
+    override var acceptsFirstResponder: Bool { true }
     var changed: (() -> Void)?
     let target = NSRect(x: 260, y: 70, width: 80, height: 80)
     override var isFlipped: Bool { true }
@@ -23,33 +30,72 @@ final class Canvas: NSView {
         ])
     }
     override func mouseDown(with event: NSEvent) {
-        if target.contains(convert(event.locationInWindow, from: nil)) { hits += 1; changed?() }
+        window?.makeFirstResponder(self)
+        if target.contains(convert(event.locationInWindow, from: nil)) {
+            hits += 1
+            if event.clickCount == 2 { doubleClicks += 1 }
+            needsDisplay = true
+            changed?()
+        }
+    }
+    override func rightMouseDown(with event: NSEvent) { rightClicks += 1; changed?() }
+    override func mouseDragged(with event: NSEvent) { dragging = true }
+    override func mouseUp(with event: NSEvent) {
+        if dragging { drags += 1; dragging = false; changed?() }
+    }
+    override func keyDown(with event: NSEvent) { keys += 1; changed?() }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "k" {
+            shortcuts += 1; changed?(); return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 
-final class FixtureWindow: NSObject, NSWindowDelegate {
+final class FixtureWindow: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     let window: NSWindow
     let canvas: Canvas
+    let field = NSTextField(string: "")
+    let slider = NSSlider(value: 10, minValue: 0, maxValue: 100, target: nil, action: nil)
+    let scroll = NSScrollView()
     let token = "AX-" + String(UUID().uuidString.prefix(8))
     var clicks = 0
     var changed: (() -> Void)?
     init(_ name: String, x: CGFloat) {
-        window = NSWindow(contentRect: NSRect(x: x, y: 140, width: 540, height: 300), styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: NSRect(x: x, y: 140, width: 540, height: 480), styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         canvas = Canvas(frame: NSRect(x: 20, y: 25, width: 490, height: 160))
         super.init()
         window.title = "Synergy Computer Fixture " + name
         window.isReleasedWhenClosed = false
         window.delegate = self
         let label = NSTextField(labelWithString: token)
-        label.frame = NSRect(x: 20, y: 230, width: 400, height: 28)
+        label.frame = NSRect(x: 20, y: 430, width: 400, height: 28)
         window.contentView!.addSubview(label)
         let button = NSButton(title: "Increment", target: self, action: #selector(increment))
-        button.frame = NSRect(x: 20, y: 190, width: 120, height: 32)
+        button.frame = NSRect(x: 20, y: 390, width: 120, height: 32)
         window.contentView!.addSubview(button)
+        field.frame = NSRect(x: 20, y: 340, width: 250, height: 30)
+        field.setAccessibilityLabel("Name")
+        field.delegate = self
+        window.contentView!.addSubview(field)
+        slider.frame = NSRect(x: 20, y: 295, width: 250, height: 24)
+        slider.setAccessibilityLabel("Level")
+        window.contentView!.addSubview(slider)
+        scroll.frame = NSRect(x: 320, y: 240, width: 180, height: 160)
+        scroll.hasVerticalScroller = true
+        scroll.setAccessibilityLabel("Rows")
+        let document = NSTextView(frame: NSRect(x: 0, y: 0, width: 160, height: 1400))
+        document.isEditable = false
+        document.string = (1...60).map { "Row \($0)" }.joined(separator: "\n")
+        scroll.documentView = document
+        scroll.contentView.scroll(to: .zero)
+        window.contentView!.addSubview(scroll)
         window.contentView!.addSubview(canvas)
+        window.initialFirstResponder = canvas
         canvas.changed = { [weak self] in self?.changed?() }
     }
     @objc func increment() { clicks += 1; changed?() }
+    func controlTextDidChange(_ notification: Notification) { changed?() }
     func windowDidResize(_ notification: Notification) { changed?() }
     func windowDidMove(_ notification: Notification) { changed?() }
     func report() -> [String: Any] {
@@ -57,7 +103,9 @@ final class FixtureWindow: NSObject, NSWindowDelegate {
         let target = canvas.convert(canvas.target, to: nil)
         let screenTarget = window.convertToScreen(target)
         return ["windowId": window.windowNumber, "title": window.title, "axToken": token, "nonce": canvas.nonce,
-                "clicks": clicks, "hits": canvas.hits, "visible": window.isVisible, "onActiveSpace": window.isOnActiveSpace,
+                "clicks": clicks, "hits": canvas.hits, "text": field.stringValue, "value": slider.doubleValue,
+                "scrollY": scroll.contentView.bounds.origin.y, "doubleClicks": canvas.doubleClicks,
+                "rightClicks": canvas.rightClicks, "drags": canvas.drags, "keys": canvas.keys, "shortcuts": canvas.shortcuts, "visible": window.isVisible, "onActiveSpace": window.isOnActiveSpace,
                 "width": frame.width, "height": frame.height,
                 "targetX": screenTarget.midX - frame.minX, "targetY": frame.maxY - screenTarget.midY]
     }
@@ -113,11 +161,16 @@ final class App: NSObject, NSApplicationDelegate {
         lastCommand = id
         let fixture = windows[command["index"] as? Int ?? 0]
         switch command["type"] as? String {
-        case "resize": fixture.window.setContentSize(NSSize(width: command["width"] as? Double ?? 480, height: 300))
+        case "resize": fixture.window.setContentSize(NSSize(width: command["width"] as? Double ?? 480, height: 480))
         case "move": fixture.window.setFrameOrigin(NSPoint(x: command["x"] as? Double ?? 100, y: command["y"] as? Double ?? 120))
         case "hide": fixture.window.orderOut(nil)
         case "show": fixture.window.orderBack(nil)
         case "close": fixture.window.close()
+        case "background":
+            if let pid = command["pid"] as? Int32 { NSRunningApplication(processIdentifier: pid)?.activate(options: []) }
+        case "cover":
+            windows[1].window.setFrame(fixture.window.frame, display: true)
+            windows[1].window.orderFront(nil)
         case "refresh": break
         case "quit": NSApp.terminate(nil)
         default: break
