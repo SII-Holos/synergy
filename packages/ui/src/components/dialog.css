@@ -7,10 +7,10 @@
   -webkit-backdrop-filter: blur(2px);
   z-index: 50;
 
-  animation: overlayHide 160ms ease 80ms forwards;
+  animation: overlayHide var(--motion-duration-base) var(--motion-ease-standard) forwards;
 
   &[data-expanded] {
-    animation: overlayShow 160ms ease;
+    animation: overlayShow var(--motion-duration-slow) var(--motion-ease-standard);
   }
 }
 
@@ -100,10 +100,10 @@
       font-feature-settings: var(--font-family-sans--font-feature-settings);
       letter-spacing: var(--letter-spacing-normal);
 
-      animation: contentHide 160ms ease forwards;
+      animation: contentHide var(--motion-duration-base) var(--motion-ease-standard) forwards;
 
       &[data-expanded] {
-        animation: contentShow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+        animation: contentShow var(--motion-duration-slow) var(--motion-ease-emphasized);
       }
 
       &:focus-visible {
@@ -390,5 +390,13 @@
   to {
     opacity: 0;
     transform: translateY(4px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="dialog-overlay"],
+  [data-slot="dialog-overlay"],
+  [data-component="dialog"] [data-slot="dialog-content"] {
+    animation: none;
   }
 }

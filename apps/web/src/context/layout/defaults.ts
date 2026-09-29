@@ -1,4 +1,4 @@
-export const SIDEBAR_WIDTH_DEFAULT = 300
+export const SIDEBAR_WIDTH_DEFAULT = 260
 // The persisted band starts at the collapse threshold so a reopened sidebar can
 // never sit below it and re-collapse on the next press-and-release.
 export const SIDEBAR_WIDTH_MIN = 230

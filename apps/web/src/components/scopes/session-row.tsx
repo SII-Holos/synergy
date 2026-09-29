@@ -321,7 +321,7 @@ export function SessionRow(props: SessionRowProps) {
         <span class="text-11-regular text-text-weak shrink-0">{relativeTime(fmt, updatedAt())}</span>
 
         {/* Action menu (hover-reveal) */}
-        <div class="shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">
+        <div class="session-row-actions shrink-0 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 transition-opacity">
           <ActionMenu
             isPinned={!!isPinned()}
             rename={actionVisibility().rename}

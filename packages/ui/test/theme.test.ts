@@ -155,6 +155,21 @@ describe("color scheme helpers", () => {
 })
 
 describe("resolveTheme (synergy)", () => {
+  test("keeps workbench captions readable on canvas, navigation, input and menus", () => {
+    for (const theme of Object.values(resolveTheme(synergyTheme))) {
+      for (const surface of [
+        "background-stronger",
+        "background-weak",
+        "input-base",
+        "surface-raised-stronger-non-alpha",
+        "surface-interactive-selected",
+      ] as const) {
+        for (const text of ["text-base", "text-weak", "text-weaker", "text-subtle"] as const) {
+          expectReadablePair(theme, text, surface)
+        }
+      }
+    }
+  })
   // ── Contract: only 2 themes exist ───────────────────────
 
   test("produces exactly light and dark variants", () => {
@@ -485,7 +500,8 @@ describe("resolveTheme (synergy)", () => {
     expectBrighter(resolved.dark, "surface-inset-base", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-interactive-selected", "surface-raised-base")
     expectBrighter(resolved.dark, "surface-float-base", "background-stronger")
-    expectBrighter(resolved.dark, "input-base", "surface-raised-base")
+    expectAtLeastAsBright(resolved.dark, "input-base", "surface-raised-base")
+    expectBrighter(resolved.dark, "input-base", "background-stronger")
     expectBrighter(resolved.dark, "button-secondary-base", "surface-raised-base")
   })
 

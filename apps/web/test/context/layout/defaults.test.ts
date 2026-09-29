@@ -20,6 +20,8 @@ describe("sidebar width defaults", () => {
   })
 
   test("ignores stored width unless the user actually resized", () => {
+    expect(effectiveSidebarWidth({ width: 300, resized: false })).toBe(260)
+    expect(effectiveSidebarWidth({ width: 300, resized: true })).toBe(300)
     expect(effectiveSidebarWidth({ width: 280 })).toBe(SIDEBAR_WIDTH_DEFAULT)
     expect(effectiveSidebarWidth({ width: 280, resized: false })).toBe(SIDEBAR_WIDTH_DEFAULT)
     expect(effectiveSidebarWidth(undefined)).toBe(SIDEBAR_WIDTH_DEFAULT)

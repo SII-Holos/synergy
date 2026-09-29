@@ -230,7 +230,7 @@ a {
 .synergy-workbench-canvas :where(.workbench-popover-surface) {
   background-color: var(--workbench-popover-bg);
   border-color: var(--workbench-border);
-  box-shadow: none;
+  box-shadow: var(--workbench-popover-shadow);
 }
 
 .synergy-workbench-canvas :where(.bg-background-stronger, .bg-background-strong\/80) {
@@ -955,4 +955,10 @@ a {
   max-width: calc(100vw - 16px);
   max-height: min(640px, calc(100dvh - 24px));
   overflow: auto;
+}
+
+@media (hover: none) {
+  .session-row-actions {
+    opacity: 1;
+  }
 }
