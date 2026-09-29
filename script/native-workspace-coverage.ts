@@ -43,6 +43,7 @@ suites.push(
   "test/process/native-bindings.test.ts",
   "test/workspace/coordinator-environment.test.ts",
   "test/workspace/process.test.ts",
+  "test/workspace/workspace-concurrency.test.ts",
   "../harness/test/session/snapshot-long-path.test.ts",
   "../formatter/test/format/formatter.test.ts",
   "../lsp/test/lsp/owner-runtime.test.ts",

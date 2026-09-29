@@ -77,39 +77,7 @@ export namespace EnvironmentExecution {
     signal?: AbortSignal
   }): Promise<Info> {
     const id = ExecutionProtocol.ID.parse(input.id)
-    if (input.command.writableRoots?.length !== 0) {
-      const mounted = (await WorkspaceCatalog.list(input.scopeID)).filter(
-        (info) => info.activeMount?.target.environmentID === input.environmentID,
-      )
-      const roots = input.command.writableRoots
-      const affected = mounted.filter((info) => {
-        if (roots === null) return true
-        const normalize = (value: string) => value.replaceAll("\\", "/").replace(/\/$/, "").toLowerCase()
-        const mount = normalize(info.activeMount!.path)
-        return roots.some((root) => {
-          const candidate = normalize(root)
-          return candidate === mount || candidate.startsWith(mount + "/") || mount.startsWith(candidate + "/")
-        })
-      })
-      const workspaces = [
-        ...new Map(
-          [...(input.workspaces ?? []), ...affected.map(WorkspaceMounts.reference)].map((reference) => [
-            reference.id,
-            reference,
-          ]),
-        ).values(),
-      ].sort((a, b) => a.id.localeCompare(b.id))
-      input = {
-        ...input,
-        workspaces,
-        command: {
-          ...input.command,
-          capture: workspaces,
-          writableRoots:
-            roots === null ? null : [...new Set([...roots, ...affected.map((info) => info.activeMount!.path)])],
-        },
-      }
-    }
+    input = { ...input, command: { ...input.command, capture: input.workspaces ?? [] } }
     const digest = ExecutionProtocol.digest(input.command)
     const key = JSON.stringify([input.scopeID, id])
     const previous = pending().get(key)
@@ -171,12 +139,10 @@ export namespace EnvironmentExecution {
               workspaceID: info.id,
               message: "Execution requires the selected active Workspace mount",
             })
-          if (input.command.writableRoots?.length && !input.command.writableRoots.includes(mount.path))
-            throw new Error("Execution must retain the Workspace root through checkpoint publication")
-          if (input.command.writableRoots?.length !== 0) {
-            const reference = await WorkspaceEvidence.begin(info)
-            if (reference) evidence.push({ workspaceID: info.id, reference })
-          }
+          if (!input.command.useRoots.includes(mount.path))
+            throw new Error("Execution must retain its selected Workspace through checkpoint publication")
+          const reference = await WorkspaceEvidence.begin(info)
+          if (reference) evidence.push({ workspaceID: info.id, reference })
         }
         const now = Date.now()
         const info = Info.parse({
@@ -184,10 +150,7 @@ export namespace EnvironmentExecution {
           scopeID: input.scopeID,
           target: use.target,
           evidence,
-          workspaces: input.workspaces?.map((reference) => ({
-            ...reference,
-            ...(input.command.writableRoots?.length === 0 ? { readOnly: true } : {}),
-          })),
+          workspaces: input.workspaces,
           digest: input.digest,
           intentDigest: input.intentDigest,
           state: "submitted",

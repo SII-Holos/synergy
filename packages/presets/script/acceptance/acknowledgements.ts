@@ -129,7 +129,7 @@ export function acknowledgements(input: unknown): Driver {
                 args: ["-c", "printf 'once\\n' >> effects.txt"],
                 cwd: resources.directory!,
                 env: {},
-                writableRoots: [resources.directory!],
+                useRoots: [resources.directory!],
               },
             })
             const operation = await until(

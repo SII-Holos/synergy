@@ -144,6 +144,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "@vue/language-server"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -190,7 +191,7 @@ export namespace LSPServer {
         if (!response.ok) return
 
         const zipPath = path.join(Global.Path.bin, "vscode-eslint.zip")
-        await LSPProcess.mutate(() => Bun.file(zipPath).write(response))
+        await LSPProcess.mutate([zipPath], () => Bun.file(zipPath).write(response))
 
         const ok = await LSPProcess.extractZip(zipPath, Global.Path.bin)
           .then(() => true)
@@ -199,7 +200,7 @@ export namespace LSPServer {
             return false
           })
         if (!ok) return
-        await LSPProcess.mutate(() => fs.rm(zipPath, { force: true }))
+        await LSPProcess.mutate([zipPath], () => fs.rm(zipPath, { force: true }))
 
         const extractedPath = path.join(Global.Path.bin, "vscode-eslint-main")
         const finalPath = path.join(Global.Path.bin, "vscode-eslint")
@@ -207,13 +208,13 @@ export namespace LSPServer {
         const stats = await fs.stat(finalPath).catch(() => undefined)
         if (stats) {
           log.info("removing old eslint installation", { path: finalPath })
-          await LSPProcess.mutate(() => fs.rm(finalPath, { force: true, recursive: true }))
+          await LSPProcess.mutate([finalPath], () => fs.rm(finalPath, { force: true, recursive: true }))
         }
-        await LSPProcess.mutate(() => fs.rename(extractedPath, finalPath))
+        await LSPProcess.mutate([extractedPath, finalPath], () => fs.rename(extractedPath, finalPath))
 
         const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"
-        await LSPProcess.run({ command: [npmCmd, "install"], cwd: finalPath })
-        await LSPProcess.run({ command: [npmCmd, "run", "compile"], cwd: finalPath })
+        await LSPProcess.run({ command: [npmCmd, "install"], cwd: finalPath, mutationRoots: [finalPath] })
+        await LSPProcess.run({ command: [npmCmd, "run", "compile"], cwd: finalPath, mutationRoots: [finalPath] })
 
         log.info("installed VS Code ESLint server", { serverPath })
       }
@@ -383,6 +384,7 @@ export namespace LSPServer {
         log.info("installing gopls")
         const proc = await LSPProcess.run({
           command: ["go", "install", "golang.org/x/tools/gopls@latest"],
+          mutationRoots: [Global.Path.bin],
           env: { ...RuntimeContext.current().host.env, GOBIN: Global.Path.bin },
         })
         const exit = proc.exitCode
@@ -418,7 +420,10 @@ export namespace LSPServer {
         }
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("installing rubocop")
-        const proc = await LSPProcess.run({ command: ["gem", "install", "rubocop", "--bindir", Global.Path.bin] })
+        const proc = await LSPProcess.run({
+          command: ["gem", "install", "rubocop", "--bindir", Global.Path.bin],
+          mutationRoots: [Global.Path.bin],
+        })
         const exit = proc.exitCode
         if (exit !== 0) {
           log.error("Failed to install rubocop")
@@ -509,6 +514,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "pyright"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -584,7 +590,7 @@ export namespace LSPServer {
           })
           if (!response.ok) return
           const zipPath = path.join(Global.Path.bin, "elixir-ls.zip")
-          await LSPProcess.mutate(() => Bun.file(zipPath).write(response))
+          await LSPProcess.mutate([zipPath], () => Bun.file(zipPath).write(response))
 
           const ok = await LSPProcess.extractZip(zipPath, Global.Path.bin)
             .then(() => true)
@@ -594,7 +600,7 @@ export namespace LSPServer {
             })
           if (!ok) return
 
-          await LSPProcess.mutate(() =>
+          await LSPProcess.mutate([zipPath], () =>
             fs.rm(zipPath, {
               force: true,
               recursive: true,
@@ -604,6 +610,7 @@ export namespace LSPServer {
           for (const args of [["deps.get"], ["compile"], ["elixir_ls.release2", "-o", "release"]])
             await LSPProcess.run({
               command: ["mix", ...args],
+              mutationRoots: [path.join(Global.Path.bin, "elixir-ls-master")],
               cwd: path.join(Global.Path.bin, "elixir-ls-master"),
               env: { ...RuntimeContext.current().host.env, MIX_ENV: "prod" },
             })
@@ -696,7 +703,7 @@ export namespace LSPServer {
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
+        await LSPProcess.mutate([tempPath], () => Bun.file(tempPath).write(downloadResponse))
 
         if (ext === "zip") {
           const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
@@ -707,10 +714,14 @@ export namespace LSPServer {
             })
           if (!ok) return
         } else {
-          await LSPProcess.run({ command: ["tar", "-xf", tempPath], cwd: Global.Path.bin })
+          await LSPProcess.run({
+            command: ["tar", "-xf", tempPath],
+            cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
+          })
         }
 
-        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
+        await LSPProcess.mutate([tempPath], () => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "zls" + (platform === "win32" ? ".exe" : ""))
 
@@ -720,7 +731,7 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
+          await LSPProcess.mutate([bin!], () => fs.chmod(bin!, 0o755))
         }
 
         log.info(`installed zls`, { bin })
@@ -750,6 +761,7 @@ export namespace LSPServer {
         log.info("installing csharp-ls via dotnet tool")
         const proc = await LSPProcess.run({
           command: ["dotnet", "tool", "install", "csharp-ls", "--tool-path", Global.Path.bin],
+          mutationRoots: [Global.Path.bin],
         })
         const exit = proc.exitCode
         if (exit !== 0) {
@@ -785,6 +797,7 @@ export namespace LSPServer {
         log.info("installing fsautocomplete via dotnet tool")
         const proc = await LSPProcess.run({
           command: ["dotnet", "tool", "install", "fsautocomplete", "--tool-path", Global.Path.bin],
+          mutationRoots: [Global.Path.bin],
         })
         const exit = proc.exitCode
         if (exit !== 0) {
@@ -972,7 +985,7 @@ export namespace LSPServer {
         log.error("Failed to write clangd archive")
         return
       }
-      await LSPProcess.mutate(() => Bun.write(archive, buf))
+      await LSPProcess.mutate([archive], () => Bun.write(archive, buf))
 
       const zip = name.endsWith(".zip")
       const tar = name.endsWith(".tar.xz")
@@ -991,9 +1004,13 @@ export namespace LSPServer {
         if (!ok) return
       }
       if (tar) {
-        await LSPProcess.run({ command: ["tar", "-xf", archive], cwd: Global.Path.bin })
+        await LSPProcess.run({
+          command: ["tar", "-xf", archive],
+          cwd: Global.Path.bin,
+          mutationRoots: [Global.Path.bin],
+        })
       }
-      await LSPProcess.mutate(() => fs.rm(archive, { force: true }))
+      await LSPProcess.mutate([archive], () => fs.rm(archive, { force: true }))
 
       const bin = path.join(Global.Path.bin, "clangd_" + tag, "bin", "clangd" + ext)
       if (!(await Bun.file(bin).exists())) {
@@ -1002,7 +1019,7 @@ export namespace LSPServer {
       }
 
       if (platform !== "win32") {
-        await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
+        await LSPProcess.mutate([bin!], () => fs.chmod(bin!, 0o755))
       }
 
       await fs.unlink(path.join(Global.Path.bin, "clangd")).catch(() => {})
@@ -1030,6 +1047,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "svelte-language-server"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -1077,6 +1095,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "@astrojs/language-server"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -1133,13 +1152,16 @@ export namespace LSPServer {
       if (!installed) {
         if (Flag.SYNERGY_DISABLE_LSP_DOWNLOAD) return
         log.info("Downloading JDTLS LSP server.")
-        await LSPProcess.mutate(() => fs.mkdir(distPath, { recursive: true }))
+        await LSPProcess.mutate([distPath], () => fs.mkdir(distPath, { recursive: true }))
         const releaseURL =
           "https://www.eclipse.org/downloads/download.php?file=/jdtls/snapshots/jdt-language-server-latest.tar.gz"
         const archivePath = path.join(distPath, "release.tar.gz")
-        await LSPProcess.run({ command: ["curl", "--fail", "-L", "-o", archivePath, releaseURL] })
-        await LSPProcess.run({ command: ["tar", "-xzf", archivePath], cwd: distPath })
-        await LSPProcess.mutate(() => fs.rm(archivePath, { force: true }))
+        await LSPProcess.run({
+          command: ["curl", "--fail", "-L", "-o", archivePath, releaseURL],
+          mutationRoots: [archivePath],
+        })
+        await LSPProcess.run({ command: ["tar", "-xzf", archivePath], cwd: distPath, mutationRoots: [distPath] })
+        await LSPProcess.mutate([archivePath], () => fs.rm(archivePath, { force: true }))
       }
       const jarFileName = await fs
         .readdir(launcherDir)
@@ -1254,9 +1276,12 @@ export namespace LSPServer {
         const assetName = `kotlin-lsp-${version}-${kotlinPlatform}-${kotlinArch}.zip`
         const releaseURL = `https://download-cdn.jetbrains.com/kotlin-lsp/${version}/${assetName}`
 
-        await LSPProcess.mutate(() => fs.mkdir(distPath, { recursive: true }))
+        await LSPProcess.mutate([distPath], () => fs.mkdir(distPath, { recursive: true }))
         const archivePath = path.join(distPath, "kotlin-ls.zip")
-        await LSPProcess.run({ command: ["curl", "--fail", "-L", "-o", archivePath, releaseURL] })
+        await LSPProcess.run({
+          command: ["curl", "--fail", "-L", "-o", archivePath, releaseURL],
+          mutationRoots: [archivePath],
+        })
         const ok = await LSPProcess.extractZip(archivePath, distPath)
           .then(() => true)
           .catch((error) => {
@@ -1264,9 +1289,9 @@ export namespace LSPServer {
             return false
           })
         if (!ok) return
-        await LSPProcess.mutate(() => fs.rm(archivePath, { force: true }))
+        await LSPProcess.mutate([archivePath], () => fs.rm(archivePath, { force: true }))
         if (process.platform !== "win32") {
-          await LSPProcess.mutate(() => fs.chmod(launcherScript, 0o755))
+          await LSPProcess.mutate([launcherScript], () => fs.chmod(launcherScript, 0o755))
         }
         log.info("Installed Kotlin Language Server", { path: launcherScript })
       }
@@ -1303,6 +1328,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "yaml-language-server"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -1406,7 +1432,7 @@ export namespace LSPServer {
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
+        await LSPProcess.mutate([tempPath], () => Bun.file(tempPath).write(downloadResponse))
 
         // Unlike zls which is a single self-contained binary,
         // lua-language-server needs supporting files (meta/, locale/, etc.)
@@ -1416,10 +1442,10 @@ export namespace LSPServer {
         // Remove old installation if exists
         const stats = await fs.stat(installDir).catch(() => undefined)
         if (stats) {
-          await LSPProcess.mutate(() => fs.rm(installDir, { force: true, recursive: true }))
+          await LSPProcess.mutate([installDir], () => fs.rm(installDir, { force: true, recursive: true }))
         }
 
-        await LSPProcess.mutate(() => fs.mkdir(installDir, { recursive: true }))
+        await LSPProcess.mutate([installDir], () => fs.mkdir(installDir, { recursive: true }))
 
         if (ext === "zip") {
           const ok = await LSPProcess.extractZip(tempPath, installDir)
@@ -1430,7 +1456,10 @@ export namespace LSPServer {
             })
           if (!ok) return
         } else {
-          const ok = await LSPProcess.run({ command: ["tar", "-xzf", tempPath, "-C", installDir] })
+          const ok = await LSPProcess.run({
+            command: ["tar", "-xzf", tempPath, "-C", installDir],
+            mutationRoots: [installDir],
+          })
             .then(() => true)
             .catch((error) => {
               log.error("Failed to extract lua-language-server archive", { error })
@@ -1439,7 +1468,7 @@ export namespace LSPServer {
           if (!ok) return
         }
 
-        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
+        await LSPProcess.mutate([tempPath], () => fs.rm(tempPath, { force: true }))
 
         // Binary is located in bin/ subdirectory within the extracted archive
         bin = path.join(installDir, "bin", "lua-language-server" + (platform === "win32" ? ".exe" : ""))
@@ -1450,7 +1479,7 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          const ok = await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
+          const ok = await LSPProcess.mutate([bin!], () => fs.chmod(bin!, 0o755))
             .then(() => true)
             .catch((error) => {
               log.error("Failed to set executable permission for lua-language-server binary", {
@@ -1483,6 +1512,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "intelephense"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -1570,6 +1600,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "bash-language-server"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -1648,7 +1679,7 @@ export namespace LSPServer {
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
+        await LSPProcess.mutate([tempPath], () => Bun.file(tempPath).write(downloadResponse))
 
         const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
           .then(() => true)
@@ -1657,7 +1688,7 @@ export namespace LSPServer {
             return false
           })
         if (!ok) return
-        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
+        await LSPProcess.mutate([tempPath], () => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "terraform-ls" + (platform === "win32" ? ".exe" : ""))
 
@@ -1667,7 +1698,7 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
+          await LSPProcess.mutate([bin!], () => fs.chmod(bin!, 0o755))
         }
 
         log.info(`installed terraform-ls`, { bin })
@@ -1738,7 +1769,7 @@ export namespace LSPServer {
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
+        await LSPProcess.mutate([tempPath], () => Bun.file(tempPath).write(downloadResponse))
 
         if (ext === "zip") {
           const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
@@ -1750,10 +1781,14 @@ export namespace LSPServer {
           if (!ok) return
         }
         if (ext === "tar.gz") {
-          await LSPProcess.run({ command: ["tar", "-xzf", tempPath], cwd: Global.Path.bin })
+          await LSPProcess.run({
+            command: ["tar", "-xzf", tempPath],
+            cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
+          })
         }
 
-        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
+        await LSPProcess.mutate([tempPath], () => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "texlab" + (platform === "win32" ? ".exe" : ""))
 
@@ -1763,7 +1798,7 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
+          await LSPProcess.mutate([bin!], () => fs.chmod(bin!, 0o755))
         }
 
         log.info("installed texlab", { bin })
@@ -1789,6 +1824,7 @@ export namespace LSPServer {
           await LSPProcess.run({
             command: [BunProc.which(), "install", "dockerfile-language-server-nodejs"],
             cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
             env: {
               ...RuntimeContext.current().host.env,
               BUN_BE_BUN: "1",
@@ -1943,7 +1979,7 @@ export namespace LSPServer {
         }
 
         const tempPath = path.join(Global.Path.bin, assetName)
-        await LSPProcess.mutate(() => Bun.file(tempPath).write(downloadResponse))
+        await LSPProcess.mutate([tempPath], () => Bun.file(tempPath).write(downloadResponse))
 
         if (ext === "zip") {
           const ok = await LSPProcess.extractZip(tempPath, Global.Path.bin)
@@ -1954,10 +1990,14 @@ export namespace LSPServer {
             })
           if (!ok) return
         } else {
-          await LSPProcess.run({ command: ["tar", "-xzf", tempPath, "--strip-components=1"], cwd: Global.Path.bin })
+          await LSPProcess.run({
+            command: ["tar", "-xzf", tempPath, "--strip-components=1"],
+            cwd: Global.Path.bin,
+            mutationRoots: [Global.Path.bin],
+          })
         }
 
-        await LSPProcess.mutate(() => fs.rm(tempPath, { force: true }))
+        await LSPProcess.mutate([tempPath], () => fs.rm(tempPath, { force: true }))
 
         bin = path.join(Global.Path.bin, "tinymist" + (platform === "win32" ? ".exe" : ""))
 
@@ -1967,7 +2007,7 @@ export namespace LSPServer {
         }
 
         if (platform !== "win32") {
-          await LSPProcess.mutate(() => fs.chmod(bin!, 0o755))
+          await LSPProcess.mutate([bin!], () => fs.chmod(bin!, 0o755))
         }
 
         log.info("installed tinymist", { bin })

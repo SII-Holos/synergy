@@ -13,7 +13,7 @@ export namespace WorktreeProcess {
   interface Input {
     command: string[] | (() => Promise<string[]>)
     directory: string
-    roots: string[] | null
+    roots: string[]
     env?: Record<string, string | undefined>
     metadata?: boolean
     signal?: AbortSignal
@@ -55,7 +55,8 @@ export namespace WorktreeProcess {
       if (remote && (typeof input.command === "function" || input.beforeStart))
         throw new Error("Remote Workspace commands cannot run controller preparation callbacks")
       if (!remote) {
-        const acquire = () => WorkspaceAccess.process(input.roots, signal, { transient: input.metadata })
+        const acquire = () =>
+          WorkspaceAccess.process([input.directory], signal, { transient: input.metadata, mutationRoots: input.roots })
         lease = input.metadata ? await WorkspaceAccess.observeWrites(undefined, acquire) : await acquire()
       }
       if (input.beforeStart && !(await input.beforeStart()))
@@ -77,7 +78,8 @@ export namespace WorktreeProcess {
                   (entry): entry is [string, string] => entry[1] !== undefined,
                 ),
               ),
-              writableRoots: input.roots ?? [input.directory],
+              useRoots: [input.directory],
+              mutationRoots: input.roots,
             },
           })
         : await OwnedProcess.prepare({

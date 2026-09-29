@@ -78,7 +78,7 @@ test.skipIf(!image || process.platform === "win32")(
               args: ["-c", "printf authenticated"],
               cwd: "/tmp",
               env: {},
-              writableRoots: [],
+              useRoots: [],
             },
           })
           for (let attempt = 0; operation.state !== "exited" && attempt < 300; attempt++) {

@@ -169,7 +169,7 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
               }),
             ).rejects.toThrow("busy")
             await expect(
-              WorkspaceAccess.write([directory.path], async () => {}, AbortSignal.timeout(30)),
+              WorkspaceAccess.exclusive([directory.path], async () => {}, AbortSignal.timeout(30)),
             ).rejects.toMatchObject({ name: "TimeoutError" })
             await Pty.remove(info.id)
             expect(Pty.get(info.id)).toBeUndefined()
@@ -245,7 +245,7 @@ test.skipIf(!["darwin", "linux"].includes(process.platform))(
           const id = ScopeContext.current.workspace!.id!
           const entered = Promise.withResolvers<void>()
           const release = Promise.withResolvers<void>()
-          const writer = WorkspaceAccess.write(null, async () => {
+          const writer = WorkspaceAccess.exclusive([directory.path], async () => {
             entered.resolve()
             await release.promise
           })

@@ -227,7 +227,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
                   args: args ?? [],
                   cwd: directory,
                   env: { ...resources.runtime!.env, TERM: "dumb" },
-                  writableRoots: null,
+                  useRoots: [],
                 },
               })
             } catch (error) {

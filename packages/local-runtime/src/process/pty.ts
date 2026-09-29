@@ -52,7 +52,7 @@ export namespace Pty {
         args: input.args,
         cwd: input.cwd,
         env: input.env,
-        writableRoots: null,
+        useRoots: [],
         pty: { cols: 80, rows: 24 },
       },
     })

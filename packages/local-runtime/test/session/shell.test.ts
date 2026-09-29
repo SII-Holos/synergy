@@ -102,7 +102,7 @@ test(
               await Bun.sleep(10)
             }
             await expect(
-              WorkspaceAccess.write([directory.path], async () => {}, AbortSignal.timeout(100)),
+              WorkspaceAccess.exclusive([directory.path], async () => {}, AbortSignal.timeout(100)),
             ).rejects.toMatchObject({ name: "TimeoutError" })
             expect(await Bun.file(done).exists()).toBe(false)
             await Bun.write(stop, "stop")
@@ -130,7 +130,7 @@ test(
         async fn() {
           const session = await Session.create()
           const marker = path.join(directory.path, "must-not-start")
-          const blocker = await WorkspaceAccess.process(null)
+          const blocker = await WorkspaceAccess.hostClaim({ id: crypto.randomUUID(), kind: "process", roots: null })
           const running = shell({
             sessionID: session.id,
             agent: "synergy",

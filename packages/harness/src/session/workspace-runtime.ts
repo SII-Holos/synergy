@@ -5,8 +5,6 @@ import { ExecutionCapacity } from "./execution-capacity"
 
 export namespace SessionWorkspaceRuntime {
   export interface Provider {
-    lockWorktree(directory: string): Promise<unknown>
-    unlockWorktree(directory: string): Promise<void>
     withWorktree<T>(directory: string, sessionID: string | undefined, fn: () => Promise<T>): Promise<T>
     createWorktree(input: {
       sessionID: string

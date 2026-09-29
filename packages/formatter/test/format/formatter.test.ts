@@ -403,9 +403,10 @@ test(
               }),
             ])
             expect(settled).toBe(false)
-            await expect(
-              WorkspaceAccess.write([control.path], async () => {}, AbortSignal.timeout(100)),
-            ).rejects.toMatchObject({ name: "TimeoutError" })
+            await WorkspaceAccess.write([control.path], async () => {}, AbortSignal.timeout(1000))
+            await expect(WorkspaceAccess.write([file], async () => {}, AbortSignal.timeout(100))).rejects.toMatchObject(
+              { name: "TimeoutError" },
+            )
           } finally {
             observation.abort()
             await readiness.catch(() => {})

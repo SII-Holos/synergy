@@ -63,7 +63,6 @@ import { WindowsBackend } from "./windows"
 import { startDenialLogger, type DenialLoggerSession } from "./macos-diagnostics"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
-import { sandboxWriteRoots } from "@ericsanchezok/synergy-harness/sandbox/types"
 import { OwnedProcess } from "../process/owned-process"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 import type { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
@@ -293,7 +292,7 @@ export namespace SandboxBackend {
     controller.signal.addEventListener("abort", stop, { once: true })
     try {
       const execution = opts.execution
-      if (!execution) lease = await WorkspaceAccess.process(sandboxWriteRoots(wrapper), controller.signal)
+      if (!execution) lease = await WorkspaceAccess.process([opts.cwd ?? process.cwd()], controller.signal)
       if (wrapper.sandboxed && detectPlatform() === "macos" && (!execution || execution.resources.executor?.localPID))
         denialSession = startDenialLogger()
       owned = execution
@@ -308,7 +307,7 @@ export namespace SandboxBackend {
               args: wrapper.args,
               cwd: opts.cwd ?? execution.resources.directory!,
               env: { ...execution.resources.runtime!.env, ...opts.env },
-              writableRoots: sandboxWriteRoots(wrapper),
+              useRoots: [],
               sandboxID: execution.sandboxID,
             },
           })

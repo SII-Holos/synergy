@@ -56,7 +56,7 @@ function fixture() {
   }
 }
 
-const command = { command: "example", args: ["one"], cwd: "/workspace", env: {}, writableRoots: ["/workspace"] }
+const command = { command: "example", args: ["one"], cwd: "/workspace", env: {}, useRoots: ["/workspace"] }
 
 test("reconciliation refreshes a moved endpoint without changing allocation identity or repeating execution", async () => {
   const f = fixture()

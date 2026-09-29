@@ -10,6 +10,7 @@ import { WorkspaceTree } from "./tree"
 import { WorkspaceProtocol, type WorkspaceFileHost } from "./protocol"
 import { StorageRecovery } from "../storage/recovery"
 import { Log } from "../util/log"
+import { WorkspaceCheckpoints } from "./checkpoint"
 import { WorkspaceEvidence } from "./evidence"
 
 export namespace WorkspaceMounts {
@@ -321,8 +322,9 @@ export namespace WorkspaceMounts {
           message: "Workspace mount changed during execution",
         })
       const files = await connect(info)
+      const attempt = await WorkspaceCheckpoints.begin(info, checkpointID(input.id, reference.id))
       const checkpoint = await files.checkpoint({
-        id: checkpointID(input.id, reference.id),
+        id: attempt.id,
         mount: WorkspaceProtocol.Reference.parse(reference),
         executionID: input.id,
       })
@@ -331,8 +333,15 @@ export namespace WorkspaceMounts {
         (item) => item.id === reference.id && item.generation === reference.generation,
       )?.manifest
       if (evidence && !before) throw new Error("Execution has no physical Workspace baseline")
-      const published = await save(info, files, { ...checkpoint, beforeManifest: before }, (saved) =>
-        WorkspaceEvidence.finish(evidence, saved, before ?? null, checkpoint.manifest),
+      const published = await save(
+        attempt.workspace,
+        files,
+        { ...checkpoint, beforeManifest: before },
+        (saved) =>
+          checkpoint.isolated !== true || attempt.id !== checkpointID(input.id, reference.id)
+            ? WorkspaceEvidence.incomplete(evidence)
+            : WorkspaceEvidence.finish(evidence, saved, before ?? null, checkpoint.manifest),
+        attempt,
       )
       if (published.content) saved[info.id] = published.content
     }
@@ -344,9 +353,15 @@ export namespace WorkspaceMounts {
     files: WorkspaceFileHost,
     checkpoint: WorkspaceProtocol.Checkpoint,
     beforeRelease?: (workspace: WorkspaceCatalog.Info) => Promise<void>,
+    attempt?: WorkspaceCheckpoints.Attempt,
   ) {
     if (JSON.stringify(checkpoint.mount) !== JSON.stringify(reference(info)))
       throw new Error("Workspace checkpoint belongs to another mount")
+    if (attempt?.state === "saved" && attempt.saved) {
+      await beforeRelease?.(attempt.saved)
+      await files.acknowledge(checkpoint.id)
+      return attempt.saved
+    }
     if (info.backend?.provider !== "objects") {
       await files.acknowledge(checkpoint.id)
       return info
@@ -364,10 +379,17 @@ export namespace WorkspaceMounts {
     await store.put(checkpoint.manifest, bytes)
     const latest = await WorkspaceCatalog.get(info.id, info.scopeID)
     assertMount(latest, info)
-    const result =
-      latest.content?.manifest === checkpoint.manifest
-        ? latest
-        : await WorkspaceCatalog.publishContent(info, checkpoint.manifest)
+    let result: WorkspaceCatalog.Info
+    try {
+      result =
+        latest.content?.manifest === checkpoint.manifest
+          ? latest
+          : await WorkspaceCatalog.publishContent(info, checkpoint.manifest)
+    } catch (error) {
+      if (attempt && WorkspaceCatalog.BindingChanged.isInstance(error)) await WorkspaceCheckpoints.conflict(attempt)
+      throw error
+    }
+    if (attempt) await WorkspaceCheckpoints.saved(attempt, result)
     await beforeRelease?.(result)
     await files.acknowledge(checkpoint.id)
     return result
@@ -441,7 +463,7 @@ export namespace WorkspaceMounts {
     )
       throw new WorkspaceCatalog.BindingChanged({ workspaceID: latest.id, message: "Workspace mount changed" })
   }
-  function checkpointID(operationID: string, mountID: string) {
+  export function checkpointID(operationID: string, mountID: string) {
     return `checkpoint_${createHash("sha256")
       .update(JSON.stringify([operationID, mountID]))
       .digest("hex")}`

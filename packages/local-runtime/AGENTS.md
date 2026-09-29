@@ -1,15 +1,15 @@
 # local-runtime Package
 
-Own native execution, generic runtime reload, CLI network/Scope host adapters and public exports.
+Own native execution, reload, CLI host adapters and public exports.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Own configuration schemas, normalization, reference checks and secret handling in `src/config-schema.ts`; consumers use its typed reader and the host composes its registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
 
-Run `bun run typecheck`, affected tests and root package/dependency checks.
+Run typecheck, affected tests and root package/dependency checks.
 
-Keep lifecycle implementation in harness and local capability registration here. Local Host captures home and environment once; `createLocalClient` requires its Runtime Handle and explicit Scope selector. Worker modules export startup functions and activate only at their selected entrypoint. Session HTTP handlers and in-process clients share `session-api.ts`; preserve Scope ownership, durable inbox scheduling and cancellation. Do not import CLI, HTTP-server or product implementation packages.
+Keep lifecycle in Harness and register local capabilities here. Local Host captures home and environment once; `createLocalClient` requires its Runtime Handle and explicit Scope selector. Worker modules export startup functions and activate only at their selected entrypoint. Session HTTP handlers and in-process clients share `session-api.ts`; preserve Scope ownership, durable inbox scheduling and cancellation. Do not import CLI, HTTP-server or product implementation packages.
 
 - Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
 - Own native/Docker Environment providers, Executor transport and receipts. Reuse `OwnedProcess` and Workspace coordination; release durable claims only after saved output and files. Validate `bun test test/environment test/workspace/coordinator.test.ts` and the Docker integration described in the package README.
@@ -18,11 +18,11 @@ Keep lifecycle implementation in harness and local capability registration here.
 
 Workspace removal and automatic reclamation share the lifecycle gate and native retirement claim. Git/setup processes use the Workspace process owner; short metadata mutations must not reserve a read-only turn as a writer. Preserve active users, on-disk lock ownership, and unverified local commits. Validate workspace changes with `bun test test/workspace` plus the Presets worktree suites.
 
-Native Workspace coordination owns canonical-root overlap and process identity fencing across Runtime instances. Launchers bind process claims before activating commands and retain ownership through actual exit. Windows Job Objects, macOS coalitions and Linux subreaper completion receipts supply native liveness; native workers own stream drainage independently; validate both with `bun test test/process/owned-process.test.ts test/workspace/bash-footprint.test.ts` and the Windows-owned process suites on Windows.
+Workspace coordination owns physical overlap and process identity across Runtimes. Launchers bind process claims before activating commands and retain ownership through actual exit. Windows Job Objects, macOS coalitions and Linux subreaper completion receipts supply native liveness; native workers own stream drainage independently; validate both with `bun test test/process/owned-process.test.ts test/workspace/bash-footprint.test.ts` and the Windows-owned process suites on Windows.
 
 Workspace file indexes, native subscriptions and edit evidence follow the resolved Workspace generation. Configuration subscriptions remain Scope-owned. File events carry Workspace identity and the committed content version; test sibling directories with `bun test test/workspace-file/isolation.test.ts`.
 
-Use public `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports. Preserve byte versions, native link kinds and exclusive publication. Snapshots use Harness link encoding. Acquire Workspace claims before activation; process ownership does not infer writable roots.
+Use public `process/owned-process`, `file/mutation`, `file/link` and `file/rename` exports. Preserve byte versions, native link kinds and exclusive publication. Snapshots use Harness link encoding. Acquire resource pins before activation; Sandbox grants never imply writer exclusion. Versioned Executor inputs separate resource use, capture and concrete mutations.
 
 Use `native/ffi` internally; verify both JIT modes with `test/process/native-bindings.test.ts`.
 

@@ -110,9 +110,16 @@ export function cancellations(input: unknown, targets: Target[] = ["native", "re
                     ? await Bun.file(filename).text()
                     : await docker(settings.remote!, ["exec", container!, "cat", filename])
                 const ledger = JSON.parse(raw) as {
-                  claims: Array<{ id: string; state: string; roots: Array<{ path: string }> | null }>
+                  claims: Array<{
+                    id: string
+                    state: string
+                    roots: Array<{ path: string }> | null
+                    useRoots?: Array<{ path: string }>
+                  }>
                 }
-                return ledger.claims.filter((claim) => claim.roots?.some((root) => root.path === resources.directory))
+                return ledger.claims.filter((claim) =>
+                  [...(claim.roots ?? []), ...(claim.useRoots ?? [])].some((root) => root.path === resources.directory),
+                )
               }
               async function prepare(stage: string, code: string, signal?: AbortSignal) {
                 return EnvironmentProcess.prepare({
@@ -125,7 +132,9 @@ export function cancellations(input: unknown, targets: Target[] = ["native", "re
                     args: ["-e", code, token],
                     cwd: resources.directory!,
                     env: {},
-                    writableRoots: [resources.directory!],
+                    useRoots: [resources.directory!],
+                    // The waiting phase explicitly injects a managed mutation; ordinary commands only pin resources.
+                    mutationRoots: stage === "blocker" || stage === "waiting" ? [resources.directory!] : [],
                     cooperative: stage === "blocker",
                   },
                 })
