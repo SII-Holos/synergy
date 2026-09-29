@@ -301,7 +301,7 @@ export const BrowserRoute = () =>
           else if (input.action === "policy") await BrowserProfiles.setPolicy(id, input.origin, input.policy)
           else if (input.action === "clear") await BrowserRuntime.clearProfile(id)
           else {
-            await BrowserRuntime.clearProfile(id)
+            await BrowserRuntime.clearProfile(id, false)
             await BrowserProfiles.remove(id)
           }
           return c.json(await BrowserProfiles.list())

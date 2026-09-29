@@ -234,11 +234,11 @@ describe("desktop preload bridge", () => {
 
     nativeListener!.wrapped(null, {
       type: "native.loaded",
-      protocolVersion: 3,
+      protocolVersion: 4,
       pageId: "p1",
       url: "https://example.com",
     })
-    expect(events).toEqual([{ type: "native.loaded", protocolVersion: 3, pageId: "p1", url: "https://example.com" }])
+    expect(events).toEqual([{ type: "native.loaded", protocolVersion: 4, pageId: "p1", url: "https://example.com" }])
   })
 
   test("routes browser native control invocations", async () => {

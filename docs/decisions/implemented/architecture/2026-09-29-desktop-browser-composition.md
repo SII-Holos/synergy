@@ -8,7 +8,7 @@ The full backend selection includes browser hosting even when launched by CLI or
 
 ## Decision
 
-The full and Web selections exclude browser-runtime. The Desktop selection includes it explicitly. Source Desktop startup chooses desktopComponents before Runtime registration; the installed launcher passes the Desktop host selection to its component loader. Ordinary CLI startup does not activate an installed browser component. The browser install shortcut selects Desktop rather than an independent Chromium host.
+The full and Web selections exclude browser-runtime. The Desktop selection includes it explicitly. Source Desktop startup chooses desktopComponents before Runtime registration; the installed launcher passes the Desktop host selection to its component loader. Ordinary CLI startup does not activate an installed browser component. Browser hosting uses Electron bundled with Desktop, without an independent Chromium installer.
 
 Desktop's managed server and local development orchestrator set the Desktop browser composition flag. Web development starts only the server and application. Browser component registration supplies HTTP services without contributing Chromium installation commands.
 

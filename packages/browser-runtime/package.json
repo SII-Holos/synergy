@@ -28,7 +28,6 @@
   "dependencies": {
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-util": "workspace:*",
     "@hono/standard-validator": "^0.2.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
@@ -41,7 +40,6 @@
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
-    "@zip.js/zip.js": "2.8.26",
     "playwright-core": "1.61.0",
     "typescript": "catalog:"
   },

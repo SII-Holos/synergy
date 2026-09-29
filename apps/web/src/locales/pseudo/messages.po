@@ -1480,7 +1480,19 @@ msgid "app.browser.remote.textInput"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resume"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resumeHint"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.suspended"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
@@ -9432,6 +9444,126 @@ msgstr ""
 msgid "brand.workbench.synergy"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "browser.downloads.accept"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.waiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.access"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.allow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.ask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.currentDefault"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.deny"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.disable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.downloads"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.enable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.explanation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.inherit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.manage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.openAs"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.origin"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.originPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.policyNote"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.revoke"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.temporary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.uploads"
+msgstr ""
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
 msgstr ""
@@ -9458,10 +9590,6 @@ msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "browser.recovery.checking"
 msgstr ""
 
 #. ── Browser tool summaries ──────────────────────────────────────────
@@ -9506,6 +9634,18 @@ msgstr ""
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.close"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.new"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.pages"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

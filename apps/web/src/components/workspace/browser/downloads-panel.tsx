@@ -89,7 +89,7 @@ export function DownloadsPanel() {
           </div>
           <For each={entries()}>
             {(entry) => {
-              const meta = STATE_META[entry.state] ?? STATE_META.in_progress
+              const meta = () => STATE_META[entry.state] ?? STATE_META.in_progress
 
               return (
                 <div class="flex gap-2 px-3 py-1.5 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
@@ -110,8 +110,8 @@ export function DownloadsPanel() {
                         {lingui._({ id: "browser.downloads.cancel", message: "Cancel" })}
                       </button>
                     </Show>
-                    <span class={`inline-flex items-center px-1.5 rounded text-10-medium ${meta.color} ${meta.bg}`}>
-                      {lingui._(meta.label)}
+                    <span class={`inline-flex items-center px-1.5 rounded text-10-medium ${meta().color} ${meta().bg}`}>
+                      {lingui._(meta().label)}
                     </span>
                   </span>
                   <span

@@ -361,12 +361,14 @@ export class BrowserNativePagePool {
     contents.on("did-stop-loading", loaded)
     contents.on("did-navigate", updated)
     contents.on("did-navigate-in-page", updated)
+    contents.on("page-title-updated", updated)
     contents.on("did-fail-load", failed)
     return () => {
       contents.off("did-start-loading", loading)
       contents.off("did-stop-loading", loaded)
       contents.off("did-navigate", updated)
       contents.off("did-navigate-in-page", updated)
+      contents.off("page-title-updated", updated)
       contents.off("did-fail-load", failed)
       this.clearGenerationTimers(generation)
     }

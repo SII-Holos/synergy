@@ -109,7 +109,7 @@ describe("Browser Host broker authentication", () => {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: "host-recovery",
         token: BrowserBroker.secret(),
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       })
       BrowserBroker.prepare(owner, "home", "native")
       await BrowserBroker.createPage({
@@ -166,7 +166,7 @@ describe("Browser Host broker authentication", () => {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: "host-disconnect-order",
         token: BrowserBroker.secret(),
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       })
       await BrowserBroker.createPage({
         profile: await BrowserProfiles.defaultProfile(),

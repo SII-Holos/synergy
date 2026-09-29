@@ -305,8 +305,8 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
       }
       const parsed = BrowserEventSchema.safeParse(input)
       if (!parsed.success) {
-        browserDebug("ws.message.invalid", { error: "Browser event failed Protocol v2 validation." })
-        socket.close(1003, "Invalid Browser Protocol v2 event")
+        browserDebug("ws.message.invalid", { error: "Browser event failed protocol validation." })
+        socket.close(1003, "Invalid Browser protocol event")
         return
       }
       const msg = parsed.data
@@ -337,16 +337,18 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
           break
         }
         case "host.status": {
-          const pageId = typeof msg.pageId === "string" ? msg.pageId : store.pageId()
-          if (pageId && isBrowserHostStatus(msg.status)) {
-            store.setHostStatus(pageId, msg.status)
+          if (isBrowserHostStatus(msg.status)) {
+            const ids = msg.pageId
+              ? [msg.pageId]
+              : store.session.pages.filter((page) => page.status === "active").map((page) => page.id)
+            for (const id of ids) store.setHostStatus(id, msg.status)
             if (msg.status === "ready") controlSender.retryNow()
           }
           break
         }
         case "page.created": {
           store.setSession("connectionStatus", "connected")
-          store.setBrowserError(null)
+          store.clearPageError(msg.page.id)
           store.upsertPage(msg.page)
           store.setHostStatus(msg.page.id, "ready")
           break

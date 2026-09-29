@@ -150,6 +150,9 @@ export function createBrowserStore() {
   function setBrowserError(error: BrowserErrorState | null) {
     setPageErrors(error?.pageId ?? pageId() ?? "global", error ?? undefined)
   }
+  function clearPageError(id: string) {
+    setPageErrors(id, undefined)
+  }
 
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
 
@@ -228,11 +231,11 @@ export function createBrowserStore() {
       width: nextWidth,
       height: nextHeight,
     }
-    if (!id) {
+    if (!id || page()?.status !== "active") {
       browserDebug("store.viewport.local", {
         width: nextWidth,
         height: nextHeight,
-        reason: "missing-page",
+        reason: "inactive-page",
       })
       return
     }
@@ -276,18 +279,19 @@ export function createBrowserStore() {
     if (!nextPageId) return
     setHostStatuses(nextPageId, status)
     if (status !== "ready") return
-    clearTransientHostError()
+    clearTransientHostError(nextPageId)
   }
 
-  function clearTransientHostError() {
-    const error = browserError()
+  function clearTransientHostError(id = pageId() ?? "global") {
+    if (id !== "global" && session.pages.find((page) => page.id === id)?.status !== "active") return
+    const error = pageErrors[id]
     if (!error) return
     if (
       error.code === "browser_host_disconnected" ||
       error.code === "browser_host_pending" ||
       error.message.includes("Browser Host control is not attached")
     ) {
-      setBrowserError(null)
+      clearPageError(id)
     }
   }
 
@@ -349,6 +353,7 @@ export function createBrowserStore() {
     setDialogRequest,
     browserError,
     setBrowserError,
+    clearPageError,
     browserTraceId,
     hostStatus,
     hostStatuses,

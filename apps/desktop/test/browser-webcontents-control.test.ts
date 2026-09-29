@@ -254,7 +254,7 @@ describe("Browser WebContents control", () => {
     await expect(pending).rejects.toMatchObject({ code: "browser_navigation_denied" })
   })
 
-  test("opens http popups inside the same view and reports denied popups", async () => {
+  test("refuses unmanaged popups without navigating the source page", async () => {
     const contents = new MockContents()
     const target = targetFor(contents)
     new BrowserWebContentsControl(target as never)
@@ -262,7 +262,7 @@ describe("Browser WebContents control", () => {
 
     expect(contents.windowOpenHandler!({ url: "https://example.com/next" })).toEqual({ action: "deny" })
     await Bun.sleep(0)
-    expect(contents.loadedUrls).toEqual(["https://example.com/next"])
+    expect(contents.loadedUrls).toEqual([])
 
     expect(contents.windowOpenHandler!({ url: "file:///etc/passwd" })).toEqual({ action: "deny" })
     expect(target.state.blocked).toHaveLength(1)

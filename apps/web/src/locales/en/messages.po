@@ -1413,7 +1413,7 @@ msgstr "Native browser recovery failed"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.native.recoveryHint"
-msgstr "Synergy will keep retrying the local browser. You can retry now without switching to a remote stream."
+msgstr "Synergy is reconnecting to the browser. You can retry now."
 
 #. ── Address bar ──
 msgid "app.browser.nav.back"
@@ -1480,8 +1480,20 @@ msgid "app.browser.remote.textInput"
 msgstr "Remote browser text input"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resume"
+msgstr "Resume page"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resumeHint"
+msgstr "Resume to reload this address using its saved identity. Unsaved forms are not restored."
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
 msgstr "Retry"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.suspended"
+msgstr "Page suspended"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.upload.chooseFile"
@@ -9432,6 +9444,126 @@ msgstr "Holos"
 msgid "brand.workbench.synergy"
 msgstr "Synergy workspace"
 
+#. js-lingui-explicit-id
+msgid "browser.downloads.accept"
+msgstr "Download"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.waiting"
+msgstr "Waiting"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.access"
+msgstr "Access"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.allow"
+msgstr "Allow"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.ask"
+msgstr "Ask"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.clear"
+msgstr "Clear website data"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.confirm"
+msgstr "This closes this identity's pages and signs out of its websites. Continue?"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.create"
+msgstr "Create identity"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.currentDefault"
+msgstr "Default"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.default"
+msgstr "Use by default"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.deny"
+msgstr "Deny"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.disable"
+msgstr "Disable"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.downloads"
+msgstr "Downloads"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.enable"
+msgstr "Enable"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.explanation"
+msgstr "Identities share logins across tasks. Changing identity opens a new page. Temporary identities are discarded after their last page closes."
+
+#. js-lingui-explicit-id
+msgid "browser.identities.inherit"
+msgstr "Use task permissions"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.manage"
+msgstr "Identities"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.name"
+msgstr "Identity name"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.openAs"
+msgstr "Open a copy as"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.origin"
+msgstr "Website origin"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.originPlaceholder"
+msgstr "https://example.com"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.policyNote"
+msgstr "These rules apply to agents. Task permissions still apply; Full Access bypasses approval rules. Disabled identities stay unavailable."
+
+#. js-lingui-explicit-id
+msgid "browser.identities.remove"
+msgstr "Delete identity"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.revoke"
+msgstr "Reset website permissions"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.save"
+msgstr "Save"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.temporary"
+msgstr "Temporary identity"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.unavailable"
+msgstr "Identity unavailable"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.uploads"
+msgstr "Uploads"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
 msgstr "{count, plural, one {# asset} other {# assets}}"
@@ -9459,10 +9591,6 @@ msgstr "timeout"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "unsettled"
-
-#. js-lingui-explicit-id
-msgid "browser.recovery.checking"
-msgstr "Checking the existing page…"
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.condition"
@@ -9507,6 +9635,18 @@ msgstr "URL"
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
 msgstr "Value length"
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.close"
+msgstr "Close page"
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.new"
+msgstr "New page"
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.pages"
+msgstr "Browser pages"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"

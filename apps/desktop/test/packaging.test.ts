@@ -149,15 +149,6 @@ describe("desktop packaging", () => {
     expect(config.win?.verifyUpdateCodeSignature).toBe(true)
   })
 
-  test("pins Browser Host executable names to the signed manifest contract", async () => {
-    const config = (await Bun.file(
-      new URL("../electron-builder.browser-host.json", import.meta.url),
-    ).json()) as BrowserHostBuilderConfig
-
-    expect(config.win?.executableName).toBe("Synergy Browser Host")
-    expect(config.linux?.executableName).toBe("synergy-browser-host")
-  })
-
   test("configures installer hooks that expose the embedded runtime as synergy", async () => {
     const config = (await Bun.file(
       new URL("../electron-builder.json", import.meta.url),
@@ -286,13 +277,11 @@ describe("desktop packaging", () => {
     )
   })
 
-  test("rejects a runtime without its Playwright Core module", async () => {
+  test("rejects a runtime without its Desktop browser backend module", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "runtime/node_modules/playwright-core/package.json"))
+    await fs.rm(path.join(runtimeDir, "runtime/node_modules/@ericsanchezok/synergy-browser-runtime/package.json"))
 
-    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
-      /node_modules\/playwright-core\/package\.json/,
-    )
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(/synergy-browser-runtime\/package\.json/)
   })
 
   test("rejects a runtime without its ONNX Web embedding module", async () => {

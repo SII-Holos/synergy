@@ -61,6 +61,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-browser-runtime": "workspace:*",
     "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
@@ -75,8 +76,7 @@
     "jsonc-parser": "3.3.1",
     "playwright-core": "1.61.0",
     "remeda": "catalog:",
-    "typescript": "catalog:",
-    "@ericsanchezok/synergy-browser-runtime": "workspace:*"
+    "typescript": "catalog:"
   },
   "synergy": {
     "formatVersion": 1,

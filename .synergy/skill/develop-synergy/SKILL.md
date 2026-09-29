@@ -95,7 +95,7 @@ Report the isolated home label without exposing secrets, chosen mode and ports, 
 
 ## Native Computer Verification
 
-For macOS Computer changes, use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. `SYNERGY_COMPUTER_DRIVER_PATH` may point to a verified development binary; production builds use the pinned driver. Exercise discovery, observation, a background action in a disposable native app, image delivery, profile denial, cancellation, and reconnect. Check the target app state and frontmost app independently; a successful input dispatch alone is insufficient. Never replace a missing OS grant with another application's authority.
+For native Browser and macOS Computer changes, use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. `SYNERGY_COMPUTER_DRIVER_PATH` may point to a verified development binary; production builds use the pinned driver. Exercise discovery, observation, a background action in a disposable native app, image delivery, profile denial, cancellation, and reconnect. Check the target app state and frontmost app independently; a successful input dispatch alone is insufficient. Never replace a missing OS grant with another application's authority.
 
 For OS permission verification, launch the isolated app through macOS LaunchServices and inspect its actual permission state. A terminal-spawned Electron can inherit the terminal host's TCC responsibility, so a successful preflight does not establish that the standalone Desktop app has its own grants. Use a clearly named isolated app bundle; never modify another app's identity or reuse its grants to make a test pass.
 
@@ -110,3 +110,9 @@ Keep a native operation's result and errno in the same native call. Capture erro
 Build and load native assets with the same libc selector. Cover source glibc/musl detection, compiled overrides, non-Linux defaults and explicit cross-build targets through `test/process/native-library.test.ts`. Temporary asset selection tests can replace system inputs; they do not establish actual musl compilation or execution.
 
 For modular release changes, verify a packed core and Web selection outside the checkout, then validate the whole release and Desktop inventories. Runtime resources belong to their package; update the shared release layout and installer upgrade/removal contracts together. Preserve checksum validation for filenames containing spaces and reject unlisted module files.
+
+## Isolate native Browser acceptance
+
+Electron userData owns persistent browser partitions and is separate from the backend home. For an isolated source acceptance run, build Desktop and launch a task-owned `.mjs` entry which imports `{ app }` from the workspace Electron package, calls `app.setPath("userData", isolatedDirectory)`, then dynamically imports the absolute `apps/desktop/dist/main.js` path. Set `SYNERGY_HOME` to the isolated home, use the dev channel and explicit alternate server/Web ports, and connect only that local broker. Keep the entry and any registration secret outside the repository. Do not reuse the user's real Electron profile or copy browser credentials.
+
+Launch the actual executable named by Electron's `path.txt` when recording the owned PID; killing a Node package shim may leave Electron running. Check the command line and port before stopping it. For CDP-based UI acceptance, connect Node Playwright to an explicitly enabled local debugging port and disconnect the client after each check; do not change the installed product's debugging settings. Rebuild and restart only the isolated main process after native changes. Use the same isolated userData across a controlled restart when testing login persistence.

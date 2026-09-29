@@ -41,6 +41,7 @@ class MockWebContents extends EventEmitter {
   readonly session = { setProxy: async () => undefined }
   readonly debugger = new MockDebugger()
   url = "about:blank"
+  title = ""
   destroyed = false
   reloads = 0
   stopped = 0
@@ -54,7 +55,7 @@ class MockWebContents extends EventEmitter {
   }
 
   getTitle() {
-    return ""
+    return this.title
   }
 
   isLoading() {
@@ -190,6 +191,20 @@ describe("Browser native page pool", () => {
       { type: "setViewport", width: 1280, height: 720 },
       { type: "navigate", url: "https://example.com", source: "user" },
     ])
+    await pool.destroy()
+  })
+
+  test("publishes background document-title changes without replacing the page", async () => {
+    const events: Array<{ type: string; page?: { id: string; title: string } }> = []
+    const pool = new BrowserNativePagePool()
+    const handle = await pool.create(input("title-change", (event) => events.push(event)))
+    const contents = views.at(-1)!.webContents
+    contents.title = "Background title"
+    contents.emit("page-title-updated", {}, contents.title)
+    expect(events.at(-1)).toMatchObject({
+      type: "page.updated",
+      page: { id: handle.state().id, title: "Background title" },
+    })
     await pool.destroy()
   })
 

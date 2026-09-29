@@ -211,6 +211,12 @@ export const browser = {
   dismiss: { id: "app.browser.error.dismiss", message: "Dismiss" },
   disconnected: { id: "app.browser.disconnected", message: "Browser disconnected" },
   retry: { id: "app.browser.retry", message: "Retry" },
+  resume: { id: "app.browser.resume", message: "Resume page" },
+  suspended: { id: "app.browser.suspended", message: "Page suspended" },
+  resumeHint: {
+    id: "app.browser.resumeHint",
+    message: "Resume to reload this address using its saved identity. Unsaved forms are not restored.",
+  },
   nativeRecovering: {
     id: "app.browser.native.recovering",
     message: "Recovering the native browser…",
@@ -221,7 +227,7 @@ export const browser = {
   },
   nativeRecoveryHint: {
     id: "app.browser.native.recoveryHint",
-    message: "Synergy will keep retrying the local browser. You can retry now without switching to a remote stream.",
+    message: "Synergy is reconnecting to the browser. You can retry now.",
   },
   noPage: { id: "app.browser.empty.noPage", message: "No page open" },
   nextNavigation: { id: "app.browser.empty.nextNavigation", message: "The next navigation will appear here." },

@@ -57,7 +57,7 @@ describe("release runtime asset contract", () => {
       const required = requiredRuntimeArtifactPaths(name)
       expect(required).toContain("runtime/generation.json")
       expect(required).toContain("runtime/node_modules/@ericsanchezok/synergy-web-app/app/index.html")
-      expect(required).toContain("runtime/node_modules/playwright-core/lib/coreBundle.js")
+      expect(required.some((file) => file.includes("playwright"))).toBe(false)
       expect(required.some((file) => file.includes("synergy-native-") && file.endsWith("/watcher.node"))).toBe(true)
       expect(required.some((file) => file.endsWith("/ort-wasm-simd-threaded.asyncify.wasm"))).toBe(true)
       expect(required).not.toContain("app/index.html")

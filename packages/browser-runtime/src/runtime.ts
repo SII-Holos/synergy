@@ -231,12 +231,12 @@ export namespace BrowserRuntime {
     return create
   }
 
-  export async function clearProfile(id: string): Promise<void> {
+  export async function clearProfile(id: string, restoreEnabled = true): Promise<void> {
     const profile = await BrowserProfiles.get(id)
     const wasDefault = (await BrowserProfiles.list()).defaultProfileId === id
     await BrowserProfiles.update(id, { enabled: false })
     await BrowserBroker.clearProfile(profile)
-    if (profile.enabled) {
+    if (profile.enabled && restoreEnabled) {
       await BrowserProfiles.update(id, { enabled: true })
       if (wasDefault) await BrowserProfiles.setDefault(id)
     }
@@ -251,6 +251,7 @@ export namespace BrowserRuntime {
     return {
       status: BrowserBroker.ready("native") ? ("ready" as const) : ("unavailable" as const),
       processCount: 0,
+      measuredProcessCount: 0,
       ownerCount: values.length,
       sessionOwnerCount: values.filter((session) => session.owner.mode === "session").length,
       scopeOwnerCount: values.filter((session) => session.owner.mode === "scope").length,

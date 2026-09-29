@@ -3,7 +3,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, createResource, createSignal, lazy, Show, onCleanup } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, lazy, Show } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
@@ -15,7 +15,7 @@ import { AnnotationInput } from "./annotation-input"
 import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
-import { createBrowserCommandId, shouldResumeBrowserSession } from "./browser-command"
+import { createBrowserCommandId } from "./browser-command"
 import { normalizeBrowserError } from "./browser-error"
 import { browser as B } from "@/locales/messages"
 import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
@@ -137,13 +137,12 @@ function BrowserPanelInner(props: {
     browser.navigate(request.url)
   })
 
-  const recovering = () => false
-  const recoveryVersion = () => 0
+  const recovering = () => browser.hostStatus() === "restarting"
   const retryNative = () => {
     ws.retryNative()
     const pageId = browser.pageId()
     if (!pageId) return
-    if (browser.page()?.status === "suspended" || browser.hostStatus() === "detached") {
+    if (browser.page()?.status !== "active" || browser.hostStatus() === "detached") {
       browser.send({ type: "resume", pageId })
       return
     }
@@ -153,7 +152,7 @@ function BrowserPanelInner(props: {
       .catch((error) => {
         const normalized = normalizeBrowserError(error, "Native Browser recovery failed")
         browser.setHostStatus(pageId, "failed")
-        browser.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
+        browser.setBrowserError({ pageId, severity: "error", code: normalized.code, message: normalized.message })
       })
   }
 
@@ -196,7 +195,7 @@ function BrowserPanelInner(props: {
       }
     } catch (error) {
       const normalized = normalizeBrowserError(error, "Browser diagnostics failed")
-      browser.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
+      browser.setBrowserError({ pageId, severity: "error", message: normalized.message, code: normalized.code })
     }
   }
 
@@ -241,6 +240,7 @@ function BrowserPanelInner(props: {
         .catch((error) => {
           const normalized = normalizeBrowserError(error, "Browser annotation failed")
           browser.setBrowserError({
+            pageId,
             severity: "error",
             message: normalized.message,
             code: normalized.code,

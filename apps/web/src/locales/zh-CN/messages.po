@@ -1413,7 +1413,7 @@ msgstr "原生浏览器恢复失败"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.native.recoveryHint"
-msgstr "Synergy 将继续重试本地浏览器。你可以立即重试，系统不会切换到远程画面。"
+msgstr "Synergy 正在重新连接浏览器，也可以立即重试。"
 
 #. ── Address bar ──
 msgid "app.browser.nav.back"
@@ -1480,8 +1480,20 @@ msgid "app.browser.remote.textInput"
 msgstr "远程浏览器文本输入"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resume"
+msgstr "恢复页面"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resumeHint"
+msgstr "恢复后会使用此页面的身份重新加载网址，未保存的表单不会恢复。"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
 msgstr "重试"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.suspended"
+msgstr "页面已挂起"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.upload.chooseFile"
@@ -9432,6 +9444,126 @@ msgstr "Holos"
 msgid "brand.workbench.synergy"
 msgstr "Synergy 工作台"
 
+#. js-lingui-explicit-id
+msgid "browser.downloads.accept"
+msgstr "接收"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.waiting"
+msgstr "待确认"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.access"
+msgstr "访问"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.allow"
+msgstr "允许"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.ask"
+msgstr "询问"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.clear"
+msgstr "清除网站数据"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.confirm"
+msgstr "这会关闭该身份的页面，并退出已登录的网站。是否继续？"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.create"
+msgstr "创建身份"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.currentDefault"
+msgstr "默认"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.default"
+msgstr "设为默认"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.deny"
+msgstr "拒绝"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.disable"
+msgstr "停用"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.downloads"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.enable"
+msgstr "启用"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.explanation"
+msgstr "身份可跨任务复用网站登录。切换身份会打开新页面；临时身份在最后一个页面关闭后清除。"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.inherit"
+msgstr "沿用任务权限"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.manage"
+msgstr "身份"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.name"
+msgstr "身份名称"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.openAs"
+msgstr "使用其他身份打开副本"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.origin"
+msgstr "网站来源"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.originPlaceholder"
+msgstr "https://example.com"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.policyNote"
+msgstr "规则约束智能体，且仍受任务权限限制。完全访问模式跳过审批规则；停用的身份始终不可用。"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.remove"
+msgstr "删除身份"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.revoke"
+msgstr "重置网站权限"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.save"
+msgstr "保存"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.temporary"
+msgstr "临时身份"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.unavailable"
+msgstr "身份不可用"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.uploads"
+msgstr "上传"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
 msgstr "{count} 个资源"
@@ -9459,10 +9591,6 @@ msgstr "超时"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "未稳定"
-
-#. js-lingui-explicit-id
-msgid "browser.recovery.checking"
-msgstr "正在核对已有页面……"
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.condition"
@@ -9507,6 +9635,18 @@ msgstr "URL"
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
 msgstr "输入长度"
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.close"
+msgstr "关闭页面"
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.new"
+msgstr "新建页面"
+
+#. js-lingui-explicit-id
+msgid "browser.tabs.pages"
+msgstr "浏览器页面"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"

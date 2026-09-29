@@ -75,3 +75,19 @@ test("disabled identity cannot reopen a page and concurrent opens respect the li
     expect(browser.pages).toHaveLength(16)
     await browser.dispose()
   }))
+
+test("open requests deduplicate concurrent allocation and never recreate a closed page", () =>
+  runtime.run(async () => {
+    const browser = session()
+    const request = { requestId: "open-once", url: "https://example.com/deduplicate" }
+    const [a, b] = await Promise.all([browser.openPage(request), browser.openPage(request)])
+    expect(a.id).toBe(b.id)
+    expect(browser.pages).toHaveLength(1)
+    await expect(browser.openPage({ ...request, url: "https://example.com/other" })).rejects.toMatchObject({
+      code: "browser_command_id_conflict",
+    })
+    await browser.closePage(a.id)
+    await expect(browser.openPage(request)).rejects.toMatchObject({ code: "browser_page_suspended" })
+    expect(browser.pages).toHaveLength(0)
+    await browser.dispose()
+  }))

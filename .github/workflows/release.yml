@@ -155,17 +155,14 @@ jobs:
             platform: darwin
             runtime_targets: darwin-x64,darwin-arm64
             builder_args: --mac pkg dmg zip --x64 --arm64
-            host_builder_args: --mac zip --x64 --arm64
           - os: windows-latest
             platform: win32
             runtime_targets: win32-x64
             builder_args: --win nsis zip --x64
-            host_builder_args: --win zip --x64 --arm64
           - os: ubuntu-latest
             platform: linux
             runtime_targets: linux-x64,linux-arm64
             builder_args: --linux AppImage deb tar.gz --x64 --arm64
-            host_builder_args: --linux zip --x64 --arm64
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:

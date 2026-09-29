@@ -4,6 +4,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import type { BrowserOriginPolicy, BrowserProfile, BrowserProfileListSchema } from "@ericsanchezok/synergy-browser-core"
 import type { z } from "zod"
 import { useSDK } from "@/context/sdk"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { useBrowser } from "./browser-store"
 import { normalizeBrowserError } from "./browser-error"
 
@@ -27,8 +28,6 @@ const M = {
     id: "browser.identities.confirm",
     message: "This closes this identity's pages and signs out of its websites. Continue?",
   },
-  continue: { id: "browser.identities.continue", message: "Continue" },
-  cancel: { id: "browser.identities.cancel", message: "Cancel" },
   origin: { id: "browser.identities.origin", message: "Website origin" },
   access: { id: "browser.identities.access", message: "Access" },
   uploads: { id: "browser.identities.uploads", message: "Uploads" },
@@ -48,6 +47,8 @@ const M = {
     message:
       "These rules apply to agents. Task permissions still apply; Full Access bypasses approval rules. Disabled identities stay unavailable.",
   },
+  unavailable: { id: "browser.identities.unavailable", message: "Identity unavailable" },
+  originPlaceholder: { id: "browser.identities.originPlaceholder", message: "https://example.com" },
   retry: { id: "browser.identities.retry", message: "Retry" },
 }
 type IdentityList = z.infer<typeof BrowserProfileListSchema>
@@ -63,9 +64,12 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
   const [policy, setPolicy] = createSignal<BrowserOriginPolicy>({})
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal("")
-  const [confirmation, setConfirmation] = createSignal<"clear" | "remove">()
+  const confirm = useConfirm()
+  const [temporaryIds, setTemporaryIds] = createSignal<string[]>([])
   const selected = () => catalog().profiles.find((profile) => profile.id === identity())
-  const profileName = (id: string) => catalog().profiles.find((profile) => profile.id === id)?.name ?? _(M.temporary)
+  const profileName = (id: string) =>
+    catalog().profiles.find((profile) => profile.id === id)?.name ??
+    (temporaryIds().includes(id) ? _(M.temporary) : _(M.unavailable))
   const route = async () => ({
     path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
     query_directory: sdk.directory,
@@ -94,7 +98,6 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
   function choose(profile: BrowserProfile) {
     setIdentity(profile.id)
     setName(profile.name)
-    setConfirmation(undefined)
   }
   async function manage(input: Parameters<typeof sdk.client.browser.manageProfile>[0]["browserManageProfile"]) {
     const id = identity()
@@ -104,7 +107,23 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
       { throwOnError: true },
     )
     if (response.data) setCatalog(response.data)
-    setConfirmation(undefined)
+    if (!selected()) {
+      const profile = catalog().profiles[0]
+      if (profile) choose(profile)
+      else {
+        setIdentity(undefined)
+        setName("")
+      }
+    }
+  }
+  function confirmChange(action: "clear" | "remove") {
+    confirm.show({
+      title: action === "clear" ? M.clear : M.remove,
+      description: M.confirm,
+      confirmLabel: action === "clear" ? M.clear : M.remove,
+      tone: "danger",
+      onConfirm: () => manage({ action }),
+    })
   }
   function onTabKey(event: KeyboardEvent) {
     const ids = browser.session.pages.map((page) => page.id),
@@ -157,6 +176,7 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
                     ? "◌ "
                     : ""}
                   {page.title || page.url || "about:blank"}
+                  <span class="ml-1 text-11 text-text-weak">{profileName(page.profileId)}</span>
                   {browser.dialogs[page.id] || browser.fileChoosers[page.id] ? " •" : ""}
                 </button>
                 <button
@@ -181,9 +201,12 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
           onClick={() => {
             setManager(!manager())
             if (!manager()) return
-            const profile = catalog().profiles.find((p) => p.id === browser.page()?.profileId) ?? catalog().profiles[0]
-            if (profile) choose(profile)
-            void run(refresh)
+            void run(async () => {
+              await refresh()
+              const profile =
+                catalog().profiles.find((p) => p.id === browser.page()?.profileId) ?? catalog().profiles[0]
+              if (profile) choose(profile)
+            })
           }}
         >
           {_(M.identities)}
@@ -223,7 +246,10 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
                     { ...(await route()), browserProfileCreate: { name: "Temporary", kind: "temporary" } },
                     { throwOnError: true },
                   )
-                  if (response.data) browser.openPage("about:blank", response.data.id)
+                  if (response.data) {
+                    setTemporaryIds((ids) => [...ids, response.data!.id])
+                    browser.openPage("about:blank", response.data.id)
+                  }
                 })
               }
             >
@@ -296,35 +322,20 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
           </form>
           <Show when={selected()}>
             <div class="mt-3 flex flex-wrap gap-2">
-              <Button size="small" disabled={busy()} onClick={() => setConfirmation("clear")}>
+              <Button size="small" disabled={busy()} onClick={() => confirmChange("clear")}>
                 {_(M.clear)}
               </Button>
-              <Button size="small" disabled={busy()} onClick={() => setConfirmation("remove")}>
+              <Button size="small" disabled={busy()} onClick={() => confirmChange("remove")}>
                 {_(M.remove)}
               </Button>
             </div>
-            <Show when={confirmation()}>
-              <div role="alert" class="mt-2 rounded border border-border-warning-base p-2">
-                <p>{_(M.confirm)}</p>
-                <Button
-                  size="small"
-                  disabled={busy()}
-                  onClick={() => void run(() => manage({ action: confirmation()! }))}
-                >
-                  {_(M.continue)}
-                </Button>
-                <Button size="small" onClick={() => setConfirmation(undefined)}>
-                  {_(M.cancel)}
-                </Button>
-              </div>
-            </Show>
             <p class="mt-3 text-text-weak">{_(M.policyNote)}</p>
             <div class="mt-2 flex flex-wrap items-end gap-2">
               <label>
                 {_(M.origin)}
                 <input
                   type="url"
-                  placeholder="https://example.com"
+                  placeholder={_(M.originPlaceholder)}
                   value={origin()}
                   onInput={(e) => {
                     setOrigin(e.currentTarget.value)
@@ -333,17 +344,34 @@ export function BrowserTabs(props: { sessionID: string; routeDirectory?: string;
                   class="block rounded border border-border-weak-base bg-surface-base px-2 py-1"
                 />
               </label>
-              <For each={["access", "uploads", "downloads"] as const}>
+              <For
+                each={
+                  [
+                    { value: "access", label: _(M.access) },
+                    { value: "uploads", label: _(M.uploads) },
+                    { value: "downloads", label: _(M.downloads) },
+                  ] as const
+                }
+              >
                 {(operation) => (
                   <label>
-                    {_(M[operation])}
+                    {operation.label}
                     <select
                       class="block rounded border border-border-weak-base bg-surface-base px-2 py-1"
-                      value={policy()[operation] ?? "inherit"}
-                      onChange={(e) => setPolicy({ ...policy(), [operation]: e.currentTarget.value })}
+                      value={policy()[operation.value] ?? "inherit"}
+                      onChange={(e) => setPolicy({ ...policy(), [operation.value]: e.currentTarget.value })}
                     >
-                      <For each={["inherit", "allow", "ask", "deny"] as const}>
-                        {(value) => <option value={value}>{_(M[value])}</option>}
+                      <For
+                        each={
+                          [
+                            { value: "inherit", label: _(M.inherit) },
+                            { value: "allow", label: _(M.allow) },
+                            { value: "ask", label: _(M.ask) },
+                            { value: "deny", label: _(M.deny) },
+                          ] as const
+                        }
+                      >
+                        {(option) => <option value={option.value}>{option.label}</option>}
                       </For>
                     </select>
                   </label>

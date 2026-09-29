@@ -84,7 +84,7 @@ beforeEach(() =>
       protocolVersion: BROWSER_PROTOCOL_VERSION,
       hostId: "host-page-test",
       token: BrowserBroker.secret(),
-      capabilities: { native: true, webrtc: false },
+      capabilities: { native: true },
     })
     BrowserBroker.prepare(owner, "home", "native")
     browserPage = await BrowserHostPage.create({

@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from "electron"
 import { createServer } from "node:http"
 import assert from "node:assert/strict"
+import { rm } from "node:fs/promises"
 import {
   BrowserNativePagePool,
   type BrowserNativePageHandle,
@@ -45,12 +46,10 @@ async function run() {
       events.push(event.type)
       if (event.type === "download.updated") {
         download = { ...event.entry }
-        console.log("download", download.state)
       }
       if (event.type === "page.error") console.log(event)
     },
     onPopup: (_input, page) => {
-      console.log("popup adopted", page.state().id)
       popups.push(page)
     },
   }
@@ -62,7 +61,6 @@ async function run() {
       }),
     ),
   )
-  console.log("const views =")
   const views = pages.map((page) => pool.attach(window, base.ownerKey, page.state().id))
   assert.equal(new Set(views.map((view) => view.webContents.id)).size, 8)
   for (let i = 0; i < pages.length; i++) await evaluate(pages[i]!, `window.marker=${i}`)
@@ -80,32 +78,25 @@ async function run() {
     page: { ...pages[0]!.state(), id: "work", url: `${url}/work` },
   })
   assert.equal(await evaluate(isolated, "document.cookie"), "")
-  console.log("await evaluate")
   await evaluate(pages[0]!, `window.popup=window.open('${url}/popup'); 'opened'`)
-  console.log("window.open dispatched")
   await until(() => popups.length === 1)
-  console.log("popup ready")
   await until(async () => (await evaluate(popups[0]!, "document.title")) === "/popup")
   assert.equal(await evaluate(popups[0]!, "!!window.opener"), true)
   await evaluate(popups[0]!, "window.opener.postMessage('login-complete','*'); true")
   await until(async () => (await evaluate(pages[0]!, "messages.includes('login-complete')")) === true)
   assert.match(String(await evaluate(popups[0]!, "document.cookie")), /identity=personal/)
-  console.log("await evaluate")
   await evaluate(
     pages[1]!,
     `let form=document.createElement('form'); form.method='POST'; form.action='${url}/post'; form.target='_blank'; form.innerHTML='<input name="token" value="fixture-value">'; document.body.append(form); form.submit(); true`,
   )
   await until(() => popups.length === 2)
   await until(async () => (await evaluate(popups[1]!, "window.received")) === "token=fixture-value")
-  console.log("await evaluate")
   await evaluate(popups[0]!, "setTimeout(()=>window.close(),0); true")
   await until(() => !pool.find(base.ownerKey, popups[0]!.state().id))
   await until(() => events.includes("page.closed"))
   assert.equal(await evaluate(pages[0]!, "window.marker"), 0)
-  console.log("await pages[1]!.destroy")
   await pages[1]!.destroy()
   assert.equal(await evaluate(popups[1]!, "window.received"), "token=fixture-value")
-  console.log("views[2]!.webContents.forcefullyCrashRenderer")
   views[2]!.webContents.forcefullyCrashRenderer()
   await until(async () => {
     try {
@@ -115,17 +106,41 @@ async function run() {
     }
   })
   assert.equal(await evaluate(pages[3]!, "window.marker"), 3)
-  console.log("await pool.destroy")
   views[3]!.webContents.downloadURL(`${url}/download`)
   await until(() => download?.state === "awaiting_approval")
   await new Promise((resolve) => setTimeout(resolve, 100))
   assert.equal(download?.state, "awaiting_approval")
   await pages[3]!.execute({ type: "download.accept", id: download!.id })
   await until(() => download?.state === "completed")
+  if (download?.path) await rm(download.path, { force: true })
+  const temporary = { id: "temporary", partition: "synergy-browser-temporary-fixture", revision: 0 }
+  const tempA = await pool.create({
+    ...base,
+    profile: temporary,
+    page: { ...pages[0]!.state(), id: "temp-a", url: `${url}/temp-a` },
+  })
+  const tempB = await pool.create({
+    ...base,
+    ownerKey: "task-two",
+    profile: temporary,
+    page: { ...pages[0]!.state(), id: "temp-b", url: `${url}/temp-b` },
+  })
+  await evaluate(tempA, 'document.cookie="temporary=fixture;path=/"')
+  await tempA.destroy()
+  assert.match(String(await evaluate(tempB, "document.cookie")), /temporary=fixture/)
+  await tempB.destroy()
+  const tempC = await pool.create({
+    ...base,
+    profile: temporary,
+    page: { ...pages[0]!.state(), id: "temp-c", url: `${url}/temp-c` },
+  })
+  assert.equal(await evaluate(tempC, "document.cookie"), "")
   await pool.destroy()
   window.destroy()
   server.close()
-  console.log("ACCEPTED: 8 real pages, identity sharing/isolation, popup opener/POST/close, independent recovery")
+  console.log(
+    "ACCEPTED: 8 real pages, identity sharing/isolation, popup opener/POST/close, independent recovery, download approval and temporary cleanup",
+  )
   app.exit(0)
 }
 async function evaluate(page: BrowserNativePageHandle, expression: string) {

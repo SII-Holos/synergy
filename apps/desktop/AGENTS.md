@@ -2,7 +2,7 @@
 
 These rules apply to the Electron shell. Root `AGENTS.md` and the Web/runtime package rules still apply to code reached through Desktop.
 
-Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and `develop-synergy` for manual Desktop verification. Read [Desktop release](../../docs/operations/desktop-release.md) before packaging, signing, updating, or changing release assets.
+Load `change-browser-runtime` for native Browser pages, profiles or popup work and `develop-synergy` for manual Desktop verification. Read [Desktop release](../../docs/operations/desktop-release.md) before packaging, signing, updating, or changing release assets.
 
 ## Keep Desktop a Host
 
@@ -10,11 +10,10 @@ Load `change-browser-runtime` for native Browser or Browser-host/WebRTC work and
 - Keep `contextIsolation: true`, `nodeIntegration: false`, and renderer sandboxing. Expose narrow typed preload methods; validate every IPC payload in the main process and keep privileged Electron objects out of the renderer.
 - Preserve production URL/navigation, permission, external-link, download, and window-creation policy. Do not replace blocked navigation with a permissive fallback.
 - Keep external-server development mode and packaged managed-server mode distinct. Never stop or reuse the runtime carrying the current task.
-- Native Browser uses `WebContentsView` and the shared Browser command/page contract. Remote Browser-host mode uses the shared WebRTC/data-channel path; neither creates alternate tabs or screenshot-stream presentation.
+- Native Browser creates one real `WebContentsView` per page and adopts native popups with their opener. Profile resources are shared by reference count; page commands never change human tab selection. The broker requires a local server.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
 - Keep update channel, checksum, release asset, bundled runtime, and server shutdown behavior aligned. Test packaging inputs rather than assuming source files are included.
 - Desktop owns the operating-system keep-awake assertion while Synergy is working. `src/power-save.ts` holds the only `powerSaveBlocker` assertion and the endpoint watcher; whether work is running is decided by the server's `/global/activity`, never by the renderer. The renderer may only ask the shell to re-check. Release the assertion on every quit path and keep the setting opt-in.
-- Browser Host packages only its bundled Electron entry, sandboxed page prompt preload, and independent manifest from `build/browser-host-app`. Exclude node_modules explicitly because the Bun dependency collector can fall back to the Desktop manifest even when the staged manifest has no dependencies. The Browser Host afterPack hook rejects any extra ASAR entry or unpacked payload; keep this exact closure separate from the Desktop Computer driver and full runtime.
 
 ## Verify
 
