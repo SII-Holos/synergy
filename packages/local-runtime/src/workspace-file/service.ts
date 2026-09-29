@@ -313,11 +313,13 @@ export namespace WorkspaceFileService {
           }),
         signal,
       )
+    let destinationRoot = path.dirname(to)
+    while (!(await FileEntry.inspect(destinationRoot))) destinationRoot = path.dirname(destinationRoot)
     return WorkspaceAccess.withinTask(
       () =>
         entryOperation(() =>
           WorkspaceAccess.write(
-            [path.dirname(from), path.dirname(to)],
+            [path.dirname(from), destinationRoot],
             async () => {
               await validateEntry(to, "write")
               if (await FileEntry.inspect(to)) throw new WriteConflictError()

@@ -33,14 +33,14 @@ test("shared child writers preserve external edits across cancellation and rebin
       const calls =
         !results.length && body.tools?.length
           ? parent && prompt.includes("<siblings>")
-            ? ["keep", "cancel"].map((name) => ({
+            ? ["keep", "cancel"].map((name, index) => ({
                 name: "task",
                 arguments: JSON.stringify({
                   description: `sibling-${name} write ${name}.txt`,
                   subagent_type: "implementation-engineer",
                   background: false,
                   output: { mode: "final_response" },
-                  prompt: `Run exactly once: <command>cat record.txt > ${name}.txt; cat record.txt</command> Return the observed identifier.`,
+                  prompt: `Run exactly once: <command>${[...prompt.matchAll(/<command>(.*?)<\/command>/gs)][index]![1]}</command> Return the observed identifier.`,
                 }),
               }))
             : command
