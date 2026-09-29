@@ -50,8 +50,8 @@ describe("Electron Browser Host broker contract", () => {
           ],
           { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
         )
-        const stdout = new Response(child.stdout).text().catch(() => "")
-        const stderr = new Response(child.stderr).text().catch(() => "")
+        const stdout = captureOutput(child.stdout)
+        const stderr = captureOutput(child.stderr)
         let exitCode: number
         try {
           exitCode = await withTimeout(child.exited, 30_000, "Native Browser page pool smoke")
@@ -59,16 +59,57 @@ describe("Electron Browser Host broker contract", () => {
           child.kill("SIGTERM")
           await Promise.race([child.exited, new Promise((resolve) => setTimeout(resolve, 2_000))])
           if (child.exitCode === null) child.kill("SIGKILL")
-          const [stdoutText, stderrText] = await Promise.all([stdout, stderr])
-          throw new Error(`${error instanceof Error ? error.message : String(error)}\n${stdoutText}\n${stderrText}`)
+          stdout.cancel()
+          stderr.cancel()
+          throw new Error(
+            `${error instanceof Error ? error.message : String(error)}\n${stdout.text()}\n${stderr.text()}`,
+          )
         }
-        const [stdoutText, stderrText] = await Promise.all([stdout, stderr])
+        await Promise.all([stdout.done, stderr.done])
         if (exitCode !== 0) {
-          throw new Error(`Native Browser page pool exited with ${exitCode}.\n${stdoutText}\n${stderrText}`)
+          throw new Error(`Native Browser page pool exited with ${exitCode}.\n${stdout.text()}\n${stderr.text()}`)
         }
       },
       45_000,
     )
+})
+
+function captureOutput(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let output = ""
+  const done = (async () => {
+    try {
+      while (true) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+        output = (output + decoder.decode(chunk.value, { stream: true })).slice(-100_000)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  })().catch(() => undefined)
+  return { done, text: () => output, cancel: () => void reader.cancel().catch(() => undefined) }
+}
+
+test("keeps Electron failure output available while a descendant holds the pipe open", async () => {
+  let cancelled = false
+  const output = captureOutput(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("renderer stopped before recovery\n"))
+      },
+      cancel() {
+        cancelled = true
+      },
+    }),
+  )
+  expect(await waitFor(() => output.text() || undefined, 1_000, "Electron output")).toBe(
+    "renderer stopped before recovery\n",
+  )
+  output.cancel()
+  await output.done
+  expect(cancelled).toBe(true)
 })
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {

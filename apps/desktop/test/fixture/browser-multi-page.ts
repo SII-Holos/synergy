@@ -167,7 +167,9 @@ async function run() {
   const stopObserving = pool.onGeneration(base.ownerKey, "page-2", (view) => {
     replacementId = view.webContents.id
   })
-  crashed.forcefullyCrashRenderer()
+  const rendererPid = crashed.getOSProcessId()
+  assert(rendererPid > 0 && rendererPid !== process.pid)
+  process.kill(rendererPid, "SIGKILL")
   await until(() => recovery.includes("ready"))
   stopObserving()
   assert.deepEqual(recovery, ["restarting", "ready"])
