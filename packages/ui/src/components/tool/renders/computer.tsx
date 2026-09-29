@@ -26,6 +26,10 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
           })
           .find((item) => item.sha256 === observation()?.image.sha256)
       const stage = () => imageInput()?.stage
+      const diagnostics = () =>
+        props.metadata?.computerDiagnostics
+          ? [props.output, JSON.stringify(props.metadata.computerDiagnostics, null, 2)].filter(Boolean).join("\n\n")
+          : props.output
       const mode = () => props.metadata?.deliveryMode
       const delivery = () => {
         const observed = observation()
@@ -109,7 +113,7 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
           <SummaryGrid rows={rows()} />
           <details>
             <summary>{_(D.diagnostics)}</summary>
-            <RawOutput output={props.output} />
+            <RawOutput output={diagnostics()} />
           </details>
         </BasicTool>
       )

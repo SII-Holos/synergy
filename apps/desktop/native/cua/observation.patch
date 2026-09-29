@@ -228,6 +228,15 @@
                      super::px_frame::PxFrameError::CaptureUnavailable {
                          window_id,
                          reason: e.to_string(),
+@@ -502,7 +496,7 @@
+             )));
+         }
+ 
+-        if content.is_empty() {
++        if content.is_empty() && !synergy_capture {
+             return ToolResult::error(
+                 "No content produced (neither AX tree nor screenshot succeeded)",
+             );
 --- a/crates/platform-macos/src/tools/mod.rs
 +++ b/crates/platform-macos/src/tools/mod.rs
 @@ -206,6 +206,7 @@

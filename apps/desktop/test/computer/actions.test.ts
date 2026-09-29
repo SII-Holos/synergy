@@ -121,28 +121,31 @@ test("missing Accessibility permits capture but refuses activation and input", a
   expect(calls).toEqual(["get_window_state"])
 })
 
-test("foreground observation retries only a transient capture, never an action", async () => {
-  const calls: string[] = []
-  const runtime = new ComputerRuntime(async (name) => {
-    calls.push(name)
-    if (name === "bring_to_front") return { content: [], structuredContent: { activated: true } }
-    return {
-      content: [],
-      structuredContent:
-        calls.length === 2
-          ? {
-              ...metadata,
-              screenshot_error: {
-                code: "px_capture_unavailable",
-                reason: "ScreenCaptureKit: window changed identity while capture was prepared",
-              },
-            }
-          : metadata,
-    }
-  })
-  await runtime.execute("a", { type: "observe", pid: 10, windowId: 20, foreground: true })
-  expect(calls).toEqual(["bring_to_front", "get_window_state", "get_window_state"])
-})
+test.each(["ScreenCaptureKit: window changed identity while capture was prepared", "capture_identity_changed"])(
+  "foreground observation retries a transient capture: %s",
+  async (reason) => {
+    const calls: string[] = []
+    const runtime = new ComputerRuntime(async (name) => {
+      calls.push(name)
+      if (name === "bring_to_front") return { content: [], structuredContent: { activated: true } }
+      return {
+        content: [],
+        structuredContent:
+          calls.length === 2
+            ? {
+                ...metadata,
+                screenshot_error: {
+                  code: "px_capture_unavailable",
+                  reason,
+                },
+              }
+            : metadata,
+      }
+    })
+    await runtime.execute("a", { type: "observe", pid: 10, windowId: 20, foreground: true })
+    expect(calls).toEqual(["bring_to_front", "get_window_state", "get_window_state"])
+  },
+)
 
 test("the result preserves native delivery rather than claiming the requested mode", async () => {
   const runtime = new ComputerRuntime(async () => ({

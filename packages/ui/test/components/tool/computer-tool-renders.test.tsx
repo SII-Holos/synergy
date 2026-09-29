@@ -61,6 +61,20 @@ test("historical observations never imply validated visual quality", () => {
   expect(rows.some((row) => row.value === "Quality was not recorded")).toBe(true)
 })
 
+test("capture failure details remain available without entering the summary", () => {
+  registrations.get("computer_observe")!({
+    input: {},
+    metadata: {
+      computerDiagnostics: { captureError: { code: "px_capture_unavailable", reason: "capture_identity_changed" } },
+    },
+    output: "Observe again",
+    status: "completed",
+  })
+  expect(output).toContain("Observe again")
+  expect(output).toContain("capture_identity_changed")
+  expect(JSON.stringify(rows)).not.toContain("capture_identity_changed")
+})
+
 test("image delivery and native availability remain separate in the quality card", () => {
   const sha256 = "a".repeat(64)
   const computerObservation = {

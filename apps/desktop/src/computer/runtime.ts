@@ -185,7 +185,8 @@ export class ComputerRuntime {
           const failure = z.object({ reason: z.string() }).safeParse(result.metadata.screenshot_error)
           const transition =
             (quality.success && ["invalid", "unverified"].includes(quality.data.image_status)) ||
-            (failure.success && failure.data.reason.includes("changed identity"))
+            (failure.success &&
+              (failure.data.reason === "capture_identity_changed" || failure.data.reason.includes("changed identity")))
           if (!transition) break
           await setTimeout(150, undefined, { signal })
           result = await capture()
