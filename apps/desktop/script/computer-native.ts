@@ -138,6 +138,22 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
       await Bun.sleep(1000)
       return command("refresh")
     }
+    if (!report.stageManager)
+      await check("first foreground canvas click raises the exact background window before dispatch", async () => {
+        const { observed, point } = await pixels(false)
+        const before = await command("refresh")
+        assert(before.frontmost !== initial.pid, "The first-click fixture was already foreground")
+        await act(
+          { action: "click", observationId: observed.observationId!, target: point, foreground: true },
+          observed,
+        )
+        const after = await eventually(
+          () => command("refresh"),
+          (value) => value.windows[0]!.hits === 1,
+        )
+        assert(after.windows[1]!.hits === 0, "The first foreground click reached the sibling window")
+        assert(after.frontmost === before.frontmost, "Cua did not restore the previous foreground application")
+      })
     await check("background observation and explicit foreground recovery", async () => {
       const before = await command("refresh")
       const observed = await observe()

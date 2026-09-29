@@ -135,7 +135,15 @@
      let mut prev_psn = [0u8; 8];
      let prev_ok = get_front_process_fn()
          .map(|f| unsafe { f(prev_psn.as_mut_ptr() as *mut c_void) } == 0)
-@@ -899,7 +912,16 @@
+@@ -892,14 +905,23 @@
+     }
+ 
+     make_exact_window_key(target_pid, target_wid);
+-    if !await_window_focused(target_pid, target_wid) {
++    if !crate::tools::ensure_exact_window_frontmost(target_pid, target_wid) {
+         if prev_ok {
+             unsafe { set_front(prev_psn.as_ptr() as *const c_void, 0, 0x400) };
+         }
          anyhow::bail!("exact target window did not become focused for foreground HID delivery");
      }
  
@@ -164,6 +172,21 @@
  #[cfg(target_os = "macos")]
  pub mod video_sckit;
  #[cfg(target_os = "macos")]
+--- a/crates/platform-macos/src/tools/bring_to_front.rs
++++ b/crates/platform-macos/src/tools/bring_to_front.rs
+@@ -261,6 +261,12 @@
+         CFRelease(target as CFTypeRef);
+         raised || main || focused
+     }
++}
++
++pub(crate) fn ensure_exact_window_frontmost(pid: i32, window_id: u32) -> bool {
++    // AX focus alone can name a covered window; HID input needs the same raised-window proof as bring_to_front.
++    raise_exact_ax_window(pid, window_id);
++    wait_for_exact_window(pid, window_id).exact_postcondition(pid, window_id)
+ }
+ 
+ fn exact_result(
 --- a/crates/platform-macos/src/tools/click.rs
 +++ b/crates/platform-macos/src/tools/click.rs
 @@ -639,6 +639,8 @@
@@ -239,7 +262,15 @@
              );
 --- a/crates/platform-macos/src/tools/mod.rs
 +++ b/crates/platform-macos/src/tools/mod.rs
-@@ -206,6 +206,7 @@
+@@ -1,6 +1,7 @@
+ //! MCP tool implementations for macOS.
+ 
+ mod bring_to_front;
++pub(crate) use bring_to_front::ensure_exact_window_frontmost;
+ mod capture_binding;
+ mod click;
+ mod clipboard;
+@@ -206,6 +207,7 @@
          element_ptr: Option<usize>,
          action: cua_driver_core::background_input::BackgroundAction,
      ) -> Result<(), cua_driver_core::protocol::ToolResult> {
@@ -247,7 +278,7 @@
          decide_background_window_action(self.pid, window_id, element_ptr, action).await
      }
  }
-@@ -617,6 +618,7 @@
+@@ -617,6 +619,7 @@
  
  /// Shared state passed to all tools.
  pub struct ToolState {
@@ -255,7 +286,7 @@
      pub element_cache: Arc<ElementCache>,
      pub cursor_registry: Arc<CursorRegistry>,
      pub zoom_registry: Arc<ZoomRegistry>,
-@@ -670,6 +672,7 @@
+@@ -670,6 +673,7 @@
          host_bundle_id: Option<String>,
      ) -> Self {
          Self {
@@ -263,7 +294,7 @@
              element_cache: Arc::new(ElementCache::new()),
              cursor_registry: Arc::new(CursorRegistry::new()),
              zoom_registry: Arc::new(ZoomRegistry::new()),
-@@ -809,9 +812,11 @@
+@@ -809,9 +813,11 @@
          let zoom_registry = state.zoom_registry.clone();
          let cursor_registry = state.cursor_registry.clone();
          let capture_bindings = state.capture_bindings.clone();
@@ -275,7 +306,7 @@
                  zoom_registry.retire_session(session_id);
                  element_cache.retire_session_screenshots(session_id);
                  capture_bindings.retire_session(session_id);
-@@ -834,9 +839,7 @@
+@@ -834,9 +840,7 @@
  
      registry.register(Box::new(list_apps::ListAppsTool));
      registry.register(Box::new(list_windows::ListWindowsTool));
@@ -286,7 +317,7 @@
      registry.register(Box::new(
          cua_driver_core::expectation::VerifyStateTool::new(Arc::new(
              cua_driver_core::expectation::ToolObservationProvider::new(
-@@ -855,11 +858,11 @@
+@@ -855,11 +859,11 @@
      registry.register(Box::new(set_window_frame::SetWindowFrameTool));
      registry.register(Box::new(invoke_menu::InvokeMenuTool));
      registry.register(pid_window_guarded(
@@ -300,7 +331,7 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(
-@@ -867,27 +870,27 @@
+@@ -867,27 +871,27 @@
          &pid_window_candidates,
      ));
      registry.register(pid_window_guarded(

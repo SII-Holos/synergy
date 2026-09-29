@@ -23,6 +23,9 @@ final class Canvas: NSView {
         ("Canvas code: " + nonce as NSString).draw(at: NSPoint(x: 18, y: 20), withAttributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 25, weight: .bold), .foregroundColor: NSColor.black,
         ])
+        ("Hits: \(hits)" as NSString).draw(at: NSPoint(x: 18, y: 85), withAttributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 20, weight: .medium), .foregroundColor: NSColor.black,
+        ])
         NSColor.systemBlue.setFill()
         NSBezierPath(ovalIn: target).fill()
         ("CLICK" as NSString).draw(at: NSPoint(x: 275, y: 100), withAttributes: [

@@ -62,7 +62,7 @@ export async function runComputerAcceptance(options: {
           parts: [
             {
               type: "text",
-              text: `Use only computer_observe and computer_action. Observe pid=${initial.pid}, windowId=${target.windowId} (${target.title}). Read the Canvas code from the image, then click the blue CLICK circle once using image coordinates and foreground:true. If background capture is unavailable, observe with foreground:true first. Do not press Increment. Observe after the action and report the complete code and outcome. If an action fails, stop and report the error; do not retry.`,
+              text: `Use only computer_observe and computer_action. Observe pid=${initial.pid}, windowId=${target.windowId} (${target.title}). Read the Canvas code from the image, then click the blue CLICK circle once using image coordinates and foreground:true. If background capture is unavailable, observe with foreground:true first. Do not press Increment. Observe afterward and report the complete code and visible Hits count. If the count did not increase, report the result as unconfirmed. Do not retry an action.`,
             },
           ],
           tools: {
