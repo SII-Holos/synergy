@@ -6,7 +6,10 @@ import {
   ComputerResultSchema,
   type ComputerCommand,
   type ComputerResult,
+  type ComputerObservation,
 } from "@ericsanchezok/synergy-computer-protocol"
+
+import { boundedText, describeObservation } from "./observation.js"
 
 const NativeResult = z.object({
   isError: z.boolean().optional(),
@@ -24,12 +27,23 @@ const NativeResult = z.object({
     .max(20),
   structuredContent: z.record(z.string(), z.unknown()).optional(),
 })
+export type ComputerPermissions = { accessibility: boolean; screen: boolean }
 type NativeCall = (name: string, args: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>
-type Observation = { id: string; pid: number; windowId: number; snapshotId?: string; expires: number }
+type Observation = {
+  id: string
+  pid: number
+  windowId: number
+  snapshotId?: string
+  captureId?: string
+  token?: string
+  indices: number[]
+  quality: ComputerObservation
+  expires: number
+}
 type Run = { session: string; observation?: Observation; updated: number }
 
-// Cua v0.23.2: exact-window snapshots and per-PID background mutation serialization.
-// https://github.com/trycua/cua/tree/cua-driver-rs-v0.23.2/libs/cua-driver
+// Cua v0.30.4: exact-window snapshots and per-PID background mutation serialization.
+// https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver
 export class ComputerRuntime {
   private generation = 0
   private readonly runs = new Map<string, Run>()
@@ -37,9 +51,14 @@ export class ComputerRuntime {
   private readonly busyPids = new Set<number>()
   constructor(private readonly call: NativeCall) {}
 
-  async execute(owner: string, command: ComputerCommand, signal?: AbortSignal): Promise<ComputerResult> {
+  async execute(
+    owner: string,
+    command: ComputerCommand,
+    signal?: AbortSignal,
+    permissions: ComputerPermissions = { accessibility: true, screen: true },
+  ): Promise<ComputerResult> {
     const generation = this.generation
-    const result = await this.executeCommand(owner, command, signal)
+    const result = await this.executeCommand(owner, command, signal, permissions)
     if (generation !== this.generation)
       throw new ComputerError(
         "computer_runtime_reset",
@@ -48,7 +67,12 @@ export class ComputerRuntime {
     return result
   }
 
-  private async executeCommand(owner: string, command: ComputerCommand, signal?: AbortSignal): Promise<ComputerResult> {
+  private async executeCommand(
+    owner: string,
+    command: ComputerCommand,
+    signal: AbortSignal | undefined,
+    permissions: ComputerPermissions,
+  ): Promise<ComputerResult> {
     command = ComputerCommandSchema.parse(command)
     signal?.throwIfAborted()
     if (this.busy.has(owner))
@@ -73,9 +97,32 @@ export class ComputerRuntime {
         if (run) await this.native("end_session", { session: run.session }, signal)
         return { output: "Computer task released.", images: [], metadata: {} }
       }
-      if (command.type === "apps") return this.native("list_windows", { on_screen_only: true }, signal)
+      if (command.type === "apps") {
+        const result = await this.native("list_windows", { on_screen_only: false }, signal)
+        const windows = z.array(z.record(z.string(), z.unknown())).safeParse(result.metadata.windows)
+        if (!windows.success)
+          throw new ComputerError("computer_discovery_invalid", "Window discovery was incomplete. Retry computer_apps.")
+        const query = command.query?.toLocaleLowerCase()
+        const selected = windows.data.filter(
+          (window) =>
+            !query ||
+            [window.app_name, window.owner_name, window.title, window.window_title].some(
+              (value) => typeof value === "string" && value.toLocaleLowerCase().includes(query),
+            ),
+        )
+        return {
+          output: boundedText(JSON.stringify(selected, null, 2)).text,
+          images: [],
+          metadata: { windows: selected },
+        }
+      }
       const run = this.run(owner)
       if (command.type === "observe") {
+        if (!permissions.accessibility && !permissions.screen)
+          throw new ComputerError(
+            "computer_permissions_required",
+            "Enable Accessibility or Screen Recording for Synergy in macOS System Settings, then observe again.",
+          )
         for (const other of this.runs.values()) {
           if (other.observation?.pid === command.pid && other.observation.windowId === command.windowId)
             other.observation = undefined
@@ -89,50 +136,90 @@ export class ComputerRuntime {
             window_id: command.windowId,
             max_elements: 1000,
             max_depth: 20,
+            timeout_ms: 3000,
+            max_image_dimension: 2048,
+            query: command.query,
+            synergy: true,
+            include_accessibility_tree: permissions.accessibility,
+            include_screenshot: permissions.screen,
           },
           signal,
         )
         signal?.throwIfAborted()
         const id = randomUUID()
-        const snapshotId = z
-          .string()
-          .regex(/^s[0-9a-f]{8}$/)
-          .optional()
-          .parse(result.metadata.snapshot_id)
-        run.observation = { id, pid: command.pid, windowId: command.windowId, snapshotId, expires: Date.now() + 60_000 }
+        const described = describeObservation({
+          id,
+          pid: command.pid,
+          windowId: command.windowId,
+          query: command.query,
+          capturedAt: Date.now(),
+          result,
+        })
+        run.observation = {
+          id,
+          pid: command.pid,
+          windowId: command.windowId,
+          snapshotId: described.snapshotId,
+          captureId: described.captureId,
+          token: described.token,
+          indices: described.indices,
+          quality: described.observation,
+          expires: performance.now() + 60_000,
+        }
         return {
-          ...result,
+          output: described.output,
           observationId: id,
-          output: `Observation ${id}. Coordinates are pixels in this window screenshot.\n${result.output}`,
+          observation: described.observation,
+          images: described.images,
+          metadata: { computerObservation: described.observation },
         }
       }
       const observed = run.observation
       run.observation = undefined
-      if (!observed || observed.id !== command.input.observationId || observed.expires < Date.now()) {
+      if (!observed || observed.id !== command.input.observationId || observed.expires <= performance.now()) {
         throw new ComputerError(
           "computer_observation_stale",
           "Observe this window again in this task before acting. Each observation permits one action and expires after one minute.",
         )
       }
       const input = command.input
+      const availability = observed.quality.actions[input.action]
+      if (!availability.available || !observed.token)
+        throw new ComputerError(
+          "computer_action_unavailable",
+          `${input.action} is unavailable: ${availability.reason ?? "target_unverified"}. Observe again or use an available action.`,
+        )
+      if (input.action === "point") {
+        if (!command.imageReceipt || command.imageReceipt.sha256 !== observed.quality.image.sha256)
+          throw new ComputerError(
+            "computer_image_not_delivered",
+            "This image was not included in the model request that selected this action. Observe again with an image-capable model.",
+          )
+        if (input.x >= observed.quality.image.width! || input.y >= observed.quality.image.height!)
+          throw new ComputerError(
+            "computer_point_out_of_bounds",
+            "The point is outside the observed image. Observe again and choose a point within its dimensions.",
+          )
+      }
       const args: Record<string, unknown> = {
         session: run.session,
         pid: observed.pid,
         window_id: observed.windowId,
         delivery_mode: "background",
+        synergy_guard: observed.token,
       }
       let tool: string
       if (input.action === "click") {
-        if (!observed.snapshotId)
+        if (!observed.snapshotId || !observed.indices.includes(input.elementIndex))
           throw new ComputerError(
             "computer_snapshot_missing",
-            "Observe again or use a screenshot point; no native element snapshot is available.",
+            "This element was not returned by the observation. Observe again and use a returned element index.",
           )
         tool = "click"
         Object.assign(args, { element_index: input.elementIndex, snapshot_id: observed.snapshotId })
       } else if (input.action === "point") {
         tool = "click"
-        Object.assign(args, { x: input.x, y: input.y })
+        Object.assign(args, { x: input.x, y: input.y, capture_id: observed.captureId })
       } else if (input.action === "type") {
         tool = "type_text"
         args.text = input.text
@@ -146,7 +233,7 @@ export class ComputerRuntime {
       const result = await this.native(tool, args, signal)
       return {
         ...result,
-        output: `${result.output}\nObserve again to verify the outcome before another action. Do not repeat an unverified action automatically.`,
+        output: "Action dispatched. Observe again to verify the result before another action.",
       }
     } finally {
       this.busy.delete(owner)
@@ -180,11 +267,17 @@ export class ComputerRuntime {
   private async native(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<ComputerResult> {
     const result = NativeResult.parse(await this.call(name, args, signal))
     const text = result.content.flatMap((x) => (x.type === "text" ? [x.text] : [])).join("\n")
-    if (result.isError)
-      throw new ComputerError("computer_native_error", text.slice(0, 20_000) || "The native Computer action failed.")
     const metadata = result.structuredContent ?? {}
+    if (result.isError) {
+      const refusal = z.object({ code: z.string().regex(/^[a-zA-Z0-9_]{1,100}$/) }).safeParse(metadata.refusal)
+      const code = refusal.success ? refusal.data.code : "computer_native_error"
+      throw new ComputerError(
+        code,
+        `${code}: native operation did not complete. Observe the target again before choosing another action.`,
+      )
+    }
     return ComputerResultSchema.parse({
-      output: (JSON.stringify(metadata) + "\n" + text).slice(0, 900_000),
+      output: boundedText(text).text,
       metadata,
       images: result.content.flatMap((x) => (x.type === "image" ? [{ mimeType: x.mimeType, data: x.data }] : [])),
     })

@@ -742,6 +742,7 @@ Observe one native application window using pid and windowId from computer_apps.
 | --- | --- | --- | --- |
 | `pid` | number | yes |  |
 | `windowId` | number | yes |  |
+| `query` | string |  |  |
 
 ## connect
 

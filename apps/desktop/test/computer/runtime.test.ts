@@ -1,13 +1,27 @@
 import { expect, test } from "bun:test"
 import { ComputerRuntime } from "../../src/computer/runtime"
 
+const metadata = {
+  snapshot_id: "s12345678",
+  elements: [{ element_index: 0 }],
+  tree_markdown: "[element_index 0] button Save",
+  windows: [],
+  synergy: { token: "native-proof", image_status: "unavailable", reason: "capture_unavailable" },
+  background_input: {
+    routes: [
+      { route: "accessibility", status: "available" },
+      { route: "pid_keyboard", status: "available" },
+    ],
+  },
+}
+
 function fixture() {
   const calls: { name: string; args: Record<string, unknown> }[] = []
   const runtime = new ComputerRuntime(async (name, args) => {
     calls.push({ name, args })
     return {
       content: [{ type: "text", text: "observed" }],
-      structuredContent: { snapshot_id: "s12345678", elements: [{ element_index: 0 }], windows: [] },
+      structuredContent: metadata,
     }
   })
   return { runtime, calls }
@@ -23,7 +37,7 @@ test("reset rejects a late observation and a fresh observation remains usable", 
       entered.resolve()
       await pending.promise
     }
-    return { content: [], structuredContent: { snapshot_id: "s12345678" } }
+    return { content: [], structuredContent: metadata }
   })
   const old = runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
   await entered.promise
@@ -81,7 +95,7 @@ test("reset marks a delivered action uncertain and does not replay it", async ()
       entered.resolve()
       await pending.promise
     }
-    return { content: [] }
+    return { content: [], structuredContent: metadata }
   })
   const observed = await runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
   const command = {
@@ -111,7 +125,7 @@ test("different applications can execute concurrently", async () => {
   const blocker = new Promise<void>((r) => (unblock = r))
   const runtime = new ComputerRuntime(async (_name, args) => {
     if (args.pid === 10) await blocker
-    return { content: [], structuredContent: { snapshot_id: "s12345678" } }
+    return { content: [], structuredContent: metadata }
   })
   const a = runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
   expect((await runtime.execute("b", { type: "observe", pid: 11, windowId: 21 })).observationId).toBeTruthy()
@@ -132,7 +146,7 @@ test("native errors remain errors and never retry an action", async () => {
 test("native failure consumes the action reference without replay", async () => {
   let attempts = 0
   const runtime = new ComputerRuntime(async (name) => {
-    if (name === "get_window_state") return { content: [], structuredContent: { snapshot_id: "s12345678" } }
+    if (name === "get_window_state") return { content: [], structuredContent: metadata }
     attempts++
     return { isError: true, content: [{ type: "text", text: "background_unavailable" }] }
   })
@@ -141,7 +155,7 @@ test("native failure consumes the action reference without replay", async () => 
     type: "action",
     input: { action: "key", key: "return", observationId: observed.observationId! },
   } as const
-  await expect(runtime.execute("a", command)).rejects.toThrow("background_unavailable")
+  await expect(runtime.execute("a", command)).rejects.toMatchObject({ code: "computer_native_error" })
   await expect(runtime.execute("a", command)).rejects.toThrow("Observe")
   expect(attempts).toBe(1)
 })
@@ -151,7 +165,7 @@ test("overlapping calls on the same process are refused without a desktop-wide l
   const barrier = new Promise<void>((resolve) => (unblock = resolve))
   const runtime = new ComputerRuntime(async () => {
     await barrier
-    return { content: [], structuredContent: { snapshot_id: "s12345678" } }
+    return { content: [], structuredContent: metadata }
   })
   const first = runtime.execute("a", { type: "observe", pid: 10, windowId: 20 })
   await expect(runtime.execute("b", { type: "observe", pid: 10, windowId: 21 })).rejects.toThrow("application")

@@ -33,7 +33,7 @@
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@trycua/cua-driver": "0.23.2",
+    "@trycua/cua-driver": "0.30.4",
     "electron-updater": "6.6.8",
     "zod": "catalog:"
   },

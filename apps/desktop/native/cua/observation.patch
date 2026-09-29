@@ -1,0 +1,196 @@
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3572,6 +3572,7 @@
+  "security-framework",
+  "serde",
+  "serde_json",
++ "sha2",
+  "tempfile",
+  "thiserror 1.0.69",
+  "time",
+--- a/crates/platform-macos/Cargo.toml
++++ b/crates/platform-macos/Cargo.toml
+@@ -12,6 +12,7 @@
+ tracing = { workspace = true }
+ base64 = { workspace = true }
+ image = { workspace = true }
++sha2 = { workspace = true }
+ async-trait = "0.1"
+ uuid = { workspace = true }
+ time = { workspace = true }
+--- a/crates/platform-macos/src/lib.rs
++++ b/crates/platform-macos/src/lib.rs
+@@ -40,6 +40,8 @@
+ pub mod terminal;
+ #[cfg(target_os = "macos")]
+ pub mod tools;
++#[cfg(target_os = "macos")]
++pub(crate) mod synergy;
+ #[cfg(target_os = "macos")]
+ pub mod video_sckit;
+ #[cfg(target_os = "macos")]
+--- a/crates/platform-macos/src/capture.rs
++++ b/crates/platform-macos/src/capture.rs
+@@ -738,6 +738,24 @@
+ ///
+ /// Tries ScreenCaptureKit first; falls back to the `screencapture` CLI on
+ /// native error or empty output.
++pub(crate) fn screenshot_window_bytes_verified(pid: i32, window_id: u32) -> anyhow::Result<Vec<u8>> {
++    run_native_capture_worker(native_capture_gate(), WINDOW_CAPTURE_NATIVE_TIMEOUT, move || {
++        let before = crate::synergy::identity(pid, window_id).ok_or_else(|| anyhow::anyhow!("capture_identity_unverified"))?;
++        let expected = current_window_capture_identity(window_id)?;
++        let plan = build_window_capture_plan(window_id, expected)?;
++        let rect = plan.filter.content_rect();
++        let scale = f64::from(plan.filter.point_pixel_scale());
++        let bounds = crate::windows::window_bounds_by_id(window_id).ok_or_else(|| anyhow::anyhow!("capture_identity_unverified"))?;
++        if !crate::synergy::same_plane(before.frame, [bounds.x,bounds.y,bounds.width,bounds.height], scale)
++            || !crate::synergy::same_plane([0.0,0.0,before.frame[2],before.frame[3]], [0.0,0.0,rect.size.width,rect.size.height], scale) {
++            anyhow::bail!("capture_representation_mismatch");
++        }
++        let bytes = capture_window_from_plan(window_id, &plan)?;
++        if current_window_capture_identity(window_id)? != expected { anyhow::bail!("capture_identity_changed"); }
++        Ok(bytes)
++    })
++}
++
+ pub fn screenshot_window_bytes(window_id: u32) -> anyhow::Result<Vec<u8>> {
+     capture_window_with_backends(
+         window_id,
+--- a/crates/platform-macos/src/tools/get_window_state.rs
++++ b/crates/platform-macos/src/tools/get_window_state.rs
+@@ -314,16 +314,8 @@
+             let backstop = std::time::Duration::from_millis(timeout_ms) + AX_WALK_BACKSTOP_GRACE;
+             match tokio::time::timeout(backstop, walk_future).await {
+                 Ok(Ok((tree, payload))) => (Some(tree), Some(payload)),
+-                Ok(Err(e)) => return ToolResult::error(format!("AX tree walk failed: {e}")),
+-                Err(_elapsed) => {
+-                    return ToolResult::error(format!(
+-                        "AX tree walk for pid={pid} did not return within {} s: an \
+-                         accessibility call stopped answering past the {timeout_ms} ms \
+-                         timeout_ms budget. Retry, or act by pixel (x,y) off a \
+-                         screenshot-only get_window_state (include_accessibility_tree:false).",
+-                        backstop.as_secs()
+-                    ));
+-                }
++                Ok(Err(_e)) => (None, None),
++                Err(_elapsed) => (None, None),
+             }
+         } else {
+             (None, None)
+@@ -363,6 +355,7 @@
+         // Returns the exact delivered PNG bytes, optional file path, delivered
+         // and native dimensions, the WindowServer bounds it was validated
+         // against, and the raw capture's backing scale.
++        let synergy_capture = args["synergy"] == true;
+         let mut screenshot_frame_error = None;
+         let mut screenshot_resize_scale = None;
+         let screenshot = if should_capture {
+@@ -383,7 +376,7 @@
+                 let bounds = crate::windows::window_bounds_by_id(window_id)
+                     .filter(|b| b.width > 0.0 && b.height > 0.0)
+                     .ok_or(super::px_frame::PxFrameError::WindowNotFound { window_id })?;
+-                let raw = crate::capture::screenshot_window_bytes(window_id).map_err(|e| {
++                let raw = (if synergy_capture { crate::capture::screenshot_window_bytes_verified(pid, window_id) } else { crate::capture::screenshot_window_bytes(window_id) }).map_err(|e| {
+                     super::px_frame::PxFrameError::CaptureUnavailable {
+                         window_id,
+                         reason: e.to_string(),
+--- a/crates/platform-macos/src/tools/type_text.rs
++++ b/crates/platform-macos/src/tools/type_text.rs
+@@ -826,6 +826,7 @@
+         decide_background_input, BackgroundAction, BackgroundInputDecision, ExactWindowTarget,
+     };
+     let lease = super::acquire_background_mutation(pid).await;
++    crate::synergy::check(pid, window_id, false).await?;
+     let element_guard =
+         element_ptr.map(|ptr| unsafe { crate::ax::cache::RetainedElement::retain(ptr) });
+     let facts = match tokio::task::spawn_blocking(move || {
+--- a/crates/platform-macos/src/tools/pixel_route.rs
++++ b/crates/platform-macos/src/tools/pixel_route.rs
+@@ -58,6 +58,7 @@
+     window_id: Option<u32>,
+     event_kind: &str,
+ ) -> Result<PixelClickRoute, ToolResult> {
++    if !crate::synergy::allows_pixels() { return Err(ToolResult::error("capture_unavailable_for_action. Observe again before using pixels.")); }
+     let has_window = window_id.is_some();
+     let toolkit = if !effective_foreground && has_window {
+         tokio::task::spawn_blocking(move || crate::input::pointer_toolkit::detect(pid))
+--- a/crates/platform-macos/src/tools/click.rs
++++ b/crates/platform-macos/src/tools/click.rs
+@@ -639,6 +639,8 @@
+             } else {
+                 None
+             };
++            if !crate::synergy::allows_pixels() { selection_pixel = None; }
++
+             // The selection fallback delivers a routed window-local pixel
+             // click — a stricter (WindowPointer) rung than the semantic gate
+             // above. In background, drop the fallback rather than silently
+--- a/crates/platform-macos/src/tools/mod.rs
++++ b/crates/platform-macos/src/tools/mod.rs
+@@ -206,6 +206,7 @@
+         element_ptr: Option<usize>,
+         action: cua_driver_core::background_input::BackgroundAction,
+     ) -> Result<(), cua_driver_core::protocol::ToolResult> {
++        crate::synergy::check(self.pid, window_id, matches!(action, cua_driver_core::background_input::BackgroundAction::WindowPointer)).await?;
+         decide_background_window_action(self.pid, window_id, element_ptr, action).await
+     }
+ }
+@@ -617,6 +618,7 @@
+
+ /// Shared state passed to all tools.
+ pub struct ToolState {
++    pub(crate) synergy: Arc<crate::synergy::Observations>,
+     pub element_cache: Arc<ElementCache>,
+     pub cursor_registry: Arc<CursorRegistry>,
+     pub zoom_registry: Arc<ZoomRegistry>,
+@@ -670,6 +672,7 @@
+         host_bundle_id: Option<String>,
+     ) -> Self {
+         Self {
++            synergy: Arc::new(crate::synergy::Observations::default()),
+             element_cache: Arc::new(ElementCache::new()),
+             cursor_registry: Arc::new(CursorRegistry::new()),
+             zoom_registry: Arc::new(ZoomRegistry::new()),
+@@ -834,9 +837,7 @@
+
+     registry.register(Box::new(list_apps::ListAppsTool));
+     registry.register(Box::new(list_windows::ListWindowsTool));
+-    registry.register(Box::new(get_window_state::GetWindowStateTool::new(
+-        state.clone(),
+-    )));
++    registry.register(Box::new(crate::synergy::GuardedTool::new(get_window_state::GetWindowStateTool::new(state.clone()), state.synergy.clone())));
+     registry.register(Box::new(
+         cua_driver_core::expectation::VerifyStateTool::new(Arc::new(
+             cua_driver_core::expectation::ToolObservationProvider::new(
+@@ -855,7 +856,7 @@
+     registry.register(Box::new(set_window_frame::SetWindowFrameTool));
+     registry.register(Box::new(invoke_menu::InvokeMenuTool));
+     registry.register(pid_window_guarded(
+-        click::ClickTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(click::ClickTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+@@ -871,11 +872,11 @@
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        type_text::TypeTextTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(type_text::TypeTextTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        press_key::PressKeyTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(press_key::PressKeyTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+@@ -887,7 +888,7 @@
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        scroll::ScrollTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(scroll::ScrollTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     cua_driver_core::clipboard::register_clipboard_tools(

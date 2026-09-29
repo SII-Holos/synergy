@@ -1,3 +1,4 @@
+import { configureDesktopUserData } from "./user-data.js"
 import { ComputerBrokerClient } from "./computer/broker-client.js"
 import {
   app,
@@ -147,6 +148,8 @@ let desktopPowerWriteQueue: Promise<void> = Promise.resolve()
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
 }
+
+configureDesktopUserData(app, process.env)
 
 try {
   app.setAppUserModelId(desktopAppUserModelId(desktopChannel(app.isPackaged)))
@@ -644,12 +647,9 @@ async function syncLocalComputerBroker(force = false) {
       path.join(app.isPackaged ? process.resourcesPath : path.resolve(dirname, "../build"), "computer", "cua-driver"),
     checkPermissions() {
       if (process.platform !== "darwin") return
-      if (!systemPreferences.isTrustedAccessibilityClient(false)) {
-        systemPreferences.isTrustedAccessibilityClient(true)
-        throw new Error("Enable Accessibility for Synergy in macOS System Settings, then retry Computer Use.")
-      }
-      if (systemPreferences.getMediaAccessStatus("screen") !== "granted") {
-        throw new Error("Enable Screen Recording for Synergy in macOS System Settings, then restart Synergy Desktop.")
+      return {
+        accessibility: systemPreferences.isTrustedAccessibilityClient(false),
+        screen: systemPreferences.getMediaAccessStatus("screen") === "granted",
       }
     },
   })

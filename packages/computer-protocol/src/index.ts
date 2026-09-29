@@ -1,6 +1,9 @@
 import { z } from "zod"
 
-export const COMPUTER_PROTOCOL_VERSION = 1
+import { ComputerObservationSchema } from "./observation.js"
+export { ComputerObservationSchema, type ComputerObservation } from "./observation.js"
+
+export const COMPUTER_PROTOCOL_VERSION = 2
 export const COMPUTER_MAX_MESSAGE_BYTES = 12 * 1024 * 1024
 const Ref = z.string().min(1).max(200)
 const Pid = z.number().int().positive().max(2_147_483_647)
@@ -46,11 +49,23 @@ export const ComputerActionSchema = z.discriminatedUnion("action", [
 ])
 export type ComputerAction = z.infer<typeof ComputerActionSchema>
 
-export const ComputerObserveSchema = z.object({ pid: Pid, windowId: WindowId }).strict()
+export const ComputerAppsSchema = z.object({ query: z.string().trim().min(1).max(200).optional() }).strict()
+export const ComputerObserveSchema = z
+  .object({ pid: Pid, windowId: WindowId, query: z.string().trim().min(1).max(200).optional() })
+  .strict()
 export const ComputerCommandSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("apps") }).strict(),
+  ComputerAppsSchema.extend({ type: z.literal("apps") }),
   ComputerObserveSchema.extend({ type: z.literal("observe") }),
-  z.object({ type: z.literal("action"), input: ComputerActionSchema }).strict(),
+  z
+    .object({
+      type: z.literal("action"),
+      input: ComputerActionSchema,
+      imageReceipt: z
+        .object({ sha256: z.string().regex(/^[a-f0-9]{64}$/), callID: Ref })
+        .strict()
+        .optional(),
+    })
+    .strict(),
   z.object({ type: z.literal("release") }).strict(),
 ])
 export type ComputerCommand = z.infer<typeof ComputerCommandSchema>
@@ -59,6 +74,7 @@ export const ComputerResultSchema = z
   .object({
     output: z.string().max(1_000_000),
     observationId: Ref.optional(),
+    observation: ComputerObservationSchema.optional(),
     images: z
       .array(
         z.object({ mimeType: z.enum(["image/png", "image/jpeg"]), data: z.string().max(8 * 1024 * 1024) }).strict(),
