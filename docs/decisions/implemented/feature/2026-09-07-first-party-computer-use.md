@@ -10,7 +10,7 @@ Synergy can operate its session-owned Browser, but tasks involving existing nati
 
 Native Computer Use is implemented through first-party tools and a local Desktop host. The core runtime owns task identity, Full Access eligibility, persisted tool output, and image delivery. The private `packages/computer-protocol` package defines bounded commands and host messages. Desktop owns a private Cua Driver worker, launched lazily through its official TypeScript SDK. This is not a user-configured MCP server or plugin.
 
-Use Cua Driver 0.23.2's exact-window background operations. A task observes an explicit process/window pair and receives a short-lived, single-action observation reference. Desktop injects the driver session and snapshot identity; model input cannot choose either. Observation references are invalidated after an action, a replacement observation, or a host reconnect. Actions never retry automatically and never fall back to foreground delivery.
+Use Cua Driver 0.30.4's exact-window background operations. A task observes an explicit process/window pair and receives a short-lived, single-action observation reference. Desktop injects the driver session and snapshot identity; model input cannot choose either. Observation references are invalidated after an action, a replacement observation, or a host reconnect. Actions never retry automatically and never fall back to foreground delivery.
 
 Do not hold a desktop-wide lease for the duration of a task. Different applications may execute concurrently. Each application has at most one Synergy operation in flight, complementing Cua's short per-process native mutation serialization. This prevents overlapping focus/snapshot operations without preventing another task from working in a different app. Same-application tasks do not get independent application state.
 
@@ -29,6 +29,8 @@ Ship the verified macOS universal driver inside Desktop resources with its MIT n
 **Task-long desktop lock.** A desktop lock would unnecessarily prevent background work in independent applications. Cua's [per-PID mutation implementation](https://github.com/trycua/cua/blob/cua-driver-rs-v0.23.2/libs/cua-driver/rust/crates/platform-macos/src/background_mutation.rs) serializes the affected process only. Its [embedding documentation](https://github.com/trycua/cua/blob/cua-driver-rs-v0.23.2/libs/cua-driver/rust/Skills/cua-driver/EMBEDDING.md) supports host-owned runtimes and host-attributed OS permissions.
 
 **Daemon or same-process embedding.** The standalone-compatible daemon writes a global PID file even with a private socket in Cua 0.23.2. The official SDK private worker avoids that shared state and owns its inherited pipe lifecycle. Its native Node module and dynamic library are kept outside ASAR. Same-process integration would put native automation failures inside Electron; the worker keeps execution in a child process.
+
+The [background-preferred extension](2026-09-29-computer-background-preferred.md) defines explicit foreground delivery, the complete action set and current acceptance.
 
 ## Consequences
 

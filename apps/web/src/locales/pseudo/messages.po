@@ -21243,6 +21243,122 @@ msgstr ""
 msgid "stats.rank.unit.sessions"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "tool.computer.accessibility"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.actions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.available"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.background"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.click"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.delivery"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.diagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.dispatched"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.drag"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.foreground"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.image"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.included"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.invalid"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.key"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.missing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.mode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.omitted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.partial"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.result"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.scroll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.set_value"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.submitted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.target"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.type"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unknown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unverified"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.computer.valid"
+msgstr ""
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.agents"
 msgstr ""

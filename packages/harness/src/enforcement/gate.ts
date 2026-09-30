@@ -330,7 +330,9 @@ export namespace EnforcementGate {
       if (["computer_apps", "computer_observe", "computer_action"].includes(toolName)) {
         caps.push({
           class:
-            toolName === "computer_apps" || toolName === "computer_observe" ? "computer_observe" : "computer_interact",
+            toolName === "computer_apps" || (toolName === "computer_observe" && args.foreground !== true)
+              ? "computer_observe"
+              : "computer_interact",
           nonBypassable: true,
         })
       }

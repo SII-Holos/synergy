@@ -52,7 +52,9 @@
     "ci:plan": "bun script/ci.ts plan",
     "ci:run": "bun script/ci.ts run",
     "ci:verify": "bun script/ci.ts verify",
-    "bench": "uv run --locked --project benchmark synergy-bench"
+    "bench": "uv run --locked --project benchmark synergy-bench",
+    "test:computer-native": "bun run --cwd apps/desktop test:computer-native",
+    "test:computer-acceptance": "bun run --cwd apps/desktop test:computer-acceptance"
   },
   "workspaces": {
     "packages": [

@@ -23,8 +23,10 @@ export async function processStartIdentity(pid: number): Promise<string | undefi
   if (pid === process.pid) {
     // Cache the promise, not the value: concurrent first acquisitions must
     // share a single query instead of spawning one subprocess each.
-    ownIdentityPromise ??= queryProcessStartIdentity(pid)
-    return ownIdentityPromise
+    const pending = (ownIdentityPromise ??= queryProcessStartIdentity(pid))
+    const identity = await pending
+    if (identity === undefined && ownIdentityPromise === pending) ownIdentityPromise = undefined
+    return identity
   }
   return queryProcessStartIdentity(pid)
 }

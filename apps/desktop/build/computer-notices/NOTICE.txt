@@ -1,4 +1,6 @@
-Synergy Computer Use includes Cua Driver 0.23.2 by Cua AI, Inc., under the MIT License.
-Source: https://github.com/trycua/cua/tree/cua-driver-rs-v0.23.2/libs/cua-driver
-Release: https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.23.2
+Synergy Computer Use includes Cua Driver 0.30.4 by Cua AI, Inc., under the MIT License.
+Source: https://github.com/trycua/cua/tree/cua-driver-rs-v0.30.4/libs/cua-driver
+Release: https://github.com/trycua/cua/releases/tag/cua-driver-rs-v0.30.4
 Synergy uses a official private worker SDK runtime and the window-targeted background tool contract.
+
+Synergy applies the observation proof patch from native/cua to source commit bf6c76786d938070f4ecf1e44004752f69f518b8.

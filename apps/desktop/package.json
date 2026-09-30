@@ -23,18 +23,21 @@
     "test:runtime": "bun run build && SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/browser-runtime-smoke.test.ts test/startup-progress-runtime.test.ts",
     "typecheck": "tsc --noEmit",
     "desktop:prepare-computer": "bun run script/prepare-computer.ts",
-    "test:coverage": "SYNERGY_BATCH_SHARDS=1 bun ../../packages/testing/script/run.ts --coverage"
+    "test:coverage": "SYNERGY_BATCH_SHARDS=1 bun ../../packages/testing/script/run.ts --coverage",
+    "test:computer-native": "bun run script/computer-native.ts",
+    "test:computer-acceptance": "bun run script/computer-acceptance.ts"
   },
   "dependencies": {
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-computer-protocol": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@trycua/cua-driver": "0.23.2",
+    "@trycua/cua-driver": "0.30.4",
     "electron-updater": "6.6.8",
     "fflate": "0.8.3",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@types/node": "catalog:",
     "electron": "42.5.0",
     "electron-builder": "26.15.7",

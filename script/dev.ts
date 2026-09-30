@@ -239,6 +239,9 @@ function desktopProcess(input: {
   const env: Record<string, string | undefined> = {
     BUN_BIN: input.bunPath,
     SYNERGY_DESKTOP_CHANNEL: "dev",
+    SYNERGY_DESKTOP_USER_DATA_DIR:
+      process.env.SYNERGY_DESKTOP_USER_DATA_DIR ??
+      (process.env.SYNERGY_HOME ? path.resolve(process.env.SYNERGY_HOME, ".synergy/desktop") : undefined),
     SYNERGY_DESKTOP_SERVER_MODE: input.mode,
     SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
     SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,

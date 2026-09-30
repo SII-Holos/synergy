@@ -1,3 +1,5 @@
+import { readImageInputReceipt, publishImageInputReceipt, type ImageAttachmentSource } from "./rollout/image-receipt"
+import type { RolloutSchema } from "./rollout/schema"
 import { RolloutLedger } from "./rollout/ledger"
 import { SessionModelSelection } from "./model-selection"
 import { RolloutAccounting } from "./rollout/accounting"
@@ -195,6 +197,7 @@ export namespace SessionProcessor {
 
   export function create(input: {
     assistantMessage: MessageV2.Assistant
+    imageAttachments?: ImageAttachmentSource[]
     sessionID: string
     model: Provider.Model
     abort: AbortSignal
@@ -202,6 +205,7 @@ export namespace SessionProcessor {
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
+    const modelCalls = new Map<string, { owner: RolloutSchema.Owner; runID: string; callID: string }>()
     const executions = new Map<string, ToolExecutionSlotInternal>()
     const executionCallbacks = new Map<string, Promise<unknown>>()
     const settlementPromises = new Map<string, Promise<void>>()
@@ -842,6 +846,10 @@ export namespace SessionProcessor {
       get message() {
         return input.assistantMessage
       },
+      async inputImages(toolCallID: string) {
+        const identity = modelCalls.get(toolCallID)
+        return identity ? readImageInputReceipt(identity) : undefined
+      },
       partFromToolCall(toolCallID: string) {
         return toolcalls[toolCallID]
       },
@@ -1312,6 +1320,7 @@ export namespace SessionProcessor {
                     }
 
                     case "tool-call": {
+                      if (rollout) modelCalls.set(value.toolCallId, rollout)
                       log.info("tool.stream.tool_call.received", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1686,6 +1695,10 @@ export namespace SessionProcessor {
               } finally {
                 try {
                   await stream.dispose()
+                  if (rollout && input.imageAttachments?.length) {
+                    const receipt = await readImageInputReceipt(rollout)
+                    await publishImageInputReceipt(input.sessionID, input.imageAttachments, receipt)
+                  }
                 } finally {
                   streamInput.memoryTurn?.streamDisposed()
                   flushChunkMetrics()

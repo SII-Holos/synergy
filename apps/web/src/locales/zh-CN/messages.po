@@ -21243,6 +21243,122 @@ msgstr "条消息"
 msgid "stats.rank.unit.sessions"
 msgstr "个会话"
 
+#. js-lingui-explicit-id
+msgid "tool.computer.accessibility"
+msgstr "辅助功能"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.actions"
+msgstr "可用操作"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.available"
+msgstr "可用"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.background"
+msgstr "后台优先"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.click"
+msgstr "点击"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.delivery"
+msgstr "模型输入"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.diagnostics"
+msgstr "观测详情"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.dispatched"
+msgstr "动作已发送，请观察确认"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.drag"
+msgstr "拖动"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.foreground"
+msgstr "前台操作"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.image"
+msgstr "窗口图片"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.included"
+msgstr "已纳入模型输入"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.invalid"
+msgstr "图片已拒绝"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.key"
+msgstr "按键"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.missing"
+msgstr "图片附件不可用"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.mode"
+msgstr "执行方式"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.omitted"
+msgstr "未纳入模型输入"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.partial"
+msgstr "部分结果"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.result"
+msgstr "执行结果"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.saved"
+msgstr "已保存，等待模型输入"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.scroll"
+msgstr "滚动"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.set_value"
+msgstr "设置控件值"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.submitted"
+msgstr "已随模型请求发送"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.target"
+msgstr "目标窗口"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.type"
+msgstr "输入文本"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unavailable"
+msgstr "不可用"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unknown"
+msgstr "未记录图片质量"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.unverified"
+msgstr "图片未验证"
+
+#. js-lingui-explicit-id
+msgid "tool.computer.valid"
+msgstr "图片已验证"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.agents"
 msgstr "{count, plural, one {# 个智能体} other {# 个智能体}}"
