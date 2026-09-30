@@ -1,0 +1,143 @@
+import { I18nProvider } from "@lingui/solid"
+import { createSignal } from "solid-js"
+import { render } from "solid-js/web"
+import { DataProvider } from "../../../src/context/data.tsx"
+import { DialogProvider } from "../../../src/context/dialog.tsx"
+import { DiffComponentProvider } from "../../../src/context/diff.tsx"
+import { MarkedProvider } from "../../../src/context/marked.tsx"
+import { ResourceOpenProvider } from "../../../src/context/resource-open.tsx"
+import { SessionTurn } from "../../../src/components/session-turn.tsx"
+import { setupI18n } from "../../../src/testing/i18n.tsx"
+import { setExternalMessageSlotLookup } from "../../../src/components/message-slots.tsx"
+
+const sessionID = "session-activity-switch"
+const rootID = "user-activity-switch"
+const assistantID = "assistant-activity-switch"
+const secondAssistantID = "assistant-activity-switch-second"
+const rootMessage = {
+  id: rootID,
+  sessionID,
+  role: "user",
+  time: { created: 1 },
+  agent: "synergy",
+  model: { providerID: "provider", modelID: "model" },
+  isRoot: true,
+  rootID,
+  visible: true,
+}
+const assistantMessage = {
+  id: assistantID,
+  sessionID,
+  role: "assistant",
+  parentID: rootID,
+  rootID,
+  mode: "test",
+  agent: "synergy",
+  path: { cwd: "/workspace", root: "/workspace" },
+  cost: 0,
+  tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  modelID: "model",
+  providerID: "provider",
+  time: { created: 1, completed: 2 },
+  finish: "stop",
+}
+const secondAssistantMessage = {
+  ...assistantMessage,
+  id: secondAssistantID,
+  time: { created: 3, completed: 4 },
+}
+const toolPart = {
+  id: "tool-activity-switch",
+  sessionID,
+  messageID: assistantID,
+  type: "tool",
+  callID: "call-activity-switch",
+  tool: "mcp__scholight__search_papers",
+  state: {
+    status: "completed",
+    input: { query: "checkpoint convergence" },
+    output: "Read example.ts",
+    title: "Read example.ts",
+    metadata: {},
+    time: { start: 1, end: 2 },
+  },
+}
+const secondToolPart = {
+  ...toolPart,
+  tool: "mcp__scholight__extract_url",
+  state: { ...toolPart.state, input: { url: "https://example.com/paper" } },
+  id: "tool-activity-switch-second",
+  messageID: secondAssistantID,
+  callID: "call-activity-switch-second",
+}
+const answerPart = {
+  id: "answer-activity-switch",
+  sessionID,
+  messageID: assistantID,
+  type: "text",
+  text: "Representative answer survives mode switches.",
+}
+const data = {
+  session: [],
+  session_diff: { [sessionID]: [] },
+  message: { [sessionID]: [rootMessage, assistantMessage, secondAssistantMessage] },
+  part: {
+    [rootID]: [],
+    [assistantID]: [answerPart, toolPart],
+    [secondAssistantID]: [secondToolPart],
+  },
+}
+// Session runtime state lives outside the Scope store; the view resolves
+// it from this accessor bag.
+const NO_REQUESTS = []
+const runtime = {
+  statusFor: () => ({ type: "idle" }),
+  permissionsFor: () => NO_REQUESTS,
+  questionsFor: () => NO_REQUESTS,
+}
+const resourceController = {
+  open: () => false,
+  openAttachment: () => false,
+  resolveWorkspacePath: (value) => value,
+  openWorkspaceSource: () => false,
+}
+const EmptyDiff = () => null
+const [mode, setMode] = createSignal("minimal")
+const SlotProbe = (props) => <span data-test-slot={props.slot} data-test-message={props.messageId} />
+setExternalMessageSlotLookup((slot) =>
+  ["message.before", "message.actions", "message.after"].includes(slot)
+    ? [{ id: "probe-" + slot, component: SlotProbe }]
+    : [],
+)
+
+render(
+  () => (
+    <I18nProvider i18n={setupI18n()}>
+      <DialogProvider>
+        <ResourceOpenProvider value={resourceController}>
+          <MarkedProvider>
+            <DiffComponentProvider component={EmptyDiff}>
+              <DataProvider data={data} runtime={runtime} directory="/workspace" serverUrl="http://localhost">
+                <SessionTurn
+                  sessionID={sessionID}
+                  messageID={rootID}
+                  rootMessage={rootMessage}
+                  messages={[rootMessage, assistantMessage, secondAssistantMessage]}
+                  lastUserMessageID={rootID}
+                  activityDisplay={mode()}
+                >
+                  <span id="activity-switch-sentinel" hidden>
+                    stable
+                  </span>
+                </SessionTurn>
+              </DataProvider>
+            </DiffComponentProvider>
+          </MarkedProvider>
+        </ResourceOpenProvider>
+      </DialogProvider>
+    </I18nProvider>
+  ),
+  document.querySelector("#root"),
+)
+
+globalThis.__activitySwitchHarness = { setMode }

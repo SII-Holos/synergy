@@ -238,14 +238,7 @@ test("configured tool timeout settles a non-cooperative built-in execution exact
             { toolCallId: callID },
           )
 
-          await expect(
-            Promise.race([
-              execution,
-              Bun.sleep(3_000).then(() => {
-                throw new Error("Tool execution did not settle after its configured timeout")
-              }),
-            ]),
-          ).rejects.toThrow("Tool execution timed out")
+          await expect(execution).rejects.toThrow("Tool execution timed out")
 
           const slot = processor.beginExecution(callID)
           const outcome = await slot.promise

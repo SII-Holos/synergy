@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { afterEach, beforeEach, expect, test } from "bun:test"
 import { chmod, mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -9,7 +9,53 @@ import {
   buildIdentity,
   publishBuild,
   restoreBuild,
+  mapFiles,
 } from "../../script/ci/artifacts"
+
+let inheritedWebBuild: string | undefined
+beforeEach(() => {
+  inheritedWebBuild = process.env.SYNERGY_CI_WEB_BUILD
+  delete process.env.SYNERGY_CI_WEB_BUILD
+})
+afterEach(() => {
+  if (inheritedWebBuild === undefined) delete process.env.SYNERGY_CI_WEB_BUILD
+  else process.env.SYNERGY_CI_WEB_BUILD = inheritedWebBuild
+})
+
+test("file operations overlap with bounded pressure and preserve inventory order", async () => {
+  let active = 0
+  let peak = 0
+  const values = Array.from({ length: 40 }, (_, index) => index)
+  expect(
+    await mapFiles(values, async (value) => {
+      active++
+      peak = Math.max(peak, active)
+      await Bun.sleep((value % 4) + 1)
+      active--
+      return value
+    }),
+  ).toEqual(values)
+  expect(peak).toBeGreaterThan(1)
+  expect(peak).toBeLessThanOrEqual(16)
+  expect(active).toBe(0)
+})
+
+test("failed file operations settle active siblings before publication can stop", async () => {
+  let active = 0
+  await expect(
+    mapFiles([0, 1, 2, 3], async (value) => {
+      active++
+      try {
+        if (value === 0) throw new Error("changed output")
+        await Bun.sleep(10)
+        return value
+      } finally {
+        active--
+      }
+    }),
+  ).rejects.toThrow("changed output")
+  expect(active).toBe(0)
+})
 
 async function inputs(root: string) {
   for (const file of BUILD_INPUTS) await Bun.write(path.join(root, file), "fixture inputs")
@@ -72,6 +118,48 @@ test("shared preparation compiles the committed SDK without regenerating its inp
   const recipes = buildCommands()
   expect(recipes.find((command) => command.cwd.endsWith("packages/sdk/js"))!.args).toContain("--compile-only")
   expect(recipes.at(-1)!.cwd).toEndWith("packages/plugin")
+})
+
+test("the shared Web build is restored once and rejects changed source or output", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-web-"))
+  try {
+    await inputs(root)
+    const manifest = await Bun.file(path.join(root, "package.json")).json()
+    await Bun.write(
+      path.join(root, "package.json"),
+      JSON.stringify({ ...manifest, workspaces: { packages: ["packages/plugin", "packages/shared", "apps/web"] } }),
+    )
+    await Bun.write(
+      path.join(root, "apps/web/package.json"),
+      JSON.stringify({ name: "web", dependencies: { "@fixture/plugin": "workspace:*" } }),
+    )
+    await Bun.write(path.join(root, "apps/web/src/app.ts"), "export const app = 1")
+    await Bun.write(path.join(root, "packages/shared/src/types.d.ts"), "export interface Fixture {}")
+    await symlink("../../packages/shared/src/types.d.ts", path.join(root, "apps/web/custom-elements.d.ts"))
+    await Bun.write(path.join(root, "apps/web/dist/index.html"), "verified Web")
+    await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
+    await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
+    process.env.SYNERGY_CI_WEB_BUILD = "true"
+    await publishBuild(root)
+    await Bun.write(path.join(root, "apps/web/dist/index.html"), "damaged Web")
+    await restoreBuild(root)
+    expect(await Bun.file(path.join(root, "apps/web/dist/index.html")).text()).toBe("verified Web")
+    await Bun.write(path.join(root, ".artifacts/ci/build/apps/web/dist/index.html"), "tampered")
+    await expect(restoreBuild(root)).rejects.toThrow("changed")
+    const before = await buildIdentity(root)
+    await Bun.write(path.join(root, "apps/web/src/app.ts"), "export const app = 2")
+    expect(await buildIdentity(root)).not.toBe(before)
+    await Bun.write(path.join(root, "packages/shared/src/other.d.ts"), "export interface Fixture {}")
+    const linked = await buildIdentity(root)
+    await rm(path.join(root, "apps/web/custom-elements.d.ts"))
+    await symlink("../../packages/shared/src/other.d.ts", path.join(root, "apps/web/custom-elements.d.ts"))
+    expect(await buildIdentity(root)).not.toBe(linked)
+    await rm(path.join(root, "apps/web/custom-elements.d.ts"))
+    await symlink(os.tmpdir(), path.join(root, "apps/web/custom-elements.d.ts"))
+    await expect(buildIdentity(root)).rejects.toThrow("outside")
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test("build outputs transfer between compatible runners during an image rollout", async () => {

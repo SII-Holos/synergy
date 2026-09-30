@@ -144,12 +144,14 @@ describe("CI completion evidence", () => {
     tasks: [{ id: "postgres-18", pool: "postgres", owners: [], needs: [], seconds: 10, kind: "postgres" }],
   })
   const result: TaskResult = {
-    version: 1,
+    version: 2,
     task: "postgres-18",
+    unit: plan.units.find((unit) => unit.tasks.includes("postgres-18"))!.id,
     plan: plan.digest,
     sha: plan.sha,
     run: plan.run,
-    attempt: plan.attempt,
+    planAttempt: plan.attempt,
+    executionAttempt: plan.attempt,
     mode: "full",
     status: "success",
     exitCode: 0,
@@ -169,7 +171,7 @@ describe("CI completion evidence", () => {
   test.each([
     { sha: "d".repeat(40) },
     { run: "41" },
-    { attempt: "0" },
+    { executionAttempt: "0" },
     { plan: "old-plan" },
     { mode: "diagnostic" },
     { status: "failure", exitCode: 1 },

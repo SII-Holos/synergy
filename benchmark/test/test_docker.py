@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from fixtures.resources import fixture_resources
 
 from synergy_bench.catalog import tree_digest
 from synergy_bench.prepare import BENCHMARK
@@ -211,9 +212,7 @@ def prepared_fixture(tmp_path_factory: pytest.TempPathFactory):
     config = {
         "version": 2,
         "suite": "suite.json",
-        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2}
-        if os.environ.get("CI") == "true"
-        else {"cache_budget_gib": 384},
+        "resources": fixture_resources(),
         "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/integration"),
         "models": {

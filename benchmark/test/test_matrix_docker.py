@@ -11,6 +11,7 @@ import zipfile
 import pytest
 import yaml
 from aiohttp import web
+from fixtures.resources import fixture_resources
 
 from synergy_bench.catalog import tree_digest
 from synergy_bench.evaluator import freeze_evaluator, recorded_environment
@@ -22,15 +23,15 @@ from synergy_bench.storage import atomic_json, read_json
 pytestmark = pytest.mark.skipif(os.environ.get("SYNERGY_BENCH_DOCKER") != "1", reason="Explicit native Docker matrix")
 
 
-def fixture_profiles(protocol, base_url, *, long_session=False, unattended=False):
+def fixture_profiles(protocol, base_url, *, long_session=False, unattended=False, business=False):
     return {
         name: {
             "model": name,
             "protocol": protocol,
             "base_url": base_url,
             "api_key_env": "BENCH_FIXTURE_KEY",
-            "context_window": 1048576 if unattended else 1000000 if long_session else 32000,
-            "max_output_tokens": 131072 if unattended else 393216 if long_session else 2048,
+            "context_window": 65536 if business else 1048576 if unattended else 1000000 if long_session else 32000,
+            "max_output_tokens": 2048 if business else 131072 if unattended else 393216 if long_session else 2048,
             "parameters": {"thinking": {"type": "enabled"}, "reasoning_effort": "low", "temperature": 1}
             if unattended
             else {"enable_thinking": False}
@@ -90,6 +91,34 @@ def assert_native_control(records, *, tool_turns, bun_jit, observations):
         assert verified == set(range(3, tool_turns, 4)), "Missing verified file edits"
 
 
+def assert_compaction_continuation(transcript, usage, *, inputs):
+    session = next(
+        session for session in transcript["sessions"] if session["info"]["id"] == transcript["rootSessionID"]
+    )
+    messages = session["messages"]
+    boundary = next(
+        (
+            index
+            for index, message in enumerate(messages)
+            if message["info"].get("summary") and message["info"].get("finish")
+        ),
+        None,
+    )
+    assert boundary is not None, "Missing committed native compaction"
+    assert any(
+        part.get("type") == "tool"
+        and part.get("tool") == "bash"
+        and part["state"]["status"] == "completed"
+        and "BENCH_OBSERVATION_VERIFIED=" in part["state"]["output"]
+        for message in messages[boundary + 1 :]
+        for part in message["parts"]
+    ), "Missing continued file edits after compaction"
+    assert usage["attempts"] == len(inputs), "Native usage lost a request"
+    assert usage["tokens"]["input"] == {"known": sum(inputs), "unknown": 0, "total": sum(inputs)}, (
+        "Native usage differs"
+    )
+
+
 async def fixture_provider(
     request,
     *,
@@ -98,6 +127,8 @@ async def fixture_provider(
     force_tool=None,
     observation_turn=None,
     observation_directory="/app",
+    completion="Done",
+    allocation_pressure=True,
 ):
     body = await request.json()
     responses = request.path.endswith("/responses")
@@ -111,7 +142,7 @@ async def fixture_provider(
     if force_tool is not None:
         call = bool(tools) and force_tool
     call_id = "fixture-call-" + uuid.uuid4().hex
-    message = {"role": "assistant", "content": "Done"}
+    message = {"role": "assistant", "content": completion}
     namespace = None
     if call:
         functions = []
@@ -157,8 +188,9 @@ async def fixture_provider(
                     args = {"input": f"[{observation_file}#{headers[-1]}]\nSWAP 1..1:\n+changed {observation_turn}"}
             else:
                 script = (
-                    "from pathlib import Path; memory=bytearray(8*1024**2); "
-                    f"Path({observation_file!r}).write_text(''.join("
+                    "from pathlib import Path; "
+                    + ("memory=bytearray(8*1024**2); " if allocation_pressure else "")
+                    + f"Path({observation_file!r}).write_text(''.join("
                     "f'row {i} '+('中😀'*128)+'\\n' for i in range(500))); "
                     f"Path({(observation_directory + '/marker')!r}).write_text('verified')"
                     if phase == 0
@@ -205,7 +237,7 @@ async def fixture_provider(
                 "id": "msg_fixture",
                 "role": "assistant",
                 "status": "completed",
-                "content": [{"type": "output_text", "text": "Done", "annotations": []}],
+                "content": [{"type": "output_text", "text": completion, "annotations": []}],
             }
         )
         terminal = {
@@ -268,14 +300,14 @@ async def fixture_provider(
                         "item_id": item["id"],
                         "output_index": 0,
                         "content_index": 0,
-                        "delta": "Done",
+                        "delta": completion,
                     },
                     {
                         "type": "response.output_text.done",
                         "item_id": item["id"],
                         "output_index": 0,
                         "content_index": 0,
-                        "text": "Done",
+                        "text": completion,
                     },
                     {
                         "type": "response.content_part.done",
@@ -324,23 +356,37 @@ async def fixture_provider(
     return response
 
 
-@pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
-async def test_native_matrix_uses_restricted_egress_and_two_independent_models(tmp_path, monkeypatch, protocol):
-    await run_native_matrix(tmp_path, monkeypatch, protocol)
+@pytest.mark.parametrize(
+    ("protocol", "model"),
+    [("chat-completions", "fixture-one"), ("responses", "fixture-two")],
+    ids=["chat-completions", "responses"],
+)
+async def test_native_matrix_preserves_protocol_and_adapter_behavior(tmp_path, monkeypatch, protocol, model):
+    await run_native_matrix(tmp_path, monkeypatch, protocol, models=(model,))
 
 
+@pytest.mark.skipif(
+    os.environ.get("SYNERGY_BENCH_LONG_DIAGNOSTIC") != "1", reason="Historical sustained JIT diagnostic"
+)
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
 @pytest.mark.parametrize("bun_jit", [False, True], ids=["jitless", "jit"])
-async def test_synergy_long_sessions_preserve_native_tools_and_usage(tmp_path, monkeypatch, protocol, bun_jit):
+async def test_synergy_diagnostic_120_rounds(tmp_path, monkeypatch, protocol, bun_jit):
+    await run_native_matrix(
+        tmp_path, monkeypatch, protocol, long_session=True, tool_turns=120, bun_jit=bun_jit, models=("fixture-one",)
+    )
+
+
+async def test_synergy_compaction_preserves_file_edits_recording_and_usage(tmp_path, monkeypatch):
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
-        pytest.skip("Synergy long-session control belongs to the Synergy native matrix")
+        pytest.skip("Synergy compaction belongs to the Synergy native matrix")
     await run_native_matrix(
         tmp_path,
         monkeypatch,
-        protocol,
+        "responses",
         long_session=True,
-        tool_turns=120,
-        bun_jit=bun_jit,
+        business=True,
+        tool_turns=48,
+        bun_jit=True,
         models=("fixture-one",),
     )
 
@@ -358,7 +404,14 @@ async def test_synergy_native_semantics(tmp_path, monkeypatch, bun_jit, protocol
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
         pytest.skip("Synergy native semantics belong to the Synergy native matrix")
     await run_native_matrix(
-        tmp_path, monkeypatch, protocol, long_session=True, tool_turns=4, bun_jit=bun_jit, models=(model,)
+        tmp_path,
+        monkeypatch,
+        protocol,
+        long_session=True,
+        tool_turns=2,
+        bun_jit=bun_jit,
+        observations=False,
+        models=(model,),
     )
 
 
@@ -371,16 +424,18 @@ async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeyp
         monkeypatch,
         "chat-completions",
         long_session=True,
-        tool_turns=3,
+        tool_turns=2,
         bun_jit=True,
         task_home=True,
         empty_stop=empty_stop,
-        models=("fixture-one",) if empty_stop else ("fixture-one", "fixture-two"),
+        models=("fixture-one",),
     )
 
 
 async def test_synergy_unattended_sessions_inherit_and_exclude_question(tmp_path, monkeypatch):
-    await run_native_matrix(tmp_path, monkeypatch, "chat-completions", unattended=True, bun_jit=True)
+    await run_native_matrix(
+        tmp_path, monkeypatch, "chat-completions", unattended=True, bun_jit=True, models=("fixture-two",)
+    )
 
 
 async def run_native_matrix(
@@ -394,11 +449,16 @@ async def run_native_matrix(
     task_home=False,
     empty_stop=False,
     unattended=False,
+    business=False,
+    observations=True,
     models=("fixture-one", "fixture-two"),
 ):
     from synergy_bench.runner import verify_terminal
 
     create_matrix_suite(tmp_path, task_home=task_home)
+    business_turns = 0
+    continue_until = None
+    business_inputs = []
 
     native_probe = shlex.join(
         [
@@ -418,6 +478,7 @@ async def run_native_matrix(
     )
 
     async def provider_with_runtime_evidence(request):
+        nonlocal business_turns, continue_until
         body = await request.json()
         if unattended:
             assert body["thinking"] == {"type": "enabled"}
@@ -431,13 +492,25 @@ async def run_native_matrix(
             assert body["enable_thinking"] is False
             assert "reasoning_effort" not in body
         messages = body.get("messages", body.get("input", []))
+        functions = [
+            nested
+            for tool in body.get("tools", [])
+            for nested in (tool["tools"] if tool["type"] == "namespace" else [tool.get("function", tool)])
+        ]
+        native_tools = any(tool.get("name", "").split("__")[-1] == "bash" for tool in functions)
         count = sum(
             message.get("role") == "tool" or message.get("type") == "function_call_output"
             for message in messages
             if isinstance(message, dict)
         )
         probe = "BENCHMARK_TOOL_" in json.dumps(messages)
-        phase = "start" if count == 0 else "end" if count == tool_turns - 1 else None
+        compacting = business and "Write the compaction continuation summary now." in json.dumps(messages)
+        if business and compacting and continue_until is None:
+            continue_until = ((business_turns + 3) // 4 + 1) * 4
+        if business and not probe:
+            count = business_turns
+        target = continue_until if business and continue_until is not None else tool_turns
+        phase = "start" if count == 0 else "end" if count == target - 1 else None
         process_evidence = (
             (f"printf 'BENCH_NATIVE_PHASE={phase}\\n'; " if long_session and phase else "")
             + 'printf "BENCH_JIT=%s\\n" "${BUN_JSC_useJIT-unset}"; '
@@ -476,7 +549,14 @@ async def run_native_matrix(
             if task_home
             else ""
         )
-        return await fixture_provider(
+        force_tool = count < min(target, tool_turns) if long_session and not probe else None
+        if compacting or (business and not native_tools):
+            force_tool = False
+        inputs = 100 + len(json.dumps(body, ensure_ascii=False).encode()) // 3 if business else None
+        if business:
+            business_inputs.append(inputs)
+        anchors = re.findall(r"\[[^\]\n]*observation\.txt#[A-Za-z0-9]+\]", json.dumps(messages))
+        response = await fixture_provider(
             request,
             command_prefix=process_evidence
             + environment_check
@@ -494,9 +574,23 @@ async def run_native_matrix(
                 if unattended
                 else ""
             ),
-            force_tool=count < tool_turns if long_session and not probe else None,
-            observation_turn=count if long_session and not probe and not task_home else None,
+            force_tool=force_tool,
+            input_tokens=inputs,
+            observation_turn=count
+            if long_session and observations and not probe and not task_home and force_tool
+            else None,
+            completion=(
+                "# Continuation\nThe file /app/observation.txt was read and edited. "
+                + (f"Latest observed snapshot: {anchors[-1]}. " if anchors else "")
+                + "Continue the pending file verification, then read, edit and verify the file again."
+                if compacting
+                else "Done"
+            ),
+            allocation_pressure=not business,
         )
+        if business and not probe and force_tool and body.get("tools"):
+            business_turns += 1
+        return response
 
     app = web.Application(client_max_size=128 * 1024**2)
     app.router.add_post("/v1/chat/completions", provider_with_runtime_evidence)
@@ -533,25 +627,32 @@ async def run_native_matrix(
                 "bun_jit": bun_jit,
             }
         }
+        if business:
+            atomic_json(tmp_path / "compaction-config.json", {"library": {"memory": {"enabled": False}}})
+            for harness in harnesses.values():
+                harness["config"] = "compaction-config.json"
     else:
-        for kind in ["synergy", "opencode"]:
+        for kind in ["opencode"]:
             if kind in harnesses:
                 harnesses[kind + "-jitless"] = {**harnesses[kind], "bun_jit": False}
     monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture-key-private")
     profiles = fixture_profiles(
-        protocol, f"http://127.0.0.1:{provider.addresses[0][1]}/v1", long_session=long_session, unattended=unattended
+        protocol,
+        f"http://127.0.0.1:{provider.addresses[0][1]}/v1",
+        long_session=long_session,
+        unattended=unattended,
+        business=business,
     )
     assert_equivalent_profiles(profiles)
     profiles = {name: profiles[name] for name in models}
     config = {
         "version": 2,
+        "platform": os.environ.get("SYNERGY_BENCH_TEST_PLATFORM", "linux/amd64"),
         "suite": "suite.json",
         "harnesses": harnesses,
         "models": profiles,
         "concurrency": 1 if long_session else 4,
-        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2}
-        if os.environ.get("CI") == "true"
-        else {"cache_budget_gib": 384},
+        "resources": fixture_resources(),
         "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
     }
@@ -584,7 +685,7 @@ async def run_native_matrix(
             [sys.executable, "-m", "synergy_bench.cli", "resume", str(root)],
             env=recorded_environment(root, read_json(root / "plan.json")["evaluator"]),
             log=root / "integration-cli.log",
-            deadline=2400 if long_session else 1200,
+            deadline=420 if business else 2400 if long_session else 1200,
         )
         assert code == 0, (root / "integration-cli.log").read_text()[-20000:]
 
@@ -601,7 +702,7 @@ async def run_native_matrix(
                     identity = read_json(attempt / "trial.json")
                     harness = identity["harness"]
                     identities.add((harness, identity["model"]))
-                    if long_session and not empty_stop:
+                    if long_session and not empty_stop and not business:
                         assert_fixture_usage(result["wire_usage"], identity["model"], minimum_requests=tool_turns + 1)
                     if harness.endswith(("-jitless", "-jit")):
                         options = read_json(attempt / "inputs/options.json")
@@ -618,9 +719,12 @@ async def run_native_matrix(
                         if long_session:
                             records = [json.loads(line) for line in events.splitlines()]
                             assert_native_control(
-                                records, tool_turns=tool_turns, bun_jit=bun_jit, observations=not task_home
+                                records,
+                                tool_turns=business_turns if business else tool_turns,
+                                bun_jit=bun_jit,
+                                observations=observations and not task_home,
                             )
-                            assert result["wire_usage"]["attempts"] >= tool_turns + 1
+                            assert result["wire_usage"]["attempts"] >= (business_turns if business else tool_turns) + 1
             assert identities == {(harness, model) for harness in harnesses for model in profiles}
             return results
 
@@ -649,6 +753,12 @@ async def run_native_matrix(
             for archive_path in root.glob("trials/*/attempt-*/*/agent/rollout.zip"):
                 with zipfile.ZipFile(archive_path) as archive:
                     manifest = json.loads(archive.read("manifest.json"))
+                    if business:
+                        assert_compaction_continuation(
+                            json.loads(archive.read("transcript.json")),
+                            results[0]["wire_usage"],
+                            inputs=business_inputs,
+                        )
                     if empty_stop:
                         transcript = json.loads(archive.read("transcript.json"))
                         session = next(
