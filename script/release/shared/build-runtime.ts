@@ -142,7 +142,7 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
 
   if (profile === "full") {
     console.log("building web app")
-    await $`bun run --cwd ${WEB_DIR} build`
+    await $`bun run --cwd ${WEB_DIR} build ${process.env.SYNERGY_CI_WEB_MANIFEST === "1" ? ["--manifest"] : []}`
   }
 
   const binaries: Record<string, string> = {}

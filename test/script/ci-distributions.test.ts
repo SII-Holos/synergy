@@ -79,10 +79,20 @@ test("workflow transport preserves distribution modes across a consumer umask", 
         ".artifacts/ci/distributions",
         profile,
       ])
-      for (const [workflow, job] of [
-        ["ci.yml", "linux"],
-        ["ci-diagnostic.yml", "execute"],
-      ]) {
+      await rm(path.join(root, ".artifacts/ci/distributions", profile), { recursive: true })
+      await command([
+        "sh",
+        "-c",
+        'umask 077; exec "$@"',
+        "ci-input",
+        process.execPath,
+        "-e",
+        `import { unpackInput } from ${JSON.stringify(path.join(repository, "script/ci/github.ts"))}; await unpackInput(${JSON.stringify(path.join(root, `.artifacts/ci/distributions/${profile}.tar.zst`))}, ${JSON.stringify(path.join(root, ".artifacts/ci/distributions"))})`,
+      ])
+      await restoreDistribution(root, plan, profile)
+      for (const prefix of distributionPaths(profile))
+        expect((await stat(path.join(root, prefix, "fixture"))).mode & 0o777).toBe(0o777)
+      for (const [workflow, job] of [["ci-diagnostic.yml", "execute"]]) {
         const parsed = Bun.YAML.parse(
           await readFile(path.join(repository, ".github/workflows", workflow!), "utf8"),
         ) as { jobs: Record<string, { steps: Array<{ name?: string; run?: string }> }> }

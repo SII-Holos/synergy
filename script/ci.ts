@@ -6,10 +6,11 @@ import { parseArgs } from "node:util"
 import { appendFile, mkdir, readFile } from "node:fs/promises"
 import { execFileSync } from "node:child_process"
 import path from "node:path"
-import { buildCacheIdentity, buildCommands, filesIn, publishBuild, restoreBuild } from "./ci/artifacts"
+import { buildCacheIdentity, buildCommands, publishBuild, restoreBuild } from "./ci/artifacts"
 import { catalog, changedFiles, OUTPUT, ROOT, workspaceInputs } from "./ci/catalog"
 import { verifyCoverage } from "./ci/coverage"
-import { verifyResults, type TaskResult } from "./ci/evidence"
+import { latestResults, readResults, verifyResults } from "./ci/evidence"
+import { downloadInput, workflowExecutions } from "./ci/github"
 import { createPlan, executionQueue, needsBuild, QUEUES, validatePlan, type Mode, type Plan } from "./ci/plan"
 import { executeUnit } from "./ci/run"
 import { policyIdentity, shadowEvidence } from "./ci/rollout"
@@ -20,6 +21,7 @@ run --plan FILE --unit ID
 verify --plan FILE --results DIRECTORY --jobs JSON
 prepare / restore: produce or validate the input-addressed Linux build bundle.
 build-key: resolve the cache identity on the runner that will build the bundle.
+prepare-distributions --profile core|full: produce only the selected distribution.
 Diagnostic plans never satisfy All checks passed. PRs default to affected mode; shared or unknown inputs select full verification.`
 
 export async function policyDigest(root = ROOT) {
@@ -43,9 +45,9 @@ async function readPlan(file: string): Promise<Plan> {
   validatePlan(plan)
   if (
     process.env.GITHUB_RUN_ID &&
-    (plan.run !== process.env.GITHUB_RUN_ID || plan.attempt !== process.env.GITHUB_RUN_ATTEMPT)
+    (plan.run !== process.env.GITHUB_RUN_ID || Number(plan.attempt) > Number(process.env.GITHUB_RUN_ATTEMPT))
   )
-    throw new Error("Execution belongs to a different workflow attempt; rerun all jobs")
+    throw new Error("Execution belongs to a different workflow run or future plan attempt")
   if (revision("HEAD") !== plan.sha) throw new Error("Execution checkout differs from the planned commit")
   return plan
 }
@@ -78,6 +80,7 @@ async function main() {
       file: { type: "string" },
       results: { type: "string" },
       jobs: { type: "string" },
+      profile: { type: "string" },
     },
   })
   if (values.help || !positionals.length) {
@@ -166,6 +169,7 @@ async function main() {
     const outputs: Record<string, string> = {
       sha,
       mode,
+      attempt: plan.attempt,
       core: String(plan.tasks.some((task) => plan.selected.includes(task.id) && task.profile === "core")),
       full: String(plan.tasks.some((task) => plan.selected.includes(task.id) && task.profile === "full")),
       build: String(requiresBuild(plan)),
@@ -260,7 +264,9 @@ async function main() {
           .filter((profile): profile is "core" | "full" => !!profile),
       ),
     ]
-    for (const profile of profiles) {
+    if (values.profile && !profiles.includes(values.profile as "core" | "full"))
+      throw new Error("Unknown or unselected distribution profile")
+    for (const profile of profiles.filter((profile) => !values.profile || values.profile === profile)) {
       const isolated = await createIsolatedTestEnv()
       try {
         for (const recipe of distributionCommands(profile, ROOT)) {
@@ -273,6 +279,7 @@ async function main() {
               SYNERGY_HOME: path.join(isolated.env.SYNERGY_TEST_ROOT!, "build-home"),
               SYNERGY_BUILD_TARGETS: "linux-x64",
               SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
+              SYNERGY_CI_WEB_MANIFEST: "1",
               HUSKY: "0",
             },
           })
@@ -297,17 +304,22 @@ async function main() {
   }
   if (operation === "run") {
     if (!values.unit) throw new Error("Execution requires --unit")
-    const failures = await executeUnit(plan, values.unit)
+    const failures = await executeUnit(
+      plan,
+      values.unit,
+      ROOT,
+      process.env.GITHUB_RUN_ID && plan.mode !== "diagnostic"
+        ? (profile) => downloadInput(plan, ROOT, profile)
+        : undefined,
+    )
     if (failures.length) throw new Error(`CI tasks failed: ${failures.join(", ")}`)
     return
   }
   if (operation !== "verify") throw new Error(`Unknown CI operation: ${operation}`)
   const resultsRoot = values.results ?? path.join(ROOT, OUTPUT, "results")
-  const results = await Promise.all(
-    (await filesIn(resultsRoot))
-      .filter((file) => file.endsWith("/result.json"))
-      .map(async (file) => JSON.parse(await readFile(file, "utf8")) as TaskResult),
-  )
+  const history = await readResults(resultsRoot)
+  const executions = process.env.GITHUB_RUN_ID ? await workflowExecutions(plan) : undefined
+  const results = latestResults(plan, history, executions)
   const needs = JSON.parse(values.jobs ?? process.env.CI_NEEDS ?? "{}") as Record<string, { result: string }>
   const expected = new Set([
     "plan",
@@ -319,9 +331,14 @@ async function main() {
     ),
     ...(requiresBuild(plan) ? ["prepare"] : []),
     ...(plan.selected.includes("benchmark-prepare") ? ["benchmark-prepare"] : []),
+    ...new Set(
+      plan.tasks
+        .filter((task) => plan.selected.includes(task.id) && task.profile)
+        .map((task) => `prepare-${task.profile}`),
+    ),
   ])
   const jobs = [...expected].map((id) => needs[id]?.result ?? "missing")
-  const errors = verifyResults(plan, results, jobs)
+  const errors = verifyResults(plan, history, jobs, executions)
   if (!errors.length) errors.push(...(await verifyScenarios(resultsRoot, plan, results)))
   const coverage = errors.length ? undefined : await verifyCoverage(ROOT, resultsRoot, plan, results)
   errors.push(...(coverage?.errors ?? []))

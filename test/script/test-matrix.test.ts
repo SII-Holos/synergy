@@ -68,38 +68,28 @@ test("normal and fault Docker groups retain the complete lifecycle file inventor
     "benchmark/test/test_parent_death_docker.py",
     "benchmark/test/test_recovery.py",
   ])
-  expect(invocations[0]!.args).toContain("not faults_preserve_terminal_evidence_and_cleanup")
-  expect(invocations[1]!.args).toContain("not real_synergy_paired_rollout")
+  for (const [index, group] of groups.entries()) {
+    if (group.selection) expect(invocations[index]!.args).toContain(group.selection)
+    else expect(invocations[index]!.args).not.toContain("-k")
+    expect(group.scenarios!.length).toBeGreaterThan(0)
+  }
 })
 
-test("native observations isolate long-duration JIT/protocol controls and short model semantics with frozen preparation", async () => {
+test("native observations isolate business compaction and short model semantics with frozen preparation", async () => {
   const native = tasks.filter((task) => task.kind === "benchmark-native")
-  const long = native.filter((task) => task.selection?.startsWith("test_synergy_long_sessions"))
-  const semantics = native.find((task) => task.id === "native-synergy-semantics")!
-  expect(semantics.scenarios).toHaveLength(4)
-  const selections = []
+  const compaction = native.filter((task) => task.id === "native-synergy-compaction")
+  const semantics = native.filter((task) => task.selection?.startsWith("test_synergy_native_semantics"))
+  expect(compaction).toHaveLength(1)
+  expect(semantics.flatMap((task) => task.scenarios!)).toHaveLength(4)
   for (const task of native) {
     const [recipe] = await commands(task, plan)
     expect(recipe!.env?.SYNERGY_BENCH_TEST_HARNESSES).toBe(task.variant)
     const index = recipe!.args.indexOf("-k")
     expect(index).toBeGreaterThan(-1)
-    if (long.includes(task)) {
-      expect(task.variant).toBe("synergy")
+    expect(recipe!.args[index + 1]).toBe(task.selection)
+    if (task.variant === "synergy") {
       expect(task.needs).toContain("benchmark-prepare")
-      selections.push(recipe!.args[index + 1])
-    } else if (task !== semantics)
-      expect(recipe!.args[index + 1]).toBe(
-        task.variant === "synergy"
-          ? "not test_synergy_long_sessions and not test_synergy_native_semantics"
-          : "test_native_matrix",
-      )
+    } else expect(task.needs).not.toContain("benchmark-prepare")
   }
-  expect(selections.sort()).toEqual(
-    ["jitless", "not jitless"]
-      .flatMap((mode) =>
-        ["chat-completions", "responses"].map((protocol) => `test_synergy_long_sessions and ${mode} and ${protocol}`),
-      )
-      .sort(),
-  )
-  expect(semantics.selection).toBe("test_synergy_native_semantics")
+  expect(native.some((task) => task.selection?.includes("120_rounds"))).toBe(false)
 })

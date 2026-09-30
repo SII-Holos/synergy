@@ -148,7 +148,7 @@ for (const mode of scenarios)
         await Bun.write(inputFile, fileContent)
         const config = {
           embedding:
-            process.env.SYNERGY_TEST_ARTIFACT_PROFILE === "full"
+            (process.env.SYNERGY_TEST_ARTIFACT_PROFILE ?? "full") === "full"
               ? { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" }
               : undefined,
           agent: mode === "budget" ? { synergy: { steps: 1 } } : undefined,
@@ -246,7 +246,7 @@ for (const mode of scenarios)
         if (mode !== "timeout") expect(requests).toBeGreaterThan(0)
         if (mode === "read") expect(readObserved).toBe(true)
         if (mode === "budget") expect(budgetObserved).toBe(true)
-        if (mode === "complete") {
+        if (mode === "complete" && (process.env.SYNERGY_TEST_ARTIFACT_PROFILE ?? "full") === "full") {
           const archive = path.join(workspace, "rollout.zip")
           async function run(args: string[]) {
             const { stdout, stderr, code } = await invoke(args)

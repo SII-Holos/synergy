@@ -2,6 +2,9 @@ import { selectAffected, taskSelected } from "./selection"
 export { documentation, selectAffected } from "./selection"
 import { createHash } from "node:crypto"
 
+// Provenance: https://docs.github.com/en/actions/reference/limits
+// Local adaptation: use Free's shared 20-job capacity with bounded pools; preparation and concurrent PRs may still queue.
+
 export type Pool = "linux" | "docker" | "postgres" | "windows" | "macos"
 export type Mode = "full" | "shadow" | "affected" | "diagnostic"
 export type TaskKind =
@@ -94,7 +97,7 @@ export interface Plan {
   digest: string
 }
 
-export const LIMITS: Record<Pool, number> = { linux: 6, docker: 3, postgres: 2, windows: 1, macos: 1 }
+export const LIMITS: Record<Pool, number> = { linux: 11, docker: 6, postgres: 1, windows: 1, macos: 1 }
 export const QUEUES = ["contracts", "linux", "docker", "postgres", "windows", "macos"] as const
 
 export function needsBuild(task: Task): boolean {
@@ -280,4 +283,11 @@ export function validatePlan(plan: Plan): void {
   if (new Set(assigned).size !== assigned.length || assigned.toSorted().join("\0") !== expected.toSorted().join("\0")) {
     throw new Error("CI units do not partition the selected tasks")
   }
+  const files = new Set<string>()
+  for (const task of plan.tasks.filter((task) => plan.selected.includes(task.id) && task.kind === "suite"))
+    for (const file of task.files ?? []) {
+      const key = `${task.package}/${file}`
+      if (files.has(key)) throw new Error(`Repeated test file in CI plan: ${key}`)
+      files.add(key)
+    }
 }

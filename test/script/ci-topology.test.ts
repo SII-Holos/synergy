@@ -45,7 +45,7 @@ describe("required CI topology", () => {
       expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
     }
     expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
-    expect(workflow.jobs.docker!.needs).toEqual(["plan", "benchmark-prepare"])
+    expect(workflow.jobs.docker!.needs).toEqual(["plan"])
     expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker"])
   })
   test("every dev/main push and the daily cold run remain enabled", () => {
@@ -53,7 +53,21 @@ describe("required CI topology", () => {
     expect(workflow.on.schedule.length).toBe(1)
     expect(workflow.concurrency["cancel-in-progress"]).toContain("pull_request")
   })
-  test("each long-session protocol and JIT condition has an independent Docker execution unit", async () => {
+  test("every planned consumer downloads the original plan before executing", () => {
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      const execute =
+        job.steps?.findIndex((step) => /ci\.ts (?:run|verify|prepare-distributions)/.test(step.run ?? "")) ?? -1
+      if (execute < 0) continue
+      const download = job.steps!.findIndex(
+        (step) =>
+          step.uses?.startsWith("actions/download-artifact@") &&
+          step.with?.name === "ci-plan-${{ needs.plan.outputs.attempt }}",
+      )
+      expect(download, id).toBeGreaterThanOrEqual(0)
+      expect(download, id).toBeLessThan(execute)
+    }
+  })
+  test("business compaction and the four short semantics remain independently runnable", async () => {
     const tasks = await catalog()
     const plan = createPlan({
       base: "base",
@@ -66,16 +80,10 @@ describe("required CI topology", () => {
       headWorkspaces: [],
       tasks,
     })
-    const controls = tasks.filter((task) => task.selection?.startsWith("test_synergy_long_sessions"))
-    expect(controls.map((task) => task.scenarios![0]).sort()).toEqual(
-      ["jit", "jitless"]
-        .flatMap((jit) =>
-          ["chat-completions", "responses"].map(
-            (protocol) => `test_synergy_long_sessions_preserve_native_tools_and_usage[${jit}-${protocol}]`,
-          ),
-        )
-        .sort(),
+    const controls = tasks.filter(
+      (task) => task.id.startsWith("native-synergy-semantics-") || task.id === "native-synergy-compaction",
     )
+    expect(controls).toHaveLength(5)
     const units = controls.map((task) => {
       const assigned = plan.units.filter((unit) => unit.tasks.includes(task.id))
       expect(assigned).toHaveLength(1)
@@ -109,28 +117,9 @@ describe("required CI topology", () => {
       const units = plan.units.filter((unit) => unit.tasks.includes(task.id))
       expect(units).toHaveLength(1)
       const job = workflow.jobs[executionQueue(units[0]!, tasks)]!
-      expect(job.needs, task.id).toContain("benchmark-prepare")
-      const steps = job.steps!
-      const download = steps.findIndex(
-        (step) => step.uses?.startsWith("actions/download-artifact@") && step.with?.name === producer.with!.name,
-      )
-      const unpack = steps.findIndex((step) => step.name === "Unpack read-only benchmark input")
-      const execute = steps.findIndex((step) => step.name === "Execute planned tasks")
-      expect(download, task.id).toBeGreaterThanOrEqual(0)
-      expect(unpack, task.id).toBeGreaterThan(download)
-      expect(execute, task.id).toBeGreaterThan(unpack)
-      expect(steps[download]!.with!.path).toBe(path.posix.dirname(archive))
-      expect(steps[unpack]!.run!.trim().split(/\s+/)).toEqual([
-        "tar",
-        "--zstd",
-        "-xf",
-        archive,
-        "-C",
-        path.posix.dirname(archive),
-      ])
+      expect(job.needs, task.id).not.toContain("benchmark-prepare")
       expect(units[0]!.benchmark, task.id).toBe(true)
-      expect(steps[download]!.if, task.id).toBe("matrix.benchmark")
-      expect(steps[unpack]!.if, task.id).toBe("matrix.benchmark")
+      expect(job.steps!.some((step) => step.name === "Execute planned tasks")).toBe(true)
     }
   })
   test("diagnostics has one execution matrix capped at two and no required check", async () => {

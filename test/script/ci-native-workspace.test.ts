@@ -20,7 +20,7 @@ test("native Workspace verification stays in the plan with fresh platform covera
   })
   const macos = tasks.find((task) => task.id === "macos-workspace")
   expect(macos).toBeDefined()
-  const windows = tasks.find((task) => task.id === "windows")!
+  const windows = tasks.find((task) => task.id === "windows-native")!
   expect(windows.owners).toContain("packages/cli")
   for (const task of [macos!, windows]) {
     expect(task.package).toBe("packages/local-runtime")
@@ -39,12 +39,14 @@ test("native Workspace verification stays in the plan with fresh platform covera
     expect(recipe.some((command) => command.args.includes("packages/local-runtime/script/build-pty.ts"))).toBe(true)
     expect(recipe.some((command) => command.args.includes("script/native-workspace-coverage.ts"))).toBe(true)
     const result = {
-      version: 1 as const,
+      version: 2 as const,
       task: task.id,
+      unit: plan.units.find((unit) => unit.tasks.includes(task.id))!.id,
       plan: plan.digest,
       sha: plan.sha,
       run: plan.run,
-      attempt: plan.attempt,
+      planAttempt: plan.attempt,
+      executionAttempt: plan.attempt,
       mode: plan.mode,
       status: "success" as const,
       exitCode: 0,

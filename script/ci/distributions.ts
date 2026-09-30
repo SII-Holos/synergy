@@ -8,7 +8,7 @@ export type Profile = "core" | "full"
 export function distributionPaths(profile: Profile) {
   return profile === "core"
     ? ["packages/cli/dist/synergy-linux-x64", ".artifacts/ci/core-packages"]
-    : ["packages/presets/dist/synergy-linux-x64", "packages/presets/dist/modules-packages"]
+    : ["packages/presets/dist/synergy-linux-x64", "packages/presets/dist/modules-packages", "apps/web/dist"]
 }
 
 export function distributionCommands(profile: Profile, root: string) {

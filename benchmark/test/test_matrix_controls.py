@@ -7,6 +7,7 @@ import aiohttp
 import pytest
 from aiohttp import web
 from test_matrix_docker import (
+    assert_compaction_continuation,
     assert_equivalent_profiles,
     assert_fixture_models,
     assert_fixture_usage,
@@ -18,6 +19,39 @@ from test_matrix_docker import (
 from synergy_bench.config import ModelProfile
 from synergy_bench.gateway import Gateway, read_ledger
 from synergy_bench.usage import aggregate_usage
+
+
+def test_business_control_rejects_missing_compaction_continuation_and_accounting():
+    transcript = {
+        "rootSessionID": "session",
+        "sessions": [
+            {
+                "info": {"id": "session"},
+                "messages": [
+                    {"info": {"role": "assistant", "summary": True, "finish": "stop"}, "parts": []},
+                    {
+                        "info": {"role": "assistant"},
+                        "parts": [
+                            {
+                                "type": "tool",
+                                "tool": "bash",
+                                "state": {"status": "completed", "output": "BENCH_OBSERVATION_VERIFIED=7\n"},
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    usage = {"attempts": 2, "tokens": {"input": {"known": 300, "unknown": 0, "total": 300}}}
+    assert_compaction_continuation(transcript, usage, inputs=[100, 200])
+    for messages in [transcript["sessions"][0]["messages"][:1], transcript["sessions"][0]["messages"][1:]]:
+        broken = copy.deepcopy(transcript)
+        broken["sessions"][0]["messages"] = messages
+        with pytest.raises(AssertionError, match="compaction|continued file edits"):
+            assert_compaction_continuation(broken, usage, inputs=[100, 200])
+    with pytest.raises(AssertionError, match="usage"):
+        assert_compaction_continuation(transcript, usage, inputs=[100, 201])
 
 
 @pytest.mark.parametrize("protocol", ["chat-completions", "responses"])
