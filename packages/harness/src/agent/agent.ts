@@ -224,10 +224,10 @@ export namespace Agent {
 
     const builtinContext = { defaults, user, role, evolutionActive }
     const result: Record<string, Info> = {
-      ...createBuiltinPrimaryAgents(builtinContext),
-      ...createBuiltinLegacySubagents(builtinContext),
-      ...createBuiltinMaxSubagents(builtinContext),
-      ...createBuiltinInternalAgents(builtinContext),
+      ...(AgentBuiltins.enabled("primary") ? createBuiltinPrimaryAgents(builtinContext) : {}),
+      ...(AgentBuiltins.enabled("legacy") ? createBuiltinLegacySubagents(builtinContext) : {}),
+      ...(AgentBuiltins.enabled("max") ? createBuiltinMaxSubagents(builtinContext) : {}),
+      ...(AgentBuiltins.enabled("internal") ? createBuiltinInternalAgents(builtinContext) : {}),
       ...AgentBuiltins.collect(builtinContext),
     }
     for (const item of Object.values(result)) {
