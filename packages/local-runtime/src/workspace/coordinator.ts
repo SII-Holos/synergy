@@ -150,17 +150,15 @@ export class WorkspaceCoordinator {
   }
 
   private async retained(claim: Claim) {
-    if (claim.drained) return false
     if (claim.durable) return true
+    if (claim.drained) return false
     if (await this.alive(claim)) return true
     return !!claim.finalizer && (await this.alive(claim.finalizer))
   }
 
   private async participating(claim: Claim) {
     if (claim.drained || claim.state !== "active" || claim.kind === "use" || claim.kind === "exclusive") return false
-    if (claim.processTree && OwnedTree.inspect(claim.processTree).state !== "active") return false
-    if (!claim.processBound || !claim.startIdentity) return true
-    return (await processStartIdentity(claim.pid)) === claim.startIdentity
+    return this.alive(claim, true)
   }
 
   private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree" | "drained">, fresh = false) {
@@ -382,7 +380,7 @@ export class WorkspaceCoordinator {
             current.state = "active"
             if (current.kind !== "use" && current.kind !== "exclusive") {
               const view = (claim: Claim) =>
-                claim.processTree && !claim.roots?.length ? [] : claim.roots?.length ? claim.roots : claim.useRoots
+                claim.kind === "process" && claim.roots?.length === 0 ? claim.useRoots : claim.roots
               const related = (claim: Claim, ancestor: Claim) => {
                 const visited = new Set<string>()
                 while (claim.parentClaim && !visited.has(claim.id)) {
@@ -397,7 +395,6 @@ export class WorkspaceCoordinator {
                 return false
               }
               for (const held of ledger.claims) {
-                if (!(await this.participating(held)) || !(await this.participating(current))) continue
                 if (
                   held.id === current.id ||
                   held.state !== "active" ||
@@ -406,6 +403,7 @@ export class WorkspaceCoordinator {
                 )
                   continue
                 if (related(current, held) || related(held, current) || !overlaps(view(current), view(held))) continue
+                if (!(await this.participating(held)) || !(await this.participating(current))) continue
                 held.overlappingWrites = true
                 current.overlappingWrites = true
               }

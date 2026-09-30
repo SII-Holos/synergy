@@ -8,7 +8,9 @@ A durable Workspace process claim remains until its saved output and native desc
 
 ## Decision
 
-Durable claims remain recoverable until explicit drainage. Participation in overlap requires a claim that is not drained and whose native process tree and bound process identity are still active. A retained claim with empty managed-mutation roots does not borrow its selected-directory use roots after its process tree has exited. Concurrent processes whose trees are still active continue to overlap across shared selected directories.
+Durable claims remain recoverable through native drainage and checkpoint saving, until the executor explicitly releases them. Drainage ends participation in new overlap without dropping the retained reservation or its existing evidence.
+
+Overlap reuses the coordinator's conservative native-liveness check without its positive PID cache. A native tree is authoritative when present; otherwise the bound process must have exited or have a positively different identity to be excluded. Unavailable native inspection and unknown PID identity preserve uncertainty. Unrelated roots are filtered before liveness inspection. Active and uncertain resource-only process claims use their selected directories when checking overlap, including after a native tree has been bound.
 
 ## Alternatives considered
 
@@ -20,4 +22,6 @@ Durable claims remain recoverable until explicit drainage. Participation in over
 
 ## Consequences
 
-Completed commands no longer make later isolated work permanently unrestorable, while uncertain native ownership still blocks resource retirement. The ledger can retain drained-pending claims, so inspection must not equate claim presence with an active writer. Historical incomplete patch records are not rewritten.
+Completed commands no longer make later isolated work permanently unrestorable, while uncertain native ownership still blocks resource retirement within its covered roots. Unknown inspection does not block unrelated Workspace admission. The ledger retains drained claims until saving completes, so inspection must not equate claim presence with an active writer. Historical incomplete patch records are not rewritten.
+
+Coordinator regressions cover exited, recycled and unknown process identities and failed native inspection with overlapping and disjoint roots. The executor regression verifies retained claims after drainage, later isolated admission and explicit release after restart. The file-attribution suite exercises a real owned native process overlapping another session's edit and refuses restoration of that incomplete evidence.
