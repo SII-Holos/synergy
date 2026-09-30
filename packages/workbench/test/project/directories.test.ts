@@ -1,10 +1,32 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
 import { ProjectDirectories } from "../../src/project/directories"
+
+test("project creation prepares file configuration outside the storage transaction", async () => {
+  await using runtime = await testRuntime()
+  await using directory = await tmpdir()
+  await runtime.run(async () => {
+    const update = Config.domainUpdate
+    using preparation = spyOn(Config, "domainUpdate").mockImplementation(async (...args) => {
+      expect(Storage.inTransaction()).toBe(false)
+      return update(...args)
+    })
+    const created = await ProjectDirectories.create({
+      name: "Prepared project",
+      directories: [directory.path],
+      mainDirectory: directory.path,
+    })
+    expect(created.existing).toBe(false)
+    expect(preparation).toHaveBeenCalledTimes(1)
+    expect(await Scope.fromID(created.scope.id)).toMatchObject({ type: "project", name: "Prepared project" })
+  })
+})
 
 test("project directories have one mutable main without moving the Scope or existing bindings", async () => {
   await using runtime = await testRuntime()

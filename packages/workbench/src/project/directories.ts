@@ -97,6 +97,17 @@ export namespace ProjectDirectories {
       selection.locations.map((item) => item.path),
       async () => {
         await revalidate(selection)
+        const mainOwner = await findMainOwner(selection.main)
+        if (mainOwner)
+          throw new Conflict({ message: "This folder was just assigned to another project. Open that project." })
+        const concurrent = await Scope.fromID(discovered.id)
+        if (concurrent?.type === "project")
+          throw new Conflict({ message: "This project was just created. Open the existing project." })
+        await Config.domainUpdate(
+          "general",
+          { defaultSessionWorkspace: "main" },
+          { root: path.join(discovered.local!.directory, ".synergy") },
+        )
         return Storage.transaction(async () => {
           const mainOwner = await findMainOwner(selection.main)
           if (mainOwner)
@@ -104,11 +115,6 @@ export namespace ProjectDirectories {
           const concurrent = await Scope.fromID(discovered.id)
           if (concurrent?.type === "project")
             throw new Conflict({ message: "This project was just created. Open the existing project." })
-          await Config.domainUpdate(
-            "general",
-            { defaultSessionWorkspace: "main" },
-            { root: path.join(discovered.local!.directory, ".synergy") },
-          )
           const scope = await Scope.registerProject({ ...discovered, name: parsed.name })
           const record = await save(scope.id, selection, 0)
           return { scope, record }
