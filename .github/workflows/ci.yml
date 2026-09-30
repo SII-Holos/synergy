@@ -348,7 +348,7 @@ jobs:
   linux:
     name: linux (${{ matrix.id }})
     needs: [plan, prepare]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.linux_count != '0' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare.result == 'success' && needs.plan.outputs.linux_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -406,7 +406,7 @@ jobs:
   linux_core:
     name: linux (${{ matrix.id }})
     needs: [plan, prepare, prepare-core]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.linux_core_count != '0' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare-core.result == 'success' && needs.plan.outputs.linux_core_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -464,7 +464,7 @@ jobs:
   linux_full:
     name: linux (${{ matrix.id }})
     needs: [plan, prepare, prepare-full]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.linux_full_count != '0' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare-full.result == 'success' && needs.plan.outputs.linux_full_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -579,7 +579,7 @@ jobs:
   docker:
     name: docker (${{ matrix.id }})
     needs: [plan, benchmark-prepare]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker_count != '0' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.benchmark-prepare.result == 'success' && needs.plan.outputs.docker_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:

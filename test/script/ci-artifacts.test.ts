@@ -125,6 +125,8 @@ test("the shared Web build is restored once and rejects changed source or output
       JSON.stringify({ name: "web", dependencies: { "@fixture/plugin": "workspace:*" } }),
     )
     await Bun.write(path.join(root, "apps/web/src/app.ts"), "export const app = 1")
+    await Bun.write(path.join(root, "packages/shared/src/types.d.ts"), "export interface Fixture {}")
+    await symlink("../../packages/shared/src/types.d.ts", path.join(root, "apps/web/custom-elements.d.ts"))
     await Bun.write(path.join(root, "apps/web/dist/index.html"), "verified Web")
     await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
     await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
@@ -138,6 +140,14 @@ test("the shared Web build is restored once and rejects changed source or output
     const before = await buildIdentity(root)
     await Bun.write(path.join(root, "apps/web/src/app.ts"), "export const app = 2")
     expect(await buildIdentity(root)).not.toBe(before)
+    await Bun.write(path.join(root, "packages/shared/src/other.d.ts"), "export interface Fixture {}")
+    const linked = await buildIdentity(root)
+    await rm(path.join(root, "apps/web/custom-elements.d.ts"))
+    await symlink("../../packages/shared/src/other.d.ts", path.join(root, "apps/web/custom-elements.d.ts"))
+    expect(await buildIdentity(root)).not.toBe(linked)
+    await rm(path.join(root, "apps/web/custom-elements.d.ts"))
+    await symlink(os.tmpdir(), path.join(root, "apps/web/custom-elements.d.ts"))
+    await expect(buildIdentity(root)).rejects.toThrow("outside")
   } finally {
     if (previous === undefined) delete process.env.SYNERGY_CI_WEB_BUILD
     else process.env.SYNERGY_CI_WEB_BUILD = previous

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { execFileSync } from "node:child_process"
-import { cp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises"
+import { cp, mkdir, readFile, readdir, rm, stat, lstat, realpath, readlink } from "node:fs/promises"
 import path from "node:path"
 import { ROOT, OUTPUT } from "./catalog"
 import { workspaces, workspaceGraph } from "../workspace-manifest"
@@ -23,14 +23,21 @@ export const BUILD_INPUTS = [
   "tsconfig.json",
 ]
 
-export async function filesIn(directory: string, ignored: string[] = []): Promise<string[]> {
+export async function filesIn(directory: string, ignored: string[] = [], sourceRoot?: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true }).catch(() => [])
   const nested = await Promise.all(
     entries.map(async (entry) => {
       if (ignored.includes(entry.name)) return []
       const file = path.join(directory, entry.name)
-      if (entry.isSymbolicLink()) throw new Error(`CI output must not follow a symlink: ${entry.name}`)
-      return entry.isDirectory() ? filesIn(file, ignored) : [file]
+      if (entry.isSymbolicLink()) {
+        if (!sourceRoot) throw new Error(`CI output must not follow a symlink: ${entry.name}`)
+        const target = await realpath(file)
+        const relative = path.relative(await realpath(sourceRoot), target)
+        if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative))
+          throw new Error(`Build source link resolves outside the repository: ${entry.name}`)
+        if (!(await stat(target)).isFile()) throw new Error(`Build source link must target a file: ${entry.name}`)
+      }
+      return entry.isDirectory() ? filesIn(file, ignored, sourceRoot) : [file]
     }),
   )
   return nested.flat().sort()
@@ -118,13 +125,11 @@ export async function buildIdentity(root = ROOT): Promise<string> {
   )
   const files = [...BUILD_INPUTS]
   for (const entry of buildWorkspaces(root, process.env.SYNERGY_CI_WEB_BUILD === "true")) {
-    for (const file of await filesIn(path.join(root, entry.directory), [
-      "dist",
-      "node_modules",
-      ".turbo",
-      "coverage",
-      "test",
-    ]))
+    for (const file of await filesIn(
+      path.join(root, entry.directory),
+      ["dist", "node_modules", ".turbo", "coverage", "test"],
+      root,
+    ))
       files.push(path.relative(root, file))
   }
   for (const directory of [
@@ -139,6 +144,7 @@ export async function buildIdentity(root = ROOT): Promise<string> {
     const source = path.join(root, file)
     hash
       .update(file)
+      .update((await lstat(source)).isSymbolicLink() ? await readlink(source) : "")
       .update(String((await stat(source)).mode & 0o777))
       .update(await readFile(source))
   }
