@@ -1579,8 +1579,6 @@ export namespace ToolResolver {
               let toolTrace: ToolTrace | undefined
               const slot = runtimeInput.processor.beginExecution(options.toolCallId)
               let resources: EnvironmentResources.Resolved | undefined
-              const linkExecution =
-                item.id === "bash" && (Object.hasOwn(args, "targetID") || Object.hasOwn(args, "linkID"))
               log.info("tool.execute.callback.slot", {
                 tool: item.id,
                 sessionID: runtimeInput.sessionID,
@@ -1596,10 +1594,8 @@ export namespace ToolResolver {
                   SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
                 }
                 const workspaceInfo =
-                  !linkExecution && (item.requiresWorkspace !== false || item.requiresExecution)
-                    ? ScopeContext.current.workspace
-                    : null
-                if ((item.requiresExecution || item.requiresWorkspace) && !linkExecution) {
+                  item.requiresWorkspace !== false || item.requiresExecution ? ScopeContext.current.workspace : null
+                if (item.requiresExecution || item.requiresWorkspace) {
                   resources = await EnvironmentResources.select({
                     scopeID: ScopeContext.current.scope.id,
                     ownerID: ctx.sessionID,
@@ -1663,7 +1659,7 @@ export namespace ToolResolver {
                 // ordinary capability flow instead of being allowed as if it
                 // were contained.
                 const containment =
-                  item.id === "bash" && !linkExecution
+                  item.id === "bash"
                     ? await prepareShellContainment({
                         gate,
                         ctx,
@@ -1723,7 +1719,7 @@ export namespace ToolResolver {
                 using toolTimer = log.time("tool.execute", { tool: item.id, callID: options.toolCallId })
 
                 // ── Sandbox wrapping for bash ──────────────────────────
-                if (item.id === "bash" && !linkExecution) {
+                if (item.id === "bash") {
                   const sandbox = gate.getSandbox()
                   if (sandbox.mode !== "none" && !shouldBypassShellSandbox(ctx)) {
                     // Register externally-approved roots, plus the paths the

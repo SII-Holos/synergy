@@ -2569,149 +2569,6 @@ export type HolosReconnectResponse = {
   success: true
 }
 
-export type SynergyLinkHostObservation = {
-  type: "synergy_link.host.hello"
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  /**
-   * Synergy Link host session identifier
-   */
-  hostSessionID: string
-  capabilities: {
-    platform: string
-    arch: string
-    hostname?: string
-    runtime: "node" | "bun" | "unknown"
-    defaultShell: "none" | "sh" | "cmd" | "powershell" | "pwsh"
-    supportedShells: Array<"none" | "sh" | "cmd" | "powershell" | "pwsh">
-    supportsPty: boolean
-    supportsSendKeys: boolean
-    supportsSoftKill: boolean
-    supportsProcessGroups: boolean
-    supportsBashDetach?: boolean
-    envCaseInsensitive: boolean
-    lineEndings: "lf" | "crlf"
-  }
-  observedAt: number
-}
-
-export type SynergyLinkProbe = {
-  status: "reachable" | "refused" | "busy" | "failed"
-  checkedAt: number
-}
-
-export type SynergyLinkTargetView = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-  availability: "unknown" | "unreachable" | "reachable" | "connected"
-  /**
-   * Synergy Link session identifier
-   */
-  sessionID?: string
-}
-
-export type SynergyLinkTarget = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-}
-
-export type SynergyLinkTargetCreateInput = {
-  name: string
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
-  }
-}
-
-export type SynergyLinkTargetPatchMetadata =
-  | {
-      kind: "metadata"
-      name: string
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      name: string
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-
-export type SynergyLinkTargetPatchRelink = {
-  kind: "relink"
-  name?: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-}
-
-export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
-
-export type SynergyLinkTargetRemoveResult = {
-  success: true
-}
-
 export type PushVapidKey = {
   publicKey: string
 }
@@ -2885,6 +2742,13 @@ export type ScopeNavEntry = {
     accountId: string
     externalProjectId: string
     remoteState: "active" | "paused" | "stale" | "archived"
+  }
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
   }
 }
 
@@ -12177,27 +12041,6 @@ export type EventFileEdited = {
   }
 }
 
-export type EventSynergyLinkTargetCreated = {
-  type: "synergy_link.target.created"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetUpdated = {
-  type: "synergy_link.target.updated"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetRemoved = {
-  type: "synergy_link.target.removed"
-  properties: {
-    id: string
-  }
-}
-
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -12499,9 +12342,6 @@ export type Event =
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
   | EventFileEdited
-  | EventSynergyLinkTargetCreated
-  | EventSynergyLinkTargetUpdated
-  | EventSynergyLinkTargetRemoved
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventMcpToolsChanged
@@ -14113,161 +13953,6 @@ export type HolosReconnectResponses = {
 }
 
 export type HolosReconnectResponse2 = HolosReconnectResponses[keyof HolosReconnectResponses]
-
-export type SynergyLinkTargetsData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetsErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetsError = SynergyLinkTargetsErrors[keyof SynergyLinkTargetsErrors]
-
-export type SynergyLinkTargetsResponses = {
-  /**
-   * Persisted Synergy Link targets
-   */
-  200: Array<SynergyLinkTargetView>
-}
-
-export type SynergyLinkTargetsResponse = SynergyLinkTargetsResponses[keyof SynergyLinkTargetsResponses]
-
-export type SynergyLinkTargetCreateData = {
-  body?: SynergyLinkTargetCreateInput
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetCreateError = SynergyLinkTargetCreateErrors[keyof SynergyLinkTargetCreateErrors]
-
-export type SynergyLinkTargetCreateResponses = {
-  /**
-   * Created target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetCreateResponse = SynergyLinkTargetCreateResponses[keyof SynergyLinkTargetCreateResponses]
-
-export type SynergyLinkTargetRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetRemoveErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetRemoveError = SynergyLinkTargetRemoveErrors[keyof SynergyLinkTargetRemoveErrors]
-
-export type SynergyLinkTargetRemoveResponses = {
-  /**
-   * Target removed
-   */
-  200: SynergyLinkTargetRemoveResult
-}
-
-export type SynergyLinkTargetRemoveResponse = SynergyLinkTargetRemoveResponses[keyof SynergyLinkTargetRemoveResponses]
-
-export type SynergyLinkTargetUpdateData = {
-  body?: SynergyLinkTargetPatchInput
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetUpdateError = SynergyLinkTargetUpdateErrors[keyof SynergyLinkTargetUpdateErrors]
-
-export type SynergyLinkTargetUpdateResponses = {
-  /**
-   * Updated target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetUpdateResponse = SynergyLinkTargetUpdateResponses[keyof SynergyLinkTargetUpdateResponses]
-
-export type SynergyLinkTargetProbeData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}/probe"
-}
-
-export type SynergyLinkTargetProbeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetProbeError = SynergyLinkTargetProbeErrors[keyof SynergyLinkTargetProbeErrors]
-
-export type SynergyLinkTargetProbeResponses = {
-  /**
-   * Observed target
-   */
-  200: SynergyLinkTargetView
-}
-
-export type SynergyLinkTargetProbeResponse = SynergyLinkTargetProbeResponses[keyof SynergyLinkTargetProbeResponses]
 
 export type PushGetVapidKeyData = {
   body?: never

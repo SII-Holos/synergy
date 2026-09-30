@@ -21,7 +21,6 @@ export type ToolTimeoutSource =
   | "auto_background"
   | "question"
   | "vision"
-  | "remote_connect"
   | "document_extract"
 
 export interface ToolTimeoutMetadata {

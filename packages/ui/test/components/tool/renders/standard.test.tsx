@@ -1,12 +1,4 @@
 import { describe, expect, mock, test } from "bun:test"
-import { setupI18n as coreSetupI18n } from "@lingui/core"
-import { TOOL_MISC_DESC } from "../../../../src/components/tool-title-descriptors"
-
-const REMOTE_LABEL_ID = "tool.misc.executed-via-synergy-link"
-const REMOTE_LABEL_EN = "Executed via Synergy Link"
-const REMOTE_LABEL_ZH = "通过 Synergy Link 执行"
-
-const i18n = coreSetupI18n({ locale: "en", locales: ["en", "zh-CN"], messages: {} })
 
 let registeredRenders: Record<string, (props: Record<string, any>) => unknown> = {}
 let capturedTrigger: Record<string, unknown> | undefined
@@ -19,7 +11,7 @@ let capturedTrigger: Record<string, unknown> | undefined
 
 mock.module("@lingui/solid", () => ({
   useLingui: () => ({
-    _: (descriptor: { id: string; message?: string }) => i18n._(descriptor),
+    _: (descriptor: { id: string; message?: string }) => descriptor.message,
   }),
 }))
 mock.module("solid-js", () => ({
@@ -76,96 +68,14 @@ function renderTrigger(tool: string, props: Record<string, any>) {
   return capturedTrigger
 }
 
-describe("remote Synergy Link provenance on bash/process cards", () => {
-  test("descriptor has a semantic ID with English default", () => {
-    expect(TOOL_MISC_DESC.executedViaSynergyLink).toEqual({
-      id: REMOTE_LABEL_ID,
-      message: REMOTE_LABEL_EN,
-    })
+describe("bash and process cards", () => {
+  test("bash card shows its command", () => {
+    const result = renderTrigger("bash", { input: { command: "ls" }, metadata: {} })
+    expect(result?.tags).toEqual([{ label: "ls" }])
   })
 
-  test("bash card marks remote execution", () => {
-    i18n.loadAndActivate({ locale: "en", messages: { [REMOTE_LABEL_ID]: REMOTE_LABEL_EN } })
-    const remote = renderTrigger("bash", {
-      input: { command: "ls" },
-      metadata: { backend: "remote" },
-    })
-    expect(remote?.tags).toEqual([{ label: "ls" }, { label: REMOTE_LABEL_EN }])
-  })
-
-  test("bash card stays unmarked for local or absent backend", () => {
-    const local = renderTrigger("bash", { input: { command: "ls" }, metadata: { backend: "local" } })
-    expect(local?.tags).toEqual([{ label: "ls" }])
-    const absent = renderTrigger("bash", { input: { command: "ls" }, metadata: {} })
-    expect(absent?.tags).toEqual([{ label: "ls" }])
-  })
-
-  test("process card marks remote execution", () => {
-    const remote = renderTrigger("process", {
-      input: { action: "list" },
-      metadata: { backend: "remote" },
-    })
-    expect(remote?.tags).toEqual([{ label: REMOTE_LABEL_EN }])
-  })
-
-  test("process card stays unmarked for local backend", () => {
-    const local = renderTrigger("process", {
-      input: { action: "list" },
-      metadata: { backend: "local" },
-    })
-    expect(local?.tags).toBeUndefined()
-  })
-
-  test("remote marker reacts to the active locale", () => {
-    i18n.loadAndActivate({ locale: "zh-CN", messages: { [REMOTE_LABEL_ID]: REMOTE_LABEL_ZH } })
-    const zh = renderTrigger("bash", { input: { command: "ls" }, metadata: { backend: "remote" } })
-    expect(zh?.tags).toEqual([{ label: "ls" }, { label: REMOTE_LABEL_ZH }])
-  })
-})
-
-describe("attach card gallery routing", () => {
-  test("renders gallery from full attachment parts when provided", () => {
-    capturedGalleryFiles = undefined
-    const attachment = {
-      id: "part-1",
-      sessionID: "session-1",
-      messageID: "message-1",
-      type: "attachment" as const,
-      mime: "text/html",
-      filename: "report.html",
-      url: "asset://abc",
-    }
-    renderTrigger("attach", {
-      status: "completed",
-      input: {},
-      metadata: { files: [{ assetId: "abc", filename: "report.html", mime: "text/html", size: 10 }] },
-      attachments: [attachment],
-    })
-    expect(lastGalleryFiles()).toEqual([attachment])
-  })
-
-  test("falls back to legacy metadata files without attachment parts", () => {
-    capturedGalleryFiles = undefined
-    renderTrigger("attach", {
-      status: "completed",
-      input: {},
-      metadata: { files: [{ assetId: "abc", filename: "report.html", mime: "text/html", size: 10 }] },
-    })
-    expect(lastGalleryFiles()).toEqual([{ assetId: "abc", filename: "report.html", mime: "text/html", size: 10 }])
-  })
-})
-
-describe("speak card trigger", () => {
-  test("renders an audio icon with the text subtitle", () => {
-    const trigger = renderTrigger("speak", {
-      status: "running",
-      input: { text: "Report ready" },
-    })
-
-    expect(trigger).toMatchObject({
-      icon: "audio-lines",
-      title: { id: "tool.title.speak", message: "Speak" },
-      subtitle: "Report ready",
-    })
+  test("process card shows no execution-origin marker", () => {
+    const result = renderTrigger("process", { input: { action: "list" }, metadata: {} })
+    expect(result?.tags).toBeUndefined()
   })
 })

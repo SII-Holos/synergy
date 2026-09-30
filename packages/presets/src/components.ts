@@ -6,7 +6,6 @@ import { connections } from "@ericsanchezok/synergy-connections/component"
 import { externalAgents } from "@ericsanchezok/synergy-external-agents/component"
 import { formatter } from "@ericsanchezok/synergy-formatter/component"
 import { library } from "@ericsanchezok/synergy-library/component"
-import { linkClient } from "@ericsanchezok/synergy-link-client/component"
 import { lsp } from "@ericsanchezok/synergy-lsp/component"
 import { mcp } from "@ericsanchezok/synergy-mcp/component"
 import { media } from "@ericsanchezok/synergy-media/component"
@@ -27,7 +26,6 @@ export function fullComponents() {
     externalAgents(),
     formatter(),
     library(),
-    linkClient(),
     lsp(),
     mcp(),
     media(),

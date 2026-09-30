@@ -41,6 +41,11 @@ describe("settings catalog", () => {
     }
   })
 
+  test("keeps Holos account settings without a Link target section", () => {
+    expect(BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "account")?.domainIds).toContain("holos")
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("synergyLink")
+  })
+
   test("agents domain config is reachable yet not a standalone settings page", () => {
     expect(BUILTIN_SETTINGS_IDS).not.toContain("agents")
     expect(BUILTIN_SETTINGS_IDS).not.toContain("commands")

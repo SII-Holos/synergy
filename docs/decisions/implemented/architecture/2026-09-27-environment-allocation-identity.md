@@ -14,7 +14,7 @@ Provider registration belongs to a Runtime and is sealed before startup. Provide
 
 Environment uses are durable records. Deallocation requires no outstanding uses and a confirmed provider response. Native providers own only their borrowed execution resources; they cannot stop the machine. Managed providers support idle reclamation independently of owner binding lifetime. Recovery reconciles the active-allocation index before admission and preserves uncertain uses.
 
-The catalog uses the existing Agent Storage transactions. It does not introduce a second Session store or change PostgreSQL namespace ownership. Synergy Link is an independent capability and supplies neither Environment identity nor transport.
+The catalog uses the existing Agent Storage transactions. It does not introduce a second Session store or change PostgreSQL namespace ownership. The retired Synergy Link path supplied neither Environment identity nor transport.
 
 ## Alternatives considered
 

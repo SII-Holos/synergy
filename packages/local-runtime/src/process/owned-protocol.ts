@@ -26,6 +26,7 @@ export namespace OwnedProtocol {
     pid: z.number().int().positive(),
   })
   export const Event = z.discriminatedUnion("type", [
+    z.object({ type: z.literal("prepared") }),
     z.object({
       type: z.literal("stage"),
       stage: z.enum(["launched", "root-exited", "tree-drained", "streams-drained"]),

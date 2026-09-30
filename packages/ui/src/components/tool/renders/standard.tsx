@@ -398,14 +398,11 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "bash",
   render(props) {
-    const { _ } = useLingui()
     const cmd = () => {
       const raw = props.input.command ?? props.metadata.command ?? ""
       if (!raw) return undefined
       return raw.length > 40 ? raw.slice(0, 37) + "…" : raw
     }
-    const remoteLabel = () =>
-      props.metadata?.backend === "remote" ? _(TOOL_MISC_DESC.executedViaSynergyLink) : undefined
     return (
       <BasicTool
         {...props}
@@ -413,12 +410,7 @@ ToolRegistry.register({
           icon: "terminal",
           title: TOOL_TITLE_DESC["bash"],
           subtitle: props.input.description,
-          tags: (() => {
-            const items = cmd() ? [{ label: cmd()! }] : []
-            const remote = remoteLabel()
-            if (remote) items.push({ label: remote })
-            return items.length > 0 ? items : undefined
-          })(),
+          tags: cmd() ? [{ label: cmd()! }] : undefined,
         }}
       >
         <div data-component="tool-output" data-scrollable>
@@ -778,7 +770,6 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "process",
   render(props) {
-    const { _ } = useLingui()
     const label = () => {
       const desc = props.metadata.description as string | undefined
       const cmd = props.metadata.command as string | undefined
@@ -790,14 +781,10 @@ ToolRegistry.register({
       const id = props.input.processId || ""
       return id.length > 12 ? id.slice(0, 9) + "…" : id
     }
-    const remoteLabel = () =>
-      props.metadata?.backend === "remote" ? _(TOOL_MISC_DESC.executedViaSynergyLink) : undefined
     const args = () => {
       const result: string[] = []
       if (label()) result.push(label()!)
       if (props.input.processId) result.push(shortId())
-      const remote = remoteLabel()
-      if (remote) result.push(remote)
       return result
     }
     return (
@@ -1692,57 +1679,6 @@ ToolRegistry.register({
             (props.input.folder as string) && props.input.folder !== "INBOX"
               ? [{ label: props.input.folder as string }]
               : undefined,
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "connect",
-  render(props) {
-    const { _ } = useLingui()
-    const actionLabel = () => {
-      switch (props.input.action) {
-        case "open":
-          return _(TOOL_TITLE_DESC["connect_opening"])
-        case "close":
-          return _(TOOL_TITLE_DESC["connect_closing"])
-        case "status":
-          return _(TOOL_TITLE_DESC["connect_status"])
-        case "list":
-          return _(TOOL_TITLE_DESC["connect_list"])
-        case "list_targets":
-          return _(TOOL_TITLE_DESC["connect_list_targets"])
-        default:
-          return props.input.action || ""
-      }
-    }
-    const statusLabel = () => {
-      const meta = props.metadata
-      if (meta?.status === "opened") return _(TOOL_TITLE_DESC["connect_connected"])
-      if (meta?.status === "closed") return _(TOOL_TITLE_DESC["connect_disconnected"])
-      return undefined
-    }
-    return (
-      <BasicTool
-        {...props}
-        trigger={{
-          icon: "cable",
-          title: TOOL_TITLE_DESC["connect"],
-          subtitle: props.input.targetID || props.input.linkID || "",
-          tags: (() => {
-            const l = statusLabel() || actionLabel()
-            return l ? [{ label: l }] : undefined
-          })(),
         }}
       >
         <Show when={props.output}>

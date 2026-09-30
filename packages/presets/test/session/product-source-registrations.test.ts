@@ -11,11 +11,12 @@ import { registerToolPluginSource } from "@ericsanchezok/synergy-plugin-host/plu
 import { registerLspToolSource } from "@ericsanchezok/synergy-lsp/tool-source"
 import { registerWorkspaceFileSymbolSource } from "@ericsanchezok/synergy-lsp/workspace-symbol-source"
 import { registerLspConfigCatalog } from "@ericsanchezok/synergy-lsp/config-catalog"
-import { registerToolLinkTargetSource } from "@ericsanchezok/synergy-link-client/tool-target-source"
 import { ToolLspSource } from "@ericsanchezok/synergy-harness/tool/lsp-source"
 import { ToolNoteSource } from "@ericsanchezok/synergy-harness/tool/note-source"
 import { ToolPluginSource } from "@ericsanchezok/synergy-harness/tool/plugin-source"
-import { ToolLinkTargetSource } from "@ericsanchezok/synergy-harness/tool/link-target-source"
+import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
+import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ConfigLspCatalog } from "@ericsanchezok/synergy-harness/config/lsp-catalog"
 import { PermissionPluginSource } from "@ericsanchezok/synergy-harness/permission/plugin-source"
 import { ProviderPluginAuth } from "@ericsanchezok/synergy-harness/provider/plugin-auth-source"
@@ -85,9 +86,32 @@ describe("full Runtime source composition", () => {
       expect(ConfigLspCatalog.isKnownServer("typescript")).toBe(true)
     }))
 
-  test("tool link target source registers target resolution", () =>
-    runtime.run(() => {
-      expect(ToolLinkTargetSource.get()).toBeDefined()
+  test("full product exposes Environment execution without Link tool selectors", () =>
+    runtime.run(async () => {
+      await using project = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await project.scope(),
+        fn: async () => {
+          const tools = await ToolRegistry.tools("test-provider")
+          expect(tools.some((tool) => tool.id === "connect")).toBe(false)
+          for (const name of ["bash", "process"]) {
+            const tool = tools.find((entry) => entry.id === name)
+            expect(tool).toBeDefined()
+            expect(
+              tool!.parameters.safeParse({
+                ...(name === "bash" ? { command: "pwd", description: "Print directory" } : { action: "list" }),
+                targetID: "old-target",
+              }).success,
+            ).toBe(false)
+            expect(
+              tool!.parameters.safeParse({
+                ...(name === "bash" ? { command: "pwd", description: "Print directory" } : { action: "list" }),
+                linkID: "link_old",
+              }).success,
+            ).toBe(false)
+          }
+        },
+      })
     }))
 })
 

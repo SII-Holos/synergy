@@ -92,6 +92,7 @@ export async function runOwnedProcessWorker(filename: string) {
     )
   })
   const activationTimer = setTimeout(() => void shutdown(), Math.max(1, config.deadline - Date.now()))
+  OwnedProtocol.send(control, { type: "prepared" })
   try {
     await activated
     reference ??= OwnedTree.current()

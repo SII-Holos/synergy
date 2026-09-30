@@ -4,7 +4,7 @@ Synergy evaluates every tool call at a centralized Control Plane execution bound
 
 The harness owns permission policy and the `SandboxHost` wrapper contract. The local runtime owns OS sandbox implementations and helpers, native PTYs, process containment and file watchers. Local composition registers these before execution; a bare harness neither imports their native dependencies nor starts a file watcher. A sandboxed operation without a registered host fails explicitly.
 
-Tools declare execution requirements separately from Workspace requirements. Bash selects its Session Environment before containment and may use the target's scratch directory without a Workspace. Executor sandbox preparation supplies the target's actual containment verdict; Synergy Link calls retain their independent transport and do not allocate an Environment. See [Environments](environments.md) for target lifetime and durable completion.
+Tools declare execution requirements separately from Workspace requirements. Bash selects its Session Environment before containment and may use the target's scratch directory without a Workspace. Executor sandbox preparation supplies the target's actual containment verdict; See [Environments](environments.md) for target lifetime and durable completion.
 
 ## Execution Pipeline
 

@@ -30,7 +30,6 @@ export const runtimePackages = new Set(
     "formatter",
     "acp",
     "external-agents",
-    "link-client",
     "code-tools",
     "media",
     "plugin-host",

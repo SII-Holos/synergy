@@ -198,7 +198,7 @@ describe("release runtime asset contract", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-runtime-checksums-"))
     temporaryDirectories.push(root)
     const first = path.join(root, "synergy-linux-x64.tar.gz")
-    const second = path.join(root, "synergy-link-linux-x64.tar.gz")
+    const second = path.join(root, "synergy-darwin-arm64.tar.gz")
     await Promise.all([fs.writeFile(first, "first"), fs.writeFile(second, "second")])
 
     const checksumPath = await createBinaryChecksums("1.2.3", [first, second], root)

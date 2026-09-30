@@ -44,7 +44,6 @@
     "@ericsanchezok/synergy-formatter": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-library": "workspace:*",
-    "@ericsanchezok/synergy-link-client": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-lsp": "workspace:*",
     "@ericsanchezok/synergy-mcp": "workspace:*",
@@ -63,7 +62,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@tsconfig/bun": "catalog:",
