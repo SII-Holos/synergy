@@ -57,6 +57,7 @@
     "./bus/bus-event": "./src/bus/bus-event.ts",
     "./provider/github": "./src/provider/github.ts",
     "./storage/storage": "./src/storage/storage.ts",
+    "./storage/event-sinks": "./src/storage/event-sinks.ts",
     "./id/id": "./src/id/id.ts",
     "./migration": "./src/migration/index.ts",
     "./migration/registry": "./src/migration/registry.ts",

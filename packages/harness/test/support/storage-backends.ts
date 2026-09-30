@@ -3,6 +3,7 @@ import type { StoreOptions } from "../../src/storage/sql-contract"
 export const POSTGRES_TEST_FILES = [
   "test/storage/artifact-pack.test.ts",
   "test/storage/backend-selection.test.ts",
+  "test/storage/event-sinks.test.ts",
   "test/storage/compat-defer.test.ts",
   "test/storage/large-artifacts.test.ts",
   "test/storage/packed-import.test.ts",
