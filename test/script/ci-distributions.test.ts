@@ -2,7 +2,13 @@ import { expect, test } from "bun:test"
 import { chmod, mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { distributionPaths, publishDistribution, restoreDistribution } from "../../script/ci/distributions"
+import {
+  distributionBuildIdentity,
+  distributionPaths,
+  publishDistribution,
+  rebindDistribution,
+  restoreDistribution,
+} from "../../script/ci/distributions"
 import { createPlan } from "../../script/ci/plan"
 
 test("shared distributions preserve executable bytes and reject foreign or changed artifacts", async () => {
@@ -19,6 +25,7 @@ test("shared distributions preserve executable bytes and reject foreign or chang
     tasks: [{ id: "artifact", kind: "artifacts", pool: "linux", owners: [], needs: [], seconds: 1 }],
   })
   try {
+    await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "base fixture")
     for (const profile of ["core", "full"] as const) {
       for (const prefix of distributionPaths(profile)) {
         const file = path.join(root, prefix, "fixture")
@@ -64,6 +71,7 @@ test("workflow transport preserves distribution modes across a consumer umask", 
     expect({ code, stderr }).toEqual({ code: 0, stderr: "" })
   }
   try {
+    await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "base fixture")
     for (const profile of ["core", "full"] as const) {
       for (const prefix of distributionPaths(profile)) {
         await Bun.write(path.join(root, prefix, "fixture"), "transported executable")
@@ -104,6 +112,44 @@ test("workflow transport preserves distribution modes across a consumer umask", 
           expect((await stat(path.join(root, prefix, "fixture"))).mode & 0o777).toBe(0o777)
       }
     }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test("cached distribution inputs are verified before issuing evidence for another plan", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-distribution-cache-"))
+  const plan = createPlan({
+    base: "a",
+    head: "b",
+    sha: "tested",
+    run: "42",
+    mode: "full",
+    changed: [],
+    baseWorkspaces: [],
+    headWorkspaces: [],
+    tasks: [{ id: "artifact", kind: "artifacts", pool: "linux", owners: [], needs: [], seconds: 1 }],
+  })
+  try {
+    await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "base fixture")
+    for (const prefix of distributionPaths("full"))
+      await Bun.write(path.join(root, prefix, "fixture"), "compiled fixture")
+    await publishDistribution(root, plan, "full")
+    const key = await distributionBuildIdentity(root, plan, "full")
+    const next = { ...plan, run: "43", attempt: "2", digest: "new-plan" }
+    await expect(restoreDistribution(root, next, "full")).rejects.toThrow("identity")
+    await rebindDistribution(root, next, "full")
+    await restoreDistribution(root, next, "full")
+    expect(await distributionBuildIdentity(root, next, "full")).toBe(key)
+    await expect(rebindDistribution(root, { ...next, sha: "another-sha" }, "full")).rejects.toThrow("inputs")
+    await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "different native toolchain outputs")
+    await expect(rebindDistribution(root, next, "full")).rejects.toThrow("inputs")
+    await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "base fixture")
+    await Bun.write(
+      path.join(root, ".artifacts/ci/distributions/full", distributionPaths("full")[0]!, "fixture"),
+      "corrupt",
+    )
+    await expect(rebindDistribution(root, next, "full")).rejects.toThrow("bytes")
   } finally {
     await rm(root, { recursive: true, force: true })
   }

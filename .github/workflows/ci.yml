@@ -57,7 +57,7 @@ jobs:
       macos_count: ${{ steps.plan.outputs.macos_count }}
       diagnostic: ${{ steps.plan.outputs.diagnostic }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
           persist-credentials: false
@@ -101,7 +101,7 @@ jobs:
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -166,7 +166,22 @@ jobs:
         run: |
           tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
           bun script/ci.ts restore
-      - run: bun script/ci.ts prepare-distributions --profile core
+      - name: Resolve distribution cache identity
+        id: distribution-key
+        run: bun script/ci.ts distribution-key --profile core
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: distribution-cache
+        if: github.event_name != 'schedule' && inputs.build_cache != 'disabled'
+        with:
+          path: .artifacts/ci/distributions/core
+          key: ci-distribution-core-${{ steps.distribution-key.outputs.key }}
+      - name: Build or validate cached distribution
+        env:
+          CACHE_HIT: ${{ steps.distribution-cache.outputs.cache-hit }}
+        run: |
+          args=(--profile core)
+          if [ "$CACHE_HIT" = true ]; then args+=(--cached); fi
+          bun script/ci.ts prepare-distributions "${args[@]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-distribution-core-${{ github.run_attempt }}
@@ -203,7 +218,22 @@ jobs:
         run: |
           tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
           bun script/ci.ts restore
-      - run: bun script/ci.ts prepare-distributions --profile full
+      - name: Resolve distribution cache identity
+        id: distribution-key
+        run: bun script/ci.ts distribution-key --profile full
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: distribution-cache
+        if: github.event_name != 'schedule' && inputs.build_cache != 'disabled'
+        with:
+          path: .artifacts/ci/distributions/full
+          key: ci-distribution-full-${{ steps.distribution-key.outputs.key }}
+      - name: Build or validate cached distribution
+        env:
+          CACHE_HIT: ${{ steps.distribution-cache.outputs.cache-hit }}
+        run: |
+          args=(--profile full)
+          if [ "$CACHE_HIT" = true ]; then args+=(--cached); fi
+          bun script/ci.ts prepare-distributions "${args[@]}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-distribution-full-${{ github.run_attempt }}
@@ -220,7 +250,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -269,7 +299,7 @@ jobs:
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -314,7 +344,7 @@ jobs:
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -370,7 +400,7 @@ jobs:
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -434,7 +464,7 @@ jobs:
         ports: [5432:5432]
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -479,7 +509,7 @@ jobs:
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -526,7 +556,7 @@ jobs:
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
@@ -567,7 +597,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false

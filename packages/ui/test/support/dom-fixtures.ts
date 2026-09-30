@@ -65,26 +65,13 @@ export function prepareDOMFixtures() {
     await mkdir(cache, { recursive: true })
     const staging = await mkdtemp(path.join(cache, ".build-"))
     try {
-      const [{ build }, { default: solidPlugin }] = await Promise.all([import("vite"), import("vite-plugin-solid")])
-      await build({
-        configFile: false,
-        logLevel: "silent",
-        plugins: [solidPlugin()],
-        resolve: {
-          alias: { "@ericsanchezok/synergy-plugin/theme": path.join(root, "packages/plugin/src/theme/index.ts") },
-        },
-        worker: { format: "es" },
-        build: {
-          outDir: staging,
-          emptyOutDir: true,
-          minify: false,
-          lib: {
-            entry: Object.fromEntries(names.map((name) => [name, path.join(source, `${name}.tsx`)])),
-            formats: ["es"],
-          },
-          rollupOptions: { output: { entryFileNames: "[name].js", chunkFileNames: "chunks/[name]-[hash].js" } },
-        },
+      const builder = Bun.spawn([process.execPath, import.meta.filename, staging], {
+        env: { ...process.env, NODE_ENV: "test" },
+        stdin: "ignore",
+        stdout: "inherit",
+        stderr: "inherit",
       })
+      if (await builder.exited) throw new Error("Shared UI fixture compilation failed")
       const files: Record<string, string> = {}
       for await (const file of new Bun.Glob("**/*").scan({ cwd: staging, onlyFiles: true }))
         files[file] = new Bun.CryptoHasher("sha256")
@@ -99,6 +86,31 @@ export function prepareDOMFixtures() {
       await rm(staging, { recursive: true, force: true })
     }
   })())
+}
+
+if (import.meta.main) {
+  const staging = process.argv[2]
+  if (!staging) throw new Error("UI fixture builder requires an output directory")
+  const [{ build }, { default: solidPlugin }] = await Promise.all([import("vite"), import("vite-plugin-solid")])
+  await build({
+    configFile: false,
+    logLevel: "silent",
+    plugins: [solidPlugin()],
+    resolve: {
+      alias: { "@ericsanchezok/synergy-plugin/theme": path.join(root, "packages/plugin/src/theme/index.ts") },
+    },
+    worker: { format: "es" },
+    build: {
+      outDir: staging,
+      emptyOutDir: true,
+      minify: false,
+      lib: {
+        entry: Object.fromEntries(names.map((name) => [name, path.join(source, `${name}.tsx`)])),
+        formats: ["es"],
+      },
+      rollupOptions: { output: { entryFileNames: "[name].js", chunkFileNames: "chunks/[name]-[hash].js" } },
+    },
+  })
 }
 
 export async function domFixture(name: string) {

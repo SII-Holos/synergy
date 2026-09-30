@@ -1,5 +1,10 @@
 #!/usr/bin/env bun
-import { distributionCommands, publishDistribution } from "./ci/distributions"
+import {
+  distributionBuildIdentity,
+  distributionCommands,
+  publishDistribution,
+  rebindDistribution,
+} from "./ci/distributions"
 import { createIsolatedTestEnv } from "../packages/testing/src/env"
 import { verifyScenarios } from "./ci/junit"
 import { parseArgs } from "node:util"
@@ -15,13 +20,14 @@ import { createPlan, executionQueue, needsBuild, QUEUES, validatePlan, type Mode
 import { executeUnit } from "./ci/run"
 import { policyIdentity, shadowEvidence } from "./ci/rollout"
 
-const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|build-key|prepare-distributions> [options]
+const HELP = `Usage: bun script/ci.ts <plan|run|verify|prepare|restore|build-key|distribution-key|prepare-distributions> [options]
 plan --base SHA --head SHA --sha SHA --mode full|shadow|affected|diagnostic --only task[,task] --package workspace --file package/test/file.test.ts
 run --plan FILE --unit ID
 verify --plan FILE --results DIRECTORY --jobs JSON
 prepare / restore: produce or validate the input-addressed Linux build bundle.
 build-key: resolve the cache identity on the runner that will build the bundle.
 prepare-distributions --profile core|full: produce only the selected distribution.
+distribution-key --profile core|full: resolve the distribution cache identity.
 Diagnostic plans never satisfy All checks passed. PRs default to affected mode; shared or unknown inputs select full verification.`
 
 export async function policyDigest(root = ROOT) {
@@ -81,6 +87,7 @@ async function main() {
       results: { type: "string" },
       jobs: { type: "string" },
       profile: { type: "string" },
+      cached: { type: "boolean" },
     },
   })
   if (values.help || !positionals.length) {
@@ -255,6 +262,13 @@ async function main() {
     return
   }
   const plan = await readPlan(values.plan ?? path.join(ROOT, OUTPUT, "plan.json"))
+  if (operation === "distribution-key") {
+    if (values.profile !== "core" && values.profile !== "full") throw new Error("A distribution profile is required")
+    const key = await distributionBuildIdentity(ROOT, plan, values.profile)
+    if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `key=${key}\n`)
+    console.log(key)
+    return
+  }
   if (operation === "prepare-distributions") {
     const profiles = [
       ...new Set(
@@ -269,23 +283,26 @@ async function main() {
     for (const profile of profiles.filter((profile) => !values.profile || values.profile === profile)) {
       const isolated = await createIsolatedTestEnv()
       try {
-        for (const recipe of distributionCommands(profile, ROOT)) {
-          const child = Bun.spawn(recipe.args, {
-            cwd: ROOT,
-            stdout: "inherit",
-            stderr: "inherit",
-            env: {
-              ...isolated.env,
-              SYNERGY_HOME: path.join(isolated.env.SYNERGY_TEST_ROOT!, "build-home"),
-              SYNERGY_BUILD_TARGETS: "linux-x64",
-              SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
-              SYNERGY_CI_WEB_MANIFEST: "1",
-              HUSKY: "0",
-            },
-          })
-          if (await child.exited) throw new Error(`Distribution preparation failed: ${recipe.name}`)
+        if (values.cached) await rebindDistribution(ROOT, plan, profile)
+        else {
+          for (const recipe of distributionCommands(profile, ROOT)) {
+            const child = Bun.spawn(recipe.args, {
+              cwd: ROOT,
+              stdout: "inherit",
+              stderr: "inherit",
+              env: {
+                ...isolated.env,
+                SYNERGY_HOME: path.join(isolated.env.SYNERGY_TEST_ROOT!, "build-home"),
+                SYNERGY_BUILD_TARGETS: "linux-x64",
+                SYNERGY_REQUIRE_SANDBOX_ASSETS: "1",
+                SYNERGY_CI_WEB_MANIFEST: "1",
+                HUSKY: "0",
+              },
+            })
+            if (await child.exited) throw new Error(`Distribution preparation failed: ${recipe.name}`)
+          }
+          await publishDistribution(ROOT, plan, profile)
         }
-        await publishDistribution(ROOT, plan, profile)
         await command([
           "tar",
           "-I",

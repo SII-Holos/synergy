@@ -67,7 +67,7 @@ describe("required CI topology", () => {
       expect(download, id).toBeLessThan(execute)
     }
   })
-  test("business compaction and the four short semantics remain independently runnable", async () => {
+  test("bounded Docker groups retain each business task once and share preparation", async () => {
     const tasks = await catalog()
     const plan = createPlan({
       base: "base",
@@ -83,15 +83,22 @@ describe("required CI topology", () => {
     const controls = tasks.filter(
       (task) => task.id.startsWith("native-synergy-semantics-") || task.id === "native-synergy-compaction",
     )
+    const docker = plan.units.filter((unit) => unit.pool === "docker")
+    expect(docker).toHaveLength(LIMITS.docker)
+    expect(docker.some((unit) => unit.tasks.length > 1)).toBe(true)
     expect(controls).toHaveLength(5)
     const units = controls.map((task) => {
       const assigned = plan.units.filter((unit) => unit.tasks.includes(task.id))
       expect(assigned).toHaveLength(1)
-      expect(assigned[0]!.tasks).toEqual([task.id])
       expect(executionQueue(assigned[0]!, tasks)).toBe("docker")
       return assigned[0]!.id
     })
-    expect(new Set(units).size).toBe(controls.length)
+    expect(new Set(units).size).toBeGreaterThan(0)
+    expect(docker.flatMap((unit) => unit.tasks).toSorted()).toEqual(
+      plan.selected
+        .filter((id) => tasks.find((task) => task.id === id)!.pool === "docker" && id !== "benchmark-prepare")
+        .toSorted(),
+    )
   })
   test("every prepared benchmark consumer restores its artifact before executing", async () => {
     const tasks = await catalog()

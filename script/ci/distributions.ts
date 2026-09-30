@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process"
 import { cp, mkdir, readFile, rm, stat } from "node:fs/promises"
 import path from "node:path"
 import { fileHash, filesIn } from "./artifacts"
+import { hash } from "./plan"
 import type { Plan } from "./plan"
 
 export type Profile = "core" | "full"
@@ -57,7 +58,25 @@ function identity(plan: Plan, profile: Profile) {
 
 interface Manifest {
   identity: ReturnType<typeof identity>
+  buildInput: string
   files: Array<{ path: string; sha256: string; mode: number }>
+}
+
+export async function distributionBuildIdentity(root: string, plan: Plan, profile: Profile) {
+  const { sha, platform, arch, bun, abi } = identity(plan, profile)
+  return hash({
+    version: 1,
+    sha,
+    profile,
+    platform,
+    arch,
+    bun,
+    abi,
+    base: await fileHash(path.join(root, ".artifacts/ci/build/manifest.json")),
+    target: "linux-x64",
+    sandbox: true,
+    webManifest: true,
+  })
 }
 
 export async function publishDistribution(root: string, plan: Plan, profile: Profile) {
@@ -77,14 +96,28 @@ export async function publishDistribution(root: string, plan: Plan, profile: Pro
   }
   await Bun.write(
     path.join(directory, "manifest.json"),
-    JSON.stringify({ identity: identity(plan, profile), files } satisfies Manifest),
+    JSON.stringify({
+      identity: identity(plan, profile),
+      buildInput: await distributionBuildIdentity(root, plan, profile),
+      files,
+    } satisfies Manifest),
   )
 }
 
-export async function restoreDistribution(root: string, plan: Plan, profile: Profile) {
+async function validateDistribution(root: string, plan: Plan, profile: Profile, cached = false) {
   const directory = path.join(root, ".artifacts/ci/distributions", profile)
   const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8")) as Manifest
-  if (JSON.stringify(manifest.identity) !== JSON.stringify(identity(plan, profile)))
+  if (cached) {
+    const expected = identity(plan, profile)
+    if (
+      manifest.buildInput !== (await distributionBuildIdentity(root, plan, profile)) ||
+      (["sha", "profile", "platform", "arch", "bun", "abi"] as const).some(
+        (key) => manifest.identity[key] !== expected[key],
+      )
+    )
+      throw new Error("Cached distribution inputs changed")
+  }
+  if (!cached && JSON.stringify(manifest.identity) !== JSON.stringify(identity(plan, profile)))
     throw new Error("Foreign distribution identity")
   const inventory = (await filesIn(directory))
     .map((file) => path.relative(directory, file).split(path.sep).join("/"))
@@ -103,6 +136,21 @@ export async function restoreDistribution(root: string, plan: Plan, profile: Pro
     if ((await fileHash(file)) !== entry.sha256 || ((await stat(file)).mode & 0o777) !== entry.mode)
       throw new Error(`Distribution bytes or permissions changed: ${entry.path}`)
   }
+  return manifest
+}
+
+export async function rebindDistribution(root: string, plan: Plan, profile: Profile) {
+  const manifest = await validateDistribution(root, plan, profile, true)
+  await Bun.write(
+    path.join(root, ".artifacts/ci/distributions", profile, "manifest.json"),
+    JSON.stringify({ ...manifest, identity: identity(plan, profile) }),
+  )
+}
+
+export async function restoreDistribution(root: string, plan: Plan, profile: Profile) {
+  const directory = path.join(root, ".artifacts/ci/distributions", profile)
+  const manifest = await validateDistribution(root, plan, profile)
+  const prefixes = distributionPaths(profile)
   for (const prefix of prefixes) await rm(path.join(root, prefix), { recursive: true, force: true })
   for (const entry of manifest.files) {
     const destination = path.join(root, entry.path)

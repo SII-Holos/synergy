@@ -478,5 +478,6 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         .filter((file) => !tasks.some((task) => task.kind === "benchmark-streams" && task.files?.includes(file)))
         .sort()
   }
+  for (const entry of tasks) if (times[entry.id] !== undefined) entry.seconds = times[entry.id]!
   return tasks
 }

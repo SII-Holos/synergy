@@ -6,6 +6,56 @@ import { createPlan, type Task } from "../../script/ci/plan"
 import { executeUnit } from "../../script/ci/run"
 import { distributionPaths, publishDistribution } from "../../script/ci/distributions"
 
+test("Docker tasks overlap only isolated processes and retain every task result", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-docker-groups-"))
+  try {
+    const tasks: Task[] = Array.from({ length: 4 }, (_, index) => ({
+      id: `isolated-${index}`,
+      kind: "static",
+      variant: "tests",
+      seconds: 1,
+      pool: "docker",
+      owners: [],
+      needs: [],
+      files: [`test/isolated-${index}.test.ts`],
+      outputs: [],
+    }))
+    const plan = createPlan({
+      base: "a",
+      head: "b",
+      sha: "c",
+      run: "fixture",
+      mode: "diagnostic",
+      changed: [],
+      tasks,
+      only: tasks.map((task) => task.id),
+      baseWorkspaces: [],
+      headWorkspaces: [],
+    })
+    for (const task of tasks)
+      await Bun.write(
+        path.join(root, task.files![0]!),
+        `import {test,expect} from "bun:test"; test("isolated overlap",async()=>{
+        await Bun.write(${JSON.stringify(path.join(root, `ready-${task.id}`))},process.env.SYNERGY_TEST_HOME!);
+        const until=Date.now()+2000;
+        while(Array.from(new Bun.Glob("ready-*").scanSync({cwd:${JSON.stringify(root)}})).length<2 && Date.now()<until) await Bun.sleep(10);
+        expect(Array.from(new Bun.Glob("ready-*").scanSync({cwd:${JSON.stringify(root)}})).length).toBeGreaterThanOrEqual(2);
+      })`,
+      )
+    const unit = plan.units[0]!
+    expect(unit.tasks).toHaveLength(2)
+    expect(await executeUnit(plan, unit.id, root)).toEqual([])
+    const homes = await Promise.all(unit.tasks.map((id) => Bun.file(path.join(root, `ready-${id}`)).text()))
+    expect(new Set(homes).size).toBe(2)
+    for (const id of unit.tasks)
+      expect((await Bun.file(path.join(root, ".artifacts/ci/results", id, "result.json")).json()).status).toBe(
+        "success",
+      )
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}, 10000)
+
 test("ordinary tests execute before waiting for a profile, which is restored once for all its consumers", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-preparation-"))
   try {
@@ -66,6 +116,7 @@ test("ordinary tests execute before waiting for a profile, which is restored onc
         for (const id of unit.tasks.filter((id) => id.startsWith("plain-")))
           expect(await Bun.file(path.join(root, id)).text()).toBe("ran")
         for (const prefix of distributionPaths("full")) await Bun.write(path.join(root, prefix, "fixture"), "built")
+        await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "base fixture")
         await publishDistribution(root, plan, "full")
       }),
     ).toEqual([])

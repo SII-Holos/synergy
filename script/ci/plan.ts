@@ -136,9 +136,10 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         full: false,
       })
     if (!entries.length) continue
-    // Docker and database cases retain independent job/process ownership.
     const count =
-      pool === "linux" ? Math.min(mode === "diagnostic" ? 2 : LIMITS.linux - 1, entries.length) : entries.length
+      pool === "linux" || pool === "docker"
+        ? Math.min(mode === "diagnostic" ? 2 : pool === "linux" ? LIMITS.linux - 1 : LIMITS.docker, entries.length)
+        : entries.length
     const bins = Array.from(
       { length: count },
       (_, index): Unit => ({
@@ -156,7 +157,14 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         full: false,
       }),
     )
-    for (const task of entries.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id))) {
+    for (const task of entries.toSorted(
+      (a, b) =>
+        (pool === "docker"
+          ? Number(a.needs.includes("benchmark-prepare")) - Number(b.needs.includes("benchmark-prepare"))
+          : 0) ||
+        b.seconds - a.seconds ||
+        a.id.localeCompare(b.id),
+    )) {
       const target = bins.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
       target.tasks.push(task.id)
       target.seconds += task.seconds
@@ -170,7 +178,7 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
       target.full ||= task.profile === "full"
     }
     for (const bin of bins) bin.tasks.sort((a, b) => Number(b === "policy") - Number(a === "policy"))
-    if (pool !== "linux") for (const bin of bins) bin.id = bin.tasks[0]!
+    if (pool !== "linux" && pool !== "docker") for (const bin of bins) bin.id = bin.tasks[0]!
     units.push(...bins.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id)))
   }
   return units

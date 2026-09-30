@@ -448,6 +448,7 @@ export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<
           SYNERGY_BENCH_TIMINGS: path.join(root, OUTPUT, "raw", task.id, "benchmark-timing.jsonl"),
           SYNERGY_CI_TIMING_OUTPUT: path.join(root, OUTPUT, "raw", task.id, "rollout-timing.jsonl"),
           ...command.env,
+          ...(command.name === "workflow:check" ? { GH_TOKEN: process.env.GH_TOKEN } : {}),
           ...(command.name.endsWith("-build") && task.kind === "artifacts"
             ? { SYNERGY_HOME: path.join(isolated.env.SYNERGY_TEST_ROOT!, "build-home") }
             : {}),
@@ -496,26 +497,43 @@ export async function executeUnit(
   const unit = plan.units.find((entry) => entry.id === id)
   const ids = unit?.tasks ?? (id === "benchmark-prepare" && plan.selected.includes(id) ? [id] : undefined)
   if (!ids) throw new Error(`Unknown execution unit: ${id}`)
-  const prepared = new Set<string>()
-  const failures = []
+  const prepared = new Map<string, Promise<void>>()
+  const failures: string[] = []
   const ordered = ids.toSorted(
     (a, b) =>
-      Number(!!plan.tasks.find((task) => task.id === a)!.profile) -
-      Number(!!plan.tasks.find((task) => task.id === b)!.profile),
+      Number(
+        !!plan.tasks.find((task) => task.id === a)!.profile ||
+          plan.tasks.find((task) => task.id === a)!.needs.includes("benchmark-prepare"),
+      ) -
+      Number(
+        !!plan.tasks.find((task) => task.id === b)!.profile ||
+          plan.tasks.find((task) => task.id === b)!.needs.includes("benchmark-prepare"),
+      ),
   )
-  for (const taskID of ordered) {
+  async function execute(taskID: string) {
     const task = plan.tasks.find((entry) => entry.id === taskID)!
-    if (task.profile && !prepared.has(task.profile)) {
-      await prepareInput?.(task.profile)
-      await restoreDistribution(root, plan, task.profile)
-      prepared.add(task.profile)
-    }
-    if (task.needs.includes("benchmark-prepare") && !prepared.has("benchmark")) {
-      await prepareInput?.("benchmark")
-      prepared.add("benchmark")
+    const profile = task.profile ?? (task.needs.includes("benchmark-prepare") ? "benchmark" : undefined)
+    if (profile) {
+      if (!prepared.has(profile))
+        prepared.set(
+          profile,
+          (async () => {
+            await prepareInput?.(profile)
+            if (profile !== "benchmark") await restoreDistribution(root, plan, profile)
+          })(),
+        )
+      await prepared.get(profile)
     }
     const result = await executeTask(task, plan, root)
     if (result.status !== "success") failures.push(taskID)
   }
-  return failures
+  let cursor = 0
+  const workers = await Promise.allSettled(
+    Array.from({ length: unit?.pool === "docker" ? 2 : 1 }, async () => {
+      while (cursor < ordered.length) await execute(ordered[cursor++]!)
+    }),
+  )
+  const rejected = workers.find((worker) => worker.status === "rejected")
+  if (rejected?.status === "rejected") throw rejected.reason
+  return failures.sort()
 }

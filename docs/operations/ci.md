@@ -22,7 +22,7 @@ Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立�
 
 压缩业务控制在真实读取、修改和原生压缩后继续执行，并验证磁盘结果、导出与完整用量；完成条件是业务事件，执行上限只防止挂死。四组短语义控制继续覆盖协议、模型与 JIT 的成对配置。历史 ARM/JIT 的四组 120 轮压力复现通过显式诊断开关运行。五种 native harness 均保留实际接入和适配器行为；正常、故障、短语义、压缩等场景组各自执行，公共纯逻辑只验证一次。长流完成态保留 30 MiB 完整性，取消和失败使用小数据保留终态、已接收字节、用量和 Runtime 清理。PostgreSQL 三版本执行登记的 PG 入口，缺少配置必须失败。取舍见 [业务反馈决策](../decisions/implemented/testing/2026-09-30-business-ci-feedback.md)。
 
-执行池上限为 Linux 11（含一个直接启动的 contracts worker）、Docker 6，Windows、PostgreSQL、macOS 各 1。worker 内保持原生写占用所需的串行，独立 runner 并行。公开仓库所在 GitHub Free 组织同时最多 20 个 job，准备任务和其他 PR 共享容量；排队计入实际反馈时间。Bun、Python 下载和 Rust 编译使用覆盖锁文件、平台、实际工具链及输入的缓存；跨 job 构建恢复验证完整清单、摘要和模式。缓存保存依赖与构建，不保存测试成功结论或运行 Home。每日运行或手动 `build_cache=disabled` 跳过跨 run 构建缓存，依赖下载缓存可复用。
+执行池上限为 Linux 11（含一个直接启动的 contracts worker）、Docker 6，Windows、PostgreSQL、macOS 各 1。Linux 和同平台 Windows 保持原生写占用所需的串行。Docker 场景分配到最多六个 job，每个 job 最多并行两个独立 Home、进程和容器的任务，共享只读准备；每个任务独立产生报告，重跑以 job 为单位。公开仓库所在 GitHub Free 组织同时最多 20 个 job，准备任务和其他 PR 共享容量；排队计入实际反馈时间。Bun、Python 下载和 Rust 编译使用覆盖锁文件、平台、实际工具链及输入的缓存；跨 job 构建恢复验证完整清单、摘要和模式。core/full 分发缓存键还包含 tested SHA 和已校验基础构建的完整清单摘要；缓存命中先核对平台、工具链、文件字节与权限，再为当前计划发布产物。缓存保存依赖与构建，不保存测试成功结论或运行 Home。测试子进程移除协调器的 GitHub token 与父级文件选择；需要特殊凭据的夹具必须显式提供。共享 UI 编译在独立进程内完成，避免 Vite 改变调用方的环境。每日运行或手动 `build_cache=disabled` 跳过跨 run 构建缓存，依赖下载缓存可复用。
 
 `All checks passed` 始终执行，核对计划摘要、测试 SHA、run、模式、全部选中任务、job 结果、报告摘要和逐文件执行清单。安装和矩阵的 JUnit 场景必须恰好执行一次且成功。结果版本 2 记录 `unit`、`planAttempt`、`executionAttempt`；报告按产物目录隔离。GitHub“仅重跑失败 job”沿用原计划和成功产物，汇总根据 API 的最近一次实际 unit 执行选择证据；最新失败、缺失、重复、损坏、旧 SHA、错误 run 或计划不能通过。产物过期须全量重跑。新提交重新计算当前 PR 影响范围，不能沿用上一个 SHA 的通过结论。覆盖率只合并所选最新完整成功报告，阈值与 exemption 不变。
 
