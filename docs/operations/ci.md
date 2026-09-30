@@ -51,3 +51,5 @@ GitHub 的 `CI diagnostics` 工作流提供相同选择器，执行矩阵最多�
 准备依赖对应独立执行队列：普通 Linux 8、core 1、full 5、contracts 1；Docker 无准备依赖 2、冻结准备消费者 6。core/full/冻结消费者在其生产者完成后才申请 runner。`build_cache=disabled` 同时关闭 Rust 编译与经过校验的跨 run 构建缓存，依赖下载缓存仍可复用。
 
 基础准备在同一 runner 并行执行原生构建与 Web 生产构建，完整产物纳入基础清单。full 分发仅在基础清单验证成功后使用 `--skip-web-build`，缺少生产 manifest 时失败；普通发行与诊断继续自行构建 Web。安装生命周期拆为独立组件、公司 preset/schema 与 Web 三组，各自从新 Home 开始。
+
+Task Home 的真实工具执行和空 provider 停止分为独立任务，保留原生重试策略，按 runner 实测时间分配；pytest 收集检查继续要求全部场景恰好执行一次。构建产物的临时仓库夹具显式设置自身 Web 模式，避免继承全量 CI 的准备配置。

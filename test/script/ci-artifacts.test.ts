@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { afterEach, beforeEach, expect, test } from "bun:test"
 import { chmod, mkdtemp, rm, symlink } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -11,6 +11,16 @@ import {
   restoreBuild,
   mapFiles,
 } from "../../script/ci/artifacts"
+
+let inheritedWebBuild: string | undefined
+beforeEach(() => {
+  inheritedWebBuild = process.env.SYNERGY_CI_WEB_BUILD
+  delete process.env.SYNERGY_CI_WEB_BUILD
+})
+afterEach(() => {
+  if (inheritedWebBuild === undefined) delete process.env.SYNERGY_CI_WEB_BUILD
+  else process.env.SYNERGY_CI_WEB_BUILD = inheritedWebBuild
+})
 
 test("file operations overlap with bounded pressure and preserve inventory order", async () => {
   let active = 0
@@ -112,7 +122,6 @@ test("shared preparation compiles the committed SDK without regenerating its inp
 
 test("the shared Web build is restored once and rejects changed source or output", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-web-"))
-  const previous = process.env.SYNERGY_CI_WEB_BUILD
   try {
     await inputs(root)
     const manifest = await Bun.file(path.join(root, "package.json")).json()
@@ -149,8 +158,6 @@ test("the shared Web build is restored once and rejects changed source or output
     await symlink(os.tmpdir(), path.join(root, "apps/web/custom-elements.d.ts"))
     await expect(buildIdentity(root)).rejects.toThrow("outside")
   } finally {
-    if (previous === undefined) delete process.env.SYNERGY_CI_WEB_BUILD
-    else process.env.SYNERGY_CI_WEB_BUILD = previous
     await rm(root, { recursive: true, force: true })
   }
 })

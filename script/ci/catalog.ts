@@ -357,14 +357,12 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       }),
     ),
     ...[
-      {
-        id: "task-home",
-        selection: "test_synergy_preserves_task_home",
-        seconds: 180,
-        scenarios: ["tool-roundtrip", "empty-provider-stop"].map(
-          (id) => `test_synergy_preserves_task_home_and_native_stopping[${id}]`,
-        ),
-      },
+      ...["tool-roundtrip", "empty-provider-stop"].map((id) => ({
+        id: `task-home-${id}`,
+        selection: `test_synergy_preserves_task_home and ${id}`,
+        seconds: id === "tool-roundtrip" ? 145 : 215,
+        scenarios: [`test_synergy_preserves_task_home_and_native_stopping[${id}]`],
+      })),
       {
         id: "unattended",
         selection: "test_synergy_unattended",

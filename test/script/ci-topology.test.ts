@@ -20,6 +20,27 @@ const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflow
 }
 
 describe("required CI topology", () => {
+  test("independent task-home scenarios can complete on separate workers", async () => {
+    const tasks = await catalog()
+    const controls = tasks.filter((task) => task.id.startsWith("native-synergy-task-home-"))
+    expect(controls.flatMap((task) => task.scenarios ?? []).sort()).toEqual([
+      "test_synergy_preserves_task_home_and_native_stopping[empty-provider-stop]",
+      "test_synergy_preserves_task_home_and_native_stopping[tool-roundtrip]",
+    ])
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const workers = controls.map((task) => plan.units.find((unit) => unit.tasks.includes(task.id))!.id)
+    expect(new Set(workers).size).toBe(2)
+  })
   test("package partitions occupy different runners even when historical weights are uneven", async () => {
     const tasks = await catalog()
     const plan = createPlan({
