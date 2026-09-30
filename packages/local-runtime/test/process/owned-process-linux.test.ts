@@ -123,7 +123,7 @@ nativeTest(
       args: ["-e", root],
       cwd: directory.path,
       env: {},
-      lease,
+      ownership: lease,
     }).finally(() => protocol.mockRestore())
     owned.child.stdout.resume()
     owned.child.stderr.resume()

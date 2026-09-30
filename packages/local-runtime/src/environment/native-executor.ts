@@ -274,7 +274,7 @@ export class NativeExecutor implements Executor {
         env: command.env,
         signal: operation.abort.signal,
         pty: command.pty ? { ...command.pty, library: NativePty.libraryPath() } : undefined,
-        lease: {
+        ownership: {
           id: lease.id,
           bindProcess: async (pid, options) => {
             await lease.bindProcess(pid, options)

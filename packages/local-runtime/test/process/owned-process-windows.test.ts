@@ -67,7 +67,7 @@ nativeTest(
       ],
       cwd: directory.path,
       env: { ...environment(), VALUE: "explicit" },
-      lease,
+      ownership: lease,
     })
     const diagnostics = setTimeout(() => {
       console.error("Windows binary process drainage", owned.diagnostics())
@@ -132,7 +132,7 @@ for (const terminal of [false, true])
         args: ["-e", root],
         cwd: directory.path,
         env: environment(),
-        lease,
+        ownership: lease,
         pty: terminal ? { cols: 80, rows: 24, library: NativePty.libraryPath() } : undefined,
       })
       owned.child.stdout.resume()
@@ -229,7 +229,7 @@ nativeTest(
       args: ["-e", `await Bun.write(${JSON.stringify(marker)}, 'bad')`],
       cwd: directory.path,
       env: environment(),
-      lease,
+      ownership: lease,
     })
     owned.child.stdout.resume()
     owned.child.stderr.resume()

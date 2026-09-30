@@ -174,7 +174,7 @@ for (const ending of ["complete", "cancel", "remove-session", "switch-workspace"
                     ],
                     cwd: tmp.path,
                     env: {},
-                    lease,
+                    ownership: lease,
                   })
                   owned.child.stdout.resume()
                   owned.child.stderr.resume()
@@ -337,7 +337,7 @@ test("overlapping process evidence cannot undo another session's committed bytes
                 args: ["-e", "process.stdin.resume()"],
                 cwd: tmp.path,
                 env: {},
-                lease,
+                ownership: lease,
               })
               owned.child.stdout.resume()
               owned.child.stderr.resume()
