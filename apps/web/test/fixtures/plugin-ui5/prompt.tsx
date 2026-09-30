@@ -12,6 +12,7 @@ function Editor() {
   const prompt = usePrompt()
   const navigate = useNavigate()
   const params = useParams()
+  Object.assign(window, { projectDraftFixture: { prompt, navigate } })
   const [node, setNode] = createSignal<HTMLDivElement>()
   const [mounted, setMounted] = createSignal(false)
   const [revision, setRevision] = createSignal(0)
@@ -21,7 +22,6 @@ function Editor() {
     dragging: false,
     historyIndex: -1,
     savedPrompt: null,
-    placeholder: 0,
     applyingHistory: false,
     switchingProfile: false,
   })
@@ -144,11 +144,21 @@ function Editor() {
         <div
           id="editor"
           contentEditable
+          style={{ "white-space": "pre-wrap" }}
           ref={(el) => {
             setNode(el)
             onCleanup(() => setNode(undefined))
           }}
           onInput={editor.handleInput}
+          onPaste={(event) => {
+            event.preventDefault()
+            editor.addPart({
+              type: "text",
+              content: event.clipboardData?.getData("text/plain") ?? "",
+              start: 0,
+              end: 0,
+            })
+          }}
         />
       </Show>
     </>
@@ -159,7 +169,7 @@ render(
   () => (
     <Router>
       <Route
-        path="/:dir/session/:id"
+        path="/:dir/session/:id?"
         component={() => {
           const drafts = createDraftSessionIndex("http://prompt-fixture")
           onCleanup(drafts.dispose)

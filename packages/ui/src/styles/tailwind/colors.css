@@ -204,6 +204,7 @@
   --color-surface-interactive-weak: var(--surface-interactive-weak);
   --color-surface-interactive-weak-hover: var(--surface-interactive-weak-hover);
   --color-surface-overlay: var(--surface-overlay);
+  --color-surface-shadow: var(--surface-shadow);
   --color-surface-raised-base: var(--surface-raised-base);
   --color-surface-raised-base-active: var(--surface-raised-base-active);
   --color-surface-raised-base-hover: var(--surface-raised-base-hover);

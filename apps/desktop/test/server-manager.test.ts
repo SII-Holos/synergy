@@ -61,6 +61,7 @@ describe("desktop server manager", () => {
       SYNERGY_DESKTOP_CHANNEL: "stable",
       SYNERGY_DESKTOP_PARENT_PID: "42",
       SYNERGY_DESKTOP_STARTUP_PROGRESS: "1",
+      SYNERGY_DESKTOP_BROWSER: "1",
     })
   })
 

@@ -22,11 +22,7 @@ test.skipIf(process.platform === "win32")("runtime smoke uses a copied installat
     )
     await fs.chmod(binary, 0o755)
     const results = await smokeRuntimeArtifact(source, "full")
-    expect(results.map((result) => result.flag)).toEqual([
-      "--version",
-      "__browser-playwright-runtime-check",
-      "__embedding-runtime-check",
-    ])
+    expect(results.map((result) => result.flag)).toEqual(["--version", "__embedding-runtime-check"])
     for (const result of results) {
       const observed = JSON.parse(result.stdout)
       expect(observed.resource).toBe("packaged resource")

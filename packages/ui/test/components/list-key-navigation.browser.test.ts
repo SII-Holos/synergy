@@ -65,7 +65,7 @@ beforeAll(async () => {
     const items=()=>state()==="loading"?()=>loading:state()==="empty"?[]:[first,...Array.from({length:7},(_,i)=>({id:"row-"+(i+1),label:"Row "+(i+1)})),target(),{id:"last",label:"Last"}]
     const i18n=setupI18n({locale:"en",messages:{en:{"ui.list.loading":"Loading","ui.list.noResults":"No results","list.for-label":"for"},"zh-CN":{"ui.list.loading":"加载中","ui.list.noResults":"无结果","list.for-label":"匹配"}}})
     window.listKeyFixture={setKey,setInteractive,setEmptyMessage,setLocale:locale=>i18n.activate(locale),selectTarget:()=>setCurrent(target()),selectFirst:()=>setCurrent(first),unmount:()=>setMounted(false),showLoading:()=>{setMounted(false);setState("loading");setMounted(true)},finishLoading:()=>{finishLoading();setState("empty")}}
-    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} interactive={interactive()} emptyMessage={emptyMessage()} key={item=>item.id} current={current()} search={{placeholder:"Find item"}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} interactive={interactive()} emptyMessage={emptyMessage()} key={item=>item.id} current={current()} filterKeys={["label"]} search={{placeholder:"Find item"}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output></I18nProvider>,document.getElementById("root"))
     `,
   )
   await build({
@@ -181,6 +181,24 @@ test("a newer selection supersedes the pending scroll", async () => {
   await settleFrames()
   expect(errors).toEqual([])
   expect(await page.locator('[data-slot="list-scroll"]').evaluate((element) => element.scrollTop)).toBe(0)
+})
+
+test("selection follows stable keys across refreshed objects and search", async () => {
+  const selected = page.locator('[data-slot="list-item"][data-selected="true"]')
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.selectTarget())
+  await settleFrames()
+  expect(await selected.count()).toBe(1)
+  expect(await selected.getAttribute("data-key")).toBe("target")
+  expect(await selected.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
+  await page.getByPlaceholder("Find item").fill("Target")
+  await settleFrames()
+  expect(await selected.getAttribute("data-key")).toBe("target")
+  await page.getByPlaceholder("Find item").fill("")
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.selectFirst())
+  await settleFrames()
+  expect(await selected.count()).toBe(1)
+  expect(await selected.getAttribute("data-key")).toBe("row-0")
+  expect(await page.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
 })
 
 test("non-interactive rows cannot select through pointer or keyboard input", async () => {

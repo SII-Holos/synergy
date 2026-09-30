@@ -8,7 +8,7 @@ import {
   configureBrowserTunnelTimeouts,
   type BrowserProxyDescriptor,
 } from "../src/network-gateway"
-import type { BrowserOwner } from "../src/owner"
+import { BrowserOwner } from "../src/owner"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
@@ -43,7 +43,7 @@ describe("BrowserNetworkGateway", () => {
     runtime.run(async () => {
       const target = net.createServer()
       const port = await listen(target)
-      const proxy = await BrowserNetworkGateway.proxyFor(owner("first"))
+      const proxy = await BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner("first")))
       const socket = await connectTunnel(proxy, port)
       expect(socket.response).toContain("200 Connection Established")
       socket.client.destroy()
@@ -54,8 +54,8 @@ describe("BrowserNetworkGateway", () => {
     runtime.run(async () => {
       const target = net.createServer()
       const port = await listen(target)
-      const first = await BrowserNetworkGateway.proxyFor(owner("first"))
-      const second = await BrowserNetworkGateway.proxyFor(owner("second"))
+      const first = await BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner("first")))
+      const second = await BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner("second")))
 
       const missing = await connectTunnel(first, port, { authorization: null })
       expect(missing.response).toContain("407 Proxy Authentication Required")
@@ -75,10 +75,10 @@ describe("BrowserNetworkGateway", () => {
       const target = net.createServer()
       const port = await listen(target)
       const targetOwner = owner("revoked")
-      const proxy = await BrowserNetworkGateway.proxyFor(targetOwner)
+      const proxy = await BrowserNetworkGateway.proxyFor(BrowserOwner.key(targetOwner))
       const tunnel = await connectTunnel(proxy, port)
       const closed = new Promise<void>((resolve) => tunnel.client.once("close", () => resolve()))
-      BrowserNetworkGateway.revoke(targetOwner)
+      BrowserNetworkGateway.revoke(BrowserOwner.key(targetOwner))
       await withTimeout(closed, "Revoked Browser tunnel remained open.")
       await close(target)
     }))
@@ -87,7 +87,7 @@ describe("BrowserNetworkGateway", () => {
     runtime.run(async () => {
       const target = net.createServer()
       const port = await listen(target)
-      const proxy = await BrowserNetworkGateway.proxyFor(owner("limited"))
+      const proxy = await BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner("limited")))
       const tunnels = await Promise.all(Array.from({ length: 64 }, () => connectTunnel(proxy, port)))
       const rejected = await connectTunnel(proxy, port)
       expect(rejected.response).toContain("403 Forbidden")
@@ -98,7 +98,9 @@ describe("BrowserNetworkGateway", () => {
   test("shares one gateway across concurrent owner grants", () =>
     runtime.run(async () => {
       const proxies = await Promise.all(
-        Array.from({ length: 8 }, (_value, index) => BrowserNetworkGateway.proxyFor(owner(`concurrent-${index}`))),
+        Array.from({ length: 8 }, (_value, index) =>
+          BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner(`concurrent-${index}`))),
+        ),
       )
 
       expect(new Set(proxies.map((proxy) => proxy.server))).toEqual(new Set([proxies[0].server]))
@@ -109,7 +111,7 @@ describe("BrowserNetworkGateway", () => {
       const target = net.createServer()
       const port = await listen(target)
       const [proxy] = await Promise.all([
-        BrowserNetworkGateway.proxyFor(owner("start-stop")),
+        BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner("start-stop"))),
         BrowserNetworkGateway.stop(),
       ])
 
@@ -123,9 +125,9 @@ describe("BrowserNetworkGateway", () => {
     runtime.run(async () => {
       const target = net.createServer()
       const port = await listen(target)
-      await BrowserNetworkGateway.proxyFor(owner("existing"))
+      await BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner("existing")))
       const [proxy] = await Promise.all([
-        BrowserNetworkGateway.proxyFor(owner("existing-stop")),
+        BrowserNetworkGateway.proxyFor(BrowserOwner.key(owner("existing-stop"))),
         BrowserNetworkGateway.stop(),
       ])
 

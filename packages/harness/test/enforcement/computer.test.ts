@@ -23,3 +23,14 @@ describe("native Computer eligibility", () => {
     }
   }
 })
+
+test("foreground observation is classified as interaction", async () => {
+  const gate = await EnforcementGate.create({
+    activeWorkspace: process.cwd(),
+    workspaceType: "main",
+    profileId: "full_access",
+  })
+  expect(gate.evaluate("computer_observe", { foreground: true }).capabilities).toEqual([
+    expect.objectContaining({ class: "computer_interact", nonBypassable: true }),
+  ])
+})

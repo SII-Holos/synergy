@@ -7,6 +7,7 @@ export type NewSessionRecovery = {
   draft: PromptDraftSnapshot
   mode: PromptInputMode
   environmentID?: string | null
+  environmentProfile?: string
   workspaceSelection: NewSessionWorkspaceSelection
   controlProfile: ControlProfileId
   plan: boolean
@@ -51,6 +52,7 @@ type RestoreNewSessionRecoveryInput = {
   setMode: (mode: PromptInputMode) => void
   setWorkspaceSelection: (selection: NewSessionWorkspaceSelection) => void
   setEnvironment: (environmentID: string | null | undefined) => void
+  setEnvironmentProfile?: (profile: string | undefined) => void
   setControlProfile: (profile: ControlProfileId) => void
   setPlan: (enabled: boolean) => void
   setLattice: (config: NewSessionRecovery["lattice"]) => void
@@ -68,6 +70,7 @@ export function restoreNewSessionRecovery(input: RestoreNewSessionRecoveryInput)
   input.setMode(recovery.mode)
   input.setWorkspaceSelection(recovery.workspaceSelection)
   input.setEnvironment(recovery.environmentID)
+  if (recovery.environmentProfile !== undefined) input.setEnvironmentProfile?.(recovery.environmentProfile)
   input.setControlProfile(recovery.controlProfile)
   input.setPlan(recovery.plan)
   input.setLattice(recovery.lattice)

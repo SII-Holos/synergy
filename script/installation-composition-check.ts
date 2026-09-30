@@ -17,7 +17,6 @@ export async function checkInstalledComposition(
       SYNERGY_HOME: path.join(directory, "home"),
       SYNERGY_RUNTIME_ROOT: root,
       SYNERGY_TEST_HOME: path.join(directory, "home"),
-      SYNERGY_LINK_HOME: path.join(directory, "link"),
       SYNERGY_BUN_EXECUTABLE: process.execPath,
       SYNERGY_FIXTURE_VERSION: version,
       SYNERGY_CONFIG_CONTENT: JSON.stringify({
@@ -155,11 +154,12 @@ export function companySettings() { return { id: "company-settings", version: "1
     if (scenario === "all" || scenario === "web") {
       await cli("install", "web", "--trust-host-code")
       const selected = await list()
-      for (const id of ["web", "full", "web-app", "mcp", "lsp", "browser-runtime", "library", "server"])
+      for (const id of ["web", "full", "web-app", "mcp", "lsp", "library", "server"])
         assert.ok(
           selected.some((pkg) => pkg.id === id),
           `Web preset missing ${id}`,
         )
+      assert.ok(!selected.some((pkg) => pkg.id === "browser-runtime"), "Web preset must not select Desktop Browser")
       console.log((await run(["node", "managed-runtime.mjs"], { SYNERGY_FIXTURE_WEB: "1" })).trim())
       console.log((await nativeInput()).trim())
       await cli("remove", "web")

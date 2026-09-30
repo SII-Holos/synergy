@@ -1,30 +1,11 @@
-import { describe, expect, test } from "bun:test"
+import { expect, test } from "bun:test"
 
-interface WorkflowStep {
-  name?: string
-  run?: string
-  env?: Record<string, unknown>
-}
-
-interface ReleaseWorkflow {
-  jobs?: {
-    stable_desktop_package?: {
-      steps?: WorkflowStep[]
-    }
-  }
-}
-
-describe("Chromium release manifests", () => {
-  test("generates and uploads signed manifests with the Browser trust key", async () => {
-    const source = await Bun.file(new URL("../../../.github/workflows/release.yml", import.meta.url)).text()
-    const workflow = Bun.YAML.parse(source) as ReleaseWorkflow
-    const steps = workflow.jobs?.stable_desktop_package?.steps ?? []
-    const generate = steps.find((step) => step.name === "Generate signed Chromium manifests")
-    const upload = steps.find((step) => step.name === "Upload desktop artifact bundle")
-
-    expect(generate?.run).toContain("chromium-manifest")
-    expect(generate?.env?.SYNERGY_BROWSER_MANIFEST_SIGNING_KEY).toBe("${{ secrets.BROWSER_HOST_MANIFEST_SIGNING_KEY }}")
-    expect(upload?.run ?? JSON.stringify(upload)).toContain("release/chromium/*.manifest.json")
-    expect(upload?.run ?? JSON.stringify(upload)).toContain("release/chromium/*.manifest.json.sig")
-  })
+test("Desktop release uses bundled Electron without separately published browsers", async () => {
+  const workflow = Bun.YAML.parse(
+    await Bun.file(new URL("../../../.github/workflows/release.yml", import.meta.url)).text(),
+  )
+  const steps = workflow.jobs.stable_desktop_package.steps as Array<{ name?: string; run?: string }>
+  expect(steps.some((step) => /Chromium manifests|Browser Host/.test(step.name ?? ""))).toBe(false)
+  expect(steps.some((step) => /browser-host:|chromium-manifest/.test(step.run ?? ""))).toBe(false)
+  expect(steps.some((step) => step.name === "Upload desktop artifact bundle")).toBe(true)
 })

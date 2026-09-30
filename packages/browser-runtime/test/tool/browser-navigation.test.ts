@@ -58,7 +58,7 @@ describe("tool.browser_navigation", () => {
         isLoading: false,
         lastActiveAt: null,
       }
-      BrowserToolHelper.execute = async (_ctx, command) => {
+      BrowserToolHelper.execute = async (_ctx, _pageId, command) => {
         received = command as Record<string, unknown>
         return {
           type: "navigation",
@@ -81,7 +81,13 @@ describe("tool.browser_navigation", () => {
         fn: async () => {
           const tool = await BrowserNavigationTool.init()
           const result = await tool.execute(
-            { action: "goto", url: "https://example.com/target", settleMode: "networkquiet", settleTimeoutMs: 15_000 },
+            {
+              pageId: "page-test",
+              action: "goto",
+              url: "https://example.com/target",
+              settleMode: "networkquiet",
+              settleTimeoutMs: 15_000,
+            },
             context(),
           )
 
@@ -92,16 +98,12 @@ describe("tool.browser_navigation", () => {
             settleMode: "networkquiet",
             settleTimeoutMs: 15_000,
           })
-          expect(result.output).toContain("Settled: yes (networkquiet)")
-          expect(result.output).toContain("Snapshot: snap-nav (1 elements)")
-          expect(result.metadata).toMatchObject({
-            action: "goto",
+          expect(JSON.parse(result.output)).toMatchObject({
             settled: true,
             settleReason: "networkquiet",
             settleElapsedMs: 1200,
-            elementsCount: 1,
-            snapshotId: "snap-nav",
-            url: "https://example.com/target",
+            snapshot: { snapshotId: "snap-nav", elements: [{ ref: "@1-1" }] },
+            page: { url: "https://example.com/target" },
           })
         },
       })
@@ -121,12 +123,18 @@ describe("tool.browser_navigation", () => {
         scope: { id: "scope-test", name: "test", directory: "/tmp" } as never,
         fn: async () => {
           const tool = await BrowserNavigationTool.init()
-          const result = await tool.execute({ action: "goto", url: "https://example.com/" }, context())
+          const result = await tool.execute(
+            { pageId: "page-test", action: "goto", url: "https://example.com/" },
+            context(),
+          )
 
-          expect(result.output).toContain("Settled: no (timeout) after 30000ms; 1 request(s) still in flight")
-          expect(result.output).toContain("settled:false is a settle outcome, not an action failure")
-          expect(result.output).toContain("Snapshot: unavailable")
-          expect(result.metadata.settled).toBe(false)
+          expect(JSON.parse(result.output)).toMatchObject({
+            settled: false,
+            settleReason: "timeout",
+            settleElapsedMs: 30_000,
+            inflightRequests: 1,
+          })
+          expect(JSON.parse(result.output).settled).toBe(false)
         },
       })
     }))
@@ -145,12 +153,11 @@ describe("tool.browser_navigation", () => {
         fn: async () => {
           const tool = await BrowserNavigationTool.init()
           const result = await tool.execute(
-            { action: "goto", url: "https://example.com/", includeSnapshot: false },
+            { pageId: "page-test", action: "goto", url: "https://example.com/", includeSnapshot: false },
             context(),
           )
 
-          expect(result.output).toContain("Snapshot: not requested")
-          expect(result.output).not.toContain("Snapshot: unavailable")
+          expect(JSON.parse(result.output).snapshot).toBeUndefined()
         },
       })
     }))
@@ -160,28 +167,37 @@ describe("tool.browser_navigation", () => {
       BrowserToolHelper.getOrCreateSession = async () =>
         ({
           status: "failed",
-          page: null,
-          descriptor: { id: "page-test", url: "https://example.com/", title: "Example", lastActiveAt: null },
-          error: {
-            type: "error",
-            code: "browser_session_failed",
-            message: "Recovery failed.",
-            retryable: false,
-            suggestedAction: "Use browser_navigation with action resume.",
-          },
+          pages: [
+            {
+              id: "page-test",
+              url: "https://example.com/",
+              title: "Example",
+              lastActiveAt: null,
+              profileId: "personal",
+              status: "failed",
+              error: {
+                type: "error",
+                code: "browser_session_failed",
+                message: "Recovery failed.",
+                retryable: false,
+                suggestedAction: "Use browser_navigation with action resume.",
+              },
+            },
+          ],
         }) as never
       await ScopeContext.provide({
         scope: { id: "scope-test", name: "test", directory: "/tmp" } as never,
         fn: async () => {
           const tool = await BrowserNavigationTool.init()
-          const result = await tool.execute({ action: "current" }, context())
+          const result = await tool.execute({ pageId: "page-test", action: "current" }, context())
 
-          expect(result.output).toContain("Status: failed")
-          expect(result.output).toContain("Last error: browser_session_failed — Recovery failed.")
-          expect(result.output).toContain("Suggested next step: Use browser_navigation with action resume.")
-          expect(result.metadata).toMatchObject({
+          expect(JSON.parse(result.output)).toMatchObject({
             status: "failed",
-            lastError: { code: "browser_session_failed" },
+            error: {
+              code: "browser_session_failed",
+              message: "Recovery failed.",
+              suggestedAction: "Use browser_navigation with action resume.",
+            },
           })
         },
       })
@@ -202,7 +218,7 @@ describe("tool.browser_navigation", () => {
         scope: { id: "scope-test", name: "test", directory: "/tmp" } as never,
         fn: async () => {
           const tool = await BrowserNavigationTool.init()
-          const received = await tool.execute({ action: "reload" }, context()).then(
+          const received = await tool.execute({ pageId: "page-test", action: "reload" }, context()).then(
             () => undefined,
             (error) => error,
           )

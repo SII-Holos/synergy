@@ -57,7 +57,7 @@ describe("release runtime asset contract", () => {
       const required = requiredRuntimeArtifactPaths(name)
       expect(required).toContain("runtime/generation.json")
       expect(required).toContain("runtime/node_modules/@ericsanchezok/synergy-web-app/app/index.html")
-      expect(required).toContain("runtime/node_modules/playwright-core/lib/coreBundle.js")
+      expect(required.some((file) => file.includes("playwright"))).toBe(false)
       expect(required.some((file) => file.includes("synergy-native-") && file.endsWith("/watcher.node"))).toBe(true)
       expect(required.some((file) => file.endsWith("/ort-wasm-simd-threaded.asyncify.wasm"))).toBe(true)
       expect(required).not.toContain("app/index.html")
@@ -198,7 +198,7 @@ describe("release runtime asset contract", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-runtime-checksums-"))
     temporaryDirectories.push(root)
     const first = path.join(root, "synergy-linux-x64.tar.gz")
-    const second = path.join(root, "synergy-link-linux-x64.tar.gz")
+    const second = path.join(root, "synergy-darwin-arm64.tar.gz")
     await Promise.all([fs.writeFile(first, "first"), fs.writeFile(second, "second")])
 
     const checksumPath = await createBinaryChecksums("1.2.3", [first, second], root)

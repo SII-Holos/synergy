@@ -6,6 +6,9 @@ import { splitProps, type ComponentProps } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import {
   Activity,
+  Laptop,
+  BriefcaseBusiness,
+  CodeXml,
   AlignRight,
   Archive,
   ArchiveRestore,
@@ -266,6 +269,8 @@ const icons = {
   languages: Languages,
   bot: Bot,
   boxes: Boxes,
+  laptop: Laptop,
+  "briefcase-business": BriefcaseBusiness,
   braces: Braces,
   brain: Brain,
   bug: Bug,
@@ -297,6 +302,7 @@ const icons = {
   clock: Clock,
   "cloud-upload": CloudUpload,
   code: Code,
+  "code-xml": CodeXml,
   compass: Compass,
   "contact-round": ContactRound,
   copy: Copy,

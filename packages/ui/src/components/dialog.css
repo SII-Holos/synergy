@@ -7,10 +7,10 @@
   -webkit-backdrop-filter: blur(2px);
   z-index: 50;
 
-  animation: overlayHide 160ms ease 80ms forwards;
+  animation: overlayHide var(--motion-duration-base) var(--motion-ease-standard) forwards;
 
   &[data-expanded] {
-    animation: overlayShow 160ms ease;
+    animation: overlayShow var(--motion-duration-slow) var(--motion-ease-standard);
   }
 }
 
@@ -48,7 +48,7 @@
 
   &[data-size="compact"] {
     --dialog-width: min(calc(100vw - 32px), 440px);
-    --dialog-max-height: min(calc(100vh - 40px), 520px);
+    --dialog-max-height: min(calc(100vh - 40px), 640px);
   }
 
   &[data-size="form"] {
@@ -57,12 +57,12 @@
   }
 
   &[data-size="list"] {
-    --dialog-width: min(calc(100vw - 32px), 620px);
+    --dialog-width: min(calc(100vw - 32px), 640px);
     --dialog-max-height: min(calc(100vh - 40px), 640px);
   }
 
   &[data-size="wide"] {
-    --dialog-width: min(calc(100vw - 40px), 700px);
+    --dialog-width: min(calc(100vw - 40px), 720px);
     --dialog-max-height: min(calc(100vh - 48px), 720px);
   }
 
@@ -93,17 +93,15 @@
       border: 1px solid var(--dialog-border);
       background: var(--dialog-surface);
       border-radius: 16px;
-      box-shadow:
-        0 20px 60px var(--surface-overlay),
-        0 1px 0 color-mix(in oklch, var(--border-base) 24%, transparent);
+      box-shadow: var(--shadow-dialog);
       font-family: var(--font-family-sans);
       font-feature-settings: var(--font-family-sans--font-feature-settings);
       letter-spacing: var(--letter-spacing-normal);
 
-      animation: contentHide 160ms ease forwards;
+      animation: contentHide var(--motion-duration-base) var(--motion-ease-standard) forwards;
 
       &[data-expanded] {
-        animation: contentShow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+        animation: contentShow var(--motion-duration-slow) var(--motion-ease-emphasized);
       }
 
       &:focus-visible {
@@ -123,10 +121,10 @@
           min-width: 0;
           color: var(--text-strong);
           font-family: var(--font-family-sans);
-          font-size: var(--type-ui-page-title-size, 18px);
+          font-size: 20px;
           font-style: normal;
           font-weight: var(--font-weight-semibold, 600);
-          line-height: var(--type-ui-page-title-line-height, 26px);
+          line-height: 28px;
           letter-spacing: 0;
         }
 
@@ -190,12 +188,10 @@
     flex: 0 1 auto;
   }
 
-  &[data-size="list"] [data-slot="dialog-container"],
   &[data-size="command"] [data-slot="dialog-container"] {
     height: var(--dialog-max-height);
   }
 
-  &[data-size="list"] [data-slot="dialog-content"],
   &[data-size="command"] [data-slot="dialog-content"] {
     height: 100%;
   }
@@ -223,6 +219,19 @@
     justify-content: flex-end;
     gap: 10px;
     padding-top: 6px;
+  }
+
+  [data-slot="dialog-footer"] {
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 12px 24px 20px;
+    border-top: 1px solid var(--dialog-border-weak);
+    background: var(--dialog-surface);
+  }
+
+  [data-slot="dialog-footer"] [data-slot="dialog-actions"] {
+    padding-top: 0;
+    flex-wrap: wrap;
   }
 
   [data-slot="dialog-meta-list"] {
@@ -344,7 +353,7 @@
   }
 
   [data-component="button"][data-size="large"] {
-    height: 36px;
+    height: 40px;
     padding: 0 15px;
     font-size: var(--type-ui-body-size, 14px);
     line-height: var(--type-ui-body-line-height, 20px);
@@ -390,5 +399,13 @@
   to {
     opacity: 0;
     transform: translateY(4px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="dialog-overlay"],
+  [data-slot="dialog-overlay"],
+  [data-component="dialog"] [data-slot="dialog-content"] {
+    animation: none;
   }
 }

@@ -10,7 +10,7 @@ const FAST_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 5_000] as const
 const FAST_RETRY_WINDOW_MS = 30_000
 const SLOW_RETRY_DELAY_MS = 30_000
 
-export type BrowserClientPresentationMode = "native" | "webrtc"
+export type BrowserClientPresentationMode = "native"
 export type NativePresentationRecoveryState = {
   phase: "recovering" | "ready" | "failed"
   error?: BrowserNativePresentationIPCError
@@ -20,19 +20,13 @@ export async function resolveBrowserClientPresentation(input: {
   bridge?: BrowserNativeViewBridge
   serverUrl: string
 }): Promise<BrowserClientPresentationMode> {
-  if (!input.bridge) return "webrtc"
-  try {
-    const capability = await input.bridge.presentationCapability({
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      serverUrl: input.serverUrl,
-    })
-    return capability.managedLocal ? "native" : "webrtc"
-  } catch {
-    // A failed capability probe cannot confirm the server is managed-local.
-    // Falling back to WebRTC keeps the session usable; assuming native would
-    // pin a broken bridge into a permanent native-failed loop.
-    return "webrtc"
-  }
+  if (!input.bridge) throw new Error("The built-in browser is available in Desktop.")
+  const capability = await input.bridge.presentationCapability({
+    protocolVersion: BROWSER_PROTOCOL_VERSION,
+    serverUrl: input.serverUrl,
+  })
+  if (!capability.managedLocal) throw new Error("Connect Desktop to a local browser-enabled server.")
+  return "native"
 }
 
 export class NativePresentationCoordinator {

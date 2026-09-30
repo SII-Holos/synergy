@@ -61,3 +61,22 @@ test("logical file ownership needs no local path and cannot inherit a missing se
   ).toBeUndefined()
   expect(workspaceFileOwner({ state: { workspace: selected } })).toEqual(selected)
 })
+
+test("project file roots follow explicit shared bindings and preserve a Worktree's own primary", async () => {
+  const { projectFileWorkspaces } = await import("../../../src/context/file/workspace")
+  const main = {
+    ...objects,
+    id: "wsp_tree",
+    type: "git_worktree",
+    binding: { ...objects.binding, path: "/tree" },
+    sharedWritableWorkspaceIDs: ["wsp_extra"],
+  }
+  const extra = { ...objects, id: "wsp_extra", type: "directory", binding: { ...objects.binding, path: "/extra" } }
+  const unrelated = { ...objects, id: "wsp_other", type: "directory", binding: { ...objects.binding, path: "/other" } }
+  expect(
+    projectFileWorkspaces({ ...workspace, id: main.id, path: "/tree" }, [main, extra, unrelated]).map(
+      (item) => item.path,
+    ),
+  ).toEqual(["/tree", "/extra"])
+  expect(projectFileWorkspaces(undefined, [main, extra])).toEqual([])
+})

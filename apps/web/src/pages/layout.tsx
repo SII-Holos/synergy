@@ -40,7 +40,10 @@ import {
   ModelUnavailableBanner,
   desktopWindowNativeChromeActive,
 } from "@/components/app-shell"
-import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
+import { DialogCreateProject } from "@/components/dialog/dialog-create-project"
+import { DialogSelectProject } from "@/components/dialog/dialog-select-project"
+import { projectEntryCopy } from "@/components/dialog/project-entry-copy"
+import { useServer } from "@/context/server"
 import { createWorkbenchService } from "@/plugin/workbench-service"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { SlotOutlet } from "@/plugin/slot-outlet"
@@ -62,7 +65,7 @@ export default function Layout(props: ParentProps) {
   const command = useCommand()
   const theme = useTheme()
   const [searchOpen, setSearchOpen] = createSignal(false)
-  const { pickProjectDirectories } = useProjectDirectoryPicker()
+  const server = useServer()
   const { i18n } = useLocale()
   // Wire toast config from the active scope (project directory or home).
   createEffect(() => {
@@ -274,6 +277,7 @@ export default function Layout(props: ParentProps) {
   // Commands
   command.register(() => {
     const commands: CommandOption[] = [
+      { id: "project.create", title: i18n._(projectEntryCopy.create), category: "Project", onSelect: createProject },
       {
         id: "project.open",
         title: i18n._(AP.layoutOpenProject.id),
@@ -397,12 +401,30 @@ export default function Layout(props: ParentProps) {
     const scopeID = await layout.scopes.open(directory)
     if (nav && scopeID) navigateToProject(scopeID)
   }
-  async function chooseProject() {
-    const result = await pickProjectDirectories({ title: i18n._(AP.layoutOpenProjectDialogTitle.id), multiple: true })
-    if (!result) return
-    const scopes = await Promise.all(result.directoryPaths.map((directory) => layout.scopes.open(directory)))
-    navigateToProject(scopes[0])
+  function createProject() {
+    dialog.show(() => (
+      <DialogCreateProject
+        onCreated={async (id, url) => {
+          if (url !== server.url) server.setActive(url)
+          else await globalSync.refreshScopes()
+          server.scopes.open(id)
+          navigate(`/${base64Encode(id)}/session`)
+        }}
+      />
+    ))
   }
+  async function chooseProject() {
+    if (await command.trigger("project.select")) return
+    dialog.show(() => (
+      <DialogSelectProject
+        onSelect={(id) => {
+          navigate(`/${base64Encode(id)}/session`)
+        }}
+        onCreate={createProject}
+      />
+    ))
+  }
+
   // Track last viewed session
   createEffect(() => {
     if (!params.dir || !params.id) return
@@ -434,7 +456,10 @@ function LayoutContent(
   const pluginHost = usePluginHost()
   const workbench = createWorkbenchService(useWorkbenchPanels())
   const route = createMemo(() => props.children)
-  const navigation = createMemo(() => (layout.isDesktop() ? <Sidebar onSearchOpen={props.onSearchOpen} /> : null))
+  const [builtinMounts, setBuiltinMounts] = createSignal(0)
+  const navigation = createMemo(() =>
+    layout.isDesktop() ? <Sidebar integrated={builtinMounts() > 0} onSearchOpen={props.onSearchOpen} /> : null,
+  )
   const shell: PluginShellService = {
     page: () => pluginHost.environment.route().page,
     render(view) {
@@ -458,10 +483,19 @@ function LayoutContent(
       <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
-      <ModelUnavailableBanner />
-      <ConnectionBanner />
+      <div class="app-shell-notices">
+        <ModelUnavailableBanner />
+        <ConnectionBanner />
+      </div>
       <SkinRoot>
-        <ShellOutlet shell={shell} workbench={workbench} />
+        <ShellOutlet
+          onBuiltinMount={() => {
+            setBuiltinMounts((count) => count + 1)
+            return () => setBuiltinMounts((count) => count - 1)
+          }}
+          shell={shell}
+          workbench={workbench}
+        />
       </SkinRoot>
       <GlobalSearchModal open={props.searchOpen} onClose={props.onSearchClose} />
       <Toast.Region limit={5} swipeDirection="right" pauseOnInteraction={true} />

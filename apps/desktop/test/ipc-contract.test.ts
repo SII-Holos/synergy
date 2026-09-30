@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { BrowserWindow, OpenDialogOptions, WebContents } from "electron"
 import { mapSelectDirectoryDialogResponse, selectDirectoryWithNativeDialog } from "../src/directory-picker.js"
 import {
   parseBrowserNativeAttach,
@@ -35,14 +36,14 @@ describe("desktop ipc contract", () => {
   test("accepts valid browser native attach payloads", () => {
     expect(
       parseBrowserNativeAttach({
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         bounds: { x: 0, y: 0, width: 640, height: 480 },
         visible: false,
       }),
     ).toEqual({
-      protocolVersion: 3,
+      protocolVersion: 4,
       ownerKey: "scope:scope:session:session",
       pageId: "page",
       bounds: { x: 0, y: 0, width: 640, height: 480 },
@@ -52,11 +53,11 @@ describe("desktop ipc contract", () => {
 
   test("rejects malformed browser native payloads", () => {
     expect(() =>
-      parseBrowserNativePage({ protocolVersion: 3, ownerKey: "scope:scope:session:session", pageId: "" }),
+      parseBrowserNativePage({ protocolVersion: 4, ownerKey: "scope:scope:session:session", pageId: "" }),
     ).toThrow()
     expect(() =>
       parseBrowserNativeResize({
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         bounds: { width: -1, height: 1, x: 0, y: 0 },
@@ -64,7 +65,7 @@ describe("desktop ipc contract", () => {
     ).toThrow()
     expect(() =>
       parseBrowserNativeAttach({
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "scope:scope:session:session",
         pageId: "page",
         extra: true,
@@ -76,24 +77,24 @@ describe("desktop ipc contract", () => {
   test("validates native capability and owner-bound ticket requests", () => {
     expect(
       parseBrowserNativePresentationCapability({
-        protocolVersion: 3,
+        protocolVersion: 4,
         serverUrl: "http://127.0.0.1:4096",
       }),
-    ).toEqual({ protocolVersion: 3, serverUrl: "http://127.0.0.1:4096" })
+    ).toEqual({ protocolVersion: 4, serverUrl: "http://127.0.0.1:4096" })
     expect(
       parseBrowserNativePresentationTicket({
-        protocolVersion: 3,
+        protocolVersion: 4,
         serverUrl: "http://127.0.0.1:4096",
         ownerKey: "scope:home:session:test",
       }),
     ).toEqual({
-      protocolVersion: 3,
+      protocolVersion: 4,
       serverUrl: "http://127.0.0.1:4096",
       ownerKey: "scope:home:session:test",
     })
-    expect(() => parseBrowserNativePresentationCapability({ protocolVersion: 3, serverUrl: "not-a-url" })).toThrow()
+    expect(() => parseBrowserNativePresentationCapability({ protocolVersion: 4, serverUrl: "not-a-url" })).toThrow()
     expect(() =>
-      parseBrowserNativePresentationTicket({ protocolVersion: 3, serverUrl: "http://127.0.0.1", ownerKey: "" }),
+      parseBrowserNativePresentationTicket({ protocolVersion: 4, serverUrl: "http://127.0.0.1", ownerKey: "" }),
     ).toThrow()
   })
 
@@ -178,6 +179,27 @@ describe("desktop ipc contract", () => {
         rawRequest: {},
       }),
     ).rejects.toThrow("managed local server")
+  })
+
+  test("lets users create a folder in both native selection modes", async () => {
+    const { window, webContents } = mainWindowFixture()
+    for (const multiple of [false, true]) {
+      let properties: OpenDialogOptions["properties"]
+      await selectDirectoryWithNativeDialog({
+        mainWindow: window as unknown as BrowserWindow,
+        sender: webContents as WebContents,
+        serverStatus: managedRunningStatus,
+        rawRequest: { multiple },
+        probePortalFileAccess: async () => "allowed",
+        showOpenDialog: async (_window, options) => {
+          properties = options.properties
+          return { canceled: true, filePaths: [] }
+        },
+      })
+      expect(properties).toContain("createDirectory")
+      expect(properties).toContain("openDirectory")
+      expect(properties?.includes("multiSelections")).toBe(multiple)
+    }
   })
 
   test("maps native directory picker dialog results", async () => {

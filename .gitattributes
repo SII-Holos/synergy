@@ -19,3 +19,6 @@
 benchmark/tasks/local24-repro-v6/build-cython-ext/solution/solve.sh whitespace=-blank-at-eol
 benchmark/tasks/local24-repro-v6/mcmc-sampling-stan/instruction.md whitespace=-blank-at-eol
 benchmark/tasks/local24-repro-v6/mcmc-sampling-stan/solution/solve.sh whitespace=-blank-at-eol
+
+# A unified diff represents empty context lines with a single space.
+apps/desktop/native/cua/observation.patch whitespace=-blank-at-eol

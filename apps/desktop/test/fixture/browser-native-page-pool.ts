@@ -21,6 +21,7 @@ async function run() {
     let onDialog: ((event: Extract<BrowserHostPageEvent, { type: "dialog.opened" }>) => void) | undefined
     const input = {
       ownerKey: "scope:native-smoke:session:native-smoke",
+      profile: { id: "personal", partition: "persist:synergy-browser-smoke", revision: 0 },
       page: {
         id: "native-page-1",
         url: "about:blank",
@@ -189,7 +190,7 @@ async function run() {
     }
     const manager = new BrowserNativeViewManager(window, pool, () => {})
     const request = {
-      protocolVersion: 3 as const,
+      protocolVersion: 4 as const,
       ownerKey: secondInput.ownerKey,
       pageId: secondInput.page.id,
       bounds: { x: 0, y: 0, width: 600, height: 400 },

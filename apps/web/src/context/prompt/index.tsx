@@ -7,6 +7,7 @@ import { Persist, persisted } from "@/utils/persist"
 import type { createDraftSessionIndex } from "./draft-index"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { DEFAULT_PROMPT, isPromptEqual } from "./equality"
+import { mergeProjectDrafts, qualifyProjectDraft } from "./project-draft"
 import {
   sanitizeContextItemsValue,
   sanitizePromptContextValue,
@@ -27,6 +28,7 @@ export interface TextPart extends PartBase {
 export interface FileAttachmentPart extends PartBase {
   type: "file"
   path: string
+  originScopeID?: string
   selection?: FileSelection
 }
 
@@ -75,6 +77,7 @@ export type Prompt = ContentPart[]
 export type FileContextItem = {
   type: "file"
   path: string
+  originScopeID?: string
   selection?: FileSelection
 }
 
@@ -116,7 +119,7 @@ export function keyForContextItem(item: ContextItem) {
   const startChar = item.selection?.startChar
   const endLine = item.selection?.endLine
   const endChar = item.selection?.endChar
-  return `${item.type}:${item.path}:${startLine}:${startChar}:${endLine}:${endChar}`
+  return `${item.type}:${item.originScopeID ?? ""}:${item.path}:${startLine}:${startChar}:${endLine}:${endChar}`
 }
 
 export function sanitizeContextItems(value: unknown): ContextItem[] {
@@ -180,7 +183,10 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     cursor: createMemo(() => store.cursor),
     dirty,
     revision: () => revision,
-    restoreIfUnchanged(expectedRevision: number, snapshot: { prompt: Prompt; context: PromptContextSnapshot }) {
+    restoreIfUnchanged(
+      expectedRevision: number,
+      snapshot: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number },
+    ) {
       if (revision !== expectedRevision) return false
       const next = sanitizePromptContext(snapshot.context)
       revision++
@@ -189,7 +195,8 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
         setStore("context", { items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })) })
         setStore(
           "cursor",
-          snapshot.prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0),
+          snapshot.cursor ??
+            snapshot.prompt.reduce((length, part) => length + ("content" in part ? part.content.length : 0), 0),
         )
       })
       return true
@@ -297,6 +304,52 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
     const session = createMemo(() => load(params.dir!, params.id))
 
     return {
+      prepareProjectTransfer(targetDir: string, sourceScopeID: string, sourceDirectory?: string) {
+        const source = session()
+        const target = load(targetDir, undefined)
+        if (!source.ready() || !target.ready()) throw new Error("Draft is still loading")
+        const sourceRevision = source.revision()
+        const targetRevision = target.revision()
+        const sourceSnapshot = qualifyProjectDraft(
+          { prompt: source.current(), context: { items: source.context.items() } },
+          sourceScopeID,
+          sourceDirectory,
+        )
+        const sourceCursor = source.cursor()
+        const targetCursor = target.cursor()
+        const targetSnapshot = { prompt: target.current(), context: { items: target.context.items() } }
+        const held = new Set([source, target])
+        for (const draft of held) retained.set(draft, (retained.get(draft) ?? 0) + 1)
+        let released = false
+        return {
+          conflict: target !== source && (target.dirty() || target.context.items().length > 0),
+          release() {
+            if (released) return
+            released = true
+            for (const draft of held) {
+              const remaining = (retained.get(draft) ?? 1) - 1
+              if (remaining) retained.set(draft, remaining)
+              else retained.delete(draft)
+            }
+            prune(session())
+          },
+          commit() {
+            if (session() !== source || source.revision() !== sourceRevision || target.revision() !== targetRevision)
+              return false
+            if (source === target) return true
+            const merged = mergeProjectDrafts(targetSnapshot, sourceSnapshot)
+            const length = (prompt: Prompt) =>
+              prompt.reduce((total, part) => total + ("content" in part ? part.content.length : 0), 0)
+            const sourceLength = length(sourceSnapshot.prompt)
+            const cursor = sourceLength
+              ? length(merged.prompt) - sourceLength + (sourceCursor ?? sourceLength)
+              : targetCursor
+            if (!target.restoreIfUnchanged(targetRevision, { ...merged, cursor })) return false
+            source.resetDraft()
+            return true
+          },
+        }
+      },
       capture() {
         const draft = session()
         retained.set(draft, (retained.get(draft) ?? 0) + 1)

@@ -12,10 +12,11 @@ import {
 } from "@ericsanchezok/synergy-browser-core"
 import { BrowserHostDiagnostics } from "./browser-host-diagnostics.js"
 import { BrowserWebContentsControl } from "./browser-webcontents-control.js"
-import { browserProfilePartition } from "./browser-profile.js"
 
 export interface BrowserNativePageInput {
   ownerKey: string
+  profile: { id: string; partition: string; revision: number }
+  onPopup?(input: { page: BrowserPage; openerId: string }, page: BrowserNativePageHandle): void
   page: BrowserPage
   networkProxy: { server: string; username: string; password: string }
   downloadDir: string
@@ -32,15 +33,11 @@ export interface BrowserNativePageHandle {
 interface Generation {
   id: number
   view: WebContentsView
+  contents: WebContents
   control: BrowserWebContentsControl
   diagnostics: BrowserHostDiagnostics
-  onLogin: (
-    event: Electron.Event,
-    webContents: Electron.WebContents,
-    details: Electron.AuthenticationResponseDetails,
-    authInfo: Electron.AuthInfo,
-    callback: (username?: string, password?: string) => void,
-  ) => void
+  releaseLogin(): void
+  session: Electron.Session
   cleanupEvents: () => void
   state(): BrowserPage
   navigationTimer: ReturnType<typeof setTimeout> | null
@@ -83,16 +80,18 @@ export class BrowserNativePagePool {
       unresponsiveGraceMs?: number
       navigationTimeoutMs?: number
       resumeRecoveryCooldownMs?: number
+      onVisit?(partition: string, url: string, title: string): Promise<void>
     } = {},
   ) {}
 
-  async create(input: BrowserNativePageInput): Promise<BrowserNativePageHandle> {
-    if (this.entries.has(input.ownerKey) || this.creating.has(input.ownerKey) || this.destroying.has(input.ownerKey)) {
-      throw new Error("Browser owner already has a native page.")
+  async create(input: BrowserNativePageInput, existingView?: WebContentsView): Promise<BrowserNativePageHandle> {
+    const key = `${input.ownerKey}:${input.page.id}`
+    if (this.entries.has(key) || this.creating.has(key) || this.destroying.has(key)) {
+      throw new Error("Browser page already exists.")
     }
-    this.creating.add(input.ownerKey)
+    this.creating.add(key)
     try {
-      const generation = await this.createGeneration(input, 1, input.page.url)
+      const generation = await this.createGeneration(input, 1, input.page.url, undefined, existingView)
       const entry = {} as Entry
       Object.assign(entry, {
         ownerKey: input.ownerKey,
@@ -107,19 +106,19 @@ export class BrowserNativePagePool {
         replacementListeners: new Set<(view: WebContentsView, previous: WebContentsView) => void>(),
         state: () => entry.generation.state(),
         execute: (command: BrowserBackendCommand) => this.execute(entry, command),
-        destroy: () => this.destroyEntry(input.ownerKey),
+        destroy: () => this.destroyEntry(key),
         isAlive: () => !entry.closing,
       } satisfies Partial<Entry>)
-      this.entries.set(input.ownerKey, entry)
+      this.entries.set(key, entry)
       this.bindRecoveryEvents(entry, generation)
       return entry
     } finally {
-      this.creating.delete(input.ownerKey)
+      this.creating.delete(key)
     }
   }
 
   find(ownerKey: string, pageId: string): Entry | undefined {
-    const entry = this.entries.get(ownerKey)
+    const entry = this.entries.get(`${ownerKey}:${pageId}`)
     return entry?.state().id === pageId ? entry : undefined
   }
 
@@ -186,31 +185,29 @@ export class BrowserNativePagePool {
     id: number,
     restoreURL: string,
     bounds = { x: 0, y: 0, ...INITIAL_NATIVE_PAGE_VIEWPORT },
+    existingView?: WebContentsView,
   ): Promise<Generation> {
-    const view = new WebContentsView({
-      webPreferences: {
-        partition: browserProfilePartition(input.ownerKey),
-        backgroundThrottling: false,
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        preload: fileURLToPath(new URL("./browser-page-preload.cjs", import.meta.url)),
-      },
-    })
+    const view =
+      existingView ??
+      new WebContentsView({
+        webPreferences: {
+          partition: input.profile.partition,
+          backgroundThrottling: false,
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: true,
+          preload: fileURLToPath(new URL("./browser-page-preload.cjs", import.meta.url)),
+        },
+      })
     view.setBounds(bounds)
     const contents = view.webContents
-    const onLogin: Generation["onLogin"] = (event, webContents, _details, authInfo, callback) => {
-      if (!authInfo.isProxy || webContents !== contents) return
-      event.preventDefault()
-      callback(input.networkProxy.username, input.networkProxy.password)
-    }
-    app.on("login", onLogin)
+    const releaseLogin = registerProxyLogin(contents, input.networkProxy)
     let diagnostics: BrowserHostDiagnostics | undefined
     let control: BrowserWebContentsControl | undefined
     let cleanupEvents: (() => void) | undefined
     try {
-      await contents.session.setProxy({ proxyRules: input.networkProxy.server })
-      await contents.loadURL("about:blank")
+      await configureProfileProxy(contents.session, input.networkProxy)
+      if (!existingView) await contents.loadURL("about:blank")
       diagnostics = new BrowserHostDiagnostics({
         pageId: input.page.id,
         contents,
@@ -218,13 +215,17 @@ export class BrowserNativePagePool {
         emitHostEvent: input.emit,
       })
       await diagnostics.start()
-      const state = (): BrowserPage => ({
-        id: input.page.id,
-        url: (contents.getURL() || restoreURL || input.page.url).slice(0, 20_000),
-        title: contents.getTitle().slice(0, 20_000),
-        isLoading: contents.isLoading(),
-        lastActiveAt: null,
-      })
+      let lastState = input.page
+      const state = (): BrowserPage =>
+        contents.isDestroyed()
+          ? lastState
+          : (lastState = {
+              id: input.page.id,
+              url: (contents.getURL() || restoreURL || input.page.url).slice(0, 20_000),
+              title: contents.getTitle().slice(0, 20_000),
+              isLoading: contents.isLoading(),
+              lastActiveAt: null,
+            })
       control = new BrowserWebContentsControl({
         pageId: input.page.id,
         contents: () => contents,
@@ -234,6 +235,7 @@ export class BrowserNativePagePool {
           const current = view.getBounds()
           view.setBounds({ x: current.x, y: current.y, width, height })
         },
+        onWindowOpen: (details) => this.openPopup(input, details),
         onNavigationBlocked: (url, reason) =>
           input.emit({ type: "page.error", pageId: input.page.id, url, message: reason }),
       })
@@ -241,9 +243,11 @@ export class BrowserNativePagePool {
       const generation: Generation = {
         id,
         view,
+        contents,
         control,
         diagnostics,
-        onLogin,
+        releaseLogin,
+        session: contents.session,
         cleanupEvents: () => undefined,
         state,
         navigationTimer: null,
@@ -252,13 +256,13 @@ export class BrowserNativePagePool {
       }
       cleanupEvents = this.bindPageEvents(input, generation)
       generation.cleanupEvents = cleanupEvents
-      if (restoreURL && restoreURL !== "about:blank") {
+      if (!existingView && restoreURL && restoreURL !== "about:blank") {
         await control.execute({ type: "navigate", url: restoreURL, source: "user" })
       }
       return generation
     } catch (error) {
       cleanupEvents?.()
-      app.off("login", onLogin)
+      releaseLogin()
       const cleanup = await Promise.allSettled([control?.dispose(), diagnostics?.dispose()].filter(Boolean))
       if (!contents.isDestroyed()) contents.close()
       const failures = cleanup.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
@@ -266,6 +270,65 @@ export class BrowserNativePagePool {
         throw new AggregateError([error, ...failures], "Native Browser page creation and cleanup both failed.")
       }
       throw error
+    }
+  }
+
+  private openPopup(
+    parent: BrowserNativePageInput,
+    details: Electron.HandlerDetails,
+  ): Electron.WindowOpenHandlerResponse {
+    const ownerPages =
+      [...this.entries.values()].filter((entry) => entry.ownerKey === parent.ownerKey).length +
+      [...this.creating].filter((key) => key.startsWith(`${parent.ownerKey}:`)).length
+    if (!parent.onPopup || ownerPages >= 16 || this.entries.size + this.creating.size >= 64) return { action: "deny" }
+    return {
+      action: "allow",
+      outlivesOpener: true,
+      createWindow: (options) => {
+        const page: BrowserPage = {
+          id: crypto.randomUUID(),
+          url: details.url || "about:blank",
+          title: "",
+          isLoading: true,
+          lastActiveAt: null,
+        }
+        // Preserve Electron's supplied child WebContents (opener, POST and renderer handshake).
+        // https://www.electronjs.org/docs/latest/api/structures/window-open-handler-response
+        const view = new WebContentsView({
+          ...options,
+          webPreferences: {
+            ...options.webPreferences,
+            partition: parent.profile.partition,
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: true,
+            backgroundThrottling: false,
+            preload: fileURLToPath(new URL("./browser-page-preload.cjs", import.meta.url)),
+          },
+        })
+        const pending: BrowserHostPageEvent[] = []
+        let ready = false
+        const input = {
+          ...parent,
+          page,
+          emit: (event: BrowserHostPageEvent) => (ready ? parent.emit(event) : pending.push(event)),
+        }
+        void this.create(input, view)
+          .then((handle) => {
+            parent.onPopup!({ page: handle.state(), openerId: parent.page.id }, handle)
+            ready = true
+            for (const event of pending) parent.emit(event)
+          })
+          .catch((error) => {
+            if (!view.webContents.isDestroyed()) view.webContents.close()
+            parent.emit({
+              type: "page.error",
+              pageId: parent.page.id,
+              message: `Popup could not open: ${error instanceof Error ? error.message : String(error)}`,
+            })
+          })
+        return view.webContents
+      },
     }
   }
 
@@ -283,6 +346,9 @@ export class BrowserNativePagePool {
       // single automatic retry and reload forever.
       generation.navigationRetries = 0
       input.emit({ type: "page.loaded", page: generation.state() })
+      void this.options.onVisit?.(input.profile.partition, contents.getURL(), contents.getTitle()).catch(() => {
+        input.emit({ type: "page.error", pageId: input.page.id, message: "Recent browser history could not be saved." })
+      })
     }
     const updated = () => input.emit({ type: "page.updated", page: generation.state() })
     const failed = (_event: Electron.Event, _code: number, message: string, url: string) => {
@@ -299,12 +365,14 @@ export class BrowserNativePagePool {
     contents.on("did-stop-loading", loaded)
     contents.on("did-navigate", updated)
     contents.on("did-navigate-in-page", updated)
+    contents.on("page-title-updated", updated)
     contents.on("did-fail-load", failed)
     return () => {
       contents.off("did-start-loading", loading)
       contents.off("did-stop-loading", loaded)
       contents.off("did-navigate", updated)
       contents.off("did-navigate-in-page", updated)
+      contents.off("page-title-updated", updated)
       contents.off("did-fail-load", failed)
       this.clearGenerationTimers(generation)
     }
@@ -319,7 +387,14 @@ export class BrowserNativePagePool {
     })
     contents.once("destroyed", () => {
       if (!entry.closing && entry.generation === generation) {
-        void this.recover(entry, "unexpected-destroyed").catch(() => undefined)
+        void this.destroyEntry(`${entry.ownerKey}:${entry.input.page.id}`)
+          .then(() => {
+            entry.input.emit({ type: "page.closed", pageId: entry.input.page.id })
+          })
+          .catch((error) => {
+            console.error("Popup close cleanup", error)
+            entry.input.emit({ type: "page.error", pageId: entry.input.page.id, message: String(error) })
+          })
       }
     })
     contents.on("unresponsive", () => {
@@ -364,7 +439,7 @@ export class BrowserNativePagePool {
   }
 
   private async handleNavigationTimeout(input: BrowserNativePageInput, generation: Generation): Promise<void> {
-    const entry = this.entries.get(input.ownerKey)
+    const entry = this.entries.get(`${input.ownerKey}:${input.page.id}`)
     if (!entry || entry.closing || entry.generation !== generation) return
     const contents = generation.view.webContents
     contents.stop()
@@ -532,7 +607,15 @@ export class BrowserNativePagePool {
     const operation = (async () => {
       try {
         await entry.recovery?.catch(() => undefined)
+        const profileSession = entry.generation.session
         await this.closeGeneration(entry.generation)
+        this.entries.delete(ownerKey)
+        if (
+          !entry.input.profile.partition.startsWith("persist:") &&
+          ![...this.entries.values()].some((other) => other.input.profile.id === entry.input.profile.id)
+        ) {
+          await profileSession.clearStorageData()
+        }
       } finally {
         this.entries.delete(ownerKey)
         this.destroying.delete(ownerKey)
@@ -544,11 +627,11 @@ export class BrowserNativePagePool {
 
   private async closeGeneration(generation: Generation): Promise<void> {
     generation.cleanupEvents()
-    app.off("login", generation.onLogin)
+    generation.releaseLogin()
     const results = await Promise.allSettled([generation.control.dispose(), generation.diagnostics.dispose()])
     const failures = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     try {
-      await closeWebContents(generation.view.webContents)
+      await closeWebContents(generation.contents)
     } catch (error) {
       failures.push(error)
     }
@@ -645,4 +728,39 @@ function closeWebContents(contents: WebContents, timeoutMs = 5_000): Promise<voi
       finish(error)
     }
   })
+}
+
+const profileProxies = new WeakMap<Electron.Session, { key: string; ready: Promise<void> }>()
+function configureProfileProxy(
+  session: Electron.Session,
+  proxy: BrowserNativePageInput["networkProxy"],
+): Promise<void> {
+  const key = `${proxy.server}:${proxy.username}`
+  const previous = profileProxies.get(session)
+  if (previous?.key === key) return previous.ready
+  const ready = (previous?.ready ?? Promise.resolve()).then(() => session.setProxy({ proxyRules: proxy.server }))
+  profileProxies.set(session, { key, ready })
+  return ready
+}
+
+const proxyLogins = new Map<WebContents, { username: string; password: string }>()
+const onProxyLogin: (
+  event: Electron.Event,
+  contents: WebContents,
+  details: Electron.AuthenticationResponseDetails,
+  authInfo: Electron.AuthInfo,
+  callback: (username?: string, password?: string) => void,
+) => void = (event, contents, _details, authInfo, callback) => {
+  const credentials = proxyLogins.get(contents)
+  if (!credentials || !authInfo.isProxy) return
+  event.preventDefault()
+  callback(credentials.username, credentials.password)
+}
+function registerProxyLogin(contents: WebContents, credentials: { username: string; password: string }) {
+  if (!proxyLogins.size) app.on("login", onProxyLogin)
+  proxyLogins.set(contents, credentials)
+  return () => {
+    proxyLogins.delete(contents)
+    if (!proxyLogins.size) app.off("login", onProxyLogin)
+  }
 }

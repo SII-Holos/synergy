@@ -1,7 +1,4 @@
 import { describe, expect, test } from "bun:test"
-import type { SynergyLinkBash, SynergyLinkProcess, SynergyLinkSession } from "@ericsanchezok/synergy-link-protocol"
-import { SynergyLinkRemoteError } from "@ericsanchezok/synergy-connections/remote/client"
-import { SynergyLinkExecution } from "@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution"
 import path from "path"
 import { ProcessTool } from "@ericsanchezok/synergy-local-runtime/tools/process"
 import { ProcessRegistry } from "@ericsanchezok/synergy-harness/process/registry"
@@ -60,48 +57,6 @@ describe("tool.process", () => {
           expect(result.attachments?.[0].mime).toBe("application/pdf")
 
           ProcessRegistry.remove(proc.id)
-        },
-      })
-    }))
-
-  test("clears a cached session after definitive invalid remote process execution", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      return ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          SynergyLinkExecution.setClient({
-            executeBash: async (): Promise<SynergyLinkBash.Result> => {
-              throw new Error("unexpected bash execution")
-            },
-            executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
-              throw new SynergyLinkRemoteError("session_not_found", "Session is not active.")
-            },
-            executeSession: async (): Promise<SynergyLinkSession.Result> => {
-              throw new Error("unexpected session verification")
-            },
-          })
-          SynergyLinkExecution.upsertSession({
-            linkID: "link_invalid_process",
-            targetAgentID: "agent_invalid_process",
-            sourceAgent: "build",
-            sessionID: "session_invalid_process",
-            status: "opened",
-            openedAt: Date.now(),
-            lastUsedAt: Date.now(),
-            lastVerifiedAt: Date.now(),
-          })
-          try {
-            const process = await ProcessTool.init()
-            await expect(
-              process.execute({ action: "list", linkID: "link_invalid_process" }, ctx),
-            ).rejects.toMatchObject({
-              code: "session_not_found",
-            })
-            expect(SynergyLinkExecution.getSession("link_invalid_process")).toBeUndefined()
-          } finally {
-            SynergyLinkExecution.setClient(null)
-          }
         },
       })
     }))

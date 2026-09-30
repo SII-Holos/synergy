@@ -862,7 +862,7 @@ export const CoreInfo = z
           .describe("Grace period for active ToolTasks during runtime shutdown (default: 3000)"),
         toolExecutorConcurrency: z
           .partialRecord(
-            z.enum(["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]),
+            z.enum(["local_process", "file", "plugin", "mcp", "browser", "control_plane"]),
             z.number().int().positive().max(512),
           )
           .optional()

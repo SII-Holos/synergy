@@ -14,6 +14,7 @@ import { compareProviderIDs, type ProviderRecommendationMap } from "@/components
 import { useGlobalSync } from "@/context/global-sync"
 import { useLocal, type LocalModel, type ModelKey } from "@/context/local"
 import { useProviders } from "@/hooks/use-providers"
+import "./model-manager.css"
 
 const freeTag = { id: "model.manager.tag.free", message: "Free" }
 const latestTag = { id: "model.manager.tag.latest", message: "Latest" }
@@ -80,11 +81,11 @@ export const QuickSwitcherList: Component<{
   const { _ } = useLingui()
   return (
     <List<QuickSwitcherEntry>
-      class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
+      class={`model-quick-switcher flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
       search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
       emptyMessage={_(noQuickSwitchLabel)}
       key={(x) => x.listKey}
-      items={models}
+      items={models()}
       current={current()}
       filterKeys={["provider.name", "name", "id"]}
       groupBy={(x) => x.group}

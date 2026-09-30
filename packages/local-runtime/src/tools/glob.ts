@@ -15,7 +15,7 @@ export const GlobTool = Tool.define(
         .string()
         .optional()
         .describe(
-          `The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided.`,
+          `The directory to search in. If not specified, the task’s main and shared project folders will be searched. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided.`,
         ),
     }),
     async execute(params, ctx) {
@@ -28,7 +28,8 @@ export const GlobTool = Tool.define(
         },
       })
 
-      const search = FileView.resolve(params.path ?? ".")
+      const roots = await FileView.searchRoots(params.path)
+      const search = roots[0]
 
       const TIMEOUT_MS = ToolTimeout.DEFAULTS.globMs
       const limit = 100
@@ -41,24 +42,27 @@ export const GlobTool = Tool.define(
       const combinedSignal = ctx.abort ? AbortSignal.any([ctx.abort, timeoutSignal]) : timeoutSignal
 
       try {
-        for await (const file of Ripgrep.files({
-          cwd: search,
-          glob: [params.pattern],
-          signal: combinedSignal,
-        })) {
-          if (files.length >= limit) {
-            truncated = true
-            break
+        for (const root of roots) {
+          for await (const file of Ripgrep.files({
+            cwd: root,
+            glob: [params.pattern],
+            signal: combinedSignal,
+          })) {
+            if (files.length >= limit) {
+              truncated = true
+              break
+            }
+            const full = FileView.resolve(file, root)
+            const stats = await FileView.file(full)
+              .stat()
+              .then((x) => x.mtimeMs)
+              .catch(() => 0)
+            files.push({
+              path: full,
+              mtime: stats,
+            })
           }
-          const full = FileView.resolve(file, search)
-          const stats = await FileView.file(full)
-            .stat()
-            .then((x) => x.mtimeMs)
-            .catch(() => 0)
-          files.push({
-            path: full,
-            mtime: stats,
-          })
+          if (truncated) break
         }
       } catch (error) {
         if (!timeoutSignal.aborted) throw error

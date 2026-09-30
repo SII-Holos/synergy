@@ -1,71 +1,13 @@
-import { describe, expect, test } from "bun:test"
-import {
-  BROWSER_PROTOCOL_VERSION,
-  parseBrowserPresentationPreference,
-  selectBrowserPresentation,
-} from "@ericsanchezok/synergy-browser-core"
-
-describe("browser presentation negotiation", () => {
-  test("chooses native for desktop local clients", () => {
-    const selected = selectBrowserPresentation({
-      desktopLocalHost: true,
-      remote: false,
-      requested: "auto",
-      capabilities: { native: true, webrtc: true },
-    })
-
-    expect(selected?.protocolVersion).toBe(BROWSER_PROTOCOL_VERSION)
-    expect(selected?.kind).toBe("native")
-    expect(selected?.reason).toBe("desktop-local")
-    expect(selected?.capabilities).toEqual({ native: true, webrtc: true })
-  })
-
-  test("chooses WebRTC for remote web clients", () => {
-    const selected = selectBrowserPresentation({
-      desktopLocalHost: false,
-      remote: true,
-      requested: "auto",
-      capabilities: { native: true, webrtc: true },
-    })
-
-    expect(selected?.kind).toBe("webrtc")
-    expect(selected?.reason).toBe("remote-client")
-    expect(selected?.capabilities).toEqual({ native: true, webrtc: true })
-  })
-
-  test("keeps explicit presentation requests strict and parses unknown values as auto", () => {
-    expect(parseBrowserPresentationPreference("native")).toBe("native")
-    expect(parseBrowserPresentationPreference("jpeg-ws")).toBe("auto")
-    expect(
-      selectBrowserPresentation({
-        desktopLocalHost: false,
-        remote: true,
-        requested: "native",
-        capabilities: { native: true, webrtc: true },
-      }),
-    ).toBeNull()
-    expect(
-      selectBrowserPresentation({
-        desktopLocalHost: true,
-        remote: false,
-        requested: "webrtc",
-        capabilities: { native: true, webrtc: false },
-      }),
-    ).toBeNull()
-    expect(
-      selectBrowserPresentation({
-        desktopLocalHost: true,
-        remote: false,
-        requested: "webrtc",
-        capabilities: { native: true, webrtc: true },
-      })?.kind,
-    ).toBe("webrtc")
-    expect(
-      selectBrowserPresentation({
-        desktopLocalHost: false,
-        remote: true,
-        capabilities: { native: false, webrtc: false },
-      }),
-    ).toBeNull()
-  })
+import { expect, test } from "bun:test"
+import { BROWSER_PROTOCOL_VERSION, selectBrowserPresentation } from "@ericsanchezok/synergy-browser-core"
+test("only a local native host selects a browser presentation", () => {
+  expect(
+    selectBrowserPresentation({ remote: false, desktopLocalHost: true, capabilities: { native: true } }),
+  ).toMatchObject({ protocolVersion: BROWSER_PROTOCOL_VERSION, kind: "native" })
+  expect(
+    selectBrowserPresentation({ remote: false, desktopLocalHost: false, capabilities: { native: true } }),
+  ).toBeNull()
+  expect(
+    selectBrowserPresentation({ remote: false, desktopLocalHost: true, capabilities: { native: false } }),
+  ).toBeNull()
 })

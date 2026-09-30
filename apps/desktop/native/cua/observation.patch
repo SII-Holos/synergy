@@ -1,0 +1,387 @@
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3572,6 +3572,7 @@
+  "security-framework",
+  "serde",
+  "serde_json",
++ "sha2",
+  "tempfile",
+  "thiserror 1.0.69",
+  "time",
+--- a/crates/cua-driver/src/main.rs
++++ b/crates/cua-driver/src/main.rs
+@@ -497,7 +497,7 @@
+             std::process::exit(code);
+         });
+         if initialized_rx.recv().unwrap_or(false) {
+-            platform_macos::cursor::overlay::run_on_main_thread();
++            platform_macos::pip::run_appkit_main_loop();
+         }
+         return;
+     }
+--- a/crates/cua-driver/src/private_worker.rs
++++ b/crates/cua-driver/src/private_worker.rs
+@@ -118,7 +118,10 @@
+     let driver = match CuaDriver::try_create_configured_for_host(
+         initialization.configured_driver,
+         DriverHostOptions {
+-            cursor: cursor_overlay::CursorConfig::default(),
++            cursor: cursor_overlay::CursorConfig {
++                enabled: false,
++                ..cursor_overlay::CursorConfig::default()
++            },
+             host_owns_permission_ux: true,
+             host_bundle_id: Some(initialization.host_bundle_id.clone()),
+             claude_code_compatibility: false,
+--- a/crates/platform-macos/Cargo.toml
++++ b/crates/platform-macos/Cargo.toml
+@@ -12,6 +12,7 @@
+ tracing = { workspace = true }
+ base64 = { workspace = true }
+ image = { workspace = true }
++sha2 = { workspace = true }
+ async-trait = "0.1"
+ uuid = { workspace = true }
+ time = { workspace = true }
+--- a/crates/platform-macos/src/ax/tree.rs
++++ b/crates/platform-macos/src/ax/tree.rs
+@@ -208,7 +208,18 @@
+     window_id: Option<u32>,
+     query: Option<&str>,
+     max_depth: usize,
++    budget: WalkBudget,
++) -> TreeWalkResult {
++    walk_tree_scoped(pid, window_id, query, max_depth, budget, true)
++}
++
++pub(crate) fn walk_tree_scoped(
++    pid: i32,
++    window_id: Option<u32>,
++    query: Option<&str>,
++    max_depth: usize,
+     mut budget: WalkBudget,
++    include_app_surfaces: bool,
+ ) -> TreeWalkResult {
+     let mut nodes: Vec<AXNode> = Vec::new();
+     let mut lines: Vec<(usize, String)> = Vec::new(); // (depth, line)
+@@ -303,6 +314,7 @@
+             let walk = decision
+                 .walk
+                 .iter()
++                .filter(|&&index| include_app_surfaces || candidates[index].ax_window_id == Some(wid))
+                 .map(|&index| top_level[index])
+                 .collect();
+             window_scope = Some(decision.scope);
+--- a/crates/platform-macos/src/capture.rs
++++ b/crates/platform-macos/src/capture.rs
+@@ -738,6 +738,22 @@
+ ///
+ /// Tries ScreenCaptureKit first; falls back to the `screencapture` CLI on
+ /// native error or empty output.
++pub(crate) fn screenshot_window_bytes_verified(pid: i32, window_id: u32) -> anyhow::Result<Vec<u8>> {
++    run_native_capture_worker(native_capture_gate(), WINDOW_CAPTURE_NATIVE_TIMEOUT, move || {
++        let before = crate::synergy::identity(pid, window_id).ok_or_else(|| anyhow::anyhow!("capture_identity_unverified"))?;
++        let expected = current_window_capture_identity(window_id)?;
++        let plan = build_window_capture_plan(window_id, expected)?;
++        let rect = plan.filter.content_rect();
++        let scale = f64::from(plan.filter.point_pixel_scale());
++        if !before.capture_geometry_valid([0.0,0.0,rect.size.width,rect.size.height], scale) {
++            anyhow::bail!("capture_representation_mismatch");
++        }
++        let bytes = capture_window_from_plan(window_id, &plan)?;
++        if current_window_capture_identity(window_id)? != expected { anyhow::bail!("capture_identity_changed"); }
++        Ok(bytes)
++    })
++}
++
+ pub fn screenshot_window_bytes(window_id: u32) -> anyhow::Result<Vec<u8>> {
+     capture_window_with_backends(
+         window_id,
+--- a/crates/platform-macos/src/input/skylight.rs
++++ b/crates/platform-macos/src/input/skylight.rs
+@@ -782,6 +782,8 @@
+         }
+     };
+ 
++    let frame_before = crate::windows::window_bounds_by_id(target_wid)
++        .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
+     let mut prev_psn = [0u8; 8];
+     let prev_ok = get_front_process_fn()
+         .map(|f| unsafe { f(prev_psn.as_mut_ptr() as *mut c_void) } == 0)
+@@ -802,7 +804,16 @@
+     make_exact_window_key(target_pid, target_wid);
+     await_window_focused(target_pid, target_wid);
+ 
+-    let result = body();
++    let result = (|| {
++        let frame_after = crate::windows::window_bounds_by_id(target_wid)
++            .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
++        if !crate::synergy::same_plane(
++            [frame_before.x, frame_before.y, frame_before.width, frame_before.height],
++            [frame_after.x, frame_after.y, frame_after.width, frame_after.height],
++            1.0,
++        ) { anyhow::bail!("computer_target_changed: observe again"); }
++        body()
++    })();
+ 
+     if prev_ok {
+         unsafe { set_front(prev_psn.as_ptr() as *const c_void, 0, 0x400) };
+@@ -866,6 +877,8 @@
+     let set_front = set_front_process_fn()
+         .ok_or_else(|| anyhow::anyhow!("foreground HID delivery is unavailable"))?;
+ 
++    let frame_before = crate::windows::window_bounds_by_id(target_wid)
++        .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
+     let mut prev_psn = [0u8; 8];
+     let prev_ok = get_front_process_fn()
+         .map(|f| unsafe { f(prev_psn.as_mut_ptr() as *mut c_void) } == 0)
+@@ -892,14 +905,23 @@
+     }
+ 
+     make_exact_window_key(target_pid, target_wid);
+-    if !await_window_focused(target_pid, target_wid) {
++    if !crate::tools::ensure_exact_window_frontmost(target_pid, target_wid) {
+         if prev_ok {
+             unsafe { set_front(prev_psn.as_ptr() as *const c_void, 0, 0x400) };
+         }
+         anyhow::bail!("exact target window did not become focused for foreground HID delivery");
+     }
+ 
+-    let result = action();
++    let result = (|| {
++        let frame_after = crate::windows::window_bounds_by_id(target_wid)
++            .ok_or_else(|| anyhow::anyhow!("computer_target_changed: observe again"))?;
++        if !crate::synergy::same_plane(
++            [frame_before.x, frame_before.y, frame_before.width, frame_before.height],
++            [frame_after.x, frame_after.y, frame_after.width, frame_after.height],
++            1.0,
++        ) { anyhow::bail!("computer_target_changed: observe again"); }
++        action()
++    })();
+     std::thread::sleep(std::time::Duration::from_millis(40));
+ 
+     if prev_ok {
+--- a/crates/platform-macos/src/lib.rs
++++ b/crates/platform-macos/src/lib.rs
+@@ -40,6 +40,8 @@
+ pub mod terminal;
+ #[cfg(target_os = "macos")]
+ pub mod tools;
++#[cfg(target_os = "macos")]
++pub(crate) mod synergy;
+ #[cfg(target_os = "macos")]
+ pub mod video_sckit;
+ #[cfg(target_os = "macos")]
+--- a/crates/platform-macos/src/tools/bring_to_front.rs
++++ b/crates/platform-macos/src/tools/bring_to_front.rs
+@@ -261,6 +261,12 @@
+         CFRelease(target as CFTypeRef);
+         raised || main || focused
+     }
++}
++
++pub(crate) fn ensure_exact_window_frontmost(pid: i32, window_id: u32) -> bool {
++    // AX focus alone can name a covered window; HID input needs the same raised-window proof as bring_to_front.
++    raise_exact_ax_window(pid, window_id);
++    wait_for_exact_window(pid, window_id).exact_postcondition(pid, window_id)
+ }
+ 
+ fn exact_result(
+--- a/crates/platform-macos/src/tools/click.rs
++++ b/crates/platform-macos/src/tools/click.rs
+@@ -639,6 +639,8 @@
+             } else {
+                 None
+             };
++            if !crate::synergy::allows_pixels() { selection_pixel = None; }
++
+             // The selection fallback delivers a routed window-local pixel
+             // click — a stricter (WindowPointer) rung than the semantic gate
+             // above. In background, drop the fallback rather than silently
+--- a/crates/platform-macos/src/tools/get_window_state.rs
++++ b/crates/platform-macos/src/tools/get_window_state.rs
+@@ -294,6 +294,7 @@
+             .unwrap_or(crate::ax::tree::DEFAULT_MAX_DEPTH);
+         let timeout_ms = cua_driver_core::tool_schema::resolve_timeout_ms(args.get("timeout_ms"));
+ 
++        let synergy_capture = args["synergy"] == true;
+         let (tree_result, prepared_snapshot) = if want_tree {
+             let q = query.clone();
+             // `timeout_ms` bounds the walk itself: it returns the partial tree
+@@ -301,12 +302,13 @@
+             // for an AX call that ignores the per-element messaging timeout
+             // (dropping a spawn_blocking JoinHandle cannot cancel it).
+             let walk_future = tokio::task::spawn_blocking(move || {
+-                let tree = crate::ax::tree::walk_tree_budgeted(
++                let tree = crate::ax::tree::walk_tree_scoped(
+                     pid,
+                     Some(window_id),
+                     q.as_deref(),
+                     max_depth,
+                     cua_driver_core::walk_budget::WalkBudget::new(timeout_ms, max_elements),
++                    !synergy_capture,
+                 );
+                 let payload = crate::ax::cache::CachedSnapshot::from_nodes(&tree.nodes);
+                 (tree, payload)
+@@ -314,16 +316,8 @@
+             let backstop = std::time::Duration::from_millis(timeout_ms) + AX_WALK_BACKSTOP_GRACE;
+             match tokio::time::timeout(backstop, walk_future).await {
+                 Ok(Ok((tree, payload))) => (Some(tree), Some(payload)),
+-                Ok(Err(e)) => return ToolResult::error(format!("AX tree walk failed: {e}")),
+-                Err(_elapsed) => {
+-                    return ToolResult::error(format!(
+-                        "AX tree walk for pid={pid} did not return within {} s: an \
+-                         accessibility call stopped answering past the {timeout_ms} ms \
+-                         timeout_ms budget. Retry, or act by pixel (x,y) off a \
+-                         screenshot-only get_window_state (include_accessibility_tree:false).",
+-                        backstop.as_secs()
+-                    ));
+-                }
++                Ok(Err(_e)) => (None, None),
++                Err(_elapsed) => (None, None),
+             }
+         } else {
+             (None, None)
+@@ -383,7 +377,7 @@
+                 let bounds = crate::windows::window_bounds_by_id(window_id)
+                     .filter(|b| b.width > 0.0 && b.height > 0.0)
+                     .ok_or(super::px_frame::PxFrameError::WindowNotFound { window_id })?;
+-                let raw = crate::capture::screenshot_window_bytes(window_id).map_err(|e| {
++                let raw = (if synergy_capture { crate::capture::screenshot_window_bytes_verified(pid, window_id) } else { crate::capture::screenshot_window_bytes(window_id) }).map_err(|e| {
+                     super::px_frame::PxFrameError::CaptureUnavailable {
+                         window_id,
+                         reason: e.to_string(),
+@@ -502,7 +496,7 @@
+             )));
+         }
+ 
+-        if content.is_empty() {
++        if content.is_empty() && !synergy_capture {
+             return ToolResult::error(
+                 "No content produced (neither AX tree nor screenshot succeeded)",
+             );
+--- a/crates/platform-macos/src/tools/mod.rs
++++ b/crates/platform-macos/src/tools/mod.rs
+@@ -1,6 +1,7 @@
+ //! MCP tool implementations for macOS.
+ 
+ mod bring_to_front;
++pub(crate) use bring_to_front::ensure_exact_window_frontmost;
+ mod capture_binding;
+ mod click;
+ mod clipboard;
+@@ -206,6 +207,7 @@
+         element_ptr: Option<usize>,
+         action: cua_driver_core::background_input::BackgroundAction,
+     ) -> Result<(), cua_driver_core::protocol::ToolResult> {
++        crate::synergy::check(self.pid, window_id, matches!(action, cua_driver_core::background_input::BackgroundAction::WindowPointer)).await?;
+         decide_background_window_action(self.pid, window_id, element_ptr, action).await
+     }
+ }
+@@ -617,6 +619,7 @@
+ 
+ /// Shared state passed to all tools.
+ pub struct ToolState {
++    pub(crate) synergy: Arc<crate::synergy::Observations>,
+     pub element_cache: Arc<ElementCache>,
+     pub cursor_registry: Arc<CursorRegistry>,
+     pub zoom_registry: Arc<ZoomRegistry>,
+@@ -670,6 +673,7 @@
+         host_bundle_id: Option<String>,
+     ) -> Self {
+         Self {
++            synergy: Arc::new(crate::synergy::Observations::default()),
+             element_cache: Arc::new(ElementCache::new()),
+             cursor_registry: Arc::new(CursorRegistry::new()),
+             zoom_registry: Arc::new(ZoomRegistry::new()),
+@@ -809,9 +813,11 @@
+         let zoom_registry = state.zoom_registry.clone();
+         let cursor_registry = state.cursor_registry.clone();
+         let capture_bindings = state.capture_bindings.clone();
++        let observations = state.synergy.clone();
+         let registration =
+             cua_driver_core::session::register_scoped_session_end_hook(move |session_id| {
+                 session_config.clear(session_id);
++                observations.retire_session(session_id);
+                 zoom_registry.retire_session(session_id);
+                 element_cache.retire_session_screenshots(session_id);
+                 capture_bindings.retire_session(session_id);
+@@ -834,9 +840,7 @@
+ 
+     registry.register(Box::new(list_apps::ListAppsTool));
+     registry.register(Box::new(list_windows::ListWindowsTool));
+-    registry.register(Box::new(get_window_state::GetWindowStateTool::new(
+-        state.clone(),
+-    )));
++    registry.register(Box::new(crate::synergy::GuardedTool::new(get_window_state::GetWindowStateTool::new(state.clone()), state.synergy.clone())));
+     registry.register(Box::new(
+         cua_driver_core::expectation::VerifyStateTool::new(Arc::new(
+             cua_driver_core::expectation::ToolObservationProvider::new(
+@@ -855,11 +859,11 @@
+     registry.register(Box::new(set_window_frame::SetWindowFrameTool));
+     registry.register(Box::new(invoke_menu::InvokeMenuTool));
+     registry.register(pid_window_guarded(
+-        click::ClickTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(click::ClickTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        double_click::DoubleClickTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(double_click::DoubleClickTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+@@ -867,27 +871,27 @@
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        drag::DragTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(drag::DragTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        type_text::TypeTextTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(type_text::TypeTextTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        press_key::PressKeyTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(press_key::PressKeyTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        hotkey::HotkeyTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(hotkey::HotkeyTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        set_value::SetValueTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(set_value::SetValueTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     registry.register(pid_window_guarded(
+-        scroll::ScrollTool::new(state.clone()),
++        crate::synergy::GuardedTool::new(scroll::ScrollTool::new(state.clone()), state.synergy.clone()),
+         &pid_window_candidates,
+     ));
+     cua_driver_core::clipboard::register_clipboard_tools(
+--- a/crates/platform-macos/src/tools/pixel_route.rs
++++ b/crates/platform-macos/src/tools/pixel_route.rs
+@@ -58,6 +58,7 @@
+     window_id: Option<u32>,
+     event_kind: &str,
+ ) -> Result<PixelClickRoute, ToolResult> {
++    if !crate::synergy::allows_pixels() { return Err(ToolResult::error("capture_unavailable_for_action. Observe again before using pixels.")); }
+     let has_window = window_id.is_some();
+     let toolkit = if !effective_foreground && has_window {
+         tokio::task::spawn_blocking(move || crate::input::pointer_toolkit::detect(pid))
+--- a/crates/platform-macos/src/tools/type_text.rs
++++ b/crates/platform-macos/src/tools/type_text.rs
+@@ -826,6 +826,7 @@
+         decide_background_input, BackgroundAction, BackgroundInputDecision, ExactWindowTarget,
+     };
+     let lease = super::acquire_background_mutation(pid).await;
++    crate::synergy::check(pid, window_id, false).await?;
+     let element_guard =
+         element_ptr.map(|ptr| unsafe { crate::ax::cache::RetainedElement::retain(ptr) });
+     let facts = match tokio::task::spawn_blocking(move || {

@@ -1,5 +1,8 @@
 export interface BrowserWorkspaceController {
-  openPanel(panelId: string, options?: { reuseExisting?: boolean }): unknown
+  openPanel(
+    panelId: string,
+    options?: { reuseExisting?: boolean; activate?: boolean; init?: { resourceId?: string; title?: string } },
+  ): unknown
   surface(surface: "side"): { close(): void }
 }
 
@@ -38,7 +41,23 @@ export function applyBrowserViewCommand(
     return true
   }
   if (command === "show" || command === "focus") {
-    workspace.openPanel("browser", { reuseExisting: true })
+    const page = metadata.page as { id?: unknown; title?: unknown } | undefined
+    const pageId =
+      metadata.background === true
+        ? undefined
+        : typeof metadata.pageId === "string"
+          ? metadata.pageId
+          : typeof page?.id === "string"
+            ? page.id
+            : undefined
+    workspace.openPanel("browser", {
+      reuseExisting: !pageId,
+      activate: metadata.background !== true,
+      init: {
+        ...(pageId ? { resourceId: pageId } : {}),
+        ...(typeof page?.title === "string" ? { title: page.title } : {}),
+      },
+    })
     return true
   }
   return false

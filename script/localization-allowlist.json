@@ -176,30 +176,6 @@
     "reason": "Filesystem ignore-pattern syntax shown as an input placeholder, not natural-language product copy."
   },
   {
-    "path": "apps/web/src/components/workspace/browser/address-bar.tsx",
-    "kind": "user-visible-property",
-    "literal": "localhost:3000",
-    "occurrence": 1,
-    "category": "machine-identifier",
-    "reason": "Literal development server host and port used by the browser navigation preset."
-  },
-  {
-    "path": "apps/web/src/components/workspace/browser/address-bar.tsx",
-    "kind": "user-visible-property",
-    "literal": "localhost:5173",
-    "occurrence": 1,
-    "category": "machine-identifier",
-    "reason": "Literal development server host and port used by the browser navigation preset."
-  },
-  {
-    "path": "apps/web/src/components/workspace/browser/address-bar.tsx",
-    "kind": "user-visible-property",
-    "literal": "localhost:8080",
-    "occurrence": 1,
-    "category": "machine-identifier",
-    "reason": "Literal development server host and port used by the browser navigation preset."
-  },
-  {
     "path": "apps/web/src/components/workspace/browser/annotation-input.tsx",
     "kind": "jsx-attribute",
     "literal": "14px",
@@ -446,5 +422,13 @@
     "occurrence": 1,
     "category": "brand",
     "reason": "Built-in workbench uses the product brand name."
+  },
+  {
+    "kind": "jsx-text",
+    "literal": "Synergy",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "The task greeting displays the product brand name.",
+    "path": "apps/web/src/components/session/session-new-view.tsx"
   }
 ]

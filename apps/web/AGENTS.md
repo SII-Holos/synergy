@@ -23,7 +23,7 @@ Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before 
 
 Discover active components through the generated capabilities API before optional API calls. Keep startup requests, settings, navigation, composer controls and workbench registrations consistent with that selection; reconnect discards the previous selection and never assumes a full product.
 
-Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regenerate the SDK when a required route is missing. Keep raw browser APIs for WebSocket/EventSource/WebRTC, external URLs, local file/blob operations, downloads/uploads without an SDK contract, and platform fetch injection.
+Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regenerate the SDK when a required route is missing. Keep raw browser APIs for WebSocket/EventSource, external URLs, local file/blob operations, downloads/uploads without an SDK contract, and platform fetch injection.
 
 ## Product and Interaction
 
@@ -36,7 +36,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 - Register optional built-in workbench content through `WorkbenchPanelEntry.loader`. Keep Notes/Tiptap/Mermaid, Files/Monaco, Browser, Terminal, and Review implementations out of the route shell until the panel opens.
 - Keep only active product fonts in the application bundle. Adding an optional font requires a user-selectable runtime path and a loading strategy; do not import dormant font families from the root `Font` component.
 - Treat mobile drawers as named modal surfaces with initial focus, contained Tab traversal, Escape close, and focus return. Verify dense toolbars at 375 px and do not hide overflow that clips interactive controls.
-- Keep Browser native and remote presentations consistent with [Browser runtime](../../docs/architecture/browser-runtime.md); do not introduce iframe, screenshot-stream, pseudo-tab, or multi-page fallbacks.
+- Gate Browser on Desktop-native capability and follow [Browser runtime](../../docs/architecture/browser-runtime.md). Keep human tab selection independent of explicit Agent targets, preserve page-scoped prompts/errors and avoid remote or simulated browser fallbacks.
 - Route ordinary browser randomness through `@ericsanchezok/synergy-util/uuid`; security-sensitive randomness uses its strict APIs with no weak fallback. Keep optional Secure Context APIs out of module-scope startup paths so private-network HTTP can boot and unsupported actions fail locally.
 
 ## Settings and Plugins

@@ -1,9 +1,9 @@
 import { useLingui } from "@lingui/solid"
-import { Popover as KobaltePopover } from "@kobalte/core/popover"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
-import { createMemo, createSignal } from "solid-js"
-import { Portal } from "solid-js/web"
+import { createMemo, createSignal, Show } from "solid-js"
 import { thinkingChoices } from "@/context/prompt/model-selection"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
@@ -27,6 +27,7 @@ export function ModelVariantPicker(props: {
   popoverLayer?: HTMLElement
   onChange: (variant: string) => void
   triggerClass?: string
+  appearance?: "toolbar"
 }) {
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(false)
@@ -48,8 +49,7 @@ export function ModelVariantPicker(props: {
   }
 
   const content = () => (
-    <KobaltePopover.Content class="z-70 w-64 max-w-[calc(100vw-32px)] max-h-80 rounded-md flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-      <KobaltePopover.Title class="sr-only">{_(selectVariantLabel)}</KobaltePopover.Title>
+    <>
       <List<ModelVariantOption>
         class="min-h-0 flex-1"
         key={(option) => option.key}
@@ -65,20 +65,42 @@ export function ModelVariantPicker(props: {
           </div>
         )}
       </List>
-    </KobaltePopover.Content>
+    </>
   )
 
   return (
-    <KobaltePopover open={open()} onOpenChange={setOpen} placement="bottom-end" gutter={8}>
-      <KobaltePopover.Trigger
-        type="button"
-        class={props.triggerClass ?? "settings-model-variant"}
-        aria-label={`${_(selectVariantLabel)}: ${label()}`}
-      >
-        <span class="settings-model-variant-label">{label()}</span>
-        <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="settings-model-trigger-icon" />
-      </KobaltePopover.Trigger>
-      <Portal mount={props.popoverLayer}>{content()}</Portal>
-    </KobaltePopover>
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      placement="bottom-end"
+      gutter={8}
+      variant="menu"
+      class="w-64"
+      portalMount={props.popoverLayer}
+      title={_(selectVariantLabel)}
+      triggerAs={(triggerProps) => (
+        <Tooltip
+          placement="bottom"
+          value={_(selectVariantLabel)}
+          open={open() ? false : undefined}
+          inactive={props.appearance !== "toolbar"}
+        >
+          <button
+            {...triggerProps}
+            type="button"
+            class={props.triggerClass ?? "settings-model-variant"}
+            aria-label={`${_(selectVariantLabel)}: ${label()}`}
+            data-appearance={props.appearance}
+          >
+            <span class="settings-model-variant-label">{label()}</span>
+            <Show when={props.appearance !== "toolbar"}>
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="settings-model-trigger-icon" />
+            </Show>
+          </button>
+        </Tooltip>
+      )}
+    >
+      {content()}
+    </Popover>
   )
 }

@@ -11,7 +11,7 @@ export namespace AgentTurnProtocol {
   // An older host fails `parseWorkerToHost` inside the IPC handler, which kills
   // the worker, so an incompatible pair must instead be rejected by the `ready`
   // handshake's version check.
-  export const VERSION = 13
+  export const VERSION = 14
   export const REQUEST_MAX_BYTES = 64 * 1024 * 1024
   export const EVENT_MAX_BYTES = 2 * 1024 * 1024
   export const IPC_FRAME_MAX_BYTES = 2 * 1024 * 1024

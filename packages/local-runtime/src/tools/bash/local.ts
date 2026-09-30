@@ -880,7 +880,6 @@ export namespace LocalBashBackend {
             description: params.description,
             processId: regProc.id,
             background: true,
-            backend: "local",
           },
           output: warnOutput(
             `Command auto-backgrounded after ${yieldSeconds}s.\n\n` +
@@ -909,7 +908,6 @@ export namespace LocalBashBackend {
           exit: child.exitCode,
           signal: child.signalCode,
           description: params.description,
-          backend: "local",
         },
         output: warnOutput(output),
       }
@@ -923,7 +921,6 @@ export namespace LocalBashBackend {
           exit: child.exitCode,
           signal: child.signalCode,
           description: params.description,
-          backend: "local",
         },
         output: warnOutput(output + abortTag),
       }
@@ -958,7 +955,6 @@ export namespace LocalBashBackend {
         exit: child.exitCode,
         signal: child.signalCode,
         description: params.description,
-        backend: "local",
       },
       output: warnOutput(output),
     })

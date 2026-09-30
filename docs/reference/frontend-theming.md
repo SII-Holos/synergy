@@ -34,6 +34,10 @@ Use the semantic meaning of a color, not its hue. Product code should use classe
 
 Literal colors belong only at the theme-authoring boundary, in color-generation math, or in genuinely user/external-authored content. A new product color outside those boundaries is a theme-contract change and needs a semantic token.
 
+### Default workbench surfaces
+
+The default neutral recipe belongs to `themes/synergy.json`, including navigation (`background-weak`), canvas (`background-stronger`), input (`input-base`) and popup (`surface-raised-stronger-non-alpha`). Input and raised content may share a color; do not add a nested surface step merely to make them different. Necessary captions use a readable text role without reducing the enclosing opacity. Verify actual text/surface pairs after workbench and portal overrides; changing a theme token alone does not prove the rendered result. The shared-column, input-anchor and interaction rules live in the [Web product contract](../../apps/web/PRODUCT.md).
+
 ### Imperative renderers
 
 Canvas, Chart.js, Monaco, terminal engines, SVG renderers, and isolated documents cannot assume that a CSS custom-property string is directly usable. Read the active resolved theme and flatten references with `resolveThemeColor`:

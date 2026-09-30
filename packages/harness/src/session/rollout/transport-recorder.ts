@@ -39,6 +39,7 @@ export namespace RolloutTransportRecorder {
           method: event.method,
           started: Date.now(),
           timing: event.timing,
+          inputImages: event.inputImages,
           status: "running",
           request: await RolloutArtifact.get(call.owner, request.id),
         }
@@ -51,6 +52,7 @@ export namespace RolloutTransportRecorder {
       if ("timing" in event && event.timing) {
         attempt.value.timing = event.timing
       }
+      if (event.type === "attempt-sent") attempt.value.requestImages = event.requestImages
       if (event.type === "response") {
         if (attempt.response) throw new Error("Duplicate rollout response")
         attempt.response = await RolloutArtifact.open(call.owner, event.mediaType)

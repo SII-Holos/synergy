@@ -27,15 +27,15 @@ function scopeLabel(directory: string, name?: string) {
   return name || getFilename(directory)
 }
 
-const pageTitle = { id: "settings.worktrees.page.title", message: "Worktrees" }
+const pageTitle = { id: "settings.worktrees.page.title", message: "Independent copies" }
 const pageDescription = {
   id: "settings.worktrees.page.description",
-  message: "Browse and remove git worktrees across project scopes.",
+  message: "Review project copies, their files and linked tasks.",
 }
-const sectionTitle = { id: "settings.worktrees.section.title", message: "Worktree browser" }
+const sectionTitle = { id: "settings.worktrees.section.title", message: "Project copies" }
 const sectionDescription = {
   id: "settings.worktrees.section.description",
-  message: "Synergy-managed worktrees listed by project. Main and external worktrees are read-only.",
+  message: "Copies are grouped by source project. Project files and externally managed copies are read-only.",
 }
 const refreshLabel = { id: "settings.worktrees.refresh", message: "Refresh" }
 const refreshingLabel = { id: "settings.worktrees.refreshing", message: "Refreshing..." }
@@ -147,10 +147,13 @@ export function WorktreesPanel() {
   async function removeWorktree(item: Worktree, directory: string, force: boolean) {
     setBusyID(item.id)
     try {
-      await globalSDK.client.worktree.remove({
-        scopeID: directory,
-        worktreeRemoveInput: { target: item.id, force },
-      })
+      await globalSDK.client.worktree.remove(
+        {
+          scopeID: directory,
+          worktreeRemoveInput: { target: item.id, force },
+        },
+        { throwOnError: true },
+      )
       showToast({
         type: "success",
         title: force ? _(removeSuccessForceTitle) : _(removeSuccessTitle),
@@ -232,7 +235,7 @@ export function WorktreesPanel() {
                                 </div>
                                 <div class="min-w-0">
                                   <div class="settings-row-title truncate">{item.name}</div>
-                                  <div class="settings-path-meta flex items-center gap-1.5 mt-0.5">
+                                  <div class="settings-path-meta flex flex-wrap items-center gap-1.5 mt-0.5">
                                     <Show when={item.branch}>
                                       <span class="ds-inline-badge ds-inline-badge-muted">{item.branch}</span>
                                     </Show>
@@ -256,6 +259,26 @@ export function WorktreesPanel() {
                                       </span>
                                     </Show>
                                   </div>
+                                  <Show when={item.setupFailed}>
+                                    <p role="alert" class="text-small text-text-error">
+                                      {item.setupError}
+                                    </p>
+                                  </Show>
+                                  <details class="text-small text-text-weak">
+                                    <summary>
+                                      {_({ id: "settings.worktrees.source", message: "Source and linked tasks" })}
+                                    </summary>
+                                    <p>{item.baseRevision ?? item.baseRef ?? group.scopeLabel}</p>
+                                    <For each={bindings}>
+                                      {(id) => (
+                                        <p class="break-all">
+                                          {globalSync
+                                            .peekScopeState(group.scopeID)?.[0]
+                                            .session.find((session) => session.id === id)?.title ?? id}
+                                        </p>
+                                      )}
+                                    </For>
+                                  </details>
                                   <div class="settings-path-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                                     <span class="truncate" title={item.path}>
                                       {item.path}

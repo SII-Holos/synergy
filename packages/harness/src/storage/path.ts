@@ -7,6 +7,7 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const projectDirectories = (scopeID: string) => ["project_directories", scopeID]
   export const environmentCredential = (provider: string, requestID: string) => [
     "environment_credential",
     provider,
@@ -360,9 +361,6 @@ export namespace StoragePath {
     contactId,
     messageId,
   ]
-
-  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
-  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
 
   export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
   export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]

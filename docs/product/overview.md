@@ -157,8 +157,6 @@ Synergy can create or import a Holos agent and switch between locally saved agen
 
 After authentication, Synergy opens a persistent WebSocket agent tunnel to Holos. The runtime sends heartbeats every 30 seconds, uses a 90-second missed-pong deadline enforced at the next heartbeat check after the threshold is reached, reconnects with bounded attempts, tracks peer reachability, and maintains a user-managed local contact list with blocking controls. Agents can exchange direct messages through the tunnel. Message history is retained locally as inbox and outbox threads, while outgoing messages record delivery or failure state; retry them only when dispatch is known not to have occurred, because a liveness-loss failure may still have been delivered.
 
-The same tunnel provides the transport for Synergy Link. A connected Synergy instance can open an explicit Link session with a target Holos agent, manage that remote session's lifecycle, and route supported shell and process operations to the associated Synergy Link host. A standalone Link host sends heartbeats every 60 seconds and uses a 180-second missed-pong deadline enforced at the next heartbeat check after the threshold is reached. Link state is tied to the live Holos connection; ordinary disconnect or heartbeat-liveness loss removes the remote execution client and clears its active Link sessions. A request already dispatched when the tunnel becomes ambiguous has an unknown remote result and is never automatically retried when it may mutate state. Cached Link sessions are heartbeat-verified before use; when verification is inconclusive, `connect open` issues one caller-authenticated recovery open so the host can authoritatively reuse the session, open a fresh one, report busy under another caller, or refuse — without requiring a manual cache clear. The host defers idle-lease expiry while a session owns live tracked remote process work, within a bounded grace window, so long-running remote work is not killed by sender silence or temporary transport loss; explicit close/kick/revocation still reclaims immediately.
-
 Holos does not replace local sessions, model providers, project configuration, Library, Channels, or their stored data. Only capabilities that explicitly use the Holos network depend on the connection.
 
 ### Plugins
@@ -171,16 +169,7 @@ Plugins participate in the same product contracts as first-party features: tool 
 
 ## Browser Workspace
 
-Browser is a session-owned workspace where humans and browser tools operate on the same page.
-
-Each session has at most one Browser page. Reading Browser state or opening an interactive viewer does not create that page; the first user or tool navigation creates it, and later navigation reuses it.
-
-Interactive presentation has two first-class modes:
-
-- Desktop presents the page through a native Electron `WebContentsView`.
-- Web presents a remote Browser host through WebRTC media and data-channel input.
-
-Both modes preserve normal browser interaction such as pointer focus, text caret, IME composition, paste, wheel, and keyboard shortcuts. Navigation and file access pass safety checks, and agent-driven Browser actions remain subject to the active control profile.
+Desktop Browser gives each task multiple real native pages, with persistent Personal/named website identities or temporary identities. Human tab selection and explicit Agent page targets remain independent. State reads create no page; open and resume are explicit operations. See [Browser workspace](browser.md) for identity, permission and recovery behavior.
 
 ## Control Boundaries
 

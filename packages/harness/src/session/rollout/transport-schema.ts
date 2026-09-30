@@ -1,3 +1,4 @@
+import { InputImages } from "./input-images"
 import z from "zod"
 import { RolloutTiming } from "./timing"
 
@@ -13,10 +14,18 @@ export namespace RolloutTransportSchema {
         url: z.string(),
         method: z.string(),
         mediaType: z.string(),
+        inputImages: InputImages.List.optional(),
         timing: RolloutTiming.Info.optional(),
       })
       .strict(),
-    z.object({ type: z.literal("attempt-sent"), ...identity, timing: RolloutTiming.Info }).strict(),
+    z
+      .object({
+        type: z.literal("attempt-sent"),
+        ...identity,
+        timing: RolloutTiming.Info,
+        requestImages: InputImages.Hashes.optional(),
+      })
+      .strict(),
     z
       .object({
         type: z.literal("response"),

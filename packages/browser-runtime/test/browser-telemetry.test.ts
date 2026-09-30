@@ -4,7 +4,7 @@ import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
 import { BrowserCommandService } from "../src/command-service"
 import { BrowserEvent } from "../src/event"
 import { BrowserNetworkGateway } from "../src/network-gateway"
-import { BrowserWebRTCSignaling } from "../src/webrtc-signaling"
+import { BrowserProfiles } from "../src/profiles"
 import type { BrowserOwner } from "../src/owner"
 import type { BrowserPageBackend } from "../src/page"
 import type { BrowserSession } from "../src/types"
@@ -42,13 +42,22 @@ class BrokerSocket implements BrowserBrokerSocket {
 function fakeSession(page: BrowserPageBackend | null): BrowserSession {
   return {
     owner,
-    page,
-    status: "empty",
-    descriptor: null,
-    checkpoint: null,
-    error: null,
+    pages: page
+      ? [
+          {
+            id: page.id,
+            url: page.url,
+            title: page.title,
+            isLoading: page.loading,
+            lastActiveAt: page.lastActiveAt,
+            profileId: "personal",
+            status: "active",
+          },
+        ]
+      : [],
+    status: page ? "active" : "empty",
     annotations: [],
-    async ensurePage() {
+    async openPage() {
       return page ?? ({ id: "page-missing", backend: "host" } as BrowserPageBackend)
     },
     async resumePage() {
@@ -70,12 +79,11 @@ function fakeSession(page: BrowserPageBackend | null): BrowserSession {
     },
     async notifyPageNavigated() {},
     async notifyAgentActivity() {},
-    async notifyControlChanged() {},
     async save() {},
     async restore() {
       return true
     },
-    async suspend() {},
+    async suspendProfile() {},
     async dispose() {},
   }
 }
@@ -108,7 +116,8 @@ describe("Browser command telemetry", () => {
   let restoreRuntime: () => void
 
   beforeEach(() =>
-    runtime.run(() => {
+    runtime.run(async () => {
+      await BrowserProfiles.defaultProfile()
       resetObservabilityState()
       restoreRuntime = BrowserCommandService.useRuntimeForTest({ getOrCreateSession: async () => fakeSession(null) })
     }),
@@ -117,6 +126,7 @@ describe("Browser command telemetry", () => {
   afterEach(() =>
     runtime.run(() => {
       restoreRuntime()
+      BrowserBroker.resetForTest()
       clearObservabilityState()
     }),
   )
@@ -136,6 +146,7 @@ describe("Browser command telemetry", () => {
       restoreRuntime = BrowserCommandService.useRuntimeForTest({ getOrCreateSession: async () => session })
 
       await BrowserCommandService.execute(owner, {
+        pageId: "page-telemetry",
         commandId: "cmd-telemetry",
         command: {
           type: "navigate",
@@ -182,6 +193,7 @@ describe("Browser command telemetry", () => {
 
       await expect(
         BrowserCommandService.execute(owner, {
+          pageId: "page-telemetry",
           commandId: "cmd-ambiguous",
           command: {
             type: "action",
@@ -211,6 +223,7 @@ describe("Browser command telemetry", () => {
       restoreRuntime = BrowserCommandService.useRuntimeForTest({ getOrCreateSession: async () => session })
 
       await BrowserCommandService.execute(owner, {
+        pageId: "page-telemetry",
         commandId: "cmd-disabled",
         command: { type: "reload", source: "agent" },
       })
@@ -220,41 +233,11 @@ describe("Browser command telemetry", () => {
     }))
 })
 
-describe("Browser WebRTC reconnect telemetry", () => {
+describe("Browser native broker telemetry", () => {
   beforeEach(() => runtime.run(() => resetObservabilityState()))
   afterEach(() =>
     runtime.run(() => {
-      BrowserWebRTCSignaling.resetForTest()
-      clearObservabilityState()
-    }),
-  )
-
-  test("records reconnect for each role when a peer is replaced", () =>
-    runtime.run(() => {
-      const hostA = { send() {}, close() {} }
-      const hostB = { send() {}, close() {} }
-      const viewerA = { send() {}, close() {} }
-      const viewerB = { send() {}, close() {} }
-
-      BrowserWebRTCSignaling.attachHost(owner, "page-1", hostA, { hostReady: true })
-      BrowserWebRTCSignaling.attachHost(owner, "page-1", hostB, { hostReady: true })
-      BrowserWebRTCSignaling.attachViewer(owner, "page-1", viewerA, { hostReady: true })
-      BrowserWebRTCSignaling.attachViewer(owner, "page-1", viewerB, { hostReady: true })
-
-      const rows = metricRows(["browser.webrtc.reconnect.count"])
-      expect(rows).toHaveLength(2)
-      const roles = rows.map((row) => labelsOf(row).role).sort()
-      expect(roles).toEqual(["host", "viewer"])
-    }))
-})
-
-describe("Browser broker telemetry", () => {
-  beforeEach(() => runtime.run(() => resetObservabilityState()))
-  afterEach(() =>
-    runtime.run(async () => {
-      BrowserEvent.resetForTest()
       BrowserBroker.resetForTest()
-      await BrowserNetworkGateway.stop()
       clearObservabilityState()
     }),
   )
@@ -284,10 +267,16 @@ describe("Browser broker telemetry", () => {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           hostId: "host-timeout",
           token: BrowserBroker.secret(),
-          capabilities: { native: true, webrtc: false },
+          capabilities: { native: true },
         })
         BrowserBroker.prepare(owner, "home", "native")
-        await BrowserBroker.createPage({ owner, routeDirectory: "home", presentation: "native", pageId: "page-1" })
+        await BrowserBroker.createPage({
+          profile: await BrowserProfiles.defaultProfile(),
+          owner,
+          routeDirectory: "home",
+          presentation: "native",
+          pageId: "page-1",
+        })
 
         await expect(
           BrowserBroker.command(owner, "page-1", { type: "wait", condition: { type: "load" } }),
@@ -317,7 +306,7 @@ describe("Browser broker telemetry", () => {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: "host-disconnect",
         token: BrowserBroker.secret(),
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       })
       BrowserBroker.prepare(owner, "home", "native")
 
@@ -355,9 +344,15 @@ describe("Browser broker telemetry", () => {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: "host-status",
         token: BrowserBroker.secret(),
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       })
-      await BrowserBroker.createPage({ owner, routeDirectory: "home", presentation: "native", pageId: "page-1" })
+      await BrowserBroker.createPage({
+        profile: await BrowserProfiles.defaultProfile(),
+        owner,
+        routeDirectory: "home",
+        presentation: "native",
+        pageId: "page-1",
+      })
 
       BrowserBroker.handle(socket, {
         type: "page.event",

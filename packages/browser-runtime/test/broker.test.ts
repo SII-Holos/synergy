@@ -1,3 +1,4 @@
+import { BrowserProfiles } from "../src/profiles"
 import { afterEach, describe, expect, test } from "bun:test"
 import { BROWSER_PROTOCOL_VERSION, type BrowserHostMessage } from "@ericsanchezok/synergy-browser-core"
 import { BrowserBroker, type BrowserBrokerSocket } from "../src/broker"
@@ -37,7 +38,7 @@ describe("Browser Host broker authentication", () => {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           hostId: "forged",
           token: "0".repeat(64),
-          capabilities: { native: true, webrtc: true },
+          capabilities: { native: true },
         }),
       ).toThrow(/secret/i)
       expect(forged.closed?.code).toBe(1008)
@@ -48,7 +49,7 @@ describe("Browser Host broker authentication", () => {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: "host",
         token: BrowserBroker.secret(),
-        capabilities: { native: true, webrtc: true },
+        capabilities: { native: true },
       })
       expect(BrowserBroker.ready("native")).toBe(true)
       expect(host.sent).toContainEqual({
@@ -64,7 +65,7 @@ describe("Browser Host broker authentication", () => {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           hostId: "replacement",
           token: BrowserBroker.secret(),
-          capabilities: { native: true, webrtc: true },
+          capabilities: { native: true },
         }),
       ).toThrow(/already registered/i)
       expect(replacement.closed?.code).toBe(1013)
@@ -108,10 +109,16 @@ describe("Browser Host broker authentication", () => {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: "host-recovery",
         token: BrowserBroker.secret(),
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       })
       BrowserBroker.prepare(owner, "home", "native")
-      await BrowserBroker.createPage({ owner, routeDirectory: "home", presentation: "native", pageId: "page-test" })
+      await BrowserBroker.createPage({
+        profile: await BrowserProfiles.defaultProfile(),
+        owner,
+        routeDirectory: "home",
+        presentation: "native",
+        pageId: "page-test",
+      })
       const statuses: string[] = []
       const unsubscribe = BrowserEvent.subscribe(owner, (event) => {
         if (event.type === "host.status") statuses.push(`${event.pageId}:${event.status}`)
@@ -159,9 +166,10 @@ describe("Browser Host broker authentication", () => {
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         hostId: "host-disconnect-order",
         token: BrowserBroker.secret(),
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       })
       await BrowserBroker.createPage({
+        profile: await BrowserProfiles.defaultProfile(),
         owner,
         routeDirectory: "home",
         presentation: "native",

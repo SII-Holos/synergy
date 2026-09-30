@@ -30,7 +30,15 @@ describe("Browser event sequencing", () => {
       const unsubscribe = BrowserEvent.subscribe(eventOwner, (event) => received.push(event.type))
       const created = BrowserEvent.publish(eventOwner, {
         type: "page.created",
-        page: { id: "page", url: "about:blank", title: "", isLoading: false, lastActiveAt: null },
+        page: {
+          profileId: "personal",
+          status: "active",
+          id: "page",
+          url: "about:blank",
+          title: "",
+          isLoading: false,
+          lastActiveAt: null,
+        },
       })
       const closed = BrowserEvent.publish(eventOwner, { type: "page.closed", pageId: "page" })
       unsubscribe()

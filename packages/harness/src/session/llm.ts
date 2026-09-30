@@ -1,3 +1,4 @@
+import { RolloutTransport } from "./rollout/transport"
 import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
 import { Log } from "../util/log"
@@ -566,6 +567,7 @@ export namespace LLM {
               },
               async transformParams(args) {
                 if (args.type === "stream") {
+                  const recordImages = RolloutTransport.inputImages(args.params.prompt)
                   // @ts-expect-error
                   args.params.prompt = ProviderTransform.message(args.params.prompt, input.model, {
                     systemCacheBreakpoint:
@@ -577,6 +579,7 @@ export namespace LLM {
                     profileID: prepared.provider.profileID,
                     mergeSystemMessages: prepared.provider.options?.mergeSystemMessages === true,
                   })
+                  recordImages(args.params.prompt)
                 }
                 return args.params
               },

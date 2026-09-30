@@ -11,8 +11,6 @@
     "desktop:pack": "bun run --cwd apps/desktop desktop:pack",
     "desktop:dist": "bun run --cwd apps/desktop desktop:dist",
     "desktop:test": "bun run --cwd apps/desktop desktop:test",
-    "synergy-link": "bun run --cwd packages/synergy-link src/cli.ts",
-    "synergy-link:app": "bun run --cwd packages/synergy-link script/build-app.ts",
     "perf:load": "bun script/performance-load.ts",
     "perf:benchmark": "bun script/performance-benchmark.ts",
     "perf:memory": "bun script/session-memory-benchmark.ts",
@@ -54,7 +52,9 @@
     "ci:plan": "bun script/ci.ts plan",
     "ci:run": "bun script/ci.ts run",
     "ci:verify": "bun script/ci.ts verify",
-    "bench": "uv run --locked --project benchmark synergy-bench"
+    "bench": "uv run --locked --project benchmark synergy-bench",
+    "test:computer-native": "bun run --cwd apps/desktop test:computer-native",
+    "test:computer-acceptance": "bun run --cwd apps/desktop test:computer-acceptance"
   },
   "workspaces": {
     "packages": [
@@ -75,15 +75,12 @@
       "packages/formatter",
       "packages/acp",
       "packages/external-agents",
-      "packages/link-client",
       "packages/code-tools",
       "packages/media",
       "packages/plugin-host",
       "packages/testing",
       "packages/browser-core",
       "packages/computer-protocol",
-      "packages/synergy-link-protocol",
-      "packages/synergy-link",
       "packages/plugin",
       "packages/plugin-kit",
       "packages/sdk/js",

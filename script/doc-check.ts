@@ -88,7 +88,11 @@ export async function collectMarkdownFiles(root: string): Promise<string[]> {
 }
 
 export function findRetiredWorkspacePaths(markdown: string): { path: string; line: number }[] {
-  return [...markdown.matchAll(/\bpackages\/(?:synergy|app|desktop)(?=\/|[^\w-]|$)/g)].map((match) => ({
+  return [
+    ...markdown.matchAll(
+      /\bpackages\/(?:synergy|app|desktop|synergy-link|synergy-link-protocol|link-client)(?=\/|[^\w-]|$)/g,
+    ),
+  ].map((match) => ({
     path: match[0],
     line: markdown.slice(0, match.index).split("\n").length,
   }))

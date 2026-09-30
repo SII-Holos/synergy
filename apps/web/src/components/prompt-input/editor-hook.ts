@@ -102,6 +102,7 @@ export function usePromptEditor(input: PromptEditorInput) {
       parts.push({
         type: "file",
         path: file.dataset.path!,
+        ...(file.dataset.originScopeId ? { originScopeID: file.dataset.originScopeId } : {}),
         content,
         start: position,
         end: position + content.length,
@@ -295,8 +296,17 @@ export function usePromptEditor(input: PromptEditorInput) {
       selection.removeAllRanges()
       selection.addRange(range)
     } else if (part.type === "text") {
+      const fragment = createTextFragment(part.content.replace(/\r\n?/g, "\n"))
+      const markup = document.createElement("div")
+      markup.appendChild(fragment.cloneNode(true))
+      // Text nodes escape clipboard markup; BRs retain the normalized editor structure and native undo history.
+      // https://developer.mozilla.org/en-US/docs/Web/API/Document/execCommand
+      if (document.execCommand("insertHTML", false, markup.innerHTML)) {
+        handleInput()
+        input.setStore("popover", null)
+        return
+      }
       const range = selection.getRangeAt(0)
-      const fragment = createTextFragment(part.content)
       const last = fragment.lastChild
       range.deleteContents()
       range.insertNode(fragment)

@@ -45,21 +45,18 @@ export function PermissionModeSelector(props: {
           <Show
             when={props.switching()}
             fallback={
-              <>
-                <Icon
-                  name={getSemanticIcon(props.activeMode().icon)}
-                  size="small"
-                  class={`shrink-0 ${props.activeMode().iconClass}`}
-                />
-                <span class={`text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}>
-                  {translateModeCopy(props.activeMode().shortLabel)}
-                </span>
-                <Icon name="chevron-down" size="small" class="opacity-70 shrink-0" />
-              </>
+              <Icon
+                name={getSemanticIcon(props.activeMode().icon)}
+                size="small"
+                class={`shrink-0 ${props.activeMode().iconClass}`}
+              />
             }
           >
-            <Spinner class="text-icon-base" />
+            <Spinner class="text-icon-base size-4 shrink-0" />
           </Show>
+          <span class={`text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}>
+            {translateModeCopy(props.activeMode().shortLabel)}
+          </span>
         </button>
       )}
       title={i18n._(PI.permissionMode)}

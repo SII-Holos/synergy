@@ -72,7 +72,7 @@ function fileRows(metadata: Record<string, any>) {
 
 // ── Exported components ──────────────────────────────────────────────
 
-export function SummaryGrid(props: { rows: Array<{ label: string; value?: any } | undefined> }) {
+export function SummaryGrid(props: { rows: Array<{ label: string; value?: any } | undefined>; wrap?: boolean }) {
   const rows = () =>
     props.rows.filter((row) => row && row.value !== undefined && row.value !== "") as Array<{
       label: string
@@ -80,7 +80,7 @@ export function SummaryGrid(props: { rows: Array<{ label: string; value?: any } 
     }>
   return (
     <Show when={rows().length > 0}>
-      <div data-component="anchored-summary">
+      <div data-component="anchored-summary" data-wrap={props.wrap || undefined}>
         <For each={rows()}>
           {(row) => (
             <div data-slot="anchored-summary-row">

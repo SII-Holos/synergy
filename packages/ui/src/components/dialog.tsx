@@ -14,6 +14,7 @@ export interface DialogProps extends ParentProps {
   title?: JSXElement
   description?: JSXElement
   action?: JSXElement
+  footer?: JSXElement
   onEscapeKeyDown?: (event: KeyboardEvent) => void
   dismissible?: boolean
   size?: DialogSize
@@ -80,6 +81,9 @@ export function Dialog(props: DialogProps) {
               <Kobalte.Description data-slot="dialog-description">{props.description}</Kobalte.Description>
             </Show>
             <div data-slot="dialog-body">{props.children}</div>
+            <Show when={props.footer}>
+              <div data-slot="dialog-footer">{props.footer}</div>
+            </Show>
           </Kobalte.Content>
         </OverlayLayerProvider>
       </div>

@@ -94,6 +94,8 @@ beforeAll(async () => {
       `
         import { createComponent, createSignal } from "solid-js"
         import { render } from "solid-js/web"
+        import { setupI18n } from "@lingui/core"
+        import { I18nProvider } from "@lingui/solid"
         import { SessionConversation } from ${JSON.stringify(`/@fs/${conversationPath}`)}
 
         type AnyMsg = { id: string; role: "user" | "assistant"; text?: string }
@@ -150,7 +152,8 @@ beforeAll(async () => {
           } })
         }
 
-        render(() => createComponent(App), document.querySelector("#root")!)
+        const i18n = setupI18n({locale: "en", messages: {en: {}}})
+        render(() => <I18nProvider i18n={i18n}><App /></I18nProvider>, document.querySelector("#root")!)
       `,
     ),
   ])

@@ -4,6 +4,7 @@ import {
   ComputerServerMessageSchema,
   ComputerError,
 } from "@ericsanchezok/synergy-computer-protocol"
+import type { ComputerPermissions } from "./runtime.js"
 import { ComputerDriver } from "./driver.js"
 
 export class ComputerBrokerClient {
@@ -13,7 +14,12 @@ export class ComputerBrokerClient {
   private timer?: ReturnType<typeof setTimeout>
   private readonly pending = new Map<string, AbortController>()
   constructor(
-    private readonly options: { serverUrl: string; token: string; executable: string; checkPermissions(): void },
+    private readonly options: {
+      serverUrl: string
+      token: string
+      executable: string
+      checkPermissions(): ComputerPermissions | void
+    },
   ) {}
   connect() {
     if (this.closed || this.socket) return

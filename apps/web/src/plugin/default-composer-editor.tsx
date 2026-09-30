@@ -7,7 +7,7 @@ export function DefaultComposerEditor(
   const input = props.context.input
   let scroller!: HTMLDivElement
   return (
-    <div class="relative max-h-[240px] overflow-y-auto" ref={scroller}>
+    <div class="session-composer-editor relative overflow-y-auto" ref={scroller}>
       <div
         data-component="prompt-input"
         role="textbox"

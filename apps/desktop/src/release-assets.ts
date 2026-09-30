@@ -1,5 +1,3 @@
-import { chromiumManifestArtifacts } from "@ericsanchezok/synergy-browser-core"
-
 export const DESKTOP_RELEASE_PLATFORMS = ["darwin", "win32", "linux"] as const
 export const DESKTOP_RELEASE_ARCHES = ["x64", "arm64"] as const
 
@@ -50,51 +48,6 @@ export function expectedDesktopPrimaryArtifacts(version: string): string[] {
 
 export function desktopChecksumsName(version: string): string {
   return `Synergy-${version}-checksums.txt`
-}
-
-export function browserHostArtifactName(
-  version: string,
-  platform: DesktopReleasePlatform,
-  arch: DesktopReleaseArch,
-): string {
-  return `synergy-browser-host-${platform}-${arch}-${version}.zip`
-}
-
-export function browserHostExecutablePath(platform: DesktopReleasePlatform): string {
-  if (platform === "darwin") return "Synergy Browser Host.app/Contents/MacOS/Synergy Browser Host"
-  if (platform === "win32") return "Synergy Browser Host.exe"
-  return "synergy-browser-host"
-}
-
-export function browserHostManifestName(
-  version: string,
-  platform: DesktopReleasePlatform,
-  arch: DesktopReleaseArch,
-): string {
-  return `synergy-browser-host-${platform}-${arch}-${version}.manifest.json`
-}
-
-export function browserHostManifestSignatureName(
-  version: string,
-  platform: DesktopReleasePlatform,
-  arch: DesktopReleaseArch,
-): string {
-  return `${browserHostManifestName(version, platform, arch)}.sig`
-}
-
-export function expectedBrowserHostArtifacts(version: string): string[] {
-  return DESKTOP_RELEASE_PLATFORMS.flatMap((platform) =>
-    DESKTOP_RELEASE_ARCHES.flatMap((arch) => [
-      browserHostArtifactName(version, platform, arch),
-      browserHostManifestName(version, platform, arch),
-      browserHostManifestSignatureName(version, platform, arch),
-    ]),
-  )
-}
-export { chromiumManifestName, chromiumManifestSignatureName } from "@ericsanchezok/synergy-browser-core"
-
-export function expectedChromiumManifestArtifacts(version: string): string[] {
-  return chromiumManifestArtifacts(version)
 }
 
 export function isDesktopUpdateMetadata(name: string): boolean {

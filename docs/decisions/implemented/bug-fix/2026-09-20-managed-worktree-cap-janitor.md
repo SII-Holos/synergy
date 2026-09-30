@@ -83,3 +83,5 @@ Coverage. `packages/local-runtime/test/workspace/worktree-janitor.test.ts` pins 
 Review regressions cover anonymous and named active uses, repositories without remote refs, external missing checkouts, idle session rebinding, replaced locks, merge-only branch changes, and awaiting an active sweep during disposal.
 
 Late-failure regressions cover native retirement refusal and a concurrent file write rejected by Git's final clean-worktree check. Both preserve the session binding, registry membership and activity timestamps while later eligible candidates are reclaimed. A post-removal binding failure retains the registry and converges through the next missing-entry sweep.
+
+The Project scheduler enumerates current Git folders and historical repositories retained by Worktree records. The integration regression removes the old main folder from the project's folder list, preserves a dirty task's bytes and binding there, and observes clean candidates reclaimed in both repositories through the scheduled sweep. A single-repository scheduler fails this scenario.

@@ -25,11 +25,11 @@ describe("i18n message descriptors", () => {
     }
   })
 
-  test("every id uses the app.* namespace", () => {
+  test("every id uses a static domain, component and semantic key", () => {
     const all = Object.values(messages)
     for (const group of all) {
       for (const [_key, desc] of Object.entries(group)) {
-        expect(desc.id.startsWith("app.")).toBe(true)
+        expect(desc.id).toMatch(/^[a-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9_-]*){2,}$/)
       }
     }
   })
@@ -86,7 +86,7 @@ describe("i18n message descriptors", () => {
     expect(i18n._(browser.ready.id)).toBe("Browser ready")
     expect(i18n._(browser.connecting.id)).toBe("Connecting to Browser")
     expect(i18n._(browser.disconnected.id)).toBe("Browser disconnected")
-    expect(i18n._(browser.noPage.id)).toBe("No page open")
+    expect(i18n._(browser.noPage.id)).toBe("Start browsing")
     expect(i18n._(browser.navBack.id)).toBe("Back")
     expect(i18n._(browser.navForward.id)).toBe("Forward")
     expect(i18n._(browser.enterUrl.id)).toBe("Enter URL or search")

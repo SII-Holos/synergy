@@ -25,7 +25,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 // Product domains register tools via the L4 manifest
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ desktop: true })
 
 runtime.run(() => Log.init({ print: false }))
 

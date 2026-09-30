@@ -4,7 +4,7 @@ Execution protocol version 2 separates explicit `useRoots` and Workspace capture
 
 Docker inspection distinguishes partial creation from loss of an acknowledged container using its incarnation receipt. Leftover staging volumes do not turn a lost allocation into pending creation. Lost Workspace views remain unavailable and retain their unresolved ownership; repeated loss observations do not advance the catalog revision.
 
-An Environment identifies an execution destination independently of a Session, Scope and Workspace. Harness owns the catalog in Agent Storage; native and remote resource owners implement providers. Synergy Link does not supply Environment transport or identity.
+An Environment identifies an execution destination independently of a Session, Scope and Workspace. Harness owns the catalog in Agent Storage; native and remote resource owners implement providers.
 
 ## Identity and lifetime
 
@@ -91,3 +91,11 @@ Environment catalog events and snapshots use a strictly increasing per-resource 
 Browser and native Computer operations retain their host-specific implementations and require a Session selecting the native Environment. Environment transitions close the Session Browser before committing. Managed Git worktree creation and entry require a native directory context and native Session Environment; remote Git commands use Bash in the selected view. Controller preparation callbacks cannot run as part of a remote Workspace command.
 
 Checkpoint attempts persist their expected binding, mount target, content revision and immutable receipt identity before capture or mutation. A stale attempt cannot publish over a newer head. Conflict leaves execution unsaved; recovery records a new attempt and captures the current shared view without re-executing the command. Earlier attempts remain available for reconciliation. A published attempt retains its result across lost acknowledgements. The `20260929-workspace-checkpoint-attempts` migration recaptures unfinished legacy receipts because they lack a frozen publication base; it does not clear retained native claims.
+
+## Interactive task selection
+
+Local Runtime accepts an optional `environmentProfile` on `session.create`, mutually exclusive with `environmentID`. It resolves a configured profile into the existing Harness provider descriptor, and Harness applies the existing Session/Workspace/Scope reuse policy during initial creation. For a copy with Workspace reuse, file identity is resolved before the initial Environment binding. Selection and preview do not allocate compute. Invalid profiles and incompatible file locations fail explicitly. Profile summaries retain explicitly configured invalid defaults for repair; the implicit native default is absent when the composition has no native execution provider.
+
+Workbench owns `defaultSessionEnvironmentProfile` and `defaultSessionWorkspace`. App resolves these defaults only for new Web/Desktop tasks and passes explicit creation intent. An omitted execution preference inherits; `null` selects no command execution; a string references a global resource profile. These preferences never redefine API, Channels or Cortex creation. Project-default updates use a scoped, revision-checked endpoint that writes only those two keys to the project general domain. Projects without a configuration folder expose inherited defaults read-only. Existing Sessions remain unchanged.
+
+Ordinary Web/Desktop project entry selects a computer by service connection and couples its native execution profile to that service's filesystem. Only managed Desktop's matching running service can claim local-computer identity or use a native directory picker. Product previews do not allocate Environments. Existing non-native profiles and stored-file configurations retain their actual binding and a developer-management repair entry; the public API's independent Workspace/Environment capability is unchanged. See [project entry](../../apps/web/PRODUCT.md#project-first-task-entry).

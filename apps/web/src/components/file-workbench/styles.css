@@ -667,3 +667,19 @@
     transition: none;
   }
 }
+
+.file-explorer-folder {
+  margin: 4px 8px 8px;
+  padding: 6px 8px;
+  max-width: calc(100% - 16px);
+  border: 1px solid var(--border-base);
+  border-radius: 8px;
+  background: var(--surface-base);
+  color: var(--text-base);
+  font: inherit;
+  font-size: 12px;
+}
+.file-explorer-folder:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}

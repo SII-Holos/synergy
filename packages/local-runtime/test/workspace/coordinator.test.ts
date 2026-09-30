@@ -1,9 +1,11 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
+import { OwnedTree } from "../../src/process/owned-tree"
+import * as ProcessIdentity from "@ericsanchezok/synergy-util/process-identity"
 
 function request(roots: string[] | null, owner: string = randomUUID()) {
   return { id: randomUUID(), owner, kind: "task" as const, roots, ancestors: [] }
@@ -29,6 +31,151 @@ test("a legacy ledger rewrite cannot restore exclusive authorship after overlapp
     await held.release()
   }
   expect(await coordinator.inspect()).toHaveLength(0)
+})
+
+test("an exited durable process does not make later isolated work incomplete", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const coordinator = new WorkspaceCoordinator({ directory })
+  const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const stale = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    processID: child.pid,
+    retainAfterExit: true,
+    durable: true,
+    useRoots: [tmp.path],
+  })
+  child.kill()
+  await child.exited
+  const next = await coordinator.acquire({ ...request([]), kind: "process", useRoots: [tmp.path] })
+  try {
+    expect(await next.isolated()).toBe(true)
+    expect((await coordinator.inspect()).some((claim) => claim.id === stale.id && claim.durable)).toBe(true)
+  } finally {
+    await next.release()
+    await stale.release()
+  }
+})
+
+test("concurrent durable processes in one workspace remain overlapping", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const firstChild = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const secondChild = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const first = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    processID: firstChild.pid,
+    retainAfterExit: true,
+    durable: true,
+    useRoots: [tmp.path],
+  })
+  const second = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    processID: secondChild.pid,
+    retainAfterExit: true,
+    durable: true,
+    useRoots: [tmp.path],
+  })
+  try {
+    expect(await first.isolated()).toBe(false)
+    expect(await second.isolated()).toBe(false)
+  } finally {
+    firstChild.kill()
+    secondChild.kill()
+    await Promise.all([firstChild.exited, secondChild.exited])
+    await first.release()
+    await second.release()
+  }
+})
+
+test("uncertain native ownership permits disjoint work and preserves overlapping evidence", async () => {
+  await using tmp = await tmpdir()
+  const directory = path.join(tmp.path, "locks")
+  const coordinator = new WorkspaceCoordinator({ directory })
+  const root = path.join(tmp.path, "work")
+  const held = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    useRoots: [root],
+    retainAfterExit: true,
+    durable: true,
+  })
+  const filename = path.join(directory, "workspace-claims-v1.json")
+  const ledger: { claims: Record<string, unknown>[] } = await Bun.file(filename).json()
+  const processTree: OwnedTree.Reference = { kind: "windows-job", name: randomUUID() }
+  ledger.claims.find((claim) => claim.id === held.id)!.processTree = processTree
+  await Bun.write(filename, JSON.stringify(ledger))
+  const inspect = OwnedTree.inspect
+  using native = spyOn(OwnedTree, "inspect").mockImplementation((reference) => {
+    if (reference.kind === "windows-job" && reference.name === processTree.name)
+      throw new Error("Native ownership is uncertain")
+    return inspect(reference)
+  })
+  try {
+    const disjoint = await coordinator.acquire(request([path.join(tmp.path, "other")]))
+    expect(await disjoint.isolated()).toBe(true)
+    await disjoint.release()
+    const overlapping = await coordinator.acquire(request([root]))
+    try {
+      expect(await overlapping.isolated()).toBe(false)
+      expect(await held.isolated()).toBe(false)
+    } finally {
+      await overlapping.release()
+    }
+  } finally {
+    native.mockRestore()
+    const current: { claims: Record<string, unknown>[] } = await Bun.file(filename).json()
+    for (const claim of current.claims) if (claim.id === held.id) delete claim.processTree
+    await Bun.write(filename, JSON.stringify(current))
+    await held.release()
+  }
+})
+
+test.each(["unknown", "recycled"] as const)("%s process identity preserves its overlap semantics", async (identity) => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+  const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], {
+    stdout: "ignore",
+    stderr: "ignore",
+  })
+  const held = await coordinator.acquire({
+    ...request([]),
+    kind: "process",
+    processID: child.pid,
+    retainAfterExit: true,
+    durable: true,
+    useRoots: [tmp.path],
+  })
+  const lookup = ProcessIdentity.processStartIdentity
+  using unavailable = spyOn(ProcessIdentity, "processStartIdentity").mockImplementation((pid) =>
+    pid === child.pid ? Promise.resolve(identity === "unknown" ? undefined : "recycled") : lookup(pid),
+  )
+  try {
+    const next = await coordinator.acquire({ ...request([]), kind: "process", useRoots: [tmp.path] })
+    try {
+      expect(await next.isolated()).toBe(identity === "recycled")
+      expect(await held.isolated()).toBe(identity === "recycled")
+    } finally {
+      await next.release()
+    }
+  } finally {
+    unavailable.mockRestore()
+    child.kill()
+    await child.exited
+    await held.release()
+  }
 })
 
 test("a durable writer survives its owner and is released only with its saved recovery reference", async () => {

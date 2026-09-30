@@ -351,7 +351,7 @@
           "type": "object",
           "propertyNames": {
             "type": "string",
-            "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+            "enum": ["local_process", "file", "plugin", "mcp", "browser", "control_plane"]
           },
           "additionalProperties": { "type": "integer", "exclusiveMinimum": 0, "maximum": 512 }
         }
@@ -3241,6 +3241,10 @@
       "description": "Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.",
       "type": "string",
       "enum": ["main", "worktree"]
+    },
+    "defaultSessionEnvironmentProfile": {
+      "description": "Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.",
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
     },
     "compactReasoning": { "description": "Show live reasoning in a compact single-line viewport", "type": "boolean" },
     "quick_switcher": {

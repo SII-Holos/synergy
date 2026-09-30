@@ -8,7 +8,6 @@ import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
 import { browser as B } from "@/locales/messages"
 import { NativeBrowserSurface } from "./native-browser-surface"
-import { RemoteBrowserSurface } from "./remote-browser-surface"
 import { shouldShowBrowserPresentationSurface } from "./browser-presentation"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
@@ -31,11 +30,9 @@ export function BrowserSurface(props: {
   sessionID: string
   routeDirectory?: string
   ownerKey: string
-  clientPresentation: "native" | "webrtc"
+  clientPresentation: "native"
   onRetryNative?: () => void
-  onRetryRemote?: () => void
   recovering?: boolean
-  recoveryVersion?: number
 }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
@@ -49,7 +46,6 @@ export function BrowserSurface(props: {
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
   const nativeRecoveryAvailable = () => props.clientPresentation === "native" && Boolean(platform.browserNative)
-  const webrtcPresentation = () => props.clientPresentation === "webrtc" && browser.presentation()?.kind !== "native"
 
   function fitViewportSize() {
     if (!wrapperRef) return null
@@ -71,7 +67,7 @@ export function BrowserSurface(props: {
     if (!size) return
 
     const pageId = browser.pageId() ?? "active"
-    const key = `${pageId}:${size.width}x${size.height}`
+    const key = `${pageId}:${browser.page()?.status}:${size.width}x${size.height}`
     if (key === lastFitViewportKey) return
     lastFitViewportKey = key
     browser.setViewport(size.width, size.height, { mode: "fit" })
@@ -85,6 +81,7 @@ export function BrowserSurface(props: {
   createEffect(() => {
     browser.viewportMode()
     browser.pageId()
+    browser.page()?.status
     browser.hostStatus()
     scheduleFitViewport()
   })
@@ -159,7 +156,13 @@ export function BrowserSurface(props: {
             <div class="browser-empty-title">
               <Show
                 when={browser.hostStatus() === "restarting" || browser.hostStatus() === "failed"}
-                fallback={<Trans id={B.ready.id} message={B.ready.message} />}
+                fallback={
+                  browser.page()?.status === "suspended" ? (
+                    <Trans id={B.suspended.id} message={B.suspended.message} />
+                  ) : (
+                    <Trans id={B.ready.id} message={B.ready.message} />
+                  )
+                }
               >
                 <Show
                   when={browser.hostStatus() === "failed"}
@@ -172,14 +175,30 @@ export function BrowserSurface(props: {
             <div class="browser-empty-text">
               <Show
                 when={browser.hostStatus() === "restarting" || browser.hostStatus() === "failed"}
-                fallback={<Trans id={B.waitingForSurface.id} message={B.waitingForSurface.message} />}
+                fallback={
+                  browser.page()?.status === "suspended" ? (
+                    <Trans id={B.resumeHint.id} message={B.resumeHint.message} />
+                  ) : (
+                    <Trans id={B.waitingForSurface.id} message={B.waitingForSurface.message} />
+                  )
+                }
               >
                 <Trans id={B.nativeRecoveryHint.id} message={B.nativeRecoveryHint.message} />
               </Show>
             </div>
-            <Show when={browser.hostStatus() === "failed" && nativeRecoveryAvailable() && props.onRetryNative}>
+            <Show
+              when={
+                (browser.hostStatus() === "failed" || browser.hostStatus() === "detached") &&
+                nativeRecoveryAvailable() &&
+                props.onRetryNative
+              }
+            >
               <Button size="small" variant="primary" onClick={() => props.onRetryNative?.()}>
-                <Trans id={B.retry.id} message={B.retry.message} />
+                {browser.page()?.status === "suspended" ? (
+                  <Trans id={B.resume.id} message={B.resume.message} />
+                ) : (
+                  <Trans id={B.retry.id} message={B.retry.message} />
+                )}
               </Button>
             </Show>
             <div class="browser-status-pill">{browser.session.connectionStatus}</div>
@@ -188,16 +207,6 @@ export function BrowserSurface(props: {
       >
         <Show when={nativePresentation()}>
           <NativeBrowserSurface container={container} ownerKey={props.ownerKey} />
-        </Show>
-        <Show when={webrtcPresentation()}>
-          <RemoteBrowserSurface
-            sessionID={props.sessionID}
-            routeDirectory={props.routeDirectory}
-            container={container}
-            onRetry={props.onRetryRemote}
-            recovering={props.recovering}
-            recoveryVersion={props.recoveryVersion}
-          />
         </Show>
       </Show>
 

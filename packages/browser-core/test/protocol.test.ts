@@ -11,13 +11,10 @@ import {
   BrowserLocatorSchema,
   BrowserNativeAttachRequestSchema,
   BrowserNativeViewEventSchema,
-  BrowserRemoteInputSchema,
   BrowserRegistrationSecretSchema,
   BrowserSessionStateSchema,
   BrowserUserCommandSchema,
   BrowserWaitConditionSchema,
-  BrowserWebRTCSignalSchema,
-  BrowserWebRTCMessageSchema,
   browserOwnerKey,
   isSafeBrowserObservation,
   normalizeBrowserURL,
@@ -25,7 +22,7 @@ import {
   selectBrowserPresentation,
 } from "../src/protocol"
 
-describe("browser protocol v2", () => {
+describe("browser protocol v4", () => {
   test("accepts workspace file checkpoints without granting path access", () => {
     expect(
       BrowserCheckpointSchema.parse({
@@ -39,14 +36,14 @@ describe("browser protocol v2", () => {
     ).toBe("file:///workspace/index.html")
   })
   test("uses a versioned strict protocol", () => {
-    expect(BROWSER_PROTOCOL_VERSION).toBe(3)
+    expect(BROWSER_PROTOCOL_VERSION).toBe(4)
     expect(
       BrowserSessionStateSchema.parse({
         type: "session.state",
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "owner-1",
         status: "empty",
-        page: null,
+        pages: [],
         presentation: null,
         hostStatus: "unavailable",
         seq: 0,
@@ -56,10 +53,10 @@ describe("browser protocol v2", () => {
     expect(() =>
       BrowserSessionStateSchema.parse({
         type: "session.state",
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "owner-1",
         status: "empty",
-        page: null,
+        pages: [],
         presentation: null,
         hostStatus: "unavailable",
         seq: 0,
@@ -71,48 +68,24 @@ describe("browser protocol v2", () => {
     expect(BrowserRegistrationSecretSchema.safeParse("a".repeat(64)).success).toBe(true)
   })
 
-  test("does not fall back when a presentation is explicitly requested", () => {
+  test("requires a local native host and rejects retired signaling", () => {
     expect(
       selectBrowserPresentation({
         desktopLocalHost: false,
         remote: true,
         requested: "native",
-        capabilities: { native: true, webrtc: true },
-      }),
-    ).toBeNull()
-    // An explicit WebRTC request still requires the WebRTC capability: the
-    // route relies on a null selection to surface the retryable
-    // "host unavailable" error instead of a non-retryable command failure.
-    expect(
-      selectBrowserPresentation({
-        desktopLocalHost: true,
-        remote: false,
-        requested: "webrtc",
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       }),
     ).toBeNull()
     expect(
-      selectBrowserPresentation({
-        desktopLocalHost: true,
-        remote: false,
-        requested: "webrtc",
-        capabilities: { native: true, webrtc: true },
-      })?.kind,
-    ).toBe("webrtc")
-  })
-
-  test("accepts a page-scoped Host signaling ticket renewal message", () => {
-    const renewal = {
-      type: "page.signaling.ticket",
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      ownerKey: "owner-1",
-      pageId: "page-1",
-      signalingTicket: "fresh-host-ticket",
-    }
-
-    expect(BrowserHostMessageSchema.safeParse(renewal).success).toBe(true)
-    expect(BrowserHostMessageSchema.safeParse({ ...renewal, pageId: undefined }).success).toBe(false)
-    expect(BrowserHostMessageSchema.safeParse({ ...renewal, unexpected: true }).success).toBe(false)
+      BrowserHostMessageSchema.safeParse({
+        type: "page.signaling.ticket",
+        protocolVersion: 4,
+        ownerKey: "owner-1",
+        pageId: "page-1",
+        signalingTicket: "ticket",
+      }).success,
+    ).toBe(false)
   })
 
   test("derives unambiguous owner keys from delimiter-shaped ids", () => {
@@ -256,11 +229,11 @@ describe("browser protocol v2", () => {
     ).toBe(false)
   })
 
-  test("strictly validates event, host broker, and WebRTC discriminators", () => {
+  test("strictly validates event, host broker, and native discriminators", () => {
     expect(
       BrowserEventSchema.parse({
         type: "page.closed",
-        protocolVersion: 3,
+        protocolVersion: 4,
         seq: 1,
         epoch: "epoch-1",
         pageId: "page-1",
@@ -272,32 +245,13 @@ describe("browser protocol v2", () => {
         protocolVersion: 1,
         hostId: "host",
         token: "token",
-        capabilities: { native: true, webrtc: true },
+        capabilities: { native: true },
       }).success,
     ).toBe(false)
-    expect(
-      BrowserWebRTCSignalSchema.safeParse({
-        type: "webrtc.ice",
-        protocolVersion: 3,
-        connectionId: "connection",
-        generation: 1,
-        sequence: -1,
-        pageId: "page-1",
-        candidate: {},
-      }).success,
-    ).toBe(false)
-    expect(
-      BrowserWebRTCMessageSchema.safeParse({
-        type: "webrtc.host.ready",
-        protocolVersion: 3,
-        pageId: "page-1",
-      }).success,
-    ).toBe(true)
-    expect(BrowserWebRTCMessageSchema.safeParse({ type: "webrtc.host.ready", pageId: "page-1" }).success).toBe(false)
     expect(
       BrowserEventSchema.safeParse({
         type: "page.closed",
-        protocolVersion: 3,
+        protocolVersion: 4,
         seq: 1,
         epoch: "epoch-1",
         pageId: "page-1",
@@ -305,24 +259,8 @@ describe("browser protocol v2", () => {
       }).success,
     ).toBe(false)
     expect(
-      BrowserRemoteInputSchema.safeParse({
-        type: "input.key",
-        protocolVersion: 3,
-        pageId: "page-1",
-        action: "down",
-        key: "Enter",
-      }).success,
-    ).toBe(true)
-    expect(
-      BrowserRemoteInputSchema.safeParse({
-        type: "input.text",
-        pageId: "page-1",
-        text: "unversioned",
-      }).success,
-    ).toBe(false)
-    expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         bounds: { x: 0, y: 0, width: 800, height: 600 },
@@ -331,7 +269,7 @@ describe("browser protocol v2", () => {
     ).toBe(true)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         visible: "hidden",
@@ -339,7 +277,7 @@ describe("browser protocol v2", () => {
     ).toBe(false)
     expect(
       BrowserNativeAttachRequestSchema.safeParse({
-        protocolVersion: 3,
+        protocolVersion: 4,
         ownerKey: "scope:scope:session:session",
         pageId: "page-1",
         sessionID: "retired-field",
@@ -348,7 +286,7 @@ describe("browser protocol v2", () => {
     expect(
       BrowserNativeViewEventSchema.safeParse({
         type: "native.loaded",
-        protocolVersion: 3,
+        protocolVersion: 4,
         pageId: "page-1",
         url: "https://example.com/",
         title: "Example",
@@ -402,53 +340,53 @@ describe("browser URL normalization and presentation preference", () => {
 
   test("parses presentation preferences with a safe auto fallback", () => {
     expect(parseBrowserPresentationPreference("native")).toBe("native")
-    expect(parseBrowserPresentationPreference("webrtc")).toBe("webrtc")
+    expect(parseBrowserPresentationPreference("webrtc")).toBe("auto")
     expect(parseBrowserPresentationPreference("bogus")).toBe("auto")
     expect(parseBrowserPresentationPreference(null)).toBe("auto")
     expect(parseBrowserPresentationPreference(undefined)).toBe("auto")
   })
 
-  test("auto-selection prefers local native and falls back to WebRTC or null", () => {
+  test("auto-selection requires local native capability", () => {
     expect(
       selectBrowserPresentation({
         desktopLocalHost: true,
         remote: false,
-        capabilities: { native: true, webrtc: true },
+        capabilities: { native: true },
       }),
     ).toMatchObject({ kind: "native", reason: "desktop-local" })
     expect(
       selectBrowserPresentation({
         desktopLocalHost: true,
         remote: false,
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       }),
     ).toMatchObject({ kind: "native", reason: "desktop-local" })
     expect(
       selectBrowserPresentation({
         desktopLocalHost: true,
         remote: true,
-        capabilities: { native: true, webrtc: true },
-      }),
-    ).toMatchObject({ kind: "webrtc", reason: "remote-client" })
-    expect(
-      selectBrowserPresentation({
-        desktopLocalHost: false,
-        remote: true,
-        capabilities: { native: false, webrtc: true },
-      }),
-    ).toMatchObject({ kind: "webrtc", reason: "remote-client" })
-    expect(
-      selectBrowserPresentation({
-        desktopLocalHost: false,
-        remote: true,
-        capabilities: { native: true, webrtc: false },
+        capabilities: { native: true },
       }),
     ).toBeNull()
     expect(
       selectBrowserPresentation({
         desktopLocalHost: false,
         remote: true,
-        capabilities: { native: false, webrtc: false },
+        capabilities: { native: false },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: false,
+        remote: true,
+        capabilities: { native: true },
+      }),
+    ).toBeNull()
+    expect(
+      selectBrowserPresentation({
+        desktopLocalHost: false,
+        remote: true,
+        capabilities: { native: false },
       }),
     ).toBeNull()
   })
@@ -457,11 +395,12 @@ describe("browser URL normalization and presentation preference", () => {
 describe("browser Host page lifecycle messages", () => {
   const baseCreate = {
     type: "page.create",
-    protocolVersion: 3,
+    protocolVersion: 4,
     requestId: "request-1",
     ownerKey: "scope:scope-1:session:session-1",
     owner: { mode: "session", scopeID: "scope-1", directory: "/workspace", sessionID: "session-1" },
     routeDirectory: "/route",
+    profile: { id: "personal", partition: "persist:synergy-browser-personal", revision: 1 },
     presentation: "native",
     page: {
       id: "page-1",
@@ -497,13 +436,13 @@ describe("browser Host page lifecycle messages", () => {
     ).toBe(false)
     expect(
       BrowserHostMessageSchema.safeParse({ ...baseCreate, presentation: "webrtc", signalingTicket: "ticket" }).success,
-    ).toBe(true)
+    ).toBe(false)
   })
 
   test("requires exactly one of result or error on page.result", () => {
     const baseResult = {
       type: "page.result",
-      protocolVersion: 3,
+      protocolVersion: 4,
       requestId: "request-1",
       result: { type: "void" },
     }

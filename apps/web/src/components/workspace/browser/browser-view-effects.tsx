@@ -39,7 +39,7 @@ export function BrowserViewEffects(props: { timeline: () => Message[] }) {
         if (tool.tool !== "browser_view") {
           if (!shouldAutoShowBrowserTool(tool.tool, metadata)) continue
           handledCallIDs.add(tool.callID)
-          applyBrowserViewCommand({ workspaceCommand: "show" }, workspace)
+          applyBrowserViewCommand({ ...metadata, workspaceCommand: "show", background: true }, workspace)
           continue
         }
 

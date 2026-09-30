@@ -6,8 +6,10 @@ import {
   type BrowserNativeViewEvent,
 } from "@ericsanchezok/synergy-browser-core"
 import type { BrowserNativePagePool } from "./browser-native-page-pool.js"
+import { browserShortcut } from "./browser-page-actions.js"
 
 export class BrowserNativeViewManager {
+  private visible = false
   private ownerKey: string | null = null
   private pageId: string | null = null
   private view: WebContentsView | null = null
@@ -44,8 +46,24 @@ export class BrowserNativeViewManager {
         if (focused) view.webContents.focus()
       })
     }
-    this.view.setVisible(input.visible ?? true)
+    const view = this.view
+    const url = view.webContents.getURL()
+    const cover =
+      this.visible && input.visible === false ? view.webContents.capturePage().catch(() => undefined) : undefined
+    this.visible = input.visible ?? true
+    view.setVisible(this.visible)
     if (input.bounds) this.resize(input.ownerKey, input.pageId, input.bounds)
+    const image = await cover
+    if (!image || image.isEmpty() || this.visible || this.view !== view || view.webContents.getURL() !== url) return
+    const bytes = image.toJPEG(75)
+    if (bytes.length > 1_400_000) return
+    this.sendEvent({
+      type: "native.cover",
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      pageId: input.pageId,
+      url: boundedURL(url),
+      dataUrl: `data:image/jpeg;base64,${bytes.toString("base64")}`,
+    })
   }
 
   detach(ownerKey: string, pageId: string): void {
@@ -55,6 +73,7 @@ export class BrowserNativeViewManager {
     this.eventCleanup = null
     this.generationCleanup?.()
     this.generationCleanup = null
+    this.visible = false
     this.view = null
     this.ownerKey = null
     this.pageId = null
@@ -92,6 +111,13 @@ export class BrowserNativeViewManager {
 
   private bindEvents(pageId: string, view: WebContentsView): () => void {
     const contents = view.webContents
+    const shortcut = (event: Electron.Event, input: Electron.Input) => {
+      const action = browserShortcut(input, process.platform)
+      if (!action) return
+      event.preventDefault()
+      this.window.webContents.focus()
+      this.sendEvent({ type: "native.shortcut", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId, action })
+    }
     const emit = (event: BrowserNativeViewEvent) => {
       this.sendEvent(event)
     }
@@ -124,6 +150,7 @@ export class BrowserNativeViewManager {
         url: boundedURL(url),
       })
     contents.on("did-start-loading", loading)
+    contents.on("before-input-event", shortcut)
     contents.on("did-stop-loading", loaded)
     contents.on("did-navigate", navigated)
     contents.on("did-navigate-in-page", navigated)
@@ -131,6 +158,7 @@ export class BrowserNativeViewManager {
     contents.on("did-fail-load", failed)
     return () => {
       contents.off("did-start-loading", loading)
+      contents.off("before-input-event", shortcut)
       contents.off("did-stop-loading", loaded)
       contents.off("did-navigate", navigated)
       contents.off("did-navigate-in-page", navigated)

@@ -1,4 +1,4 @@
-import { Popover as KobaltePopover } from "@kobalte/core/popover"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { createSignal, type Component, type JSX } from "solid-js"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -14,17 +14,19 @@ export function ToolbarSelectorPopover(props: {
   const close = () => setOpen(false)
 
   return (
-    <KobaltePopover open={open()} onOpenChange={setOpen} placement={props.placement ?? "top-start"} gutter={8}>
-      <KobaltePopover.Trigger as={props.triggerAs} />
-      <KobaltePopover.Portal>
-        <KobaltePopover.Content
-          class={`flex flex-col rounded-2xl border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg z-50 outline-none overflow-hidden ${props.contentClass ?? "w-56 max-h-64"}`}
-        >
-          <KobaltePopover.Title class="sr-only">{props.title}</KobaltePopover.Title>
-          {props.children(close)}
-        </KobaltePopover.Content>
-      </KobaltePopover.Portal>
-    </KobaltePopover>
+    <Popover
+      open={open()}
+      onOpenChange={setOpen}
+      placement={props.placement ?? "top-start"}
+      gutter={8}
+      shift={12}
+      variant="menu"
+      triggerAs={props.triggerAs}
+      title={props.title}
+      class={props.contentClass ?? "w-60"}
+    >
+      {props.children(close)}
+    </Popover>
   )
 }
 

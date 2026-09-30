@@ -14,6 +14,7 @@ export function WorkspaceLocationButton(props: {
   onChoose: () => void
   onChooseEnvironment?: () => void
   disabled?: boolean
+  context?: boolean
 }) {
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(false)
@@ -33,12 +34,14 @@ export function WorkspaceLocationButton(props: {
     <Popover
       open={open()}
       onOpenChange={setOpen}
-      placement="bottom-start"
+      placement={props.context ? "top-start" : "bottom-start"}
+      gutter={8}
       triggerAs={(triggerProps) => (
         <button
           {...triggerProps}
           type="button"
-          class="stb-selector-btn stb-location-btn"
+          class={props.context ? "session-work-context-button" : "stb-selector-btn stb-location-btn"}
+          disabled={props.disabled}
           aria-label={_({
             id: "workspace.location.open",
             message: "Working location: {project}, {state}",
@@ -50,10 +53,17 @@ export function WorkspaceLocationButton(props: {
             size="small"
             class="stb-folder"
           />
-          <span class="stb-location-caption">
-            <span class="stb-project-name">{props.project}</span>
-            <span class="text-text-weak text-10-regular">{stateLabel()}</span>
-          </span>
+          <Show
+            when={props.context}
+            fallback={
+              <span class="stb-location-caption">
+                <span class="stb-project-name">{props.project}</span>
+                <span class="text-text-weak text-10-regular">{stateLabel()}</span>
+              </span>
+            }
+          >
+            <span>{props.location.name || stateLabel()}</span>
+          </Show>
         </button>
       )}
     >

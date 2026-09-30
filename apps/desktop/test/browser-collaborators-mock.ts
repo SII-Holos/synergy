@@ -1,8 +1,7 @@
 import { mock } from "bun:test"
 
-// Shared Browser collaborator mocks. page-pool, webrtc-host, and the broker
-// suite all stub BrowserHostDiagnostics, BrowserWebContentsControl, and
-// BrowserWebRTCHost, and bun's mock.module registry is per-worker with
+// Shared Browser collaborator mocks. Native page-pool and broker suites
+// stub diagnostics and control; bun's mock.module registry is per-worker with
 // first-registration-wins, so every file that imports any collaborator must
 // register these same factories and drive the shared mutable state below.
 // Files that test a REAL collaborator import it through a query suffix
@@ -37,6 +36,7 @@ class SharedBrowserHostDiagnostics {
 
   async respondToDialog() {}
   async respondToFileChooser() {}
+  async acceptDownload() {}
   async cancelDownload() {}
   async stageFiles() {
     return { paths: [] as string[], cleanup: async () => undefined }
@@ -93,64 +93,12 @@ class SharedBrowserWebContentsControl {
   }
 }
 
-export const sharedWebRtcHostState = {
-  startDeferred: null as { resolve(): void; promise: Promise<void> } | null,
-  releaseStart: null as { resolve(): void; promise: Promise<void> } | null,
-  created: [] as SharedBrowserWebRTCHost[],
-  appliedThemes: [] as unknown[],
-}
-
-function deferred() {
-  let resolve!: () => void
-  const promise = new Promise<void>((done) => {
-    resolve = done
-  })
-  return { resolve, promise }
-}
-
-class SharedBrowserWebRTCHost {
-  renewedTickets: string[] = []
-  options: { theme?: unknown }
-
-  constructor(options: { theme?: unknown }) {
-    this.options = options
-    sharedWebRtcHostState.created.push(this)
-  }
-
-  async start() {
-    sharedWebRtcHostState.startDeferred?.resolve()
-    await sharedWebRtcHostState.releaseStart?.promise
-  }
-
-  setTheme(theme: unknown) {
-    this.options.theme = theme
-    sharedWebRtcHostState.appliedThemes.push(theme)
-  }
-
-  updateSignalingTicket(ticket: string) {
-    this.renewedTickets.push(ticket)
-  }
-
-  state() {
-    return { id: "page-test", url: "about:blank", title: "", isLoading: false, lastActiveAt: null }
-  }
-
-  async destroy() {}
-
-  isAlive() {
-    return true
-  }
-}
-
 export function registerBrowserCollaboratorMocks(): void {
   mock.module("../src/browser-host-diagnostics.js", () => ({
     BrowserHostDiagnostics: SharedBrowserHostDiagnostics,
   }))
   mock.module("../src/browser-webcontents-control.js", () => ({
     BrowserWebContentsControl: SharedBrowserWebContentsControl,
-  }))
-  mock.module("../src/browser-webrtc-host.js", () => ({
-    BrowserWebRTCHost: SharedBrowserWebRTCHost,
   }))
 }
 
@@ -165,8 +113,4 @@ export function resetBrowserCollaboratorMocks(): void {
   sharedControlState.nextError = null
   sharedControlState.failDispose = false
   sharedControlState.instances = []
-  sharedWebRtcHostState.startDeferred = null
-  sharedWebRtcHostState.releaseStart = null
-  sharedWebRtcHostState.created = []
-  sharedWebRtcHostState.appliedThemes = []
 }

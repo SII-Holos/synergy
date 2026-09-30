@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { isDeepStrictEqual } from "node:util"
 import path from "node:path"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
@@ -52,6 +53,7 @@ export namespace ResourceProfiles {
   export const Summary = z
     .object({
       defaultEnvironment: z.string().nullable(),
+      bindings: z.record(z.string(), z.array(z.string())).optional(),
       environments: z.array(
         z.object({ name: z.string(), provider: z.string(), reuse: z.enum(["session", "workspace", "scope"]) }),
       ),
@@ -59,15 +61,39 @@ export namespace ResourceProfiles {
     })
     .meta({ ref: "ResourceProfiles" })
 
-  export async function list(): Promise<z.infer<typeof Summary>> {
+  export async function list(scopeID?: string): Promise<z.infer<typeof Summary>> {
     const settings = await config()
     const available = new Set(EnvironmentProviders.list().map((provider) => provider.id))
     const profiles = Object.entries({ native, ...settings.environments }).filter(([, profile]) =>
       available.has(profile.provider),
     )
-    const selected = settings.defaultEnvironment === undefined ? "native" : settings.defaultEnvironment
+    const selected =
+      settings.defaultEnvironment === undefined
+        ? available.has(native.provider)
+          ? "native"
+          : null
+        : settings.defaultEnvironment
+    const bindings = scopeID
+      ? Object.fromEntries(
+          (await Environment.list(scopeID)).map((info) => [
+            info.id,
+            profiles
+              .filter(([, profile]) => {
+                if (profile.provider !== info.provider) return false
+                try {
+                  const provider = EnvironmentProviders.get(profile.provider)
+                  return isDeepStrictEqual(provider.validateSpec?.(profile.spec) ?? profile.spec, info.spec)
+                } catch {
+                  return false
+                }
+              })
+              .map(([name]) => name),
+          ]),
+        )
+      : undefined
     return {
-      defaultEnvironment: profiles.some(([name]) => name === selected) ? selected : null,
+      defaultEnvironment: selected,
+      bindings,
       environments: profiles.map(([name, profile]) => ({
         name,
         provider: profile.provider,
@@ -82,6 +108,12 @@ export namespace ResourceProfiles {
     const profile = (await config()).environments?.[name]
     if (!profile) throw new Storage.NotFoundError({ message: "Environment profile is unavailable" })
     return profile
+  }
+
+  export async function resolveEnvironment(name: string): Promise<EnvironmentProviders.Default> {
+    const selection = await environment(name)
+    const provider = EnvironmentProviders.get(selection.provider)
+    return { ...selection, spec: provider.validateSpec?.(selection.spec) ?? selection.spec }
   }
 
   export async function createEnvironment(input: { scopeID: string; ownerID: string; profile: string }) {

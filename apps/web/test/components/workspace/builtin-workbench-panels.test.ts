@@ -18,11 +18,21 @@ mock.module("@/context/global-sdk", () => ({
 }))
 
 const [activeLocale, setActiveLocale] = createSignal("en")
+mock.module("@solidjs/router", () => ({
+  useParams: () => ({ dir: "home", id: "session-one" }),
+  useNavigate: () => () => {},
+}))
+mock.module("@/context/sdk", () => ({
+  useSDK: () => ({ scopeID: "home", scopeKey: "home", url: "http://localhost", client: { browser: {} } }),
+}))
+mock.module("@/context/platform", () => ({ usePlatform: () => ({ browserNative: {} }) }))
+mock.module("@/context/workbench", () => ({ useWorkbenchPanels: () => ({ surface: () => ({ tabs: () => [] }) }) }))
 
 mock.module("@/context/terminal", () => ({
   useTerminal: () => ({ new: async () => undefined, all: () => [], close: async () => {} }),
 }))
 mock.module("@/context/file", () => ({
+  useProjectFiles: () => ({ roots: () => [], search: async () => [], open: async () => {} }),
   useFile: () => ({ explorer: { setOpen: () => {} } }),
 }))
 mock.module("@/context/locale", () => ({
@@ -74,6 +84,7 @@ describe("built-in workbench panels", () => {
       await Bun.sleep(1)
       expect(panelIds().includes("notes")).toBe(false)
       expect(panelIds().includes("browser")).toBe(true)
+      expect(listWorkbenchPanels().find((panel) => panel.id === "browser")?.cardinality).toBe("multi")
     } finally {
       dispose()
     }

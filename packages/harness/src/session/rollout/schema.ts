@@ -1,3 +1,4 @@
+import { InputImages } from "./input-images"
 import { RolloutProvenance } from "./provenance"
 import { JsonValue } from "../../util/json-value"
 import { RolloutAccounting } from "./accounting"
@@ -188,6 +189,8 @@ export namespace RolloutSchema {
       request: ArtifactRef,
       response: ArtifactRef.optional(),
       httpStatus: z.number().int().optional(),
+      inputImages: InputImages.List.optional(),
+      requestImages: InputImages.Hashes.optional(),
       responseModel: z.string().max(256).optional(),
       usage: RolloutUsage.Info.optional(),
       timing: RolloutTiming.Info.optional(),

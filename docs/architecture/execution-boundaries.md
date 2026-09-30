@@ -4,7 +4,7 @@ Synergy evaluates every tool call at a centralized Control Plane execution bound
 
 The harness owns permission policy and the `SandboxHost` wrapper contract. The local runtime owns OS sandbox implementations and helpers, native PTYs, process containment and file watchers. Local composition registers these before execution; a bare harness neither imports their native dependencies nor starts a file watcher. A sandboxed operation without a registered host fails explicitly.
 
-Tools declare execution requirements separately from Workspace requirements. Bash selects its Session Environment before containment and may use the target's scratch directory without a Workspace. Executor sandbox preparation supplies the target's actual containment verdict; Synergy Link calls retain their independent transport and do not allocate an Environment. See [Environments](environments.md) for target lifetime and durable completion.
+Tools declare execution requirements separately from Workspace requirements. Bash selects its Session Environment before containment and may use the target's scratch directory without a Workspace. Executor sandbox preparation supplies the target's actual containment verdict; See [Environments](environments.md) for target lifetime and durable completion.
 
 ## Execution Pipeline
 
@@ -270,7 +270,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 
 ## Native Computer eligibility
 
-`computer_observe` and `computer_interact` require the `full_access` profile, including window discovery and screenshots. Ordinary permission rules and session approvals cannot enable these capabilities in another profile. Native OS permissions and app-specific background support remain runtime prerequisites. See [Native Computer Use](computer-use.md).
+`computer_observe` and `computer_interact` require the `full_access` profile, including window discovery and screenshots. Ordinary permission rules and session approvals cannot enable these capabilities in another profile. An observation with `foreground:true` is classified as `computer_interact` because it activates the selected window. Native OS permissions and app-specific background support remain runtime prerequisites. See [Native Computer Use](computer-use.md).
 
 Bash secret substitution keeps a standalone, unquoted local token in a quoted environment expansion so whitespace and metacharacters remain one argument. Quoted, embedded, heredoc and remote substitutions accept only shell-inert credential characters; other values fail explicitly instead of introducing shell syntax. Vault rotation rejects values already registered under another entry, preserving its policy and audit history. Secret API conflicts return 409; storage failures remain server errors rather than false 404 responses.
 

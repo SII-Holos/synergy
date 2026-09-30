@@ -26,6 +26,144 @@ export type GlobalPaths = {
   log: string
 }
 
+export type DirectoryPage = {
+  path: string
+  parent: string | null
+  entries: Array<{
+    name: string
+    path: string
+  }>
+  nextCursor?: string
+}
+
+export type DirectoryBrowseError = {
+  name: "DirectoryBrowseError"
+  data: {
+    code: "not_found" | "not_directory" | "permission_denied" | "invalid_cursor" | "unavailable"
+    path: string
+    message: string
+  }
+}
+
+export type Scope = {
+  type: "project"
+  id: string
+  local: {
+    directory: string
+    worktree: string
+    vcs?: "git"
+    sandboxes: Array<string>
+  } | null
+  name?: string
+  icon?: {
+    url?: string
+    color?: string
+  }
+  pinned?: number
+  time: {
+    created: number
+    updated: number
+    initialized?: number
+    archived?: number
+  }
+}
+
+export type ProjectFolder = {
+  workspaceID: string
+  generation: number
+  path: string
+  available: boolean
+  git: boolean
+}
+
+export type ProjectDirectories = {
+  version: 1
+  scopeID: string
+  revision: number
+  mainWorkspaceID: string | null
+  additionalWorkspaceIDs: Array<string>
+  folders: Array<ProjectFolder>
+}
+
+export type ProjectCreated = {
+  scope: Scope
+  directories: ProjectDirectories
+  existing: boolean
+}
+
+export type ProjectDirectoriesInvalid = {
+  name: "ProjectDirectoriesInvalid"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectDirectoriesConflict = {
+  name: "ProjectDirectoriesConflict"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectCreateInput = {
+  directories: Array<string>
+  mainDirectory: string
+  name: string
+}
+
+export type ProjectDirectoriesUpdate = {
+  directories: Array<string>
+  mainDirectory: string
+  revision: number
+}
+
+export type Worktree = {
+  id: string
+  name: string
+  branch?: string
+  path: string
+  scopeID: string
+  sourceWorkspaceID?: string
+  sourceDirectory?: string
+  head?: string
+  baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
+  detached?: boolean
+  bare?: boolean
+  isMain?: boolean
+  managed?: boolean
+  stale?: boolean
+  dirty?: boolean
+  diskBytes?: number
+  owner?:
+    | {
+        type: "session"
+        sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
+      }
+    | {
+        type: "user"
+      }
+    | {
+        type: "external"
+      }
+  bindings?: Array<string>
+  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  createdAt?: number
+  updatedAt?: number
+  lastUsedAt?: number
+  setupFailed?: boolean
+  setupError?: string
+  locked?: string
+  prunable?: boolean
+}
+
 export type BadRequestError = {
   data: unknown
   errors: Array<{
@@ -2569,149 +2707,6 @@ export type HolosReconnectResponse = {
   success: true
 }
 
-export type SynergyLinkHostObservation = {
-  type: "synergy_link.host.hello"
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  /**
-   * Synergy Link host session identifier
-   */
-  hostSessionID: string
-  capabilities: {
-    platform: string
-    arch: string
-    hostname?: string
-    runtime: "node" | "bun" | "unknown"
-    defaultShell: "none" | "sh" | "cmd" | "powershell" | "pwsh"
-    supportedShells: Array<"none" | "sh" | "cmd" | "powershell" | "pwsh">
-    supportsPty: boolean
-    supportsSendKeys: boolean
-    supportsSoftKill: boolean
-    supportsProcessGroups: boolean
-    supportsBashDetach?: boolean
-    envCaseInsensitive: boolean
-    lineEndings: "lf" | "crlf"
-  }
-  observedAt: number
-}
-
-export type SynergyLinkProbe = {
-  status: "reachable" | "refused" | "busy" | "failed"
-  checkedAt: number
-}
-
-export type SynergyLinkTargetView = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-  availability: "unknown" | "unreachable" | "reachable" | "connected"
-  /**
-   * Synergy Link session identifier
-   */
-  sessionID?: string
-}
-
-export type SynergyLinkTarget = {
-  id: string
-  name: string
-  enabled: boolean
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  allowedAgents: Array<string>
-  authorization: "unverified" | "approved" | "revoked"
-  host?: SynergyLinkHostObservation
-  lastProbe?: SynergyLinkProbe
-  createdAt: number
-  updatedAt: number
-}
-
-export type SynergyLinkTargetCreateInput = {
-  name: string
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
-  }
-}
-
-export type SynergyLinkTargetPatchMetadata =
-  | {
-      kind: "metadata"
-      name: string
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-    }
-  | {
-      kind: "metadata"
-      name: string
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-  | {
-      kind: "metadata"
-      name: string
-      enabled: boolean
-      allowedAgents: Array<string>
-    }
-
-export type SynergyLinkTargetPatchRelink = {
-  kind: "relink"
-  name?: string
-  enabled?: boolean
-  allowedAgents?: Array<string>
-  targetAgentID: string
-  /**
-   * Synergy Link target identifier
-   */
-  linkID: string
-}
-
-export type SynergyLinkTargetPatchInput = SynergyLinkTargetPatchMetadata | SynergyLinkTargetPatchRelink
-
-export type SynergyLinkTargetRemoveResult = {
-  success: true
-}
-
 export type PushVapidKey = {
   publicKey: string
 }
@@ -2846,29 +2841,6 @@ export type AgendaWebhookResult = {
   accepted: boolean
 }
 
-export type Scope = {
-  type: "project"
-  id: string
-  local: {
-    directory: string
-    worktree: string
-    vcs?: "git"
-    sandboxes: Array<string>
-  } | null
-  name?: string
-  icon?: {
-    url?: string
-    color?: string
-  }
-  pinned?: number
-  time: {
-    created: number
-    updated: number
-    initialized?: number
-    archived?: number
-  }
-}
-
 export type ScopeNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
@@ -2885,6 +2857,13 @@ export type ScopeNavEntry = {
     accountId: string
     externalProjectId: string
     remoteState: "active" | "paused" | "stale" | "archived"
+  }
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
   }
 }
 
@@ -6005,6 +5984,10 @@ export type Config = {
    * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
    */
   defaultSessionWorkspace?: "main" | "worktree"
+  /**
+   * Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.
+   */
+  defaultSessionEnvironmentProfile?: string | null
   keybinds?: KeybindsConfig
   /**
    * Show live reasoning in a compact single-line viewport
@@ -7224,53 +7207,9 @@ export type ToolListItem = {
 
 export type ToolList = Array<ToolListItem>
 
-export type Worktree = {
-  id: string
-  name: string
-  branch?: string
-  path: string
-  scopeID: string
-  head?: string
-  baseRef?: string
-  baseRevision?: string
-  resolvedBaseCommit?: string
-  detached?: boolean
-  bare?: boolean
-  isMain?: boolean
-  managed?: boolean
-  stale?: boolean
-  dirty?: boolean
-  diskBytes?: number
-  owner?:
-    | {
-        type: "session"
-        sessionID: string
-      }
-    | {
-        type: "superplan"
-        runID: string
-        nodeID?: string
-        mergeID?: string
-      }
-    | {
-        type: "user"
-      }
-    | {
-        type: "external"
-      }
-  bindings?: Array<string>
-  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
-  createdAt?: number
-  updatedAt?: number
-  lastUsedAt?: number
-  setupFailed?: boolean
-  setupError?: string
-  locked?: string
-  prunable?: boolean
-}
-
 export type WorktreeCreateInput = {
   name?: string
+  sourceWorkspaceID?: string
   sessionID?: string
   baseRef?: "current" | "fresh"
   baseRevision?: string
@@ -7284,6 +7223,7 @@ export type WorktreeEnterInput = {
 
 export type WorktreeRemoveInput = {
   target: string
+  sourceWorkspaceID?: string
   force?: boolean
 }
 
@@ -7340,6 +7280,36 @@ export type SessionAgendaResponse = {
   limit: number
   total: number
   hasMore: boolean
+}
+
+export type ProjectTaskDefaults = {
+  defaultSessionWorkspace?: "main" | "worktree"
+  defaultSessionEnvironmentProfile?: string | null
+}
+
+export type ProjectTaskDefaultsResult = {
+  defaults: ProjectTaskDefaults
+  effective: ProjectTaskDefaults
+  editable: boolean
+}
+
+export type ProjectTaskDefaultsInvalid = {
+  name: "ProjectTaskDefaultsInvalid"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectTaskDefaultsConflict = {
+  name: "ProjectTaskDefaultsConflict"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectTaskDefaultsInput = {
+  defaults: ProjectTaskDefaults
+  expected: ProjectTaskDefaults
 }
 
 export type SessionNavResponse = {
@@ -7871,6 +7841,12 @@ export type RolloutAttemptRecord = {
   request: RolloutArtifactRef
   response?: RolloutArtifactRef
   httpStatus?: number
+  inputImages?: Array<{
+    sha256: string
+    status: "included" | "omitted"
+    reason?: string
+  }>
+  requestImages?: Array<string>
   responseModel?: string
   usage?: {
     version: 1
@@ -8106,6 +8082,21 @@ export type DagNode = {
   result?: string
 }
 
+export type SessionLocationError = {
+  name: "SessionLocationError"
+  data: {
+    message: string
+    code: "conflicting_selection" | "incompatible_files"
+  }
+}
+
+export type WorktreeStartCommandFailedError = {
+  name: "WorktreeStartCommandFailedError"
+  data: {
+    message: string
+  }
+}
+
 export type SessionWorkspaceSelection =
   | {
       mode: "none"
@@ -8121,10 +8112,12 @@ export type SessionWorkspaceSelection =
   | {
       mode: "existing"
       target: string
+      sourceWorkspaceID?: string
       force?: boolean
     }
   | {
       mode: "create"
+      sourceWorkspaceID?: string
       name?: string
       baseRef?: "current" | "fresh"
       baseRevision?: string
@@ -9706,6 +9699,9 @@ export type RuntimeShuttingDownError = {
 
 export type ResourceProfiles = {
   defaultEnvironment: string | null
+  bindings?: {
+    [key: string]: Array<string>
+  }
   environments: Array<{
     name: string
     provider: string
@@ -10778,17 +10774,6 @@ export type AssetInfo = {
   size: number
 }
 
-export type BrowserViewerTicketResponse = {
-  protocolVersion: 3
-  ticket: string
-  expiresAt: number
-  iceServers: Array<{
-    urls: string | Array<string>
-    username?: string
-    credential?: string
-  }>
-}
-
 export type BrowserApiError = {
   type: "error"
   code: string
@@ -10836,13 +10821,81 @@ export type BrowserApiError = {
   locator?: unknown
 }
 
-export type BrowserViewerTicketRequest = {
-  protocolVersion: 3
-  pageId: string
+export type BrowserApiSessionPage = {
+  id: string
+  url: string
+  title: string
+  isLoading: boolean
+  lastActiveAt: number | null
+  profileId: string
+  openerId?: string
+  status: "active" | "suspended" | "failed"
+  error?: BrowserApiError
 }
 
+export type BrowserOpenPage = {
+  requestId: string
+  url?: string
+  profileId?: string
+}
+
+export type BrowserProfile = {
+  id: string
+  name: string
+  kind: "persistent" | "temporary"
+  enabled: boolean
+  revision: number
+  createdAt: number
+  origins: {
+    [key: string]: {
+      access?: "inherit" | "allow" | "ask" | "deny"
+      downloads?: "inherit" | "allow" | "ask" | "deny"
+      uploads?: "inherit" | "allow" | "ask" | "deny"
+    }
+  }
+}
+
+export type BrowserProfileList = {
+  defaultProfileId: string | null
+  profiles: Array<BrowserProfile>
+}
+
+export type BrowserProfileCreate = {
+  name: string
+  kind?: "persistent" | "temporary"
+}
+
+export type BrowserProfileUpdate = {
+  name?: string
+  enabled?: boolean
+}
+
+export type BrowserManageProfile =
+  | {
+      action: "update"
+      changes: BrowserProfileUpdate
+    }
+  | {
+      action: "default"
+    }
+  | {
+      action: "remove"
+    }
+  | {
+      action: "clear"
+    }
+  | {
+      action: "policy"
+      origin: string
+      policy: {
+        access?: "inherit" | "allow" | "ask" | "deny"
+        downloads?: "inherit" | "allow" | "ask" | "deny"
+        uploads?: "inherit" | "allow" | "ask" | "deny"
+      } | null
+    }
+
 export type BrowserAnnotationResponse = {
-  protocolVersion: 3
+  protocolVersion: 4
   annotation: {
     id: string
     pageURL: string
@@ -10858,7 +10911,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 3
+  protocolVersion: 4
   pageId: string
   x: number
   y: number
@@ -10869,14 +10922,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 3
+  protocolVersion: 4
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 3
+  protocolVersion: 4
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -10885,24 +10938,16 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 3
+  protocolVersion: 4
   ownerKey: string
-  status: "empty" | "suspended" | "active" | "migrating" | "failed"
-  page: {
-    id: string
-    url: string
-    title: string
-    isLoading: boolean
-    lastActiveAt: number | null
-  } | null
+  status: "empty" | "suspended" | "active" | "failed"
   presentation: {
-    protocolVersion: 3
-    kind: "native" | "webrtc"
+    protocolVersion: 4
+    kind: "native"
     capabilities: {
       native: boolean
-      webrtc: boolean
     }
-    reason: "desktop-local" | "remote-client" | "requested"
+    reason: "desktop-local" | "requested"
   } | null
   hostStatus:
     | "unavailable"
@@ -10917,11 +10962,12 @@ export type BrowserApiSessionState = {
   seq: number
   epoch: string
   error?: BrowserApiError
+  pages: Array<BrowserApiSessionPage>
 }
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 3
+  protocolVersion: 4
   result:
     | {
         type: "void"
@@ -11015,7 +11061,8 @@ export type BrowserControlResponse = {
 }
 
 export type BrowserControlRequest = {
-  protocolVersion: 3
+  pageId: string
+  protocolVersion: 4
   command:
     | {
         type: "navigate"
@@ -11096,6 +11143,14 @@ export type BrowserControlRequest = {
           mimeType: string
           dataBase64: string
         }>
+      }
+    | {
+        type: "download.cancel"
+        id: string
+      }
+    | {
+        type: "download.accept"
+        id: string
       }
   commandId: string
   traceId?: string
@@ -11752,14 +11807,6 @@ export type HolosAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 
-export type EventScopeRuntimeDisposed = {
-  type: "scope.runtime.disposed"
-  properties: {
-    scopeID: string
-    directory?: string
-  }
-}
-
 export type EventWorkspaceUpdated = {
   type: "workspace.updated"
   properties: WorkspaceInfo
@@ -11774,6 +11821,14 @@ export type EventScopeRemoved = {
   type: "scope.removed"
   properties: {
     id: string
+    directory?: string
+  }
+}
+
+export type EventScopeRuntimeDisposed = {
+  type: "scope.runtime.disposed"
+  properties: {
+    scopeID: string
     directory?: string
   }
 }
@@ -12177,27 +12232,6 @@ export type EventFileEdited = {
   }
 }
 
-export type EventSynergyLinkTargetCreated = {
-  type: "synergy_link.target.created"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetUpdated = {
-  type: "synergy_link.target.updated"
-  properties: {
-    target: SynergyLinkTarget
-  }
-}
-
-export type EventSynergyLinkTargetRemoved = {
-  type: "synergy_link.target.removed"
-  properties: {
-    id: string
-  }
-}
-
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -12447,10 +12481,10 @@ export type EventRuntimeReloaded = {
 }
 
 export type Event =
-  | EventScopeRuntimeDisposed
   | EventWorkspaceUpdated
   | EventScopeUpdated
   | EventScopeRemoved
+  | EventScopeRuntimeDisposed
   | EventEnvironmentUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
@@ -12499,9 +12533,6 @@ export type Event =
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
   | EventFileEdited
-  | EventSynergyLinkTargetCreated
-  | EventSynergyLinkTargetUpdated
-  | EventSynergyLinkTargetRemoved
   | EventLspClientDiagnostics
   | EventLspUpdated
   | EventMcpToolsChanged
@@ -12621,6 +12652,42 @@ export type GlobalPathsGetResponses = {
 
 export type GlobalPathsGetResponse = GlobalPathsGetResponses[keyof GlobalPathsGetResponses]
 
+export type GlobalFilesystemDirectoriesData = {
+  body?: never
+  path?: never
+  query: {
+    path: string
+    hidden?: boolean
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/filesystem/directories"
+}
+
+export type GlobalFilesystemDirectoriesErrors = {
+  /**
+   * Directory could not be listed
+   */
+  400: DirectoryBrowseError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalFilesystemDirectoriesError =
+  GlobalFilesystemDirectoriesErrors[keyof GlobalFilesystemDirectoriesErrors]
+
+export type GlobalFilesystemDirectoriesResponses = {
+  /**
+   * Directory page
+   */
+  200: DirectoryPage
+}
+
+export type GlobalFilesystemDirectoriesResponse =
+  GlobalFilesystemDirectoriesResponses[keyof GlobalFilesystemDirectoriesResponses]
+
 export type GlobalFilesystemBrowseData = {
   body?: never
   path?: never
@@ -12650,6 +12717,129 @@ export type GlobalFilesystemBrowseResponses = {
 }
 
 export type GlobalFilesystemBrowseResponse = GlobalFilesystemBrowseResponses[keyof GlobalFilesystemBrowseResponses]
+
+export type ProjectCreateData = {
+  body?: ProjectCreateInput
+  path?: never
+  query?: never
+  url: "/global/project"
+}
+
+export type ProjectCreateErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectCreateError = ProjectCreateErrors[keyof ProjectCreateErrors]
+
+export type ProjectCreateResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectCreated
+}
+
+export type ProjectCreateResponse = ProjectCreateResponses[keyof ProjectCreateResponses]
+
+export type ProjectDirectoriesData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/directories"
+}
+
+export type ProjectDirectoriesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectDirectoriesError = ProjectDirectoriesErrors[keyof ProjectDirectoriesErrors]
+
+export type ProjectDirectoriesResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectDirectories
+}
+
+export type ProjectDirectoriesResponse = ProjectDirectoriesResponses[keyof ProjectDirectoriesResponses]
+
+export type ProjectUpdateDirectoriesData = {
+  body?: ProjectDirectoriesUpdate
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/directories"
+}
+
+export type ProjectUpdateDirectoriesErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectUpdateDirectoriesError = ProjectUpdateDirectoriesErrors[keyof ProjectUpdateDirectoriesErrors]
+
+export type ProjectUpdateDirectoriesResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectDirectories
+}
+
+export type ProjectUpdateDirectoriesResponse =
+  ProjectUpdateDirectoriesResponses[keyof ProjectUpdateDirectoriesResponses]
+
+export type ProjectWorktreesData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/worktrees"
+}
+
+export type ProjectWorktreesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectWorktreesError = ProjectWorktreesErrors[keyof ProjectWorktreesErrors]
+
+export type ProjectWorktreesResponses = {
+  /**
+   * Project folders
+   */
+  200: Array<Worktree>
+}
+
+export type ProjectWorktreesResponse = ProjectWorktreesResponses[keyof ProjectWorktreesResponses]
 
 export type GlobalGitInitData = {
   body?: {
@@ -14113,161 +14303,6 @@ export type HolosReconnectResponses = {
 }
 
 export type HolosReconnectResponse2 = HolosReconnectResponses[keyof HolosReconnectResponses]
-
-export type SynergyLinkTargetsData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetsErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetsError = SynergyLinkTargetsErrors[keyof SynergyLinkTargetsErrors]
-
-export type SynergyLinkTargetsResponses = {
-  /**
-   * Persisted Synergy Link targets
-   */
-  200: Array<SynergyLinkTargetView>
-}
-
-export type SynergyLinkTargetsResponse = SynergyLinkTargetsResponses[keyof SynergyLinkTargetsResponses]
-
-export type SynergyLinkTargetCreateData = {
-  body?: SynergyLinkTargetCreateInput
-  path?: never
-  query?: never
-  url: "/synergy-link/targets"
-}
-
-export type SynergyLinkTargetCreateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetCreateError = SynergyLinkTargetCreateErrors[keyof SynergyLinkTargetCreateErrors]
-
-export type SynergyLinkTargetCreateResponses = {
-  /**
-   * Created target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetCreateResponse = SynergyLinkTargetCreateResponses[keyof SynergyLinkTargetCreateResponses]
-
-export type SynergyLinkTargetRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetRemoveErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetRemoveError = SynergyLinkTargetRemoveErrors[keyof SynergyLinkTargetRemoveErrors]
-
-export type SynergyLinkTargetRemoveResponses = {
-  /**
-   * Target removed
-   */
-  200: SynergyLinkTargetRemoveResult
-}
-
-export type SynergyLinkTargetRemoveResponse = SynergyLinkTargetRemoveResponses[keyof SynergyLinkTargetRemoveResponses]
-
-export type SynergyLinkTargetUpdateData = {
-  body?: SynergyLinkTargetPatchInput
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}"
-}
-
-export type SynergyLinkTargetUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetUpdateError = SynergyLinkTargetUpdateErrors[keyof SynergyLinkTargetUpdateErrors]
-
-export type SynergyLinkTargetUpdateResponses = {
-  /**
-   * Updated target
-   */
-  200: SynergyLinkTarget
-}
-
-export type SynergyLinkTargetUpdateResponse = SynergyLinkTargetUpdateResponses[keyof SynergyLinkTargetUpdateResponses]
-
-export type SynergyLinkTargetProbeData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: never
-  url: "/synergy-link/targets/{id}/probe"
-}
-
-export type SynergyLinkTargetProbeErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SynergyLinkTargetProbeError = SynergyLinkTargetProbeErrors[keyof SynergyLinkTargetProbeErrors]
-
-export type SynergyLinkTargetProbeResponses = {
-  /**
-   * Observed target
-   */
-  200: SynergyLinkTargetView
-}
-
-export type SynergyLinkTargetProbeResponse = SynergyLinkTargetProbeResponses[keyof SynergyLinkTargetProbeResponses]
 
 export type PushGetVapidKeyData = {
   body?: never
@@ -16571,6 +16606,71 @@ export type SessionAgendaResponses = {
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
 
+export type ProjectTaskDefaultsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/project/task-defaults"
+}
+
+export type ProjectTaskDefaultsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectTaskDefaultsGetError = ProjectTaskDefaultsGetErrors[keyof ProjectTaskDefaultsGetErrors]
+
+export type ProjectTaskDefaultsGetResponses = {
+  /**
+   * Project task defaults
+   */
+  200: ProjectTaskDefaultsResult
+}
+
+export type ProjectTaskDefaultsGetResponse = ProjectTaskDefaultsGetResponses[keyof ProjectTaskDefaultsGetResponses]
+
+export type ProjectTaskDefaultsUpdateData = {
+  body?: ProjectTaskDefaultsInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/project/task-defaults"
+}
+
+export type ProjectTaskDefaultsUpdateErrors = {
+  /**
+   * Invalid defaults
+   */
+  400: ProjectTaskDefaultsInvalid
+  /**
+   * Concurrent project edit
+   */
+  409: ProjectTaskDefaultsConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectTaskDefaultsUpdateError = ProjectTaskDefaultsUpdateErrors[keyof ProjectTaskDefaultsUpdateErrors]
+
+export type ProjectTaskDefaultsUpdateResponses = {
+  /**
+   * Project task defaults
+   */
+  200: ProjectTaskDefaultsResult
+}
+
+export type ProjectTaskDefaultsUpdateResponse =
+  ProjectTaskDefaultsUpdateResponses[keyof ProjectTaskDefaultsUpdateResponses]
+
 export type VcsGetData = {
   body?: never
   path?: never
@@ -16822,6 +16922,7 @@ export type SessionCreateData = {
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
     environmentID?: string | null
+    environmentProfile?: string
     completionNotice?: {
       silent?: boolean
     }
@@ -16836,9 +16937,20 @@ export type SessionCreateData = {
 
 export type SessionCreateErrors = {
   /**
-   * Bad request
+   * Invalid working location
    */
-  400: BadRequestError
+  400: BadRequestError | SessionLocationError | WorktreeStartCommandFailedError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */
@@ -24307,8 +24419,8 @@ export type AssetGetResponses = {
   200: unknown
 }
 
-export type BrowserCreateViewerTicketData = {
-  body?: BrowserViewerTicketRequest
+export type BrowserOpenPageData = {
+  body?: BrowserOpenPage
   path: {
     directory: string
   }
@@ -24317,41 +24429,152 @@ export type BrowserCreateViewerTicketData = {
     scopeID?: string
     mode?: "session" | "scope"
     sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
+    presentation?: "auto" | "native"
     protocolVersion?: number
     sinceSeq?: number
     epoch?: string
     nativeTicket?: string
   }
-  url: "/{directory}/browser/webrtc/ticket"
+  url: "/{directory}/browser/pages"
 }
 
-export type BrowserCreateViewerTicketErrors = {
+export type BrowserOpenPageErrors = {
   /**
-   * Ticket request rejected
+   * Page could not open
    */
   400: BrowserApiError
-  /**
-   * Browser request payload is too large
-   */
-  413: BrowserApiError
   /**
    * Runtime shutting down
    */
   503: RuntimeShuttingDownError
 }
 
-export type BrowserCreateViewerTicketError = BrowserCreateViewerTicketErrors[keyof BrowserCreateViewerTicketErrors]
+export type BrowserOpenPageError = BrowserOpenPageErrors[keyof BrowserOpenPageErrors]
 
-export type BrowserCreateViewerTicketResponses = {
+export type BrowserOpenPageResponses = {
   /**
-   * Browser viewer ticket
+   * New page
    */
-  200: BrowserViewerTicketResponse
+  200: BrowserApiSessionPage
 }
 
-export type BrowserCreateViewerTicketResponse =
-  BrowserCreateViewerTicketResponses[keyof BrowserCreateViewerTicketResponses]
+export type BrowserOpenPageResponse = BrowserOpenPageResponses[keyof BrowserOpenPageResponses]
+
+export type BrowserProfilesData = {
+  body?: never
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/profiles"
+}
+
+export type BrowserProfilesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserProfilesError = BrowserProfilesErrors[keyof BrowserProfilesErrors]
+
+export type BrowserProfilesResponses = {
+  /**
+   * Identities
+   */
+  200: BrowserProfileList
+}
+
+export type BrowserProfilesResponse = BrowserProfilesResponses[keyof BrowserProfilesResponses]
+
+export type BrowserCreateProfileData = {
+  body?: BrowserProfileCreate
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/profiles"
+}
+
+export type BrowserCreateProfileErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserCreateProfileError = BrowserCreateProfileErrors[keyof BrowserCreateProfileErrors]
+
+export type BrowserCreateProfileResponses = {
+  /**
+   * Identity
+   */
+  200: BrowserProfile
+}
+
+export type BrowserCreateProfileResponse = BrowserCreateProfileResponses[keyof BrowserCreateProfileResponses]
+
+export type BrowserManageProfileData = {
+  body?: BrowserManageProfile
+  path: {
+    directory: string
+    profileId: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/profiles/{profileId}/manage"
+}
+
+export type BrowserManageProfileErrors = {
+  /**
+   * Identity operation failed
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserManageProfileError = BrowserManageProfileErrors[keyof BrowserManageProfileErrors]
+
+export type BrowserManageProfileResponses = {
+  /**
+   * Updated identities
+   */
+  200: BrowserProfileList
+}
+
+export type BrowserManageProfileResponse = BrowserManageProfileResponses[keyof BrowserManageProfileResponses]
 
 export type BrowserCreateAnnotationData = {
   body?: BrowserAnnotationRequest
@@ -24363,7 +24586,7 @@ export type BrowserCreateAnnotationData = {
     scopeID?: string
     mode?: "session" | "scope"
     sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
+    presentation?: "auto" | "native"
     protocolVersion?: number
     sinceSeq?: number
     epoch?: string
@@ -24408,7 +24631,7 @@ export type BrowserDiagnosticsData = {
     scopeID?: string
     mode?: "session" | "scope"
     sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
+    presentation?: "auto" | "native"
     protocolVersion?: number
     sinceSeq?: number
     epoch?: string
@@ -24443,6 +24666,55 @@ export type BrowserDiagnosticsResponses = {
 
 export type BrowserDiagnosticsResponse2 = BrowserDiagnosticsResponses[keyof BrowserDiagnosticsResponses]
 
+export type BrowserDownloadArtifactData = {
+  body?: {
+    id: string
+  }
+  path: {
+    directory: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    mode?: "session" | "scope"
+    sessionID?: string
+    presentation?: "auto" | "native"
+    protocolVersion?: number
+    sinceSeq?: number
+    epoch?: string
+    nativeTicket?: string
+  }
+  url: "/{directory}/browser/download-artifact"
+}
+
+export type BrowserDownloadArtifactErrors = {
+  /**
+   * Download is unavailable
+   */
+  400: BrowserApiError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type BrowserDownloadArtifactError = BrowserDownloadArtifactErrors[keyof BrowserDownloadArtifactErrors]
+
+export type BrowserDownloadArtifactResponses = {
+  /**
+   * Managed attachment
+   */
+  200: {
+    id: string
+    url: string
+    filename: string
+    mime: string
+    size: number
+  }
+}
+
+export type BrowserDownloadArtifactResponse = BrowserDownloadArtifactResponses[keyof BrowserDownloadArtifactResponses]
+
 export type BrowserSessionData = {
   body?: never
   path: {
@@ -24453,7 +24725,7 @@ export type BrowserSessionData = {
     scopeID?: string
     mode?: "session" | "scope"
     sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
+    presentation?: "auto" | "native"
     protocolVersion?: number
     sinceSeq?: number
     epoch?: string
@@ -24494,7 +24766,7 @@ export type BrowserControlData = {
     scopeID?: string
     mode?: "session" | "scope"
     sessionID?: string
-    presentation?: "auto" | "native" | "webrtc"
+    presentation?: "auto" | "native"
     protocolVersion?: number
     sinceSeq?: number
     epoch?: string

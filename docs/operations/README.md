@@ -5,7 +5,6 @@ These documents describe repeatable maintenance and release procedures for the c
 - [Oryn repository maintenance](oryn.md) — App configuration, event intake, labels, repair validation and publication gates.
 - [Open-source quality](open-source-quality.md) — local checks, CI jobs, package validation, secret scanning, and failure guidance.
 - [Desktop release](desktop-release.md) — Electron packaging, signing, updater artifacts, publication, and recovery.
-- [Qizhi Synergy Link](qizhi-synergy-link.md) — shared-filesystem deployment, verification, recovery, and credential rotation for Synergy Link hosts
 - [Performance observability](performance-observability.md) — runtime telemetry, retention, APIs, dashboards, and measurement tools.
 - [Native Workspace recovery](../../.synergy/skill/find-logs/SKILL.md#recover-native-workspace-coordination) — diagnose live or uncertain claims and recover a malformed ledger during offline host maintenance.
 

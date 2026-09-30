@@ -416,9 +416,6 @@ export namespace StandaloneInstallation {
       context.platform === "win32" ? "bin/synergy.exe" : "bin/synergy",
       "app/index.html",
       "schema/config.schema.json",
-      "browser-runtime/playwright-core/package.json",
-      "browser-runtime/playwright-core/index.js",
-      "browser-runtime/playwright-core/lib/coreBundle.js",
       ...(modern
         ? [
             ...(!isMusl ? nativeHelpers : []),

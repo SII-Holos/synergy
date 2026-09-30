@@ -4,13 +4,14 @@ import type {
   BrowserEvent as BrowserProtocolEvent,
   BrowserHostStatus,
   BrowserPage as BrowserProtocolPage,
+  BrowserAPISessionPage,
   BrowserPresentationSelection,
 } from "@ericsanchezok/synergy-browser-core"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
-import { createStore, type SetStoreFunction } from "solid-js/store"
+import { createStore, reconcile, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
-export type BrowserPage = BrowserProtocolPage
+export type BrowserPage = BrowserAPISessionPage
 
 export interface ConsoleEntry {
   level: string
@@ -36,7 +37,7 @@ export interface AccessibilityElement {
   children: AccessibilityElement[]
 }
 
-export type DownloadEntry = BrowserDownloadEntry
+export type DownloadEntry = BrowserDownloadEntry & { pageId?: string }
 
 export interface AgentActivity {
   pageId: string | null
@@ -89,7 +90,8 @@ function createBrowserTraceId() {
 
 export function createBrowserStore() {
   const [session, setSession] = createStore({
-    page: null as BrowserPage | null,
+    pages: [] as BrowserPage[],
+    selectedPageId: null as string | null,
     connectionStatus: "disconnected" as "disconnected" | "connecting" | "connected" | "failed" | "error",
     controlMode: "user" as "user" | "agent",
     seq: 0,
@@ -109,11 +111,13 @@ export function createBrowserStore() {
     kind: "idle",
     label: null,
   })
-  const [followAgent, setFollowAgentSignal] = createSignal(true)
-  const [fileChooserRequest, setFileChooserRequest] = createSignal<FileChooserRequest | null>(null)
+  const [followAgent, setFollowAgentSignal] = createSignal(false)
+  const [fileChoosers, setFileChoosers] = createStore<Record<string, FileChooserRequest | undefined>>({})
   const [controlsOpen, setControlsOpen] = createSignal(false)
-  const [dialogRequest, setDialogRequest] = createSignal<DialogRequest | null>(null)
-  const [browserErrorState, setBrowserErrorState] = createSignal<BrowserErrorState | null>(null)
+  const [addressSuggestionsOpen, setAddressSuggestionsOpen] = createSignal(false)
+  const [dialogs, setDialogs] = createStore<Record<string, DialogRequest | undefined>>({})
+  const [pageErrors, setPageErrors] = createStore<Record<string, BrowserErrorState | undefined>>({})
+  const [activities, setActivities] = createStore<Record<string, AgentActivity | undefined>>({})
   const [annotationMode, setAnnotationMode] = createSignal(false)
   const [viewportMode, setViewportMode] = createSignal<ViewportMode>("fit")
   const [viewportWidth, setViewportWidth] = createSignal(1280)
@@ -122,18 +126,33 @@ export function createBrowserStore() {
   const [annotationTarget, setAnnotationTarget] = createSignal<AnnotationTarget | null>(null)
   const [browserTraceId] = createSignal(createBrowserTraceId())
 
-  const page = () => session.page
-  const pageId = () => session.page?.id ?? null
-
-  function browserError(): BrowserErrorState | null {
-    const error = browserErrorState()
-    const currentPageId = pageId()
-    if (error?.pageId && error.pageId !== currentPageId) return null
-    return error
+  const page = () => session.pages.find((page) => page.id === session.selectedPageId) ?? null
+  const pageId = () => page()?.id ?? null
+  const fileChooserRequest = () => fileChoosers[pageId() ?? ""] ?? null
+  const dialogRequest = () => dialogs[pageId() ?? ""] ?? null
+  const setFileChooserRequest = (request: FileChooserRequest | null) =>
+    setFileChoosers(request?.pageId ?? pageId() ?? "", request ?? undefined)
+  const setDialogRequest = (request: DialogRequest | null) =>
+    setDialogs(request?.pageId ?? pageId() ?? "", request ?? undefined)
+  const selectPage = (id: string) => {
+    if (session.pages.some((page) => page.id === id)) setSession("selectedPageId", id)
+  }
+  function replacePages(pages: BrowserPage[]) {
+    setSession("pages", reconcile(pages, { key: "id" }))
+    if (!pages.some((page) => page.id === session.selectedPageId)) setSession("selectedPageId", pages[0]?.id ?? null)
+  }
+  function openPage(url = "about:blank", profileId?: string) {
+    send({ type: "page.open", url, profileId })
   }
 
+  function browserError(): BrowserErrorState | null {
+    return pageErrors[pageId() ?? ""] ?? pageErrors["global"] ?? null
+  }
   function setBrowserError(error: BrowserErrorState | null) {
-    setBrowserErrorState(error)
+    setPageErrors(error?.pageId ?? pageId() ?? "global", error ?? undefined)
+  }
+  function clearPageError(id: string) {
+    setPageErrors(id, undefined)
   }
 
   let _sendFn: ((msg: Record<string, unknown>) => void) | undefined
@@ -145,11 +164,11 @@ export function createBrowserStore() {
         hasSender: Boolean(_sendFn),
         connectionStatus: session.connectionStatus,
         pageId: pageId(),
-        hasPage: Boolean(session.page),
+        hasPage: Boolean(page()),
       })
     }
     if (!_sendFn) browserDebug("store.send.dropped", { reason: "missing sender", type: msg.type })
-    _sendFn?.(msg)
+    _sendFn?.({ pageId: pageId(), ...msg })
   }
 
   function _setSend(fn: ((msg: Record<string, unknown>) => void) | undefined) {
@@ -167,35 +186,33 @@ export function createBrowserStore() {
     })
     setFollowAgent(false)
     if (current) setPageLoading(current.id, true)
-    send({ type: "navigate", source: "user", url })
+    if (current) send({ type: "navigate", source: "user", url })
+    else openPage(url)
   }
 
-  function setPageLoading(nextPageId: string | null | undefined, isLoading: boolean) {
-    if (!nextPageId || session.page?.id !== nextPageId) return
-    setSession("page", "isLoading", isLoading)
+  function setPageLoading(id: string | null | undefined, value: boolean) {
+    setSession("pages", (page) => page.id === id, "isLoading", value)
   }
-
-  function setPageUrl(nextPageId: string | null | undefined, url: string) {
-    if (!nextPageId || session.page?.id !== nextPageId) return
-    setSession("page", "url", url)
+  function setPageUrl(id: string | null | undefined, value: string) {
+    setSession("pages", (page) => page.id === id, "url", value)
   }
-
-  function setPageTitle(nextPageId: string | null | undefined, title: string) {
-    if (!nextPageId || session.page?.id !== nextPageId) return
-    setSession("page", "title", title)
+  function setPageTitle(id: string | null | undefined, value: string) {
+    setSession("pages", (page) => page.id === id, "title", value)
   }
-
-  function upsertPage(nextPage: BrowserPage | null | undefined) {
-    if (!nextPage) {
-      setSession("page", null)
-      return
-    }
-    setSession("page", nextPage)
+  function upsertPage(next: BrowserProtocolPage | BrowserPage | null | undefined) {
+    if (!next) return
+    const index = session.pages.findIndex((page) => page.id === next.id)
+    if (index >= 0) setSession("pages", index, next)
+    else if ("profileId" in next) setSession("pages", [...session.pages, next])
+    if (!session.selectedPageId) setSession("selectedPageId", next.id)
   }
-
-  function removePage(nextPageId: string | null | undefined) {
-    if (!nextPageId || session.page?.id !== nextPageId) return
-    setSession("page", null)
+  function removePage(id: string | null | undefined) {
+    if (!id) return
+    replacePages(session.pages.filter((page) => page.id !== id))
+    setDialogs(id, undefined)
+    setFileChoosers(id, undefined)
+    setPageErrors(id, undefined)
+    setActivities(id, undefined)
   }
 
   function toggleDevPanel(panel: DevPanel) {
@@ -215,11 +232,11 @@ export function createBrowserStore() {
       width: nextWidth,
       height: nextHeight,
     }
-    if (!id) {
+    if (!id || page()?.status !== "active") {
       browserDebug("store.viewport.local", {
         width: nextWidth,
         height: nextHeight,
-        reason: "missing-page",
+        reason: "inactive-page",
       })
       return
     }
@@ -235,14 +252,21 @@ export function createBrowserStore() {
   }
 
   function followAgentNow() {
-    setFollowAgent(true)
+    const id = agentActivity().pageId
+    if (id) selectPage(id)
   }
 
   function applyAgentActivity(activity: AgentActivity) {
     setAgentActivity(activity)
+    if (activity.pageId) setActivities(activity.pageId, activity)
   }
 
   function addDownload(nextPageId: string, entry: DownloadEntry) {
+    entry = { ...entry, pageId: nextPageId }
+    for (const [key, entries] of Object.entries(downloads)) {
+      const index = entries.findIndex((item) => item.id === entry.id)
+      if (index !== -1) setDownloads(key, index, entry)
+    }
     const current = downloads[nextPageId] ?? []
     const index = current.findIndex((item) => item.id === entry.id)
     if (index === -1) {
@@ -261,18 +285,19 @@ export function createBrowserStore() {
     if (!nextPageId) return
     setHostStatuses(nextPageId, status)
     if (status !== "ready") return
-    clearTransientHostError()
+    clearTransientHostError(nextPageId)
   }
 
-  function clearTransientHostError() {
-    const error = browserError()
+  function clearTransientHostError(id = pageId() ?? "global") {
+    if (id !== "global" && session.pages.find((page) => page.id === id)?.status !== "active") return
+    const error = pageErrors[id]
     if (!error) return
     if (
       error.code === "browser_host_disconnected" ||
       error.code === "browser_host_pending" ||
       error.message.includes("Browser Host control is not attached")
     ) {
-      setBrowserError(null)
+      clearPageError(id)
     }
   }
 
@@ -281,6 +306,11 @@ export function createBrowserStore() {
     setSession,
     page,
     pageId,
+    selectPage,
+    replacePages,
+    openPage,
+    dialogs,
+    fileChoosers,
     navigate,
     setPageLoading,
     setPageUrl,
@@ -301,6 +331,7 @@ export function createBrowserStore() {
     devPanel,
     setDevPanel,
     agentActivity,
+    activities,
     setAgentActivity,
     annotationMode,
     setAnnotationMode,
@@ -324,10 +355,13 @@ export function createBrowserStore() {
     setFileChooserRequest,
     controlsOpen,
     setControlsOpen,
+    addressSuggestionsOpen,
+    setAddressSuggestionsOpen,
     dialogRequest,
     setDialogRequest,
     browserError,
     setBrowserError,
+    clearPageError,
     browserTraceId,
     hostStatus,
     hostStatuses,

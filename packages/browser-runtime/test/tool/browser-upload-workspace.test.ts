@@ -26,7 +26,7 @@ function context(signal = new AbortController().signal) {
 }
 function transport() {
   const page = spyOn(BrowserToolHelper, "resolvePage").mockResolvedValue({ id: "upload-page" } as never)
-  const execute = spyOn(BrowserToolHelper, "execute").mockImplementation(async (_ctx, command) => {
+  const execute = spyOn(BrowserToolHelper, "execute").mockImplementation(async (_ctx, _pageId, command) => {
     BrowserBackendCommandSchema.parse(command)
     return { type: "data", pageId: "upload-page", data: { uploaded: true } }
   })
@@ -51,7 +51,9 @@ test("cancelled browser upload reads no files and dispatches no browser command"
         const controller = new AbortController()
         controller.abort()
         const tool = await BrowserUploadTool.init()
-        await expect(tool.execute({ target, paths: ["data.bin"] }, context(controller.signal))).rejects.toMatchObject({
+        await expect(
+          tool.execute({ pageId: "page-test", target, paths: ["data.bin"] }, context(controller.signal)),
+        ).rejects.toMatchObject({
           name: "AbortError",
         })
         expect(host.execute).not.toHaveBeenCalled()
@@ -77,7 +79,9 @@ test("browser upload rejects an old Workspace generation before obtaining a brow
           path: next.path,
         })
         const tool = await BrowserUploadTool.init()
-        await expect(tool.execute({ target, paths: ["data.bin"] }, context())).rejects.toThrow("binding")
+        await expect(tool.execute({ pageId: "page-test", target, paths: ["data.bin"] }, context())).rejects.toThrow(
+          "binding",
+        )
         expect(host.execute).not.toHaveBeenCalled()
         expect(host.page).not.toHaveBeenCalled()
       },
@@ -95,21 +99,25 @@ test("browser upload preserves binary bytes and refuses symlinks and oversized i
         await Bun.write(file, bytes)
         using host = transport()
         const tool = await BrowserUploadTool.init()
-        const result = await tool.execute({ target, paths: ["data.bin"] }, context())
+        const result = await tool.execute({ pageId: "page-test", target, paths: ["data.bin"] }, context())
         expect(result.metadata.totalBytes).toBe(bytes.length)
-        expect(host.execute.mock.calls[0]?.[1]).toMatchObject({
+        expect(host.execute.mock.calls[0]?.[2]).toMatchObject({
           type: "upload",
           files: [{ name: "data.bin", dataBase64: bytes.toString("base64") }],
         })
         await fs.symlink(file, path.join(tmp.path, "link.bin"))
-        await expect(tool.execute({ target, paths: ["link.bin"] }, context())).rejects.toThrow("symbolic link")
+        await expect(tool.execute({ pageId: "page-test", target, paths: ["link.bin"] }, context())).rejects.toThrow(
+          "symbolic link",
+        )
         const large = await fs.open(path.join(tmp.path, "large.bin"), "w")
         try {
           await large.truncate(25 * 1024 * 1024 + 1)
         } finally {
           await large.close()
         }
-        await expect(tool.execute({ target, paths: ["large.bin"] }, context())).rejects.toThrow("25 MB")
+        await expect(tool.execute({ pageId: "page-test", target, paths: ["large.bin"] }, context())).rejects.toThrow(
+          "25 MB",
+        )
         expect(host.execute).toHaveBeenCalledTimes(1)
       },
     })
@@ -137,7 +145,7 @@ test(
           const workspace = ScopeContext.current.workspace!
           const record = await WorkspaceCatalog.get(workspace.id!, workspace.scopeID)
           const tool = await BrowserUploadTool.init()
-          const uploading = tool.execute({ target, paths: ["data.bin"] }, context())
+          const uploading = tool.execute({ pageId: "page-test", target, paths: ["data.bin"] }, context())
           void uploading.catch(() => {})
           await entered.promise
           try {
@@ -150,7 +158,7 @@ test(
             ).rejects.toThrow("busy")
             release.resolve()
             await uploading
-            expect(host.execute.mock.calls[0]?.[1]).toMatchObject({
+            expect(host.execute.mock.calls[0]?.[2]).toMatchObject({
               files: [{ dataBase64: Buffer.from("original").toString("base64") }],
             })
             await WorkspaceBinding.rebind(record.id, {
@@ -208,7 +216,7 @@ test.each(["grow", "same-size"] as const)("an upload rejects a file that changes
         })
         try {
           const tool = await BrowserUploadTool.init()
-          await expect(tool.execute({ target, paths: ["data.bin"] }, context())).rejects.toThrow(
+          await expect(tool.execute({ pageId: "page-test", target, paths: ["data.bin"] }, context())).rejects.toThrow(
             mode === "grow" ? "25 MB" : "changed",
           )
           expect(host.execute).not.toHaveBeenCalled()
@@ -241,7 +249,7 @@ test(
             }
           }
           const tool = await BrowserUploadTool.init()
-          await expect(tool.execute({ target, paths: files }, context())).rejects.toThrow("50 MB")
+          await expect(tool.execute({ pageId: "page-test", target, paths: files }, context())).rejects.toThrow("50 MB")
           expect(host.execute).not.toHaveBeenCalled()
         },
       })
@@ -258,9 +266,9 @@ test("empty files remain valid uploads through the shared browser protocol", () 
         await Bun.write(path.join(tmp.path, "empty.txt"), "")
         using host = transport()
         const tool = await BrowserUploadTool.init()
-        const result = await tool.execute({ target, paths: ["empty.txt"] }, context())
+        const result = await tool.execute({ pageId: "page-test", target, paths: ["empty.txt"] }, context())
         expect(result.metadata.totalBytes).toBe(0)
-        expect(host.execute.mock.calls[0]?.[1]).toMatchObject({ files: [{ name: "empty.txt", dataBase64: "" }] })
+        expect(host.execute.mock.calls[0]?.[2]).toMatchObject({ files: [{ name: "empty.txt", dataBase64: "" }] })
       },
     })
   }))

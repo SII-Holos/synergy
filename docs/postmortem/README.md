@@ -30,7 +30,9 @@ Name files `NNNN-kebab-case-title.md` using the next available number. Use these
 
 ## Index
 
-Add entries only for qualifying incidents.
+Qualifying incidents:
+
+- [0035: Titlebar controls](0035-native-titlebar-swallowed-controls.md)
 
 | Number | Title                                                                      | Status      | Date       |
 | ------ | -------------------------------------------------------------------------- | ----------- | ---------- |

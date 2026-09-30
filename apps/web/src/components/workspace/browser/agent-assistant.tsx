@@ -42,7 +42,7 @@ export function AgentAssistant() {
               values: { kind: activity().kind, host: hostLabel(activity().url) },
             })}
           </span>
-          <Show when={!browser.followAgent() && activity().pageId}>
+          <Show when={activity().pageId && activity().pageId !== browser.pageId()}>
             <button
               type="button"
               class="ml-1 text-text-base hover:text-text-strong"

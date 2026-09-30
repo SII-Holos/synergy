@@ -9,6 +9,8 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ObservabilityContext } from "@ericsanchezok/synergy-harness/observability/context"
+import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
+import { desktopComponents } from "../../src/components"
 
 test("full and core compositions coexist and closing full leaves core usable", async () => {
   await using a = await runtimeHome()
@@ -17,12 +19,14 @@ test("full and core compositions coexist and closing full leaves core usable", a
   await using product = await PresetRuntimeHandle.openTask({ host: b.host, mode: "oneshot" })
   expect(core.run(() => MigrationRegistry.list().has("library"))).toBe(false)
   expect(product.run(() => MigrationRegistry.list().has("library"))).toBe(true)
+  expect(product.run(() => MigrationRegistry.list().has("browser"))).toBe(false)
   const scoped = <T>(runtime: typeof core, fn: () => T) =>
     runtime.run(() => ScopeContext.provide({ scope: Scope.home(), fn }))
   const coreTools = await scoped(core, () => ToolRegistry.ids())
   const productTools = await scoped(product, () => ToolRegistry.ids())
   expect(coreTools).not.toContain("note_write")
   expect(productTools).toContain("note_write")
+  expect(productTools).not.toContain("browser_navigation")
   await product.close()
   const session = await scoped(core, () => Session.create({ title: "Core remains ready" }))
   expect((await scoped(core, () => Session.get(session.id))).title).toBe("Core remains ready")
@@ -162,19 +166,22 @@ test("WebSocket envelopes identify Scope ownership and keep the other Runtime co
 
 test("Home Browser descriptors and navigation policy do not require a filesystem workspace", async () => {
   await using fixture = await runtimeHome()
-  await using runtime = await PresetRuntimeHandle.open({
+  await using runtime = await openAgentRuntime({
+    home: fixture.host.root,
     host: fixture.host,
     mode: "oneshot",
+    components: await desktopComponents(),
     network: { hostname: "127.0.0.1", port: 0 },
   })
+  expect(runtime.server).toBeDefined()
   const session = await runtime.run(() => ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create() }))
   const response = await fetch(
-    `http://127.0.0.1:${runtime.server.port}/home/browser/session?scopeID=home&sessionID=${session.id}&presentation=webrtc`,
+    `http://127.0.0.1:${runtime.server!.port}/home/browser/session?scopeID=home&sessionID=${session.id}`,
   )
-  expect(response.status).toBe(200)
   const body = await response.json()
+  expect(response.status, JSON.stringify(body)).toBe(200)
   expect(body.ownerKey).toContain("home")
-  expect(body.page).toBeNull()
+  expect(body.pages).toEqual([])
   expect(body.status).toBe("empty")
 }, 30_000)
 

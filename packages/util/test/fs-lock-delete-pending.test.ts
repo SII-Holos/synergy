@@ -21,6 +21,7 @@ const realFs: FsPromisesModule = await import("node:fs/promises")
 let deletePending: { path: string; times: number } | undefined
 let writeFailure: { path: string; times: number } | undefined
 let closeFailure: { path: string; times: number } | undefined
+const failedCloses = new Set<Awaited<ReturnType<FsPromisesModule["open"]>>>()
 
 function simulatedEperm(targetPath: OpenArgs[0]): NodeJS.ErrnoException {
   const error = new Error(`EPERM: simulated lock failure: ${String(targetPath)}`) as NodeJS.ErrnoException
@@ -64,6 +65,7 @@ const simulatedFs: FsPromisesModule = new Proxy(realFs, {
           ) {
             closeFailure.times -= 1
             return async () => {
+              failedCloses.add(target)
               throw simulatedEperm(targetPath)
             }
           }
@@ -83,10 +85,12 @@ async function createLockDirectory(): Promise<string> {
   return await realFs.mkdtemp(path.join(os.tmpdir(), "synergy-fs-lock-delete-pending-"))
 }
 
-afterEach(() => {
+afterEach(async () => {
   deletePending = undefined
   writeFailure = undefined
   closeFailure = undefined
+  await Promise.all([...failedCloses].map((handle) => handle.close()))
+  failedCloses.clear()
 })
 
 afterAll(() => {
