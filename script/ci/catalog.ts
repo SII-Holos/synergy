@@ -5,6 +5,7 @@ import { loadManifest } from "../coverage-check"
 import { collectTests } from "../../packages/testing/script/batches"
 import { type Task, type WorkspaceInput } from "./plan"
 import { workspaces } from "../workspace-manifest"
+import { partitionSuite } from "./suites"
 export { changedFiles } from "./selection"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
@@ -122,29 +123,36 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         id: "installed-core-binary",
         profile: "core" as const,
         variant: "binary",
-        seconds: 300,
-        scenarios: ["complete", "tool", "read", "budget", "timeout", "permission"],
+        seconds: 60,
+        scenarios: ["tool"],
         files: ["test/script/watcher-native.test.ts"],
       },
       {
         id: "installed-core-package",
         profile: "core" as const,
         variant: "package",
-        seconds: 300,
-        scenarios: ["complete", "tool", "read", "budget", "timeout", "permission"],
+        seconds: 120,
+        scenarios: ["complete"],
       },
       {
         id: "installed-full-behavior-a",
         profile: "full" as const,
         variant: "binary",
         seconds: 450,
-        scenarios: ["complete", "tool", "budget"],
+        scenarios: ["complete"],
       },
       {
         id: "installed-full-behavior-b",
         profile: "full" as const,
         variant: "binary",
         seconds: 360,
+        scenarios: ["tool", "budget"],
+      },
+      {
+        id: "installed-full-behavior-c",
+        profile: "full" as const,
+        variant: "binary",
+        seconds: 150,
         scenarios: ["read", "timeout", "permission"],
       },
       {
@@ -154,6 +162,13 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         seconds: 480,
         scenarios: [],
       },
+      ...["components", "company", "web"].map((variant) => ({
+        id: `installed-full-${variant}`,
+        profile: "full" as const,
+        variant,
+        seconds: variant === "components" ? 150 : variant === "company" ? 120 : 130,
+        scenarios: [],
+      })),
     ].map((entry) =>
       task(entry.id, "artifacts", entry.seconds, ["packages/cli", "packages/presets"], {
         ...entry,
@@ -164,7 +179,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
             )
           : undefined,
         scenarioPrefix: "installed runtime artifact preserves ",
-        outputs: entry.variant === "composition" ? [] : ["junit"],
+        outputs: entry.scenarios.length ? ["junit"] : [],
       }),
     ),
     task(
@@ -172,7 +187,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       "web",
       170,
       ["apps/web", "packages/ui", "packages/plugin", "packages/plugin-kit", "packages/sdk/js"],
-      { prerequisites: ["browser"] },
+      { prerequisites: ["browser"], profile: "full", files: ["apps/web/test/app-build-css-contract.test.ts"] },
     ),
     task("desktop", "desktop", 180, ["apps/desktop"], { prerequisites: ["desktop"] }),
     task("smoke", "smoke", 40, ["packages/presets", "packages/server"]),
@@ -196,20 +211,24 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       },
     ),
     task(
-      "windows",
+      "windows-native",
       "windows",
       450,
       ["apps/desktop", "packages/cli", "packages/harness", "packages/local-runtime", "packages/util"],
       {
         pool: "windows",
+        variant: "native",
         package: "packages/local-runtime",
-        needs: ["suite-packages-local-runtime"],
       },
     ),
+    task("windows-desktop", "windows", 120, ["apps/desktop"], {
+      pool: "windows",
+      variant: "desktop",
+      outputs: ["junit"],
+    }),
     task("macos-workspace", "native-workspace", 300, ["packages/local-runtime", "packages/lsp", "packages/formatter"], {
       pool: "macos",
       package: "packages/local-runtime",
-      needs: ["suite-packages-local-runtime"],
     }),
     ...[16, 17, 18].map((version) =>
       task(`postgres-${version}`, "postgres", 180, ["packages/harness"], {
@@ -227,64 +246,157 @@ export async function catalog(root = ROOT): Promise<Task[]> {
       files: ["benchmark/test/test_gateway.py", "benchmark/test/test_gateway_faults.py"],
     }),
     task("benchmark-prepare", "benchmark-prepare", 150, [], { pool: "docker" }),
-    ...["normal", "faults"].map((variant) =>
+    ...[
+      {
+        id: "admission",
+        file: "test_docker.py",
+        selection: "test_admission",
+        seconds: 60,
+        scenarios: ["ordinary", "none", "restricted"].map(
+          (id) => `test_admission_preserves_native_network_topology_and_removes_only_owned_resources[${id}]`,
+        ),
+      },
+      {
+        id: "paired",
+        file: "test_docker.py",
+        selection: "test_real_synergy_paired_rollout",
+        prepared: true,
+        seconds: 180,
+        scenarios: ["test_real_synergy_paired_rollout"],
+      },
+      {
+        id: "bindings",
+        file: "test_native.py",
+        prepared: true,
+        seconds: 100,
+        scenarios: [
+          "test_prepared_source_runs_owned_processes_without_a_runtime_compiler",
+          "test_compiled_watcher_survives_a_real_interrupted_poll",
+        ],
+      },
+      {
+        id: "pi-compaction",
+        file: "test_compaction_docker.py",
+        seconds: 120,
+        scenarios: ["test_native_pi_compaction_is_included_in_per_request_accounting"],
+      },
+      {
+        id: "oracle",
+        file: "test_oracle.py",
+        selection: "test_native_oracle",
+        seconds: 90,
+        scenarios: [
+          "test_native_oracle_and_verifier_outlive_upstream_short_deadlines",
+          "test_native_oracle_timeout_still_runs_verifier",
+        ],
+      },
+      {
+        id: "recovery",
+        file: "test_recovery.py",
+        selection: "not test_export_recovery",
+        seconds: 60,
+        scenarios: [
+          ...[0, 7].map((code) => `test_recovery_hands_private_files_back_without_changing_original[${code}]`),
+          ...["False", "True"].map(
+            (stopped) => `test_orphaned_logs_handoff_preserves_private_modes_and_bytes[${stopped}]`,
+          ),
+        ],
+      },
+      {
+        id: "parent-death",
+        file: "test_parent_death_docker.py",
+        seconds: 60,
+        scenarios: ["test_parent_death_preserves_dispatched_cost_and_never_repeats_terminal_task"],
+      },
+      {
+        id: "oom",
+        file: "test_oom_docker.py",
+        seconds: 80,
+        scenarios: [
+          "test_native_docker_working_set_is_observed",
+          "test_kernel_oom_is_retained_after_container_removal",
+        ],
+      },
+      ...["long", "disconnect", "timeout", "cancel", "docker-stop"].map((fault) => ({
+        id: `fault-${fault}`,
+        file: "test_docker.py",
+        prepared: true,
+        seconds: fault === "long" ? 180 : 100,
+        selection: `test_faults_preserve_terminal_evidence_and_cleanup and ${fault}`,
+        scenarios: [`test_faults_preserve_terminal_evidence_and_cleanup[${fault}]`],
+      })),
+    ].map((entry) =>
       task(
-        `benchmark-docker-${variant}`,
+        `benchmark-docker-${entry.id}`,
         "benchmark-docker",
-        600,
+        entry.seconds,
         ["benchmark", "packages/harness", "packages/local-runtime"],
         {
           pool: "docker",
-          variant,
-          needs: ["benchmark-prepare"],
-          files: (variant === "normal"
-            ? ["test_docker.py", "test_native.py", "test_compaction_docker.py", "test_oracle.py"]
-            : ["test_docker.py", "test_recovery.py", "test_parent_death_docker.py", "test_oom_docker.py"]
-          ).map((file) => `benchmark/test/${file}`),
+          selection: entry.selection,
+          scenarios: entry.scenarios,
+          scenarioPrefix: "test_",
+          needs: entry.prepared ? ["benchmark-prepare"] : [],
+          files: [`benchmark/test/${entry.file}`],
         },
       ),
     ),
     ...["synergy", "codex", "opencode", "pi", "deepseek"].map((variant) =>
-      task(`native-${variant}`, "benchmark-native", variant === "synergy" ? 580 : 330, [], {
+      task(`native-${variant}`, "benchmark-native", 180, [], {
         pool: "docker",
         variant,
-        selection:
-          variant === "synergy"
-            ? "not test_synergy_long_sessions and not test_synergy_native_semantics"
-            : "test_native_matrix",
+        selection: "test_native_matrix",
         files: ["benchmark/test/test_matrix_docker.py"],
+        scenarios: ["chat-completions", "responses"].map(
+          (protocol) => `test_native_matrix_preserves_protocol_and_adapter_behavior[${protocol}]`,
+        ),
+        scenarioPrefix: "test_native_matrix_",
         needs: variant === "synergy" ? ["benchmark-prepare"] : [],
       }),
     ),
-    task("native-synergy-semantics", "benchmark-native", 420, [], {
-      pool: "docker",
-      variant: "synergy",
-      selection: "test_synergy_native_semantics",
-      needs: ["benchmark-prepare"],
-      files: ["benchmark/test/test_matrix_docker.py"],
-      scenarios: [
+    ...[
+      ...["tool-roundtrip", "empty-provider-stop"].map((id) => ({
+        id: `task-home-${id}`,
+        selection: `test_synergy_preserves_task_home and ${id}`,
+        seconds: id === "tool-roundtrip" ? 145 : 215,
+        scenarios: [`test_synergy_preserves_task_home_and_native_stopping[${id}]`],
+      })),
+      {
+        id: "unattended",
+        selection: "test_synergy_unattended",
+        seconds: 100,
+        scenarios: ["test_synergy_unattended_sessions_inherit_and_exclude_question"],
+      },
+      {
+        id: "compaction",
+        selection: "test_synergy_compaction",
+        seconds: 180,
+        scenarios: ["test_synergy_compaction_preserves_file_edits_recording_and_usage"],
+      },
+      ...[
         "jit-chat-completions-fixture-one",
         "jit-responses-fixture-two",
         "jitless-chat-completions-fixture-two",
         "jitless-responses-fixture-one",
-      ].map((id) => `test_synergy_native_semantics[${id}]`),
-      scenarioPrefix: "test_synergy_native_semantics[",
-    }),
-    ...["jit", "jitless"].flatMap((mode) =>
-      ["chat-completions", "responses"].map((protocol) =>
-        task(`native-synergy-${mode}-${protocol}`, "benchmark-native", mode === "jitless" ? 1100 : 450, [], {
-          pool: "docker",
-          variant: "synergy",
-          selection: `test_synergy_long_sessions and ${mode === "jit" ? "not jitless" : "jitless"} and ${protocol}`,
-          files: ["benchmark/test/test_matrix_docker.py"],
-          needs: ["benchmark-prepare"],
-          scenarios: [`test_synergy_long_sessions_preserve_native_tools_and_usage[${mode}-${protocol}]`],
-          scenarioPrefix: "test_synergy_long_sessions_preserve_native_tools_and_usage[",
-        }),
-      ),
+      ].map((id) => ({
+        id: `semantics-${id}`,
+        selection: `test_synergy_native_semantics and ${id}`,
+        seconds: 100,
+        scenarios: [`test_synergy_native_semantics[${id}]`],
+      })),
+    ].map((entry) =>
+      task(`native-synergy-${entry.id}`, "benchmark-native", entry.seconds, [], {
+        pool: "docker",
+        variant: "synergy",
+        selection: entry.selection,
+        needs: ["benchmark-prepare"],
+        files: ["benchmark/test/test_matrix_docker.py"],
+        scenarios: entry.scenarios,
+        scenarioPrefix: entry.scenarios ? "test_synergy_" : undefined,
+      }),
     ),
     ...["completed", "cancelled", "failed"].map((variant) =>
-      task(`rollout-${variant}`, "rollout", 320, ["packages/harness"], {
+      task(`rollout-${variant}`, "rollout", variant === "completed" ? 320 : 15, ["packages/harness"], {
         variant,
         inputs: ["packages/harness/test/session/rollout-long.test.ts", "packages/harness/test/support/preload.ts"],
       }),
@@ -299,35 +411,54 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     "apps/web": 640,
     "packages/connections": 180,
     "packages/ui": 320,
-    "packages/local-runtime": 150,
+    "packages/local-runtime": 640,
     "packages/library": 130,
+  }
+  const times = (await Bun.file(path.join(import.meta.dir, "timings.json")).json()) as Record<string, number>
+  const counts: Record<string, number> = {
+    "packages/harness": 4,
+    "apps/web": 4,
+    "packages/presets": 4,
+    "packages/ui": 2,
+    "packages/local-runtime": 2,
   }
   for (const directory of [...coverage].sort()) {
     const workspace = packages.find((entry) => entry.directory === directory)!
     const dependencies = { ...workspace.dependencies, ...workspace.devDependencies }
     const browser = ["playwright", "playwright-core", "@playwright/test"].some((name) => name in dependencies)
-    const files = (await collectTests("test", path.join(root, directory))).sort()
+    const files = (await collectTests("test", path.join(root, directory)))
+      .filter((file) => !specialized.has(`${directory}/${file}`))
+      .sort()
     if (!files.length) throw new Error(`Workspace has no discovered tests: ${directory}`)
     const name = directory.replaceAll("/", "-")
-    const partitions = directory === "packages/harness" ? [0, 1, 2, 3] : [undefined]
-    for (const partition of partitions)
+    const count = counts[directory] ?? 1
+    const batchShards = Number(/SYNERGY_BATCH_SHARDS=(\d+)/.exec(workspace.scripts?.["test:coverage"] ?? "")?.[1] ?? 4)
+    const groups =
+      count === 1 ? [files] : partitionSuite(files, path.join(root, directory), count, times, directory, batchShards)
+    for (const [index, group] of groups.entries()) {
+      const partition = count === 1 ? undefined : index
       tasks.push(
         task(
           `suite-${name}${partition === undefined ? "" : `-${partition}`}`,
           "suite",
-          directory === "packages/harness" ? 200 : (weights[directory] ?? 45),
+          directory === "packages/harness" ? 200 : Math.ceil((weights[directory] ?? 45) / count),
           [directory],
           {
             package: directory,
             partition,
-            files,
+            files: group,
             assets: ["watcher", "plugin"],
             prerequisites: browser ? ["browser"] : [],
           },
         ),
       )
+    }
   }
   for (const entry of tasks) {
+    if (entry.kind === "native-workspace" || (entry.kind === "windows" && entry.variant === "native"))
+      entry.needs = tasks
+        .filter((task) => task.kind === "suite" && task.package === entry.package)
+        .map((task) => task.id)
     entry.isolation =
       entry.kind === "suite"
         ? "batch-home"
@@ -362,5 +493,6 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         .filter((file) => !tasks.some((task) => task.kind === "benchmark-streams" && task.files?.includes(file)))
         .sort()
   }
+  for (const entry of tasks) if (times[entry.id] !== undefined) entry.seconds = times[entry.id]!
   return tasks
 }

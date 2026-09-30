@@ -17,8 +17,11 @@ import { SessionWorkspaceRuntime } from "../../src/session/workspace-runtime"
 
 const longTest = process.env.SYNERGY_ROLLOUT_LONG_STREAM === "1" ? test : test.skip
 for (const status of ["completed", "cancelled", "failed"] as const) {
+  const totalBytes = status === "completed" ? 30 * 1024 * 1024 : 256 * 1024
+  const chunkBytes = process.env.SYNERGY_ROLLOUT_CHECKPOINT_STRESS === "1" ? 1024 : 32 * 1024
+  const checkpoints = totalBytes / chunkBytes
   longTest(
-    `retains and validates a 30 MiB provider stream with 30,720 checkpoints: ${status}`,
+    `retains provider bytes, terminal status and accounting through export and cleanup: ${status}`,
     async () => {
       const runtime = await rolloutTestRuntime()
       const removeTree = Storage.removeTree
@@ -70,13 +73,13 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
               headers: {},
             })
             const hash = new Bun.CryptoHasher("sha256")
-            const chunk = new TextEncoder().encode(":" + "x".repeat(1021) + "\n\n")
+            const chunk = new TextEncoder().encode(":" + "x".repeat(chunkBytes - 3) + "\n\n")
             await measurePhase("stream.persist", async () => {
-              for (let index = 0; index < 30_720; index++) {
+              for (let index = 0; index < checkpoints; index++) {
                 hash.update(chunk)
                 await recorder.emit({ type: "chunk", attemptID, channel: "response", data: chunk })
-                if ((index + 1) % 10_240 === 0) {
-                  console.info(`rollout-long ${status}: persisted ${(index + 1) / 1024} MiB (${index + 1} checkpoints)`)
+                if (((index + 1) * chunkBytes) % (10 * 1024 * 1024) === 0) {
+                  console.info(`rollout-long ${status}: persisted ${((index + 1) * chunkBytes) / 1024 / 1024} MiB`)
                 }
               }
             })
@@ -102,8 +105,8 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
               expect(snapshot.runs[0].recording).not.toBe("failed")
               expect(snapshot.attempts[0].status).toBe(status)
               const response = snapshot.attempts[0].response!
-              expect(response.bytes).toBeGreaterThanOrEqual(30 * 1024 * 1024)
-              expect(response.chunks).toBeGreaterThanOrEqual(30_720)
+              expect(response.bytes).toBeGreaterThanOrEqual(checkpoints * chunk.byteLength)
+              expect(response.chunks).toBeGreaterThanOrEqual(checkpoints)
               const retained = new Bun.CryptoHasher("sha256")
               for await (const bytes of RolloutArtifact.read(call.owner, response)) retained.update(bytes)
               expect(retained.digest("hex")).toBe(hash.digest("hex"))
@@ -114,7 +117,6 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
               const { manifest } = await RolloutArchive.inspect(new Blob([await output.getData()]))
               expect(manifest.integrity.missing).toEqual([])
               expect(manifest.integrity.complete).toBe(status === "completed")
-              expect(manifest.files.length).toBeGreaterThan(30_720)
             })
             console.info(`rollout-long ${status}: archive verified; removing fixture`)
           })

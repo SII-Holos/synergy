@@ -10,6 +10,7 @@ import { EnvironmentExecution } from "./execution"
 import { ExecutionProtocol } from "./executor"
 import { WorkspaceErrors } from "../workspace/errors"
 import type { EnvironmentResources } from "./resources"
+import { RuntimeContext } from "../lifecycle/context"
 
 export namespace EnvironmentProcess {
   export const Error = NamedError.create(
@@ -231,9 +232,9 @@ export namespace EnvironmentProcess {
         await completed.promise
       })())
     }
-    function abort() {
+    const abort = RuntimeContext.current().bind(() => {
       void stop().catch(fail)
-    }
+    })
     input.signal?.addEventListener("abort", abort, { once: true })
     return {
       child,

@@ -238,6 +238,8 @@ macOS Bash uses an independent launchd job and resource coalition. The passive n
 
 Native process input uses bounded forwarding and a declared final byte count. The worker ends child stdin only after every declared byte's destination write has completed; socket reception alone cannot authorize EOF. Failed destination writes close upstream input. See the [input drainage decision](../decisions/implemented/bug-fix/2026-09-27-drain-owned-process-input-before-eof.md).
 
+After the native worker acknowledges exit, a control-channel `ECONNRESET` or `EPIPE` preserves the reported exit and finite output. The same failures before acknowledgement remain execution errors; stdin closure is handled separately. See [acknowledged native exit](../decisions/implemented/bug-fix/2026-09-30-preserve-acknowledged-native-exit.md).
+
 The native worker runs under the Runtime executable's own macOS permission identity. It does not inherit another application's TCC grants or add a Seatbelt profile to `full_access`; commands can still install their own sandbox. OS access failures remain ordinary runtime failures. Native worker entrypoints execute before global storage initialization in both core and full artifacts.
 
 ## Session and Workflow Restrictions

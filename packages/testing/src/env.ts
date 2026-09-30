@@ -27,6 +27,9 @@ export async function createIsolatedTestEnv(): Promise<{
 
   const env: Record<string, string | undefined> = { ...process.env }
   delete env.SYNERGY_HOME
+  delete env.GH_TOKEN
+  delete env.GITHUB_TOKEN
+  delete env.SYNERGY_TEST_FILES
   // Bun's watchdog propagates to descendants and preempts the ownership protocol under test.
   delete env.BUN_FEATURE_FLAG_NO_ORPHANS
   env.SYNERGY_TEST_HOME = home
