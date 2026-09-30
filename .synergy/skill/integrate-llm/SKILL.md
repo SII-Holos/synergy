@@ -7,6 +7,8 @@ description: Add, modify, or review an LLM-backed operation in Synergy. Use for 
 
 ## Choose the Execution Path First
 
+Embedded hosts keep stable model inventory in `ProviderCatalogSource`. For credentials or SDK context tied to an accepted invocation, register `ProviderRequestSource` before composition is sealed. Validate the detached root user metadata there; keep keys out of model options and prompts. Test real `LLM.prepare()` plus worker-plan serialization, concurrent invocation isolation, cancellation and authorization failure. SDK factories consume the ephemeral `hostRequest` context without persisting it.
+
 | Required behavior                                                                                              | Path                                                           |
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Derive metadata, classify, summarize, or transform without durable work history                                | Sessionless internal-agent call through the shared `LLM` layer |

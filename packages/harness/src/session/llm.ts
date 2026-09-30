@@ -1,6 +1,7 @@
 import { RolloutTransport } from "./rollout/transport"
 import { RuntimeContext } from "../lifecycle/context"
 import { Provider } from "../provider/provider"
+import { ProviderRequestSource } from "../provider/request-source"
 import { Log } from "../util/log"
 import {
   stepCountIs,
@@ -411,11 +412,14 @@ export namespace LLM {
     return {
       system,
       baseSystemLength,
-      provider: await Provider.workerPlan(provider, {
-        ttfbMs: providerTimeouts.providerTtfbMs,
-        idleMs: providerTimeouts.providerIdleMs,
-        wallMs: providerTimeouts.providerWallMs,
-      }),
+      provider: await ProviderRequestSource.prepare(
+        input,
+        await Provider.workerPlan(provider, {
+          ttfbMs: providerTimeouts.providerTtfbMs,
+          idleMs: providerTimeouts.providerIdleMs,
+          wallMs: providerTimeouts.providerWallMs,
+        }),
+      ),
       params,
       telemetryEnabled: cfg.observability?.modelSpans,
     }

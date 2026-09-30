@@ -4,6 +4,8 @@ Embed Synergy in Bun without cloning the repository. `home` is the data director
 
 Embedded control planes register `SessionExecutionSource` from Harness `session/execution-source` in their selected component. Its authority check runs before Session loop admission, including Cortex children and automatic wakes. Denied work stays in the Inbox until an explicitly authorized drive; hosts still fence and drain active work when authority expires. Use `mode: "oneshot"` for a long-lived worker with host-controlled recovery and resident services. Recording reconciliation under namespace ownership remains part of core startup.
 
+Register `ProviderCatalogSource` for an exclusive host model inventory and `ProviderRequestSource` for ephemeral per-invocation connection preparation. Request keys, headers and JSON SDK context reach the worker plan after model parameter assembly. The host validates the detached root user metadata and supplies an explicit `ProviderSdkSource` factory; request credentials must not be placed in the stable catalog or model options.
+
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
