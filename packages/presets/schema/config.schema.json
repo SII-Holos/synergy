@@ -3242,6 +3242,10 @@
       "type": "string",
       "enum": ["main", "worktree"]
     },
+    "defaultSessionEnvironmentProfile": {
+      "description": "Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.",
+      "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
     "compactReasoning": { "description": "Show live reasoning in a compact single-line viewport", "type": "boolean" },
     "quick_switcher": {
       "description": "Quick switcher model visibility preferences",
