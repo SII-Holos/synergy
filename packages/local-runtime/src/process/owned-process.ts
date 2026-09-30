@@ -83,6 +83,7 @@ export namespace OwnedProcess {
     let errorAnnounced = false
     let controlClosed: Promise<void> | undefined
     let reported = false
+    let prepared = false
     let started = false
     let stage = "preparing"
     let stopping: Promise<void> | undefined
@@ -104,7 +105,11 @@ export namespace OwnedProcess {
           child.stdin.destroy(error)
           return
         }
-        if (code === "ECONNRESET" && (stopping || (reported && sockets.get("control") === socket))) return
+        if (
+          (code === "ECONNRESET" || code === "EPIPE") &&
+          (stopping || (reported && sockets.get("control") === socket))
+        )
+          return
         if (sockets.has("control")) fail(error)
       })
       let pending = Buffer.alloc(0)
@@ -134,6 +139,10 @@ export namespace OwnedProcess {
               socket,
               (raw) => {
                 const event = OwnedProtocol.Event.parse(raw)
+                if (event.type === "prepared") {
+                  prepared = true
+                  if (sockets.size === 4) connected.resolve(workerPID!)
+                }
                 if (event.type === "stage") stage = event.stage
                 if (event.type === "ready") {
                   child.pid = event.pid
@@ -173,7 +182,7 @@ export namespace OwnedProcess {
             socket.once("close", () => stream.end())
           }
           socket.resume()
-          if (sockets.size === 4) connected.resolve(workerPID)
+          if (sockets.size === 4 && prepared) connected.resolve(workerPID)
         } catch (error) {
           socket.destroy()
           fail(error instanceof Error ? error : new Error(String(error)))

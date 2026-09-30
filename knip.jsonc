@@ -248,11 +248,6 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
-    "packages/link-client": {
-      "entry": ["test/**/*.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
-    },
     "packages/code-tools": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
@@ -279,6 +274,8 @@
     "apps/desktop": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      // Electron supplies this Node built-in; the Bun-based analyzer does not list it.
+      "ignoreDependencies": ["node:sqlite"],
     },
     ".": {
       "ignoreDependencies": ["dependency-cruiser"],

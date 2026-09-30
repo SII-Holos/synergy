@@ -178,7 +178,7 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   network: {
     icon: "cable",
     descriptor: CLASSIFIER_LABEL_DESC["network"],
-    subtitleKeys: ["linkID"],
+    subtitleKeys: [],
     argsKeys: ["action"],
   },
   analyze: {

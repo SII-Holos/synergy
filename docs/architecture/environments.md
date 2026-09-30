@@ -4,7 +4,7 @@ Execution protocol version 2 separates explicit `useRoots` and Workspace capture
 
 Docker inspection distinguishes partial creation from loss of an acknowledged container using its incarnation receipt. Leftover staging volumes do not turn a lost allocation into pending creation. Lost Workspace views remain unavailable and retain their unresolved ownership; repeated loss observations do not advance the catalog revision.
 
-An Environment identifies an execution destination independently of a Session, Scope and Workspace. Harness owns the catalog in Agent Storage; native and remote resource owners implement providers. Synergy Link does not supply Environment transport or identity.
+An Environment identifies an execution destination independently of a Session, Scope and Workspace. Harness owns the catalog in Agent Storage; native and remote resource owners implement providers.
 
 ## Identity and lifetime
 
@@ -39,6 +39,8 @@ Command compilers may supply a separate stable intent digest covering the origin
 The versioned Executor protocol carries command, PTY, input, cancellation, status and cursor-based output operations. An exit becomes eligible for saving only after native tree and stream drainage are confirmed. Output is copied into Agent Storage artifacts before the caller's checkpoint is published. Saving failure retains the use and physical writer; retries invoke the checkpoint rather than execution. A saved result precedes executor release, and lost release acknowledgements can be retried independently.
 
 `EnvironmentProcess` presents that protocol as binary process streams with delayed activation, cancellation, PTY resize and an explicit completion promise. Close follows durable saving; physical exit alone cannot complete foreground work. Its output replay uses the same operation identity and never dispatches a completed command again. Only a direct native adapter may expose a controller-local PID; remote PIDs cannot enter native termination or diagnostics paths.
+
+Abort callbacks enter the Runtime that prepared the process before recording cancellation, including signals delivered outside Runtime context. A resource-owning asynchronous scope awaits its operation before disposal; returning an unsettled promise cannot release the selected Environment admission. See [asynchronous execution ownership](../decisions/implemented/bug-fix/2026-09-30-own-async-execution-lifetimes.md).
 
 Bash declares an execution requirement and accepts an optional Workspace. The resolver admits the selected target before containment and authorization. The Bash backend uses the target shell and environment, records the operation from its call identity, and retains existing process presentation, rollout evidence, native Workspace observation and worktree use. Background acceptance releases the foreground admission and abort subscription; the execution's durable use remains until completion. Direct host invocations without a Session Environment field use the composing host's explicit default. Interactive terminals and user shell commands use the same execution owner, target environment and completion protocol. Terminals retain their execution use while disconnected and expose a native PID only for direct local execution; file context is optional.
 

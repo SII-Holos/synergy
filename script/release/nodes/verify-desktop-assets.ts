@@ -5,8 +5,6 @@ import path from "node:path"
 import {
   desktopChecksumsName,
   desktopPortableArtifactNames,
-  expectedBrowserHostArtifacts,
-  expectedChromiumManifestArtifacts,
   expectedDesktopPrimaryArtifacts,
 } from "../../../apps/desktop/src/release-assets"
 import { downloadReleaseAsset, viewRelease } from "../shared/github"
@@ -37,16 +35,6 @@ export function assertDesktopAssetNames(version: string, names: ReadonlySet<stri
       throw new Error(`missing desktop portable asset ${assetName}`)
     }
   }
-  for (const assetName of expectedBrowserHostArtifacts(version)) {
-    if (!names.has(assetName)) {
-      throw new Error(`missing Browser Host release asset ${assetName}`)
-    }
-  }
-  for (const assetName of expectedChromiumManifestArtifacts(version)) {
-    if (!names.has(assetName)) {
-      throw new Error(`missing Chromium manifest release asset ${assetName}`)
-    }
-  }
   const checksums = desktopChecksumsName(version)
   if (!names.has(checksums)) {
     throw new Error(`missing desktop checksum asset ${checksums}`)
@@ -62,8 +50,6 @@ export function expectedDesktopChecksumAssetNames(version: string): string[] {
   return [
     ...expectedDesktopPrimaryArtifacts(version),
     ...desktopPortableArtifactNames(version),
-    ...expectedBrowserHostArtifacts(version),
-    ...expectedChromiumManifestArtifacts(version),
     ...EXPECTED_UPDATE_METADATA,
   ]
 }

@@ -3417,288 +3417,6 @@
         ]
       }
     },
-    "/synergy-link/targets": {
-      "get": {
-        "operationId": "synergyLink.targets",
-        "summary": "List Synergy Link targets",
-        "description": "List the persisted remote Synergy targets available on this installation.",
-        "responses": {
-          "200": {
-            "description": "Persisted Synergy Link targets",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SynergyLinkTargetView"
-                  }
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targets({\n  ...\n})"
-          }
-        ]
-      },
-      "post": {
-        "operationId": "synergyLink.targetCreate",
-        "summary": "Create a Synergy Link target",
-        "responses": {
-          "200": {
-            "description": "Created target",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SynergyLinkTarget"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SynergyLinkTargetCreateInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetCreate({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/synergy-link/targets/{id}": {
-      "patch": {
-        "operationId": "synergyLink.targetUpdate",
-        "summary": "Update a Synergy Link target",
-        "responses": {
-          "200": {
-            "description": "Updated target",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SynergyLinkTarget"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string",
-              "pattern": "^target_[0-9a-f-]{36}$"
-            },
-            "required": true
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SynergyLinkTargetPatchInput"
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetUpdate({\n  ...\n})"
-          }
-        ]
-      },
-      "delete": {
-        "operationId": "synergyLink.targetRemove",
-        "summary": "Remove a Synergy Link target",
-        "responses": {
-          "200": {
-            "description": "Target removed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SynergyLinkTargetRemoveResult"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string",
-              "pattern": "^target_[0-9a-f-]{36}$"
-            },
-            "required": true
-          }
-        ],
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetRemove({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/synergy-link/targets/{id}/probe": {
-      "post": {
-        "operationId": "synergyLink.targetProbe",
-        "summary": "Test a Synergy Link target",
-        "description": "Open or heartbeat a remote session to verify authorization and observe host capabilities.",
-        "responses": {
-          "200": {
-            "description": "Observed target",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SynergyLinkTargetView"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Bad request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Runtime shutting down",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
-                }
-              }
-            }
-          }
-        },
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "schema": {
-              "type": "string",
-              "pattern": "^target_[0-9a-f-]{36}$"
-            },
-            "required": true
-          }
-        ],
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetProbe({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/push/vapid-key": {
       "get": {
         "operationId": "push.getVapidKey",
@@ -25575,9 +25293,9 @@
         ]
       }
     },
-    "/{directory}/browser/webrtc/ticket": {
+    "/{directory}/browser/pages": {
       "post": {
-        "operationId": "browser.createViewerTicket",
+        "operationId": "browser.openPage",
         "parameters": [
           {
             "in": "query",
@@ -25619,14 +25337,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -25665,31 +25383,20 @@
             "required": true
           }
         ],
-        "summary": "Create a Browser viewer ticket",
-        "description": "Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.",
+        "summary": "Open a browser page",
         "responses": {
           "200": {
-            "description": "Browser viewer ticket",
+            "description": "New page",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BrowserViewerTicketResponse"
+                  "$ref": "#/components/schemas/BrowserAPISessionPage"
                 }
               }
             }
           },
           "400": {
-            "description": "Ticket request rejected",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BrowserAPIError"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Browser request payload is too large",
+            "description": "Page could not open",
             "content": {
               "application/json": {
                 "schema": {
@@ -25713,7 +25420,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BrowserViewerTicketRequest"
+                "$ref": "#/components/schemas/BrowserOpenPage"
               }
             }
           }
@@ -25721,7 +25428,404 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createViewerTicket({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.openPage({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/profiles": {
+      "get": {
+        "operationId": "browser.profiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "List browser identities",
+        "responses": {
+          "200": {
+            "description": "Identities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfileList"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.profiles({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "browser.createProfile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Create a browser identity",
+        "responses": {
+          "200": {
+            "description": "Identity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfile"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserProfileCreate"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.createProfile({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/{directory}/browser/profiles/{profileId}/manage": {
+      "post": {
+        "operationId": "browser.manageProfile",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "profileId",
+            "required": true
+          }
+        ],
+        "summary": "Manage a browser identity",
+        "responses": {
+          "200": {
+            "description": "Updated identities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserProfileList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identity operation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserManageProfile"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.manageProfile({\n  ...\n})"
           }
         ]
       }
@@ -25770,14 +25874,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -25921,14 +26025,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -26028,6 +26132,173 @@
         ]
       }
     },
+    "/{directory}/browser/download-artifact": {
+      "post": {
+        "operationId": "browser.downloadArtifact",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string",
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "mode",
+            "schema": {
+              "default": "session",
+              "type": "string",
+              "enum": ["session", "scope"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          {
+            "in": "query",
+            "name": "presentation",
+            "schema": {
+              "default": "auto",
+              "type": "string",
+              "enum": ["auto", "native"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "protocolVersion",
+            "schema": {
+              "default": 4,
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sinceSeq",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "epoch",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 20000
+            }
+          },
+          {
+            "in": "query",
+            "name": "nativeTicket",
+            "schema": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "directory",
+            "required": true
+          }
+        ],
+        "summary": "Prepare a completed Browser download",
+        "responses": {
+          "200": {
+            "description": "Managed attachment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "filename": {
+                      "type": "string"
+                    },
+                    "mime": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "url", "filename", "mime", "size"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Download is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserAPIError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": ["id"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.browser.downloadArtifact({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/{directory}/browser/session": {
       "get": {
         "operationId": "browser.session",
@@ -26072,14 +26343,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -26204,14 +26475,14 @@
             "schema": {
               "default": "auto",
               "type": "string",
-              "enum": ["auto", "native", "webrtc"]
+              "enum": ["auto", "native"]
             }
           },
           {
             "in": "query",
             "name": "protocolVersion",
             "schema": {
-              "default": 3,
+              "default": 4,
               "type": "number"
             }
           },
@@ -40120,7 +40391,7 @@
                         "type": "object",
                         "propertyNames": {
                           "type": "string",
-                          "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                          "enum": ["local_process", "file", "plugin", "mcp", "browser", "control_plane"]
                         },
                         "additionalProperties": {
                           "type": "object",
@@ -42620,485 +42891,6 @@
         },
         "required": ["success"]
       },
-      "SynergyLinkHostObservation": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.host.hello"
-          },
-          "linkID": {
-            "description": "Synergy Link target identifier",
-            "type": "string",
-            "minLength": 1
-          },
-          "hostSessionID": {
-            "description": "Synergy Link host session identifier",
-            "type": "string",
-            "minLength": 1
-          },
-          "capabilities": {
-            "type": "object",
-            "properties": {
-              "platform": {
-                "type": "string"
-              },
-              "arch": {
-                "type": "string"
-              },
-              "hostname": {
-                "type": "string"
-              },
-              "runtime": {
-                "type": "string",
-                "enum": ["node", "bun", "unknown"]
-              },
-              "defaultShell": {
-                "type": "string",
-                "enum": ["none", "sh", "cmd", "powershell", "pwsh"]
-              },
-              "supportedShells": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": ["none", "sh", "cmd", "powershell", "pwsh"]
-                }
-              },
-              "supportsPty": {
-                "type": "boolean"
-              },
-              "supportsSendKeys": {
-                "type": "boolean"
-              },
-              "supportsSoftKill": {
-                "type": "boolean"
-              },
-              "supportsProcessGroups": {
-                "type": "boolean"
-              },
-              "supportsBashDetach": {
-                "type": "boolean"
-              },
-              "envCaseInsensitive": {
-                "type": "boolean"
-              },
-              "lineEndings": {
-                "type": "string",
-                "enum": ["lf", "crlf"]
-              }
-            },
-            "required": [
-              "platform",
-              "arch",
-              "runtime",
-              "defaultShell",
-              "supportedShells",
-              "supportsPty",
-              "supportsSendKeys",
-              "supportsSoftKill",
-              "supportsProcessGroups",
-              "envCaseInsensitive",
-              "lineEndings"
-            ]
-          },
-          "observedAt": {
-            "type": "number"
-          }
-        },
-        "required": ["type", "linkID", "hostSessionID", "capabilities", "observedAt"],
-        "additionalProperties": false
-      },
-      "SynergyLinkProbe": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": ["reachable", "refused", "busy", "failed"]
-          },
-          "checkedAt": {
-            "type": "number"
-          }
-        },
-        "required": ["status", "checkedAt"]
-      },
-      "SynergyLinkTargetView": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^target_[0-9a-f-]{36}$"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "targetAgentID": {
-            "type": "string",
-            "minLength": 1
-          },
-          "linkID": {
-            "description": "Synergy Link target identifier",
-            "type": "string",
-            "minLength": 1
-          },
-          "allowedAgents": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "authorization": {
-            "type": "string",
-            "enum": ["unverified", "approved", "revoked"]
-          },
-          "host": {
-            "$ref": "#/components/schemas/SynergyLinkHostObservation"
-          },
-          "lastProbe": {
-            "$ref": "#/components/schemas/SynergyLinkProbe"
-          },
-          "createdAt": {
-            "type": "number"
-          },
-          "updatedAt": {
-            "type": "number"
-          },
-          "availability": {
-            "type": "string",
-            "enum": ["unknown", "unreachable", "reachable", "connected"]
-          },
-          "sessionID": {
-            "description": "Synergy Link session identifier",
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "enabled",
-          "targetAgentID",
-          "linkID",
-          "allowedAgents",
-          "authorization",
-          "createdAt",
-          "updatedAt",
-          "availability"
-        ]
-      },
-      "SynergyLinkTarget": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^target_[0-9a-f-]{36}$"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "targetAgentID": {
-            "type": "string",
-            "minLength": 1
-          },
-          "linkID": {
-            "description": "Synergy Link target identifier",
-            "type": "string",
-            "minLength": 1
-          },
-          "allowedAgents": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "authorization": {
-            "type": "string",
-            "enum": ["unverified", "approved", "revoked"]
-          },
-          "host": {
-            "$ref": "#/components/schemas/SynergyLinkHostObservation"
-          },
-          "lastProbe": {
-            "$ref": "#/components/schemas/SynergyLinkProbe"
-          },
-          "createdAt": {
-            "type": "number"
-          },
-          "updatedAt": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "enabled",
-          "targetAgentID",
-          "linkID",
-          "allowedAgents",
-          "authorization",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "SynergyLinkTargetCreateInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "targetAgentID": {
-            "type": "string",
-            "minLength": 1
-          },
-          "linkID": {
-            "description": "Synergy Link target identifier",
-            "type": "string",
-            "minLength": 1
-          },
-          "enabled": {
-            "default": true,
-            "type": "boolean"
-          },
-          "allowedAgents": {
-            "default": [],
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        },
-        "required": ["name", "targetAgentID", "linkID"],
-        "additionalProperties": false
-      },
-      "NotFoundError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "NotFoundError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "SynergyLinkTargetPatchMetadata": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "metadata"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 120
-              }
-            },
-            "required": ["kind", "name"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "metadata"
-              },
-              "enabled": {
-                "type": "boolean"
-              }
-            },
-            "required": ["kind", "enabled"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "metadata"
-              },
-              "allowedAgents": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              }
-            },
-            "required": ["kind", "allowedAgents"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "metadata"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 120
-              },
-              "enabled": {
-                "type": "boolean"
-              }
-            },
-            "required": ["kind", "name", "enabled"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "metadata"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 120
-              },
-              "allowedAgents": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              }
-            },
-            "required": ["kind", "name", "allowedAgents"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "metadata"
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "allowedAgents": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              }
-            },
-            "required": ["kind", "enabled", "allowedAgents"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "metadata"
-              },
-              "name": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 120
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "allowedAgents": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              }
-            },
-            "required": ["kind", "name", "enabled", "allowedAgents"],
-            "additionalProperties": false
-          }
-        ]
-      },
-      "SynergyLinkTargetPatchRelink": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "relink"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 120
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "allowedAgents": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "targetAgentID": {
-            "type": "string",
-            "minLength": 1
-          },
-          "linkID": {
-            "description": "Synergy Link target identifier",
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": ["kind", "targetAgentID", "linkID"],
-        "additionalProperties": false
-      },
-      "SynergyLinkTargetPatchInput": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/SynergyLinkTargetPatchMetadata"
-          },
-          {
-            "$ref": "#/components/schemas/SynergyLinkTargetPatchRelink"
-          }
-        ]
-      },
-      "SynergyLinkTargetRemoveResult": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "const": true
-          }
-        },
-        "required": ["success"]
-      },
       "PushVapidKey": {
         "type": "object",
         "properties": {
@@ -43567,6 +43359,25 @@
           }
         },
         "required": ["scopeID", "scopeType", "directory", "latestActivityAt", "sessionCount"]
+      },
+      "NotFoundError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "NotFoundError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "ManagedProjectArchiveError": {
         "type": "object",
@@ -49056,7 +48867,7 @@
                 "type": "object",
                 "propertyNames": {
                   "type": "string",
-                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "control_plane"]
                 },
                 "additionalProperties": {
                   "type": "integer",
@@ -53977,7 +53788,7 @@
                 "type": "object",
                 "propertyNames": {
                   "type": "string",
-                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]
+                  "enum": ["local_process", "file", "plugin", "mcp", "browser", "control_plane"]
                 },
                 "additionalProperties": {
                   "type": "integer",
@@ -55069,6 +54880,37 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "inputImages": {
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["included", "omitted"]
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 100
+                }
+              },
+              "required": ["sha256", "status"],
+              "additionalProperties": false
+            }
+          },
+          "requestImages": {
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
           },
           "responseModel": {
             "type": "string",
@@ -64038,64 +63880,6 @@
         },
         "required": ["id", "url", "mime", "size"]
       },
-      "BrowserViewerTicketResponse": {
-        "type": "object",
-        "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 3
-          },
-          "ticket": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 20000
-          },
-          "expiresAt": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "iceServers": {
-            "maxItems": 100,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "urls": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 20000
-                    },
-                    {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 20000
-                      }
-                    }
-                  ]
-                },
-                "username": {
-                  "type": "string",
-                  "maxLength": 20000
-                },
-                "credential": {
-                  "type": "string",
-                  "maxLength": 20000
-                }
-              },
-              "required": ["urls"],
-              "additionalProperties": false
-            }
-          }
-        },
-        "required": ["protocolVersion", "ticket", "expiresAt", "iceServers"],
-        "additionalProperties": false
-      },
       "BrowserAPIError": {
         "type": "object",
         "properties": {
@@ -64287,29 +64071,295 @@
         "required": ["type", "code", "message", "retryable"],
         "additionalProperties": false
       },
-      "BrowserViewerTicketRequest": {
+      "BrowserAPISessionPage": {
         "type": "object",
         "properties": {
-          "protocolVersion": {
-            "type": "number",
-            "const": 3
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
           },
-          "pageId": {
+          "url": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "isLoading": {
+            "type": "boolean"
+          },
+          "lastActiveAt": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "openerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "suspended", "failed"]
+          },
+          "error": {
+            "$ref": "#/components/schemas/BrowserAPIError"
+          }
+        },
+        "required": ["id", "url", "title", "isLoading", "lastActiveAt", "profileId", "status"],
+        "additionalProperties": false
+      },
+      "BrowserOpenPage": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "profileId": {
             "type": "string",
             "minLength": 1,
             "maxLength": 200,
             "pattern": "^[a-zA-Z0-9._-]+$"
           }
         },
-        "required": ["protocolVersion", "pageId"],
+        "required": ["requestId"],
         "additionalProperties": false
+      },
+      "BrowserProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["persistent", "temporary"]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "createdAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "origins": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "access": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                },
+                "downloads": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                },
+                "uploads": {
+                  "type": "string",
+                  "enum": ["inherit", "allow", "ask", "deny"]
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["id", "name", "kind", "enabled", "revision", "createdAt", "origins"],
+        "additionalProperties": false
+      },
+      "BrowserProfileList": {
+        "type": "object",
+        "properties": {
+          "defaultProfileId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[a-zA-Z0-9._-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserProfile"
+            }
+          }
+        },
+        "required": ["defaultProfileId", "profiles"],
+        "additionalProperties": false
+      },
+      "BrowserProfileCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["persistent", "temporary"]
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "BrowserProfileUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BrowserManageProfile": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "update"
+              },
+              "changes": {
+                "$ref": "#/components/schemas/BrowserProfileUpdate"
+              }
+            },
+            "required": ["action", "changes"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "default"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "remove"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "clear"
+              }
+            },
+            "required": ["action"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string",
+                "const": "policy"
+              },
+              "origin": {
+                "type": "string",
+                "format": "uri"
+              },
+              "policy": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "access": {
+                        "type": "string",
+                        "enum": ["inherit", "allow", "ask", "deny"]
+                      },
+                      "downloads": {
+                        "type": "string",
+                        "enum": ["inherit", "allow", "ask", "deny"]
+                      },
+                      "uploads": {
+                        "type": "string",
+                        "enum": ["inherit", "allow", "ask", "deny"]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["action", "origin", "policy"],
+            "additionalProperties": false
+          }
+        ]
       },
       "BrowserAnnotationResponse": {
         "type": "object",
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "annotation": {
             "type": "object",
@@ -64369,7 +64419,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "pageId": {
             "type": "string",
@@ -64408,7 +64458,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "pageId": {
             "type": "string",
@@ -64430,7 +64480,7 @@
         "properties": {
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "pageId": {
             "type": "string",
@@ -64466,7 +64516,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "ownerKey": {
             "type": "string",
@@ -64475,50 +64525,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["empty", "suspended", "active", "migrating", "failed"]
-          },
-          "page": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200,
-                    "pattern": "^[a-zA-Z0-9._-]+$"
-                  },
-                  "url": {
-                    "type": "string",
-                    "maxLength": 20000
-                  },
-                  "title": {
-                    "type": "string",
-                    "maxLength": 20000
-                  },
-                  "isLoading": {
-                    "type": "boolean"
-                  },
-                  "lastActiveAt": {
-                    "anyOf": [
-                      {
-                        "type": "integer",
-                        "minimum": -9007199254740991,
-                        "maximum": 9007199254740991
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": ["id", "url", "title", "isLoading", "lastActiveAt"],
-                "additionalProperties": false
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "enum": ["empty", "suspended", "active", "failed"]
           },
           "presentation": {
             "anyOf": [
@@ -64527,28 +64534,25 @@
                 "properties": {
                   "protocolVersion": {
                     "type": "number",
-                    "const": 3
+                    "const": 4
                   },
                   "kind": {
                     "type": "string",
-                    "enum": ["native", "webrtc"]
+                    "enum": ["native"]
                   },
                   "capabilities": {
                     "type": "object",
                     "properties": {
                       "native": {
                         "type": "boolean"
-                      },
-                      "webrtc": {
-                        "type": "boolean"
                       }
                     },
-                    "required": ["native", "webrtc"],
+                    "required": ["native"],
                     "additionalProperties": false
                   },
                   "reason": {
                     "type": "string",
-                    "enum": ["desktop-local", "remote-client", "requested"]
+                    "enum": ["desktop-local", "requested"]
                   }
                 },
                 "required": ["protocolVersion", "kind", "capabilities", "reason"],
@@ -64585,6 +64589,13 @@
           },
           "error": {
             "$ref": "#/components/schemas/BrowserAPIError"
+          },
+          "pages": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserAPISessionPage"
+            }
           }
         },
         "required": [
@@ -64592,11 +64603,11 @@
           "protocolVersion",
           "ownerKey",
           "status",
-          "page",
           "presentation",
           "hostStatus",
           "seq",
-          "epoch"
+          "epoch",
+          "pages"
         ],
         "additionalProperties": false
       },
@@ -64609,7 +64620,7 @@
           },
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "result": {
             "anyOf": [
@@ -65011,9 +65022,15 @@
       "BrowserControlRequest": {
         "type": "object",
         "properties": {
+          "pageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[a-zA-Z0-9._-]+$"
+          },
           "protocolVersion": {
             "type": "number",
-            "const": 3
+            "const": 4
           },
           "command": {
             "anyOf": [
@@ -65238,6 +65255,38 @@
                 },
                 "required": ["type", "requestId", "files"],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "download.cancel"
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": ["type", "id"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "download.accept"
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  }
+                },
+                "required": ["type", "id"],
+                "additionalProperties": false
               }
             ]
           },
@@ -65252,7 +65301,7 @@
             "maxLength": 20000
           }
         },
-        "required": ["protocolVersion", "command", "commandId"],
+        "required": ["pageId", "protocolVersion", "command", "commandId"],
         "additionalProperties": false
       },
       "GlobalThemeContribution": {
@@ -67257,28 +67306,6 @@
           }
         ]
       },
-      "Event.scope.runtime.disposed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "scope.runtime.disposed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "scopeID": {
-                "type": "string"
-              },
-              "directory": {
-                "type": "string"
-              }
-            },
-            "required": ["scopeID"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.workspace.updated": {
         "type": "object",
         "properties": {
@@ -67323,6 +67350,28 @@
               }
             },
             "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.scope.runtime.disposed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "scope.runtime.disposed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "scopeID": {
+                "type": "string"
+              },
+              "directory": {
+                "type": "string"
+              }
+            },
+            "required": ["scopeID"]
           }
         },
         "required": ["type", "properties"]
@@ -68482,64 +68531,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.synergy_link.target.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^target_[0-9a-f-]{36}$"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.lsp.client.diagnostics": {
         "type": "object",
         "properties": {
@@ -69247,9 +69238,6 @@
       "Event": {
         "anyOf": [
           {
-            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
-          },
-          {
             "$ref": "#/components/schemas/Event.workspace.updated"
           },
           {
@@ -69257,6 +69245,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.scope.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.scope.runtime.disposed"
           },
           {
             "$ref": "#/components/schemas/Event.environment.updated"
@@ -69401,15 +69392,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.file.edited"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"

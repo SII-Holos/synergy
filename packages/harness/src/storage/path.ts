@@ -362,9 +362,6 @@ export namespace StoragePath {
     messageId,
   ]
 
-  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
-  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
-
   export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
   export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]
   export const clarusProviderAccountRoot = (accountHash: string) => [

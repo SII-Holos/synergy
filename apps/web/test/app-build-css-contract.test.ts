@@ -810,9 +810,9 @@ async function runAppBuild(outDir: string) {
 
 describe("app production build contract", () => {
   test("preserves core styles and keeps optional workbench resources off the initial route", async () => {
-    const outDir = await mkdtemp(path.join(os.tmpdir(), "synergy-app-dist-"))
+    const outDir = process.env.SYNERGY_WEB_BUILD_DIR ?? (await mkdtemp(path.join(os.tmpdir(), "synergy-app-dist-")))
     try {
-      await runAppBuild(outDir)
+      if (!process.env.SYNERGY_WEB_BUILD_DIR) await runAppBuild(outDir)
       const [css, index, assets, javascript, manifest] = await Promise.all([
         readBuiltCss(outDir),
         readBuiltIndex(outDir),
@@ -931,7 +931,7 @@ describe("app production build contract", () => {
       await expectAttachmentToolbarFitsNarrowPanel(attachmentWorkbenchCss)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
-      await rm(outDir, { recursive: true, force: true })
+      if (!process.env.SYNERGY_WEB_BUILD_DIR) await rm(outDir, { recursive: true, force: true })
     }
   }, 120_000)
 })

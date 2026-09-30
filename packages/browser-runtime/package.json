@@ -5,19 +5,15 @@
   "private": true,
   "license": "MIT",
   "exports": {
-    "./cli/browser": "./src/cli/browser.ts",
-    "./playwright-runtime": "./src/playwright-runtime.ts",
     "./runtime": "./src/runtime.ts",
     "./migration": "./src/migration.ts",
     "./tools": "./src/tools.ts",
     "./routes/browser-route": "./src/routes/browser-route.ts",
-    "./host-broker-process": "./src/host-broker-process.ts",
     "./tools/browser-action": "./src/tools/browser-action.ts",
     "./tools/browser-shared": "./src/tools/browser-shared.ts",
     "./tools/browser-navigation": "./src/tools/browser-navigation.ts",
     "./tools/browser-screenshot": "./src/tools/browser-screenshot.ts",
     "./tools/browser-wait": "./src/tools/browser-wait.ts",
-    "./install-deps-runner": "./src/install-deps-runner.ts",
     "./register": "./src/register.ts",
     "./component": "./src/component.ts",
     "./http": "./src/http.ts"
@@ -32,12 +28,9 @@
   "dependencies": {
     "@ericsanchezok/synergy-browser-core": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-util": "workspace:*",
     "@hono/standard-validator": "^0.2.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
-    "playwright-core": "1.61.0",
-    "unzipper": "^0.12.3",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -46,9 +39,8 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@types/unzipper": "0.10.11",
     "@typescript/native-preview": "7.0.0-dev.20251207.1",
-    "@zip.js/zip.js": "2.8.26",
+    "playwright-core": "1.61.0",
     "typescript": "catalog:"
   },
   "peerDependencies": {
@@ -72,16 +64,6 @@
     "export": "browser",
     "requires": {
       "local-runtime": "1.1.26"
-    },
-    "runners": {
-      "browser-install-deps-runner": {
-        "entry": "./dist/install-deps-runner.js",
-        "export": "main"
-      },
-      "browser-playwright-runtime-check": {
-        "entry": "./dist/runtime-check.js",
-        "export": "main"
-      }
     }
   }
 }

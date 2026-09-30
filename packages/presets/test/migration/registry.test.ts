@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ desktop: true })
 
 describe("MigrationRegistry", () => {
   test("registers all domains", () =>

@@ -1,7 +1,8 @@
 import { access } from "node:fs/promises"
 import type { CuaDriver } from "@trycua/cua-driver"
 import { ComputerError, type ComputerCommand } from "@ericsanchezok/synergy-computer-protocol"
-import { ComputerRuntime } from "./runtime.js"
+import { ComputerRuntime, type ComputerPermissions } from "./runtime.js"
+import { nativeSdkEntry } from "./sdk-entry.js"
 
 export class ComputerDriver {
   private client?: CuaDriver
@@ -10,15 +11,15 @@ export class ComputerDriver {
   private readonly runtime: ComputerRuntime
   constructor(
     private readonly executable: string,
-    private readonly checkPermissions: () => void,
+    private readonly checkPermissions: () => ComputerPermissions | void,
   ) {
     this.runtime = new ComputerRuntime((name, args, signal) => this.call(name, args, signal))
   }
   async execute(owner: string, command: ComputerCommand, signal?: AbortSignal) {
     if (process.platform !== "darwin")
       throw new ComputerError("computer_platform_unsupported", "Native Computer Use currently supports macOS Desktop.")
-    this.checkPermissions()
-    return this.runtime.execute(owner, command, signal)
+    const permissions = this.checkPermissions()
+    return this.runtime.execute(owner, command, signal, permissions ?? undefined)
   }
   private async call(name: string, args: Record<string, unknown>, signal?: AbortSignal) {
     const client = await this.connect()
@@ -57,11 +58,13 @@ export class ComputerDriver {
   private async start(): Promise<CuaDriver> {
     try {
       await access(this.executable)
-      const { CuaDriver, SessionPermissionMode } = await import("@trycua/cua-driver")
+      const { CuaDriver, SessionPermissionMode } = (await import(
+        nativeSdkEntry(import.meta.resolve("@trycua/cua-driver"))
+      )) as typeof import("@trycua/cua-driver")
       if (this.closed) throw new Error("Computer host has closed.")
       // The official private worker owns its stdin lifecycle without a daemon
       // endpoint or the standalone installation's global PID file.
-      // https://github.com/trycua/cua/blob/cua-driver-rs-v0.23.2/libs/cua-driver/rust/Skills/cua-driver/EMBEDDING.md
+      // https://github.com/trycua/cua/blob/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver/rust/Skills/cua-driver/EMBEDDING.md
       const client = CuaDriver.createPrivateWorker({
         binaryPath: this.executable,
         hostBundleId: "io.holosai.synergy",

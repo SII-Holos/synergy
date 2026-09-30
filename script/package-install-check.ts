@@ -114,7 +114,6 @@ if (import.meta.main) {
       env: {
         ...env,
         SYNERGY_HOME: path.join(directory, "home"),
-        SYNERGY_LINK_HOME: path.join(directory, "link"),
       },
     })
     if (await command.exited) throw new Error("Installed CLI failed")

@@ -24,6 +24,7 @@ import {
 } from "./panel-model"
 
 export interface OpenWorkbenchPanelOptions {
+  activate?: boolean
   forceNew?: boolean
   reuseExisting?: boolean
   replaceEmpty?: boolean
@@ -140,8 +141,10 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       })
 
       target.setTabs(next.tabs)
-      target.setActive(next.active)
-      target.open()
+      if (options.activate !== false) {
+        target.setActive(next.active)
+        target.open()
+      } else if (!target.active()) target.setActive(next.active)
       return next.tabs.find((tab) => tab.id === next.active)
     }
 
@@ -179,7 +182,11 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       return true
     }
 
-    async function closeOtherTabsOnSurface(surfaceName: WorkbenchPanelSurface, keepTabId: string) {
+    async function closeOtherTabsOnSurface(
+      surfaceName: WorkbenchPanelSurface,
+      keepTabId: string,
+      side: "others" | "right" = "others",
+    ) {
       const boundSession = sessionKey()
       const batchKey = JSON.stringify([boundSession, surfaceName])
       if (batchClosingSurfaces.has(batchKey)) return
@@ -189,9 +196,10 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
 
       batchClosingSurfaces.add(batchKey)
       try {
-        const closingIds = target
-          .tabs()
-          .filter((tab) => tab.id !== keepTabId)
+        const tabs = target.tabs()
+        const keepIndex = tabs.findIndex((tab) => tab.id === keepTabId)
+        const closingIds = tabs
+          .filter((tab, index) => (side === "right" ? index > keepIndex : tab.id !== keepTabId))
           .map((tab) => tab.id)
         for (const id of closingIds) {
           try {

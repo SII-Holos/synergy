@@ -9,11 +9,26 @@ test("results supply attachment defaults and errors preserve their structured co
   expect(error.message).toBe("Observe again")
 })
 
-test("actions require an observation and cannot request foreground or replace its target", () => {
-  expect(ComputerActionSchema.safeParse({ observationId: "observed", action: "type", text: "你好" }).success).toBe(true)
-  expect(ComputerActionSchema.safeParse({ action: "type", text: "text" }).success).toBe(false)
+test("actions require an observation and cannot replace its process/window binding", () => {
   expect(
-    ComputerActionSchema.safeParse({ observationId: "observed", action: "type", text: "text", pid: 4 }).success,
+    ComputerActionSchema.safeParse({
+      observationId: "observed",
+      action: "type",
+      target: { elementIndex: 0 },
+      text: "你好",
+    }).success,
+  ).toBe(true)
+  expect(ComputerActionSchema.safeParse({ action: "type", target: { elementIndex: 0 }, text: "text" }).success).toBe(
+    false,
+  )
+  expect(
+    ComputerActionSchema.safeParse({
+      observationId: "observed",
+      action: "type",
+      target: { elementIndex: 0 },
+      text: "text",
+      pid: 4,
+    }).success,
   ).toBe(false)
   expect(
     ComputerActionSchema.safeParse({
@@ -31,6 +46,11 @@ test("commands have bounded inputs and a finite operation set", () => {
   expect(ComputerCommandSchema.safeParse({ type: "observe", pid: -1, windowId: 8 }).success).toBe(false)
   expect(ComputerCommandSchema.safeParse({ type: "start_session" }).success).toBe(false)
   expect(
-    ComputerActionSchema.safeParse({ observationId: "observed", action: "type", text: "x".repeat(20_001) }).success,
+    ComputerActionSchema.safeParse({
+      observationId: "observed",
+      action: "type",
+      target: { elementIndex: 0 },
+      text: "x".repeat(20_001),
+    }).success,
   ).toBe(false)
 })

@@ -132,7 +132,7 @@ The durable message history remains available. Compaction is a model-context ope
 
 ## Browser Ownership
 
-The default Browser owner is the session. A session has at most one page, and both the user surface and Browser tools operate on that page. The Browser therefore behaves like a workspace alongside files and Notes, not like an unrelated browser application with its own task history.
+Desktop Browser pages belong to their task. A task can keep multiple real pages with independent immutable identities; human selection and Agent targets are separate. Persistent identities can reuse website logins across tasks without transferring page ownership.
 
 See [Browser workspace](browser.md).
 

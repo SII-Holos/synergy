@@ -12,6 +12,7 @@ export async function generateOpenApi(): Promise<string> {
       .env({
         ...process.env,
         SYNERGY_HOME: home,
+        SYNERGY_DESKTOP_BROWSER: "1",
         MODELS_DEV_API_JSON: path.join(root, "packages/testing/fixtures/models-api.json"),
         SYNERGY_DISABLE_MODELS_FETCH: "true",
         SYNERGY_DISABLE_DEFAULT_PLUGINS: "true",

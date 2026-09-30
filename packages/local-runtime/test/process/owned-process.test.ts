@@ -10,7 +10,12 @@ import { OwnedProtocol } from "../../src/process/owned-protocol"
 
 const nativeTest = test.skipIf(!["darwin", "linux"].includes(process.platform))
 
-nativeTest.each(["ready", "exit"])("control reset at %s preserves the native completion boundary", async (stage) => {
+nativeTest.each([
+  ["ready", "ECONNRESET"],
+  ["exit", "ECONNRESET"],
+  ["ready", "EPIPE"],
+  ["exit", "EPIPE"],
+])("control failure at %s with %s preserves the native completion boundary", async (stage, code) => {
   await using tmp = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
   const lease = await coordinator.acquire({
@@ -20,7 +25,7 @@ nativeTest.each(["ready", "exit"])("control reset at %s preserves the native com
     kind: "process",
     roots: [tmp.path],
   })
-  const injected = Object.assign(new Error("control connection reset"), { code: "ECONNRESET" })
+  const injected = Object.assign(new Error("control connection failed"), { code })
   const messages = OwnedProtocol.messages
   let resets = 0
   const protocol = spyOn(OwnedProtocol, "messages").mockImplementation((socket, receive, failed) =>

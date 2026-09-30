@@ -1,5 +1,5 @@
 import type { BrowserOwner } from "./owner.js"
-import type { BrowserCheckpoint, BrowserProtocolErrorData } from "@ericsanchezok/synergy-browser-core"
+import type { BrowserSessionPage } from "@ericsanchezok/synergy-browser-core"
 import type { BrowserPageBackend } from "./page.js"
 
 export type { BrowserPageBackend }
@@ -37,23 +37,15 @@ export interface BrowserAgentActivity {
 
 export interface BrowserSession {
   readonly owner: BrowserOwner.Info
-  readonly page: BrowserPageBackend | null
-  readonly status: "empty" | "suspended" | "active" | "migrating" | "failed"
-  readonly descriptor: {
-    id: string
-    url: string
-    title: string
-    lastActiveAt: number | null
-  } | null
-  readonly checkpoint: BrowserCheckpoint | null
-  readonly error: BrowserProtocolErrorData | null
+  readonly pages: BrowserSessionPage[]
+  readonly status: "empty" | "suspended" | "active" | "failed"
   readonly annotations: BrowserAnnotation[]
 
-  ensurePage(url?: string, options?: { resume?: boolean }): Promise<BrowserPageBackend>
-  resumePage(): Promise<BrowserPageBackend>
-  closePage(): Promise<void>
-  suspend(): Promise<void>
-  getPage(pageID: string): BrowserPageBackend | undefined
+  openPage(input: { url?: string; profileId?: string; requestId?: string }): Promise<BrowserPageBackend>
+  resumePage(pageId: string): Promise<BrowserPageBackend>
+  closePage(pageId: string): Promise<void>
+  suspendProfile(profileId: string): Promise<void>
+  getPage(pageId: string): BrowserPageBackend | undefined
 
   addAnnotation(input: BrowserAnnotationInput): Promise<BrowserAnnotation>
   removeAnnotation(id: string): Promise<boolean>
@@ -62,9 +54,8 @@ export interface BrowserSession {
 
   notifyPageNavigated(page: BrowserPageBackend): Promise<void>
   notifyAgentActivity(activity: BrowserAgentActivity): Promise<void>
-  notifyControlChanged(mode: "user" | "agent"): Promise<void>
 
-  save(options?: { captureCheckpoint?: boolean }): Promise<void>
+  save(): Promise<void>
   restore(): Promise<boolean>
   dispose(): Promise<void>
 }

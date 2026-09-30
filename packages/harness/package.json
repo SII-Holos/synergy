@@ -243,7 +243,6 @@
     "./session/rollout/snapshot": "./src/session/rollout/snapshot.ts",
     "./session/rollout/accounting": "./src/session/rollout/accounting.ts",
     "./session/env-contributor": "./src/session/env-contributor.ts",
-    "./tool/link-target-source": "./src/tool/link-target-source.ts",
     "./file/time": "./src/file/time.ts",
     "./process/output": "./src/process/output.ts",
     "./session/rollout/process": "./src/session/rollout/process.ts",
@@ -372,7 +371,6 @@
   },
   "dependencies": {
     "@ai-sdk/provider": "2.0.3",
-    "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-secret-detection": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@zip.js/zip.js": "2.8.26",

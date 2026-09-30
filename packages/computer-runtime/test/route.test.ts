@@ -1,3 +1,4 @@
+import { COMPUTER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-computer-protocol"
 import { expect, test } from "bun:test"
 import { websocket } from "hono/bun"
 import { ComputerBroker } from "../src/broker"
@@ -10,7 +11,9 @@ test("native registration and multiple replies share one host across WebSocket e
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: route.fetch, websocket })
   const socket = new WebSocket(`ws://127.0.0.1:${server.port}/computer/host/broker`)
   const ready = Promise.withResolvers<void>()
-  socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "register", version: 1, token })))
+  socket.addEventListener("open", () =>
+    socket.send(JSON.stringify({ type: "register", version: COMPUTER_PROTOCOL_VERSION, token })),
+  )
   socket.addEventListener("error", () => ready.reject(new Error("WebSocket failed")))
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(String(event.data))

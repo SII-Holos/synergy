@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -27,7 +28,11 @@ beforeAll(async () => {
       },
     ],
     resolve: { alias: { "@": path.resolve(import.meta.dir, "../../../src") } },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] } },
+    server: {
+      host: "127.0.0.1",
+      port: await fixturePort(),
+      fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
+    },
   })
   await server.listen()
   browser = await chromium.launch({ headless: true })

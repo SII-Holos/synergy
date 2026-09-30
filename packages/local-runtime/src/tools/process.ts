@@ -1,9 +1,7 @@
 import z from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import DESCRIPTION from "./process.txt"
-import { SynergyLinkExecution } from "./synergy-link-execution"
 import { LocalProcessBackend } from "./process/local"
-import { RemoteProcessBackend } from "./process/remote"
 import type { ProcessMetadata, ProcessParams } from "./process/shared"
 import { ToolTimeout } from "@ericsanchezok/synergy-harness/tool/timeout"
 
@@ -22,17 +20,8 @@ const parameters = z
       .number()
       .optional()
       .describe(
-        `Max seconds to wait when block is true (default: ${
-          ToolTimeout.DEFAULTS.processPollWaitMs / 1_000
-        } seconds). Synergy Link hosts cap remote blocking waits at 25 seconds so a still-running result returns before the transport deadline.`,
+        `Max seconds to wait when block is true (default: ${ToolTimeout.DEFAULTS.processPollWaitMs / 1_000} seconds).`,
       ),
-    linkID: z
-      .string()
-      .optional()
-      .describe(
-        "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
-      ),
-    targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
   })
   .strict()
 
@@ -42,19 +31,6 @@ export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>(
     description: DESCRIPTION,
     parameters,
     async execute(params, ctx) {
-      const linkIDSupplied = Object.hasOwn(params, "linkID")
-      const target = await SynergyLinkExecution.resolveExecutionTarget({
-        targetID: params.targetID,
-        targetIDSupplied: Object.hasOwn(params, "targetID"),
-        linkID: params.linkID,
-        linkIDSupplied,
-        tool: "process",
-        agent: ctx.agent,
-      })
-      if (target.kind === "remote") {
-        return RemoteProcessBackend.execute(params, target)
-      }
-
       return LocalProcessBackend.execute(params as ProcessParams, ctx)
     },
   },

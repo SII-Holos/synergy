@@ -27,6 +27,7 @@ export interface BrowserWebContentsControlTarget {
   diagnostics?(): BrowserHostDiagnostics | undefined
   resize?(width: number, height: number): void
   pageState(): BrowserWebContentsPageState
+  onWindowOpen?(details: Electron.HandlerDetails): Electron.WindowOpenHandlerResponse
   onNavigationBlocked?(url: string, reason: string): void
 }
 
@@ -152,10 +153,10 @@ export class BrowserWebContentsControl {
     }
     this.committedListener = (_event, url) => this.navigation.noteCommitted(url)
     this.mouseListener = (_event, input) => {
-      if (!this.commandInFlight && input.type === "mouseDown") this.navigation.noteUserGesture()
+      if (input.type === "mouseDown") this.navigation.noteUserGesture()
     }
     this.keyListener = (_event, input) => {
-      if (!this.commandInFlight && input.type === "keyDown") this.navigation.noteUserGesture()
+      if (input.type === "keyDown") this.navigation.noteUserGesture()
     }
     const contents = target.contents()
     contents?.on("will-navigate", this.navigationListener)
@@ -163,18 +164,10 @@ export class BrowserWebContentsControl {
     contents?.on("did-navigate", this.committedListener)
     contents?.on("before-mouse-event", this.mouseListener)
     contents?.on("before-input-event", this.keyListener)
-    contents?.setWindowOpenHandler(({ url }) => {
-      const decision = this.navigation.decide(url)
-      if (decision.allowed) {
-        void contents
-          .loadURL(url)
-          .catch((error) =>
-            target.onNavigationBlocked?.(
-              url,
-              error instanceof Error ? error.message : "Browser popup navigation failed.",
-            ),
-          )
-      } else target.onNavigationBlocked?.(url, decision.reason ?? "Browser popup navigation was denied.")
+    contents?.setWindowOpenHandler((details) => {
+      const decision = this.navigation.decide(details.url)
+      if (details.url === "about:blank" || decision.allowed) return target.onWindowOpen?.(details) ?? { action: "deny" }
+      target.onNavigationBlocked?.(details.url, decision.reason ?? "Popup navigation denied.")
       return { action: "deny" }
     })
     this.controller = new CdpPageController({
@@ -252,6 +245,10 @@ export class BrowserWebContentsControl {
       return { type: "void" }
     }
 
+    if (command.type === "download.accept") {
+      await diagnostics?.acceptDownload(command.id)
+      return { type: "void" }
+    }
     if (command.type === "download.cancel") {
       await diagnostics?.cancelDownload(command.id)
       return { type: "void" }

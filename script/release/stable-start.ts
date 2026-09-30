@@ -2,7 +2,7 @@
 
 import { createReleaseState, summarizeState } from "./shared/context"
 import { snapshotFiles, restoreFiles } from "./shared/files"
-import { VERSION_MANAGED_PACKAGE_PATHS, PRESETS_DIST_DIR, SYNERGY_LINK_DIST_DIR } from "./shared/packages"
+import { VERSION_MANAGED_PACKAGE_PATHS, PRESETS_DIST_DIR } from "./shared/packages"
 import { computeStableVersion, configureNpmAuth, saveReleaseState } from "./shared/runtime"
 import { rewriteVersions } from "./shared/versions"
 import { bunInstall } from "./nodes/bun-install"
@@ -10,19 +10,14 @@ import { buildApp } from "./nodes/build-app"
 import { buildDesktop } from "./nodes/build-desktop"
 import { generateSchema } from "./nodes/generate-schema"
 import { generateSdk } from "./nodes/generate-sdk"
-import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
 import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
-import { buildSynergyLinkBinaries } from "./nodes/build-synergy-link-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
-import { validateSynergyLinkArtifacts } from "./nodes/validate-synergy-link-artifacts"
 import { publishModuleCandidates } from "./shared/publish-modules"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
-// synergy-link npm publish removed — package too large for npm registry
-// import { publishSynergyLinkCandidate } from "./nodes/publish-synergy-link-candidate"
 import { createBinaryChecksums, packageBinaryAssets } from "./nodes/package-binary-assets"
 import { ensureDraftRelease } from "./nodes/create-draft-release"
 import { ensureStableTag } from "./nodes/ensure-stable-tag"
@@ -49,26 +44,21 @@ try {
   await rewriteVersions(version)
   await configureNpmAuth()
   await bunInstall()
-  await Promise.all([generateSchema(), generateSdk(), buildSynergyLinkProtocol(), buildUtil()])
+  await Promise.all([generateSchema(), generateSdk(), buildUtil()])
   await buildPlugin()
   await buildPluginKit()
   await buildApp()
   await buildDesktop()
   const platformNames = await buildSynergyBinaries(version, "stable")
-  const synergyLinkPlatformNames = await buildSynergyLinkBinaries(version)
   const platformPackages = await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)
-  await validateSynergyLinkArtifacts(synergyLinkPlatformNames)
 
   const modules = await publishModuleCandidates(version, state.channel)
   const synergy = await publishSynergyCandidate(version, state.channel)
-  // synergy-link npm publish removed — package too large for npm registry (>512MB tgz)
-  // await publishSynergyLinkCandidate(version, state.channel)
 
   state.registryPackages = [...new Set([...state.registryPackages, ...modules, ...platformPackages])]
   const synergyAssets = await packageBinaryAssets(PRESETS_DIST_DIR, synergy.platformNames)
-  const synergyLinkAssets = await packageBinaryAssets(SYNERGY_LINK_DIST_DIR, synergyLinkPlatformNames)
-  state.binaryAssets = [...synergyAssets, ...synergyLinkAssets]
+  state.binaryAssets = synergyAssets
   state.binaryChecksums = await createBinaryChecksums(version, state.binaryAssets, PRESETS_DIST_DIR)
   await ensureStableTag(state.version)
 

@@ -134,14 +134,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   search_tools: d("tool.title.search-tools", "Search Tools"),
   expand_tools: d("tool.title.expand-tools", "Load tools"),
   lsp: d("tool.title.lsp", "Query code intelligence"),
-  connect: d("tool.title.connect", "Connect"),
-  connect_opening: d("tool.title.connect-opening", "Opening"),
-  connect_closing: d("tool.title.connect-closing", "Closing"),
-  connect_status: d("tool.title.connect-status", "View connection status"),
-  connect_list: d("tool.title.connect-list", "View connections"),
-  connect_list_targets: d("tool.title.connect-list-targets", "View Link targets"),
-  connect_connected: d("tool.title.connected", "Connected"),
-  connect_disconnected: d("tool.title.disconnected", "Disconnected"),
   worktree_enter: d("tool.title.enter-worktree", "Enter isolated workspace"),
   worktree_leave: d("tool.title.leave-worktree", "Leave isolated workspace"),
   worktree_list: d("tool.title.worktrees", "View isolated workspaces"),
@@ -386,7 +378,6 @@ export const TOOL_MISC_DESC = {
   liveApplied: d("tool.misc.live-applied", "Live Applied"),
   restartRequired: d("tool.misc.restart-required", "Restart Required"),
   warnings: d("tool.misc.warnings", "Warnings"),
-  executedViaSynergyLink: d("tool.misc.executed-via-synergy-link", "Executed via Synergy Link"),
 } as const
 
 // ── Task subagent detail ────────────────────────────────────────────

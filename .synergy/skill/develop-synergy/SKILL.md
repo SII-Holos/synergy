@@ -84,6 +84,8 @@ Route main-process broadcasts for the application renderer through `DesktopRende
 
 ## Verify and Diagnose
 
+Load [testing-guide](../testing-guide/SKILL.md#review-test-value-and-ci-cost) before changing automated verification. Review affected existing tests together with new coverage, and include consolidation or removal when behavior is obsolete or duplicated. Select the smallest relevant check locally; use the [CI cost policy](../../../docs/operations/ci.md#维护验证成本) for measured changes to expensive preparation or full workflows.
+
 1. Confirm health on the selected server port before opening dependent clients. After workspace or startup entry changes, run `bun test --config /dev/null test/script/dev-entrypoints.test.ts` against the real checkout, start the root development command in an isolated home, and verify Web rendering in a browser. For managed Desktop changes, verify source backend startup, restart and shutdown separately from packaged startup; serving HTML alone does not establish that the UI rendered.
 2. Reproduce the behavior with a new isolated Scope/session. Record only redacted IDs and project-relative evidence in shareable output.
 3. Use `SYNERGY_HOME="$DEV_HOME" synergy logs --dev`, `status --verbose`, or `diagnostics` against the isolated environment. Never inspect the main runtime by accident.
@@ -110,7 +112,7 @@ Report the isolated home label without exposing secrets, chosen mode and ports, 
 
 ## Native Computer Verification
 
-For macOS Computer changes, use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. `SYNERGY_COMPUTER_DRIVER_PATH` may point to a verified development binary; production builds use the pinned driver. Exercise discovery, observation, a background action in a disposable native app, image delivery, profile denial, cancellation, and reconnect. Check the target app state and frontmost app independently; a successful input dispatch alone is insufficient. Never replace a missing OS grant with another application's authority.
+For macOS Computer changes, load [change-computer-runtime](../change-computer-runtime/SKILL.md) for native and real-model fixtures, packaged candidate acceptance and visual checks. Use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. The full `bun dev desktop` orchestrator registers the Computer host; `--attach` alone does not. `SYNERGY_COMPUTER_DRIVER_PATH` may select a verified development binary; candidate acceptance must use its bundled worker. Never replace a missing OS grant with another application's authority.
 
 For OS permission verification, launch the isolated app through macOS LaunchServices and inspect its actual permission state. A terminal-spawned Electron can inherit the terminal host's TCC responsibility, so a successful preflight does not establish that the standalone Desktop app has its own grants. Use a clearly named isolated app bundle; never modify another app's identity or reuse its grants to make a test pass.
 
@@ -131,3 +133,9 @@ For frontend navigation acceptance, build Web and Desktop from the same checkout
 Project-entry acceptance includes the same built Web bundle in managed Desktop and Web, plus external Desktop. Confirm that only a running managed Desktop connection to its own server opens the OS folder dialog; Web localhost and external Desktop localhost must open the service directory browser. Verify native Cancel, return focus and retained unsaved project fields. Capture computer/project selection and draft merge, main-folder/Worktree choices, project settings and folder errors/paging/multi-selection. Merely opening these surfaces must not allocate an Environment; compare resource state before and after preview, then verify first-send binding.
 
 Use disposable real directories for project-flow acceptance, including two Git roots and a plain folder. Record the main-folder transition and verify Worktree source metadata before and after changing main. Preserve source fixtures and evidence until handoff. When native automation is unavailable (for example, a locked screen), continue Web and Desktop renderer checks but report OS-level picker, drag and Spaces coverage separately; an IPC call or renderer click is not native hit-test evidence.
+
+## Isolate native Browser acceptance
+
+Electron userData owns persistent browser partitions and is separate from the backend home. For an isolated source acceptance run, build Desktop and launch a task-owned `.mjs` entry which imports `{ app }` from the workspace Electron package, calls `app.setPath("userData", isolatedDirectory)`, then dynamically imports the absolute `apps/desktop/dist/main.js` path. Set `SYNERGY_HOME` to the isolated home, use the dev channel and explicit alternate server/Web ports, and connect only that local broker. Keep the entry and any registration secret outside the repository. Do not reuse the user's real Electron profile or copy browser credentials.
+
+Launch the actual executable named by Electron's `path.txt` when recording the owned PID; killing a Node package shim may leave Electron running. Check the command line and port before stopping it. For CDP-based UI acceptance, connect Node Playwright to an explicitly enabled local debugging port and disconnect the client after each check; do not change the installed product's debugging settings. Rebuild and restart only the isolated main process after native changes. Use the same isolated userData across a controlled restart when testing login persistence.

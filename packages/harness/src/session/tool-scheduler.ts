@@ -9,7 +9,7 @@ import { SessionMemoryPressure } from "./memory-pressure"
 import type { SessionProcessor } from "./processor"
 
 export type ToolTaskState = "queued" | "running" | "completed" | "failed" | "cancelled" | "interrupted"
-export type ToolExecutorKind = "local_process" | "file" | "plugin" | "mcp" | "browser" | "link" | "control_plane"
+export type ToolExecutorKind = "local_process" | "file" | "plugin" | "mcp" | "browser" | "control_plane"
 
 export interface ToolTaskResult {
   taskID: string
@@ -240,7 +240,7 @@ export class ToolTaskScheduler {
       maxQueued: this.options.maxQueued,
       maxQueuedBytes: this.options.maxQueuedBytes,
       byExecutor: Object.fromEntries(
-        (["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"] as ToolExecutorKind[]).map(
+        (["local_process", "file", "plugin", "mcp", "browser", "control_plane"] as ToolExecutorKind[]).map(
           (executor) => [
             executor,
             {
@@ -566,7 +566,6 @@ export const DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS: ToolTaskSchedulerOptions = {
     plugin: Math.min(defaultConcurrency, 8),
     mcp: Math.min(defaultConcurrency, 16),
     browser: Math.min(defaultConcurrency, 8),
-    link: Math.min(defaultConcurrency, 8),
     control_plane: defaultConcurrency,
   },
 }

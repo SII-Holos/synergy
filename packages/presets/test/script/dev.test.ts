@@ -24,7 +24,7 @@ describe("dev orchestrator planner", () => {
       { label: "server", port: 4096, host: "127.0.0.1" },
       { label: "app", port: 3000, host: "127.0.0.1" },
     ])
-    expect(plan.processes.map((process) => process.label)).toEqual(["server", "app", "browser-host"])
+    expect(plan.processes.map((process) => process.label)).toEqual(["server", "app"])
     expect(plan.processes[0]?.env).toMatchObject({
       SYNERGY_CWD: "/workspace",
     })
@@ -34,11 +34,7 @@ describe("dev orchestrator planner", () => {
       VITE_SYNERGY_CALLBACK_URL: "http://127.0.0.1:4096/holos/callback",
     })
     expect(plan.processes[1]?.command).toContain("--strictPort")
-    expect(plan.processes[2]?.command).toEqual(["/bun", "run", "browser-host:dev"])
-    expect(plan.processes[2]?.env?.SYNERGY_BROWSER_HOST_SERVER_URL).toBe("http://127.0.0.1:4096")
-    expect(plan.processes[2]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET).toBe(
-      plan.processes[0]?.env?.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET,
-    )
+    expect(plan.processes[0]?.env?.SYNERGY_DESKTOP_BROWSER).toBeUndefined()
   })
 
   test("binds both the server and app to the requested web hostname", () => {
@@ -55,6 +51,7 @@ describe("dev orchestrator planner", () => {
   test("plans desktop development in external mode by default", () => {
     const plan = createDevPlan(["desktop"], options)
 
+    expect(plan.processes[0]?.env?.SYNERGY_DESKTOP_BROWSER).toBe("1")
     expect(plan.kind).toBe("run")
     expect(plan.processes.map((process) => process.label)).toEqual(["server", "app", "desktop"])
     expect(plan.processes[2]?.env).toMatchObject({

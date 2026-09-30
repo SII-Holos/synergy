@@ -137,7 +137,7 @@ try {
       }),
     )
     check(
-      typography.length === 3 && new Set(typography).size === 1,
+      typography.length >= 2 && typography.length <= 3 && new Set(typography).size === 1,
       "working location labels share typography and emphasis",
     )
     const add = page.getByRole("button", { name: /^(添加|Add)$/ })

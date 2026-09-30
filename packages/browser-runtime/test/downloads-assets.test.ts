@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { BrowserDownloads } from "../src/downloads.js"
 import { BrowserAssets } from "../src/assets.js"
+import fs from "node:fs/promises"
 import { BrowserDownloadsTool } from "../src/tools/browser-downloads.js"
 import type { BrowserOwner } from "../src/owner.js"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -28,6 +29,22 @@ function record(
 describe("BrowserDownloads owner isolation", () => {
   beforeEach(() => runtime.run(() => BrowserDownloads.clearForTest()))
   afterEach(() => runtime.run(() => BrowserDownloads.clearForTest()))
+
+  test("only accepted owner downloads can become attachments after their page closes", () =>
+    runtime.run(async () => {
+      const file = await BrowserDownloads.managedPath(ownerA, "artifact", "fixture.txt")
+      await fs.writeFile(file, "fixture download")
+      BrowserDownloads.add(ownerA, { ...record("artifact", "awaiting_approval"), path: file })
+      await expect(BrowserDownloads.artifact(ownerA, "artifact")).rejects.toThrow()
+      BrowserDownloads.update(ownerA, "artifact", { state: "completed" })
+      await expect(BrowserDownloads.artifact(ownerB, "artifact")).rejects.toThrow()
+      expect(await BrowserDownloads.artifact(ownerA, "artifact")).toMatchObject({ size: 16, filename: "file.zip" })
+      const outside = file + ".outside"
+      await fs.writeFile(outside, "outside")
+      await fs.unlink(file)
+      await fs.symlink(outside, file)
+      await expect(BrowserDownloads.artifact(ownerA, "artifact")).rejects.toThrow()
+    }))
 
   test("never exposes records across owners", () =>
     runtime.run(() => {

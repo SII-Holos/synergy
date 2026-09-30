@@ -44,17 +44,15 @@ export namespace SecretResolve {
    * becomes a `${SYNERGY_SEC_*}` reference whose value is delivered through
    * the child environment; a token embedded in a longer word degrades to
    * literal substitution, which is the documented residual argv exposure.
-   * Remote bash cannot receive a local child environment, so every token
-   * degrades to literal substitution there. Every other tool: structural
-   * substitution of tokens with plaintext. A policy denial substitutes a
+   * Every other tool uses structural substitution of tokens with plaintext.
+   * A policy denial substitutes a
    * visible marker and lets the operation proceed; a removed entry leaves
    * the token literal, matching what the model saw.
    */
   export async function transformArgs<T extends Record<string, unknown>>(args: T, input: Input): Promise<Outcome<T>> {
     const outcome: Outcome<T> = { args, resolved: 0, denied: 0 }
     if (input.tool === "bash" && typeof args.command === "string" && args.command.includes("⟦sec:")) {
-      const remote = typeof args.targetID === "string" || typeof args.linkID === "string"
-      const bash = await resolveBashCommand(args.command, input, remote)
+      const bash = await resolveBashCommand(args.command, input)
       if (bash.command !== args.command) outcome.args = { ...args, command: bash.command }
       if (bash.secretEnv) outcome.secretEnv = bash.secretEnv
       outcome.resolved = bash.resolved
@@ -135,7 +133,6 @@ export namespace SecretResolve {
   async function resolveBashCommand(
     command: string,
     input: Input,
-    remote: boolean,
   ): Promise<{ command: string; secretEnv?: Record<string, string>; resolved: number; denied: number }> {
     const matches = [...command.matchAll(TOKEN_PATTERN)]
     if (matches.length === 0) return { command, resolved: 0, denied: 0 }
@@ -165,7 +162,7 @@ export namespace SecretResolve {
       out += command.slice(cursor, start)
       if (decision.kind === "value") {
         resolved++
-        if (standalone && expandable.has(start) && !remote) {
+        if (standalone && expandable.has(start)) {
           const name = envName(match[1]!)
           secretEnv[name] = decision.value
           out += `"\${${name}}"`
@@ -189,7 +186,6 @@ export namespace SecretResolve {
       resolved,
       denied,
       injected: Object.keys(secretEnv).length,
-      remote,
     })
     return {
       command: out,

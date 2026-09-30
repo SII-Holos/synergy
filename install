@@ -78,9 +78,6 @@ has_bundled_assets_at() {
     fi
     [ -f "$root/app/index.html" ] && \
     [ -f "$root/schema/config.schema.json" ] && \
-    [ -f "$root/browser-runtime/playwright-core/package.json" ] && \
-    [ -f "$root/browser-runtime/playwright-core/index.js" ] && \
-    [ -f "$root/browser-runtime/playwright-core/lib/coreBundle.js" ] && \
     [ -f "$root/lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs" ] && \
     [ -f "$root/lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm" ] && \
     [ -f "$root/lib/resvg-wasm/index_bg.wasm" ] && \

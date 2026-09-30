@@ -3,9 +3,7 @@ import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import DESCRIPTION from "./bash.txt"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Truncate } from "@ericsanchezok/synergy-harness/tool/truncation"
-import { SynergyLinkExecution } from "./synergy-link-execution"
 import { LocalBashBackend } from "./bash/local"
-import { RemoteBashBackend } from "./bash/remote"
 import type { BashMetadata, BashResult } from "@ericsanchezok/synergy-harness/tool/bash-contract"
 
 export function modelVisibleBashResult(result: BashResult): BashResult {
@@ -45,20 +43,7 @@ const parameters = z
       .positive()
       .optional()
       .describe(
-        "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 30 (30 seconds). For remote Synergy Link execution, the host clamps this value to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout does not prove the remote command was cancelled, so never auto-retry mutating commands after an ambiguous timeout.",
-      ),
-    linkID: z
-      .string()
-      .optional()
-      .describe(
-        "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
-      ),
-    targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
-    detach: z
-      .boolean()
-      .optional()
-      .describe(
-        "Remote-only: detach the command from the Synergy Link session lifecycle when the connected host explicitly reports support. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Unsupported hosts reject detach=true, and the field is never sent to hosts that do not advertise support. Ignored for local execution.",
+        "Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 30 (30 seconds).",
       ),
   })
   .strict()
@@ -76,18 +61,6 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>(
     },
     parameters,
     async execute(params, ctx) {
-      const target = await SynergyLinkExecution.resolveExecutionTarget({
-        targetID: params.targetID,
-        targetIDSupplied: Object.hasOwn(params, "targetID"),
-        linkID: params.linkID,
-        linkIDSupplied: Object.hasOwn(params, "linkID"),
-        tool: "bash",
-        agent: ctx.agent,
-      })
-      if (target.kind === "remote") {
-        return modelVisibleBashResult(await RemoteBashBackend.execute(params, target))
-      }
-
       return modelVisibleBashResult(await LocalBashBackend.execute(params, ctx))
     },
   },

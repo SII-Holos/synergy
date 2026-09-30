@@ -3,6 +3,28 @@ import fs from "node:fs/promises"
 import { createIsolatedTestEnv, isTransientCleanupError } from "../src/env"
 
 describe("createIsolatedTestEnv", () => {
+  test("keeps orchestration credentials and parent file selection out of fixture children", async () => {
+    const keys = ["GH_TOKEN", "GITHUB_TOKEN", "SYNERGY_TEST_FILES"] as const
+    const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]))
+    for (const key of keys) process.env[key] = "orchestrator-fixture"
+    try {
+      const isolated = await createIsolatedTestEnv()
+      try {
+        for (const key of keys) {
+          expect(isolated.env[key]).toBeUndefined()
+          expect(process.env[key]).toBe("orchestrator-fixture")
+        }
+      } finally {
+        await isolated.dispose()
+      }
+    } finally {
+      for (const key of keys) {
+        if (previous[key] === undefined) delete process.env[key]
+        else process.env[key] = previous[key]
+      }
+    }
+  })
+
   test("injects SYNERGY_TEST_HOME and SYNERGY_TEST_ROOT, deletes SYNERGY_HOME, forces LC_ALL=C", async () => {
     const isolated = await createIsolatedTestEnv()
     try {

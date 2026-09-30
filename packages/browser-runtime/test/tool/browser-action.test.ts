@@ -58,6 +58,7 @@ describe("tool.browser_action", () => {
     const tool = await BrowserActionTool.init()
     const result = await tool.execute(
       {
+        pageId: "page-test",
         action: {
           type: "click",
           target: { kind: "role", role: "button", name: "Save" },
@@ -89,6 +90,7 @@ describe("tool.browser_action", () => {
     const tool = await BrowserActionTool.init()
     const result = await tool.execute(
       {
+        pageId: "page-test",
         action: {
           type: "fill",
           target: { kind: "label", text: "Name" },
@@ -116,6 +118,7 @@ describe("tool.browser_action", () => {
     const tool = await BrowserActionTool.init()
     const result = await tool.execute(
       {
+        pageId: "page-test",
         action: {
           type: "click",
           target: { kind: "role", role: "button", name: "Save" },
@@ -125,8 +128,7 @@ describe("tool.browser_action", () => {
     )
 
     expect(result.output).toContain("Settled: no (timeout) after 30000ms; 2 request(s) still in flight")
-    expect(result.output).toContain("settled:false is a settle outcome, not an action failure")
-    expect(result.output).toContain("do not retry the action blindly")
+    expect(result.output).toContain("Page still loading. Inspect it before retrying")
     expect(result.metadata.settled).toBe(false)
     expect(result.metadata.settleReason).toBe("timeout")
     expect(result.metadata.inflightRequests).toBe(2)
@@ -136,6 +138,7 @@ describe("tool.browser_action", () => {
     const tool = await BrowserActionTool.init()
     const result = await tool.execute(
       {
+        pageId: "page-test",
         action: {
           type: "click",
           target: { kind: "role", role: "button", name: "Save" },
@@ -144,8 +147,7 @@ describe("tool.browser_action", () => {
       context(),
     )
 
-    expect(result.output).toContain("business effects (saved, sent, applied) are NOT verified")
-    expect(result.output).toContain("before claiming completion")
+    expect(result.output).toContain("Verify completion in the observed page state.")
     expect(result.output).not.toMatch(/Saved\.|Sent\.|Applied\.|saved successfully/)
   })
 
@@ -163,6 +165,7 @@ describe("tool.browser_action", () => {
     const tool = await BrowserActionTool.init()
     const result = await tool.execute(
       {
+        pageId: "page-test",
         action: {
           type: "click",
           target: { kind: "role", role: "button", name: "Save" },
@@ -172,7 +175,7 @@ describe("tool.browser_action", () => {
       context(),
     )
 
-    expect(result.output).toContain("Settle was skipped, so the snapshot is NOT post-settle evidence.")
+    expect(result.output).toContain("Settle skipped. Verify the page before continuing.")
   })
 
   test("guides unknown outcomes to verification instead of blind side-effect retries", async () => {
@@ -189,6 +192,7 @@ describe("tool.browser_action", () => {
     const received = await tool
       .execute(
         {
+          pageId: "page-test",
           action: {
             type: "click",
             target: { kind: "role", role: "button", name: "Send" },

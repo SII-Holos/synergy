@@ -1,74 +1,47 @@
 # Browser Workspace
 
-Browser is a shared workspace between the user and the active Synergy session. The user can navigate and interact visually while agents inspect and operate the same page through Browser tools.
+Browser is the Desktop workspace for using websites alongside a task. Each task can keep multiple real pages open, and the user and Agent work in the same browser contexts. The Web and CLI products use their own search, fetch and MCP capabilities; the native Browser panel requires a local Desktop server.
 
-The default owner is a session. Each session owns at most one Browser page, so the address bar, rendered surface, model tools, annotations, downloads, and diagnostics refer to one coherent browsing context. A scope-owned mode exists for explicitly shared integrations, but normal product use is session-owned.
+## Pages
 
-## One Session, One Page
+Choose Browser from the workbench's plus menu to create a new page. Each webpage is a peer tab beside files and other panels, with its website title or New tab. Website popups become peer tabs and retain normal login-window behavior. Closing a tab closes that page; switching tabs or hiding the side workspace keeps its native context alive. Restoring the workbench reads existing pages without opening new ones.
 
-Opening the Browser panel, reading Browser session state, connecting the event socket, or opening WebRTC signaling does not create a page. The first user or agent navigation creates it. Later navigation reuses that page.
+The user's selected tab stays selected while the Agent works elsewhere. The follow-agent action is an explicit way to inspect the Agent's page. Human interaction does not pause an entire identity or task. Page dialogs, file selections and errors stay with their own page when switching tabs.
 
-There is no Browser tab strip or hidden collection of pages to merge. Closing the page returns the session to its no-page state. Archiving or deleting the owning Synergy session disposes its live Browser page so Chromium renderers do not accumulate.
+The address bar, history controls, viewport choices, annotations and diagnostic panels operate on the selected page. Agent tools use explicit page IDs returned by their page list. A task supports 16 active pages and 64 saved pages, within a Desktop-wide limit of 64 active pages; capacity errors ask for an unused page to be closed.
 
-Page identity, URL, title, recent activity, annotations, profile directory, and browser storage state are persisted by owner. Restoring a Browser session recreates its single page and attempts to return to the saved URL.
+The page menu provides find, webpage zoom, printing and PDF saving. Diagnostic panels and viewport presets live under Developer tools. Native webpage shortcuts use Command on macOS and Control on Windows/Linux. The person and Agent may operate the same page concurrently; no takeover or hand-back is required. If navigation invalidates an Agent observation, the Agent reads the page again instead of replaying an uncertain submission.
 
-## User and Agent Interaction
+The tab context menu offers reload, copy address, external opening, close, close others and close tabs to the right. Batch closing stays within that task's selected workbench surface and respects each resource's close policy. Downloads and diagnostic views provide a direct return to the webpage. Suspended pages wait for recovery before querying native navigation controls.
 
-The user surface provides an address bar, back/forward/reload/stop controls, fit and fixed viewport choices, direct pointer and keyboard interaction, annotations, and Browser-focused diagnostic panels.
+## Saved website logins
 
-Agents operate the same page with tools for:
+Website logins are remembered automatically and reused by other tasks and Scopes in the same Desktop installation. Ordinary browsing needs no account setup in Synergy. Browser options → Browser settings contains login profiles and website permissions. Add a separate profile only when another account needs an independent login store. Opening a page copy with that profile creates a new peer tab; existing pages retain their original profile.
 
-- navigation, history, viewport, clicking, typing, scrolling, and composite actions
-- accessibility snapshots and page reads
-- screenshots and element inspection
-- console and network inspection
-- waiting for page or element conditions
-- controlled evaluation
-- assets, clipboard, downloads, and Browser health
+Temporary identities have no persistent login store and are discarded when their last page closes. They are excluded from task recovery. Website login remains a direct user interaction; the Agent can continue after the user completes login, including popup-based authentication.
 
-Agent actions and navigation settle the page by default. Agent `goto`, back, forward, and reload use the main-frame `load` lifecycle for up to 15 seconds; settle-eligible actions use `networkquiet` for up to 10 seconds; explicit limits cannot exceed the 30-second hard cap. User navigation remains immediate. A timeout is not an action failure: the result reports `settled: false`, current page state, and a best-effort accessibility snapshot when it can be collected. `browser_wait` remains available for business conditions the engine cannot infer — specific text, locator state, URL change, download, or dialog.
+Browser settings supports profile naming and default selection, with enablement, website-data clearing and deletion under Manage this profile. Disabling an identity suspends its pages across tasks and blocks Agent use. Clearing website data signs out its websites after closing live pages. Deleting an identity also removes its catalog entry. Neither operation changes another identity's data. Password import, manual save/update and origin-scoped fill are available separately from website session storage.
 
-When the Browser Host is restarting or has failed recovery, side-effect commands return a retryable status instead of being replayed. Use `browser_navigation` with action `resume` or the native Browser Retry control; snapshot, read, and `current` remain available for inspection. Native recovery may replace the renderer generation, but it preserves the owner and page identity, profile and storage state, URL, viewport, bounds, visibility, and focus.
+## Website permissions and files
 
-Browser action results state what was dispatched and what page state was observed; they do not prove that a business effect was saved, sent, or applied. If a command outcome is unknown, do not run the same call again: inspect the page with `current`, `browser_snapshot`, or `browser_read`, then issue a fresh command only when the observed state supports it. An ambiguous locator returns bounded candidate details and usable snapshot references instead of choosing the first match.
+Identity rules can narrow Agent access, upload and download permissions for an exact website origin. Task permissions remain authoritative: “Allow” does not elevate a restricted task. “Ask” is interactive in guarded mode and denied in autonomous mode; Full Access bypasses approval rules. Disabled identities stay unavailable in all modes. Human browser gestures remain explicit user actions.
 
-User annotations retain the page, target reference or element, comment, optional style feedback, resolution state, and time. They can be formatted into agent context so visual feedback remains attached to the page work rather than being copied into an unrelated note.
+Downloads appear as waiting until accepted. Chromium can already have buffered the response, but unaccepted files stay private and cannot be exported. The user can accept or cancel from Downloads, and Agent acceptance follows the identity's policy. Uploads and exports respect the current Workspace and the existing file-permission system. Executable download types and byte limits have independent safety checks.
 
-## Presentation Modes
+## Recovery and evidence
 
-The Browser workspace has two first-class interactive presentations:
+Returning to a task after restart shows its saved persistent pages as suspended. Resume restores the address and identity when available. A failed page offers a local retry without changing other tabs. Browser storage can preserve a website login; unsaved forms, JavaScript state, navigation history and one-use login transactions are not recovery guarantees.
 
-- Desktop-local native presentation embeds Electron `WebContentsView` in the application window.
-- Remote Web presentation streams the Browser host with WebRTC and sends input over its data channel.
+Agent results distinguish dispatched actions, settling and observed page state. A timeout does not establish that a submission failed. After an uncertain action, inspect the page before deciding whether another action is needed. Screenshots and feedback are added to the current task’s editable draft with their source URL and capture time. A marked point refers to the captured image, not a reusable live element handle. Sending remains a separate composer action. Completed downloads remain available after their source page closes and can be saved, saved and opened, or added to the task draft.
 
-Both represent the same session-owned page and command model. Remote presentation preserves normal browser interaction: pointer focus, wheel input, keyboard shortcuts, text caret behavior, paste, and IME composition. Host `pending`, `ready`, `restarting`, and loading states describe connection progress; a temporarily pending host is not treated as a fatal page error.
+Implementation ownership and limits are defined in [Browser runtime](../architecture/browser-runtime.md); durable visual rules live in [Web product contract](../../apps/web/PRODUCT.md).
 
-Interactive Browser presentation is not an iframe, pseudo-tab, or screenshot-stream fallback. Screenshots remain deliberate artifacts for inspection and agent tools, not the transport for interactive browsing.
+## Local browser data
 
-## Private-Network Web Access
+Desktop stores up to 100 unique recent addresses per persistent profile; the address bar suggests up to eight. Temporary profiles leave no recent history or saved passwords. Passwords use the operating system encryption service and are unavailable when it is locked or insecure. Only matching website origins may be filled, and filling never submits a form. Save/update is explicit from a populated login form.
 
-The remote Web presentation remains available when the Synergy UI is served over ordinary HTTP on a trusted private or overlay network. A non-loopback HTTP origin is not a browser Secure Context, so the App and WebRTC viewer use capability-safe ordinary identifiers rather than requiring `crypto.randomUUID()` during startup or client construction.
+Import opens a source picker with independent password and Cookie choices. On macOS, installed Chrome, Edge and Brave profiles offer direct transfer after OS authorization. Safari offers password import from its exported ZIP or CSV, with a visible export guide; Safari cookies are unavailable. All Desktop platforms accept password CSV, Safari ZIP containing one password CSV (including localized filenames), and Cookie JSON arrays or Playwright storageState.cookies. The new-tab search stays centered and the import entry lives in its footer. Existing records are preserved unless replacement is selected. Progress and final counts reflect completed records; cancellation retains completed imports. Unsupported partitioned cookies are reported rather than flattened. Clearing recent history, deleting passwords and clearing website data are separate operations; deleting a profile clears all three.
 
-Secure-Context-only browser features degrade at their owning action instead of disabling the Browser workspace or crashing the application. Common copy actions use the shared clipboard fallback, clipboard reads or unsupported plugin clipboard actions report a local failure, and system notifications remain silent when the browser API or permission is unavailable. Security-sensitive randomness never uses a weak fallback.
+## Overlay presentation
 
-## Navigation and Network
-
-User address-bar navigation and agent navigation use the same Chromium-backed page. HTTP and HTTPS targets follow the machine's normal network routing, including localhost, private development services, direct IP addresses, and TUN/Fake-IP environments. Agent calls remain governed by the ordinary Browser interaction and network-request capabilities; Browser does not add a second private-network permission.
-
-Chromium owns webpage-origin security, CORS, TLS, mixed content, and Local Network Access. The Synergy gateway is owner-authenticated transport plumbing and must not reinterpret routable IP ranges. Browser content grants Chromium local-network and loopback-network access without granting unrelated device, location, media, or filesystem permissions.
-
-`file:` navigation is limited to an existing path inside the active workspace. Dotfiles and paths containing `node_modules`, `.git`, or `.synergy` are denied, including after symlink resolution. Other protocols are denied except the internal blank page used for an empty Browser.
-
-Downloads are checked by MIME type and filename. Text, images, JSON, PDF, and common archive formats are eligible; executables, scripts, installers, opaque binaries, and other dangerous extensions are blocked. Network inspection strips sensitive headers such as cookies and authorization values.
-
-## Viewports
-
-Workspace resize commands use CSS viewport width and height. Fit mode follows the available panel; fixed mode uses a selected viewport. Device scale details belong to the underlying browser implementation and are not part of the shared user-facing resize contract.
-
-## Boundaries
-
-- Browser is a workspace attached to a Synergy owner, not an independent conversation.
-- User and agent interaction converge on one page state.
-- Presentation mode changes how the page is shown, not what page the session owns.
-- Browser policy supplements the centralized control profile; it does not replace tool authorization.
-- A Browser screenshot is an artifact, not an interactive presentation mode.
+Menus, recent suggestions and dialogs temporarily cover the native page. Desktop captures one bounded still image for that transition, hides the native view, and restores the same view after the last overlay closes. The image is noninteractive and discarded on resume or page change; it is never a browser control transport or an Agent screenshot stream. Screenshot previews use the shared wide dialog with a scrollable body, keeping actions reachable in small windows.

@@ -13,22 +13,19 @@ import {
 import { versionPackage, type DependencyVersionMap, type PackageJson } from "./shared/package-manifest"
 import { bunInstall } from "./nodes/bun-install"
 import { generateSdk } from "./nodes/generate-sdk"
-import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
 import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
-import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
 import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 
-type PackageAlias = "sdk" | "util" | "synergy-link-protocol" | "plugin" | "plugin-kit"
+type PackageAlias = "sdk" | "util" | "plugin" | "plugin-kit"
 
 const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "@ericsanchezok/synergy-sdk",
   util: "@ericsanchezok/synergy-util",
-  "synergy-link-protocol": "@ericsanchezok/synergy-link-protocol",
   plugin: "@ericsanchezok/synergy-plugin",
   "plugin-kit": "@ericsanchezok/synergy-plugin-kit",
 }
@@ -36,7 +33,6 @@ const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
 const TAG_PREFIX_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "synergy-sdk",
   util: "synergy-util",
-  "synergy-link-protocol": "synergy-link-protocol",
   plugin: "synergy-plugin",
   "plugin-kit": "synergy-plugin-kit",
 }
@@ -52,11 +48,6 @@ function parsePackages(input: string | undefined): PackageAlias[] {
     .filter(Boolean)
   const result: PackageAlias[] = []
   for (const alias of aliases) {
-    // Backward compat alias for existing CI pipelines — remove once CI configs are updated
-    if (alias === "meta") {
-      result.push("synergy-link-protocol")
-      continue
-    }
     if (!(alias in PACKAGE_BY_ALIAS)) {
       throw new Error(`Unknown package alias "${alias}". Use one of: ${Object.keys(PACKAGE_BY_ALIAS).join(", ")}`)
     }
@@ -68,7 +59,7 @@ function parsePackages(input: string | undefined): PackageAlias[] {
 function expandPackageDependencies(aliases: PackageAlias[]): PackageAlias[] {
   const selected = new Set(aliases)
   if (selected.has("plugin") || selected.has("plugin-kit")) selected.add("util")
-  const order: PackageAlias[] = ["util", "sdk", "synergy-link-protocol", "plugin", "plugin-kit"]
+  const order: PackageAlias[] = ["util", "sdk", "plugin", "plugin-kit"]
   return order.filter((alias) => selected.has(alias))
 }
 
@@ -103,7 +94,6 @@ async function rewriteSelectedVersions(versionByPackage: Record<string, string>,
 async function buildPackage(alias: PackageAlias) {
   if (alias === "sdk") await generateSdk()
   if (alias === "util") await buildUtil()
-  if (alias === "synergy-link-protocol") await buildSynergyLinkProtocol()
   if (alias === "plugin") await buildPlugin()
   if (alias === "plugin-kit") await buildPluginKit()
 }
@@ -116,7 +106,6 @@ async function publishPackage(
 ) {
   if (alias === "sdk") await publishSdkCandidate(version, channel, dependencyVersions)
   if (alias === "util") await publishUtilCandidate(version, channel, dependencyVersions)
-  if (alias === "synergy-link-protocol") await publishSynergyLinkProtocolCandidate(version, channel, dependencyVersions)
   if (alias === "plugin") await publishPluginCandidate(version, channel, dependencyVersions)
   if (alias === "plugin-kit") await publishPluginKitCandidate(version, channel, dependencyVersions)
 }

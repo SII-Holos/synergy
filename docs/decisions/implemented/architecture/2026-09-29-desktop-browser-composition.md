@@ -1,0 +1,23 @@
+# Decision Record: Desktop selects the browser component
+
+Status: implemented
+
+## Problem
+
+The full backend selection includes browser hosting even when launched by CLI or Web. Web development also starts an Electron browser host, adding an application dependency to an otherwise lightweight server workflow.
+
+## Decision
+
+The full and Web selections exclude browser-runtime. The Desktop selection includes it explicitly. Source Desktop startup chooses desktopComponents before Runtime registration; the installed launcher passes the Desktop host selection to its component loader. Ordinary CLI startup does not activate an installed browser component. Browser hosting uses Electron bundled with Desktop, without an independent Chromium installer.
+
+Desktop's managed server and local development orchestrator set the Desktop browser composition flag. Web development starts only the server and application. Browser component registration supplies HTTP services without contributing Chromium installation commands.
+
+## Alternatives considered
+
+- Hiding the Web panel alone retains the browser engine in CLI/server composition.
+- Registering browser services when a panel opens changes a sealed Runtime's capabilities.
+- Removing the shared frontend code also removes Desktop's renderer.
+
+## Consequences
+
+Browser hosting is a Desktop composition choice. The [page and identity implementation](2026-09-29-desktop-browser-pages-and-identities.md) owns native page collections, profile persistence and the workbench UI; engine and distribution selection stay in this composition boundary. Source catalog and development planner tests verify product selection independently of a running browser.

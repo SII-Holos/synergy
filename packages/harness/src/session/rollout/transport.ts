@@ -1,3 +1,4 @@
+import { InputImages } from "./input-images"
 import { Context } from "../../util/context"
 import { RolloutTransportSchema } from "./transport-schema"
 import { record, RolloutRecordingError } from "./error"
@@ -13,7 +14,7 @@ export namespace RolloutTransport {
       fetch(globalThis.fetch, input, init),
     { preconnect: globalThis.fetch.preconnect },
   )
-  const context = Context.create<Sink>("rollout.transport")
+  const context = Context.create<{ sink: Sink; inputImages?: InputImages.Entry[] }>("rollout.transport")
   const responseHeaders = new Set(["x-request-id", "request-id", "x-amzn-requestid", "openai-processing-ms"])
   const requestOptions = new Set([
     "body",
@@ -33,11 +34,20 @@ export namespace RolloutTransport {
   ])
 
   export function provide<T>(sink: Sink, action: () => T): T {
-    return context.provide(sink, action)
+    return context.provide({ sink }, action)
+  }
+
+  export function inputImages(before: unknown) {
+    const current = context.tryUse()
+    const original = InputImages.compare(before, before).map((image) => image.sha256)
+    return (after: unknown) => {
+      if (current) current.inputImages = InputImages.retained(original, after)
+    }
   }
 
   export async function fetch(fetchFn: Fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    const sink = context.tryUse()
+    const current = context.tryUse()
+    const sink = current?.sink
     if (!sink) return fetchFn(input, init)
     const attemptID = crypto.randomUUID()
     const original = new Request(input, init)
@@ -294,6 +304,7 @@ export namespace RolloutTransport {
       url: endpoint.origin + endpoint.pathname,
       method: original.method,
       mediaType: original.headers.get("content-type") ?? "application/octet-stream",
+      inputImages: current?.inputImages,
       timing: timing.snapshot(),
     })
     const requestBody = original.body ? body(original.body, "request") : undefined
@@ -335,7 +346,15 @@ export namespace RolloutTransport {
       )
       // Observe rejection while the durable sent marker is crossing the worker boundary.
       void fetching.catch(() => {})
-      await emit({ type: "attempt-sent", attemptID, timing: timing.snapshot() })
+      await emit({
+        type: "attempt-sent",
+        attemptID,
+        timing: timing.snapshot(),
+        requestImages:
+          current?.inputImages?.some((image) => image.status === "included") && wireBody instanceof Uint8Array
+            ? InputImages.wire(new TextDecoder().decode(wireBody))
+            : undefined,
+      })
       response = await fetching
       responseOK = response.ok
       await emit({

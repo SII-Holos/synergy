@@ -11,7 +11,6 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `acp` | start ACP (Agent Client Protocol) server |
 | `agent` | manage agents |
 | `auth` | manage credentials |
-| `browser` | diagnose and install Chromium for Browser tools |
 | `channel` | manage messaging channels |
 | `config` | manage synergy configuration |
 | `data` | manage synergy data location and storage |
@@ -98,11 +97,6 @@ manage credentials
 ## auth [name]
 
 authenticate with an OAuth-enabled MCP server
-
-
-## browser
-
-diagnose and install Chromium for Browser tools
 
 
 ## build [path]
@@ -407,16 +401,6 @@ inspect a session without hydrating its messages
 | `--scope` (string) | scope id when the session index is missing |
 | `--json` (boolean) |  |
 
-## install
-
-install verified managed Chromium for Browser tools
-
-| Option | Description |
-| --- | --- |
-| `--force` (boolean) | reinstall Chromium even when the managed version is current |
-| `--json` (boolean) | print the installation result as JSON |
-| `--deps` (boolean) | install required Linux system packages (use --no-deps to skip) |
-
 ## install [spec..]
 
 install components, presets, plugins or applications
@@ -426,11 +410,6 @@ install components, presets, plugins or applications
 | `--trust-host-code` (boolean) | trust the resolved component and application code to run with host privileges |
 | `--approve-plugin` (array) | approve the displayed API4 capability grant for these plugin ids |
 | `--resume` (boolean) | finish an interrupted plugin activation |
-
-## install-deps
-
-install Linux system packages required by Chromium
-
 
 ## learning
 

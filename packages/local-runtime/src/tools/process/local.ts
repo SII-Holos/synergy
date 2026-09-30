@@ -52,7 +52,7 @@ export namespace LocalProcessBackend {
 
       return {
         title: "Process list",
-        metadata: { action, processes, backend: "local" },
+        metadata: { action, processes },
         output: lines.length > 0 ? lines.join("\n") : "No running or recent processes.",
       }
     }
@@ -84,7 +84,7 @@ export namespace LocalProcessBackend {
           if (!current.backgrounded) {
             return {
               title: "Process not backgrounded",
-              metadata: { action, processId, ...currentInfo, status: "error", backend: "local" },
+              metadata: { action, processId, ...currentInfo, status: "error" },
               output: `Process ${processId} is not a background process.`,
             }
           }
@@ -131,7 +131,7 @@ export namespace LocalProcessBackend {
 
         return {
           title: "Process not found",
-          metadata: { action, processId, status: "not_found", backend: "local" },
+          metadata: { action, processId, status: "not_found" },
           output: `No process found for ${processId}`,
         }
       }
@@ -140,7 +140,7 @@ export namespace LocalProcessBackend {
         if (!target) {
           return {
             title: "Process not found",
-            metadata: { action, processId, status: "not_found", backend: "local" },
+            metadata: { action, processId, status: "not_found" },
             output: `No process found for ${processId}`,
           }
         }
@@ -148,7 +148,7 @@ export namespace LocalProcessBackend {
         if (proc && !proc.backgrounded) {
           return {
             title: "Process not backgrounded",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: `Process ${processId} is not a background process.`,
           }
         }
@@ -168,7 +168,7 @@ export namespace LocalProcessBackend {
 
         const result: ProcessResult = {
           title: `Log: ${processId}`,
-          metadata: { action, processId, ...procInfo, status, backend: "local" },
+          metadata: { action, processId, ...procInfo, status },
           output: slice || "(no output)",
         }
         if (status === "running") return result
@@ -179,7 +179,7 @@ export namespace LocalProcessBackend {
         if (!proc) {
           return {
             title: "Process not found",
-            metadata: { action, processId, status: "not_found", backend: "local" },
+            metadata: { action, processId, status: "not_found" },
             output: `No active process found for ${processId}`,
           }
         }
@@ -187,7 +187,7 @@ export namespace LocalProcessBackend {
         if (!proc.backgrounded) {
           return {
             title: "Process not backgrounded",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: `Process ${processId} is not a background process.`,
           }
         }
@@ -196,7 +196,7 @@ export namespace LocalProcessBackend {
         if (!stdin || stdin.destroyed) {
           return {
             title: "Stdin not writable",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: `Process ${processId} stdin is not writable.`,
           }
         }
@@ -210,7 +210,7 @@ export namespace LocalProcessBackend {
 
         return {
           title: `Wrote to ${processId}`,
-          metadata: { action, processId, ...procInfo, status: "running", backend: "local" },
+          metadata: { action, processId, ...procInfo, status: "running" },
           output: `Wrote ${(params.data ?? "").length} bytes to process ${processId}.`,
         }
       }
@@ -219,7 +219,7 @@ export namespace LocalProcessBackend {
         if (!proc) {
           return {
             title: "Process not found",
-            metadata: { action, processId, status: "not_found", backend: "local" },
+            metadata: { action, processId, status: "not_found" },
             output: `No active process found for ${processId}`,
           }
         }
@@ -227,7 +227,7 @@ export namespace LocalProcessBackend {
         if (!proc.backgrounded) {
           return {
             title: "Process not backgrounded",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: `Process ${processId} is not a background process.`,
           }
         }
@@ -236,7 +236,7 @@ export namespace LocalProcessBackend {
         if (!stdin || stdin.destroyed) {
           return {
             title: "Stdin not writable",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: `Process ${processId} stdin is not writable.`,
           }
         }
@@ -245,7 +245,7 @@ export namespace LocalProcessBackend {
         if (keys.length === 0) {
           return {
             title: "No keys provided",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: "No key tokens provided for send-keys.",
           }
         }
@@ -254,7 +254,7 @@ export namespace LocalProcessBackend {
         if (!data) {
           return {
             title: "No key data",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: "No valid key data to send.",
           }
         }
@@ -269,7 +269,7 @@ export namespace LocalProcessBackend {
         const warningText = warnings.length > 0 ? `\nWarnings: ${warnings.join(", ")}` : ""
         return {
           title: `Sent keys to ${processId}`,
-          metadata: { action, processId, ...procInfo, status: "running", backend: "local" },
+          metadata: { action, processId, ...procInfo, status: "running" },
           output: `Sent ${data.length} bytes to process ${processId}.${warningText}`,
         }
       }
@@ -278,7 +278,7 @@ export namespace LocalProcessBackend {
         if (!proc) {
           return {
             title: "Process not found",
-            metadata: { action, processId, status: "not_found", backend: "local" },
+            metadata: { action, processId, status: "not_found" },
             output: `No active process found for ${processId}`,
           }
         }
@@ -286,7 +286,7 @@ export namespace LocalProcessBackend {
         if (!proc.backgrounded) {
           return {
             title: "Process not backgrounded",
-            metadata: { action, processId, status: "error", backend: "local" },
+            metadata: { action, processId, status: "error" },
             output: `Process ${processId} is not a background process.`,
           }
         }
@@ -296,7 +296,7 @@ export namespace LocalProcessBackend {
 
         return {
           title: `Killed ${processId}`,
-          metadata: { action, processId, ...procInfo, status: "killed", backend: "local" },
+          metadata: { action, processId, ...procInfo, status: "killed" },
           output: `Killed process ${processId}.`,
         }
       }
@@ -306,13 +306,13 @@ export namespace LocalProcessBackend {
           if (proc) {
             return {
               title: "Process still running",
-              metadata: { action, processId, status: "error", backend: "local" },
+              metadata: { action, processId, status: "error" },
               output: `Process ${processId} is still running. Use kill or remove instead.`,
             }
           }
           return {
             title: "Process not found",
-            metadata: { action, processId, status: "not_found", backend: "local" },
+            metadata: { action, processId, status: "not_found" },
             output: `No finished process found for ${processId}`,
           }
         }
@@ -320,7 +320,7 @@ export namespace LocalProcessBackend {
         ProcessRegistry.remove(processId)
         return {
           title: `Cleared ${processId}`,
-          metadata: { action, processId, ...procInfo, status: "cleared", backend: "local" },
+          metadata: { action, processId, ...procInfo, status: "cleared" },
           output: `Cleared process ${processId} from history.`,
         }
       }
@@ -334,7 +334,7 @@ export namespace LocalProcessBackend {
 
         return {
           title: `Removed ${processId}`,
-          metadata: { action, processId, ...procInfo, status: "removed", backend: "local" },
+          metadata: { action, processId, ...procInfo, status: "removed" },
           output: `Removed process ${processId}.`,
         }
       }

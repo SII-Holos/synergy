@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -47,7 +48,11 @@ beforeAll(async () => {
     root,
     plugins: [solidPlugin()],
     resolve: { alias: { "@": source } },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] } },
+    server: {
+      host: "127.0.0.1",
+      port: await fixturePort(),
+      fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
+    },
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]!

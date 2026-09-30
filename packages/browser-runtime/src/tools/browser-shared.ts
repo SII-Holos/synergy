@@ -4,6 +4,7 @@ import {
   type BrowserBackendResult,
   type BrowserSnapshotElement,
 } from "@ericsanchezok/synergy-browser-core"
+import { BrowserProfiles } from "../profiles.js"
 import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserCommandService } from "../command-service.js"
 import { BrowserOwner } from "../owner.js"
@@ -17,7 +18,7 @@ export class BrowserPageNotFoundError extends BrowserProtocolError {
       message: pageId ? `Browser page not found: ${pageId}` : "No browser page is open.",
       retryable: false,
       pageId,
-      suggestedAction: "Use browser_navigation with action goto or resume.",
+      suggestedAction: "List pages with browser_navigation, then open or resume a page.",
     })
     this.name = "BrowserPageNotFoundError"
   }
@@ -30,12 +31,16 @@ export namespace BrowserToolHelper {
 
   export async function execute(
     ctx: Tool.Context,
+    pageId: string,
     command: BrowserBackendCommand,
     suffix: string = command.type,
   ): Promise<BrowserBackendResult> {
     const owner = BrowserOwner.fromToolContext(ctx)
     return BrowserCommandService.execute(owner, {
       command,
+      pageId,
+      authorize: ({ profileId, url, command }) =>
+        authorize(ctx, profileId, url, command.type === "upload" ? "uploads" : "access"),
       commandId: commandId(ctx, suffix),
       signal: ctx.abort,
     })
@@ -43,25 +48,53 @@ export namespace BrowserToolHelper {
 
   export async function executeForOwner(
     owner: BrowserOwner.Info,
+    pageId: string,
     command: BrowserBackendCommand,
     commandId: string,
     signal?: AbortSignal,
   ): Promise<BrowserBackendResult> {
-    return BrowserCommandService.execute(owner, { command, commandId, signal })
+    return BrowserCommandService.execute(owner, { pageId, command, commandId, signal })
   }
 
-  export async function getPage(owner: BrowserOwner.Info, pageId?: string): Promise<BrowserPageBackend> {
+  export async function authorize(
+    ctx: Tool.Context,
+    profileId: string,
+    url: string,
+    operation: "access" | "uploads" | "downloads",
+  ): Promise<void> {
+    const profile = await BrowserProfiles.requireEnabled(profileId)
+    const origin = new URL(url).origin
+    const policy = profile.origins[origin]?.[operation] ?? "inherit"
+    if (policy === "inherit" || policy === "allow") return
+    await ctx.ask({
+      permission: `browser_identity_${operation}`,
+      patterns: [`${profile.id}:${profile.revision}:${origin}`],
+      metadata: {
+        capability:
+          operation === "access" ? "browser_interact" : operation === "uploads" ? "browser_upload" : "browser_download",
+        resourcePolicy: policy,
+        identity: profile.name,
+        origin,
+        operation,
+      },
+    })
+    const fresh = await BrowserProfiles.requireEnabled(profileId)
+    if (fresh.revision !== profile.revision)
+      throw new BrowserProtocolError({
+        code: "browser_permission_changed",
+        message: "Identity permissions changed. Review the page before continuing.",
+        retryable: true,
+      })
+  }
+
+  export async function getPage(owner: BrowserOwner.Info, pageId: string): Promise<BrowserPageBackend> {
     const session = await BrowserCommandService.session(owner)
-    if (pageId) {
-      const page = session.getPage(pageId)
-      if (!page) throw new BrowserPageNotFoundError(pageId)
-      return page
-    }
-    if (!session.page) throw new BrowserPageNotFoundError(session.descriptor?.id)
-    return session.page
+    const page = session.getPage(pageId)
+    if (!page) throw new BrowserPageNotFoundError(pageId)
+    return page
   }
 
-  export async function resolvePage(ctx: Tool.Context, pageId?: string): Promise<BrowserPageBackend> {
+  export async function resolvePage(ctx: Tool.Context, pageId: string): Promise<BrowserPageBackend> {
     return getPage(BrowserOwner.fromToolContext(ctx), pageId)
   }
 
@@ -187,10 +220,7 @@ export function formatSettleSummary(input: FormatSettleInput): string | undefine
       : ""
   const lines = [`Settled: ${input.settled ? "yes" : "no"}${reason}${elapsed}${inflight}`]
   if (!input.settled) {
-    lines.push(
-      "The page was still active when the settle budget ended. settled:false is a settle outcome, not an action failure — do not retry the action blindly.",
-      "Inspect the current state first (browser_snapshot, browser_read, or browser_navigation current), then wait only for a specific business condition with browser_wait.",
-    )
+    lines.push("Page still loading. Inspect it before retrying; use browser_wait for a specific condition.")
   } else if (input.snapshotUnavailable) {
     lines.push("Snapshot unavailable — inspect the current page with browser_snapshot or browser_read.")
   } else if (input.snapshotAvailable) {
@@ -204,11 +234,10 @@ export function formatSettleSummary(input: FormatSettleInput): string | undefine
  * dispatched and what the page was observed to do, never business completion.
  */
 export function formatActionEvidenceNote(input: { snapshotAvailable: boolean; settleSkipped?: boolean }): string {
-  const parts = ["The action was dispatched; business effects (saved, sent, applied) are NOT verified."]
-  parts.push("Verify with browser_snapshot, browser_read, or browser_navigation current before claiming completion.")
-  if (input.snapshotAvailable) parts.push("The snapshot below reflects the page state observed right after the action.")
-  if (input.settleSkipped) parts.push("Settle was skipped, so the snapshot is NOT post-settle evidence.")
-  return parts.join(" ")
+  if (input.settleSkipped) return "Settle skipped. Verify the page before continuing."
+  return input.snapshotAvailable
+    ? "Verify completion in the observed page state."
+    : "Action dispatched. Inspect the page to verify completion."
 }
 
 /**
