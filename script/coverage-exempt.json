@@ -635,10 +635,6 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/panels/SynergyLinkPanel.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
-        },
-        {
           "glob": "src/components/settings/panels/UsagePanel.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
@@ -1390,10 +1386,6 @@
         {
           "glob": "src/holos/startup.ts",
           "reason": "requires live Holos control plane"
-        },
-        {
-          "glob": "src/remote/index.ts",
-          "reason": "barrel re-export"
         }
       ]
     },
@@ -1701,29 +1693,6 @@
           "reason": "HTTP server runtime requires full server bootstrap"
         }
       ]
-    },
-    "packages/synergy-link": {
-      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": [
-        {
-          "glob": "src/cli.ts",
-          "reason": "not exercised by the unit suite; requires full runtime or external service"
-        }
-      ]
-    },
-    "packages/synergy-link-protocol": {
-      "command": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/run.ts --coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 80,
-        "functions": 75
-      },
-      "exempt": []
     },
     "packages/testing": {
       "command": "bun run test:coverage",
@@ -2227,15 +2196,6 @@
           "reason": "barrel re-export"
         }
       ]
-    },
-    "packages/link-client": {
-      "command": "bun run test:coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 75,
-        "functions": 75
-      },
-      "exempt": []
     },
     "packages/code-tools": {
       "command": "bun run test:coverage",

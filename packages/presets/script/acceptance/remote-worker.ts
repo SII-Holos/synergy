@@ -148,7 +148,7 @@ async function initialize() {
       args: ["-c", "printf 'once\\n' >> effects.txt; cat record.txt; printf '\\n'"],
       cwd,
       env: {},
-      writableRoots: [cwd],
+      useRoots: [cwd],
     },
   })
   await until(

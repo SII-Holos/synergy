@@ -33,7 +33,7 @@
 
 AI agent work often outlives a single conversation. Synergy treats it as durable workspace state. A task can move between Web, Desktop, CLI, background execution, and specialist agents while preserving its project, history, files, tools, and operating context.
 
-Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, presence, and Synergy Link remote execution without replacing local projects, providers, sessions, or data.
+Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, and presence without replacing local projects, providers, sessions, or data.
 
 ## What makes Synergy different
 
@@ -43,7 +43,7 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
-- **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins, Channels, and remote Synergy Link targets while keeping local ownership of projects and data.
+- **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins and Channels while keeping local ownership of projects and data.
 
 Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.
 
@@ -218,7 +218,7 @@ bun run --cwd apps/web build
 bun apps/web/script/private-http-smoke.ts
 ```
 
-CI planning, bounded execution and diagnostics are documented in [CI verification](docs/operations/ci.md).
+CI planning, bounded execution, diagnostics and justified runtime growth are documented in [CI verification](docs/operations/ci.md). Review new and affected existing tests with [testing-guide](.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost).
 
 Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
 

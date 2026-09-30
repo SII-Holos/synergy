@@ -83,6 +83,46 @@ test("native public conversation retains bounded history and reconciles updates 
     expect(await roots.count()).toBeLessThanOrEqual(250)
     await page.reload()
     await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
+    async function settings() {
+      await page.locator(".sidebar-account-trigger").click()
+      await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
+      const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
+      await dialog.waitFor()
+      await dialog.getByRole("button", { name: "General", exact: true }).click()
+      return dialog
+    }
+    let dialog = await settings()
+    for (const choice of ["Full", "Balanced", "Minimal"])
+      expect(await dialog.getByRole("button", { name: choice, exact: true }).count()).toBe(1)
+    await dialog.getByRole("button", { name: "Minimal", exact: true }).click()
+    expect(await dialog.getByRole("button", { name: "Minimal", exact: true }).getAttribute("aria-pressed")).toBe("true")
+    const workspace = dialog.getByRole("group", { name: "New session workspace", exact: true })
+    await workspace.getByRole("button", { name: "Worktree", exact: true }).click()
+    expect(await workspace.getByRole("button", { name: "Worktree", exact: true }).getAttribute("aria-pressed")).toBe(
+      "true",
+    )
+    const mute = dialog.getByLabel("Mute Info", { exact: true })
+    const muted = await mute.isChecked()
+    await dialog
+      .locator('[data-component="switch"]')
+      .filter({ has: page.getByLabel("Mute Info", { exact: true }) })
+      .locator('[data-slot="switch-control"]')
+      .click()
+    expect(await mute.isChecked()).toBe(!muted)
+    expect(await dialog.getByRole("slider", { name: "Interface zoom", exact: true }).count()).toBe(0)
+    await dialog.getByRole("button", { name: "Save Changes", exact: true }).click()
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
+    await page.reload()
+    await page.getByText("Answer 360 recovered after reconnect", { exact: true }).waitFor()
+    dialog = await settings()
+    expect(await dialog.getByRole("button", { name: "Minimal", exact: true }).getAttribute("aria-pressed")).toBe("true")
+    expect(
+      await dialog
+        .getByRole("group", { name: "New session workspace", exact: true })
+        .getByRole("button", { name: "Worktree", exact: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true")
+    expect(await dialog.getByLabel("Mute Info", { exact: true }).isChecked()).toBe(!muted)
     expect(diagnostics.errors.map((error) => error.message)).toEqual([])
   } catch (error) {
     throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Conversation real-host acceptance failed")

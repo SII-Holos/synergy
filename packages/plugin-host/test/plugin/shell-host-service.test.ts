@@ -112,7 +112,7 @@ describe("plugin shell.run Host Service", () => {
             await Bun.sleep(10)
           }
           await expect(
-            WorkspaceAccess.write([tmp.path], async () => {}, AbortSignal.timeout(100)),
+            WorkspaceAccess.exclusive([tmp.path], async () => {}, AbortSignal.timeout(100)),
           ).rejects.toMatchObject({ name: "TimeoutError" })
           const pid = Number(await Bun.file(marker).text())
           controller.abort()
@@ -199,19 +199,31 @@ describe("plugin shell.run Host Service", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
       const command = [process.execPath, "-e", 'process.stdout.write("ok")']
-
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, capabilities: [], params: { command } }),
-      ).rejects.toThrow('does not declare capability "shell.execute"')
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, params: { command: command.join(" ") } }),
-      ).rejects.toThrow()
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, params: { command, cwd: "/tmp" } }),
-      ).rejects.toThrow()
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, params: { command, env: { TOKEN: "secret" } } }),
-      ).rejects.toThrow()
+      const select = EnvironmentResources.select
+      const delayed = spyOn(EnvironmentResources, "select").mockImplementation(async (input) => {
+        const resources = await select(input)
+        return {
+          ...resources,
+          async [Symbol.asyncDispose]() {
+            await Bun.sleep(20)
+            await resources[Symbol.asyncDispose]()
+          },
+        }
+      })
+      try {
+        await expect(
+          invoke({ directory: tmp.path, scopeId: scope.id, capabilities: [], params: { command } }),
+        ).rejects.toThrow('does not declare capability "shell.execute"')
+        await expect(
+          invoke({ directory: tmp.path, scopeId: scope.id, params: { command: command.join(" ") } }),
+        ).rejects.toThrow("non-empty argv command")
+        for (const override of [{ cwd: "/tmp" }, { env: { TOKEN: "secret" } }])
+          await expect(
+            invoke({ directory: tmp.path, scopeId: scope.id, params: { command, ...override } }),
+          ).rejects.toThrow("accepts only command and timeoutMs")
+      } finally {
+        delayed.mockRestore()
+      }
     }))
 
   test("uses the configured shellRunTimeoutMs default when the plugin omits timeoutMs", () =>

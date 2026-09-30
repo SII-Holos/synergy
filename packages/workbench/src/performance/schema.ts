@@ -399,7 +399,7 @@ export namespace PerformanceSchema {
               maxQueuedBytes: z.number().int().positive().optional(),
               byExecutor: z
                 .partialRecord(
-                  z.enum(["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]),
+                  z.enum(["local_process", "file", "plugin", "mcp", "browser", "control_plane"]),
                   z.object({
                     active: z.number().int().nonnegative(),
                     queued: z.number().int().nonnegative(),

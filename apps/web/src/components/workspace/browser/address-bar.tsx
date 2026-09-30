@@ -78,14 +78,19 @@ export function AddressBar(props: AddressBarProps) {
     }
   })
   createEffect(() => {
+    const pageID = browser.page()?.id
     props.activeUrl()
+    let current = true
+    onCleanup(() => {
+      current = false
+    })
     if (!realPage()) {
       setHistory({ back: false, forward: false })
       return
     }
     if (props.isLoading()) return
     void props.onPageAction?.({ type: "state" }).then((result) => {
-      if (result?.type !== "state") return
+      if (!current || browser.page()?.id !== pageID || result?.type !== "state") return
       setHistory({ back: result.back, forward: result.forward })
       setZoom(result.zoom)
     })
@@ -309,6 +314,7 @@ export function AddressBar(props: AddressBarProps) {
                   <button
                     class="rounded px-2 py-1 hover:bg-surface-raised-base"
                     title={_(B.zoomReset)}
+                    aria-label={_(B.zoomReset)}
                     disabled={!realPage()}
                     onClick={() => void scale(1)}
                   >

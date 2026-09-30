@@ -75,7 +75,9 @@ test("startup upgrades only Scope metadata; Session access upgrades its binding 
         const stored = await Storage.read<Record<string, unknown>>(["sessions", scopeID, sessionID, "info"])
         expect(stored.workspaceID).toBe(session.workspaceID)
         expect(stored).not.toHaveProperty("workspace")
-        await expect(Session.assertWorkspaceAvailable(sessionID)).rejects.toThrow("unavailable")
+        await expect(Session.assertWorkspaceAvailable(sessionID)).rejects.toMatchObject({
+          name: "WorkspaceUnavailable",
+        })
         expect(stored.futureExtension).toEqual({ preserve: true })
         expect((stored.scope as Record<string, unknown>).privateExtension).toEqual({ revision: 7 })
         expect(await Storage.read<typeof evidence>(["sessions", scopeID, sessionID, "evidence", "record"])).toEqual(

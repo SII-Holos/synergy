@@ -8,8 +8,28 @@ import { StorageRecordsOwnerIndex } from "./owner-index"
 import { StorageFormatV3Migration } from "./format-v3-migration"
 import { StorageIncrementalVacuum } from "./incremental-vacuum"
 import { StorageFormatV3State } from "./format-v3-state"
+import { StoragePath } from "./path"
 
-const migrations: Migration[] = [
+export const migrations: Migration[] = [
+  {
+    id: "20260929-retire-synergy-link",
+    scope: "global",
+    execution: "startup",
+    description: "Remove retired Link targets and their obsolete permission rules",
+    async up(progress) {
+      await Storage.transaction(async () => {
+        const [stored] = await Storage.readMany<unknown>([StoragePath.permissionRules()])
+        if (Array.isArray(stored)) {
+          const kept = stored.filter(
+            (rule) => !rule || typeof rule !== "object" || rule.permission !== "shell_remote_execute",
+          )
+          if (kept.length !== stored.length) await Storage.write(StoragePath.permissionRules(), kept)
+        }
+        await Storage.removeTree(["synergy_link"])
+      })
+      progress(1, 1)
+    },
+  },
   {
     id: "20260921-format-v3-maintenance-state",
     scope: "global",

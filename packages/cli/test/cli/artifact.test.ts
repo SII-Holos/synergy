@@ -9,13 +9,19 @@ const binary = process.env.SYNERGY_TEST_ARTIFACT_BIN
 const installed = process.env.SYNERGY_TEST_ARTIFACT_INSTALL
 const scenarios = artifactScenarios(process.env.SYNERGY_TEST_ARTIFACT_SCENARIOS)
 let installation: Awaited<ReturnType<typeof stageArtifactInstallation>> | undefined
+let home: Awaited<ReturnType<typeof createIsolatedTestEnv>>
 
 beforeAll(async () => {
+  home = await createIsolatedTestEnv()
   if (binary && !installed) installation = await stageArtifactInstallation(binary)
 }, 120_000)
 
 afterAll(async () => {
-  await installation?.dispose()
+  try {
+    await home?.dispose()
+  } finally {
+    await installation?.dispose()
+  }
 }, 120_000)
 
 for (const mode of scenarios)
@@ -148,7 +154,7 @@ for (const mode of scenarios)
         await Bun.write(inputFile, fileContent)
         const config = {
           embedding:
-            process.env.SYNERGY_TEST_ARTIFACT_PROFILE === "full"
+            (process.env.SYNERGY_TEST_ARTIFACT_PROFILE ?? "full") === "full"
               ? { apiKey: "fixture", baseURL: server.url.toString(), model: "fixture-embedding" }
               : undefined,
           agent: mode === "budget" ? { synergy: { steps: 1 } } : undefined,
@@ -171,7 +177,12 @@ for (const mode of scenarios)
           const started = performance.now()
           const child = Bun.spawn([...command, ...args], {
             cwd: workspace,
-            env: { ...isolation.env, SYNERGY_CWD: workspace, SYNERGY_CONFIG_CONTENT: JSON.stringify(config) },
+            env: {
+              ...isolation.env,
+              SYNERGY_TEST_HOME: home.env.SYNERGY_TEST_HOME,
+              SYNERGY_CWD: workspace,
+              SYNERGY_CONFIG_CONTENT: JSON.stringify(config),
+            },
             detached: process.platform !== "win32",
             stdin: "ignore",
             stdout: "pipe",
@@ -223,7 +234,7 @@ for (const mode of scenarios)
         const expectedCode = mode === "timeout" ? 3 : mode === "permission" ? 4 : 0
         let diagnostics = ""
         if (code !== expectedCode) {
-          const logDirectory = path.join(isolation.env.SYNERGY_TEST_HOME!, ".synergy", "log")
+          const logDirectory = path.join(home.env.SYNERGY_TEST_HOME!, ".synergy", "log")
           for (const filename of await fs.readdir(logDirectory).catch(() => [] as string[])) {
             diagnostics += (await Bun.file(path.join(logDirectory, filename)).text()).slice(-18000)
           }
@@ -246,7 +257,7 @@ for (const mode of scenarios)
         if (mode !== "timeout") expect(requests).toBeGreaterThan(0)
         if (mode === "read") expect(readObserved).toBe(true)
         if (mode === "budget") expect(budgetObserved).toBe(true)
-        if (mode === "complete") {
+        if (mode === "complete" && (process.env.SYNERGY_TEST_ARTIFACT_PROFILE ?? "full") === "full") {
           const archive = path.join(workspace, "rollout.zip")
           async function run(args: string[]) {
             const { stdout, stderr, code } = await invoke(args)
@@ -305,7 +316,7 @@ for (const mode of scenarios)
         }
         expect(await Bun.file(sideEffect).exists()).toBe(mode === "tool")
         expect(
-          await Bun.file(path.join(isolation.env.SYNERGY_TEST_HOME!, ".synergy", "daemon", "server.lock")).exists(),
+          await Bun.file(path.join(home.env.SYNERGY_TEST_HOME!, ".synergy", "daemon", "server.lock")).exists(),
         ).toBe(false)
       } finally {
         clearTimeout(deadline)

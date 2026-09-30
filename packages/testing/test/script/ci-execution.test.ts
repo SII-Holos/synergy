@@ -17,7 +17,6 @@ test("partitioned execution runs every suite once and emits matching JUnit, lcov
           expect(value(${index})).toBe(${index + 1});
           expect(process.env.SYNERGY_HOME).toBeUndefined();
           expect(process.env.SYNERGY_TEST_HOME).toBeTruthy();
-          expect(process.env.SYNERGY_LINK_HOME).toStartWith(process.env.SYNERGY_TEST_ROOT!);
           const file=Bun.file("${index}.runs");
           await Bun.write(file,(await file.text().catch(()=>""))+process.env.SYNERGY_TEST_HOME+"\\n");
         })
@@ -31,6 +30,7 @@ test("partitioned execution runs every suite once and emits matching JUnit, lcov
           cwd: root,
           env: {
             ...process.env,
+            SYNERGY_TEST_FILES: undefined,
             SYNERGY_TEST_PARTITION: String(partition),
             SYNERGY_TEST_PARTITIONS: "4",
             SYNERGY_HOME: "must-not-propagate",

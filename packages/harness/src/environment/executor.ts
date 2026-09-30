@@ -6,7 +6,7 @@ import { WorkspaceTree } from "../workspace/tree"
 import { WorkspaceErrors } from "../workspace/errors"
 
 export namespace ExecutionProtocol {
-  export const version = 1
+  export const version = 2
   export const Description = z
     .object({
       target: EnvironmentSchema.Target,
@@ -96,7 +96,8 @@ export namespace ExecutionProtocol {
       args: z.array(z.string().max(1_048_576)).max(4096),
       cwd: z.string().min(1),
       env: z.record(z.string(), z.string()).default({}),
-      writableRoots: z.array(z.string()).nullable(),
+      useRoots: z.array(z.string()),
+      mutationRoots: z.array(z.string()).optional(),
       pty: z.object({ cols: z.number().int().min(1).max(65535), rows: z.number().int().min(1).max(65535) }).optional(),
       timeoutMs: z.number().int().positive().max(86_400_000).optional(),
       sandboxID: z.string().uuid().optional(),

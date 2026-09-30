@@ -344,7 +344,7 @@ export namespace ExecutionHost {
     })
     const document = {
       openapi: "3.0.3",
-      info: { title: "Synergy Execution Host", version: "1" },
+      info: { title: "Synergy Execution Host", version: String(ExecutionProtocol.version) },
       security: [{ bearerAuth: [] }],
       components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } },
       paths: {
@@ -388,7 +388,7 @@ export namespace ExecutionHost {
             responses: {
               "200": {
                 description: "Allocation identity",
-                ...json(z.object({ version: z.literal(1), target: EnvironmentSchema.Target })),
+                ...json(z.object({ version: z.literal(ExecutionProtocol.version), target: EnvironmentSchema.Target })),
               },
             },
           },

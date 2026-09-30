@@ -20,11 +20,6 @@ export const RELEASE_CATALOG = {
     registry: "@ericsanchezok/synergy-secret-detection",
     versioned: true,
   },
-  linkProtocol: {
-    directory: "packages/synergy-link-protocol",
-    registry: "@ericsanchezok/synergy-link-protocol",
-    versioned: true,
-  },
   plugin: { directory: "packages/plugin", registry: "@ericsanchezok/synergy-plugin", versioned: true },
   pluginKit: { directory: "packages/plugin-kit", registry: "@ericsanchezok/synergy-plugin-kit", versioned: true },
   presets: { directory: "packages/presets", registry: "@ericsanchezok/synergy-presets", versioned: true },
@@ -69,7 +64,6 @@ export const RELEASE_CATALOG = {
     registry: "@ericsanchezok/synergy-external-agents",
     versioned: true,
   },
-  link_client: { directory: "packages/link-client", registry: "@ericsanchezok/synergy-link-client", versioned: true },
   code_tools: { directory: "packages/code-tools", registry: "@ericsanchezok/synergy-code-tools", versioned: true },
   server: { directory: "packages/server", registry: "@ericsanchezok/synergy-server", versioned: true },
   workbench: { directory: "packages/workbench", registry: "@ericsanchezok/synergy-workbench", versioned: true },
@@ -79,7 +73,6 @@ export const RELEASE_CATALOG = {
   web: { directory: "apps/web", registry: null, versioned: true },
   desktop: { directory: "apps/desktop", registry: null, versioned: true },
   ui: { directory: "packages/ui", registry: null, versioned: false },
-  link: { directory: "packages/synergy-link", registry: null, versioned: false },
   benchmark: { directory: "benchmark", registry: null, versioned: false },
 } as const satisfies Record<string, ReleasePackage>
 
@@ -134,7 +127,6 @@ export const FIXED_REGISTRY_PACKAGES = [
 
 export const SDK_DIR = releasePackageDirectory("sdk")
 export const UTIL_DIR = releasePackageDirectory("util")
-export const SYNERGY_LINK_PROTOCOL_DIR = releasePackageDirectory("linkProtocol")
 export const PLUGIN_DIR = releasePackageDirectory("plugin")
 export const PLUGIN_KIT_DIR = releasePackageDirectory("pluginKit")
 export const PRESETS_DIR = releasePackageDirectory("presets")
@@ -143,8 +135,6 @@ export const HARNESS_DIR = releasePackageDirectory("harness")
 export const LOCAL_RUNTIME_DIR = releasePackageDirectory("localRuntime")
 export const WEB_DIR = releasePackageDirectory("web")
 export const DESKTOP_DIR = releasePackageDirectory("desktop")
-export const SYNERGY_LINK_DIR = releasePackageDirectory("link")
-export const SYNERGY_LINK_DIST_DIR = path.join(SYNERGY_LINK_DIR, "dist")
 export const WEB_DIST_DIR = path.join(WEB_DIR, "dist")
 export const PRESETS_DIST_DIR = path.join(PRESETS_DIR, "dist")
 export const CORE_RUNTIME_DIST_DIR = path.join(CLI_DIR, "dist")

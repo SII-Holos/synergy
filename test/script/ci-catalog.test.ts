@@ -114,8 +114,8 @@ test("independent browser suite selection retains its executable prerequisites",
 test("required plans and installation diagnostics retain every control within the Linux worker budget", async () => {
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "artifacts")
-  expect(controls).toHaveLength(5)
-  expect(LIMITS.linux).toBe(6)
+  expect(controls).toHaveLength(9)
+  expect(LIMITS.linux).toBe(12)
   const workspaces = [
     { name: "local-runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
   ]
@@ -141,8 +141,8 @@ test("required plans and installation diagnostics retain every control within th
       expect(assigned[0]![control.profile!]).toBe(true)
     }
     const linux = selected.units.filter((unit) => unit.pool === "linux")
-    expect(linux.length).toBeLessThanOrEqual(6)
-    expect(linux.filter((unit) => unit.build).length).toBeLessThanOrEqual(5)
+    expect(linux.length).toBeLessThanOrEqual(LIMITS.linux)
+    expect(linux.filter((unit) => unit.build).length).toBeLessThanOrEqual(LIMITS.linux - 1)
   }
   for (const control of controls) {
     const selected = createPlan({
@@ -196,7 +196,9 @@ test("installed controls share two profile builds while preserving every distrib
     expect(builds[0]!.args).toContain("--skip-install")
     producerScripts.push(...producer.map((command) => command.args[1]!))
     const binaries = controls.filter((entry) => entry.variant === "binary" && entry.profile === profile)
-    expect(binaries.flatMap((entry) => entry.scenarios ?? []).sort()).toEqual(expected)
+    expect(binaries.flatMap((entry) => entry.scenarios ?? []).sort()).toEqual(
+      profile === "full" ? expected : [scenarioName("tool")],
+    )
   }
   for (const { task, commands: recipe } of recipes) {
     expect(recipe.some((command) => command.args.some((arg) => producerScripts.includes(arg)))).toBe(false)
@@ -218,7 +220,7 @@ test("installed controls share two profile builds while preserving every distrib
   const packages = controls.filter((entry) => entry.variant === "package")
   expect(packages).toHaveLength(1)
   expect(packages[0]!.profile).toBe("core")
-  expect(packages[0]!.scenarios!.toSorted()).toEqual(expected)
+  expect(packages[0]!.scenarios!.toSorted()).toEqual([scenarioName("complete")])
   const consumers = recipes.flatMap((recipe) => recipe.commands)
   expect(consumers.filter((command) => command.args.includes("test/script/watcher-native.test.ts"))).toHaveLength(1)
   const pack = distributionCommands("core", root).filter((command) => command.args.includes("script/pack-workspace.ts"))
@@ -227,11 +229,13 @@ test("installed controls share two profile builds while preserving every distrib
   expect(install).toHaveLength(1)
   expect(install[0]!.args.at(-1)).toBe(pack[0]!.args.at(-1))
   expect(install[0]!.env?.SYNERGY_TEST_ARTIFACT_JUNIT).toEndWith(".xml")
-  for (const file of ["runtime-composition-check.ts", "installation-composition-check.ts"]) {
-    const checks = consumers.filter((command) => command.args.includes(`script/${file}`))
-    expect(checks).toHaveLength(1)
-    expect(checks[0]!.args.at(-1)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
-  }
+  const product = consumers.filter((command) => command.args.includes("script/runtime-composition-check.ts"))
+  expect(product).toHaveLength(1)
+  expect(product[0]!.args.at(-1)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
+  const installation = consumers.filter((command) => command.args.includes("script/installation-composition-check.ts"))
+  expect(installation.map((command) => command.args.at(-1)).sort()).toEqual(["company", "components", "web"])
+  for (const command of installation)
+    expect(command.args.at(-2)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
 })
 
 test("affected type checks follow selected suites without expanding through shared check owners", async () => {

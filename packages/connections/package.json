@@ -26,7 +26,6 @@
     "./holos/routes/holos": "./src/holos/routes/holos.ts",
     "./holos/security": "./src/holos/security.ts",
     "./channel/app": "./src/channel/app.ts",
-    "./remote/client": "./src/remote/client.ts",
     "./channel/tools/channel-push": "./src/channel/tools/channel-push.ts",
     "./channel/host": "./src/channel/host.ts",
     "./channel/provider/clarus/assignment-runtime": "./src/channel/provider/clarus/assignment-runtime.ts",
@@ -60,7 +59,6 @@
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.1",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-link-protocol": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@ericsanchezok/synergy-workflows": "workspace:*",
@@ -77,7 +75,6 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@ericsanchezok/synergy-link": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",

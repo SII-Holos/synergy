@@ -58,7 +58,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       acquire?: WorkspaceAccess.Host["acquire"]
       allowedRoots?: string[]
       owner?: { uid: number; gid: number }
-      executionWriter?(id: string, root: string): Promise<void>
+      executionWriter?(id: string, root: string): Promise<{ id: string; token: string }>
     },
   ) {}
 
@@ -488,7 +488,14 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
   }
   async checkpoint(raw: WorkspaceProtocol.CheckpointInput) {
     const input = WorkspaceProtocol.CheckpointInput.parse(raw)
-    return this.checkpointOperation(input.id, input.mount, this.digest(input), input.executionID)
+    return this.checkpointOperation(
+      input.id,
+      input.mount,
+      this.digest(input),
+      input.executionID,
+      undefined,
+      input.operationID,
+    )
   }
   private async checkpointOperation(
     id: string,
@@ -496,6 +503,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     digest: string,
     executionID?: string,
     mutate?: (mount: WorkspaceProtocol.Mount, receipt: Receipt, start: () => Promise<void>) => Promise<void>,
+    operationID?: string,
   ) {
     return this.serial(`checkpoint:${id}`, async () => {
       let receipt = Receipt.optional().parse(await this.receipt("checkpoints", id))
@@ -506,9 +514,22 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
       const mount = await this.required(reference)
       receipt ??= { id, digest, mount: reference, released: false, effectStarted: false, effectCompleted: false }
       await this.persist("checkpoints", id, receipt)
-      if (executionID) {
+      let retained: { id: string; token: string } | undefined
+      if (executionID && operationID) throw new Error("Checkpoint has more than one retention owner")
+      if (operationID) {
+        const source = Receipt.parse(await this.receipt("checkpoints", operationID))
+        if (
+          source.released ||
+          !source.claim ||
+          !source.effectCompleted ||
+          JSON.stringify(source.mount) !== JSON.stringify(reference)
+        )
+          throw new Error("Checkpoint has no retained completed mutation")
+        await this.options.coordinator.validateRetention(source.claim, mount.path)
+        retained = source.claim
+      } else if (executionID) {
         if (!this.options.executionWriter) throw new Error("Execution checkpoint is unavailable")
-        await this.options.executionWriter(executionID, mount.path)
+        retained = await this.options.executionWriter(executionID, mount.path)
       } else if (!receipt.claim) {
         const lease = await this.acquire({
           id: `checkpoint:${id}`,
@@ -561,7 +582,14 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
         manifest = WorkspaceTree.hash(bytes)
         await this.putBlob(manifest, bytes)
       }
-      const checkpoint = { id, mount: reference, manifest, beforeManifest: receipt.beforeManifest }
+      const owner = retained ?? receipt.claim
+      const checkpoint = {
+        id,
+        mount: reference,
+        manifest,
+        beforeManifest: receipt.beforeManifest,
+        isolated: owner ? await this.options.coordinator.isolated(owner) : false,
+      }
       await this.persist("checkpoints", id, { ...receipt, checkpoint })
       return checkpoint
     })

@@ -7,6 +7,7 @@ import { Environment } from "@ericsanchezok/synergy-harness/environment"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
@@ -46,7 +47,7 @@ test("process streams finish only after checkpoint publication and reuse operati
       ],
       cwd: resources.directory!,
       env: {},
-      writableRoots: [resources.directory!],
+      useRoots: [resources.directory!],
     }
     const execution = await EnvironmentProcess.prepare({ id: "process", scopeID: "scope", resources, command })
     expect(await Bun.file(path.join(resources.directory!, "result")).exists()).toBe(false)
@@ -74,7 +75,7 @@ test("process streams finish only after checkpoint publication and reuse operati
   })
 }, 30_000)
 
-test("read-only process completion does not require a writable Workspace checkpoint", async () => {
+test("process completion saves its explicitly selected Workspace independently of permission grants", async () => {
   await using tmp = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
   await using runtime = await testRuntime({
@@ -108,7 +109,7 @@ test("read-only process completion does not require a writable Workspace checkpo
         args: ["-e", "await Bun.sleep(60_000)"],
         cwd: resources.directory!,
         env: {},
-        writableRoots: [],
+        useRoots: [],
       },
     })
     execution.child.stdout.resume()
@@ -119,9 +120,93 @@ test("read-only process completion does not require a writable Workspace checkpo
     await execution.stop()
     const saved = await EnvironmentExecution.get("readonly", "scope")
     expect(saved.state).toBe("completed")
-    expect(saved.saved).toEqual({})
+    expect(saved.saved?.[workspace.id]).toMatchObject({ revision: 1 })
     expect(saved.status?.state).toBe("cancelled")
     await resources.release()
     await Environment.deallocate(environment.id, { scopeID: "scope" })
   })
 }, 15_000)
+
+test.each(["command", "mutation"])(
+  "a stale %s checkpoint cannot overwrite a newer save or replay effects",
+  async (kind) => {
+    await using tmp = await tmpdir()
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+    let fail = false
+    await using runtime = await testRuntime({
+      register() {
+        WorkspaceAccess.register(coordinator)
+        registerNativeEnvironment({ coordinator })
+        WorkspaceBlobs.register("fixture", {
+          async put(hash, bytes) {
+            if (fail) throw new Error("save interrupted")
+            await Storage.writeBinary(["fixture", hash], bytes)
+          },
+          get: (hash) => Storage.readBinary(["fixture", hash]),
+        })
+      },
+    })
+    await runtime.run(async () => {
+      const scopeID = "scope"
+      const environment = await Environment.bind({ scopeID, ownerID: "owner", provider: "native", spec: {} })
+      const workspace = await WorkspaceCatalog.create({
+        scopeID,
+        backend: { provider: "objects", spec: { blobStore: "fixture" } },
+      })
+      const selection = { scopeID, workspaceID: workspace.id, environmentID: environment.id }
+      await using resources = await EnvironmentResources.resolve({ ...selection, needs: { execution: "exec" } })
+      async function run(id: string, value: string) {
+        const operation = await EnvironmentProcess.prepare({
+          id,
+          scopeID,
+          resources,
+          command: {
+            command: process.execPath,
+            args: [
+              "-e",
+              "import {appendFileSync} from 'node:fs'; appendFileSync('count', '1'); await Bun.write('result', process.argv[1])",
+              value,
+            ],
+            cwd: resources.directory!,
+            env: {},
+            useRoots: [],
+          },
+        })
+        operation.child.stdout.resume()
+        operation.child.stderr.resume()
+        await operation.activate()
+        return operation.completion
+      }
+      fail = true
+      await expect(
+        kind === "command"
+          ? run("older", "old")
+          : WorkspaceOperations.write({
+              ...selection,
+              id: "older",
+              path: "result",
+              data: Buffer.from("old"),
+              expectedVersion: null,
+            }),
+      ).rejects.toThrow("save interrupted")
+      expect(await Bun.file(path.join(resources.directory!, "result")).text()).toBe("old")
+      fail = false
+      await run("newer", "new")
+      const published = (await WorkspaceCatalog.get(workspace.id, scopeID)).content
+      const complete = kind === "command" ? EnvironmentExecution.complete : WorkspaceOperations.reconcile
+      const get = kind === "command" ? EnvironmentExecution.get : WorkspaceOperations.get
+      await expect(complete("older", scopeID)).rejects.toThrow("checkpoint publication")
+      expect((await WorkspaceCatalog.get(workspace.id, scopeID)).content).toEqual(published)
+      expect((await get("older", scopeID)).state).toBe("unsaved")
+      await complete("older", scopeID)
+      expect((await get("older", scopeID)).state).toBe("completed")
+      expect((await WorkspaceCatalog.get(workspace.id, scopeID)).content).toEqual(published)
+      expect(await Bun.file(path.join(resources.directory!, "count")).text()).toBe(kind === "command" ? "11" : "1")
+      await resources.release()
+      await Environment.deallocate(environment.id, { scopeID })
+      expect(new TextDecoder().decode(await WorkspaceContent.read(selection, "result"))).toBe("new")
+      expect(await coordinator.inspect()).toEqual([])
+    })
+  },
+  30_000,
+)

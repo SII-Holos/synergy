@@ -49,7 +49,6 @@ export async function checkRuntimeCompositions(
       const env: Record<string, string | undefined> = {
         ...installedEnv,
         SYNERGY_HOME: path.join(directory, "home"),
-        SYNERGY_LINK_HOME: path.join(directory, "link"),
         SYNERGY_TEST_HOME: path.join(directory, "home"),
         SYNERGY_TEST_ROOT: directory,
         SYNERGY_OBSERVABILITY_INLINE: "1",

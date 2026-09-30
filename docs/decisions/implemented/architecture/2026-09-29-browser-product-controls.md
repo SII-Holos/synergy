@@ -20,6 +20,8 @@ Reimplementing browser operations inside the webpage was rejected because native
 
 ## Consequences
 
+Address-bar history and zoom state belong to the current page and navigation. A superseded native state reply cannot replace newer controls, and disposed address bars ignore their pending replies.
+
 The renderer controls presentation and invokes narrow native methods; it does not obtain arbitrary Electron or CDP access. OS-specific dialogs remain native. Existing task permissions, page identity and uncertain-action rules remain authoritative.
 
 Behavioral tests cover native action results, matching find requests, platform keyboard modifiers and human navigation during an in-flight Agent observation. Real Desktop acceptance is required in addition to transport tests.

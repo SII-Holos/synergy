@@ -1,5 +1,19 @@
 import * as fs from "fs/promises"
 import path from "path"
+import net from "node:net"
+
+export async function fixturePort() {
+  const server = net.createServer()
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject)
+    server.listen(0, "127.0.0.1", resolve)
+  })
+  const address = server.address()
+  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
+  if (!address || typeof address === "string") throw new Error("Fixture port allocation failed")
+  return address.port
+}
+
 type TmpDirOptions<T, TConfig> = {
   git?: boolean
   config?: Partial<TConfig>

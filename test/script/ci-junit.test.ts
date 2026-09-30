@@ -56,12 +56,14 @@ async function fixture(body: string, expected = [scenario("read")], pattern?: st
       tasks: [task],
     })
     const result: TaskResult = {
-      version: 1,
+      version: 2,
       task: task.id,
+      unit: plan.units.find((unit) => unit.tasks.includes(task.id))!.id,
       plan: plan.digest,
       sha: plan.sha,
       run: plan.run,
-      attempt: plan.attempt,
+      planAttempt: plan.attempt,
+      executionAttempt: plan.attempt,
       mode: plan.mode,
       status: "success",
       exitCode: 0,

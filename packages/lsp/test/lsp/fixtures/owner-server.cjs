@@ -30,6 +30,17 @@ function handle(message) {
     }
   } else if (message.method === "textDocument/hover") {
     result = { contents: "fixture hover" }
+    if (process.env.LSP_FIXTURE_HOLD_QUERY === "1") {
+      const fs = require("node:fs")
+      fs.appendFileSync("query-started", "ready\n")
+      const timer = setInterval(() => {
+        if (!fs.existsSync("query-release")) return
+        clearInterval(timer)
+        fs.appendFileSync("query-completed", "replied\n")
+        send({ id: message.id, result })
+      }, 10)
+      return
+    }
     const delay = Number(process.env.LSP_FIXTURE_DELAY_MS)
     if (delay) {
       require("node:fs").appendFileSync("query-started", "ready\n")

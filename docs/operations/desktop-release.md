@@ -44,7 +44,7 @@ Recommended Desktop installer artifacts:
 - `Synergy-linux-amd64-${version}.deb`
 - `Synergy-linux-arm64-${version}.deb`
 - `Synergy-${version}-checksums.txt`
-- `Synergy-${version}-cli-checksums.txt` — SHA-256 of every CLI runtime archive (`synergy-*` and `synergy-link-*`), generated and uploaded by `stable_candidate`
+- `Synergy-${version}-cli-checksums.txt` — SHA-256 of every Synergy CLI runtime archive (`synergy-*`), generated and uploaded by `stable_candidate`
 
 Windows ARM64 Desktop/runtime is not a Stable target until all native runtime dependencies are available for that architecture.
 

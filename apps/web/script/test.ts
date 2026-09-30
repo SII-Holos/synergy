@@ -76,7 +76,7 @@ const playwrightIsolated = [
   "test/components/session/raw-messages-layout.test.ts",
   "test/components/session/session-progress-island-motion.test.ts",
   "test/components/session/session-progress-todo-layout.test.ts",
-  "test/components/session/session-transition-card-style.test.ts",
+  "test/components/settings/panels/interface-zoom.dom.test.ts",
   "test/components/session/session-inbox-anchor-layout.test.ts",
   "test/components/session/conversation-row-retention.test.ts",
   "test/components/session/dialog-fork-confirm.dom.test.tsx",

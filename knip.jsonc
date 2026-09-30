@@ -248,11 +248,6 @@
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@ericsanchezok/synergy-testing"],
     },
-    "packages/link-client": {
-      "entry": ["test/**/*.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
-    },
     "packages/code-tools": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],

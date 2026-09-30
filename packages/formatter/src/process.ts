@@ -47,7 +47,7 @@ export namespace FormatterProcess {
           args: input.command.slice(1),
           cwd: resources.directory!,
           env: { ...resources.runtime!.env, ...input.environment },
-          writableRoots: null,
+          useRoots: [],
           preconditions: input.expectedFile ? [input.expectedFile] : undefined,
         },
       })

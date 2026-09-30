@@ -147,9 +147,6 @@ export namespace GithubChannelWorkspace {
     const branch = input.pullNumber ? `pr-${input.pullNumber}` : input.defaultBranch
     return WorkspaceAccess.maintenance(
       async () => {
-        // Git filters and credential helpers are native processes with an unconfined footprint.
-        // Reserve it before retirement so concurrent checkouts cannot deadlock while expanding roots.
-        await WorkspaceAccess.reserveWrite(null, signal)
         return WorkspaceAccess.retire([directory], async () => {
           if ((await fs.realpath(path.dirname(requested))) !== parent) throw new Error("GitHub checkout parent changed")
           let present = await directoryExists(directory)
@@ -177,7 +174,7 @@ export namespace GithubChannelWorkspace {
                 ...args,
               ],
               directory: cwd,
-              roots: null,
+              roots: [directory],
               signal,
               env: { ...credential.env, GIT_DIR: undefined, GIT_WORK_TREE: undefined, GIT_INDEX_FILE: undefined },
             })

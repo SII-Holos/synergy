@@ -9,7 +9,6 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { createUserMessage } from "@ericsanchezok/synergy-harness/session/input"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
-import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { acceptanceRuntime, until } from "./runtime"
@@ -62,8 +61,10 @@ export function sharedDelegation(settings: Settings): Driver {
             z.object({
               id: z.string(),
               owner: z.string(),
+              kind: z.string(),
               state: z.string(),
               roots: z.array(z.object({ path: z.string() })).nullable(),
+              useRoots: z.array(z.object({ path: z.string() })).default([]),
             }),
           ),
         })
@@ -71,7 +72,9 @@ export function sharedDelegation(settings: Settings): Driver {
       return ledger.claims.filter(
         (claim) =>
           claim.owner.startsWith(ownerPrefix) ||
-          claim.roots?.some((root) => root.path === project || root.path.startsWith(project + path.sep)),
+          [...(claim.roots ?? []), ...claim.useRoots].some(
+            (root) => root.path === project || root.path.startsWith(project + path.sep),
+          ),
       )
     }
     return await host.runtime.run(async () => {
@@ -110,24 +113,8 @@ export function sharedDelegation(settings: Settings): Driver {
             workspaceID: parent.workspaceID,
             needs: { workspace: true, execution: "exec" },
           })
-          const blocker = await EnvironmentProcess.prepare({
-            id: `acceptance_blocker_${crypto.randomUUID()}`,
-            scopeID: scope.id,
-            resources,
-            command: {
-              command: process.execPath,
-              args: [
-                "-e",
-                "await Bun.write('blocker-ready',String(process.pid)); for await (const chunk of Bun.stdin.stream()) {}",
-              ],
-              cwd: project,
-              env: { PATH: process.env.PATH ?? "" },
-              writableRoots: [project],
-              cooperative: true,
-            },
-          })
-          blocker.child.stdout.resume()
-          blocker.child.stderr.resume()
+          const command = (name: string) =>
+            `printf ready > ${name}.ready; while [ ! -f siblings-release ]; do sleep 0.05; done; cat record.txt > ${name}.txt; cat record.txt`
           const transport: unknown[] = []
           const worktrees: Array<{ path: string; taskID: string; expected: string; actual: string }> = []
           function sibling(tasks: Awaited<ReturnType<typeof Cortex.getTasksForSession>>, role: "keep" | "cancel") {
@@ -137,8 +124,6 @@ export function sharedDelegation(settings: Settings): Driver {
           }
           let parentRun: Promise<unknown> | undefined
           try {
-            await blocker.activate()
-            await until(() => Bun.file(path.join(project, "blocker-ready")).exists(), Boolean, settings.deadlineMs)
             const request = await createUserMessage({
               sessionID: parent.id,
               model: host.model,
@@ -147,7 +132,7 @@ export function sharedDelegation(settings: Settings): Driver {
               parts: [
                 {
                   type: "text",
-                  text: "<siblings>Delegate two independent sibling tasks to implementation-engineer, concurrently. Name them sibling-keep and sibling-cancel and request output mode final_response for both. Each must use Bash exactly once: sibling-keep runs <command>cat record.txt > keep.txt; cat record.txt</command>; sibling-cancel runs <command>cat record.txt > cancel.txt; cat record.txt</command>. Do not perform their work yourself. A controller will cancel one waiting sibling and change its Workspace. Wait for the tasks or their completion notifications, retrieve the completed result, then report the exact observed identifier and the actual final statuses. Do not claim a running task has completed.</siblings>",
+                  text: `<siblings>Delegate two independent sibling tasks to implementation-engineer, concurrently. Name them sibling-keep and sibling-cancel and request output mode final_response for both. Each must use Bash exactly once: sibling-keep runs <command>${command("keep")}</command>; sibling-cancel runs <command>${command("cancel")}</command>. Do not perform their work yourself. Both commands must reach their file barrier concurrently. A controller will cancel one sibling before it writes its result and change its Workspace, then release the other. Wait for the tasks or their completion notifications, retrieve the completed result, then report the exact observed identifier and the actual final statuses. Do not claim a running task has completed.</siblings>`,
                 },
               ],
             })
@@ -160,11 +145,19 @@ export function sharedDelegation(settings: Settings): Driver {
             )
             await atomicJSON(path.join(context.directory, "children-running.json"), children)
             await context.checkpoint("children-running", [{ path: "children-running.json", kind: "product" }])
-            const queued = await until(
-              claims,
-              (items) => items.filter((claim) => claim.state === "waiting").length >= 2,
+            await until(
+              () =>
+                Promise.all(["keep", "cancel"].map((name) => Bun.file(path.join(project, `${name}.ready`)).exists())),
+              (ready) => ready.every(Boolean),
               settings.deadlineMs,
             )
+            const concurrent = (await claims()).filter((claim) => claim.kind === "process" && claim.state === "active")
+            if (concurrent.length < 2) throw new Error("Sibling commands did not retain concurrent resource use")
+            if (
+              (await Bun.file(path.join(project, "keep.txt")).exists()) ||
+              (await Bun.file(path.join(project, "cancel.txt")).exists())
+            )
+              throw new Error("Sibling command wrote its result before the observed barrier")
             const before = await Session.messages({ sessionID: parent.id })
             if (
               before.some(
@@ -174,13 +167,16 @@ export function sharedDelegation(settings: Settings): Driver {
               )
             )
               throw new Error("Parent reported a result before the blocked children could read it")
-            await atomicJSON(path.join(context.directory, "writer-contended.json"), { claims: queued, parent: before })
-            await context.checkpoint("writer-contended", [{ path: "writer-contended.json", kind: "external" }])
+            await atomicJSON(path.join(context.directory, "commands-concurrent.json"), {
+              claims: concurrent,
+              parent: before,
+            })
+            await context.checkpoint("commands-concurrent", [{ path: "commands-concurrent.json", kind: "external" }])
             const cancelled = sibling(children, "cancel")!
             await Cortex.cancel(cancelled.id)
             await Cortex.drain(cancelled.id)
             if (Cortex.get(cancelled.id)?.status !== "cancelled")
-              throw new Error("Queued child cancellation was not terminal")
+              throw new Error("Child cancellation at the command barrier was not terminal")
             await atomicJSON(path.join(context.directory, "cancelled.json"), Cortex.get(cancelled.id))
             await context.checkpoint("cancelled", [{ path: "cancelled.json", kind: "product" }])
             const next = path.join(context.directory, "next-workspace")
@@ -197,8 +193,7 @@ export function sharedDelegation(settings: Settings): Driver {
               externalHash: digest(external),
             })
             await context.checkpoint("binding-switched", [{ path: "binding-switched.json", kind: "product" }])
-            blocker.child.stdin.end()
-            await blocker.completion
+            await Bun.write(path.join(project, "siblings-release"), "continue")
             await parentRun
             const keep = sibling(children, "keep")!
             await until(
@@ -341,7 +336,6 @@ export function sharedDelegation(settings: Settings): Driver {
             })
             throw error
           } finally {
-            await blocker.stop().catch(() => {})
             await Cortex.cancelAll(parent.id)
             await Cortex.cancelAll(peer.id)
             SessionInvoke.cancel(parent.id)

@@ -9,6 +9,7 @@ import { WorkspaceErrors } from "./errors"
 import { WorkspaceProtocol } from "./protocol"
 import { WorkspaceContent } from "./content"
 import { WorkspaceTree } from "./tree"
+import { WorkspaceCheckpoints } from "./checkpoint"
 import { WorkspaceMounts } from "./mount"
 import { Log } from "../util/log"
 import { WorkspaceEvidence } from "./evidence"
@@ -215,6 +216,7 @@ export namespace WorkspaceOperations {
         })
         recorded = true
         const files = await WorkspaceMounts.connect(workspace)
+        await WorkspaceCheckpoints.begin(workspace, info.id)
         await ("change" in operation ? files.mutate(operation) : files.write(operation))
         return completed(await resume(info))
       } catch (error) {
@@ -281,12 +283,30 @@ export namespace WorkspaceOperations {
       })
     }
     try {
-      const checkpoint =
+      const original =
         receipt.checkpoint ?? (await ("change" in info.input ? files.mutate(info.input) : files.write(info.input)))
-      await WorkspaceMounts.save(workspace, files, checkpoint, async (saved) => {
-        if (info.evidence && !checkpoint.beforeManifest) throw new Error("Workspace operation has no physical baseline")
-        await WorkspaceEvidence.finish(info.evidence, saved, checkpoint.beforeManifest ?? null, checkpoint.manifest)
-      })
+      const attempt = await WorkspaceCheckpoints.begin(workspace, info.id)
+      const checkpoint =
+        attempt.id === info.id
+          ? original
+          : {
+              ...(await files.checkpoint({ id: attempt.id, mount: info.input.mount, operationID: info.id })),
+              beforeManifest: original.beforeManifest,
+            }
+      await WorkspaceMounts.save(
+        attempt.workspace,
+        files,
+        checkpoint,
+        async (saved) => {
+          if (info.evidence && !checkpoint.beforeManifest)
+            throw new Error("Workspace operation has no physical baseline")
+          if (checkpoint.isolated !== true || attempt.id !== info.id) await WorkspaceEvidence.incomplete(info.evidence)
+          else
+            await WorkspaceEvidence.finish(info.evidence, saved, checkpoint.beforeManifest ?? null, checkpoint.manifest)
+        },
+        attempt,
+      )
+      if (attempt.id !== info.id) await files.acknowledge(info.id)
     } catch (error) {
       await persist({
         ...info,

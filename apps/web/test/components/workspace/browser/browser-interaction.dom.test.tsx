@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -68,6 +69,7 @@ beforeAll(async () => {
     store.setPresentation({kind:"native",protocolVersion:4,capabilities:{native:true},reason:"desktop-local"})
     store._setSend(command => window.commands.push(command))
     window.browserFixture = store
+    window.pageStateReplies = []
     function App() {
       let container
       const dialog = useDialog()
@@ -79,7 +81,7 @@ beforeAll(async () => {
         <button onClick={() => dialog.show(() => <BrowserDataDialog ownerKey="owner-one" pageId="page-one" url="https://example.test/login" section="passwords" />)}>Open passwords</button>
         <button onClick={() => dialog.show(() => <BrowserResultDialog initial={{type:"capture", dataUrl:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4xkAAAAASUVORK5CYII=",width:100,height:100,url:"https://example.test/page",title:"Capture",capturedAt:1}} recapture={async () => {throw new Error("Unused")}} attach={async (file,text) => {window.captureResult = {name:file.name,type:file.type,text}}} />)}>Open screenshot</button>
         <div class="browser-workspace" style="height:500px">
-          <AddressBar onPageAction={async action => {window.commands.push(action);return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
+          <AddressBar onPageAction={async action => {window.commands.push(action);if(action.type === "state" && window.holdPageState) return await new Promise(resolve => window.pageStateReplies.push(resolve));return {type:"state",back:false,forward:false,zoom:1}}} activeUrl={() => store.page()?.url ?? ""} isLoading={() => false} hasPage={() => true} onNavigate={() => {}} onHistory={() => {}} onReload={() => {}} onStop={() => {}} onRequestDiagnostics={() => {}} onSettings={() => dialog.show(() => <BrowserSettings sessionID="session-one" createTicket={async () => "ticket"} />)} />
           <div ref={container} style="position:relative;height:400px"><NativeBrowserSurface container={() => container} ownerKey="owner-one" /></div>
         </div>
         <Show when={request()} keyed>{request => <BrowserPageDialog request={request} onRespond={(accept,promptText) => {window.commands.push({accept,promptText});setRequest(undefined)}} />}</Show>
@@ -101,7 +103,7 @@ beforeAll(async () => {
       },
     },
     optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid", "zod"] },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]!
@@ -125,6 +127,8 @@ afterAll(async () => {
 })
 
 type Fixture = Window & {
+  holdPageState?: boolean
+  pageStateReplies: Array<(state: { type: "state"; back: boolean; forward: boolean; zoom: number }) => void>
   captureResult?: { name: string; type: string; text: string }
   commands: Array<{ accept?: boolean; promptText?: string }>
   attachments: Array<{ pageId: string; visible: boolean }>
@@ -137,6 +141,40 @@ type Fixture = Window & {
     setAnnotationTarget(target: unknown): void
   }
 }
+
+test("address controls retain the current navigation when an older state reply arrives last", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Browser options", exact: true }).waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    fixture.holdPageState = true
+    fixture.browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/first", title: "First" },
+    ])
+  })
+  await page.waitForFunction(() => (window as unknown as Fixture).pageStateReplies.length === 1)
+  await page.evaluate(() => {
+    ;(window as unknown as Fixture).browserFixture.replacePages([
+      { id: "page-one", profileId: "personal", status: "active", url: "https://example.test/second", title: "Second" },
+    ])
+  })
+  await page.waitForFunction(() => (window as unknown as Fixture).pageStateReplies.length === 2)
+  await page.evaluate(() => {
+    ;(window as unknown as Fixture).pageStateReplies[1]!({ type: "state", back: true, forward: true, zoom: 1.5 })
+  })
+  const back = page.getByRole("button", { name: "Back", exact: true })
+  const forward = page.getByRole("button", { name: "Forward", exact: true })
+  await back.waitFor()
+  expect(await back.isEnabled()).toBe(true)
+  await page.evaluate(async () => {
+    ;(window as unknown as Fixture).pageStateReplies[0]!({ type: "state", back: false, forward: false, zoom: 1 })
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+  })
+  expect(await back.isEnabled()).toBe(true)
+  expect(await forward.isEnabled()).toBe(true)
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Reset zoom", exact: true }).innerText()).toBe("150%")
+})
 
 test("prompt selects the default, submits edited and empty values, cancels separately, and restores focus", async () => {
   await page.goto(url)

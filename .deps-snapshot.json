@@ -1,14 +1,6 @@
 {
-  "@ericsanchezok/synergy-harness": [
-    "@ericsanchezok/synergy-link-protocol",
-    "@ericsanchezok/synergy-secret-detection",
-    "@ericsanchezok/synergy-util"
-  ],
-  "@ericsanchezok/synergy-local-runtime": [
-    "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-link-protocol",
-    "@ericsanchezok/synergy-util"
-  ],
+  "@ericsanchezok/synergy-harness": ["@ericsanchezok/synergy-secret-detection", "@ericsanchezok/synergy-util"],
+  "@ericsanchezok/synergy-local-runtime": ["@ericsanchezok/synergy-harness", "@ericsanchezok/synergy-util"],
   "@ericsanchezok/synergy-cli": [
     "@ericsanchezok/synergy-agent-runtime",
     "@ericsanchezok/synergy-harness",
@@ -34,7 +26,6 @@
     "@ericsanchezok/synergy-formatter",
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-library",
-    "@ericsanchezok/synergy-link-client",
     "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-lsp",
     "@ericsanchezok/synergy-mcp",
@@ -81,7 +72,6 @@
   ],
   "@ericsanchezok/synergy-connections": [
     "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-link-protocol",
     "@ericsanchezok/synergy-local-runtime",
     "@ericsanchezok/synergy-util",
     "@ericsanchezok/synergy-workflows",
@@ -124,12 +114,6 @@
     "@ericsanchezok/synergy-util"
   ],
   "@ericsanchezok/synergy-external-agents": ["@ericsanchezok/synergy-harness"],
-  "@ericsanchezok/synergy-link-client": [
-    "@ericsanchezok/synergy-harness",
-    "@ericsanchezok/synergy-link-protocol",
-    "@ericsanchezok/synergy-local-runtime",
-    "@ericsanchezok/synergy-server"
-  ],
   "@ericsanchezok/synergy-code-tools": [
     "@ericsanchezok/synergy-harness",
     "@ericsanchezok/synergy-local-runtime",
@@ -150,8 +134,6 @@
   "@ericsanchezok/synergy-testing": [],
   "@ericsanchezok/synergy-browser-core": [],
   "@ericsanchezok/synergy-computer-protocol": [],
-  "@ericsanchezok/synergy-link-protocol": [],
-  "@ericsanchezok/synergy-link": ["@ericsanchezok/synergy-link-protocol", "@ericsanchezok/synergy-util"],
   "@ericsanchezok/synergy-plugin": ["@ericsanchezok/synergy-sdk", "@ericsanchezok/synergy-util"],
   "@ericsanchezok/synergy-plugin-kit": ["@ericsanchezok/synergy-plugin", "@ericsanchezok/synergy-sdk"],
   "@ericsanchezok/synergy-sdk": [],

@@ -14,10 +14,7 @@ import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { WorkspaceCoordinator } from "../workspace/coordinator"
 import { NativeExecutor } from "./native-executor"
 import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
-import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
-import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
-import type { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
-import { NativeFileMutation } from "../file/mutation-core"
+import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { ProcessEnvironment } from "../process/environment"
 import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
 
@@ -81,20 +78,16 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
             directory: path.join(path.dirname(filename(request)), request.requestID, "work"),
             env: ProcessEnvironment.select(RuntimeContext.current().host.env),
           },
-          acquire: async (command, signal) => {
-            const lease = await WorkspaceAccess.process(command.writableRoots, signal, {
+          acquire: (command, signal) =>
+            WorkspaceAccess.process([...new Set([command.cwd, ...command.useRoots])], signal, {
               retainAfterExit: true,
               durable: true,
               cooperative: command.cooperative,
-            })
-            try {
-              await verifyCapture(command, target)
-              return lease
-            } catch (error) {
-              await lease.release()
-              throw error
-            }
-          },
+              mutationRoots: [
+                ...(command.mutationRoots ?? []),
+                ...(command.preconditions ?? []).map((condition) => condition.canonical),
+              ],
+            }),
         })
         executors.set(request.requestID, pending)
         void pending.catch(() => executors.delete(request.requestID))
@@ -120,37 +113,4 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
     },
   }
   EnvironmentProviders.register(provider)
-}
-
-async function verifyCapture(command: ExecutionProtocol.Command, target: Environment.Target) {
-  if (command.writableRoots?.length === 0) return
-  const keys = await Storage.list(["workspace_environment"])
-  const views = await WorkspaceCatalog.readMany(keys.map((key) => key[2]!))
-  const canonical = async (value: string) => {
-    const resolved = await NativeFileMutation.canonical(value)
-    return process.platform === "win32" ? resolved.toLowerCase() : resolved
-  }
-  const roots = command.writableRoots === null ? null : await Promise.all(command.writableRoots.map(canonical))
-  const inside = (a: string, b: string) => {
-    const relative = path.relative(a, b)
-    return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative))
-  }
-  for (const info of views) {
-    if (!info?.activeMount || info.backend?.provider !== "objects") continue
-    const mount = info.activeMount
-    if ((await Environment.get(mount.target.environmentID, info.scopeID)).provider !== "native") continue
-    const root = await canonical(mount.path)
-    if (roots && !roots.some((candidate) => inside(candidate, root) || inside(root, candidate))) continue
-    if (
-      Environment.sameTarget(mount.target, target) &&
-      command.capture?.some(
-        (reference) =>
-          reference.id === mount.id && reference.workspaceID === info.id && reference.generation === mount.generation,
-      )
-    )
-      continue
-    throw new Error(
-      "Native write footprint reaches a Workspace outside this execution's saved-result ownership; detach that view or narrow the write boundary",
-    )
-  }
 }

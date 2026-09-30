@@ -47,7 +47,7 @@ test("native executor deduplicates effects, drains output and retains the writer
     ],
     cwd: tmp.path,
     env: {},
-    writableRoots: [tmp.path],
+    useRoots: [tmp.path],
   }
   const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
   await Promise.all([executor.start(request), executor.start(request)])
@@ -92,7 +92,7 @@ test("cancelling a running native command preserves received bytes and a releasa
     args: ["-e", "process.stdout.write('before-cancel'); process.stderr.write('error-tail'); setInterval(()=>{},1000)"],
     cwd: tmp.path,
     env: {},
-    writableRoots: [tmp.path],
+    useRoots: [tmp.path],
   }
   const request = { id: "cancel-running", target, command, digest: ExecutionProtocol.digest(command) }
   await executor.start(request)
@@ -137,7 +137,7 @@ test("cancel before dispatch remains cancelled and changed inputs or generations
     args: ["-e", "throw new Error('must not run')"],
     cwd: tmp.path,
     env: {},
-    writableRoots: [],
+    useRoots: [],
   }
   const request = { id: "operation", target, command, digest: ExecutionProtocol.digest(command) }
   await executor.cancel(request.id, request.digest)
@@ -168,7 +168,7 @@ test("execution validates committed file bytes after physical admission and does
     args: ["-e", "await Bun.write('source', 'stale formatting')"],
     cwd: tmp.path,
     env: {},
-    writableRoots: [tmp.path],
+    useRoots: [tmp.path],
     preconditions: [
       {
         path: file,
@@ -214,7 +214,7 @@ test("a failed launch with verified process and stream drainage remains saveable
     args: [],
     cwd: tmp.path,
     env: {},
-    writableRoots: [tmp.path],
+    useRoots: [tmp.path],
   }
   await executor.start({ id: "missing", target, command, digest: ExecutionProtocol.digest(command) })
   let status = await executor.status("missing")
@@ -246,7 +246,8 @@ test("a process binding failure preserves its cause and releases the unactivated
         owner: target.environmentID,
         ancestors: [],
         kind: "process",
-        roots: command.writableRoots,
+        roots: [],
+        useRoots: command.useRoots,
         retainAfterExit: true,
         durable: true,
         signal,
@@ -269,7 +270,7 @@ test("a process binding failure preserves its cause and releases the unactivated
     args: ["-e", `await Bun.write(${JSON.stringify(marker)}, "one")`],
     cwd: tmp.path,
     env: {},
-    writableRoots: [tmp.path],
+    useRoots: [tmp.path],
   }
   const settle = async (id: string) => {
     await executor.start({ id, target, command, digest: ExecutionProtocol.digest(command) })

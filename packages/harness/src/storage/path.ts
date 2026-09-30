@@ -36,6 +36,12 @@ export namespace StoragePath {
   export const environmentActive = (id?: string) => (id ? ["environment_active", id] : ["environment_active"])
   export const environmentUses = (id: string) => ["environment_use", id]
   export const environmentUse = (id: string, useID: string) => [...environmentUses(id), useID]
+  export const workspaceCheckpoint = (scopeID: string, workspaceID: string, id: string) => [
+    "workspace_checkpoint",
+    scopeID,
+    workspaceID,
+    id,
+  ]
   export const workspaceOperation = (scopeID: string, id: string) => ["workspace_operation", scopeID, id]
   export const workspaceOperationActive = (scopeID?: string, id?: string) => [
     "workspace_operation_active",
@@ -354,9 +360,6 @@ export namespace StoragePath {
     contactId,
     messageId,
   ]
-
-  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
-  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
 
   export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
   export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]

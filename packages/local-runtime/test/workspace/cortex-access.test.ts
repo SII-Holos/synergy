@@ -8,6 +8,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { FileMutation } from "../../src/file/mutation"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
@@ -39,11 +40,13 @@ test("a Cortex child waiting for files yields its only admission slot to an inde
         const held = Promise.withResolvers<void>()
         const release = Promise.withResolvers<void>()
         const writes: string[] = []
-        const running = SessionManager.run(writer.id, async () => {
-          await FileMutation.write({ path: path.join(a.path, "held.txt"), content: "held", expectedVersion: null })
-          held.resolve()
-          await release.promise
-        })
+        const running = SessionManager.run(writer.id, () =>
+          WorkspaceAccess.write([a.path], async () => {
+            await FileMutation.write({ path: path.join(a.path, "held.txt"), content: "held", expectedVersion: null })
+            held.resolve()
+            await release.promise
+          }),
+        )
         await held.promise
         using invoke = spyOn(SessionInvoke, "invokeInternal").mockImplementation((input) =>
           SessionManager.run(input.sessionID, async () => {
@@ -98,7 +101,7 @@ test("a Cortex child waiting for files yields its only admission slot to an inde
   })
 }, 30_000)
 
-test("Cortex launch and wait transfer the parent's same-Workspace write reservation", async () => {
+test("Cortex launch and wait allow the parent and child to commit in the same Workspace", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
     await using tmp = await tmpdir()
@@ -179,11 +182,13 @@ test("finishing one parallel tool releases Cortex capacity when its remaining to
         const finishFirst = Promise.withResolvers<void>()
         const firstDone = Promise.withResolvers<void>()
         const secondStarted = Promise.withResolvers<void>()
-        const owner = SessionManager.run(writer.id, async () => {
-          await FileMutation.write({ path: path.join(b.path, "held.txt"), content: "held", expectedVersion: null })
-          held.resolve()
-          await release.promise
-        })
+        const owner = SessionManager.run(writer.id, () =>
+          WorkspaceAccess.write([b.path], async () => {
+            await FileMutation.write({ path: path.join(b.path, "held.txt"), content: "held", expectedVersion: null })
+            held.resolve()
+            await release.promise
+          }),
+        )
         await held.promise
         const scheduler = new ToolTaskScheduler({ maxConcurrent: 2, maxQueued: 8 })
         const slots = new Map<string, ReturnType<typeof SessionProcessor.createSlot>>()

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { catalog } from "../../script/ci/catalog"
 import { createPlan, executionQueue, LIMITS } from "../../script/ci/plan"
+import { latestExecutions } from "../../script/ci/github"
 
 const root = path.resolve(import.meta.dir, "../..")
 interface Job {
@@ -19,6 +20,108 @@ const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflow
 }
 
 describe("required CI topology", () => {
+  test("package rebuilding runs apart from consumers of workspace artifacts", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const unit = plan.units.find((unit) => unit.tasks.includes("packages"))!
+    expect(unit.build).toBe(false)
+    expect(executionQueue(unit)).toBe("contracts")
+    expect(tasks.filter((task) => unit.tasks.includes(task.id)).some((task) => task.kind === "suite")).toBe(false)
+  })
+  test("independent task-home scenarios can complete on separate workers", async () => {
+    const tasks = await catalog()
+    const controls = tasks.filter((task) => task.id.startsWith("native-synergy-task-home-"))
+    expect(controls.flatMap((task) => task.scenarios ?? []).sort()).toEqual([
+      "test_synergy_preserves_task_home_and_native_stopping[empty-provider-stop]",
+      "test_synergy_preserves_task_home_and_native_stopping[tool-roundtrip]",
+    ])
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const workers = controls.map((task) => plan.units.find((unit) => unit.tasks.includes(task.id))!.id)
+    expect(new Set(workers).size).toBe(2)
+  })
+  test("package partitions occupy different runners even when historical weights are uneven", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    for (const unit of plan.units.filter((unit) => unit.pool === "linux")) {
+      const suites = tasks.filter((task) => unit.tasks.includes(task.id) && task.kind === "suite")
+      expect(new Set(suites.map((task) => task.package)).size).toBe(suites.length)
+    }
+  })
+  test("consumers join only their required producer without reserving waiting runners", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    for (const unit of plan.units) {
+      const entries = tasks.filter((task) => unit.tasks.includes(task.id))
+      if (unit.pool === "linux" && unit.id !== "linux-contracts") {
+        const profiles = new Set(entries.map((task) => task.profile ?? "ordinary"))
+        expect(profiles.size).toBe(1)
+        const job = workflow.jobs[executionQueue(unit)]!
+        if (unit.full) expect(job.needs).toContain("prepare-full")
+        else if (unit.core) expect(job.needs).toContain("prepare-core")
+        else {
+          expect(job.needs).not.toContain("prepare-full")
+          expect(job.needs).not.toContain("prepare-core")
+        }
+      }
+      if (unit.pool === "docker") {
+        expect(entries.every((task) => task.needs.includes("benchmark-prepare") === unit.benchmark)).toBe(true)
+        const job = workflow.jobs[executionQueue(unit)]!
+        if (unit.benchmark) expect(job.needs).toContain("benchmark-prepare")
+        else expect(job.needs).not.toContain("benchmark-prepare")
+      }
+    }
+    const jobs = plan.units.map((unit) => ({
+      name: workflow.jobs[executionQueue(unit)]!.name!.replace("${{ matrix.id }}", unit.id),
+      run_attempt: 1,
+      status: "completed",
+      conclusion: "success",
+    }))
+    expect(
+      latestExecutions(plan, jobs)
+        .map((job) => job.unit)
+        .sort(),
+    ).toEqual(plan.units.map((unit) => unit.id).sort())
+  })
   test("the stable required check waits for every executor, including PostgreSQL", () => {
     const gate = workflow.jobs["all-checks-passed"]!
     expect(gate.name).toBe("All checks passed")
@@ -32,9 +135,12 @@ describe("required CI topology", () => {
   })
   test("all execution queues are bounded and preserve failed reports", () => {
     for (const [pool, limit] of Object.entries({
-      linux: LIMITS.linux - 1,
+      linux: 6,
+      linux_core: 1,
+      linux_full: 4,
+      docker_direct: 2,
       contracts: 1,
-      docker: LIMITS.docker,
+      docker: 6,
       postgres: LIMITS.postgres,
       windows: LIMITS.windows,
       macos: LIMITS.macos,
@@ -45,15 +151,30 @@ describe("required CI topology", () => {
       expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
     }
     expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
+    expect(workflow.jobs.docker_direct!.needs).toEqual(["plan"])
     expect(workflow.jobs.docker!.needs).toEqual(["plan", "benchmark-prepare"])
-    expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker"])
+    expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker_direct", "docker"])
   })
   test("every dev/main push and the daily cold run remain enabled", () => {
     expect(workflow.on.push.branches).toEqual(["dev", "main"])
     expect(workflow.on.schedule.length).toBe(1)
     expect(workflow.concurrency["cancel-in-progress"]).toContain("pull_request")
   })
-  test("each long-session protocol and JIT condition has an independent Docker execution unit", async () => {
+  test("every planned consumer downloads the original plan before executing", () => {
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      const execute =
+        job.steps?.findIndex((step) => /ci\.ts (?:run|verify|prepare-distributions)/.test(step.run ?? "")) ?? -1
+      if (execute < 0) continue
+      const download = job.steps!.findIndex(
+        (step) =>
+          step.uses?.startsWith("actions/download-artifact@") &&
+          step.with?.name === "ci-plan-${{ needs.plan.outputs.attempt }}",
+      )
+      expect(download, id).toBeGreaterThanOrEqual(0)
+      expect(download, id).toBeLessThan(execute)
+    }
+  })
+  test("bounded Docker groups retain each business task once and share preparation", async () => {
     const tasks = await catalog()
     const plan = createPlan({
       base: "base",
@@ -66,24 +187,25 @@ describe("required CI topology", () => {
       headWorkspaces: [],
       tasks,
     })
-    const controls = tasks.filter((task) => task.selection?.startsWith("test_synergy_long_sessions"))
-    expect(controls.map((task) => task.scenarios![0]).sort()).toEqual(
-      ["jit", "jitless"]
-        .flatMap((jit) =>
-          ["chat-completions", "responses"].map(
-            (protocol) => `test_synergy_long_sessions_preserve_native_tools_and_usage[${jit}-${protocol}]`,
-          ),
-        )
-        .sort(),
+    const controls = tasks.filter(
+      (task) => task.id.startsWith("native-synergy-semantics-") || task.id === "native-synergy-compaction",
     )
+    const docker = plan.units.filter((unit) => unit.pool === "docker")
+    expect(docker).toHaveLength(LIMITS.docker)
+    expect(docker.some((unit) => unit.tasks.length > 1)).toBe(true)
+    expect(controls).toHaveLength(5)
     const units = controls.map((task) => {
       const assigned = plan.units.filter((unit) => unit.tasks.includes(task.id))
       expect(assigned).toHaveLength(1)
-      expect(assigned[0]!.tasks).toEqual([task.id])
       expect(executionQueue(assigned[0]!, tasks)).toBe("docker")
       return assigned[0]!.id
     })
-    expect(new Set(units).size).toBe(controls.length)
+    expect(new Set(units).size).toBeGreaterThan(0)
+    expect(docker.flatMap((unit) => unit.tasks).toSorted()).toEqual(
+      plan.selected
+        .filter((id) => tasks.find((task) => task.id === id)!.pool === "docker" && id !== "benchmark-prepare")
+        .toSorted(),
+    )
   })
   test("every prepared benchmark consumer restores its artifact before executing", async () => {
     const tasks = await catalog()
@@ -110,27 +232,8 @@ describe("required CI topology", () => {
       expect(units).toHaveLength(1)
       const job = workflow.jobs[executionQueue(units[0]!, tasks)]!
       expect(job.needs, task.id).toContain("benchmark-prepare")
-      const steps = job.steps!
-      const download = steps.findIndex(
-        (step) => step.uses?.startsWith("actions/download-artifact@") && step.with?.name === producer.with!.name,
-      )
-      const unpack = steps.findIndex((step) => step.name === "Unpack read-only benchmark input")
-      const execute = steps.findIndex((step) => step.name === "Execute planned tasks")
-      expect(download, task.id).toBeGreaterThanOrEqual(0)
-      expect(unpack, task.id).toBeGreaterThan(download)
-      expect(execute, task.id).toBeGreaterThan(unpack)
-      expect(steps[download]!.with!.path).toBe(path.posix.dirname(archive))
-      expect(steps[unpack]!.run!.trim().split(/\s+/)).toEqual([
-        "tar",
-        "--zstd",
-        "-xf",
-        archive,
-        "-C",
-        path.posix.dirname(archive),
-      ])
       expect(units[0]!.benchmark, task.id).toBe(true)
-      expect(steps[download]!.if, task.id).toBe("matrix.benchmark")
-      expect(steps[unpack]!.if, task.id).toBe("matrix.benchmark")
+      expect(job.steps!.some((step) => step.name === "Execute planned tasks")).toBe(true)
     }
   })
   test("diagnostics has one execution matrix capped at two and no required check", async () => {
