@@ -6,13 +6,18 @@ import { spawnPolicyWorkerProcess } from "@ericsanchezok/synergy-harness/enforce
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { registerWorkerComponents, workerPlan } from "../src/workers"
+import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 
 test("real agent and policy workers start from the host's explicit component selection", async () => {
   await using fixture = await runtimeHome()
-  await using runtime = await openAgentRuntime({ home: fixture.host.root, host: fixture.host, components: [lsp()] })
+  await using runtime = await openAgentRuntime({
+    home: fixture.host.root,
+    host: fixture.host,
+    components: [localRuntime({ workers: false }), lsp()],
+  })
   await runtime.run(async () => {
     const plan = JSON.parse(RuntimeContext.current().host.env.SYNERGY_WORKER_COMPONENTS!)
-    expect(plan.agent.map((entry: { id: string }) => entry.id)).toEqual(["local-runtime", "lsp", "plugin-host"])
+    expect(plan.agent.map((entry: { id: string }) => entry.id)).toEqual(["local-runtime", "lsp"])
     expect(plan.policy).toEqual([])
     for (const spawn of [spawnAgentWorkerProcess, spawnPolicyWorkerProcess]) {
       const ready = Promise.withResolvers<number>()
