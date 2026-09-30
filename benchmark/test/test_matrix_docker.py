@@ -11,6 +11,7 @@ import zipfile
 import pytest
 import yaml
 from aiohttp import web
+from fixtures.resources import fixture_resources
 
 from synergy_bench.catalog import tree_digest
 from synergy_bench.evaluator import freeze_evaluator, recorded_environment
@@ -651,9 +652,7 @@ async def run_native_matrix(
         "harnesses": harnesses,
         "models": profiles,
         "concurrency": 1 if long_session else 4,
-        "resources": {"cache_budget_gib": 10, "min_free_disk_gib": 2}
-        if os.environ.get("CI") == "true"
-        else {"cache_budget_gib": 384},
+        "resources": fixture_resources(),
         "cache": os.environ.get("SYNERGY_BENCH_TEST_CACHE", str(BENCHMARK.parent / ".artifacts/benchmark/cache")),
         "output": str(BENCHMARK.parent / ".artifacts/benchmark/matrix-integration"),
     }

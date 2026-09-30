@@ -146,6 +146,8 @@ Use the [secret-detection package](../../../packages/secret-detection/README.md)
 
 ## CI preparation and timing
 
+The deterministic Docker fixtures reserve one CPU and the default 2 GiB for the host in CI. On a four-CPU runner this admits a two-CPU preparation request alongside an existing native trial working set; default two-CPU reservation caused `cpu_budget` waits through the trial's stopping deadline. Keep actual memory, disk, CPU pressure and native hard-limit checks active. Local research retains its declared resource defaults.
+
 Use [CI verification](../../../docs/operations/ci.md) to select a task or test file. Lifecycle normal/fault tasks share a verified, immutable prepared bundle and own independent writable environments. Preserve every lifecycle scenario and all five native harnesses on full runs. External harnesses install only their actual runtime dependencies.
 
 Frozen sources exclude `.artifacts`. Build required native assets from the measured source in separate pinned toolchain stages and copy only their runtime artifacts into the final bundle. A supported rollout source with `build-pty.ts` needs its PTY library for ordinary Linux commands as well as terminals; sources in that layout without the builder retain watcher-only preparation, and session-export releases retain their original preparation. Test all three recipes and verify ordinary process execution from a cold bundle without relying on checkout assets or including the compiler. Package renames do not extend the evaluator's supported historical layouts; preserve their frozen evaluators.

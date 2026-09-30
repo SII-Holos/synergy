@@ -17,6 +17,8 @@ Distinguish model disconnects from watchdog timeouts. Hold an actual upstream re
 
 Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
 
+CI `package:check` builds its own package closure and runs on the separate contracts runner. Keep rebuilding gates apart from suites consuming workspace `dist`; isolated Homes do not isolate the checkout's compiled files.
+
 ## Local Joint Acceptance
 
 Identify the intended foreground provider request independently of streaming: title and other auxiliary calls can also stream, and journal enumeration is not request chronology. Test both request orders and reject a missing first attachment body even when a later tool response contains its content.

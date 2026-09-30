@@ -20,6 +20,24 @@ const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflow
 }
 
 describe("required CI topology", () => {
+  test("package rebuilding runs apart from consumers of workspace artifacts", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    const unit = plan.units.find((unit) => unit.tasks.includes("packages"))!
+    expect(unit.build).toBe(false)
+    expect(executionQueue(unit)).toBe("contracts")
+    expect(tasks.filter((task) => unit.tasks.includes(task.id)).some((task) => task.kind === "suite")).toBe(false)
+  })
   test("independent task-home scenarios can complete on separate workers", async () => {
     const tasks = await catalog()
     const controls = tasks.filter((task) => task.id.startsWith("native-synergy-task-home-"))

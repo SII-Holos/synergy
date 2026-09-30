@@ -111,9 +111,7 @@ export const QUEUES = [
 ] as const
 
 export function needsBuild(task: Task): boolean {
-  return ["suite", "typecheck", "packages", "artifacts", "web", "desktop", "smoke", "sandbox", "rollout"].includes(
-    task.kind,
-  )
+  return ["suite", "typecheck", "artifacts", "web", "desktop", "smoke", "sandbox", "rollout"].includes(task.kind)
 }
 
 export function executionQueue(unit: Unit, _tasks?: Task[]): (typeof QUEUES)[number] {

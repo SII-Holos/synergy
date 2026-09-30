@@ -87,8 +87,25 @@ async function allJobs(get: ReturnType<typeof client>["get"]) {
   }
 }
 
-export async function workflowExecutions(plan: Plan) {
-  return latestExecutions(plan, await allJobs(client(plan).get))
+export async function workflowExecutions(plan: Plan, options: { timeoutMs?: number; pollMs?: number } = {}) {
+  const api = client(plan)
+  const expected = [
+    ...plan.units.map((unit) => unit.id),
+    ...(plan.selected.includes("benchmark-prepare") ? ["benchmark-prepare"] : []),
+  ]
+  const deadline = Date.now() + (options.timeoutMs ?? 60_000)
+  for (;;) {
+    const executions = latestExecutions(plan, await allJobs(api.get))
+    if (
+      expected.every((unit) =>
+        executions.some((execution) => execution.unit === unit && execution.status === "completed"),
+      ) ||
+      executions.some((execution) => execution.status === "completed" && execution.conclusion !== "success") ||
+      Date.now() >= deadline
+    )
+      return executions
+    await Bun.sleep(Math.min(options.pollMs ?? 1000, Math.max(0, deadline - Date.now())))
+  }
 }
 
 export async function unpackInput(archive: string, destination: string) {
