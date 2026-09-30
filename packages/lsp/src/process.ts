@@ -13,6 +13,7 @@ export namespace LSPProcess {
     command: string
     args: string[]
     cwd: string
+    mutationRoots?: string[]
     env?: Record<string, string | undefined>
   }
   const context = RuntimeContext.createAsyncContext<{ signal: AbortSignal; directories: string[] }>()
@@ -36,13 +37,13 @@ export namespace LSPProcess {
     signal.throwIfAborted()
     return signal
   }
-  export function mutate<T>(fn: () => Promise<T>) {
-    return WorkspaceAccess.write(null, fn, signal())
+  export function mutate<T>(roots: string[], fn: () => Promise<T>) {
+    return WorkspaceAccess.write(roots, fn, signal())
   }
   export async function temporaryDirectory() {
     const resources = context.getStore()
     if (!resources) throw new Error("Language server temporary storage requires a preparation owner")
-    return mutate(async () => {
+    return mutate([Global.Path.cache], async () => {
       await fs.mkdir(Global.Path.cache, { recursive: true, mode: 0o700 })
       const directory = await fs.mkdtemp(path.join(Global.Path.cache, "lsp-"))
       resources.directories.push(directory)
@@ -82,7 +83,7 @@ export namespace LSPProcess {
               Object.entries(command.env ?? {}).filter((entry): entry is [string, string] => entry[1] !== undefined),
             ),
           },
-          writableRoots: null,
+          useRoots: [],
           cooperative,
         },
       })
@@ -107,6 +108,7 @@ export namespace LSPProcess {
   export async function run(input: {
     command: string[]
     cwd?: string
+    mutationRoots?: string[]
     env?: Record<string, string | undefined>
     check?: boolean
   }) {
@@ -118,6 +120,7 @@ export namespace LSPProcess {
         args: input.command.slice(1),
         cwd: input.cwd ?? ScopeContext.current.directory,
         env: input.env,
+        mutationRoots: input.mutationRoots,
       },
       abort,
       false,
@@ -157,11 +160,12 @@ export namespace LSPProcess {
   }
   export async function extractZip(archive: string, destination: string) {
     if (process.platform !== "win32") {
-      await run({ command: ["unzip", "-o", "-q", archive, "-d", destination] })
+      await run({ command: ["unzip", "-o", "-q", archive, "-d", destination], mutationRoots: [destination] })
       return
     }
     const quote = (value: string) => "'" + value.replaceAll("'", "''") + "'"
     await run({
+      mutationRoots: [destination],
       command: [
         "powershell",
         "-NoProfile",

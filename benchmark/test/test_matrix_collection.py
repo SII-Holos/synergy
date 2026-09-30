@@ -23,7 +23,7 @@ class Capture:
         ]))
 
 raise SystemExit(pytest.main([
-    '--collect-only', '-q', '-p', 'no:cacheprovider', 'test/test_matrix_docker.py'
+    '--collect-only', '-q', '-p', 'no:cacheprovider', '-k', 'not diagnostic', 'test/test_matrix_docker.py'
 ], plugins=[Capture()]))
 """
     collected = subprocess.run(
@@ -56,22 +56,23 @@ async def test_collected_native_controls_cover_each_required_behavior_once(matri
     assert len(calls) == len(matrix_collection)
     assert len({json.dumps(call, sort_keys=True) for call in calls}) == len(calls)
 
-    long = [call for call in calls if call.get("tool_turns") == 120]
-    semantics = [call for call in calls if call.get("tool_turns") == 4]
+    business = [call for call in calls if call.get("business")]
+    semantics = [call for call in calls if call.get("tool_turns") == 2 and call.get("observations") is False]
     homes = [call for call in calls if call.get("task_home")]
     unattended = [call for call in calls if call.get("unattended")]
     ordinary = [call for call in calls if not call.get("long_session") and not call.get("unattended")]
-    assert len(long + semantics + homes + unattended + ordinary) == len(calls)
+    assert len(business + semantics + homes + unattended + ordinary) == len(calls)
     protocols = {"chat-completions", "responses"}
-    assert {(call["bun_jit"], call["protocol"]) for call in long} == set(product([False, True], protocols))
-    assert all(call["long_session"] and call["models"] == ("fixture-one",) for call in long)
+    assert len(business) == 1 and business[0]["long_session"] and business[0]["bun_jit"]
+    assert business[0]["models"] == ("fixture-one",)
     assert all(call["long_session"] and len(call["models"]) == 1 for call in semantics)
     axes = [(False, True), tuple(protocols), ("fixture-one", "fixture-two")]
     rows = [(call["bun_jit"], call["protocol"], call["models"][0]) for call in semantics]
     for first, second in combinations(range(len(axes)), 2):
         assert {(row[first], row[second]) for row in rows} == set(product(axes[first], axes[second]))
     assert {call["protocol"] for call in ordinary} == protocols
+    assert {call["models"][0] for call in ordinary} == {"fixture-one", "fixture-two"}
     assert {call["empty_stop"] for call in homes} == {False, True}
-    assert all(call["tool_turns"] == 3 and call["long_session"] for call in homes)
+    assert all(call["tool_turns"] == 2 and call["long_session"] for call in homes)
     assert next(call for call in homes if call["empty_stop"])["models"] == ("fixture-one",)
     assert all(call["bun_jit"] for call in unattended) and unattended

@@ -18,7 +18,7 @@ import { WorkspaceCoordinator } from "@ericsanchezok/synergy-local-runtime/works
 import { registerConfig } from "../../src/config-schema"
 import { LSP } from "../../src"
 
-test("LSP uses a logical Workspace's Environment, yields to writes, and survives allocation relocation", async () => {
+test("LSP uses a logical Workspace's Environment, coexists with writes, and survives allocation relocation", async () => {
   await using runtime = await testRuntime({
     composition: {
       register() {
@@ -84,7 +84,7 @@ test("LSP uses a logical Workspace's Environment, yields to writes, and survives
                   data: source,
                   expectedVersion: `sha256:${WorkspaceTree.hash(source)}`,
                 })
-                expect(await LSP.status()).toEqual([])
+                expect(await LSP.status()).toEqual([{ id: "fixture", name: "fixture", root: "", status: "connected" }])
                 expect(await LSP.hover({ file, line: 0, character: 0 })).toEqual([{ contents: "fixture hover" }])
               } finally {
                 await LSP.reload()

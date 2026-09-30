@@ -186,7 +186,7 @@ test("recovery APIs retain unfinished ownership, enforce Scope and retry saving 
         args: ["-e", "await Bun.write('result', 'once')"],
         cwd: resources.directory!,
         env: {},
-        writableRoots: [resources.directory!],
+        useRoots: [resources.directory!],
       },
     })
     process.child.stdout.resume()

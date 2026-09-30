@@ -71,7 +71,7 @@ test("worktree command cancellation drains the activated native process before r
             publish,
           ],
           directory: tmp.path,
-          roots: null,
+          roots: [],
           signal: controller.signal,
         }).catch((error: unknown) => error)
         try {

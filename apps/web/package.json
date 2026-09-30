@@ -24,6 +24,7 @@
   "devDependencies": {
     "@babel/core": "catalog:",
     "@babel/preset-typescript": "catalog:",
+    "@ericsanchezok/synergy-testing": "workspace:*",
     "@happy-dom/global-registrator": "20.0.11",
     "@lingui/cli": "catalog:",
     "@lingui/format-po": "catalog:",

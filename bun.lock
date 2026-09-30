@@ -118,6 +118,7 @@
       "devDependencies": {
         "@babel/core": "catalog:",
         "@babel/preset-typescript": "catalog:",
+        "@ericsanchezok/synergy-testing": "workspace:*",
         "@happy-dom/global-registrator": "20.0.11",
         "@lingui/cli": "catalog:",
         "@lingui/format-po": "catalog:",
@@ -968,6 +969,7 @@
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@ericsanchezok/synergy-testing": "workspace:*",
         "@lingui/core": "catalog:",
         "@lingui/solid": "catalog:",
         "@tailwindcss/vite": "catalog:",

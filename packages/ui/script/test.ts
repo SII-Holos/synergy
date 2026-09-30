@@ -2,9 +2,11 @@
 
 import path from "node:path"
 import { runBatchedTests } from "../../../script/shared/test-runner"
+import { prepareDOMFixtures } from "../test/support/dom-fixtures"
 
 const root = path.resolve(import.meta.dir, "..")
 
+await prepareDOMFixtures()
 await runBatchedTests({
   root,
   timeoutMs: 120000,

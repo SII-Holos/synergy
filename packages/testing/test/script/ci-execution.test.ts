@@ -31,6 +31,7 @@ test("partitioned execution runs every suite once and emits matching JUnit, lcov
           cwd: root,
           env: {
             ...process.env,
+            SYNERGY_TEST_FILES: undefined,
             SYNERGY_TEST_PARTITION: String(partition),
             SYNERGY_TEST_PARTITIONS: "4",
             SYNERGY_HOME: "must-not-propagate",

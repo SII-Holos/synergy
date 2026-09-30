@@ -10,7 +10,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
-test("native physical admission rejects a writable object view omitted from saved-result ownership", async () => {
+test("native admission neither captures nor blocks unrelated mounted object views", async () => {
   await using temporary = await tmpdir()
   const coordinator = new WorkspaceCoordinator({ directory: path.join(temporary.path, "claims") })
   await using runtime = await testRuntime({
@@ -48,16 +48,18 @@ test("native physical admission rejects a writable object view omitted from save
         args: ["-e", `await Bun.write(${JSON.stringify(marker)}, 'wrong')`],
         cwd: temporary.path,
         env: {},
-        writableRoots: null,
+        useRoots: [],
       },
     })
     for (let i = 0; execution.state !== "exited" && i < 300; i++) {
       await Bun.sleep(10)
       execution = await EnvironmentExecution.reconcile(execution.id, "scope")
     }
-    expect(execution.status?.effectsStarted).toBe(false)
-    expect(execution.status?.error).toContain("saved-result ownership")
-    expect(await Bun.file(marker).exists()).toBe(false)
+    expect(execution.status?.effectsStarted).toBe(true)
+    expect(execution.status?.error).toBeUndefined()
+    expect(execution.workspaces).toEqual(undefined)
+    expect(execution.status?.before).toBeUndefined()
+    expect(await Bun.file(marker).exists()).toBe(true)
     await EnvironmentExecution.complete(execution.id, "scope")
     expect(await Environment.uses(environment.id)).toEqual([])
     await Storage.remove(["workspace_environment", foreign.id, workspace.id])
@@ -81,7 +83,7 @@ test("native provider uses the durable execution path and saves output outside i
       args: ["-e", "process.stdout.write('native')"],
       cwd: runtime.host.root,
       env: {},
-      writableRoots: [],
+      useRoots: [],
     }
     let execution = await EnvironmentExecution.start({
       id: "command",

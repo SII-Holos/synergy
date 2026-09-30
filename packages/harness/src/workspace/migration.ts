@@ -1,6 +1,11 @@
 import type { Migration } from "../migration/types"
 import { MigrationRegistry } from "../migration/registry"
 import { Storage } from "../storage/storage"
+import { StoragePath } from "../storage/path"
+import { WorkspaceCheckpoints } from "./checkpoint"
+import { WorkspaceMounts } from "./mount"
+import { EnvironmentExecution } from "../environment/execution"
+import { WorkspaceOperations } from "./operations"
 import { WorkspaceCatalog } from "./catalog"
 
 export const workspaceMigrations: Migration[] = [
@@ -27,6 +32,36 @@ export const workspaceMigrations: Migration[] = [
           }
         })
         progress(Math.min(offset + 128, keys.length), keys.length)
+      }
+    },
+  },
+  {
+    id: "20260929-workspace-checkpoint-attempts",
+    description: "Recapture unfinished legacy checkpoints without replaying their side effects",
+    scope: "global",
+    execution: "startup",
+    async up(progress) {
+      const executions = await Storage.list(StoragePath.environmentExecutionActive())
+      const operations = await Storage.list(StoragePath.workspaceOperationActive())
+      let done = 0
+      for (const key of executions) {
+        const info = await EnvironmentExecution.get(key[2], key[1])
+        if (info.state !== "saved" && info.state !== "completed")
+          for (const reference of info.workspaces ?? []) {
+            if (reference.readOnly) continue
+            const [workspace] = await WorkspaceCatalog.readMany([reference.workspaceID])
+            if (workspace)
+              await WorkspaceCheckpoints.migrate(workspace, WorkspaceMounts.checkpointID(info.id, reference.id))
+          }
+        progress(++done, executions.length + operations.length)
+      }
+      for (const key of operations) {
+        const info = await WorkspaceOperations.get(key[2], key[1])
+        if ("mount" in info.input && info.state !== "completed" && info.state !== "failed") {
+          const [workspace] = await WorkspaceCatalog.readMany([info.workspaceID])
+          if (workspace) await WorkspaceCheckpoints.migrate(workspace, info.id)
+        }
+        progress(++done, executions.length + operations.length)
       }
     },
   },

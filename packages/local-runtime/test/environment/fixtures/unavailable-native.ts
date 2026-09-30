@@ -18,7 +18,7 @@ const command = {
   args: ["-e", `await Bun.write(${JSON.stringify(marker)}, "one")`],
   cwd: directory,
   env: {},
-  writableRoots: [directory],
+  useRoots: [directory],
 }
 await executor.start({ id: "unavailable", target, command, digest: ExecutionProtocol.digest(command) })
 const deadline = Date.now() + 5000

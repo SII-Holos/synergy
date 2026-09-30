@@ -382,8 +382,13 @@ export namespace Worktree {
     )
   }
 
-  async function gitMutation(repoRoot: string, args: string[], roots: string[] | null = null) {
-    return WorktreeProcess.run({ command: ["git", ...args], directory: repoRoot, roots, metadata: true })
+  async function gitMutation(repoRoot: string, args: string[], roots?: string[]) {
+    return WorktreeProcess.run({
+      command: ["git", ...args],
+      directory: repoRoot,
+      roots: roots ?? [await gitMetadataRoot(repoRoot)],
+      metadata: true,
+    })
   }
 
   async function gitMetadataRoot(repoRoot: string) {
@@ -780,7 +785,7 @@ export namespace Worktree {
         command: process.platform === "win32" ? ["cmd", "/c", command] : ["bash", "-lc", command],
         directory,
         env,
-        roots: null,
+        roots: [],
       })
       if (result.exitCode !== 0) {
         throw new StartCommandFailedError({ message: errorText(result) || `Worktree setup command failed: ${command}` })
@@ -871,7 +876,7 @@ export namespace Worktree {
         const removed = await gitMutation(
           repoRoot,
           ["worktree", "remove", "--force", info.directory],
-          [repoRoot, info.directory],
+          [await gitMetadataRoot(repoRoot), info.directory],
         )
         if (removed.exitCode !== 0)
           throw new CreateFailedError({ message: errorText(removed) || "Failed to remove unfinished worktree" })
@@ -884,7 +889,7 @@ export namespace Worktree {
         if (deleted.exitCode !== 0)
           throw new CreateFailedError({ message: errorText(deleted) || "Unfinished worktree branch was retained" })
       },
-      { writeRoots: null },
+      { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
     )
   }
 
@@ -942,7 +947,7 @@ export namespace Worktree {
           ]
         },
         directory: repoRoot,
-        roots: null,
+        roots: [await gitMetadataRoot(repoRoot), worktreesRoot(repoRoot)],
       })
       if (created.exitCode !== 0)
         throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
@@ -1291,6 +1296,7 @@ export namespace Worktree {
    * and branch rules.
    */
   async function removeWorktree(info: Info, options: { force: boolean; reason: string }) {
+    const { repoRoot } = ensureGitScope()
     return WorkspaceAccess.retire(
       [info.path],
       async () => {
@@ -1310,7 +1316,7 @@ export namespace Worktree {
         const removed = await gitMutation(
           repoRoot,
           ["worktree", "remove", ...(options.force ? ["--force"] : []), info.path],
-          [repoRoot, info.path],
+          [await gitMetadataRoot(repoRoot), info.path],
         )
         if (removed.exitCode !== 0) {
           throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
@@ -1319,7 +1325,7 @@ export namespace Worktree {
         await deleteBranchIfLanded(repoRoot, info.branch ?? "")
         log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
       },
-      { writeRoots: null },
+      { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
     )
   }
 
@@ -1679,11 +1685,11 @@ export namespace Worktree {
               const removed = await gitMutation(
                 repoRoot,
                 ["worktree", "remove", "--force", current.path],
-                [repoRoot, current.path],
+                [await gitMetadataRoot(repoRoot), current.path],
               )
               if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
             },
-            { writeRoots: null },
+            { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
           )
         }
         await removeRegistry(current.id, repoRoot)

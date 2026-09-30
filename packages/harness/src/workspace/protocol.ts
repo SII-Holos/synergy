@@ -23,13 +23,19 @@ export namespace WorkspaceProtocol {
   export type MountInput = z.infer<typeof MountInput>
   export const Mount = Reference.extend({ path: z.string(), readOnly: z.boolean(), physicalID: z.string() })
   export type Mount = z.infer<typeof Mount>
-  export const CheckpointInput = z.object({ id: ID, mount: Reference, executionID: ID.optional() })
+  export const CheckpointInput = z.object({
+    id: ID,
+    mount: Reference,
+    executionID: ID.optional(),
+    operationID: ID.optional(),
+  })
   export type CheckpointInput = z.infer<typeof CheckpointInput>
   export const Checkpoint = z.object({
     id: ID,
     mount: Reference,
     manifest: WorkspaceTree.Hash.nullable(),
     beforeManifest: WorkspaceTree.Hash.optional(),
+    isolated: z.boolean().optional(),
   })
   export type Checkpoint = z.infer<typeof Checkpoint>
   export const CheckpointStatus = z.object({
