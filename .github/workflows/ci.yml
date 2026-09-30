@@ -47,6 +47,12 @@ jobs:
       contracts_count: ${{ steps.plan.outputs.contracts_count }}
       linux: ${{ steps.plan.outputs.linux }}
       linux_count: ${{ steps.plan.outputs.linux_count }}
+      linux_core: ${{ steps.plan.outputs.linux_core }}
+      linux_core_count: ${{ steps.plan.outputs.linux_core_count }}
+      linux_full: ${{ steps.plan.outputs.linux_full }}
+      linux_full_count: ${{ steps.plan.outputs.linux_full_count }}
+      docker_direct: ${{ steps.plan.outputs.docker_direct }}
+      docker_direct_count: ${{ steps.plan.outputs.docker_direct_count }}
       docker: ${{ steps.plan.outputs.docker }}
       docker_count: ${{ steps.plan.outputs.docker_count }}
       postgres: ${{ steps.plan.outputs.postgres }}
@@ -112,6 +118,7 @@ jobs:
       - uses: ./.github/actions/ci-setup
         with:
           native: "true"
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
       - name: Resolve build toolchain identity
         id: build-key
         run: bun script/ci.ts build-key
@@ -338,7 +345,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 14
+      max-parallel: 8
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.linux) }}
     env:
@@ -386,15 +393,182 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 3
-  docker:
+  linux_core:
+    name: linux (${{ matrix.id }})
+    needs: [plan, prepare, prepare-core]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.linux_core_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.linux_core) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.build
+        with:
+          name: ci-build-${{ needs.prepare.outputs.attempt }}
+          path: .artifacts/ci
+      - name: Verify shared build
+        if: matrix.build
+        shell: bash
+        run: |
+          tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
+          bun script/ci.ts restore
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+  linux_full:
+    name: linux (${{ matrix.id }})
+    needs: [plan, prepare, prepare-full]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.linux_full_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.linux_full) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.build
+        with:
+          name: ci-build-${{ needs.prepare.outputs.attempt }}
+          path: .artifacts/ci
+      - name: Verify shared build
+        if: matrix.build
+        shell: bash
+        run: |
+          tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
+          bun script/ci.ts restore
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+  docker_direct:
     name: docker (${{ matrix.id }})
     needs: [plan]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker_direct_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.docker_direct) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - name: Collect bounded benchmark evidence
+        if: failure()
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark-evidence
+          include-hidden-files: true
+          retention-days: 3
+  docker:
+    name: docker (${{ matrix.id }})
+    needs: [plan, benchmark-prepare]
     if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 4
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.docker) }}
     env:
@@ -523,6 +697,7 @@ jobs:
       - uses: ./.github/actions/ci-setup
         with:
           native: ${{ matrix.id == 'windows-native' }}
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
           dependencies: "true"
           browser: ${{ matrix.browser }}
           desktop: ${{ matrix.desktop }}
@@ -570,6 +745,7 @@ jobs:
       - uses: ./.github/actions/ci-setup
         with:
           native: "true"
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
           dependencies: "true"
           browser: ${{ matrix.browser }}
           desktop: ${{ matrix.desktop }}
@@ -593,7 +769,22 @@ jobs:
     name: All checks passed
     if: always()
     needs:
-      [plan, prepare, prepare-core, prepare-full, benchmark-prepare, contracts, linux, docker, postgres, windows, macos]
+      [
+        plan,
+        prepare,
+        prepare-core,
+        prepare-full,
+        benchmark-prepare,
+        contracts,
+        linux,
+        linux_core,
+        linux_full,
+        docker_direct,
+        docker,
+        postgres,
+        windows,
+        macos,
+      ]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

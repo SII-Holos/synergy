@@ -19,6 +19,9 @@ inputs:
   native:
     description: Cache Rust dependencies and compilation for native builders
     default: "false"
+  build-cache:
+    description: Restore Rust compilation caches
+    default: "true"
 runs:
   using: composite
   steps:
@@ -37,14 +40,14 @@ runs:
         key: bun-downloads-${{ runner.os }}-${{ runner.arch }}-1.4.2-${{ hashFiles('bun.lock') }}
         restore-keys: bun-downloads-${{ runner.os }}-${{ runner.arch }}-1.4.2-
     - name: Native compiler identity
-      if: inputs.native == 'true'
+      if: inputs.native == 'true' && inputs.build-cache == 'true'
       id: rust-key
       shell: bash
       run: |
         identity=$(rustc -vV | bun -e 'console.log(new Bun.CryptoHasher("sha256").update(await Bun.stdin.text()).digest("hex"))')
         echo "identity=$identity" >> "$GITHUB_OUTPUT"
     - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-      if: inputs.native == 'true'
+      if: inputs.native == 'true' && inputs.build-cache == 'true'
       with:
         path: |
           ~/.cargo/registry

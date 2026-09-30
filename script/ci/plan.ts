@@ -98,7 +98,17 @@ export interface Plan {
 }
 
 export const LIMITS: Record<Pool, number> = { linux: 15, docker: 6, postgres: 1, windows: 1, macos: 1 }
-export const QUEUES = ["contracts", "linux", "docker", "postgres", "windows", "macos"] as const
+export const QUEUES = [
+  "contracts",
+  "linux",
+  "linux_core",
+  "linux_full",
+  "docker_direct",
+  "docker",
+  "postgres",
+  "windows",
+  "macos",
+] as const
 
 export function needsBuild(task: Task): boolean {
   return ["suite", "typecheck", "packages", "artifacts", "web", "desktop", "smoke", "sandbox", "rollout"].includes(
@@ -107,7 +117,10 @@ export function needsBuild(task: Task): boolean {
 }
 
 export function executionQueue(unit: Unit, _tasks?: Task[]): (typeof QUEUES)[number] {
-  return unit.id === "linux-contracts" ? "contracts" : unit.pool
+  if (unit.id === "linux-contracts") return "contracts"
+  if (unit.pool === "linux") return unit.full ? "linux_full" : unit.core ? "linux_core" : "linux"
+  if (unit.pool === "docker" && !unit.benchmark) return "docker_direct"
+  return unit.pool
 }
 
 export function hash(value: unknown): string {
@@ -136,55 +149,85 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         full: false,
       })
     if (!entries.length) continue
-    const count =
-      pool === "linux" || pool === "docker"
-        ? Math.min(mode === "diagnostic" ? 2 : pool === "linux" ? LIMITS.linux - 1 : LIMITS.docker, entries.length)
-        : entries.length
-    const bins = Array.from(
-      { length: count },
-      (_, index): Unit => ({
-        id: `${pool}-${index}`,
-        pool,
-        tasks: [],
-        seconds: 0,
-        browser: false,
-        desktop: false,
-        sandbox: false,
-        build: false,
-        policy: false,
-        benchmark: false,
-        core: false,
-        full: false,
-      }),
-    )
-    for (const task of entries.toSorted(
-      (a, b) =>
-        (pool === "docker"
-          ? Number(a.needs.includes("benchmark-prepare")) - Number(b.needs.includes("benchmark-prepare"))
-          : 0) ||
-        b.seconds +
-          (b.profile === "full" ? 190 : b.profile === "core" ? 90 : 0) -
-          a.seconds -
-          (a.profile === "full" ? 190 : a.profile === "core" ? 90 : 0) ||
-        a.id.localeCompare(b.id),
-    )) {
-      const target = bins.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
-      target.tasks.push(task.id)
-      target.seconds += task.seconds
-      if (task.profile === "full" && !target.full) target.seconds += 190
-      else if (task.profile === "core" && !target.core && !target.full) target.seconds += 90
-      target.browser ||= task.prerequisites?.includes("browser") ?? false
-      target.desktop ||= task.prerequisites?.includes("desktop") ?? false
-      target.sandbox ||= task.prerequisites?.includes("sandbox") ?? false
-      target.build ||= needsBuild(task)
-      target.policy ||= task.kind === "policy"
-      target.benchmark ||= task.needs.includes("benchmark-prepare")
-      target.core ||= task.profile === "core"
-      target.full ||= task.profile === "full"
+    const ordinary = entries.filter((task) => !task.profile)
+    const core = entries.filter((task) => task.profile === "core")
+    const full = entries.filter((task) => task.profile === "full")
+    const direct = entries.filter((task) => !task.needs.includes("benchmark-prepare"))
+    const benchmark = entries.filter((task) => task.needs.includes("benchmark-prepare"))
+    const groups =
+      pool === "linux" && mode !== "diagnostic"
+        ? [
+            {
+              entries: ordinary,
+              count: Math.min(8, ordinary.length),
+              name: "linux",
+            },
+            { entries: core, count: Math.min(1, core.length), name: "linux-core" },
+            { entries: full, count: Math.min(5, full.length), name: "linux-full" },
+          ]
+        : pool === "docker" && mode !== "diagnostic"
+          ? [
+              {
+                entries: direct,
+                count: Math.min(2, direct.length),
+                name: "docker-direct",
+              },
+              {
+                entries: benchmark,
+                count: Math.min(4, benchmark.length),
+                name: "docker",
+              },
+            ]
+          : [
+              {
+                entries,
+                count: pool === "linux" || pool === "docker" ? Math.min(2, entries.length) : entries.length,
+                name: pool,
+              },
+            ]
+    for (const group of groups) {
+      const count = group.count
+      const bins = Array.from(
+        { length: count },
+        (_, index): Unit => ({
+          id: `${group.name}-${index}`,
+          pool,
+          tasks: [],
+          seconds: 0,
+          browser: false,
+          desktop: false,
+          sandbox: false,
+          build: false,
+          policy: false,
+          benchmark: false,
+          core: false,
+          full: false,
+        }),
+      )
+      for (const task of group.entries.toSorted(
+        (a, b) =>
+          (pool === "docker"
+            ? Number(a.needs.includes("benchmark-prepare")) - Number(b.needs.includes("benchmark-prepare"))
+            : 0) ||
+          b.seconds - a.seconds ||
+          a.id.localeCompare(b.id),
+      )) {
+        const target = bins.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
+        target.tasks.push(task.id)
+        target.seconds += task.seconds
+        target.browser ||= task.prerequisites?.includes("browser") ?? false
+        target.desktop ||= task.prerequisites?.includes("desktop") ?? false
+        target.sandbox ||= task.prerequisites?.includes("sandbox") ?? false
+        target.build ||= needsBuild(task)
+        target.policy ||= task.kind === "policy"
+        target.benchmark ||= task.needs.includes("benchmark-prepare")
+        target.core ||= task.profile === "core"
+        target.full ||= task.profile === "full"
+      }
+      for (const bin of bins) bin.tasks.sort((a, b) => Number(b === "policy") - Number(a === "policy"))
+      if (pool !== "linux" && pool !== "docker") for (const bin of bins) bin.id = bin.tasks[0]!
+      units.push(...bins.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id)))
     }
-    for (const bin of bins) bin.tasks.sort((a, b) => Number(b === "policy") - Number(a === "policy"))
-    if (pool !== "linux" && pool !== "docker") for (const bin of bins) bin.id = bin.tasks[0]!
-    units.push(...bins.toSorted((a, b) => b.seconds - a.seconds || a.id.localeCompare(b.id)))
   }
   return units
 }

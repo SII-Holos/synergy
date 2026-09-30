@@ -25,7 +25,7 @@ Status: implemented
 
 Linux 基础、core 分发、full 分发和冻结 benchmark 分开准备，消费者只等待其所需产物。core/full 分发缓存绑定 tested SHA、平台、工具链与基础构建清单摘要；先核对所有文件字节和模式，再发布当前计划的产物身份。full 只生成一次 Web 生产构建，构建契约与 smoke 消费经过清单、字节与模式校验的输出。UI 六个 Solid/Vite 夹具使用多入口编译和共享 chunk，缓存键覆盖实际源码、工具链、依赖和配置，输出摘要校验；编译使用独立进程和显式测试环境，测试进程和 DOM 继续隔离，调用方的 NODE_ENV 不受 Vite 影响。懒加载内容以渲染事件等待，单个 timer tick 不是完成证据。
 
-Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前两轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，full/core 消费者另计冷生产者可用窗口的 190/90 秒估算，避免在安装控制后再堆积普通测试，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
+Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前两轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
 
 Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 15、6、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。重复的三个包 TypeScript 检查由 Linux 完整 workspace 类型检查覆盖；Windows 保留原生 Rust test/build 与实际调用，覆盖原 cargo check 的编译验证。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
 
@@ -58,3 +58,5 @@ Bun/Python 下载、Rust 编译与经过验证的构建使用包含实际输入�
 初始 Linux 11 的分配在第二轮仍有串行长尾，依据该轮任务耗时将 Linux 上限调整到 15（含 contracts），单 runner 的 package suite 继续串行；全组织实际并发仍受 20 槽位约束，排队继续计入验收。Windows Desktop 只跑 server/installer 行为，不下载其未使用的 Rust 编译缓存；Windows native 保留完整原生准备。
 
 完成态 30 MiB 原控制包含 30,720 次 1 KiB checkpoint。完整性验证改为 32 KiB transport 分块，保留同等字节与完整摘要、归档、用量、终态和实际清理；历史 checkpoint 压力通过 `SYNERGY_ROLLOUT_CHECKPOINT_STRESS=1` 显式保留。公共 chunk 计数核对实际输入，内部文件数量仍不作为断言。
+
+队列进一步按产物依赖分开：普通 Linux 最多 8、core 1、full 5，加 contracts 总计 15；Docker 无准备依赖 2、冻结准备消费者 4，总计 6。full/core 消费者在对应生产者完成后申请 runner，普通 suite 只等待基础构建。Docker 无准备依赖的 native/Environment 控制立即执行，冻结消费者等其生产者完成后再申请槽位，避免闲置 runner 的轮询挤占普通测试。全量冷验证还关闭 Rust 目标编译缓存，依赖下载可复用。

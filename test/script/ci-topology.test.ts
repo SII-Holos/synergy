@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { catalog } from "../../script/ci/catalog"
 import { createPlan, executionQueue, LIMITS } from "../../script/ci/plan"
+import { latestExecutions } from "../../script/ci/github"
 
 const root = path.resolve(import.meta.dir, "../..")
 interface Job {
@@ -19,6 +20,51 @@ const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflow
 }
 
 describe("required CI topology", () => {
+  test("consumers join only their required producer without reserving waiting runners", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    for (const unit of plan.units) {
+      const entries = tasks.filter((task) => unit.tasks.includes(task.id))
+      if (unit.pool === "linux" && unit.id !== "linux-contracts") {
+        const profiles = new Set(entries.map((task) => task.profile ?? "ordinary"))
+        expect(profiles.size).toBe(1)
+        const job = workflow.jobs[executionQueue(unit)]!
+        if (unit.full) expect(job.needs).toContain("prepare-full")
+        else if (unit.core) expect(job.needs).toContain("prepare-core")
+        else {
+          expect(job.needs).not.toContain("prepare-full")
+          expect(job.needs).not.toContain("prepare-core")
+        }
+      }
+      if (unit.pool === "docker") {
+        expect(entries.every((task) => task.needs.includes("benchmark-prepare") === unit.benchmark)).toBe(true)
+        const job = workflow.jobs[executionQueue(unit)]!
+        if (unit.benchmark) expect(job.needs).toContain("benchmark-prepare")
+        else expect(job.needs).not.toContain("benchmark-prepare")
+      }
+    }
+    const jobs = plan.units.map((unit) => ({
+      name: workflow.jobs[executionQueue(unit)]!.name!.replace("${{ matrix.id }}", unit.id),
+      run_attempt: 1,
+      status: "completed",
+      conclusion: "success",
+    }))
+    expect(
+      latestExecutions(plan, jobs)
+        .map((job) => job.unit)
+        .sort(),
+    ).toEqual(plan.units.map((unit) => unit.id).sort())
+  })
   test("the stable required check waits for every executor, including PostgreSQL", () => {
     const gate = workflow.jobs["all-checks-passed"]!
     expect(gate.name).toBe("All checks passed")
@@ -32,9 +78,12 @@ describe("required CI topology", () => {
   })
   test("all execution queues are bounded and preserve failed reports", () => {
     for (const [pool, limit] of Object.entries({
-      linux: LIMITS.linux - 1,
+      linux: 8,
+      linux_core: 1,
+      linux_full: 5,
+      docker_direct: 2,
       contracts: 1,
-      docker: LIMITS.docker,
+      docker: 4,
       postgres: LIMITS.postgres,
       windows: LIMITS.windows,
       macos: LIMITS.macos,
@@ -45,8 +94,9 @@ describe("required CI topology", () => {
       expect(job.steps?.some((step) => step.with?.["if-no-files-found"] === "error")).toBe(true)
     }
     expect(workflow.jobs.contracts!.needs).toEqual(["plan"])
-    expect(workflow.jobs.docker!.needs).toEqual(["plan"])
-    expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker"])
+    expect(workflow.jobs.docker_direct!.needs).toEqual(["plan"])
+    expect(workflow.jobs.docker!.needs).toEqual(["plan", "benchmark-prepare"])
+    expect(Object.keys(workflow.jobs).filter((name) => name.startsWith("docker"))).toEqual(["docker_direct", "docker"])
   })
   test("every dev/main push and the daily cold run remain enabled", () => {
     expect(workflow.on.push.branches).toEqual(["dev", "main"])
@@ -124,7 +174,7 @@ describe("required CI topology", () => {
       const units = plan.units.filter((unit) => unit.tasks.includes(task.id))
       expect(units).toHaveLength(1)
       const job = workflow.jobs[executionQueue(units[0]!, tasks)]!
-      expect(job.needs, task.id).not.toContain("benchmark-prepare")
+      expect(job.needs, task.id).toContain("benchmark-prepare")
       expect(units[0]!.benchmark, task.id).toBe(true)
       expect(job.steps!.some((step) => step.name === "Execute planned tasks")).toBe(true)
     }

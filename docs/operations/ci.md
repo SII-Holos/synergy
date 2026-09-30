@@ -47,3 +47,5 @@ GitHub 的 `CI diagnostics` 工作流提供相同选择器，执行矩阵最多�
 实现取舍与热点正确性见 [CI 决策](../decisions/implemented/testing/2026-09-24-ci-verification-plans.md)。
 
 录制完成态保留 30 MiB 完整性，默认 32 KiB 分块；历史 1 KiB checkpoint 压力可显式组合 `SYNERGY_ROLLOUT_LONG_STREAM=1 SYNERGY_ROLLOUT_CHECKPOINT_STRESS=1` 运行 Harness 的 `test/session/rollout-long.test.ts`。
+
+准备依赖对应独立执行队列：普通 Linux 8、core 1、full 5、contracts 1；Docker 无准备依赖 2、冻结准备消费者 4。core/full/冻结消费者在其生产者完成后才申请 runner。`build_cache=disabled` 同时关闭 Rust 编译与经过校验的跨 run 构建缓存，依赖下载缓存仍可复用。
