@@ -339,6 +339,7 @@ async function main() {
       process.env.GITHUB_RUN_ID && plan.mode !== "diagnostic"
         ? (profile) => downloadInput(plan, ROOT, profile)
         : undefined,
+      process.env.GITHUB_RUN_ATTEMPT ?? plan.attempt,
     )
     if (failures.length) throw new Error(`CI tasks failed: ${failures.join(", ")}`)
     return

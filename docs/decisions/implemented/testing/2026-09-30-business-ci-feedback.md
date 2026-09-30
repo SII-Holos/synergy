@@ -33,6 +33,8 @@ Docker 按耗时分配到八个 job，每个 job 最多两个独立 Home、进�
 
 同 SHA 局部重跑保持原始计划。结果版本 2 使用 `unit`、`planAttempt`、`executionAttempt`，每个产物有独立报告目录。GitHub jobs API 的最新实际执行决定有效证据；只有同 run、SHA、计划摘要且对应最新成功执行的结果才能合并。旧成功不能覆盖新失败、取消或缺失结果；重复、错误身份、报告损坏均拒绝。全量重跑建立新计划，旧计划记录不参与准入。新 SHA 重新计算当前 PR 影响范围，构建缓存可复用，通过结论不能复用。
 
+托管 CLI 显式传入当前执行 attempt，任务与 unit 执行函数默认使用调用方计划的 attempt。真实 PR 重跑暴露独立覆盖率夹具误读宿主 `GITHUB_RUN_ATTEMPT=2`，使自己第 1 次计划的有效记录被拒绝；执行身份由调用方拥有，嵌套夹具不能继承另一计划的执行身份。已有真实子进程与并行 unit 测试同时验证独立计划及显式重跑身份。
+
 Bun/Python 下载、Rust 编译与经过验证的构建使用包含实际输入、平台和工具链的缓存。构建产物保留 1 天，测试结果 3 天，计划与汇总 7 天；完整诊断只在失败时上传。部分重跑所需输入过期必须全量重跑，不能用缺失证据推断通过。
 
 浏览器 job 使用固定的 `ubuntu-24.04`，复用 [官方 runner 镜像](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) 已安装的浏览器系统库，只下载锁定 Playwright 版本对应的 Chromium。真实生产浏览器 smoke 继续验证启动与业务流程；镜像缺失依赖会失败。冷运行中重复执行 `install --with-deps` 在 Ubuntu 镜像源重试超过 14 分钟，未开始测试，因此取消这项重复系统安装。

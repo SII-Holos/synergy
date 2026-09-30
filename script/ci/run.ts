@@ -403,7 +403,12 @@ async function captureReports(task: Task, root: string, output: string): Promise
   return reports
 }
 
-export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<TaskResult> {
+export async function executeTask(
+  task: Task,
+  plan: Plan,
+  root = ROOT,
+  executionAttempt = plan.attempt,
+): Promise<TaskResult> {
   const output = path.join(root, OUTPUT, "results")
   await rm(path.join(output, task.id), { recursive: true, force: true })
   const raw = path.join(root, OUTPUT, "raw", task.id)
@@ -421,7 +426,7 @@ export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<
     sha: plan.sha,
     run: plan.run,
     planAttempt: plan.attempt,
-    executionAttempt: process.env.GITHUB_RUN_ATTEMPT ?? plan.attempt,
+    executionAttempt,
     mode: plan.mode,
     status: "failure",
     exitCode: 1,
@@ -495,6 +500,7 @@ export async function executeUnit(
   id: string,
   root = ROOT,
   prepareInput?: (profile: "core" | "full" | "benchmark") => Promise<void>,
+  executionAttempt = plan.attempt,
 ) {
   validatePlan(plan)
   const unit = plan.units.find((entry) => entry.id === id)
@@ -527,7 +533,7 @@ export async function executeUnit(
         )
       await prepared.get(profile)
     }
-    const result = await executeTask(task, plan, root)
+    const result = await executeTask(task, plan, root, executionAttempt)
     if (result.status !== "success") failures.push(taskID)
   }
   let cursor = 0

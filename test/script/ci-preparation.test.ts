@@ -44,13 +44,19 @@ test.each([undefined, "full"] as const)(
       const unit = plan.units.find((unit) => unit.tasks.length === 2)!
       let preparations = 0
       expect(
-        await executeUnit(plan, unit.id, root, async (actual) => {
-          expect(actual).toBe("full")
-          preparations++
-          for (const prefix of distributionPaths("full")) await Bun.write(path.join(root, prefix, "fixture"), "built")
-          await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "base fixture")
-          await publishDistribution(root, plan, "full")
-        }),
+        await executeUnit(
+          plan,
+          unit.id,
+          root,
+          async (actual) => {
+            expect(actual).toBe("full")
+            preparations++
+            for (const prefix of distributionPaths("full")) await Bun.write(path.join(root, prefix, "fixture"), "built")
+            await Bun.write(path.join(root, ".artifacts/ci/build/manifest.json"), "base fixture")
+            await publishDistribution(root, plan, "full")
+          },
+          "2",
+        ),
       ).toEqual([])
       expect(preparations).toBe(profile ? 1 : 0)
       const homes = await Promise.all(
@@ -59,10 +65,12 @@ test.each([undefined, "full"] as const)(
         ),
       )
       expect(new Set(homes).size).toBe(2)
-      for (const id of unit.tasks)
-        expect((await Bun.file(path.join(root, ".artifacts/ci/results", id, "result.json")).json()).status).toBe(
-          "success",
-        )
+      for (const id of unit.tasks) {
+        const result = await Bun.file(path.join(root, ".artifacts/ci/results", id, "result.json")).json()
+        expect(result.status).toBe("success")
+        expect(result.planAttempt).toBe(plan.attempt)
+        expect(result.executionAttempt).toBe("2")
+      }
     } finally {
       await rm(root, { recursive: true, force: true })
     }
