@@ -11,6 +11,25 @@ import type { Socket } from "node:net"
 const nativeTest = test.skipIf(process.platform !== "linux")
 
 nativeTest(
+  "binding failure waits for worker cancellation readiness after stream greetings",
+  async () => {
+    await using directory = await tmpdir()
+    const child = Bun.spawn(
+      [process.execPath, path.join(import.meta.dir, "fixtures/owned-startup-binding.ts"), directory.path],
+      { cwd: directory.path, env: process.env, stdout: "pipe", stderr: "pipe" },
+    )
+    const [code, output, error] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(code, error).toBe(0)
+    expect(JSON.parse(output)).toEqual({ error: "binding unavailable", activated: false, claims: 0 })
+  },
+  10000,
+)
+
+nativeTest(
   "a Linux supervisor startup exit retains its cause and releases an unactivated claim",
   async () => {
     await using directory = await tmpdir()
