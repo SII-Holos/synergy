@@ -6,6 +6,8 @@ Embedded control planes register `SessionExecutionSource` from Harness `session/
 
 Register `ProviderCatalogSource` for an exclusive host model inventory and `ProviderRequestSource` for ephemeral per-invocation connection preparation. Request keys, headers and JSON SDK context reach the worker plan after model parameter assembly. The host validates the detached root user metadata and supplies an explicit `ProviderSdkSource` factory; request credentials must not be placed in the stable catalog or model options.
 
+An exclusive host catalog also avoids importing the product's bundled catalog macro when consuming source packages from `node_modules`. Include the platform storage resources required by the selected backend; this does not provide a fallback inventory.
+
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"

@@ -5,7 +5,6 @@ import { EnvironmentProviders } from "../environment/provider"
 import { EnvironmentMaintenance } from "../environment/maintenance"
 import { ProviderCatalog } from "../provider/catalog"
 import { ProviderCatalogSource } from "../provider/catalog-source"
-import { ModelsCatalog, startModelCatalogRefresh } from "../provider/models"
 import { RuntimeContext, type RuntimeHost } from "./context"
 import { SessionStaging } from "../session/staging"
 import { StorageRecovery } from "../storage/recovery"
@@ -234,7 +233,6 @@ export namespace RuntimeHandle {
           await server?.stop(true)
           configureRuntimeEndpoint(undefined)
         })
-        await cleanup(() => ModelsCatalog.stop())
         await cleanup(() => ProviderCatalog.stop())
         await cleanup(() => services.disposeExtensions?.())
         await cleanup(() => SessionCompat.drain())
@@ -398,7 +396,10 @@ export namespace RuntimeHandle {
       stopEnvironments = EnvironmentMaintenance.start()
       if (!ProviderCatalogSource.get()) {
         stopBackground.push(await ProviderCatalog.subscribeModelCatalog())
-        if (options.mode === "server") stopBackground.push(startModelCatalogRefresh())
+        if (options.mode === "server") {
+          const { startModelCatalogRefresh } = await import("../provider/models")
+          stopBackground.push(startModelCatalogRefresh())
+        }
       }
       if (options.mode === "server")
         await ScopeContext.provide({ scope: Scope.home(), fn: async () => services.started?.() })

@@ -9,6 +9,8 @@ description: Add, modify, or review an LLM-backed operation in Synergy. Use for 
 
 Embedded hosts keep stable model inventory in `ProviderCatalogSource`. For credentials or SDK context tied to an accepted invocation, register `ProviderRequestSource` before composition is sealed. Validate the detached root user metadata there; keep keys out of model options and prompts. Test real `LLM.prepare()` plus worker-plan serialization, concurrent invocation isolation, cancellation and authorization failure. SDK factories consume the ephemeral `hostRequest` context without persisting it.
 
+Keep bundled catalog imports lazy at the lifecycle boundary. An installed source host with an exclusive catalog must open, query providers and close without evaluating dependency macros or fetching models.dev. Exercise an actual `node_modules` source installation in addition to workspace tests, and include the selected backend's native resources.
+
 | Required behavior                                                                                              | Path                                                           |
 | -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
 | Derive metadata, classify, summarize, or transform without durable work history                                | Sessionless internal-agent call through the shared `LLM` layer |
