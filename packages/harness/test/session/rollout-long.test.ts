@@ -17,7 +17,9 @@ import { SessionWorkspaceRuntime } from "../../src/session/workspace-runtime"
 
 const longTest = process.env.SYNERGY_ROLLOUT_LONG_STREAM === "1" ? test : test.skip
 for (const status of ["completed", "cancelled", "failed"] as const) {
-  const checkpoints = status === "completed" ? 30_720 : 256
+  const totalBytes = status === "completed" ? 30 * 1024 * 1024 : 256 * 1024
+  const chunkBytes = process.env.SYNERGY_ROLLOUT_CHECKPOINT_STRESS === "1" ? 1024 : 32 * 1024
+  const checkpoints = totalBytes / chunkBytes
   longTest(
     `retains provider bytes, terminal status and accounting through export and cleanup: ${status}`,
     async () => {
@@ -71,13 +73,13 @@ for (const status of ["completed", "cancelled", "failed"] as const) {
               headers: {},
             })
             const hash = new Bun.CryptoHasher("sha256")
-            const chunk = new TextEncoder().encode(":" + "x".repeat(1021) + "\n\n")
+            const chunk = new TextEncoder().encode(":" + "x".repeat(chunkBytes - 3) + "\n\n")
             await measurePhase("stream.persist", async () => {
               for (let index = 0; index < checkpoints; index++) {
                 hash.update(chunk)
                 await recorder.emit({ type: "chunk", attemptID, channel: "response", data: chunk })
-                if ((index + 1) % 10_240 === 0) {
-                  console.info(`rollout-long ${status}: persisted ${(index + 1) / 1024} MiB (${index + 1} checkpoints)`)
+                if (((index + 1) * chunkBytes) % (10 * 1024 * 1024) === 0) {
+                  console.info(`rollout-long ${status}: persisted ${((index + 1) * chunkBytes) / 1024 / 1024} MiB`)
                 }
               }
             })

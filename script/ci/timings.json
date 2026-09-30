@@ -659,7 +659,7 @@
   "packages/ui/test/visual-token-contract.test.ts": 0.612,
   "policy": 73.99,
   "rollout-cancelled": 6.9,
-  "rollout-completed": 242.92,
+  "rollout-completed": 25,
   "rollout-failed": 5.02,
   "root-tests": 39.4,
   "sandbox": 5.68,

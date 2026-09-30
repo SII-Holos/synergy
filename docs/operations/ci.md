@@ -45,3 +45,5 @@ GitHub 的 `CI diagnostics` 工作流提供相同选择器，执行矩阵最多�
 全量 CI 验收目标为 10 分钟以内，包含准备、测试、上传、最终检查和队列；分别完成一轮冷构建缓存与一轮热缓存，以最终 GitHub 时间和完整报告判断。验收对照需确认组织容量可用；多个 PR 占满容量的排队另列并计入用户实际等待。记录累计 runner 分钟与非确定性失败；拆分后的估计耗时、局部绿灯或影子模式的选测估算不能证明全量达标。
 
 实现取舍与热点正确性见 [CI 决策](../decisions/implemented/testing/2026-09-24-ci-verification-plans.md)。
+
+录制完成态保留 30 MiB 完整性，默认 32 KiB 分块；历史 1 KiB checkpoint 压力可显式组合 `SYNERGY_ROLLOUT_LONG_STREAM=1 SYNERGY_ROLLOUT_CHECKPOINT_STRESS=1` 运行 Harness 的 `test/session/rollout-long.test.ts`。

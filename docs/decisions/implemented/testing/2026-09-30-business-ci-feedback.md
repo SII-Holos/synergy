@@ -56,3 +56,5 @@ Bun/Python 下载、Rust 编译与经过验证的构建使用包含实际输入�
 第二轮实测继续拆分 full 的组件管理、Web 安装和 package composition，各流程从独立的新 Home 开始。六类 full 结果分成三组，同组复用安装 Home、分别新建工作区、会话和 provider；每个调用仍检查真实结果、锁与进程清理，完整导入导出仅一次。产物摘要与复制以最多 16 个文件操作并行处理，全部操作完成后才发布或报告失败，保持完整字节、权限与路径校验。bash 后台进程的测试等待已发布的完成态，上限五秒替代固定 500 毫秒窗口。
 
 初始 Linux 11 的分配在第二轮仍有串行长尾，依据该轮任务耗时将 Linux 上限调整到 15（含 contracts），单 runner 的 package suite 继续串行；全组织实际并发仍受 20 槽位约束，排队继续计入验收。Windows Desktop 只跑 server/installer 行为，不下载其未使用的 Rust 编译缓存；Windows native 保留完整原生准备。
+
+完成态 30 MiB 原控制包含 30,720 次 1 KiB checkpoint。完整性验证改为 32 KiB transport 分块，保留同等字节与完整摘要、归档、用量、终态和实际清理；历史 checkpoint 压力通过 `SYNERGY_ROLLOUT_CHECKPOINT_STRESS=1` 显式保留。公共 chunk 计数核对实际输入，内部文件数量仍不作为断言。
