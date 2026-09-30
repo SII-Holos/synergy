@@ -9,6 +9,8 @@ For Environment execution, retain selected Workspace use until checkpoint public
 
 Declare execution needs separately from Workspace needs. Resolve the target before requesting its containment verdict, and use the common process completion promise through saving. Test queued cancellation before activation and background ownership after foreground abort listeners detach. Real Bash resolver fixtures must carry the execution declaration so they exercise target-side preparation. Local Runtime's fixture supplies one private coordinator to both file admission and native execution.
 
+Native stream greetings do not prove cancellation readiness. Wait for the worker's prepared acknowledgement before binding its process claim, and send it only after cancellation and activation handlers are installed. Exercise a binding failure with a real worker delayed after its greetings; verify the original cause, no command effects and released ownership.
+
 ## Trace the Whole Decision
 
 1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.
