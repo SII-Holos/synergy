@@ -1295,9 +1295,12 @@ export namespace Worktree {
    * removal, the janitor, and Cortex cleanup so all three honour the same lock
    * and branch rules.
    */
-  async function removeWorktree(info: Info, options: { force: boolean; reason: string }) {
+  async function removeWorktree(
+    info: Info,
+    options: { force: boolean; reason: string; afterRemove?: () => Promise<void> },
+  ) {
     const { repoRoot } = ensureGitScope()
-    return WorkspaceAccess.retire(
+    await WorkspaceAccess.retire(
       [info.path],
       async () => {
         const { repoRoot } = ensureGitScope()
@@ -1321,12 +1324,13 @@ export namespace Worktree {
         if (removed.exitCode !== 0) {
           throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
         }
-        if (info.managed) await removeRegistry(info.id)
-        await deleteBranchIfLanded(repoRoot, info.branch ?? "")
-        log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
       },
       { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
     )
+    await options.afterRemove?.()
+    if (info.managed) await removeRegistry(info.id)
+    await deleteBranchIfLanded(repoRoot, info.branch ?? "")
+    log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
   }
 
   const LOCK_MARKER_PREFIX = "synergy:v1:"
@@ -1728,8 +1732,15 @@ export namespace Worktree {
           report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
           continue
         }
-        await leaveBoundSessions(current, undefined, { preserveActivityAt: true })
-        await removeWorktree(current, { force: false, reason: "managed cap" })
+        await WorkspaceAccess.maintenance(
+          () =>
+            removeWorktree(current, {
+              force: false,
+              reason: "managed cap",
+              afterRemove: () => leaveBoundSessions(current, undefined, { preserveActivityAt: true }),
+            }),
+          { signal: WorkspaceAccess.signal() },
+        )
         report.removed.push(current.id)
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)

@@ -42,7 +42,7 @@ The architecture invariant was revised to match, rather than left contradicting 
 
 Configuration lives in a new `worktree` domain (`57-worktree.jsonc`): `maxManaged`, `sweepIntervalHours` (default 6), and a `janitor` switch. `readWorktreeConfig()` resolves it through `ConfigExtensions.readField`, so the runtime does not hard-code where the value came from.
 
-Explicit removal, cap enforcement and stale reconciliation share the in-process removal gate. The sweep refreshes bindings and eligibility while holding that gate, migrates idle sessions before deleting their workspace, and never excludes anonymous users. Missing managed entries are removed individually after lock and liveness checks; there is no repository-wide prune that could discard an external checkout. `patchIdOf` passes diff bytes through stdin.
+Explicit removal, cap enforcement and stale reconciliation share the in-process removal gate. The sweep refreshes bindings and eligibility while holding that gate and never excludes anonymous users. Cap reclamation uses a separate maintenance task and migrates idle sessions only after Git confirms deletion and native retirement releases its claims. A failed admission or final Git removal preserves every binding. Registry cleanup follows binding migration; if migration fails after deletion, the next sweep reconciles the retained missing entry. Explicit callers still leave their selected Workspace before requesting removal. Missing managed entries are removed individually after lock and liveness checks; there is no repository-wide prune that could discard an external checkout. `patchIdOf` passes diff bytes through stdin.
 
 `git-health` was corrected to the same standard: `gc_needed` thresholds derive from `git config --get gc.auto` (falling back to 6700, warning at a quarter of it), the branch advisory no longer recommends a command that cannot work after a squash merge, and a cheap `unpushed` dimension reports local-only work directly.
 
@@ -59,6 +59,8 @@ Explicit removal, cap enforcement and stale reconciliation share the in-process 
 **Clear locks the janitor does not recognize, to reclaim more.** Rejected. An unmarked lock cannot be distinguished from a deliberate user lock, and clearing one silently defeats the documented purpose of `git worktree lock`.
 
 **Reclaim dirty worktrees instead of reporting them.** Rejected: uncommitted changes are unrecoverable after removal, and reporting `dirty` is the signal that a human should look.
+
+**Migrate idle bindings before attempting automatic deletion and roll them back on failure.** Rejected: binding changes are visible before the outcome, and rollback can fail or race a new selection. Keeping the original bindings until confirmed removal avoids those partial changes. The registry preserves recovery when a later binding write fails.
 
 **Only advise, never reclaim.** Rejected: it does not bound growth, and the user chose a cap-based route aligned with the reference implementations that set this expectation.
 
@@ -79,3 +81,5 @@ Costs and boundaries. A cap may remain exceeded when work is dirty, unpublished,
 Coverage. `packages/local-runtime/test/workspace/worktree-janitor.test.ts` pins stale-registry reconciliation, that dirty worktrees—including staged text and binary files—are skipped rather than removed with their session binding intact, candidate-level removal failures are reported while later candidates are still reclaimed, foreign-locked worktrees are skipped, both Synergy-marked and foreign locks survive automatic reclamation, a running binding blocks reclamation, cap arithmetic over the oldest `lastUsedAt`, and each `decide` guard. `packages/local-runtime/test/workspace/worktree-lock.test.ts` pins lock provenance including under a non-English locale. `packages/workbench/test/project/git-health.test.ts` pins the derived `gc.auto` thresholds, the corrected branch advisory, and the `unpushed` dimension.
 
 Review regressions cover anonymous and named active uses, repositories without remote refs, external missing checkouts, idle session rebinding, replaced locks, merge-only branch changes, and awaiting an active sweep during disposal.
+
+Late-failure regressions cover native retirement refusal and a concurrent file write rejected by Git's final clean-worktree check. Both preserve the session binding, registry membership and activity timestamps while later eligible candidates are reclaimed. A post-removal binding failure retains the registry and converges through the next missing-entry sweep.
