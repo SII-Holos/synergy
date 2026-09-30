@@ -140,6 +140,11 @@ export async function runNativeAcceptance(options: { directory: string; driver: 
     }
     if (!report.stageManager)
       await check("first foreground canvas click raises the exact background window before dispatch", async () => {
+        const initialWindow = (await command("refresh")).windows[0]!
+        if (!initialWindow.onActiveSpace)
+          throw new CaptureUnavailable(
+            "The initial window is off-Space; a background image cannot establish this check.",
+          )
         const { observed, point } = await pixels(false)
         const before = await command("refresh")
         assert(before.frontmost !== initial.pid, "The first-click fixture was already foreground")
