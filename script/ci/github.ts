@@ -10,16 +10,35 @@ export interface WorkflowJob {
   run_attempt: number
   status: string
   conclusion: string | null
+  created_at?: string
+  started_at?: string | null
+  completed_at?: string | null
 }
 interface Artifact {
   name: string
   expired: boolean
 }
 
+export function isInheritedJob(job: Pick<WorkflowJob, "status" | "created_at" | "started_at" | "completed_at">) {
+  if (job.status !== "completed") return false
+  const created = Date.parse(job.created_at ?? "")
+  const started = Date.parse(job.started_at ?? "")
+  const completed = Date.parse(job.completed_at ?? "")
+  // Partial reruns copy completed siblings with new IDs and attempt numbers but retain their execution times.
+  return (
+    Number.isFinite(created) &&
+    Number.isFinite(started) &&
+    Number.isFinite(completed) &&
+    started <= completed &&
+    completed < created
+  )
+}
+
 export function latestExecutions(plan: Plan, jobs: WorkflowJob[]): UnitExecution[] {
   const units = new Set([...plan.units.map((unit) => unit.id), "benchmark-prepare"])
   const executions = new Map<string, UnitExecution>()
   for (const job of jobs) {
+    if (isInheritedJob(job)) continue
     const unit =
       job.name === "Frozen benchmark preparation"
         ? "benchmark-prepare"
@@ -40,7 +59,7 @@ export function inputArtifact(
   artifacts: Artifact[],
 ) {
   const job = jobs
-    .filter((job) => job.name === producer && job.run_attempt >= Number(plan.attempt))
+    .filter((job) => job.name === producer && job.run_attempt >= Number(plan.attempt) && !isInheritedJob(job))
     .toSorted((a, b) => b.run_attempt - a.run_attempt)[0]
   if (!job) return undefined
   if (job.status === "completed" && job.conclusion !== "success")
@@ -144,7 +163,7 @@ export async function downloadInput(plan: Plan, root: string, profile: "core" | 
       return
     }
     const latest = jobs
-      .filter((job) => job.name === producer && job.run_attempt >= Number(plan.attempt))
+      .filter((job) => job.name === producer && job.run_attempt >= Number(plan.attempt) && !isInheritedJob(job))
       .toSorted((a, b) => b.run_attempt - a.run_attempt)[0]
     if (latest?.status === "completed") {
       missingSince ??= Date.now()

@@ -24,6 +24,36 @@ test("only the latest actual unit execution admits retained results", () => {
   expect(executions).toEqual([{ unit: "case", attempt: "2", status: "completed", conclusion: "failure" }])
 })
 
+test("partial reruns ignore copied completed jobs while preserving fresh failures and queued executions", () => {
+  const original = {
+    ...job,
+    created_at: "2026-09-30T00:00:00Z",
+    started_at: "2026-09-30T00:00:01Z",
+    completed_at: "2026-09-30T00:01:00Z",
+  }
+  const copied = { ...original, run_attempt: 2, created_at: "2026-09-30T00:02:00Z" }
+  expect(latestExecutions(plan, [original, copied])).toEqual([
+    { unit: "case", attempt: "1", status: "completed", conclusion: "success" },
+  ])
+  for (const fresh of [
+    { ...copied, started_at: "2026-09-30T00:02:01Z", completed_at: "2026-09-30T00:03:00Z", conclusion: "failure" },
+    { ...copied, started_at: null, completed_at: null, status: "queued", conclusion: null },
+  ]) {
+    const result = latestExecutions(plan, [original, fresh])
+    expect(result).toEqual([{ unit: "case", attempt: "2", status: fresh.status, conclusion: fresh.conclusion }])
+  }
+  const producer = { ...original, name: "Full distribution" }
+  expect(
+    inputArtifact(
+      plan,
+      "ci-distribution-full",
+      producer.name,
+      [producer, { ...copied, name: producer.name }],
+      [{ name: "ci-distribution-full-1", expired: false }],
+    ),
+  ).toBe("ci-distribution-full-1")
+})
+
 test("input reuse follows the producer attempt and rejects failed or expired producers", () => {
   const producer = { ...job, name: "Full distribution" }
   const original = { name: "ci-distribution-full-1", expired: false }
