@@ -164,6 +164,7 @@ export namespace OwnedProcess {
               bytes += chunk.length
             })
             child.stdin.once("end", () => {
+              if (finished || stopping || reported || stage === "tree-drained" || stage === "streams-drained") return
               const control = sockets.get("control")
               if (control && !control.destroyed && !control.writableEnded)
                 OwnedProtocol.send(control, { type: "stdin-end", bytes })

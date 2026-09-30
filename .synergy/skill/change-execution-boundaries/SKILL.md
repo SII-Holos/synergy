@@ -11,6 +11,8 @@ Declare execution needs separately from Workspace needs. Resolve the target befo
 
 Native stream greetings do not prove cancellation readiness. Wait for the worker's prepared acknowledgement before binding its process claim, and send it only after cancellation and activation handlers are installed. Exercise a binding failure with a real worker delayed after its greetings; verify the original cause, no command effects and released ownership.
 
+Do not forward a queued stdin EOF after the native worker confirms whole-tree drainage. Exercise a late EOF against a real drained worker, retaining output bytes, exit status and lease release; keep pre-completion transport failures observable and preserve byte-counted EOF for live readers.
+
 ## Trace the Whole Decision
 
 1. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and `packages/presets/AGENTS.md`.
