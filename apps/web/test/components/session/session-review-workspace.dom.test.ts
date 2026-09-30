@@ -60,6 +60,7 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
   page.setDefaultTimeout(4000)
+  page.setDefaultNavigationTimeout(20_000)
   page.on("pageerror", (error) => errors.push(error.message))
 }, 30_000)
 afterAll(async () => {
@@ -126,7 +127,7 @@ test("separate writes to the same bound file remain independently expandable", a
   await rows.nth(1).locator('[data-slot="session-review-filename"]').click()
   await rows.nth(1).getByText("+last", { exact: true }).waitFor()
   expect(await rows.nth(1).textContent()).toContain("+last")
-})
+}, 30_000)
 
 test("incomplete recording remains visible with the available file changes in both languages", async () => {
   await page.goto(base)
@@ -137,4 +138,4 @@ test("incomplete recording remains visible with the available file changes in bo
   expect(await panel.locator('[data-slot="turn-change-summary-row"]').count()).toBe(2)
   await page.evaluate(() => (window as unknown as { fixture: { locale(value: string): void } }).fixture.locale("zh-CN"))
   expect(await panel.textContent()).toContain("文件改动记录尚不完整")
-})
+}, 30_000)

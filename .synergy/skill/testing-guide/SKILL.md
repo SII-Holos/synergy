@@ -15,6 +15,8 @@ For Workspace contention, explicitly inject a managed mutation when testing writ
 
 Cross project-folder changes with the scheduled janitor: retain a dirty bound task in a removed source repository while reclaiming clean candidates in both historical and current repositories. Check physical bytes and the persisted binding after the scheduled sweep drains.
 
+In DOM fixtures, give browser navigation a separate bounded budget from interaction assertions. The test-framework budget must cover first-load module preparation on shared CI runners without weakening the component's behavior assertions.
+
 Distinguish model disconnects from watchdog timeouts. Hold an actual upstream response until the client aborts, and require the matching first-byte or idle watchdog metric before counting the phase. Complete real model work before and after the timeout sequence and independently count any earlier tool side effect. Match delegated fixture roles by an unambiguous identity token; descriptive text appended by the model must not prevent observing the real child task.
 
 Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
