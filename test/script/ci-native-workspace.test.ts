@@ -28,7 +28,7 @@ test("native Workspace verification stays in the plan with fresh platform covera
     expect(task.package).toBe("packages/local-runtime")
     expect(task.outputs).toContain("lcov")
     expect(task.outputs).toContain("junit")
-    expect(task.needs).toContain("suite-packages-local-runtime")
+    expect(task.needs).toEqual(["suite-packages-local-runtime-0", "suite-packages-local-runtime-1"])
     const recipe = await commands(task, plan)
     const missing: string[] = []
     for (const command of recipe) {

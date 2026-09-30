@@ -25,7 +25,7 @@ Status: implemented
 
 Linux 基础、core 分发、full 分发和冻结 benchmark 分开准备，消费者只等待其所需产物。core/full 分发缓存绑定 tested SHA、平台、工具链与基础构建清单摘要；先核对所有文件字节和模式，再发布当前计划的产物身份。基础准备只生成一次 Web 生产构建，构建契约与 smoke 消费经过清单、字节与模式校验的输出。UI 六个 Solid/Vite 夹具使用多入口编译和共享 chunk，缓存键覆盖实际源码、工具链、依赖和配置，输出摘要校验；编译使用独立进程和显式测试环境，测试进程和 DOM 继续隔离，调用方的 NODE_ENV 不受 Vite 影响。懒加载内容以渲染事件等待，单个 timer tick 不是完成证据。
 
-Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前几轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
+Harness、Web、Presets、UI、Local Runtime 使用 4、4、4、2、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前几轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
 
 Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 12、8、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。重复的三个包 TypeScript 检查由 Linux 完整 workspace 类型检查覆盖；Windows 保留原生 Rust test/build 与实际调用，覆盖原 cargo check 的编译验证。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
 
@@ -80,3 +80,9 @@ Web 生产构建与原生准备在基础 runner 重叠执行，其源码依赖�
 随后冷缓存运行耗时 652 秒并暴露产物竞争：`package:check` 重建 plugin 的 dist，与同 runner 的 UI 消费者并行造成模块缺失。该门禁自行编译依赖闭包，移入无基础产物依赖的 contracts runner 串行执行。Docker 故障场景的调度证据显示 `cpu_budget` 等待：四核 runner 默认预留两核，另一个 native 场景持有工作集时无法准入两核构建；当时观测 CPU 使用约 12%，内存与磁盘充足。确定性 CI 夹具预留改为一核，内存、磁盘、真实 CPU 压力及原生硬限制保持；本地研究配置不变。最终检查最多等待一分钟使 GitHub 最新 job 完成状态可见，超时、缺失或最新失败仍拒绝，不能沿用旧执行绿灯。
 
 后续冷运行的 Docker 场景全部通过，端到端耗时 663 秒。普通 suite 暴露 Vite 的零端口默认行为与原生退出后的控制管道写失败；浏览器夹具统一使用实际分配的非零端口，真实两个 Vite 服务器验证并行启动和独立内容，原生修复见 [退出确认决策](../bug-fix/2026-09-30-preserve-acknowledged-native-exit.md)。工具超时用例移除额外的三秒竞争计时，仍验证配置超时、唯一结算和迟到 handler 不覆写终态，测试框架继续限制挂死。开发 Skills 与 CI 文档要求对新增和已有测试同时做价值审视，增长必须说明独有覆盖与实测成本，不能只增不减。
+
+冷运行进一步暴露 LSP 的脱离 Runtime 取消回调和 Host Service 过早异步释放。真实进程的脱离上下文取消、延迟真实资源清理使两个缺陷稳定复现；修复与验证见 [异步执行所有权](../bug-fix/2026-09-30-own-async-execution-lifetimes.md)。输出完整性场景移除无业务约束的第二个十秒计时，仍由测试 runner 限制挂死，实际取消与资源清理继续独立验证。
+
+Library 搜索夹具曾把技能分组渲染当成经验分组也已完成的证据，在冷运行观察到经验卡片尚未出现。各分组独立完成，经验断言先等待自己的实际卡片，错误与重试仍按各自业务状态验证，不增加固定睡眠。
+
+该冷运行中 Local Runtime suite 完整通过，但执行 626 秒成为关键路径。拆为两个保持原隔离批次的分区，并按约 640 秒总权重分配到不同 runner，执行池容量不变。Windows/macOS 的覆盖率证据依赖完整两个分区；普通测试仍恰好执行一次，原单任务计时条目移除，清单、覆盖率和批次不可拆分的行为检查共同验证新的边界。

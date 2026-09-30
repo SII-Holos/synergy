@@ -16,7 +16,7 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 ## 任务和报告
 
-普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI 分别使用 4、4、4、2 个分区，按登记的历史文件耗时均衡分配；原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home、fixture 根和 Link Home。六个 UI DOM 夹具共享一次 Solid/Vite 编译，每个测试仍使用独立进程和 DOM；缓存校验实际输入和输出字节。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，与完整 Local Runtime suite 共同计算原有覆盖率门槛。
+普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI、Local Runtime 分别使用 4、4、4、2、2 个分区，按登记的历史文件耗时均衡分配；原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home、fixture 根和 Link Home。六个 UI DOM 夹具共享一次 Solid/Vite 编译，每个测试仍使用独立进程和 DOM；缓存校验实际输入和输出字节。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，要求两个 Local Runtime 分区的完整基线共同计算原有覆盖率门槛。
 
 Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立生产任务；消费者只在需要时等待对应产物。core binary 验证独立启动与真实工具调用，core 包验证实际安装、启动和完成任务；full 保留六类业务结果、一次完整导入导出和组件安装、升级、移除、managed/attach 生命周期。基础准备并行生成一次 Web 生产产物，构建契约和浏览器 smoke 消费经过清单校验的同一产物。消费者验证计划、提交、run、原始计划 attempt、Bun、ABI、完整文件列表、字节摘要和模式；每个场景有独立 Home，结束时验证发行树未变。
 

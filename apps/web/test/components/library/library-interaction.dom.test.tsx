@@ -195,7 +195,9 @@ test("unified search isolates one failed category and its retry retains other re
   await page.goto(url)
   await page.getByRole("textbox", { name: "Search library" }).fill("focus")
   await page.getByRole("button", { name: /frontend-check/ }).waitFor()
-  expect(await page.getByRole("button", { name: /Experience encoding failed/ }).count()).toBe(1)
+  const experienceEntry = page.getByRole("button", { name: /Experience encoding failed/ })
+  await experienceEntry.waitFor()
+  expect(await experienceEntry.count()).toBe(1)
   expect(await page.getByRole("alert").textContent()).toContain("Memories")
   memoryFailure = false
   await page.getByRole("button", { name: "Retry", exact: true }).click()

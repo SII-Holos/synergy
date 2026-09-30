@@ -16,6 +16,7 @@ test("every coverage owner has its complete disjoint suite partitions", async ()
       "apps/web": 4,
       "packages/presets": 4,
       "packages/ui": 2,
+      "packages/local-runtime": 2,
     }
     expect(tasks).toHaveLength(counts[owner] ?? 1)
     if (tasks.length > 1)

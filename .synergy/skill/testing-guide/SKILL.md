@@ -73,6 +73,8 @@ Seed large SQLite fixtures inside a transaction so per-row durability flushes do
 
 Compare directory snapshots as sorted paths or sets when asserting unchanged files; filesystem enumeration order is not a product invariant.
 
+For independently loaded UI groups, wait for the observed group itself before asserting its result. Another group's rendered content cannot establish completion; retain checks for failure isolation and retry without imposing response ordering.
+
 Prepare durable fixtures before starting a short runtime deadline; for Cortex timeout tests, enqueue follow-ups between `Cortex.prepare` and `Cortex.start` rather than racing their writes against the timer.
 
 For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.

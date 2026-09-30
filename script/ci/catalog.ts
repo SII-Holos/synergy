@@ -219,7 +219,6 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         pool: "windows",
         variant: "native",
         package: "packages/local-runtime",
-        needs: ["suite-packages-local-runtime"],
       },
     ),
     task("windows-desktop", "windows", 120, ["apps/desktop"], {
@@ -230,7 +229,6 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     task("macos-workspace", "native-workspace", 300, ["packages/local-runtime", "packages/lsp", "packages/formatter"], {
       pool: "macos",
       package: "packages/local-runtime",
-      needs: ["suite-packages-local-runtime"],
     }),
     ...[16, 17, 18].map((version) =>
       task(`postgres-${version}`, "postgres", 180, ["packages/harness"], {
@@ -413,7 +411,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     "apps/web": 640,
     "packages/connections": 180,
     "packages/ui": 320,
-    "packages/local-runtime": 150,
+    "packages/local-runtime": 640,
     "packages/library": 130,
   }
   const times = (await Bun.file(path.join(import.meta.dir, "timings.json")).json()) as Record<string, number>
@@ -422,6 +420,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     "apps/web": 4,
     "packages/presets": 4,
     "packages/ui": 2,
+    "packages/local-runtime": 2,
   }
   for (const directory of [...coverage].sort()) {
     const workspace = packages.find((entry) => entry.directory === directory)!
@@ -456,6 +455,10 @@ export async function catalog(root = ROOT): Promise<Task[]> {
     }
   }
   for (const entry of tasks) {
+    if (entry.kind === "native-workspace" || (entry.kind === "windows" && entry.variant === "native"))
+      entry.needs = tasks
+        .filter((task) => task.kind === "suite" && task.package === entry.package)
+        .map((task) => task.id)
     entry.isolation =
       entry.kind === "suite"
         ? "batch-home"
