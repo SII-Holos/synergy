@@ -53,6 +53,14 @@ For permission acceptance, observe file bytes at the pending decision before rep
 
 For transport shutdown changes, exercise a server-initiated WebSocket close through a real full Runtime in a child process. Observe complete terminal output, Runtime closure and process exit separately; a close event or completed tool is not proof that the HTTP server drained. Prepare the native PTY with `bun packages/local-runtime/script/build-pty.ts` before the focused Presets shutdown test. CI restores that helper from its verified build artifact.
 
+## Review Test Value and CI Cost
+
+1. Before adding a scenario, inspect nearby coverage and name the observable behavior, the real failure it prevents, and what existing tests leave uncovered. Extend a suitable existing test when it already owns that behavior. File size, assertion count and coverage percentage alone do not establish value.
+2. Review the affected old tests in the same change. Delete obsolete behavior, consolidate duplicate coverage, and replace assertions about source strings, callback names, incidental structure or fixed style values with observable results where needed. Record what was retained, combined or removed and why; there is no quota for adding or deleting tests.
+3. Put shared behavior at its lowest useful level. Keep adapter-specific integration at each adapter; add model, protocol, platform or outcome combinations only when they protect a distinct failure. Reuse immutable preparation while retaining separate mutable Homes, processes and DOMs.
+4. When replacing expensive acceptance, demonstrate that the retained test rejects a relevant fault such as a missing file edit, lost recording or failed continuation. Preserve public lifecycle, installation, migration, cancellation and recovery checks and coverage floors. Repetition and long sessions need an identified size, duration or accumulation failure; duplicate historical stress belongs in an explicit diagnostic.
+5. Measure preparation, execution, cleanup, upload and queues for changes to expensive fixtures, matrices or CI. Compare equivalent cold and warm runs, report the incremental cost and its useful coverage, and update task weights from observed time. Diagnose flakes at their observed stage; blanket retries, longer sleeps and hidden skips cannot justify growth. Use [CI cost policy](../../../docs/operations/ci.md#维护验证成本) when reviewing a longer critical path.
+
 ## Define the Invariant First
 
 When a dedicated CI task activates opt-in tests, declare its mandatory scenario names in the verification catalog. Verify the actual JUnit report rejects skipped or missing scenarios; process exit status cannot prove that an external capability was exercised. Cover both source and test-only changes in affected planning.
@@ -108,7 +116,7 @@ For byte-bounded queues, hold a worker busy and admit several individually valid
 - session/LLM loop: real session state with deterministic provider/model fixtures
 - Web/UI: component/context behavior plus the smallest browser or integration check needed
 - external agent adapters: execute a deterministic protocol fixture as a real child through the public Adapter interface; verify stdin, event framing, tool errors, usage, thread isolation/resume, credential filtering and shutdown rather than only private argument builders
-- package/release: build, pack, and validate the published artifact rather than source layout alone; run the shared CLI artifact behavior suite against both core and full binaries with `SYNERGY_TEST_ARTIFACT_BIN`, including actual model/tool execution. Help and health checks do not validate product lifecycle delegation.
+- package/release: build, pack, and validate the published artifact rather than source layout alone. Core owns standalone tool execution and installed-package task completion; full owns the six result cases, the complete import/export check and component lifecycle described in [CI verification](../../../docs/operations/ci.md). Help and health checks do not validate product lifecycle delegation.
 
 After splitting a package, evaluate each new owner against aggregate coverage; the former combined percentage can hide an uncovered protocol or lifecycle branch. Exercise worker registrars in an isolated Runtime context as well as through real IPC. Keep process-only coverage exclusions limited to exact entry files with named executable tests; do not exclude reusable registrars or lower the new package floor.
 
@@ -125,6 +133,8 @@ Place every test under the owning package's `test/` directory, mirroring the rel
 For localized UI behavior, use a real Lingui `I18nProvider` with minimal English and Simplified Chinese messages. Assert visible text and accessibility labels after a reactive locale change; do not mock translation calls to return IDs because that hides missing catalogs and stale module-load translations. Keep plugin-author, user, LLM, path, identifier, and raw-error pass-through in the same boundary test as translated host chrome.
 
 ## Use Real Isolation
+
+Vite fixtures pass a nonzero loopback port from the shared `fixturePort()` helper; Vite's `port: 0` selects its default port and collides across otherwise isolated package processes. Close the owning server before deleting its fixture. Keep correctness waits tied to the configured behavior and observable settlement; the test framework bounds a hung test, while an additional short race can reject valid completion under instrumentation.
 
 Per-session recovery tests must migrate only their owned session fixture. Exercise the global migration runner separately with a dedicated home; a process-wide migration scan can encounter intentionally incomplete records from unrelated suites or earlier shards.
 

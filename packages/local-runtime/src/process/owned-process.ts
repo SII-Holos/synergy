@@ -104,7 +104,11 @@ export namespace OwnedProcess {
           child.stdin.destroy(error)
           return
         }
-        if (code === "ECONNRESET" && (stopping || (reported && sockets.get("control") === socket))) return
+        if (
+          (code === "ECONNRESET" || code === "EPIPE") &&
+          (stopping || (reported && sockets.get("control") === socket))
+        )
+          return
         if (sockets.has("control")) fail(error)
       })
       let pending = Buffer.alloc(0)

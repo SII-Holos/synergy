@@ -26,6 +26,12 @@ Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立�
 
 `All checks passed` 始终执行，核对计划摘要、测试 SHA、run、模式、全部选中任务、job 结果、报告摘要和逐文件执行清单。安装和矩阵的 JUnit 场景必须恰好执行一次且成功。结果版本 2 记录 `unit`、`planAttempt`、`executionAttempt`；报告按产物目录隔离。GitHub“仅重跑失败 job”沿用原计划和成功产物，汇总根据 API 的最近一次实际 unit 执行选择证据；最新失败、缺失、重复、损坏、旧 SHA、错误 run 或计划不能通过。产物过期须全量重跑。新提交重新计算当前 PR 影响范围，不能沿用上一个 SHA 的通过结论。覆盖率只合并所选最新完整成功报告，阈值与 exemption 不变。
 
+## 维护验证成本
+
+测试的价值由它保护的业务行为、实际故障和独有覆盖决定。开发变更同时审视新增与已有测试，合并重复覆盖、移除过时场景，保留安装、生命周期、迁移、恢复、平台差异与覆盖率门槛。具体步骤由 [testing-guide](../../.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost) 拥有，源开发入口 [develop-synergy](../../.synergy/skill/develop-synergy/SKILL.md#verify-and-diagnose) 必须执行这项审视。
+
+全量反馈以约 10 分钟为优化目标，不设仅凭超过 10 分钟就失败的质量门禁。有业务价值的增长可以保留；昂贵夹具、新增组合、准备或关键路径改变需对照相同负载和缓存条件的实际运行，说明新增覆盖与耗时增量，检查能否复用准备或合并重复场景。报告最终耗时、队列、runner 分钟、失败阶段和重跑次数；重跑变绿不能证明 flaky 已修复。超过目标或重复出现长尾时按实测热点优化，不能只新增测试而放任重复和无效断言累积。
+
 ## 开发接口
 
 ```bash
@@ -42,7 +48,7 @@ GitHub 的 `CI diagnostics` 工作流提供相同选择器，执行矩阵最多�
 
 带 attempt 后缀的 `ci-plan-*`、`ci-results-*`、`ci-summary-*`、`ci-admission-*` 保留计划、任务证据、计时和准入样本。构建产物保留 1 天，测试报告保留 3 天，计划与汇总保留 7 天；完整诊断仅失败时上传。每个 job 的队列和运行时间来自 GitHub 当前 attempt API；汇总采集器自身尚未结束，因此同次运行的 metrics 标记 `partial`，不能作为最终性能验收。完成后运行 `bun script/ci/metrics.ts --repo SII-Holos/synergy --run <id> --attempt <n> --cache <cold|hit|miss> --load <isolated|concurrent-pr|unknown> --output <file>`，以最终 GitHub job 时间重新统计；采集器排除重跑 attempt 继承的旧 job、重复记录和未启动任务的计算时间。根据仓库运行时间线确认是否存在重叠 PR 后填写负载标签，未知负载不能算作单 PR 对照。分别报告冷缓存、缓存命中、缓存未命中和并发 PR 的样本。
 
-全量 CI 验收目标为 10 分钟以内，包含准备、测试、上传、最终检查和队列；分别完成一轮冷构建缓存与一轮热缓存，以最终 GitHub 时间和完整报告判断。验收对照需确认组织容量可用；多个 PR 占满容量的排队另列并计入用户实际等待。记录累计 runner 分钟与非确定性失败；拆分后的估计耗时、局部绿灯或影子模式的选测估算不能证明全量达标。
+全量 CI 的约 10 分钟反馈目标包含准备、测试、上传、最终检查和队列；分别完成一轮冷构建缓存与一轮热缓存，以最终 GitHub 时间和完整报告判断。验收对照需确认组织容量可用；多个 PR 占满容量的排队另列并计入用户实际等待。记录累计 runner 分钟与非确定性失败；拆分后的估计耗时、局部绿灯或影子模式的选测估算不能证明全量耗时。增长的取舍遵循 [维护验证成本](#维护验证成本)。
 
 实现取舍与热点正确性见 [CI 决策](../decisions/implemented/testing/2026-09-24-ci-verification-plans.md)。
 
