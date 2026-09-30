@@ -218,7 +218,7 @@ bun run --cwd apps/web build
 bun apps/web/script/private-http-smoke.ts
 ```
 
-CI planning, bounded execution and diagnostics are documented in [CI verification](docs/operations/ci.md).
+CI planning, bounded execution, diagnostics and justified runtime growth are documented in [CI verification](docs/operations/ci.md). Review new and affected existing tests with [testing-guide](.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost).
 
 Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
 

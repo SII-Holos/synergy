@@ -22,12 +22,14 @@ test("shadow evidence exposes a missed failure without replacing current executi
     ],
   })
   const result = {
-    version: 1 as const,
+    version: 2 as const,
     task: "runtime",
+    unit: plan.units.find((unit) => unit.tasks.includes("runtime"))!.id,
     plan: plan.digest,
     sha: plan.sha,
     run: plan.run,
-    attempt: plan.attempt,
+    planAttempt: plan.attempt,
+    executionAttempt: plan.attempt,
     mode: plan.mode,
     status: "failure" as const,
     exitCode: 1,

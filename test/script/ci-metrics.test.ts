@@ -20,6 +20,7 @@ test("queue and compute accounting ignore inherited attempts, duplicates and uns
       row,
       row,
       { ...row, id: 2, run_attempt: 1 },
+      { ...row, id: 4, created_at: "2026-09-24T00:05:00Z" },
       { ...row, id: 3, started_at: null, completed_at: null, status: "queued" },
     ],
     Date.parse("2026-09-24T00:05:00Z"),

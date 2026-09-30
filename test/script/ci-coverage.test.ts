@@ -10,7 +10,9 @@ import { verifyCoverage } from "../../script/ci/coverage"
 // A real child proves that execution, inventory evidence and threshold admission agree.
 test("a fresh complete suite passes; omitted files and stale reports cannot contribute coverage", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-run-"))
+  const inheritedAttempt = process.env.GITHUB_RUN_ATTEMPT
   try {
+    process.env.GITHUB_RUN_ATTEMPT = "2"
     const owner = "packages/example"
     await Bun.write(path.join(root, "package.json"), JSON.stringify({ workspaces: { packages: [owner] } }))
     await Bun.write(path.join(root, owner, "package.json"), '{"name":"example"}')
@@ -56,6 +58,7 @@ test("a fresh complete suite passes; omitted files and stale reports cannot cont
       ],
     })
     const result = await executeTask(plan.tasks[0]!, plan, root)
+    expect(result.executionAttempt).toBe(plan.attempt)
     expect(verifyResults(plan, [result], ["success"])).toEqual([])
     const reports = path.join(root, ".artifacts/ci/results")
     expect((await verifyCoverage(root, reports, plan, [result])).errors).toEqual([])
@@ -68,6 +71,8 @@ test("a fresh complete suite passes; omitted files and stale reports cannot cont
     await Bun.write(path.join(reports, lcov.path), "old report")
     await expect(verifyCoverage(root, reports, plan, [result])).rejects.toThrow("checksum")
   } finally {
+    if (inheritedAttempt === undefined) delete process.env.GITHUB_RUN_ATTEMPT
+    else process.env.GITHUB_RUN_ATTEMPT = inheritedAttempt
     await rm(root, { recursive: true, force: true })
   }
 })

@@ -217,9 +217,9 @@ SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/t
 SYNERGY_BENCH_DOCKER=1 uv run --locked --project benchmark pytest -s benchmark/test/test_docker.py
 ```
 
-普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。故障注入在测试进程中缩短时钟或修改一次性 TrialConfig，不向生产配置暴露短期限入口。30 MiB / 30,720 checkpoint 的长流成功、取消和失败测试分别运行，允许 20 分钟测试期限，不改变正式任务的三小时上限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
+普通测试不启动 Docker 或付费模型；Docker 接入使用确定性 provider。故障注入在测试进程中缩短时钟或修改一次性 TrialConfig，不向生产配置暴露短期限入口。长流完成态保留 30 MiB / 30,720 checkpoint 的完整性验证；取消与失败使用小数据核对终态、已接收字节、用量与清理，不改变正式任务的三小时上限。实际 provider 验收留在隔离本地环境。新 CI runner 必须安装自己的执行和构建依赖。
 
-Synergy 原生控制分别验证四轮真实文件操作和 120 轮持续执行；两个确定性模型的身份与计量、两种协议和 JIT 条件仍有独立证据。选测与等价 fixture 的分配见[PR CI 决策](../docs/decisions/implemented/testing/2026-09-27-pr-ci-feedback.md)，provider 请求体容量与执行边界见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。CI job 的总期限不改变单个用例或正式评测的三小时期限。
+Synergy 原生控制验证真实读取、修改、原生压缩、压缩后继续、磁盘结果、导出和用量；四组短控制验证两个确定性模型、协议与 JIT 条件。完成跟随业务事件，执行上限防止挂死。四组 120 轮压力复现通过 `SYNERGY_BENCH_LONG_DIAGNOSTIC=1` 与 `test_synergy_diagnostic_120_rounds` 显式诊断。测试分配见[业务 CI 决策](../docs/decisions/implemented/testing/2026-09-30-business-ci-feedback.md)，provider 请求体容量与执行边界见[矩阵决策](../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md)。CI job 的总期限不改变单个用例或正式评测的三小时期限。
 
 原生 Pi 压缩测试通过多次真实工具输出构造足够历史，并提供明确的确定性 usage 触发其原生阈值；要求会话记录包含 compaction、工具任务通过，且主调用与压缩调用均逐条核对。精确 token 差值要求全部请求关联覆盖和总量核对都完整，不能只靠累计用量相等。
 
@@ -258,4 +258,4 @@ CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence
 
 缺失终态证据或 native attempt 对应的 wire 记录时，用途分组与总体摘要的 `total_tokens` 都保持未知，已观察到的 token 下界仍保留；用途未知的缺口不能据此断言其他用途已完整。
 
-CI 的任务选择与诊断入口见 [CI 验证](../docs/operations/ci.md)。正常生命周期和故障恢复分别执行，共享只读准备产物，写入环境各自隔离。`SYNERGY_BENCH_TIMINGS=/隔离目录/timing.jsonl` 记录 prepare、verify、preflight、publish、cleanup 的耗时；`stages.json`、`export.json` 与 JUnit 分别保留场景执行、导出和用例耗时。完整性验证每次读取全部记录字节，在单次操作内复用同一 inventory 派生摘要。修改 evaluator 后必须冻结新实验，不能用新 evaluator 继续历史运行。
+CI 的任务选择与诊断入口见 [CI 验证](../docs/operations/ci.md)。正常生命周期、各故障与 native 套件按独立场景组执行，消费者仅等待其所需只读准备产物，写入环境各自隔离。`SYNERGY_BENCH_TIMINGS=/隔离目录/timing.jsonl` 记录 prepare、verify、preflight、publish、cleanup 的耗时；`stages.json`、`export.json` 与 JUnit 分别保留场景执行、导出和用例耗时。完整性验证每次读取全部记录字节，在单次操作内复用同一 inventory 派生摘要。修改 evaluator 后必须冻结新实验，不能用新 evaluator 继续历史运行。

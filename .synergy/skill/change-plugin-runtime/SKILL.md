@@ -48,6 +48,8 @@ description: Add, modify, or review Synergy Plugin API 4 definitions, generated 
 
 Viewport reference bindings must carry their acquired element through cleanup and permission disposal. Test both replacement within one surface and disposal after a successor surface has mounted; stale releases must not clear successor references.
 
+Await Host Service work before leaving an `await using` resource scope. Delay real resource disposal in a rejection fixture to expose premature release and unhandled errors; preserve the specific validation failure and selected Environment use until the invocation settles.
+
 ## Verify
 
 1. Add or update behavior tests at the owning boundary: descriptor/schema, plugin-kit build/validate/pack/sign, metadata-only discovery, approval, transaction rollback, runtime generation, operation/event/hook contract, server route, or Web registration lifecycle. For install-lifecycle changes cover fresh install, legacy lockfile entry (no `lifecycleInstall`), update preservation, offline CLI pending, in-host delivery, boot/reload catch-up, in-flight skip, retry completed guard, and generation mismatch. Hash contract changes require a fixed public hash vector plus a real plugin-kit sign/registry-entry to host-verification test.

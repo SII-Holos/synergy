@@ -3,6 +3,7 @@ import path from "node:path"
 import { parseArgs } from "node:util"
 import { execFileSync } from "node:child_process"
 import { OUTPUT, ROOT } from "./catalog"
+import { isInheritedJob } from "./github"
 
 interface Job {
   id: number
@@ -21,6 +22,7 @@ export function summarize(created: string, input: Job[], now = Date.now(), attem
   const jobs = [
     ...new Map(
       input
+        .filter((job) => !isInheritedJob(job))
         .filter(
           (job) =>
             attempt === undefined ||
