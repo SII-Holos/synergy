@@ -9,6 +9,7 @@ import { Context } from "../util/context"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { StorageRecovery } from "../storage/recovery"
+import { SessionExecutionSource } from "./execution-source"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { SessionCompat } from "./compat-import"
@@ -422,11 +423,22 @@ export namespace SessionManager {
     const runtime = getRuntime(sessionID)
     if (!lease || lease.sessionID !== sessionID || !runtime || !owns(runtime, lease)) throw new BusyError(sessionID)
     let completed = false
+    let admitted = !SessionExecutionSource.configured()
     const completion = Promise.withResolvers<void>()
     runtimeState().running.add(completion.promise)
     runtimeState().sessionCompletions.set(sessionID, completion.promise)
 
     try {
+      if (!admitted) {
+        const initial = await requireSession(sessionID)
+        await SessionExecutionSource.authorize({
+          sessionID,
+          scopeID: initial.scope.id,
+          parentSessionID: initial.parentID,
+          signal: lease.signal,
+        })
+        admitted = true
+      }
       const session = await SessionWorkspaceRuntime.withBinding(
         sessionID,
         () => requireSession(sessionID),
@@ -466,7 +478,8 @@ export namespace SessionManager {
               ? await SessionInbox.hasRunnableItem(sessionID, { createdAfter: fenceQueuedBefore }).catch(() => false)
               : false
           await finish(lease, {
-            requestNextWork: (!fenced || postFenceWork) && (completed || options?.requestNextWorkOnFailure !== false),
+            requestNextWork:
+              admitted && (!fenced || postFenceWork) && (completed || options?.requestNextWorkOnFailure !== false),
           })
         }
       } finally {
@@ -643,6 +656,11 @@ export namespace SessionManager {
         })
         .catch(async (error) => {
           if (!instanceState.accepting) return
+          if (error instanceof SessionExecutionSource.DeniedError) {
+            instanceState.activeWakeChains.delete(sessionID)
+            log.warn("host declined session wake", { sessionID, reason })
+            return
+          }
           const terminal = isPermanentWakeFailure(error) || WAKE_RETRY_DELAYS_MS[failureCount] === undefined
           const failedInput = SessionInputProgress.schedulingFailure(sessionID, error, terminal)
           const parked =
@@ -692,6 +710,8 @@ export namespace SessionManager {
     const session = await getSession(sessionID).catch(() => undefined)
     if (await SessionLifecycle.blocksDrive(session)) return
     if (!options.force && !(await SessionInbox.hasRunnableItem(sessionID))) return
+    if (!session) return
+    await SessionExecutionSource.authorize({ sessionID, scopeID: session.scope.id, parentSessionID: session.parentID })
     const { SessionInvoke } = await import("./invoke")
     // A queued item behind an interrupted turn needs that turn settled before
     // the loop can consume it, but settlement must not latch a pause: this wake

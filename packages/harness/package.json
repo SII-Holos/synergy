@@ -54,6 +54,7 @@
     "./session/input-progress": "./src/session/input-progress.ts",
     "./session/input-status": "./src/session/input-status.ts",
     "./session/manager": "./src/session/manager.ts",
+    "./session/execution-source": "./src/session/execution-source.ts",
     "./bus/bus-event": "./src/bus/bus-event.ts",
     "./provider/github": "./src/provider/github.ts",
     "./storage/storage": "./src/storage/storage.ts",

@@ -2,6 +2,8 @@
 
 Embed Synergy in Bun without cloning the repository. `home` is the data directory itself. Optional components are explicit; installed product presets do not change an embedded runtime.
 
+Embedded control planes register `SessionExecutionSource` from Harness `session/execution-source` in their selected component. Its authority check runs before Session loop admission, including Cortex children and automatic wakes. Denied work stays in the Inbox until an explicitly authorized drive; hosts still fence and drain active work when authority expires. Use `mode: "oneshot"` for a long-lived worker with host-controlled recovery and resident services. Recording reconciliation under namespace ownership remains part of core startup.
+
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
