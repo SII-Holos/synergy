@@ -42,6 +42,22 @@ export async function fileHash(file: string): Promise<string> {
     .digest("hex")
 }
 
+export async function mapFiles<T, R>(files: T[], operation: (file: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(files.length)
+  let cursor = 0
+  const workers = await Promise.allSettled(
+    Array.from({ length: Math.min(16, files.length) }, async () => {
+      while (cursor < files.length) {
+        const index = cursor++
+        results[index] = await operation(files[index]!)
+      }
+    }),
+  )
+  const failed = workers.find((worker) => worker.status === "rejected")
+  if (failed?.status === "rejected") throw failed.reason
+  return results
+}
+
 function buildWorkspaces(root: string) {
   const packages = workspaces(root)
   const graph = workspaceGraph(

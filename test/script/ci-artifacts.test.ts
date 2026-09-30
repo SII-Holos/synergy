@@ -9,7 +9,43 @@ import {
   buildIdentity,
   publishBuild,
   restoreBuild,
+  mapFiles,
 } from "../../script/ci/artifacts"
+
+test("file operations overlap with bounded pressure and preserve inventory order", async () => {
+  let active = 0
+  let peak = 0
+  const values = Array.from({ length: 40 }, (_, index) => index)
+  expect(
+    await mapFiles(values, async (value) => {
+      active++
+      peak = Math.max(peak, active)
+      await Bun.sleep((value % 4) + 1)
+      active--
+      return value
+    }),
+  ).toEqual(values)
+  expect(peak).toBeGreaterThan(1)
+  expect(peak).toBeLessThanOrEqual(16)
+  expect(active).toBe(0)
+})
+
+test("failed file operations settle active siblings before publication can stop", async () => {
+  let active = 0
+  await expect(
+    mapFiles([0, 1, 2, 3], async (value) => {
+      active++
+      try {
+        if (value === 0) throw new Error("changed output")
+        await Bun.sleep(10)
+        return value
+      } finally {
+        active--
+      }
+    }),
+  ).rejects.toThrow("changed output")
+  expect(active).toBe(0)
+})
 
 async function inputs(root: string) {
   for (const file of BUILD_INPUTS) await Bun.write(path.join(root, file), "fixture inputs")

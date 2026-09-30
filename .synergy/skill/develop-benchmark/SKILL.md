@@ -154,4 +154,4 @@ Integrity checks derive source, runtime, executable and bundle digests from one 
 
 CI lifecycle selectors divide normal, failure and native scenarios into independent groups. Verify actual pytest collection against the catalog; common pure cases run once outside Docker. Consumers wait only for their required frozen artifact. Benchmark prepared caches bind source, platform, toolchain and recipe; every reuse verifies the prepared receipt and bytes, and CI retains complete diagnostics only on failure.
 
-Required CI groups Docker scenarios into six workers with at most two isolated task processes per worker. Share only verified preparation; retain separate task Homes, containers, JUnit and timing paths. Preserve same-SHA job rerun provenance when regrouping tasks.
+Required CI groups Docker scenarios into six workers with at most three isolated task processes per worker. Share only verified preparation; retain separate task Homes, containers, JUnit and timing paths. Preserve same-SHA job rerun provenance when regrouping tasks.

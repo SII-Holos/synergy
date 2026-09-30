@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { cp, mkdir, readFile, rm, stat } from "node:fs/promises"
 import path from "node:path"
-import { fileHash, filesIn } from "./artifacts"
+import { fileHash, filesIn, mapFiles } from "./artifacts"
 import { hash } from "./plan"
 import type { Plan } from "./plan"
 
@@ -87,12 +87,15 @@ export async function publishDistribution(root: string, plan: Plan, profile: Pro
   for (const prefix of distributionPaths(profile)) {
     const sources = await filesIn(path.join(root, prefix))
     if (!sources.length) throw new Error(`Missing ${profile} distribution: ${prefix}`)
-    for (const file of sources) {
-      const relative = path.relative(root, file).split(path.sep).join("/")
-      files.push({ path: relative, sha256: await fileHash(file), mode: (await stat(file)).mode & 0o777 })
-      await mkdir(path.dirname(path.join(directory, relative)), { recursive: true })
-      await cp(file, path.join(directory, relative))
-    }
+    files.push(
+      ...(await mapFiles(sources, async (file) => {
+        const relative = path.relative(root, file).split(path.sep).join("/")
+        const entry = { path: relative, sha256: await fileHash(file), mode: (await stat(file)).mode & 0o777 }
+        await mkdir(path.dirname(path.join(directory, relative)), { recursive: true })
+        await cp(file, path.join(directory, relative))
+        return entry
+      })),
+    )
   }
   await Bun.write(
     path.join(directory, "manifest.json"),
@@ -129,13 +132,13 @@ async function validateDistribution(root: string, plan: Plan, profile: Profile, 
   const prefixes = distributionPaths(profile)
   for (const prefix of prefixes)
     if (!declared.some((file) => file.startsWith(prefix + "/"))) throw new Error("Incomplete distribution")
-  for (const entry of manifest.files) {
+  await mapFiles(manifest.files, async (entry) => {
     if (!prefixes.some((prefix) => entry.path.startsWith(prefix + "/")) || entry.path.split("/").includes(".."))
       throw new Error("Unowned distribution path")
     const file = path.join(directory, entry.path)
     if ((await fileHash(file)) !== entry.sha256 || ((await stat(file)).mode & 0o777) !== entry.mode)
       throw new Error(`Distribution bytes or permissions changed: ${entry.path}`)
-  }
+  })
   return manifest
 }
 
@@ -152,9 +155,9 @@ export async function restoreDistribution(root: string, plan: Plan, profile: Pro
   const manifest = await validateDistribution(root, plan, profile)
   const prefixes = distributionPaths(profile)
   for (const prefix of prefixes) await rm(path.join(root, prefix), { recursive: true, force: true })
-  for (const entry of manifest.files) {
+  await mapFiles(manifest.files, async (entry) => {
     const destination = path.join(root, entry.path)
     await mkdir(path.dirname(destination), { recursive: true })
     await cp(path.join(directory, entry.path), destination)
-  }
+  })
 }

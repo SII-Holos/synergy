@@ -334,9 +334,13 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             "script/runtime-composition-check.ts",
             path.join(root, "packages/presets/dist/modules-packages"),
           ]),
+        ]
+      if (task.variant === "components" || task.variant === "web")
+        return [
           bun("installation-composition", [
             "script/installation-composition-check.ts",
             path.join(root, "packages/presets/dist/modules-packages"),
+            task.variant,
           ]),
         ]
       throw new Error(`Unknown installed runtime control: ${task.id}`)
@@ -448,7 +452,6 @@ export async function executeTask(task: Task, plan: Plan, root = ROOT): Promise<
           SYNERGY_BENCH_TIMINGS: path.join(root, OUTPUT, "raw", task.id, "benchmark-timing.jsonl"),
           SYNERGY_CI_TIMING_OUTPUT: path.join(root, OUTPUT, "raw", task.id, "rollout-timing.jsonl"),
           ...command.env,
-          ...(command.name === "workflow:check" ? { GH_TOKEN: process.env.GH_TOKEN } : {}),
           ...(command.name.endsWith("-build") && task.kind === "artifacts"
             ? { SYNERGY_HOME: path.join(isolated.env.SYNERGY_TEST_ROOT!, "build-home") }
             : {}),
@@ -529,7 +532,7 @@ export async function executeUnit(
   }
   let cursor = 0
   const workers = await Promise.allSettled(
-    Array.from({ length: unit?.pool === "docker" ? 2 : 1 }, async () => {
+    Array.from({ length: unit?.pool === "docker" ? 3 : 1 }, async () => {
       while (cursor < ordered.length) await execute(ordered[cursor++]!)
     }),
   )

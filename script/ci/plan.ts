@@ -97,7 +97,7 @@ export interface Plan {
   digest: string
 }
 
-export const LIMITS: Record<Pool, number> = { linux: 11, docker: 6, postgres: 1, windows: 1, macos: 1 }
+export const LIMITS: Record<Pool, number> = { linux: 15, docker: 6, postgres: 1, windows: 1, macos: 1 }
 export const QUEUES = ["contracts", "linux", "docker", "postgres", "windows", "macos"] as const
 
 export function needsBuild(task: Task): boolean {
@@ -162,12 +162,17 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         (pool === "docker"
           ? Number(a.needs.includes("benchmark-prepare")) - Number(b.needs.includes("benchmark-prepare"))
           : 0) ||
-        b.seconds - a.seconds ||
+        b.seconds +
+          (b.profile === "full" ? 190 : b.profile === "core" ? 90 : 0) -
+          a.seconds -
+          (a.profile === "full" ? 190 : a.profile === "core" ? 90 : 0) ||
         a.id.localeCompare(b.id),
     )) {
       const target = bins.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
       target.tasks.push(task.id)
       target.seconds += task.seconds
+      if (task.profile === "full" && !target.full) target.seconds += 190
+      else if (task.profile === "core" && !target.core && !target.full) target.seconds += 90
       target.browser ||= task.prerequisites?.includes("browser") ?? false
       target.desktop ||= task.prerequisites?.includes("desktop") ?? false
       target.sandbox ||= task.prerequisites?.includes("sandbox") ?? false

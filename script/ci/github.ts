@@ -104,15 +104,17 @@ export async function downloadInput(plan: Plan, root: string, profile: "core" | 
   const producer =
     profile === "benchmark" ? "Frozen benchmark preparation" : `${profile === "core" ? "Core" : "Full"} distribution`
   const api = client(plan)
-  const deadline = Date.now() + 6 * 60_000
-  while (Date.now() < deadline) {
+  let missingSince: number | undefined
+  // Workflow job deadlines bound active preparation; a shorter input timer would also charge runner queueing.
+  for (;;) {
     const artifacts: Artifact[] = []
     for (let page = 1; ; page++) {
       const data = await api.get<{ artifacts: Artifact[] }>(`/artifacts?per_page=100&page=${page}`)
       artifacts.push(...data.artifacts)
       if (data.artifacts.length < 100) break
     }
-    const name = inputArtifact(plan, prefix, producer, await allJobs(api.get), artifacts)
+    const jobs = await allJobs(api.get)
+    const name = inputArtifact(plan, prefix, producer, jobs, artifacts)
     if (name) {
       const destination = path.join(root, ".artifacts/ci", profile === "benchmark" ? "" : "distributions")
       const download = Bun.spawn(
@@ -124,7 +126,13 @@ export async function downloadInput(plan: Plan, root: string, profile: "core" | 
       await unpackInput(archive, destination)
       return
     }
+    const latest = jobs
+      .filter((job) => job.name === producer && job.run_attempt >= Number(plan.attempt))
+      .toSorted((a, b) => b.run_attempt - a.run_attempt)[0]
+    if (latest?.status === "completed") {
+      missingSince ??= Date.now()
+      if (Date.now() - missingSince >= 60_000) throw new Error(`CI input missing or expired: ${prefix}; rerun all jobs`)
+    } else missingSince = undefined
     await Bun.sleep(5000)
   }
-  throw new Error(`CI input unavailable: ${prefix}; rerun all jobs if its artifact expired`)
 }

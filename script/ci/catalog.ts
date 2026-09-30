@@ -139,13 +139,20 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         profile: "full" as const,
         variant: "binary",
         seconds: 450,
-        scenarios: ["complete", "tool", "budget"],
+        scenarios: ["complete"],
       },
       {
         id: "installed-full-behavior-b",
         profile: "full" as const,
         variant: "binary",
         seconds: 360,
+        scenarios: ["tool", "budget"],
+      },
+      {
+        id: "installed-full-behavior-c",
+        profile: "full" as const,
+        variant: "binary",
+        seconds: 150,
         scenarios: ["read", "timeout", "permission"],
       },
       {
@@ -155,6 +162,13 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         seconds: 480,
         scenarios: [],
       },
+      ...["components", "web"].map((variant) => ({
+        id: `installed-full-${variant}`,
+        profile: "full" as const,
+        variant,
+        seconds: variant === "components" ? 190 : 130,
+        scenarios: [],
+      })),
     ].map((entry) =>
       task(entry.id, "artifacts", entry.seconds, ["packages/cli", "packages/presets"], {
         ...entry,
@@ -165,7 +179,7 @@ export async function catalog(root = ROOT): Promise<Task[]> {
             )
           : undefined,
         scenarioPrefix: "installed runtime artifact preserves ",
-        outputs: entry.variant === "composition" ? [] : ["junit"],
+        outputs: entry.scenarios.length ? ["junit"] : [],
       }),
     ),
     task(

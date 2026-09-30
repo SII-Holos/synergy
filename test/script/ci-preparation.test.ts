@@ -9,7 +9,7 @@ import { distributionPaths, publishDistribution } from "../../script/ci/distribu
 test("Docker tasks overlap only isolated processes and retain every task result", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-docker-groups-"))
   try {
-    const tasks: Task[] = Array.from({ length: 4 }, (_, index) => ({
+    const tasks: Task[] = Array.from({ length: 8 }, (_, index) => ({
       id: `isolated-${index}`,
       kind: "static",
       variant: "tests",
@@ -38,15 +38,15 @@ test("Docker tasks overlap only isolated processes and retain every task result"
         `import {test,expect} from "bun:test"; test("isolated overlap",async()=>{
         await Bun.write(${JSON.stringify(path.join(root, `ready-${task.id}`))},process.env.SYNERGY_TEST_HOME!);
         const until=Date.now()+2000;
-        while(Array.from(new Bun.Glob("ready-*").scanSync({cwd:${JSON.stringify(root)}})).length<2 && Date.now()<until) await Bun.sleep(10);
-        expect(Array.from(new Bun.Glob("ready-*").scanSync({cwd:${JSON.stringify(root)}})).length).toBeGreaterThanOrEqual(2);
+        while(Array.from(new Bun.Glob("ready-*").scanSync({cwd:${JSON.stringify(root)}})).length<3 && Date.now()<until) await Bun.sleep(10);
+        expect(Array.from(new Bun.Glob("ready-*").scanSync({cwd:${JSON.stringify(root)}})).length).toBeGreaterThanOrEqual(3);
       })`,
       )
     const unit = plan.units[0]!
-    expect(unit.tasks).toHaveLength(2)
+    expect(unit.tasks).toHaveLength(4)
     expect(await executeUnit(plan, unit.id, root)).toEqual([])
     const homes = await Promise.all(unit.tasks.map((id) => Bun.file(path.join(root, `ready-${id}`)).text()))
-    expect(new Set(homes).size).toBe(2)
+    expect(new Set(homes).size).toBe(4)
     for (const id of unit.tasks)
       expect((await Bun.file(path.join(root, ".artifacts/ci/results", id, "result.json")).json()).status).toBe(
         "success",

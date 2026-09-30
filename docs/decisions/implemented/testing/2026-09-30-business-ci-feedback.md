@@ -25,11 +25,11 @@ Status: implemented
 
 Linux 基础、core 分发、full 分发和冻结 benchmark 分开准备，消费者只等待其所需产物。core/full 分发缓存绑定 tested SHA、平台、工具链与基础构建清单摘要；先核对所有文件字节和模式，再发布当前计划的产物身份。full 只生成一次 Web 生产构建，构建契约与 smoke 消费经过清单、字节与模式校验的输出。UI 六个 Solid/Vite 夹具使用多入口编译和共享 chunk，缓存键覆盖实际源码、工具链、依赖和配置，输出摘要校验；编译使用独立进程和显式测试环境，测试进程和 DOM 继续隔离，调用方的 NODE_ENV 不受 Vite 影响。懒加载内容以渲染事件等待，单个 timer tick 不是完成证据。
 
-Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 首轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
+Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前两轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，full/core 消费者另计冷生产者可用窗口的 190/90 秒估算，避免在安装控制后再堆积普通测试，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
 
-Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 11、6、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
+Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 15、6、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。重复的三个包 TypeScript 检查由 Linux 完整 workspace 类型检查覆盖；Windows 保留原生 Rust test/build 与实际调用，覆盖原 cargo check 的编译验证。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
 
-Docker 按耗时分配到六个 job，每个 job 最多两个独立 Home、进程和容器的任务并行，共享只读准备和保留逐任务证据。测试子进程移除协调器的 GitHub token 与父级文件选择，避免污染 provider 凭据与嵌套夹具；Windows 后代清理验证 Job 成员和原生 ActiveProcesses 终态，避免将已退出 PID 的句柄存续误判为执行存续。
+Docker 按耗时分配到六个 job，每个 job 最多三个独立 Home、进程和容器的任务并行，共享只读准备和保留逐任务证据。测试与原有 workflow 校验子进程移除协调器的 GitHub token 与父级文件选择，保持原校验环境，避免污染 provider 凭据与嵌套夹具；Windows 后代清理验证 Job 成员和原生 ActiveProcesses 终态，避免将已退出 PID 的句柄存续误判为执行存续。
 
 同 SHA 局部重跑保持原始计划。结果版本 2 使用 `unit`、`planAttempt`、`executionAttempt`，每个产物有独立报告目录。GitHub jobs API 的最新实际执行决定有效证据；只有同 run、SHA、计划摘要且对应最新成功执行的结果才能合并。旧成功不能覆盖新失败、取消或缺失结果；重复、错误身份、报告损坏均拒绝。全量重跑建立新计划，旧计划记录不参与准入。新 SHA 重新计算当前 PR 影响范围，构建缓存可复用，通过结论不能复用。
 
@@ -51,4 +51,8 @@ Bun/Python 下载、Rust 编译与经过验证的构建使用包含实际输入�
 
 外部依据为 [GitHub 失败 job 重跑语义](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs)、[GitHub Actions 并发限制](https://docs.github.com/en/actions/reference/limits)、[公开仓库计费](https://docs.github.com/en/billing/concepts/product-billing/github-actions) 与 [GitLab 分层测试策略](https://docs.gitlab.com/development/testing_guide/testing_strategy/)。本仓库采用同 SHA 身份核验、免费标准 runner 容量和按行为分层的测试；具体业务控制、配方完整性与覆盖率门槛由本地实现拥有。
 
-首轮托管校验还暴露出 action 版本注释漂移与生成 stable 分支的旧 Rust action 无可达历史。checkout 注释绑定精确 v4.3.1，Rust action 使用已核实的 master 提交并显式选择 stable 工具链，按 [zizmor 固定引用规则](https://docs.zizmor.sh/audits/#ref-version-mismatch) 与 [提交可达性规则](https://docs.zizmor.sh/audits/#impostor-commit) 保留原有校验。
+准备等待由生产者与消费者原有 workflow job 超时约束，runner 排队不会耗尽独立的六分钟输入窗口。生产者失败立即报错；完成后一分钟仍缺失产物时要求全量重跑，不能回退到旧生产者成功。UI 缓存编译和发布按输入摘要使用现有文件锁，等待者复核已发布结果，避免并行进程删除正在使用的有效产物。
+
+第二轮实测继续拆分 full 的组件管理、Web 安装和 package composition，各流程从独立的新 Home 开始。六类 full 结果分成三组，同组复用安装 Home、分别新建工作区、会话和 provider；每个调用仍检查真实结果、锁与进程清理，完整导入导出仅一次。产物摘要与复制以最多 16 个文件操作并行处理，全部操作完成后才发布或报告失败，保持完整字节、权限与路径校验。bash 后台进程的测试等待已发布的完成态，上限五秒替代固定 500 毫秒窗口。
+
+初始 Linux 11 的分配在第二轮仍有串行长尾，依据该轮任务耗时将 Linux 上限调整到 15（含 contracts），单 runner 的 package suite 继续串行；全组织实际并发仍受 20 槽位约束，排队继续计入验收。Windows Desktop 只跑 server/installer 行为，不下载其未使用的 Rust 编译缓存；Windows native 保留完整原生准备。

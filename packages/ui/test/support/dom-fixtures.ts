@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 
 const root = path.resolve(import.meta.dir, "../../../..")
 const source = path.join(root, "packages/ui/test/fixtures/session-turn")
@@ -62,29 +63,32 @@ export function prepareDOMFixtures() {
     const cache = path.join(root, ".artifacts/testing/ui-dom-fixtures")
     const directory = path.join(cache, input)
     if (await valid(directory, input)) return directory
-    await mkdir(cache, { recursive: true })
-    const staging = await mkdtemp(path.join(cache, ".build-"))
-    try {
-      const builder = Bun.spawn([process.execPath, import.meta.filename, staging], {
-        env: { ...process.env, NODE_ENV: "test" },
-        stdin: "ignore",
-        stdout: "inherit",
-        stderr: "inherit",
-      })
-      if (await builder.exited) throw new Error("Shared UI fixture compilation failed")
-      const files: Record<string, string> = {}
-      for await (const file of new Bun.Glob("**/*").scan({ cwd: staging, onlyFiles: true }))
-        files[file] = new Bun.CryptoHasher("sha256")
-          .update(await Bun.file(path.join(staging, file)).arrayBuffer())
-          .digest("hex")
-      await Bun.write(path.join(staging, "manifest.json"), JSON.stringify({ input, files }))
+    return withFileLock({ directory: path.join(cache, ".locks"), key: input }, async () => {
       if (await valid(directory, input)) return directory
-      await rm(directory, { recursive: true, force: true })
-      await rename(staging, directory)
-      return directory
-    } finally {
-      await rm(staging, { recursive: true, force: true })
-    }
+      await mkdir(cache, { recursive: true })
+      const staging = await mkdtemp(path.join(cache, ".build-"))
+      try {
+        const builder = Bun.spawn([process.execPath, import.meta.filename, staging], {
+          env: { ...process.env, NODE_ENV: "test" },
+          stdin: "ignore",
+          stdout: "inherit",
+          stderr: "inherit",
+        })
+        if (await builder.exited) throw new Error("Shared UI fixture compilation failed")
+        const files: Record<string, string> = {}
+        for await (const file of new Bun.Glob("**/*").scan({ cwd: staging, onlyFiles: true }))
+          files[file] = new Bun.CryptoHasher("sha256")
+            .update(await Bun.file(path.join(staging, file)).arrayBuffer())
+            .digest("hex")
+        await Bun.write(path.join(staging, "manifest.json"), JSON.stringify({ input, files }))
+        if (await valid(directory, input)) return directory
+        await rm(directory, { recursive: true, force: true })
+        await rename(staging, directory)
+        return directory
+      } finally {
+        await rm(staging, { recursive: true, force: true })
+      }
+    })
   })())
 }
 

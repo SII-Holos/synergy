@@ -338,7 +338,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 10
+      max-parallel: 14
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.linux) }}
     env:
@@ -522,7 +522,7 @@ jobs:
           bun-version: "1.4.2"
       - uses: ./.github/actions/ci-setup
         with:
-          native: "true"
+          native: ${{ matrix.id == 'windows-native' }}
           dependencies: "true"
           browser: ${{ matrix.browser }}
           desktop: ${{ matrix.desktop }}

@@ -114,8 +114,8 @@ test("independent browser suite selection retains its executable prerequisites",
 test("required plans and installation diagnostics retain every control within the Linux worker budget", async () => {
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "artifacts")
-  expect(controls).toHaveLength(5)
-  expect(LIMITS.linux).toBe(11)
+  expect(controls).toHaveLength(8)
+  expect(LIMITS.linux).toBe(15)
   const workspaces = [
     { name: "local-runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
   ]
@@ -229,11 +229,13 @@ test("installed controls share two profile builds while preserving every distrib
   expect(install).toHaveLength(1)
   expect(install[0]!.args.at(-1)).toBe(pack[0]!.args.at(-1))
   expect(install[0]!.env?.SYNERGY_TEST_ARTIFACT_JUNIT).toEndWith(".xml")
-  for (const file of ["runtime-composition-check.ts", "installation-composition-check.ts"]) {
-    const checks = consumers.filter((command) => command.args.includes(`script/${file}`))
-    expect(checks).toHaveLength(1)
-    expect(checks[0]!.args.at(-1)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
-  }
+  const product = consumers.filter((command) => command.args.includes("script/runtime-composition-check.ts"))
+  expect(product).toHaveLength(1)
+  expect(product[0]!.args.at(-1)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
+  const installation = consumers.filter((command) => command.args.includes("script/installation-composition-check.ts"))
+  expect(installation.map((command) => command.args.at(-1)).sort()).toEqual(["components", "web"])
+  for (const command of installation)
+    expect(command.args.at(-2)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
 })
 
 test("affected type checks follow selected suites without expanding through shared check owners", async () => {

@@ -263,7 +263,8 @@ describe("tool.bash", () => {
         const tracked = ProcessRegistry.get(processId)!
         expect(tracked.child).toBeDefined()
 
-        for (let attempt = 0; attempt < 50 && !ProcessRegistry.getFinished(processId); attempt++) {
+        const deadline = Date.now() + 5000
+        while (!ProcessRegistry.getFinished(processId) && Date.now() < deadline) {
           await Bun.sleep(10)
         }
 
