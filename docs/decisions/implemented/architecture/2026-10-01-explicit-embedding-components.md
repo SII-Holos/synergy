@@ -16,4 +16,6 @@ Per-capability disable flags retain an expanding implicit composition. A second 
 
 ## Consequences
 
+ToolExposure default groups can also be selected before group registration. An embedded host can select no built-in groups and register its own metadata for the same stable group identity. Full compositions retain their defaults; Runtime selection cannot affect another instance or replace a group after consumption.
+
 Direct callers must name their required components. Product behavior remains unchanged through its explicit assemblies. Tests verify an empty runtime has no execution providers or plugin schema, two separate selections stay isolated, and real workers receive their owner's selected plan.
