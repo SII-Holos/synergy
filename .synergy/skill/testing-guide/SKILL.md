@@ -13,6 +13,10 @@ Local acceptance fault injectors must match the intended request and an observed
 
 For Workspace contention, explicitly inject a managed mutation when testing writer admission. Raw Bash commands retain resource use without writer exclusion; shared-child cancellation scenarios must observe both commands at a physical barrier before cancelling and rebinding one. Include resource-use roots when checking residual claims, and test imports into multiple missing directory levels so parent creation stays inside the admitted mutation.
 
+Cross project-folder changes with the scheduled janitor: retain a dirty bound task in a removed source repository while reclaiming clean candidates in both historical and current repositories. Check physical bytes and the persisted binding after the scheduled sweep drains.
+
+In DOM fixtures, give browser navigation a separate bounded budget from interaction assertions. The test-framework budget must cover first-load module preparation on shared CI runners without weakening the component's behavior assertions.
+
 Distinguish model disconnects from watchdog timeouts. Hold an actual upstream response until the client aborts, and require the matching first-byte or idle watchdog metric before counting the phase. Complete real model work before and after the timeout sequence and independently count any earlier tool side effect. Match delegated fixture roles by an unambiguous identity token; descriptive text appended by the model must not prevent observing the real child task.
 
 Do not run `quality:quick` alongside browser suites or development builds in the same worktree. Its package checks rebuild exported artifacts, and format scanning races temporary DOM fixtures being removed. Run those checks sequentially; if a suite reports a missing generated module during concurrent rebuilding, finish the build and rerun the affected suite before changing application behavior.
@@ -84,6 +88,8 @@ Prepare durable fixtures before starting a short runtime deadline; for Cortex ti
 For persisted cooldowns and retry deadlines, advance a controlled clock at the failure-response boundary and verify both the recorded timestamp and the exact policy duration. Cover second boundaries explicitly; an upper bound derived before asynchronous work must not replace the time at which the policy applies. Restore the clock even when an assertion fails.
 
 For worktree lifecycle changes, exercise concurrent name selection after admission, setup descendants, unregistered directory users, active-turn selection/removal, cancellation and deferred unlock. Verify concurrent tools in sibling and shared Workspaces while real unrestricted commands are still active. Test LSP continuity, exact formatter preconditions, save conflicts after response loss and stale checkpoint recovery without replay.
+
+For automatic worktree cleanup, fail native admission and the final Git removal after eligibility succeeds with an idle bound Session. Assert original binding, registry membership, bytes and activity survive, and a later candidate still progresses. Separately fail binding persistence after successful deletion and verify the next sweep reconciles the retained registry entry.
 
 For shared claim ledgers, exercise a legacy reader rewriting newer records. Missing observation fields must remain unknown and cannot restore exclusive authorship or authorize undo; preserve retained resource ownership.
 
@@ -262,7 +268,7 @@ Select batched Web, UI and package suites with `SYNERGY_TEST_FILES` containing a
 
 Run the narrow failing test during iteration, then the affected package/domain suite, then `quality:quick`. Run the full suite when the change crosses shared abstractions, persistence, generated contracts, package publication, or release boundaries, or when the user requests it.
 
-`bun run test:ci` runs the complete core inventory in fresh sequential batches. `test:coverage` uses the same executor with instrumentation; CI executes that inventory once and requires JUnit, lcov and timing evidence for every selected batch. See [CI verification](../../../docs/operations/ci.md) for `ci:plan`, `ci:run`, `ci:verify`, affected selection and diagnostic selectors. Assign Harness, Web, Presets and UI to 4, 4, 4 and 2 measured file-weight partitions, preserving complete isolation batches and special isolated files; each process owns its Home, fixture root, database and Link Home. Bind ports dynamically in fixtures; distinct runners provide host isolation.
+`bun run test:ci` runs the complete core inventory in fresh sequential batches. `test:coverage` uses the same executor with instrumentation; CI executes that inventory once and requires JUnit, lcov and timing evidence for every selected batch. See [CI verification](../../../docs/operations/ci.md) for `ci:plan`, `ci:run`, `ci:verify`, affected selection and diagnostic selectors. Assign Harness, Web, Presets, UI and Local Runtime to 4, 4, 4, 2 and 2 measured file-weight partitions, preserving complete isolation batches and special isolated files; each process owns its Home, fixture root and database. Bind ports dynamically in fixtures; distinct runners provide host isolation.
 
 Coverage has a floor. `bun run coverage:check` enforces per-package line/function thresholds from Bun lcov reports with an auditable exemption list in `script/coverage-exempt.json`. The rules:
 

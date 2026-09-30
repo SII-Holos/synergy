@@ -125,7 +125,7 @@ for (const terminal of [false, true])
         kind: "process",
         roots: [directory.path],
       })
-      const descendant = `await Bun.write(${JSON.stringify(marker)},String(process.pid)); setInterval(() => {}, 1000)`
+      const descendant = `import {rename} from 'node:fs/promises'; const marker=${JSON.stringify(marker)}; await Bun.write(marker+'.tmp',String(process.pid)); await rename(marker+'.tmp',marker); setInterval(() => {}, 1000)`
       const root = `import {spawn} from 'node:child_process'; const child=spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{env:{},stdio:'ignore',detached:true}); child.unref()`
       const owned = await OwnedProcess.prepare({
         command: process.execPath,
@@ -143,6 +143,8 @@ for (const terminal of [false, true])
         await owned.activate()
         await waitForFile(marker)
         const pid = Number(await Bun.file(marker).text())
+        expect(Number.isSafeInteger(pid)).toBe(true)
+        expect(pid).toBeGreaterThan(0)
         const tree = (await coordinator.inspect())[0]?.processTree
         if (tree?.kind !== "windows-job") throw new Error("Fixture has no native Windows process job")
         expect(WindowsJob.members(tree)).toContain(pid)
@@ -178,7 +180,7 @@ nativeTest(
     const locks = path.join(directory.path, "locks")
     const coordinator = new WorkspaceCoordinator({ directory: locks })
     const filename = path.join(directory.path, "owner.ts")
-    const descendant = `await Bun.write(${JSON.stringify(marker)}, String(process.pid)); setInterval(() => {}, 1000)`
+    const descendant = `import {rename} from 'node:fs/promises'; const marker=${JSON.stringify(marker)}; await Bun.write(marker+'.tmp',String(process.pid)); await rename(marker+'.tmp',marker); setInterval(() => {}, 1000)`
     const command = `import {spawn} from 'node:child_process'; const c=spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{env:{},stdio:'ignore',detached:true}); c.unref()`
     await Bun.write(
       filename,
@@ -195,6 +197,8 @@ nativeTest(
     try {
       await waitForFile(marker)
       const pid = Number(await Bun.file(marker).text())
+      expect(Number.isSafeInteger(pid)).toBe(true)
+      expect(pid).toBeGreaterThan(0)
       owner.kill("SIGKILL")
       await owner.exited
       const until = Date.now() + 10000

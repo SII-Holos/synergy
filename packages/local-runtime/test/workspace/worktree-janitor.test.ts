@@ -6,6 +6,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { SessionNav } from "@ericsanchezok/synergy-harness/session/nav"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Worktree } from "@ericsanchezok/synergy-local-runtime/workspace/worktree"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -180,6 +181,195 @@ describe("worktree sweep", () => {
         },
       })
     }))
+
+  test("preserves a dirty worktree with staged and binary files and keeps its session binding", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Aged dirty work" })
+          const created = await Worktree.create({
+            name: "janitor-aged-dirty",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+          const stagedPath = path.join(created.path, "staged.txt")
+          const binaryPath = path.join(created.path, "binary.dat")
+          const staged = Buffer.from("staged work\n")
+          const binary = Buffer.from([0, 255, 1, 128, 42])
+          await fs.writeFile(stagedPath, staged)
+          await $`git add -- staged.txt`.quiet().cwd(created.path)
+          await fs.writeFile(binaryPath, binary)
+          await setLastUsedAt(scope.local!.worktree, created.id, 1)
+          const before = await Session.get(session.id)
+
+          const report = await Worktree.sweep({ maxManaged: 0 })
+
+          expect(report.skipped).toContainEqual({ id: created.id, name: created.name, reason: "dirty" })
+          expect(report.removed).toEqual([])
+          expect(await exists(created.path)).toBe(true)
+          expect(await fs.readFile(stagedPath)).toEqual(staged)
+          expect(await fs.readFile(binaryPath)).toEqual(binary)
+          expect((await $`git diff --cached --name-only`.quiet().cwd(created.path).text()).trim()).toBe("staged.txt")
+          expect((await Session.get(session.id)).workspace).toEqual(before.workspace)
+          expect((await Worktree.list()).find((item) => item.id === created.id)?.bindings).toContain(session.id)
+          await Session.remove(session.id)
+        },
+      })
+    }))
+
+  test("continues to later candidates when one candidate cannot be retired", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.local!.worktree)
+          const blocked = await Worktree.create({ name: "janitor-failed-oldest", bind: false, baseRef: "current" })
+          const later = await Worktree.create({ name: "janitor-after-failure", bind: false, baseRef: "current" })
+          await setLastUsedAt(scope.local!.worktree, blocked.id, 1)
+          await setLastUsedAt(scope.local!.worktree, later.id, 2)
+
+          let startedResolve!: () => void
+          let releaseResolve!: () => void
+          const started = new Promise<void>((resolve) => (startedResolve = resolve))
+          const release = new Promise<void>((resolve) => (releaseResolve = resolve))
+          const use = Worktree.withUse(blocked.path, undefined, async () => {
+            startedResolve()
+            await release
+          })
+          await started
+          try {
+            const report = await Worktree.sweep({ maxManaged: 0 })
+
+            expect(report.skipped).toContainEqual({
+              id: blocked.id,
+              name: blocked.name,
+              reason: "removal_failed",
+            })
+            expect(report.removed).toEqual([later.id])
+            expect(await exists(blocked.path)).toBe(true)
+            expect(await exists(later.path)).toBe(false)
+          } finally {
+            releaseResolve()
+            await use
+          }
+        },
+      })
+    }))
+
+  test.each(["admission", "git"] as const)(
+    "preserves bindings after a late %s removal failure and reclaims later candidates",
+    (failure) =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.local!.worktree)
+            const session = await Session.create({ title: "Retained work" })
+            const created = await Worktree.create({
+              name: "late-failure",
+              sessionID: session.id,
+              bind: true,
+              baseRef: "current",
+            })
+            const later = await Worktree.create({ name: "after-late-failure", bind: false, baseRef: "current" })
+            await setLastUsedAt(scope.local!.worktree, created.id, 1)
+            await setLastUsedAt(scope.local!.worktree, later.id, 2)
+            const before = await Session.get(session.id)
+            const navBefore = (await SessionNav.readNavIndex(scope.id)).entries.find((entry) => entry.id === session.id)
+            const retire = WorkspaceAccess.retire
+            const racedFile = path.join(created.path, "concurrent-write.txt")
+            let injected = false
+            using fault = spyOn(WorkspaceAccess, "retire").mockImplementation(async (roots, fn, options) => {
+              if (!injected && roots.includes(created.path)) {
+                injected = true
+                if (failure === "admission") throw new WorkspaceAccess.BusyError("Workspace still in use")
+                await Bun.write(racedFile, "new user work")
+              }
+              return retire(roots, fn, options)
+            })
+            try {
+              const report = await Worktree.sweep({ maxManaged: 0 })
+              expect(injected).toBe(true)
+              expect(report.skipped).toContainEqual({ id: created.id, name: created.name, reason: "removal_failed" })
+              expect(report.removed).toEqual([later.id])
+              expect(await exists(created.path)).toBe(true)
+              if (failure === "git") expect(await Bun.file(racedFile).text()).toBe("new user work")
+              const after = await Session.get(session.id)
+              expect(after.workspace).toEqual(before.workspace)
+              expect(after.time.updated).toBe(before.time.updated)
+              expect(
+                (await SessionNav.readNavIndex(scope.id)).entries.find((entry) => entry.id === session.id)
+                  ?.lastActivityAt,
+              ).toBe(navBefore?.lastActivityAt)
+              expect((await Worktree.list()).find((item) => item.id === created.id)?.bindings).toContain(session.id)
+            } finally {
+              fault.mockRestore()
+              await Session.remove(session.id)
+            }
+          },
+        })
+      }),
+    30_000,
+  )
+
+  test(
+    "reconciles bindings on the next sweep when rebinding fails after Git removal",
+    () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        const scope = await tmp.scope()
+        await ScopeContext.provide({
+          scope,
+          fn: async () => {
+            await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.local!.worktree)
+            const session = await Session.create()
+            const created = await Worktree.create({
+              name: "deferred-binding",
+              sessionID: session.id,
+              bind: true,
+              baseRef: "current",
+            })
+            const before = await Session.get(session.id)
+            const update = Session.updateWorkspace
+            let injected = false
+            using fault = spyOn(Session, "updateWorkspace").mockImplementation(async (id, workspace, options) => {
+              if (!injected && id === session.id && workspace?.type === "main" && !(await exists(created.path))) {
+                injected = true
+                throw new Error("Binding storage unavailable")
+              }
+              return update(id, workspace, options)
+            })
+            try {
+              const failed = await Worktree.sweep({ maxManaged: 0 })
+              expect(injected).toBe(true)
+              expect(failed.skipped).toContainEqual({ id: created.id, name: created.name, reason: "removal_failed" })
+              expect(await exists(created.path)).toBe(false)
+              expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(true)
+              expect((await Session.get(session.id)).workspaceID).toBe(before.workspaceID)
+              fault.mockRestore()
+              const recovered = await Worktree.sweep({ maxManaged: 0 })
+              expect(recovered.reconciled).toEqual([created.id])
+              const after = await Session.get(session.id)
+              expect(after.workspace?.type).toBe("main")
+              expect(after.time.updated).toBe(before.time.updated)
+              expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(false)
+            } finally {
+              fault.mockRestore()
+              await Session.remove(session.id)
+            }
+          },
+        })
+      }),
+    30_000,
+  )
 
   test("never clears a user lock written without a reason", () =>
     runtime.run(async () => {
