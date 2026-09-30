@@ -112,7 +112,10 @@ async function runSweep(scope: Scope.Project) {
     // so a read failure falls back to the cap default rather than skipping.
     const config = await readWorktreeConfig().catch(() => undefined)
     if (config?.janitor === false || !instanceState.schedules.has(scope.id)) return
-    const report = await ScopeContext.provide({ scope, fn: () => Worktree.sweep({ maxManaged: config?.maxManaged }) })
+    const report = await ScopeContext.provide({
+      scope,
+      fn: () => Worktree.sweep({ maxManaged: config?.maxManaged }),
+    })
     // Reasons are reported rather than swallowed: a cap that cannot converge is
     // the signal that worktrees are blocked on unpushed work, not a silent
     // pile-up.

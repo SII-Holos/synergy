@@ -181,6 +181,86 @@ describe("worktree sweep", () => {
       })
     }))
 
+  test("preserves a dirty worktree with staged and binary files and keeps its session binding", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const session = await Session.create({ title: "Aged dirty work" })
+          const created = await Worktree.create({
+            name: "janitor-aged-dirty",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+          const stagedPath = path.join(created.path, "staged.txt")
+          const binaryPath = path.join(created.path, "binary.dat")
+          const staged = Buffer.from("staged work\n")
+          const binary = Buffer.from([0, 255, 1, 128, 42])
+          await fs.writeFile(stagedPath, staged)
+          await $`git add -- staged.txt`.quiet().cwd(created.path)
+          await fs.writeFile(binaryPath, binary)
+          await setLastUsedAt(scope.local!.worktree, created.id, 1)
+          const before = await Session.get(session.id)
+
+          const report = await Worktree.sweep({ maxManaged: 0 })
+
+          expect(report.skipped).toContainEqual({ id: created.id, name: created.name, reason: "dirty" })
+          expect(report.removed).toEqual([])
+          expect(await exists(created.path)).toBe(true)
+          expect(await fs.readFile(stagedPath)).toEqual(staged)
+          expect(await fs.readFile(binaryPath)).toEqual(binary)
+          expect((await $`git diff --cached --name-only`.quiet().cwd(created.path).text()).trim()).toBe("staged.txt")
+          expect((await Session.get(session.id)).workspace).toEqual(before.workspace)
+          expect((await Worktree.list()).find((item) => item.id === created.id)?.bindings).toContain(session.id)
+          await Session.remove(session.id)
+        },
+      })
+    }))
+
+  test("continues to later candidates when one candidate cannot be retired", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.local!.worktree)
+          const blocked = await Worktree.create({ name: "janitor-failed-oldest", bind: false, baseRef: "current" })
+          const later = await Worktree.create({ name: "janitor-after-failure", bind: false, baseRef: "current" })
+          await setLastUsedAt(scope.local!.worktree, blocked.id, 1)
+          await setLastUsedAt(scope.local!.worktree, later.id, 2)
+
+          let startedResolve!: () => void
+          let releaseResolve!: () => void
+          const started = new Promise<void>((resolve) => (startedResolve = resolve))
+          const release = new Promise<void>((resolve) => (releaseResolve = resolve))
+          const use = Worktree.withUse(blocked.path, undefined, async () => {
+            startedResolve()
+            await release
+          })
+          await started
+          try {
+            const report = await Worktree.sweep({ maxManaged: 0 })
+
+            expect(report.skipped).toContainEqual({
+              id: blocked.id,
+              name: blocked.name,
+              reason: "removal_failed",
+            })
+            expect(report.removed).toEqual([later.id])
+            expect(await exists(blocked.path)).toBe(true)
+            expect(await exists(later.path)).toBe(false)
+          } finally {
+            releaseResolve()
+            await use
+          }
+        },
+      })
+    }))
+
   test("never clears a user lock written without a reason", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

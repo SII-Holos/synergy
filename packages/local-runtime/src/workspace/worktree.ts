@@ -1635,7 +1635,13 @@ export namespace Worktree {
     const { repoRoot } = ensureGitScope()
     const maxManaged = options?.maxManaged ?? DEFAULT_MAX_MANAGED
     const { items } = await inventory()
-    const report: SweepReport = { scanned: items.length, maxManaged, removed: [], skipped: [], reconciled: [] }
+    const report: SweepReport = {
+      scanned: items.length,
+      maxManaged,
+      removed: [],
+      skipped: [],
+      reconciled: [],
+    }
 
     async function running(info: Info) {
       for (const sessionID of info.bindings ?? []) {
@@ -1709,7 +1715,8 @@ export namespace Worktree {
     for (const item of oldestFirst) {
       let finishRemoval: (() => void) | undefined
       try {
-        if (report.removed.length >= excess) {
+        const overCap = report.removed.length < excess
+        if (!overCap) {
           const decision = await probe(item)
           if (!decision.eligible) report.skipped.push({ id: item.id, name: item.name, reason: decision.reason })
           continue
