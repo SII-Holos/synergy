@@ -4,6 +4,7 @@ import { registerHarness } from "./register"
 import { EnvironmentProviders } from "../environment/provider"
 import { EnvironmentMaintenance } from "../environment/maintenance"
 import { ProviderCatalog } from "../provider/catalog"
+import { ProviderCatalogSource } from "../provider/catalog-source"
 import { ModelsCatalog, startModelCatalogRefresh } from "../provider/models"
 import { RuntimeContext, type RuntimeHost } from "./context"
 import { SessionStaging } from "../session/staging"
@@ -395,8 +396,10 @@ export namespace RuntimeHandle {
       options.signal?.throwIfAborted()
       stopBackground.push(SessionManager.startIdleSweep())
       stopEnvironments = EnvironmentMaintenance.start()
-      stopBackground.push(await ProviderCatalog.subscribeModelCatalog())
-      if (options.mode === "server") stopBackground.push(startModelCatalogRefresh())
+      if (!ProviderCatalogSource.get()) {
+        stopBackground.push(await ProviderCatalog.subscribeModelCatalog())
+        if (options.mode === "server") stopBackground.push(startModelCatalogRefresh())
+      }
       if (options.mode === "server")
         await ScopeContext.provide({ scope: Scope.home(), fn: async () => services.started?.() })
       options.signal?.throwIfAborted()

@@ -116,6 +116,7 @@
     "./provider/grok": "./src/provider/grok.ts",
     "./provider/codex": "./src/provider/codex.ts",
     "./provider/catalog": "./src/provider/catalog.ts",
+    "./provider/catalog-source": "./src/provider/catalog-source.ts",
     "./provider/recommendation": "./src/provider/recommendation.ts",
     "./provider/anthropic-oauth": "./src/provider/anthropic-oauth.ts",
     "./provider/copilot": "./src/provider/copilot.ts",
