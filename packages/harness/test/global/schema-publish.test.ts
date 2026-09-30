@@ -37,24 +37,68 @@ describe("startup schema publish", () => {
           `const { RuntimeContext } = await import(${JSON.stringify(new URL("../../src/lifecycle/context.ts", import.meta.url).href)})\n` +
             `await RuntimeContext.create({ home: process.env.SYNERGY_HOME, root: process.env.SYNERGY_HOME + "/.synergy", env: process.env }).run(async () => {\n` +
             `const { Global } = await import(${JSON.stringify(pathToFileURL(globalModulePath).href)})\n` +
-            `await Global.initialize({ cache: false, configSchemaPath: ${JSON.stringify(bundledPath)} })\nif (!Global.Path.configSchema) process.exit(1)\n})\n`,
+            `console.log("ready")\nawait Bun.stdin.text()\nconsole.log("initializing")\n` +
+            `await Global.initialize({ cache: false, configSchemaPath: ${JSON.stringify(bundledPath)} })\nif (!Global.Path.configSchema) process.exit(1)\nconsole.log("published")\n})\n`,
         )
 
+        const children = [0, 1].map(() => {
+          const child = Bun.spawn([process.execPath, "run", scriptPath], {
+            env: { ...process.env, SYNERGY_HOME: home },
+            stdin: "pipe",
+            stdout: "pipe",
+            stderr: "pipe",
+          })
+          const ready = Promise.withResolvers<void>()
+          const state = { child, ready, stdout: "", stderr: "" }
+          const output = (async () => {
+            const decoder = new TextDecoder()
+            const reader = child.stdout.getReader()
+            try {
+              while (true) {
+                const { value, done } = await reader.read()
+                if (done) break
+                state.stdout += decoder.decode(value, { stream: true })
+                if (state.stdout.split(/\r?\n/).includes("ready")) ready.resolve()
+              }
+            } finally {
+              reader.releaseLock()
+            }
+            ready.reject(new Error("startup exited before the initialization barrier"))
+          })()
+          const errors = new Response(child.stderr).text().then((value) => (state.stderr = value))
+          return { ...state, output, errors, state }
+        })
+        let deadline: ReturnType<typeof setTimeout> | undefined
         try {
-          const children = await Promise.all(
-            [0, 1, 2, 3].map(() =>
-              Bun.spawn([process.execPath, "run", scriptPath], {
-                env: { ...process.env, SYNERGY_HOME: home },
-                stdout: "ignore",
-                stderr: "inherit",
-              }),
-            ),
-          )
-          expect(await Promise.all(children.map((child) => child.exited))).toEqual([0, 0, 0, 0])
+          await Promise.race([
+            (async () => {
+              await Promise.all(children.map(({ ready }) => ready.promise))
+              await Promise.all(
+                children.map(async ({ child }) => {
+                  child.stdin.write("initialize\n")
+                  await child.stdin.end()
+                }),
+              )
+              expect(await Promise.all(children.map(({ child }) => child.exited))).toEqual([0, 0])
+            })(),
+            new Promise<never>((_, reject) => {
+              deadline = setTimeout(() => reject(new Error("concurrent schema initialization timed out")), 25_000)
+            }),
+          ])
           expect(await fs.readFile(path.join(home, ".synergy", "schema", "config.schema.json"), "utf8")).toBe(
             await fs.readFile(bundledPath, "utf8"),
           )
+        } catch (error) {
+          for (const { child } of children) if (child.exitCode === null) child.kill()
+          await Promise.allSettled(children.flatMap(({ child, output, errors }) => [child.exited, output, errors]))
+          throw new Error(
+            children.map(({ state }, index) => `startup ${index}: ${state.stdout}\n${state.stderr}`).join("\n"),
+            { cause: error },
+          )
         } finally {
+          clearTimeout(deadline)
+          for (const { child } of children) if (child.exitCode === null) child.kill()
+          await Promise.allSettled(children.flatMap(({ child, output, errors }) => [child.exited, output, errors]))
           await fs.rm(home, { recursive: true, force: true })
         }
       }),

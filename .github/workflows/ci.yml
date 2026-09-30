@@ -5,6 +5,12 @@ on:
   pull_request:
     branches: [dev, main]
   workflow_dispatch:
+    inputs:
+      build_cache:
+        description: Use verified build caches
+        type: choice
+        options: [enabled, disabled]
+        default: enabled
   schedule:
     - cron: "17 19 * * *"
 
@@ -29,6 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
+      attempt: ${{ steps.plan.outputs.attempt }}
       sha: ${{ steps.plan.outputs.sha }}
       mode: ${{ steps.plan.outputs.mode }}
       build: ${{ steps.plan.outputs.build }}
@@ -40,6 +47,12 @@ jobs:
       contracts_count: ${{ steps.plan.outputs.contracts_count }}
       linux: ${{ steps.plan.outputs.linux }}
       linux_count: ${{ steps.plan.outputs.linux_count }}
+      linux_core: ${{ steps.plan.outputs.linux_core }}
+      linux_core_count: ${{ steps.plan.outputs.linux_core_count }}
+      linux_full: ${{ steps.plan.outputs.linux_full }}
+      linux_full_count: ${{ steps.plan.outputs.linux_full_count }}
+      docker_direct: ${{ steps.plan.outputs.docker_direct }}
+      docker_direct_count: ${{ steps.plan.outputs.docker_direct_count }}
       docker: ${{ steps.plan.outputs.docker }}
       docker_count: ${{ steps.plan.outputs.docker_count }}
       postgres: ${{ steps.plan.outputs.postgres }}
@@ -50,12 +63,16 @@ jobs:
       macos_count: ${{ steps.plan.outputs.macos_count }}
       diagnostic: ${{ steps.plan.outputs.diagnostic }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+      - name: Install planning dependencies
+        run: bun install --frozen-lockfile --filter @ericsanchezok/synergy-testing
       - name: Resolve exact revisions and plan
         id: plan
         env:
@@ -63,6 +80,7 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BASE: ${{ github.event.before }}
           CI_FORCE_FULL: ${{ vars.SYNERGY_CI_FORCE_FULL }}
+          NODE_PATH: ${{ github.workspace }}/packages/testing/node_modules
         run: |
           tested="$(git rev-parse HEAD)"
           base="${PR_BASE:-${PUSH_BASE:-}}"
@@ -89,25 +107,31 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     outputs:
+      attempt: ${{ github.run_attempt }}
       cache_hit: ${{ steps.cache.outputs.cache-hit }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: ./.github/actions/ci-setup
+        with:
+          native: "true"
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
       - name: Resolve build toolchain identity
         id: build-key
         run: bun script/ci.ts build-key
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: cache
-        if: github.event_name != 'schedule'
+        if: github.event_name != 'schedule' && inputs.build_cache != 'disabled'
         with:
           path: .artifacts/ci/build
           key: ci-build-${{ steps.build-key.outputs.key }}
@@ -120,35 +144,122 @@ jobs:
           else
             bun script/ci.ts prepare
           fi
-          tar -cf .artifacts/ci/build.tar -C .artifacts/ci build
+          tar -I 'zstd -T2 -3' -cf .artifacts/ci/build.tar.zst -C .artifacts/ci build
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ci-build-${{ github.run_attempt }}
-          path: .artifacts/ci/build.tar
+          path: .artifacts/ci/build.tar.zst
+          compression-level: 0
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 3
-      - name: Prepare selected distributions
-        if: needs.plan.outputs.core == 'true' || needs.plan.outputs.full == 'true'
-        run: bun script/ci.ts prepare-distributions
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: needs.plan.outputs.core == 'true'
+          retention-days: 1
+
+  prepare-core:
+    name: Core distribution
+    needs: [plan, prepare]
+    if: needs.plan.outputs.core == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: ./.github/actions/ci-setup
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-build-${{ needs.prepare.outputs.attempt }}
+          path: .artifacts/ci
+      - name: Restore verified base build
+        run: |
+          tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
+          bun script/ci.ts restore
+      - name: Resolve distribution cache identity
+        id: distribution-key
+        run: bun script/ci.ts distribution-key --profile core
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: distribution-cache
+        if: github.event_name != 'schedule' && inputs.build_cache != 'disabled'
+        with:
+          path: .artifacts/ci/distributions/core
+          key: ci-distribution-core-${{ steps.distribution-key.outputs.key }}
+      - name: Build or validate cached distribution
+        env:
+          CACHE_HIT: ${{ steps.distribution-cache.outputs.cache-hit }}
+        run: |
+          args=(--profile core)
+          if [ "$CACHE_HIT" = true ]; then args+=(--cached); fi
+          bun script/ci.ts prepare-distributions "${args[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-distribution-core-${{ github.run_attempt }}
           path: .artifacts/ci/distributions/core.tar.zst
           compression-level: 0
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 3
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: needs.plan.outputs.full == 'true'
+          retention-days: 1
+
+  prepare-full:
+    name: Full distribution
+    needs: [plan, prepare]
+    if: needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
+      SYNERGY_CI_WEB_MANIFEST: "1"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: ./.github/actions/ci-setup
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ci-build-${{ needs.prepare.outputs.attempt }}
+          path: .artifacts/ci
+      - name: Restore verified base build
+        run: |
+          tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
+          bun script/ci.ts restore
+      - name: Resolve distribution cache identity
+        id: distribution-key
+        run: bun script/ci.ts distribution-key --profile full
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: distribution-cache
+        if: github.event_name != 'schedule' && inputs.build_cache != 'disabled'
+        with:
+          path: .artifacts/ci/distributions/full
+          key: ci-distribution-full-${{ steps.distribution-key.outputs.key }}
+      - name: Build or validate cached distribution
+        env:
+          CACHE_HIT: ${{ steps.distribution-cache.outputs.cache-hit }}
+        run: |
+          args=(--profile full)
+          if [ "$CACHE_HIT" = true ]; then args+=(--cached); fi
+          bun script/ci.ts prepare-distributions "${args[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-distribution-full-${{ github.run_attempt }}
           path: .artifacts/ci/distributions/full.tar.zst
           compression-level: 0
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 3
+          retention-days: 1
 
   benchmark-prepare:
     name: Frozen benchmark preparation
@@ -157,17 +268,22 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: "false"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        if: github.event_name != 'schedule' && inputs.build_cache != 'disabled'
+        with:
+          path: .artifacts/ci/benchmark/cache/prepared
+          key: benchmark-build-linux-x64-bun1.4.2-${{ github.sha }}
       - run: bun script/ci.ts run --unit benchmark-prepare
       - run: tar -I 'zstd -T2 -3' -cf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci benchmark/prepared
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -177,7 +293,7 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 3
+          retention-days: 1
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -185,7 +301,7 @@ jobs:
           path: .artifacts/ci/results
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
 
   contracts:
     name: contracts (${{ matrix.id }})
@@ -200,14 +316,16 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.contracts) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -221,6 +339,7 @@ jobs:
           policy: ${{ matrix.policy }}
       - name: Execute planned tasks
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_UNIT: ${{ matrix.id }}
         run: bun script/ci.ts run --unit "$CI_UNIT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -230,28 +349,30 @@ jobs:
           path: .artifacts/ci/results
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
   linux:
     name: linux (${{ matrix.id }})
     needs: [plan, prepare]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.linux_count != '0' }}
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare.result == 'success' && needs.plan.outputs.linux_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 6
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.linux) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -259,30 +380,14 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: matrix.build
         with:
-          name: ci-build-${{ github.run_attempt }}
+          name: ci-build-${{ needs.prepare.outputs.attempt }}
           path: .artifacts/ci
       - name: Verify shared build
         if: matrix.build
         shell: bash
         run: |
-          tar -xf .artifacts/ci/build.tar -C .artifacts/ci
+          tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
           bun script/ci.ts restore
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: matrix.core
-        with:
-          name: ci-distribution-core-${{ github.run_attempt }}
-          path: .artifacts/ci/distributions
-      - name: Unpack core distribution
-        if: matrix.core
-        run: tar --zstd -xpf .artifacts/ci/distributions/core.tar.zst -C .artifacts/ci/distributions
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: matrix.full
-        with:
-          name: ci-distribution-full-${{ github.run_attempt }}
-          path: .artifacts/ci/distributions
-      - name: Unpack full distribution
-        if: matrix.full
-        run: tar --zstd -xpf .artifacts/ci/distributions/full.tar.zst -C .artifacts/ci/distributions
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: "true"
@@ -292,6 +397,7 @@ jobs:
           policy: ${{ matrix.policy }}
       - name: Execute planned tasks
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_UNIT: ${{ matrix.id }}
         run: bun script/ci.ts run --unit "$CI_UNIT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -301,41 +407,150 @@ jobs:
           path: .artifacts/ci/results
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
-  docker:
-    name: docker (${{ matrix.id }})
-    needs: [plan, benchmark-prepare]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker_count != '0' }}
+          retention-days: 3
+  linux_core:
+    name: linux (${{ matrix.id }})
+    needs: [plan, prepare, prepare-core]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare-core.result == 'success' && needs.plan.outputs.linux_core_count != '0' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 1
       matrix:
-        include: ${{ fromJSON(needs.plan.outputs.docker) }}
+        include: ${{ fromJSON(needs.plan.outputs.linux_core) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.2"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: matrix.benchmark
+        if: matrix.build
         with:
-          name: ci-benchmark-prepared-${{ github.run_attempt }}
+          name: ci-build-${{ needs.prepare.outputs.attempt }}
           path: .artifacts/ci
-      - name: Unpack read-only benchmark input
-        if: matrix.benchmark
+      - name: Verify shared build
+        if: matrix.build
         shell: bash
-        run: tar --zstd -xf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci
+        run: |
+          tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
+          bun script/ci.ts restore
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+  linux_full:
+    name: linux (${{ matrix.id }})
+    needs: [plan, prepare, prepare-full]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.prepare-full.result == 'success' && needs.plan.outputs.linux_full_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.linux_full) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: matrix.build
+        with:
+          name: ci-build-${{ needs.prepare.outputs.attempt }}
+          path: .artifacts/ci
+      - name: Verify shared build
+        if: matrix.build
+        shell: bash
+        run: |
+          tar --zstd -xf .artifacts/ci/build.tar.zst -C .artifacts/ci
+          bun script/ci.ts restore
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "true"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+  docker_direct:
+    name: docker (${{ matrix.id }})
+    needs: [plan]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.plan.outputs.docker_direct_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.docker_direct) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: "false"
@@ -345,6 +560,7 @@ jobs:
           policy: ${{ matrix.policy }}
       - name: Execute planned tasks
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_UNIT: ${{ matrix.id }}
         run: bun script/ci.ts run --unit "$CI_UNIT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -354,17 +570,74 @@ jobs:
           path: .artifacts/ci/results
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
       - name: Collect bounded benchmark evidence
-        if: always()
+        if: failure()
         run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: failure()
         with:
           name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/benchmark-evidence
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
+  docker:
+    name: docker (${{ matrix.id }})
+    needs: [plan, benchmark-prepare]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.benchmark-prepare.result == 'success' && needs.plan.outputs.docker_count != '0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.docker) }}
+    env:
+      SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
+          path: .artifacts/ci
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.2"
+      - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+          browser: ${{ matrix.browser }}
+          desktop: ${{ matrix.desktop }}
+          sandbox: ${{ matrix.sandbox }}
+          policy: ${{ matrix.policy }}
+      - name: Execute planned tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_UNIT: ${{ matrix.id }}
+        run: bun script/ci.ts run --unit "$CI_UNIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}
+          path: .artifacts/ci/results
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 3
+      - name: Collect bounded benchmark evidence
+        if: failure()
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py integration parent-death compaction-integration oom-integration matrix-integration preparation --output "$RUNNER_TEMP/benchmark-evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: benchmark-evidence-${{ matrix.id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark-evidence
+          include-hidden-files: true
+          retention-days: 3
   postgres:
     name: postgres (${{ matrix.id }})
     needs: [plan]
@@ -373,11 +646,13 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 1
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.postgres) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     services:
       postgres:
         image: postgres:${{ matrix.postgres }}
@@ -388,13 +663,13 @@ jobs:
         ports: [5432:5432]
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -408,6 +683,7 @@ jobs:
           policy: ${{ matrix.policy }}
       - name: Execute planned tasks
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_UNIT: ${{ matrix.id }}
         run: bun script/ci.ts run --unit "$CI_UNIT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -417,7 +693,7 @@ jobs:
           path: .artifacts/ci/results
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
   windows:
     name: windows (${{ matrix.id }})
     needs: [plan]
@@ -431,20 +707,25 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.windows) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.2"
       - uses: ./.github/actions/ci-setup
         with:
+          native: ${{ matrix.id == 'windows-native' }}
+          workspaces: ${{ matrix.id == 'windows-desktop' && '@ericsanchezok/synergy-desktop' || '' }}
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
           dependencies: "true"
           browser: ${{ matrix.browser }}
           desktop: ${{ matrix.desktop }}
@@ -452,6 +733,7 @@ jobs:
           policy: ${{ matrix.policy }}
       - name: Execute planned tasks
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_UNIT: ${{ matrix.id }}
         run: bun script/ci.ts run --unit "$CI_UNIT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -461,7 +743,7 @@ jobs:
           path: .artifacts/ci/results
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
 
   macos:
     name: macos (${{ matrix.id }})
@@ -476,20 +758,24 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.macos) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: "1.4.2"
       - uses: ./.github/actions/ci-setup
         with:
+          native: "true"
+          build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
           dependencies: "true"
           browser: ${{ matrix.browser }}
           desktop: ${{ matrix.desktop }}
@@ -497,6 +783,7 @@ jobs:
           policy: ${{ matrix.policy }}
       - name: Execute planned tasks
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_UNIT: ${{ matrix.id }}
         run: bun script/ci.ts run --unit "$CI_UNIT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -506,35 +793,52 @@ jobs:
           path: .artifacts/ci/results
           if-no-files-found: error
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 3
 
   all-checks-passed:
     name: All checks passed
     if: always()
-    needs: [plan, prepare, benchmark-prepare, contracts, linux, docker, postgres, windows, macos]
+    needs:
+      [
+        plan,
+        prepare,
+        prepare-core,
+        prepare-full,
+        benchmark-prepare,
+        contracts,
+        linux,
+        linux_core,
+        linux_full,
+        docker_direct,
+        docker,
+        postgres,
+        windows,
+        macos,
+      ]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ci-plan-${{ github.run_attempt }}
+          name: ci-plan-${{ needs.plan.outputs.attempt }}
           path: .artifacts/ci
       - uses: ./.github/actions/ci-setup
         with:
           dependencies: "false"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: ci-results-*-${{ github.run_attempt }}
-          merge-multiple: true
-          path: .artifacts/ci/results
+          pattern: ci-results-*
+          merge-multiple: false
+          path: .artifacts/ci/evidence
       - name: Verify completion and current coverage
         env:
+          GH_TOKEN: ${{ github.token }}
           CI_NEEDS: ${{ toJSON(needs) }}
-        run: bun script/ci.ts verify
+        run: bun script/ci.ts verify --results .artifacts/ci/evidence
       - name: Measure queues and compute time
         if: always()
         env:
@@ -547,7 +851,7 @@ jobs:
           name: ci-admission-${{ github.run_attempt }}
           path: .artifacts/ci/admission
           include-hidden-files: true
-          retention-days: 30
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
@@ -556,4 +860,4 @@ jobs:
             .artifacts/ci/summary.json
             .artifacts/ci/metrics.json
           include-hidden-files: true
-          retention-days: 30
+          retention-days: 7

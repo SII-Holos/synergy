@@ -418,7 +418,7 @@ async function inResources<T>(
     needs: { workspace, execution },
     signal: input.signal,
   })
-  return Tool.withWorkspace(workspace, { resources, sessionID: input.invocation.sessionId }, fn)
+  return await Tool.withWorkspace(workspace, { resources, sessionID: input.invocation.sessionId }, fn)
 }
 
 async function sessionInInvocationScope(input: PluginHostServiceInvocationInput, sessionId: string) {

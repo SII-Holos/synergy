@@ -37,6 +37,7 @@
     "@lingui/solid": "catalog:"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-testing": "workspace:*",
     "@lingui/core": "catalog:",
     "@lingui/solid": "catalog:",
     "@tailwindcss/vite": "catalog:",
