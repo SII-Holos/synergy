@@ -58,7 +58,7 @@ export async function mapFiles<T, R>(files: T[], operation: (file: T) => Promise
   return results
 }
 
-function buildWorkspaces(root: string) {
+function buildWorkspaces(root: string, web = false) {
   const packages = workspaces(root)
   const graph = workspaceGraph(
     packages.map((entry) => ({
@@ -79,6 +79,11 @@ function buildWorkspaces(root: string) {
     selected.add(name)
   }
   visit(plugin.name)
+  if (web) {
+    const app = packages.find((entry) => entry.directory === "apps/web")
+    if (!app) throw new Error("Missing Web build workspace")
+    visit(app.name)
+  }
   return [...selected].map((name) => packages.find((entry) => entry.name === name)!)
 }
 
@@ -96,6 +101,7 @@ function buildPaths(root: string) {
     "packages/local-runtime/.artifacts/watcher",
     "packages/local-runtime/.artifacts/pty",
     ...(process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1" ? ["packages/local-runtime/sandbox-assets/linux-x64"] : []),
+    ...(process.env.SYNERGY_CI_WEB_BUILD === "true" ? ["apps/web/dist"] : []),
     ...buildWorkspaces(root)
       .filter((entry) => entry.scripts?.build)
       .map((entry) => `${entry.directory}/dist`),
@@ -108,10 +114,10 @@ export async function buildIdentity(root = ROOT): Promise<string> {
       ? execFileSync("getconf", ["GNU_LIBC_VERSION"], { encoding: "utf8" }).trim()
       : process.platform
   const hash = createHash("sha256").update(
-    `ci-build-v5:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}`,
+    `ci-build-v6:${process.platform}:${process.arch}:${Bun.version}:${abi}:node22.14.0-bullseye:${process.env.SYNERGY_CI_SANDBOX_BUNDLE ?? "0"}:${process.env.SYNERGY_CI_WEB_BUILD ?? "false"}:${process.env.SYNERGY_CI_WEB_BUILD === "true" ? (process.env.SYNERGY_CI_TESTED_SHA ?? "") : ""}`,
   )
   const files = [...BUILD_INPUTS]
-  for (const entry of buildWorkspaces(root)) {
+  for (const entry of buildWorkspaces(root, process.env.SYNERGY_CI_WEB_BUILD === "true")) {
     for (const file of await filesIn(path.join(root, entry.directory), [
       "dist",
       "node_modules",
@@ -157,21 +163,21 @@ export async function publishBuild(root = ROOT) {
   for (const directory of buildPaths(root)) {
     const outputs = await filesIn(path.join(root, directory))
     if (!outputs.length) throw new Error(`Missing build output: ${directory}`)
-    for (const file of outputs) {
-      files.push({
+    files.push(
+      ...(await mapFiles(outputs, async (file) => ({
         path: path.relative(root, file).split(path.sep).join("/"),
         sha256: await fileHash(file),
         mode: (await stat(file)).mode & 0o777,
-      })
-    }
+      }))),
+    )
   }
   const destination = path.join(root, OUTPUT, "build")
   await rm(destination, { recursive: true, force: true })
   await mkdir(destination, { recursive: true })
-  for (const file of files) {
+  await mapFiles(files, async (file) => {
     await mkdir(path.dirname(path.join(destination, file.path)), { recursive: true })
     await cp(path.join(root, file.path), path.join(destination, file.path), { recursive: true, force: true })
-  }
+  })
   await Bun.write(
     path.join(destination, "manifest.json"),
     JSON.stringify({ identity: await buildIdentity(root), files }),
@@ -196,18 +202,18 @@ export async function restoreBuild(root = ROOT) {
   for (const prefix of paths) {
     if (!declared.some((file) => file.startsWith(prefix + "/"))) throw new Error(`Missing build output: ${prefix}`)
   }
-  for (const entry of manifest.files) {
+  await mapFiles(manifest.files, async (entry) => {
     if (!paths.some((prefix) => entry.path.startsWith(prefix + "/")) || entry.path.split("/").includes(".."))
       throw new Error("Unowned build artifact path")
     const file = path.join(directory, entry.path)
     if ((await fileHash(file)) !== entry.sha256 || ((await stat(file)).mode & 0o777) !== entry.mode)
       throw new Error(`Build artifact changed: ${entry.path}`)
-  }
+  })
   for (const prefix of paths)
     if (declared.some((file) => file.startsWith(prefix + "/")))
       await rm(path.join(root, prefix), { recursive: true, force: true })
-  for (const entry of manifest.files) {
+  await mapFiles(manifest.files, async (entry) => {
     await mkdir(path.dirname(path.join(root, entry.path)), { recursive: true })
     await cp(path.join(directory, entry.path), path.join(root, entry.path))
-  }
+  })
 }

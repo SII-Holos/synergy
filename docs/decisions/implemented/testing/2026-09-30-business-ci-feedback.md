@@ -23,13 +23,13 @@ Status: implemented
 
 压缩夹具以首次实际压缩后的一轮完整文件操作作为结束条件，最多 48 次工具调用，失败时保留诊断。确定性 provider 根据实际请求大小声明 fixture 用量，真实原生阈值触发压缩；公开 transcript 必须有已提交 summary 及之后的文件核对。该场景显式关闭 Library 记忆整理，避免另一个领域的后台任务改变控制目标；Library 自身测试继续覆盖整理。反例验证缺少压缩、继续执行、文件修改或用量记录都不能通过。历史 ARM 模拟的持续压力材料和分配压力保留在诊断入口。
 
-Linux 基础、core 分发、full 分发和冻结 benchmark 分开准备，消费者只等待其所需产物。core/full 分发缓存绑定 tested SHA、平台、工具链与基础构建清单摘要；先核对所有文件字节和模式，再发布当前计划的产物身份。full 只生成一次 Web 生产构建，构建契约与 smoke 消费经过清单、字节与模式校验的输出。UI 六个 Solid/Vite 夹具使用多入口编译和共享 chunk，缓存键覆盖实际源码、工具链、依赖和配置，输出摘要校验；编译使用独立进程和显式测试环境，测试进程和 DOM 继续隔离，调用方的 NODE_ENV 不受 Vite 影响。懒加载内容以渲染事件等待，单个 timer tick 不是完成证据。
+Linux 基础、core 分发、full 分发和冻结 benchmark 分开准备，消费者只等待其所需产物。core/full 分发缓存绑定 tested SHA、平台、工具链与基础构建清单摘要；先核对所有文件字节和模式，再发布当前计划的产物身份。基础准备只生成一次 Web 生产构建，构建契约与 smoke 消费经过清单、字节与模式校验的输出。UI 六个 Solid/Vite 夹具使用多入口编译和共享 chunk，缓存键覆盖实际源码、工具链、依赖和配置，输出摘要校验；编译使用独立进程和显式测试环境，测试进程和 DOM 继续隔离，调用方的 NODE_ENV 不受 Vite 影响。懒加载内容以渲染事件等待，单个 timer tick 不是完成证据。
 
-Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前两轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
+Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前几轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
 
-Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 15、6、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。重复的三个包 TypeScript 检查由 Linux 完整 workspace 类型检查覆盖；Windows 保留原生 Rust test/build 与实际调用，覆盖原 cargo check 的编译验证。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
+Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 15、8、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。重复的三个包 TypeScript 检查由 Linux 完整 workspace 类型检查覆盖；Windows 保留原生 Rust test/build 与实际调用，覆盖原 cargo check 的编译验证。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
 
-Docker 按耗时分配到六个 job，每个 job 最多三个独立 Home、进程和容器的任务并行，共享只读准备和保留逐任务证据。测试与原有 workflow 校验子进程移除协调器的 GitHub token 与父级文件选择，保持原校验环境，避免污染 provider 凭据与嵌套夹具；Windows 后代清理验证 Job 成员和原生 ActiveProcesses 终态，避免将已退出 PID 的句柄存续误判为执行存续。
+Docker 按耗时分配到八个 job，每个 job 最多两个独立 Home、进程和容器的任务并行，共享只读准备和保留逐任务证据。测试与原有 workflow 校验子进程移除协调器的 GitHub token 与父级文件选择，保持原校验环境，避免污染 provider 凭据与嵌套夹具；Windows 后代清理验证 Job 成员和原生 ActiveProcesses 终态，避免将已退出 PID 的句柄存续误判为执行存续。
 
 同 SHA 局部重跑保持原始计划。结果版本 2 使用 `unit`、`planAttempt`、`executionAttempt`，每个产物有独立报告目录。GitHub jobs API 的最新实际执行决定有效证据；只有同 run、SHA、计划摘要且对应最新成功执行的结果才能合并。旧成功不能覆盖新失败、取消或缺失结果；重复、错误身份、报告损坏均拒绝。全量重跑建立新计划，旧计划记录不参与准入。新 SHA 重新计算当前 PR 影响范围，构建缓存可复用，通过结论不能复用。
 
@@ -55,8 +55,12 @@ Bun/Python 下载、Rust 编译与经过验证的构建使用包含实际输入�
 
 第二轮实测继续拆分 full 的组件管理、Web 安装和 package composition，各流程从独立的新 Home 开始。六类 full 结果分成三组，同组复用安装 Home、分别新建工作区、会话和 provider；每个调用仍检查真实结果、锁与进程清理，完整导入导出仅一次。产物摘要与复制以最多 16 个文件操作并行处理，全部操作完成后才发布或报告失败，保持完整字节、权限与路径校验。bash 后台进程的测试等待已发布的完成态，上限五秒替代固定 500 毫秒窗口。
 
-初始 Linux 11 的分配在第二轮仍有串行长尾，依据该轮任务耗时将 Linux 上限调整到 15（含 contracts），单 runner 的 package suite 继续串行；全组织实际并发仍受 20 槽位约束，排队继续计入验收。Windows Desktop 只跑 server/installer 行为，不下载其未使用的 Rust 编译缓存；Windows native 保留完整原生准备。
+初始 Linux 11 的分配在第二轮仍有串行长尾，依据该轮任务耗时将 Linux 上限调整到 15（含 contracts），单 runner 的 package suite 使用最多两个独立进程；同一包的分片分散到不同 runner；全组织实际并发仍受 20 槽位约束，排队继续计入验收。Windows Desktop 只跑 server/installer 行为，不下载其未使用的 Rust 编译缓存；Windows native 保留完整原生准备。
 
 完成态 30 MiB 原控制包含 30,720 次 1 KiB checkpoint。完整性验证改为 32 KiB transport 分块，保留同等字节与完整摘要、归档、用量、终态和实际清理；历史 checkpoint 压力通过 `SYNERGY_ROLLOUT_CHECKPOINT_STRESS=1` 显式保留。公共 chunk 计数核对实际输入，内部文件数量仍不作为断言。
 
-队列进一步按产物依赖分开：普通 Linux 最多 8、core 1、full 5，加 contracts 总计 15；Docker 无准备依赖 2、冻结准备消费者 4，总计 6。full/core 消费者在对应生产者完成后申请 runner，普通 suite 只等待基础构建。Docker 无准备依赖的 native/Environment 控制立即执行，冻结消费者等其生产者完成后再申请槽位，避免闲置 runner 的轮询挤占普通测试。全量冷验证还关闭 Rust 目标编译缓存，依赖下载可复用。
+队列进一步按产物依赖分开：普通 Linux 最多 8、core 1、full 5，加 contracts 总计 15；Docker 无准备依赖 2、冻结准备消费者 6，总计 8。full/core 消费者在对应生产者完成后申请 runner，普通 suite 只等待基础构建。Docker 无准备依赖的 native/Environment 控制立即执行，冻结消费者等其生产者完成后再申请槽位，避免闲置 runner 的轮询挤占普通测试。全量冷验证还关闭 Rust 目标编译缓存，依赖下载可复用。
+
+冷构建全量通过的一轮耗时 799 秒，最长 Harness 两个分片被旧权重分到同一 runner；安装与 Windows 也超过剩余预算。包分片强制分散、按该轮实测重新分配，两个隔离进程重叠执行。Docker 三进程并行放大 native 的 CPU/文件复制开销，改为八个 job、每 job 两进程，组织仍共享 20 槽位。Windows Bun 缓存解压约 90 秒，慢于直接安装，因此跳过这项缓存；Desktop 仅安装自身依赖。Windows 原生文件拆为两个独立 Home 的进程，所有原入口与报告保留，同平台 job 上限仍为 1。
+
+Web 生产构建与原生准备在基础 runner 重叠执行，其源码依赖、平台、工具链、测试 SHA 和完整输出清单参与缓存身份。full 分发恢复并验证基础产物后显式跳过重复 Web 构建，生产 manifest 缺失必须失败；普通发行构建不使用该选项。独立组件管理与公司 preset/schema 分成两组，分别从真实新安装开始，保留更新、移除、依赖裁剪和 schema 注销的连续业务过程。

@@ -5,7 +5,7 @@ import { readPackedArchives, withInstalledPackages } from "./package-install-che
 
 export async function checkInstalledComposition(
   archiveDirectory: string,
-  scenario: "all" | "components" | "web" = "all",
+  scenario: "all" | "components" | "company" | "web" = "all",
 ) {
   const archives = await readPackedArchives(archiveDirectory)
   const prefix = "@ericsanchezok/synergy-"
@@ -68,7 +68,7 @@ export async function checkInstalledComposition(
       path.join(directory, "managed-runtime.mjs"),
       await Bun.file(new URL("../test/package/fixture/managed-runtime.mjs", import.meta.url)).text(),
     )
-    if (scenario !== "web") {
+    if (scenario === "all" || scenario === "components") {
       console.log((await nativeInput()).trim())
       await cli("install", "mcp", "lsp", "server", "--trust-host-code")
       const independent = await list()
@@ -81,7 +81,11 @@ export async function checkInstalledComposition(
       assert.ok(!remaining.some((pkg) => pkg.id === "mcp"))
       assert.ok(remaining.some((pkg) => pkg.id === "lsp"))
       await cli("remove", "lsp", "server")
+      assert.deepEqual((await list()).map((pkg) => pkg.id).sort(), [])
+      console.log("PASS installed CLI: independent component update/removal returns to core")
+    }
 
+    if (scenario === "all" || scenario === "company") {
       const preset = path.join(directory, "company-preset")
       const packages = { [prefix + "mcp"]: version, [prefix + "lsp"]: version }
       await Bun.write(
@@ -148,7 +152,7 @@ export function companySettings() { return { id: "company-settings", version: "1
       console.log("PASS installed CLI: company component registers and removes its active schema")
     }
 
-    if (scenario !== "components") {
+    if (scenario === "all" || scenario === "web") {
       await cli("install", "web", "--trust-host-code")
       const selected = await list()
       for (const id of ["web", "full", "web-app", "mcp", "lsp", "browser-runtime", "library", "server"])
@@ -167,7 +171,7 @@ export function companySettings() { return { id: "company-settings", version: "1
 
 if (import.meta.main) {
   const scenario = process.argv[3] ?? "all"
-  if (scenario !== "all" && scenario !== "components" && scenario !== "web")
+  if (scenario !== "all" && scenario !== "components" && scenario !== "company" && scenario !== "web")
     throw new Error("Unknown installed composition scenario")
   await checkInstalledComposition(path.resolve(process.argv[2] ?? ".artifacts/packages"), scenario)
 }

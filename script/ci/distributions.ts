@@ -21,6 +21,7 @@ export function distributionCommands(profile: Profile, root: string) {
         `packages/${profile === "core" ? "cli" : "presets"}/script/build.ts`,
         "--single",
         "--skip-install",
+        ...(profile === "full" && process.env.SYNERGY_CI_WEB_BUILD === "true" ? ["--skip-web-build"] : []),
       ],
     },
     ...(profile === "core"

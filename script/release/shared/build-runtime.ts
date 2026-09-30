@@ -140,7 +140,13 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
 
   fs.rmSync("dist", { recursive: true, force: true })
 
-  if (profile === "full") {
+  if (profile === "full" && process.argv.includes("--skip-web-build")) {
+    if (
+      !fs.existsSync(path.join(WEB_DIR, "dist/index.html")) ||
+      !fs.existsSync(path.join(WEB_DIR, "dist/.vite/manifest.json"))
+    )
+      throw new Error("Prebuilt Web output is missing its production manifest")
+  } else if (profile === "full") {
     console.log("building web app")
     await $`bun run --cwd ${WEB_DIR} build ${process.env.SYNERGY_CI_WEB_MANIFEST === "1" ? ["--manifest"] : []}`
   }

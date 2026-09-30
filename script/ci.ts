@@ -233,27 +233,38 @@ async function main() {
     return
   }
   if (operation === "prepare") {
-    await command([process.execPath, "packages/local-runtime/script/build-watcher.ts"])
-    await command([process.execPath, "packages/local-runtime/script/build-pty.ts"])
-    for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
-    if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1") {
-      await command([
-        "cargo",
-        "build",
-        "--locked",
-        "--release",
-        "--manifest-path",
-        "packages/local-runtime/src/sandbox/helper-linux/Cargo.toml",
+    const native = async () => {
+      await Promise.all([
+        command([process.execPath, "packages/local-runtime/script/build-watcher.ts"]),
+        command([process.execPath, "packages/local-runtime/script/build-pty.ts"]),
       ])
-      await mkdir(path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64"), { recursive: true })
-      await Bun.write(
-        path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"),
-        Bun.file(
-          path.join(ROOT, "packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux"),
-        ),
-      )
-      await command(["chmod", "+x", "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"])
+      if (process.env.SYNERGY_CI_SANDBOX_BUNDLE === "1") {
+        await command([
+          "cargo",
+          "build",
+          "--locked",
+          "--release",
+          "--manifest-path",
+          "packages/local-runtime/src/sandbox/helper-linux/Cargo.toml",
+        ])
+        await mkdir(path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64"), { recursive: true })
+        await Bun.write(
+          path.join(ROOT, "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"),
+          Bun.file(
+            path.join(ROOT, "packages/local-runtime/src/sandbox/helper-linux/target/release/synergy-sandbox-linux"),
+          ),
+        )
+        await command(["chmod", "+x", "packages/local-runtime/sandbox-assets/linux-x64/synergy-sandbox-linux"])
+      }
     }
+    const web = async () => {
+      for (const recipe of buildCommands()) await command(recipe.args, recipe.cwd)
+      if (process.env.SYNERGY_CI_WEB_BUILD === "true")
+        await command([process.execPath, "run", "--cwd", "apps/web", "build", "--manifest"])
+    }
+    const prepared = await Promise.allSettled([native(), web()])
+    const failed = prepared.find((result) => result.status === "rejected")
+    if (failed?.status === "rejected") throw failed.reason
     await publishBuild()
     return
   }

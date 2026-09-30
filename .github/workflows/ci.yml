@@ -106,6 +106,8 @@ jobs:
       cache_hit: ${{ steps.cache.outputs.cache-hit }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -155,6 +157,8 @@ jobs:
     timeout-minutes: 15
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -206,6 +210,8 @@ jobs:
     timeout-minutes: 15
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
       SYNERGY_CI_WEB_MANIFEST: "1"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -305,6 +311,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.contracts) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -350,6 +358,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.linux) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -406,6 +416,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.linux_core) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -462,6 +474,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.linux_full) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -518,6 +532,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.docker_direct) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -568,11 +584,13 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 6
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.docker) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -628,6 +646,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.postgres) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     services:
       postgres:
         image: postgres:${{ matrix.postgres }}
@@ -682,6 +702,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.windows) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -697,6 +719,7 @@ jobs:
       - uses: ./.github/actions/ci-setup
         with:
           native: ${{ matrix.id == 'windows-native' }}
+          workspaces: ${{ matrix.id == 'windows-desktop' && '@ericsanchezok/synergy-desktop' || '' }}
           build-cache: ${{ github.event_name != 'schedule' && inputs.build_cache != 'disabled' }}
           dependencies: "true"
           browser: ${{ matrix.browser }}
@@ -730,6 +753,8 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.macos) }}
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
+      SYNERGY_CI_WEB_BUILD: ${{ needs.plan.outputs.full }}
+      SYNERGY_CI_TESTED_SHA: ${{ needs.plan.outputs.sha }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:

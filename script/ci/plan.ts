@@ -97,7 +97,7 @@ export interface Plan {
   digest: string
 }
 
-export const LIMITS: Record<Pool, number> = { linux: 15, docker: 6, postgres: 1, windows: 1, macos: 1 }
+export const LIMITS: Record<Pool, number> = { linux: 15, docker: 8, postgres: 1, windows: 1, macos: 1 }
 export const QUEUES = [
   "contracts",
   "linux",
@@ -174,7 +174,7 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
               },
               {
                 entries: benchmark,
-                count: Math.min(4, benchmark.length),
+                count: Math.min(6, benchmark.length),
                 name: "docker",
               },
             ]
@@ -212,7 +212,13 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
           b.seconds - a.seconds ||
           a.id.localeCompare(b.id),
       )) {
-        const target = bins.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
+        const eligible =
+          pool === "linux" && mode !== "diagnostic" && task.kind === "suite"
+            ? bins.filter((bin) =>
+                bin.tasks.every((id) => tasks.find((entry) => entry.id === id)!.package !== task.package),
+              )
+            : bins
+        const target = eligible.toSorted((a, b) => a.seconds - b.seconds || a.id.localeCompare(b.id))[0]!
         target.tasks.push(task.id)
         target.seconds += task.seconds
         target.browser ||= task.prerequisites?.includes("browser") ?? false

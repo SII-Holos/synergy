@@ -335,7 +335,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             path.join(root, "packages/presets/dist/modules-packages"),
           ]),
         ]
-      if (task.variant === "components" || task.variant === "web")
+      if (task.variant === "components" || task.variant === "company" || task.variant === "web")
         return [
           bun("installation-composition", [
             "script/installation-composition-check.ts",
@@ -532,9 +532,19 @@ export async function executeUnit(
   }
   let cursor = 0
   const workers = await Promise.allSettled(
-    Array.from({ length: unit?.pool === "docker" ? 3 : 1 }, async () => {
-      while (cursor < ordered.length) await execute(ordered[cursor++]!)
-    }),
+    Array.from(
+      {
+        length:
+          unit?.pool === "docker"
+            ? 2
+            : unit?.pool === "linux" && unit.id !== "linux-contracts" && plan.mode !== "diagnostic"
+              ? 2
+              : 1,
+      },
+      async () => {
+        while (cursor < ordered.length) await execute(ordered[cursor++]!)
+      },
+    ),
   )
   const rejected = workers.find((worker) => worker.status === "rejected")
   if (rejected?.status === "rejected") throw rejected.reason

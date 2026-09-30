@@ -162,11 +162,11 @@ export async function catalog(root = ROOT): Promise<Task[]> {
         seconds: 480,
         scenarios: [],
       },
-      ...["components", "web"].map((variant) => ({
+      ...["components", "company", "web"].map((variant) => ({
         id: `installed-full-${variant}`,
         profile: "full" as const,
         variant,
-        seconds: variant === "components" ? 190 : 130,
+        seconds: variant === "components" ? 150 : variant === "company" ? 120 : 130,
         scenarios: [],
       })),
     ].map((entry) =>

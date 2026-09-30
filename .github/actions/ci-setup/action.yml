@@ -22,6 +22,9 @@ inputs:
   build-cache:
     description: Restore Rust compilation caches
     default: "true"
+  workspaces:
+    description: Space-separated workspace dependency filters
+    default: ""
 runs:
   using: composite
   steps:
@@ -34,7 +37,7 @@ runs:
         enable-cache: true
         cache-dependency-glob: benchmark/uv.lock
     - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-      if: inputs.dependencies == 'true'
+      if: inputs.dependencies == 'true' && runner.os != 'Windows'
       with:
         path: ~/.bun/install/cache
         key: bun-downloads-${{ runner.os }}-${{ runner.arch }}-1.4.2-${{ hashFiles('bun.lock') }}
@@ -61,7 +64,14 @@ runs:
       env:
         HUSKY: "0"
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
-      run: bun install --frozen-lockfile
+        CI_WORKSPACES: ${{ inputs.workspaces }}
+      run: |
+        args=(--frozen-lockfile)
+        if [ -n "$CI_WORKSPACES" ]; then
+          read -r -a workspaces <<< "$CI_WORKSPACES"
+          for workspace in "${workspaces[@]}"; do args+=(--filter "$workspace"); done
+        fi
+        bun install "${args[@]}"
     - name: Test Git identity
       shell: bash
       run: |

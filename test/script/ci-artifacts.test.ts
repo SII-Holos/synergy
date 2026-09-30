@@ -110,6 +110,41 @@ test("shared preparation compiles the committed SDK without regenerating its inp
   expect(recipes.at(-1)!.cwd).toEndWith("packages/plugin")
 })
 
+test("the shared Web build is restored once and rejects changed source or output", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-web-"))
+  const previous = process.env.SYNERGY_CI_WEB_BUILD
+  try {
+    await inputs(root)
+    const manifest = await Bun.file(path.join(root, "package.json")).json()
+    await Bun.write(
+      path.join(root, "package.json"),
+      JSON.stringify({ ...manifest, workspaces: { packages: ["packages/plugin", "packages/shared", "apps/web"] } }),
+    )
+    await Bun.write(
+      path.join(root, "apps/web/package.json"),
+      JSON.stringify({ name: "web", dependencies: { "@fixture/plugin": "workspace:*" } }),
+    )
+    await Bun.write(path.join(root, "apps/web/src/app.ts"), "export const app = 1")
+    await Bun.write(path.join(root, "apps/web/dist/index.html"), "verified Web")
+    await Bun.write(path.join(root, "packages/plugin/dist/index.js"), "verified plugin")
+    await Bun.write(path.join(root, "packages/local-runtime/.artifacts/watcher/watcher"), "verified watcher")
+    process.env.SYNERGY_CI_WEB_BUILD = "true"
+    await publishBuild(root)
+    await Bun.write(path.join(root, "apps/web/dist/index.html"), "damaged Web")
+    await restoreBuild(root)
+    expect(await Bun.file(path.join(root, "apps/web/dist/index.html")).text()).toBe("verified Web")
+    await Bun.write(path.join(root, ".artifacts/ci/build/apps/web/dist/index.html"), "tampered")
+    await expect(restoreBuild(root)).rejects.toThrow("changed")
+    const before = await buildIdentity(root)
+    await Bun.write(path.join(root, "apps/web/src/app.ts"), "export const app = 2")
+    expect(await buildIdentity(root)).not.toBe(before)
+  } finally {
+    if (previous === undefined) delete process.env.SYNERGY_CI_WEB_BUILD
+    else process.env.SYNERGY_CI_WEB_BUILD = previous
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 test("build outputs transfer between compatible runners during an image rollout", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-build-images-"))
   const previous = process.env.ImageVersion

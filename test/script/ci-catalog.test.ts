@@ -114,7 +114,7 @@ test("independent browser suite selection retains its executable prerequisites",
 test("required plans and installation diagnostics retain every control within the Linux worker budget", async () => {
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "artifacts")
-  expect(controls).toHaveLength(8)
+  expect(controls).toHaveLength(9)
   expect(LIMITS.linux).toBe(15)
   const workspaces = [
     { name: "local-runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
@@ -233,7 +233,7 @@ test("installed controls share two profile builds while preserving every distrib
   expect(product).toHaveLength(1)
   expect(product[0]!.args.at(-1)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
   const installation = consumers.filter((command) => command.args.includes("script/installation-composition-check.ts"))
-  expect(installation.map((command) => command.args.at(-1)).sort()).toEqual(["components", "web"])
+  expect(installation.map((command) => command.args.at(-1)).sort()).toEqual(["company", "components", "web"])
   for (const command of installation)
     expect(command.args.at(-2)).toBe(path.join(root, "packages/presets/dist/modules-packages"))
 })

@@ -4,6 +4,8 @@ import { createPlan, executionQueue } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 import { verifyResults } from "../../script/ci/evidence"
 import path from "node:path"
+import { stat } from "node:fs/promises"
+import { nativeWorkspaceBatches } from "../../script/native-workspace-coverage"
 
 test("native Workspace verification stays in the plan with fresh platform coverage", async () => {
   const tasks = await catalog()
@@ -81,4 +83,23 @@ test("the required aggregate waits for native macOS results from the tested revi
   expect(native!.steps!.find((step) => step.uses?.startsWith("actions/upload-artifact"))!.with!.path).toBe(
     ".artifacts/ci/results",
   )
+})
+
+test("native batches retain every Windows and macOS control without overlapping files", async () => {
+  for (const windows of [true, false]) {
+    const batches = nativeWorkspaceBatches(windows)
+    expect(batches.length).toBe(windows ? 2 : 1)
+    const files = batches.flat()
+    expect(new Set(files).size).toBe(files.length)
+    for (const file of files) {
+      expect(await stat(path.resolve("packages/local-runtime", file))).toBeDefined()
+    }
+    expect(files).toContain("test/workspace/change-attribution.test.ts")
+    expect(files).toContain("test/workspace/workspace-concurrency.test.ts")
+    expect(files).toContain("../harness/test/session/snapshot-long-path.test.ts")
+    expect(files).toContain("../lsp/test/lsp/process.test.ts")
+    expect(files).toContain(
+      windows ? "test/process/owned-process-windows.test.ts" : "test/workspace/darwin-coalition.test.ts",
+    )
+  }
 })

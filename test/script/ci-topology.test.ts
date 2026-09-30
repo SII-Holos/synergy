@@ -20,6 +20,24 @@ const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflow
 }
 
 describe("required CI topology", () => {
+  test("package partitions occupy different runners even when historical weights are uneven", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "full",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+    })
+    for (const unit of plan.units.filter((unit) => unit.pool === "linux")) {
+      const suites = tasks.filter((task) => unit.tasks.includes(task.id) && task.kind === "suite")
+      expect(new Set(suites.map((task) => task.package)).size).toBe(suites.length)
+    }
+  })
   test("consumers join only their required producer without reserving waiting runners", async () => {
     const tasks = await catalog()
     const plan = createPlan({
@@ -83,7 +101,7 @@ describe("required CI topology", () => {
       linux_full: 5,
       docker_direct: 2,
       contracts: 1,
-      docker: 4,
+      docker: 6,
       postgres: LIMITS.postgres,
       windows: LIMITS.windows,
       macos: LIMITS.macos,
