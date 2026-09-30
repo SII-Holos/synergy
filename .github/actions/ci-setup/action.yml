@@ -79,7 +79,9 @@ runs:
         git config --global user.name "CI Runner"
     - if: inputs.browser == 'true'
       shell: bash
-      run: bun run --cwd apps/web playwright install --with-deps chromium
+      # Provenance: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md
+      # Local adaptation: reuse the hosted image's browser libraries; real browser tests verify them.
+      run: bun run --cwd apps/web playwright install chromium
     - if: inputs.desktop == 'true'
       shell: bash
       run: |

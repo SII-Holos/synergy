@@ -35,6 +35,8 @@ Docker 按耗时分配到八个 job，每个 job 最多两个独立 Home、进�
 
 Bun/Python 下载、Rust 编译与经过验证的构建使用包含实际输入、平台和工具链的缓存。构建产物保留 1 天，测试结果 3 天，计划与汇总 7 天；完整诊断只在失败时上传。部分重跑所需输入过期必须全量重跑，不能用缺失证据推断通过。
 
+浏览器 job 使用固定的 `ubuntu-24.04`，复用 [官方 runner 镜像](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md) 已安装的浏览器系统库，只下载锁定 Playwright 版本对应的 Chromium。真实生产浏览器 smoke 继续验证启动与业务流程；镜像缺失依赖会失败。冷运行中重复执行 `install --with-deps` 在 Ubuntu 镜像源重试超过 14 分钟，未开始测试，因此取消这项重复系统安装。
+
 ## Alternatives considered
 
 **仅增加 runner 数量。** 四份压力、重复编译与分发等待仍浪费容量；Free 组织的并发总数也由所有 PR 共享。并行与减少重复工作共同执行。
