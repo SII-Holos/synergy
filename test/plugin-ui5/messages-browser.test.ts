@@ -96,7 +96,7 @@ test("native public conversation retains bounded history and reconciles updates 
       expect(await dialog.getByRole("button", { name: choice, exact: true }).count()).toBe(1)
     await dialog.getByRole("button", { name: "Minimal", exact: true }).click()
     expect(await dialog.getByRole("button", { name: "Minimal", exact: true }).getAttribute("aria-pressed")).toBe("true")
-    const workspace = dialog.getByRole("group", { name: "New session workspace", exact: true })
+    const workspace = dialog.getByRole("group", { name: "New task starting point", exact: true })
     await workspace.getByRole("button", { name: "Worktree", exact: true }).click()
     expect(await workspace.getByRole("button", { name: "Worktree", exact: true }).getAttribute("aria-pressed")).toBe(
       "true",
@@ -118,7 +118,7 @@ test("native public conversation retains bounded history and reconciles updates 
     expect(await dialog.getByRole("button", { name: "Minimal", exact: true }).getAttribute("aria-pressed")).toBe("true")
     expect(
       await dialog
-        .getByRole("group", { name: "New session workspace", exact: true })
+        .getByRole("group", { name: "New task starting point", exact: true })
         .getByRole("button", { name: "Worktree", exact: true })
         .getAttribute("aria-pressed"),
     ).toBe("true")

@@ -258,6 +258,8 @@ bun run --cwd apps/web build
 
 Extraction must leave tracked PO catalogs unchanged, strict compilation must reject missing Simplified Chinese or invalid ICU messages, and the production build must keep non-English catalogs lazy while excluding development-only pseudo-localization. Exercise a Chinese cold start, rapid switching, catalog-load failure, `html.lang`, keyboard labels, and 375 px layout through an isolated Web/Desktop runtime.
 
+Select batched Web, UI and package suites with `SYNERGY_TEST_FILES` containing a JSON array of inventory paths; their package scripts do not consume positional file arguments. Run direct `bun test` from the owning package directory. When product labels change, update real-host accessibility locators while retaining the persistence and interaction assertions.
+
 Run the narrow failing test during iteration, then the affected package/domain suite, then `quality:quick`. Run the full suite when the change crosses shared abstractions, persistence, generated contracts, package publication, or release boundaries, or when the user requests it.
 
 `bun run test:ci` runs the complete core inventory in fresh sequential batches. `test:coverage` uses the same executor with instrumentation; CI executes that inventory once and requires JUnit, lcov and timing evidence for every selected batch. See [CI verification](../../../docs/operations/ci.md) for `ci:plan`, `ci:run`, `ci:verify`, affected selection and diagnostic selectors. Assign Harness, Web, Presets and UI to 4, 4, 4 and 2 measured file-weight partitions, preserving complete isolation batches and special isolated files; each process owns its Home, fixture root, database and Link Home. Bind ports dynamically in fixtures; distinct runners provide host isolation.

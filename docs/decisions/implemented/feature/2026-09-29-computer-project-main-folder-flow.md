@@ -31,3 +31,5 @@ This refines the presentation from [project-first task entry](2026-09-29-project
 ## Consequences
 
 The ordinary flow is smaller while developer resource management remains available. Workbench coordinates project persistence and sharing; Local Runtime owns Git sources; App owns pending intent and presentation. OpenAPI/SDK generation covers the new product routes and optional Worktree source fields without changing Plugin UI version. Native acceptance remains distinct from renderer checks, and real multi-directory operations are necessary alongside visual inspection.
+
+The real-host conversation acceptance locates the global Workspace preference by its current “New task starting point” label and verifies the selected Worktree mode after saving and reloading.
