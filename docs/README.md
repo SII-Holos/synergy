@@ -25,8 +25,8 @@ Product documents explain what users work with and how the major capabilities re
 - [Knowledge](product/knowledge.md) — Library memories and experiences, Notes, Blueprints, recall, and search
 - [Activity and statistics](product/activity-and-statistics.md) — usage, tokens, costs, agents, tools, code changes, trends, and derived-data freshness
 - [Automation](product/automation.md) — Agenda triggers, session modes, delivery, recovery, and failure behavior
-- [Connections](product/connections.md) — providers, MCP, Channels, Email, Holos, Synergy Link, and plugins
-- [Browser workspace](product/browser.md) — one-page session ownership, native and remote presentation, safety, and interaction
+- [Connections](product/connections.md) — providers, MCP, Channels, Email, Holos, and plugins
+- [Browser workspace](product/browser.md) — Desktop pages, persistent identities, permissions and recovery
 - [Web product contract](../apps/web/PRODUCT.md) — durable interaction, visual, and accessibility rules
 
 ## Architecture
@@ -89,7 +89,6 @@ The package-level SDK reference remains in [`packages/plugin`](../packages/plugi
 - [Open-source quality](operations/open-source-quality.md) — local checks, CI, package validation, and contributor scenarios
 - [Desktop release](operations/desktop-release.md) — packaging, signing, publishing, updating, and recovery
 - [Performance observability](operations/performance-observability.md) — metrics, traces, storage, APIs, and performance tooling
-- [Qizhi Synergy Link](operations/qizhi-synergy-link.md) — shared-filesystem deployment, verification, recovery, and credential rotation for Synergy Link hosts
 
 ## Research and Migration History
 

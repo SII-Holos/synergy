@@ -269,10 +269,6 @@ function classifyProtectedPathCapability(
   })
 }
 
-function requestsSynergyLink(args: Record<string, any>): boolean {
-  return [args.targetID, args.linkID].some((value) => typeof value === "string" && value.trim().length > 0)
-}
-
 function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
   for (const rule of rules) {
     if (rule.permission === cap.class) return rule
@@ -526,7 +522,6 @@ export namespace EnforcementGate {
         // boundary so Smart allow can never bypass a profile deny on it.
         // shell_remote_publish covers ordinary branch push and PR creation.
         // shell_remote_write is broader remote mutation and stays Smart allow eligible.
-        // shell_remote_execute applies when linkID/targetID targets a remote Synergy Link host.
         // The classifier is the single owner of every shell risk: it decides
         // host-level destruction, irreversibility, privilege escalation, and
         // remote mutation by tokenizing the command, so no substring
@@ -536,10 +531,6 @@ export namespace EnforcementGate {
           nonBypassable: risk === "shell_destructive",
           ...(risk === "shell_destructive" ? { reason: `destructive shell command: ${command.slice(0, 200)}` } : {}),
         })
-        if (requestsSynergyLink(args)) {
-          caps.push({ class: "shell_remote_execute", nonBypassable: true })
-        }
-
         // Check for network activity
         if (ShellSafety.reachesNetwork(command)) {
           caps.push({ class: "network_request", nonBypassable: true })
@@ -699,22 +690,9 @@ export namespace EnforcementGate {
         } else {
           caps.push({ class: "file_read", nonBypassable: false })
         }
-        if (requestsSynergyLink(args)) {
-          caps.push({ class: "shell_remote_execute", nonBypassable: true })
-        }
         return { capabilities: caps }
       }
 
-      // Remote connection — action-based classification
-      if (toolName === "connect") {
-        const action = args.action ?? ""
-        if (action === "open" || action === "close") {
-          caps.push({ class: "network_request", nonBypassable: true })
-        } else {
-          caps.push({ class: "file_read", nonBypassable: false })
-        }
-        return { capabilities: caps }
-      }
       // Browser tools
       if (toolName === "browser_action") {
         caps.push({ class: "browser_interact", nonBypassable: false })
@@ -757,8 +735,11 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
       if (toolName === "browser_navigation") {
-        caps.push({ class: args.action === "current" ? "browser_inspect" : "browser_interact", nonBypassable: false })
-        if (args.action === "goto") {
+        caps.push({
+          class: args.action === "current" || args.action === "list" ? "browser_inspect" : "browser_interact",
+          nonBypassable: false,
+        })
+        if (args.action === "goto" || args.action === "open") {
           caps.push({ class: "network_request", nonBypassable: false })
         }
         return { capabilities: caps }

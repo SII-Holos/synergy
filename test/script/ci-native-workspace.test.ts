@@ -4,6 +4,8 @@ import { createPlan, executionQueue } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 import { verifyResults } from "../../script/ci/evidence"
 import path from "node:path"
+import { stat } from "node:fs/promises"
+import { nativeWorkspaceBatches } from "../../script/native-workspace-coverage"
 
 test("native Workspace verification stays in the plan with fresh platform coverage", async () => {
   const tasks = await catalog()
@@ -20,13 +22,13 @@ test("native Workspace verification stays in the plan with fresh platform covera
   })
   const macos = tasks.find((task) => task.id === "macos-workspace")
   expect(macos).toBeDefined()
-  const windows = tasks.find((task) => task.id === "windows")!
+  const windows = tasks.find((task) => task.id === "windows-native")!
   expect(windows.owners).toContain("packages/cli")
   for (const task of [macos!, windows]) {
     expect(task.package).toBe("packages/local-runtime")
     expect(task.outputs).toContain("lcov")
     expect(task.outputs).toContain("junit")
-    expect(task.needs).toContain("suite-packages-local-runtime")
+    expect(task.needs).toEqual(["suite-packages-local-runtime-0", "suite-packages-local-runtime-1"])
     const recipe = await commands(task, plan)
     const missing: string[] = []
     for (const command of recipe) {
@@ -39,12 +41,14 @@ test("native Workspace verification stays in the plan with fresh platform covera
     expect(recipe.some((command) => command.args.includes("packages/local-runtime/script/build-pty.ts"))).toBe(true)
     expect(recipe.some((command) => command.args.includes("script/native-workspace-coverage.ts"))).toBe(true)
     const result = {
-      version: 1 as const,
+      version: 2 as const,
       task: task.id,
+      unit: plan.units.find((unit) => unit.tasks.includes(task.id))!.id,
       plan: plan.digest,
       sha: plan.sha,
       run: plan.run,
-      attempt: plan.attempt,
+      planAttempt: plan.attempt,
+      executionAttempt: plan.attempt,
       mode: plan.mode,
       status: "success" as const,
       exitCode: 0,
@@ -79,4 +83,23 @@ test("the required aggregate waits for native macOS results from the tested revi
   expect(native!.steps!.find((step) => step.uses?.startsWith("actions/upload-artifact"))!.with!.path).toBe(
     ".artifacts/ci/results",
   )
+})
+
+test("native batches retain every Windows and macOS control without overlapping files", async () => {
+  for (const windows of [true, false]) {
+    const batches = nativeWorkspaceBatches(windows)
+    expect(batches.length).toBe(windows ? 2 : 1)
+    const files = batches.flat()
+    expect(new Set(files).size).toBe(files.length)
+    for (const file of files) {
+      expect(await stat(path.resolve("packages/local-runtime", file))).toBeDefined()
+    }
+    expect(files).toContain("test/workspace/change-attribution.test.ts")
+    expect(files).toContain("test/workspace/workspace-concurrency.test.ts")
+    expect(files).toContain("../harness/test/session/snapshot-long-path.test.ts")
+    expect(files).toContain("../lsp/test/lsp/process.test.ts")
+    expect(files).toContain(
+      windows ? "test/process/owned-process-windows.test.ts" : "test/workspace/darwin-coalition.test.ts",
+    )
+  }
 })

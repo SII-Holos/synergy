@@ -11,11 +11,15 @@ const root = path.resolve(import.meta.dir, "..")
 // These `mock.module`-heavy suites stub the same context modules under the same
 // specifiers; Bun's mocks are process-global, so each needs its own process.
 const playwrightIsolated = [
+  "test/components/workspace/builtin-workbench-panels.test.ts",
+  "test/components/workspace/browser/browser-draft.test.ts",
+  "test/components/workspace/browser/browser-ws-reconnect.test.ts",
   "test/components/sidebar/sidebar-collections.dom.test.tsx",
   "test/components/agenda/series-list.dom.test.tsx",
   "test/components/app-shell/mobile-tools-drawer.dom.test.tsx",
   "test/components/library/library-interaction.dom.test.tsx",
   "test/components/workspace/browser/browser-interaction.dom.test.tsx",
+  "test/components/workspace/browser/browser-workbench-sync.dom.test.tsx",
   "test/components/session/session-recovery.dom.test.ts",
   "test/components/search/session-search-dialog.dom.test.ts",
   "test/components/toolbar-selector.dom.test.ts",
@@ -72,7 +76,7 @@ const playwrightIsolated = [
   "test/components/session/raw-messages-layout.test.ts",
   "test/components/session/session-progress-island-motion.test.ts",
   "test/components/session/session-progress-todo-layout.test.ts",
-  "test/components/session/session-transition-card-style.test.ts",
+  "test/components/settings/panels/interface-zoom.dom.test.ts",
   "test/components/session/session-inbox-anchor-layout.test.ts",
   "test/components/session/conversation-row-retention.test.ts",
   "test/components/session/dialog-fork-confirm.dom.test.tsx",

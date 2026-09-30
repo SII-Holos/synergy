@@ -24,7 +24,7 @@ Docker command containment reuses the Linux profile compiler and helper inside t
 
 **Run an Agent Runtime in every container.** This duplicates model configuration, business storage and lifecycle recovery in disposable compute. The executor owns only resource-local execution facts.
 
-**Use Synergy Link as Environment transport.** Link independently connects tools and hosts and has a different lifecycle. Coupling them would conflate unrelated destinations and make core execution depend on an optional module.
+**Use the former Synergy Link as Environment transport.** Link independently connected tools and hosts and had a different lifecycle. Coupling them would conflate unrelated destinations and make core execution depend on an optional module.
 
 **Use Docker exec as the entire protocol.** A command channel alone does not establish deduplication receipts, descendant completion, output replay or save acknowledgement. Docker manages allocation while the Execution Host owns these semantics.
 

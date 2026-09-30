@@ -85,14 +85,14 @@ Read the owning architecture document before changing these areas:
 - capability classification, control profiles, permissions, and sandbox: `execution-boundaries.md`
 - Cortex child sessions and task outputs: `cortex.md`
 - Plan, Blueprints, BlueprintLoop, Light Loop, and Lattice: `workflows.md`
-- Browser native/WebRTC presentation and one-session/one-page ownership: `browser-runtime.md`
+- Browser Desktop-native presentation, page collections and identity ownership: `browser-runtime.md`
 - Channels, managed Projects, provider lifecycle, and Native Clarus tasks: `channels.md`
 
 Do not create compatibility paths that violate those contracts. In particular:
 
 - `guarded` is the only standard interactive profile; `autonomous` never asks; `full_access` silently allows permission-system capabilities but cannot suppress ordinary runtime failures.
 - Worktree isolation permits ordinary external reads while protecting sensitive paths and blocking unapproved external writes/execution.
-- Browser keeps desktop-native `WebContentsView` and Web WebRTC/data-channel presentation as first-class modes. Do not add iframe, screenshot-stream, pseudo-tab, or multi-page session fallbacks.
+- Browser is Desktop-local and uses real `WebContentsView` pages with immutable identities and explicit Agent page targets. Keep human selection independent; do not add WebRTC, headless, iframe or screenshot-stream fallbacks.
 
 ## Tool, Agent, and Plugin Changes
 

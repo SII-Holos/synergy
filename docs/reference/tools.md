@@ -35,11 +35,11 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `browser_clipboard` | `browser.interact` | Read, write, or clear page clipboard text through the dedicated browser clipboard capability. |
 | `browser_console` | `browser.inspect` | Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific id for f |
 | `browser_dialog` | `browser.interact` | Inspect, accept, or dismiss the currently open JavaScript dialog, optionally supplying prompt text. |
-| `browser_downloads` | `browser.download` | List, wait for, cancel, or export owner-isolated managed browser downloads. |
+| `browser_downloads` | `browser.download` | List downloads across pages. Accept a waiting download, wait for completion, cancel, or export it to the Workspace. |
 | `browser_emulate` | `browser.inspect` | Apply viewport, DPR, mobile/touch, color scheme, motion, forced colors, locale/timezone, CPU, or network emulation. |
 | `browser_eval` | `browser.inspect` | Evaluate JavaScript in the current page. readonly runs with CDP side-effect rejection; trusted permits mutations and requires its dedicated capability. |
 | `browser_inspect` | `browser.inspect` | Inspect one uniquely matched element, including attributes, HTML, computed styles, box model, accessibility properties, and registered listeners. |
-| `browser_navigation` | `browser.navigate` | Navigate, resume, close, or read the one browser page owned by the current session. Agent navigation uses load for up to 15s by default; actions use networkquiet for up to 10s; every settle request ha |
+| `browser_navigation` | `browser.navigate` | List or open browser pages; navigate, inspect or recover a page by pageId. Pages keep their identity and do not change the user's selected tab. Inspect page state before repeating an uncertain action. |
 | `browser_network` | `browser.inspect` | Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get  |
 | `browser_performance` | `browser.inspect` | Measure Web Vitals, long tasks and resource timing, or start/stop a CDP performance trace. |
 | `browser_read` | `browser.inspect` | Read a bounded text, Markdown, or HTML representation of the current page or one uniquely matched element. |
@@ -54,7 +54,6 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `computer_action` | `platform.external` | Act on the latest observation: click (button, count), type text, key (optional modifiers), scroll, drag, or set_value. target is {elementIndex} from the observation or {x,y} in the image; drag uses fr |
 | `computer_apps` | `platform.external` | Find native app windows by optional app/title query. Returns pid, windowId and title, including off-screen windows. Observe an exact window before acting. Requires local macOS Desktop and Full Access. |
 | `computer_observe` | `platform.external` | Observe a window from computer_apps. Returns accessibility elements, a window image when available, and observationId for one action within 60 seconds. query narrows elements. foreground:true brings t |
-| `connect` | `platform.config` | Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are |
 | `dagpatch` | `orchestration.dag` | Lightweight update for DAG nodes. Use this instead of `dagwrite` when you only need to update one or more existing nodes without rewriting the entire graph. ## When to Use - Mark a self-executed node  |
 | `dagread` | `orchestration.dag` | Read the current task DAG. Returns all nodes with their current status. Use this tool proactively and frequently to ensure you are aware of the current task graph state. You should make use of this to |
 | `dagwrite` | `orchestration.dag` | Create or replace the current session's task DAG: nodes describe work, `deps` describe prerequisites, and optional bindings connect delegated tasks to progress. Use a DAG when it clarifies meaningful  |
@@ -278,7 +277,7 @@ Deliver files to the user by making them available as conversation attachments. 
 
 Kind: `code.execute`
 
-Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead. IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead. Before executing the command: - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`). - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works. - Capture the output of the command. - For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible. - Run validation commands directly when their exit status matters. Filtered or clipped output is useful for diagnosis, but a pipeline's zero exit does not prove an earlier command or test passed. User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable). Usage notes: - `command` and `description` are required; describe the action briefly. - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly. - `linkID` is the legacy Synergy Link instance ID; prefer `targetID`. Omit both for intentional local execution — a supplied remote target never falls back locally, and placeholders like `":local"`, `"local"`, `"localhost"`, or `"undefined"` are rejected. Remote linkIDs always start with `link_`. When targeting a remote `synergy-link` host, open a remote collaboration session first with the `connect` tool — remote bash does not implicitly create sessions. - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally. For remote Synergy Link execution the host clamps `yieldSeconds` to at most 5 seconds. A timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote command was cancelled. Reconnect and inspect session/process state; never auto-retry a mutating or ambiguous remote command. - After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status. - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are allowed on POSIX Synergy Link hosts (the tracked flow is still preferred); locally they are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). Windows Link hosts reject all detached launchers — split oversized work into tracked `bash`/`process` operations. - For outbound text the user should review before it is published (PR body, commit message, channel message), draft it as a Note and let the user edit first; local bash can pass `/synergy/note/<note-id>` as a file argument (e.g. `gh pr create --body-file /synergy/note/<note-id>`). Prefer a command's file-input option over command substitution — the virtual path keeps content out of shell parsing. Note virtual paths materialize only for local bash execution. Prefer the available file, search and editing tools over shell equivalents; output text directly when no command is needed. When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). # Committing changes with git Git Safety Protocol: - NEVER update the git config. - NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them. - NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master. - Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit. - NEVER commit changes unless the user explicitly asks. Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks. # Creating pull requests Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create` with a HEREDOC or `--body-file` Note for the body. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
+Executes a bash command in a persistent shell session. All commands run in ${directory} by default. Use the `workdir` parameter to run in a different directory. AVOID `cd <directory> && <command>` patterns — use `workdir` instead. IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the specialized tools for this instead. Before executing the command: - If the command will create new directories or files, first use `ls` to verify the parent directory exists and is the correct location (e.g. check `foo` exists before `mkdir foo/bar`). - Always quote file paths that contain spaces with double quotes: `rm "path with spaces/file.txt"` works; `mkdir /Users/name/My Documents` fails; `mkdir "/Users/name/My Documents"` works. - Capture the output of the command. - For unattended work, use the command's supported non-interactive options or explicit inputs when their values are known and authorized. An acceptance flag may not cover every prompt. Use script entry points for scripts; do not accidentally start a REPL. Keep diagnostic output accessible. - Run validation commands directly when their exit status matters. Filtered or clipped output is useful for diagnosis, but a pipeline's zero exit does not prove an earlier command or test passed. User-visible artifacts: if the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation. Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files. If you need to inspect an image yourself before showing it, use the image-inspection tool (`view_image`, or `look_at` when unavailable). Usage notes: - `command` and `description` are required; describe the action briefly. - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it is truncated and the full output is written to a file. You can read specific sections with offset/limit or search the file. Because of this, you do NOT need `head`, `tail`, or other truncation commands to limit output — run the command directly. - `background: true` runs the command in the background immediately and returns a processId. `yieldSeconds` delays auto-backgrounding until a command has run that long (default 30); if the command completes first it returns normally. - After backgrounding, continue independent work if available. Otherwise choose a completion wait, readiness check or targeted diagnosis using `process` guidance. Running means alive, not necessarily progressing; do not restart a command merely to refresh its status. - For very long-running commands (experiments, training, large downloads, data processing running for minutes or hours), prefer the tracked background flow so Synergy shows a processId you can later poll, log, or kill. Detached launches (`tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, shell `&`) are blocked unless the runtime intentionally permits them (`full_access` control profile or `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`). - For outbound text the user should review before it is published (PR body, commit message, channel message), draft it as a Note and let the user edit first; Bash can pass `/synergy/note/<note-id>` as a file argument (e.g. `gh pr create --body-file /synergy/note/<note-id>`). Prefer a command's file-input option over command substitution — the virtual path keeps content out of shell parsing. Prefer the available file, search and editing tools over shell equivalents; output text directly when no command is needed. When issuing multiple commands: independent commands can run in parallel — issue multiple Bash tool calls in one message. Sequential dependencies chain with `&&` in a single call. Use `;` only when the failure of the first command does not matter. DO NOT use newlines to separate commands (newlines are fine inside quoted strings). # Committing changes with git Git Safety Protocol: - NEVER update the git config. - NEVER run destructive/irreversible git commands (like push --force, hard reset, etc.) unless the user explicitly requests them. - NEVER skip hooks (--no-verify, --no-gpg-sign) unless the user explicitly requests it. NEVER force-push to main/master. - Avoid `git commit --amend`. Only use it when ALL conditions hold: the user explicitly requested the amend (or the commit succeeded but a pre-commit hook auto-modified files), the HEAD commit was created by you in this conversation, and the commit was NOT pushed. If a commit FAILED or was REJECTED by a hook, never amend — fix the issue and create a NEW commit. - NEVER commit changes unless the user explicitly asks. Commit flow: run `git status`, `git diff`, and `git log` in parallel first. Stage only files owned by the current task; preserve unrelated dirty and untracked files. Draft a concise conventional-type message focused on the "why". Verify with `git status` after committing. Do not create an empty commit. Never run additional commands to read or explore code besides git commands. Never use the TodoWrite or Task tools. Never push unless the user asks. # Creating pull requests Use the `gh` command for ALL GitHub-related tasks (issues, PRs, checks, releases). When creating a PR: run `git status`, `git diff`, and `git log` plus `git diff [base-branch]...HEAD` in parallel to understand the current branch state and full commit history. Analyze ALL commits and draft a pull request summary. Create the branch if needed, push with `-u` if needed, then `gh pr create` with a HEREDOC or `--body-file` Note for the body. Return the PR URL when done. Never push, open a PR, or mutate external systems unless the user requests it. Never use the TodoWrite or Task tools for PR work.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -286,10 +285,7 @@ Executes a bash command in a persistent shell session. All commands run in ${dir
 | `workdir` | string |  | The working directory to run the command in. Defaults to the project directory. Use this instead of 'cd' commands. |
 | `description` | string | yes | Clear, concise description of what this command does in 5-10 words. Examples: Input: ls Output: Lists files in current directory Input: git status Output: Shows working tree status Input: npm install Output: Installs package dependencies Input: mkdir foo Output: Creates directory 'foo' |
 | `background` | boolean |  | Run command in background. Returns immediately with processId. Use process tool to monitor/interact with the process. |
-| `yieldSeconds` | number |  | Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 30 (30 seconds). For remote Synergy Link execution, the host clamps this value to at most 5 seconds so it can return a tracked process handle before the transport deadline. A timeout does not prove the remote command was cancelled, so never auto-retry mutating commands after an ambiguous timeout. |
-| `linkID` | string |  | Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally. |
-| `targetID` | string |  | Persisted Synergy Link target ID returned by connect list_targets. |
-| `detach` | boolean |  | Remote-only: detach the command from the Synergy Link session lifecycle when the connected host explicitly reports support. The process is spawned without the session owner marker, so it survives session close and cleanup; the caller is responsible for managing it. Unsupported hosts reject detach=true, and the field is never sent to hosts that do not advertise support. Ignored for local execution. |
+| `yieldSeconds` | number |  | Seconds to wait before auto-backgrounding a long-running command. If the command completes before this time, returns normally. Default: 30 (30 seconds). |
 
 ## blueprint_loop_approve
 
@@ -410,6 +406,7 @@ Perform one deterministic browser interaction. The tool waits for the target to 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | BrowserActionSchema | yes |  |
 
 ## browser_annotate
@@ -438,6 +435,7 @@ List a bounded set of page assets or export a real manifest bundle into an autho
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "export" | yes |  |
 | `types` | array |  |  |
 | `outputDir` | string |  |  |
@@ -451,6 +449,7 @@ Audit the current document for accessibility, semantic HTML, SEO, and frontend b
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `categories` | array |  |  |
 
 ## browser_clipboard
@@ -461,6 +460,7 @@ Read, write, or clear page clipboard text through the dedicated browser clipboar
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "read" \| "write" \| "clear" | yes |  |
 | `text` | string |  | Required only for write. |
 
@@ -472,6 +472,7 @@ Read or clear redacted Chromium console logs and page errors, including source a
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "get" \| "clear" |  |  |
 | `id` | string |  | Required only for get. |
 | `level` | string |  | Optional console level filter for list. |
@@ -487,6 +488,7 @@ Inspect, accept, or dismiss the currently open JavaScript dialog, optionally sup
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "status" \| "accept" \| "dismiss" | yes |  |
 | `promptText` | string |  | Valid only for accept. |
 
@@ -494,12 +496,12 @@ Inspect, accept, or dismiss the currently open JavaScript dialog, optionally sup
 
 Kind: `browser.download`
 
-List, wait for, cancel, or export owner-isolated managed browser downloads.
+List downloads across pages. Accept a waiting download, wait for completion, cancel, or export it to the Workspace.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `action` | "list" \| "wait" \| "cancel" \| "export" | yes |  |
-| `id` | string |  | Required for wait, cancel, and export. |
+| `action` | "list" \| "accept" \| "wait" \| "cancel" \| "export" | yes |  |
+| `id` | string |  | Required except for list. |
 | `timeoutSeconds` | number |  | Valid only for wait; defaults to 30. |
 | `path` | string |  | Required only for export. |
 | `page` | number |  | Valid only for list; defaults to 0. |
@@ -513,6 +515,7 @@ Apply viewport, DPR, mobile/touch, color scheme, motion, forced colors, locale/t
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `emulation` | BrowserEmulationSchema | yes |  |
 
 ## browser_eval
@@ -523,6 +526,7 @@ Evaluate JavaScript in the current page. readonly runs with CDP side-effect reje
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `expression` | string | yes |  |
 | `mode` | "readonly" \| "trusted" |  |  |
 | `timeoutSeconds` | number |  | Maximum seconds to evaluate the script (1-120); defaults to 10. |
@@ -536,6 +540,7 @@ Inspect one uniquely matched element, including attributes, HTML, computed style
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `target` | BrowserLocatorSchema | yes |  |
 | `computedStyles` | array |  |  |
 
@@ -543,16 +548,18 @@ Inspect one uniquely matched element, including attributes, HTML, computed style
 
 Kind: `browser.navigate`
 
-Navigate, resume, close, or read the one browser page owned by the current session. Agent navigation uses load for up to 15s by default; actions use networkquiet for up to 10s; every settle request has a 30s hard cap and returns current page state plus a best-effort snapshot. A settle timeout reports settled:false rather than an action failure, so inspect the current state before using browser_wait for a specific condition. Results report observed engine state and never claim business completion.
+List or open browser pages; navigate, inspect or recover a page by pageId. Pages keep their identity and do not change the user's selected tab. Inspect page state before repeating an uncertain action.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `action` | z.enum | yes |  |
-| `url` | string |  | Required only for goto. |
-| `ignoreCache` | boolean |  | Valid only for reload. |
-| `settleMode` | "networkquiet" \| "load" \| "none" |  | How long to wait after navigation before returning. load is the default for agent navigation (up to 15s); networkquiet waits up to settleTimeoutMs for the page to stop loading and go quiet; none returns immediately. |
-| `settleTimeoutMs` | number |  | Maximum milliseconds to wait for the page to settle (default 15s for navigation, hard cap 30s). A timeout does not fail the navigation; the result reports settled:false so you can decide what to wait for with browser_wait. |
-| `includeSnapshot` | boolean |  | Return a fresh accessibility snapshot after navigation settles (default true). Set false when the destination is a download or you only need the URL/title. |
+| `action` | "list" \| "open" \| "goto" \| "back" \| "forward" \| "reload" \| "stop" \| "resume" \| "close" \| "current" | yes |  |
+| `pageId` | BrowserPageIdSchema.optional |  | Required except for list and open. |
+| `profileId` | BrowserProfileIdSchema.optional |  |  |
+| `url` | string |  |  |
+| `ignoreCache` | boolean |  |  |
+| `settleMode` | "networkquiet" \| "load" \| "none" |  | Navigation defaults to load (15s). |
+| `settleTimeoutMs` | number |  |  |
+| `includeSnapshot` | boolean |  | Include current page evidence; defaults to true. |
 
 ## browser_network
 
@@ -562,6 +569,7 @@ Read or clear Chromium network requests, responses, failures, redirects, timing,
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "get" \| "clear" |  |  |
 | `id` | string |  | Required only for get. |
 | `resourceTypes` | array |  |  |
@@ -580,6 +588,7 @@ Measure Web Vitals, long tasks and resource timing, or start/stop a CDP performa
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "measure" \| "startTrace" \| "stopTrace" | yes |  |
 | `exportPath` | string |  | Workspace-relative JSON path for a stopped trace. |
 
@@ -591,6 +600,7 @@ Read a bounded text, Markdown, or HTML representation of the current page or one
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `format` | "text" \| "markdown" \| "html" |  |  |
 | `target` | BrowserLocatorSchema.optional |  |  |
 | `maxChars` | number |  |  |
@@ -603,6 +613,7 @@ Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `fullPage` | literal |  |  |
 | `clip` | BrowserClipSchema.optional |  |  |
 | `target` | BrowserLocatorSchema.optional |  |  |
@@ -615,6 +626,7 @@ Capture the current accessibility and interactive DOM snapshot. Returned opaque 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `query` | string |  | Bounded text query; matching nodes include their ancestor path. |
 | `maxNodes` | number |  |  |
 | `interactiveOnly` | boolean |  |  |
@@ -628,6 +640,7 @@ Upload permission-reviewed workspace files to one uniquely matched file input th
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `target` | BrowserLocatorSchema | yes |  |
 | `paths` | array | yes |  |
 
@@ -649,6 +662,7 @@ Wait for a specific page condition: load state, URL, title, text, locator state,
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `condition` | BrowserWaitConditionSchema | yes |  |
 | `timeoutSeconds` | number |  | Maximum seconds to wait for the condition (1-60); defaults to 10. |
 
@@ -747,20 +761,6 @@ Observe a window from computer_apps. Returns accessibility elements, a window im
 | `windowId` | number | yes |  |
 | `query` | string |  |  |
 | `foreground` | boolean |  |  |
-
-## connect
-
-Kind: `platform.config`
-
-Discover persisted Synergy Link targets and manage explicit remote sessions. Prefer the stable targetID; linkID + targetAgentID is the bootstrap path for targets not yet persisted. Cached sessions are heartbeat-verified before they are reported open. When that verification is inconclusive (timeout, transport failure, or missed-pong liveness loss), connect open issues one caller-authenticated recovery open so the remote host can authoritatively reuse the session, open a fresh one, report busy under another caller, or refuse; already-dispatched results remain unknown and mutating requests are never replayed. connect clear removes only the local cached session and never contacts the host. Remote lifecycle actions never fall back locally.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `action` | "open" \| "close" \| "status" \| "list" \| "list_targets" \| "clear" | yes | Synergy Link action to perform |
-| `targetID` | string |  | Stable persisted Synergy Link target ID. Preferred for open, close, and status. |
-| `linkID` | string |  | Raw Synergy Link locator. Must start with link_. |
-| `targetAgentID` | string |  | Holos target agent ID. Required with linkID for open. |
-| `label` | string |  | Optional label for the Synergy Link session. |
 
 ## dagpatch
 
@@ -1251,7 +1251,7 @@ Replace the complete ordered list of pending future Steps in the current Lattice
 
 Kind: `code.execute`
 
-Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove. ## Actions - **list**: List all running and recently finished background processes - **poll**: Check status and recent output. Non-blocking by default. `block: true` waits until exit or the wait window ends (`timeoutSeconds` in seconds, default 30s); an earlier exit returns sooner. Synergy Link hosts cap blocking waits at 25 seconds, below the 30-second transport deadline. - **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far. - **write**: Write raw data to a process's stdin - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"]) - **kill**: Terminate a running process - **clear**: Remove a finished process from the list. On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants before deleting retained output. - **remove**: Remove a process (kills if running, then removes). On POSIX Synergy Link hosts this also reaps any still-live session-marked descendants. ## Notes Choose according to the next useful action: - Continue independent work while the process runs. Check status or logs when the result can change a decision, not merely to refresh progress. - If completion gates the next action and no independent work remains, use a blocking poll with a window appropriate to the expected work. A long local operation can use `block: true, timeoutSeconds: 300`; this is a wait window, not an execution deadline. - `running` means the process is alive, not that it is making progress. If output requests input, or an initial wait provides no progress evidence and interaction or a stalled dependency is plausible, inspect the relevant output or process state once before deciding what to do. Redirected output may require reading the command's log file. Confirmed quiet work can continue waiting; silence alone does not prove a stall. - Supply input only when its value is known and authorized; do not guess confirmations. If a required decision is unavailable, surface the blocker instead of waiting for nonexistent input. Do not kill or rerun a command merely because a wait ends, and do not replace repeated polls with shell status loops. For a persistent service, check readiness rather than waiting for exit. If you deliberately end the current turn to check external work later, set one `agenda_watch` with a delay such as `5m`, then yield. Visible running subagents already notify you on completion and prevent watch creation; do not add an Agenda wake-up for them. On Windows Link hosts, use tracked Bash operations. Detached launchers and opaque script entry points are rejected; split commands exceeding the 16 KiB command, 64 nested-shell or 128 KiB cumulative inspection limits. ## Usage `linkID` is optional. Omit it to manage processes in the current local environment; provide it to target a Synergy Link target. Prefer the stable `targetID` returned by `connect list_targets` over raw `linkID` locators. For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely. When targeting a remote `synergy-link` host, open a remote collaboration session first using the `connect` tool and use a heartbeat-verified session. The controlling tunnel sends heartbeats every 30 seconds with a 90-second missed-pong deadline; the standalone host uses 60 seconds and 180 seconds. Remote process management does not implicitly create sessions, never falls back locally, and a timeout or liveness-loss error reports only that the result is unknown — it does not prove the remote action was not applied. Reconnect and inspect state; never auto-retry mutating actions after an ambiguous failure. Examples (use the processId returned by Bash): ``` // One status check when it can change a decision: process(action: "poll", processId: "proc_xxx") // Completion gates progress and no independent work remains: process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 300) // Diagnose output; offset/limit can select the relevant part: process(action: "log", processId: "proc_xxx") // Supply known, authorized task input: process(action: "write", processId: "proc_xxx", data: "<known input>\n") // Interrupt or terminate when appropriate: process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"]) process(action: "kill", processId: "proc_xxx") ``` ## Key Tokens for send-keys - Single characters: `"a"`, `"1"`, `"/"` - Special keys: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"` - Arrow keys: `"Up"`, `"Down"`, `"Left"`, `"Right"` - Ctrl combinations: `"C-c"` (Ctrl+C), `"C-d"` (Ctrl+D), `"C-z"` (Ctrl+Z) - Alt combinations: `"M-x"` (Alt+X) - Function keys: `"F1"` through `"F12"`
+Manage background bash processes: list, poll, log, write, send-keys, kill, clear, remove. ## Actions - **list**: List all running and recently finished background processes - **poll**: Check status and recent output. Non-blocking by default. `block: true` waits until exit or the wait window ends (`timeoutSeconds` in seconds, default 30s); an earlier exit returns sooner. - **log**: Get full output from a process (supports offset/limit for pagination). Non-blocking — returns immediately with whatever output has been produced so far. - **write**: Write raw data to a process's stdin - **send-keys**: Send key sequences to a process (e.g., ["C-c"] for Ctrl+C, ["Enter"]) - **kill**: Terminate a running process - **clear**: Remove a finished process from the list. - **remove**: Remove a process (kills if running, then removes). ## Notes Choose according to the next useful action: - Continue independent work while the process runs. Check status or logs when the result can change a decision, not merely to refresh progress. - If completion gates the next action and no independent work remains, use a blocking poll with a window appropriate to the expected work. A long local operation can use `block: true, timeoutSeconds: 300`; this is a wait window, not an execution deadline. - `running` means the process is alive, not that it is making progress. If output requests input, or an initial wait provides no progress evidence and interaction or a stalled dependency is plausible, inspect the relevant output or process state once before deciding what to do. Redirected output may require reading the command's log file. Confirmed quiet work can continue waiting; silence alone does not prove a stall. - Supply input only when its value is known and authorized; do not guess confirmations. If a required decision is unavailable, surface the blocker instead of waiting for nonexistent input. Do not kill or rerun a command merely because a wait ends, and do not replace repeated polls with shell status loops. For a persistent service, check readiness rather than waiting for exit. If you deliberately end the current turn to check external work later, set one `agenda_watch` with a delay such as `5m`, then yield. Visible running subagents already notify you on completion and prevent watch creation; do not add an Agenda wake-up for them. ## Usage Manage a process in the current Session Environment using the processId returned by Bash. Examples (use the processId returned by Bash): ``` // One status check when it can change a decision: process(action: "poll", processId: "proc_xxx") // Completion gates progress and no independent work remains: process(action: "poll", processId: "proc_xxx", block: true, timeoutSeconds: 300) // Diagnose output; offset/limit can select the relevant part: process(action: "log", processId: "proc_xxx") // Supply known, authorized task input: process(action: "write", processId: "proc_xxx", data: "<known input>\n") // Interrupt or terminate when appropriate: process(action: "send-keys", processId: "proc_xxx", keys: ["C-c"]) process(action: "kill", processId: "proc_xxx") ``` ## Key Tokens for send-keys - Single characters: `"a"`, `"1"`, `"/"` - Special keys: `"Enter"`, `"Tab"`, `"Escape"`, `"Space"`, `"Backspace"` - Arrow keys: `"Up"`, `"Down"`, `"Left"`, `"Right"` - Ctrl combinations: `"C-c"` (Ctrl+C), `"C-d"` (Ctrl+D), `"C-z"` (Ctrl+Z) - Alt combinations: `"M-x"` (Alt+X) - Function keys: `"F1"` through `"F12"`
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1262,9 +1262,7 @@ Manage background bash processes: list, poll, log, write, send-keys, kill, clear
 | `offset` | number |  | Line offset for log retrieval |
 | `limit` | number |  | Number of lines to retrieve for log |
 | `block` | boolean |  | Wait for process to exit before returning (for poll action) |
-| `timeoutSeconds` | number |  | Max seconds to wait when block is true (default: ${ ToolTimeout.DEFAULTS.processPollWaitMs / 1_000 } seconds). Synergy Link hosts cap remote blocking waits at 25 seconds so a still-running result returns before the transport deadline. |
-| `linkID` | string |  | Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally. |
-| `targetID` | string |  | Persisted Synergy Link target ID returned by connect list_targets. |
+| `timeoutSeconds` | number |  | Max seconds to wait when block is true (default: ${ToolTimeout.DEFAULTS.processPollWaitMs / 1_000} seconds). |
 
 ## question
 

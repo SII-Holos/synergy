@@ -6,7 +6,6 @@ const cliModules = [
   "../../../acp/src/cli/acp",
   "../../../cli/src/cli/cmd/agent",
   "../../../cli/src/cli/cmd/auth",
-  "../../../browser-runtime/src/cli/browser",
   "../../../connections/src/channel/cli/channel-server",
   "../../../connections/src/channel/cli/channel",
   "../../../cli/src/cli/cmd/diagnostics",

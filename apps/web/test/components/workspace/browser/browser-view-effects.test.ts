@@ -25,6 +25,13 @@ function controller() {
 }
 
 describe("applyBrowserViewCommand", () => {
+  test("background tool activity observes existing pages without focusing or replaying historical page IDs", () => {
+    const requests: unknown[] = []
+    const { workspace } = controller()
+    workspace.openPanel = (panel, options) => requests.push({ panel, options })
+    applyBrowserViewCommand({ workspaceCommand: "show", background: true, pageId: "closed-old-page" }, workspace)
+    expect(requests).toEqual([{ panel: "browser", options: { reuseExisting: true, activate: false, init: {} } }])
+  })
   test("show and focus activate the Browser workspace", () => {
     const show = controller()
     expect(applyBrowserViewCommand({ workspaceCommand: "show" }, show.workspace)).toBe(true)

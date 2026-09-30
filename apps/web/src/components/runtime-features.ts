@@ -4,7 +4,6 @@ const requirements: Record<"settings" | "navigation" | "panel", Readonly<Record<
     github: "connections",
     channels: "connections",
     email: "connections",
-    "synergy-link": "link-client",
     voice: "media",
     learning: "library",
     memory: "library",

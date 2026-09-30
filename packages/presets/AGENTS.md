@@ -9,7 +9,7 @@ Own complete-product source composition, cross-domain data commands and integrat
 - Keep core-only tests in Harness or Local Runtime. Full API, cross-domain lifecycle and product configuration tests belong here and explicitly register their required services.
 - Preserve unloaded domain data and existing migration IDs and ledgers. Read [persistence guidance](../../.synergy/skill/change-persistence/SKILL.md) before changing upgrades, imports or data movement.
 - Full-data copies hold native directory retirement claims as well as offline Home locks, including selected folders and source removal. Copied Git relationship repair belongs to Local Runtime and must never reconnect to an uncopied source.
-- Preserve first-class native Desktop and WebRTC Browser presentation. Browser backend ownership belongs to `packages/browser-runtime`; protocol contracts belong to `packages/browser-core`.
+- Select Browser hosting only in the Desktop composition; CLI/Web omit it. Browser backend ownership belongs to `packages/browser-runtime`; protocol contracts belong to `packages/browser-core`.
 
 Prepare native PTY assets with `bun ../../packages/local-runtime/script/build-pty.ts` before `bun test test/server/runtime-websocket-shutdown.test.ts`. CI supplies the verified native build artifact.
 

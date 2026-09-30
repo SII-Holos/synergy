@@ -58,7 +58,7 @@ describe("tool.browser_screenshot", () => {
   test("gives image-capable models the screenshot in model context", () =>
     runtime.run(async () => {
       const tool = await BrowserScreenshotTool.init()
-      const result = await tool.execute({}, context(true))
+      const result = await tool.execute({ pageId: "page-test" }, context(true))
 
       expect(result.output).toContain("current model context")
       expect(result.attachments).toHaveLength(1)
@@ -72,7 +72,7 @@ describe("tool.browser_screenshot", () => {
   test("does not send PNG screenshots to models that only accept other image formats", () =>
     runtime.run(async () => {
       const tool = await BrowserScreenshotTool.init()
-      const result = await tool.execute({}, context(true, true, ["image/jpeg"]))
+      const result = await tool.execute({ pageId: "page-test" }, context(true, true, ["image/jpeg"]))
 
       const attachment = result.attachments?.[0]
       expect(attachment?.url).toStartWith("asset://")
@@ -84,7 +84,7 @@ describe("tool.browser_screenshot", () => {
   test("gives text-only models a real local path and mentions look_at when available", () =>
     runtime.run(async () => {
       const tool = await BrowserScreenshotTool.init()
-      const result = await tool.execute({}, context(false, true))
+      const result = await tool.execute({ pageId: "page-test" }, context(false, true))
 
       const attachment = result.attachments?.[0]
       expect(attachment?.localPath).toBeTruthy()
@@ -98,7 +98,7 @@ describe("tool.browser_screenshot", () => {
   test("text-only model with lookAtAvailable:false returns a local asset path but does not mention look_at", () =>
     runtime.run(async () => {
       const tool = await BrowserScreenshotTool.init()
-      const result = await tool.execute({}, context(false, false))
+      const result = await tool.execute({ pageId: "page-test" }, context(false, false))
 
       const attachment = result.attachments?.[0]
       expect(attachment?.localPath).toBeTruthy()

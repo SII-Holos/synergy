@@ -1,9 +1,13 @@
-import { createBrowserSessionRecovery } from "./browser-session-recovery"
+import { BrowserSettings } from "./browser-settings"
+import { BrowserResultDialog, type BrowserCapture } from "./browser-result-dialog"
+import { useBrowserDraft } from "./browser-draft"
+import { BrowserDataDialog } from "./browser-data-settings"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { createEffect, createMemo, createResource, createSignal, lazy, Show, onCleanup } from "solid-js"
+import { createEffect, createMemo, createResource, createSignal, lazy, Show, on, untrack } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
@@ -15,7 +19,9 @@ import { AnnotationInput } from "./annotation-input"
 import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
 import { usePlatform } from "@/context/platform"
-import { createBrowserCommandId, shouldResumeBrowserSession } from "./browser-command"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { browserPageTab } from "./browser-workbench-model"
+import { createBrowserCommandId } from "./browser-command"
 import { normalizeBrowserError } from "./browser-error"
 import { browser as B } from "@/locales/messages"
 import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
@@ -48,7 +54,7 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
       scopeID: sdk.scopeID,
       mode: "session",
       sessionID: input.sessionID,
-      presentation: clientPresentation === "native" ? "auto" : "webrtc",
+      presentation: "auto",
       protocolVersion: BROWSER_PROTOCOL_VERSION,
     })
     if (!response.data) throw response.error ?? new Error("Browser session bootstrap failed")
@@ -58,7 +64,7 @@ export function BrowserPanel(props: { tab: WorkbenchPanelTab }) {
   return (
     <Show
       keyed
-      when={initial()}
+      when={!initial.loading ? initial() : undefined}
       fallback={
         <div class="browser-workspace flex h-full flex-col items-center justify-center gap-3 p-4 text-text-weak">
           <div class="browser-empty-mark">
@@ -103,15 +109,25 @@ function BrowserPanelInner(props: {
   tab: WorkbenchPanelTab
 }) {
   const browser = props.browser
+  const dialog = useDialog()
+  const workbench = useWorkbenchPanels()
   const sdk = useSDK()
   const platform = usePlatform()
   const { _ } = useLingui()
+  const draft = useBrowserDraft(props.sessionID)
   const ownerKey = props.initial.ownerKey
-  browser.setSession("page", props.initial.page)
+  const openData = (section: "import" | "passwords") => {
+    const page = browser.page()
+    if (!page || !platform.browserNative?.dataAction) return
+    dialog.show(() => <BrowserDataDialog ownerKey={ownerKey} pageId={page.id} url={page.url} section={section} />)
+  }
+  browser.replacePages(props.initial.pages)
+  if (props.tab.resourceId) browser.setSession("selectedPageId", props.tab.resourceId)
   browser.setSession("seq", props.initial.seq)
   browser.setSession("epoch", props.initial.epoch)
   browser.setPresentation(props.clientPresentation === "native" ? null : props.initial.presentation)
-  if (props.initial.page) browser.setHostStatus(props.initial.page.id, props.initial.hostStatus)
+  for (const page of props.initial.pages)
+    browser.setHostStatus(page.id, page.status === "active" ? props.initial.hostStatus : "detached")
   if (props.initial.error) {
     browser.setBrowserError({
       severity: "error",
@@ -127,9 +143,29 @@ function BrowserPanelInner(props: {
     routeDirectory: props.routeDirectory,
     presentation: props.clientPresentation,
   })
-  if (shouldResumeBrowserSession(props.initial)) {
-    queueMicrotask(() => browser.send({ type: "resume" }))
-  }
+
+  createEffect(
+    on(
+      browser.pageId,
+      (id) => {
+        if (!id || id === props.tab.resourceId) return
+        const page = browser.session.pages.find((page) => page.id === id)
+        if (!page || workbench.surface("side").active() !== props.tab.id) return
+        untrack(
+          () =>
+            void workbench.openPanel("browser", {
+              init: browserPageTab(page, {
+                sessionID: props.sessionID,
+                path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+                query_directory: sdk.directory,
+                scopeID: sdk.scopeID,
+              }),
+            }),
+        )
+      },
+      { defer: true },
+    ),
+  )
 
   const [handledNavigationNonce, setHandledNavigationNonce] = createSignal<number | undefined>(undefined)
   createEffect(() => {
@@ -139,79 +175,46 @@ function BrowserPanelInner(props: {
     browser.navigate(request.url)
   })
 
-  const [recovering, setRecovering] = createSignal(false)
-  const [recoveryVersion, setRecoveryVersion] = createSignal(0)
-  const route = {
-    path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
-    query_directory: sdk.directory,
-    scopeID: sdk.scopeID,
-    mode: "session" as const,
-    sessionID: props.sessionID,
-    presentation: "webrtc" as const,
-    protocolVersion: BROWSER_PROTOCOL_VERSION,
-  }
-  const recovery = createBrowserSessionRecovery({
-    ownerKey,
-    pageId: browser.pageId,
-    read: async (signal) => {
-      const response = await sdk.client.browser.session(route, { signal, throwOnError: true })
-      return response.data
-    },
-    resume: async (signal) => {
-      await sdk.client.browser.control(
-        {
-          ...route,
-          browserControlRequest: {
-            protocolVersion: BROWSER_PROTOCOL_VERSION,
-            commandId: createBrowserCommandId(),
-            command: { type: "resume" },
-          },
-        },
-        { signal, throwOnError: true },
-      )
-    },
-    reconnect: () => {
-      ws.reconnect()
-      setRecoveryVersion((value) => value + 1)
-    },
-  })
-  let disposed = false
-  onCleanup(() => {
-    disposed = true
-    recovery.dispose()
-  })
-  const retryRemote = async () => {
-    if (recovering()) return
-    setRecovering(true)
-    try {
-      await recovery.run()
-    } catch (error) {
-      if (!disposed) {
-        const normalized = normalizeBrowserError(error, _(B.remoteUnavailable))
-        browser.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
-      }
-    } finally {
-      if (!disposed) setRecovering(false)
-    }
-  }
-
+  const recovering = () => browser.hostStatus() === "restarting"
   const retryNative = () => {
     ws.retryNative()
     const pageId = browser.pageId()
-    if (!pageId || props.clientPresentation !== "native") return
+    if (!pageId) return
+    if (browser.page()?.status !== "active" || browser.hostStatus() === "detached") {
+      browser.send({ type: "resume", pageId })
+      return
+    }
     browser.setHostStatus(pageId, "restarting")
     void platform.browserNative
       ?.retryPage({ protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey, pageId })
       .catch((error) => {
         const normalized = normalizeBrowserError(error, "Native Browser recovery failed")
         browser.setHostStatus(pageId, "failed")
-        browser.setBrowserError({ severity: "error", code: normalized.code, message: normalized.message })
+        browser.setBrowserError({ pageId, severity: "error", code: normalized.code, message: normalized.message })
       })
   }
 
-  const page = createMemo(() => browser.page())
+  const page = createMemo(() =>
+    !props.tab.resourceId || browser.pageId() === props.tab.resourceId ? browser.page() : null,
+  )
 
   const showDevPanel = () => browser.devPanel() !== "closed"
+  const [recent, setRecent] = createSignal<Array<{ url: string; title: string; time: number }>>([])
+  createEffect(() => {
+    const current = page()
+    if (!current || current.isLoading || !platform.browserNative?.dataAction) return
+    void platform.browserNative
+      .dataAction({
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        ownerKey,
+        pageId: current.id,
+        action: { type: "state" },
+      })
+      .then((result) => {
+        if (result.type === "state" && browser.pageId() === current.id) setRecent(result.history)
+      })
+      .catch(() => setRecent([]))
+  })
 
   const requestDiagnostics = async (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => {
     const pageId = browser.pageId()
@@ -225,6 +228,8 @@ function BrowserPanelInner(props: {
         mode: "session",
         sessionID: props.sessionID,
         protocolVersion: BROWSER_PROTOCOL_VERSION,
+        presentation: "native",
+        nativeTicket: await ws.createNativeTicket(),
         browserDiagnosticsRequest: {
           protocolVersion: BROWSER_PROTOCOL_VERSION,
           pageId,
@@ -246,7 +251,7 @@ function BrowserPanelInner(props: {
       }
     } catch (error) {
       const normalized = normalizeBrowserError(error, "Browser diagnostics failed")
-      browser.setBrowserError({ severity: "error", message: normalized.message, code: normalized.code })
+      browser.setBrowserError({ pageId, severity: "error", message: normalized.message, code: normalized.code })
     }
   }
 
@@ -261,41 +266,61 @@ function BrowserPanelInner(props: {
     browser.setAnnotationMode(false)
   }
 
-  const handleAnnotationSubmit = (comment: string, styleFeedback?: Record<string, string>) => {
-    const target = browser.annotationTarget()
-    const pageId = browser.pageId()
-    const routeDirectory = props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
-    if (target && pageId && routeDirectory) {
-      void sdk.client.browser
-        .createAnnotation({
-          path_directory: routeDirectory,
-          query_directory: sdk.directory,
-          scopeID: sdk.scopeID,
-          mode: "session",
-          sessionID: props.sessionID,
-          protocolVersion: BROWSER_PROTOCOL_VERSION,
-          browserAnnotationRequest: {
-            protocolVersion: BROWSER_PROTOCOL_VERSION,
-            pageId,
-            x: target.pageX,
-            y: target.pageY,
-            comment,
-            styleFeedback,
-          },
-        })
-        .then((response) => {
-          if (!response.data) throw response.error ?? new Error("Browser annotation failed")
-        })
-        .catch((error) => {
-          const normalized = normalizeBrowserError(error, "Browser annotation failed")
-          browser.setBrowserError({
-            severity: "error",
-            message: normalized.message,
-            code: normalized.code,
-          })
-        })
-    }
+  const handleAnnotationSubmit = async (comment: string) => {
+    await draft.text(`Browser feedback: ${browser.page()?.url ?? ""}\n${comment}`)
     dismissAnnotation()
+  }
+  const capturePage = async (fullPage: boolean): Promise<BrowserCapture> => {
+    const pageId = browser.pageId()
+    if (!pageId) throw new Error("Open a page before capturing it.")
+    const result = await platform.browserNative?.pageAction?.({
+      protocolVersion: BROWSER_PROTOCOL_VERSION,
+      ownerKey,
+      pageId,
+      action: { type: "capture", fullPage },
+    })
+    if (result?.type !== "capture") throw new Error("Screenshot is unavailable. Retry the page.")
+    return result
+  }
+  const openCapture = async () => {
+    try {
+      const initial = await capturePage(false)
+      dialog.show(() => <BrowserResultDialog initial={initial} recapture={capturePage} attach={draft.attach} />)
+    } catch (error) {
+      browser.setBrowserError({
+        pageId: browser.pageId() ?? undefined,
+        severity: "error",
+        message: normalizeBrowserError(error, "Screenshot failed").message,
+      })
+    }
+  }
+  const downloadArtifact = async (id: string, operation: "save" | "open" | "draft") => {
+    const prepare = async () => {
+      const result = await sdk.client.browser.downloadArtifact({
+        path_directory: props.routeDirectory ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey,
+        query_directory: sdk.directory,
+        scopeID: sdk.scopeID,
+        mode: "session",
+        sessionID: props.sessionID,
+        presentation: "native",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        nativeTicket: await ws.createNativeTicket(),
+        id,
+      })
+      if (!result.data) throw result.error ?? new Error("Download is unavailable.")
+      return result.data
+    }
+    if (operation === "draft") return draft.artifact(prepare)
+    const file = await prepare()
+    const response = await sdk.client.asset.get({ id: file.id }, { parseAs: "blob" })
+    if (!(response.data instanceof Blob)) throw new Error("Download could not be read. Retry.")
+    const data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(new Error("Download could not be read."))
+      reader.onload = () => resolve(String(reader.result).split(",")[1]!)
+      reader.readAsDataURL(response.data as Blob)
+    })
+    await platform.browserNative?.fileAction?.({ operation, filename: file.filename, mime: file.mime, data })
   }
 
   const showAnnotation = () => {
@@ -306,6 +331,7 @@ function BrowserPanelInner(props: {
     <BrowserStoreProvider store={browser}>
       <div class="browser-workspace flex h-full flex-col">
         <AddressBar
+          recent={recent}
           activeUrl={() => page()?.url ?? ""}
           isLoading={() => page()?.isLoading ?? false}
           hasPage={() => Boolean(page())}
@@ -313,16 +339,60 @@ function BrowserPanelInner(props: {
           onReload={() => sendPageCommand({ type: "reload" })}
           onStop={() => sendPageCommand({ type: "stop" })}
           onNavigate={browser.navigate}
+          onImport={() => openData("import")}
+          onPasswords={() => openData("passwords")}
+          onScreenshot={() => void openCapture()}
+          onNewTab={() => void workbench.openPanel("browser", { forceNew: true })}
+          onCloseTab={() => void workbench.closeTab(props.tab.id)}
+          onExternal={() => {
+            const url = page()?.url
+            if (url && /^https?:/.test(url)) platform.openLink(url)
+          }}
+          onShortcut={(handler) =>
+            platform.browserNative?.onEvent?.((event) => {
+              if (event.type === "native.shortcut" && event.pageId === browser.pageId()) handler(event.action)
+            }) ?? (() => {})
+          }
+          onPageAction={async (action) => {
+            const pageId = browser.pageId()
+            if (
+              !pageId ||
+              browser.page()?.status !== "active" ||
+              browser.hostStatus() !== "ready" ||
+              !platform.browserNative?.pageAction
+            )
+              return
+            try {
+              return await platform.browserNative.pageAction({
+                protocolVersion: BROWSER_PROTOCOL_VERSION,
+                ownerKey,
+                pageId,
+                action,
+              })
+            } catch (error) {
+              if (action.type === "state" || browser.page()?.status !== "active") return
+              const normalized = normalizeBrowserError(error, "Page action failed. Retry.")
+              browser.setBrowserError({ pageId, severity: "error", message: normalized.message, code: normalized.code })
+            }
+          }}
           onRequestDiagnostics={(action) => void requestDiagnostics(action)}
+          onSettings={() =>
+            dialog.show(() => (
+              <BrowserStoreProvider store={browser}>
+                <BrowserSettings
+                  ownerKey={ownerKey}
+                  sessionID={props.sessionID}
+                  routeDirectory={props.routeDirectory}
+                  createTicket={ws.createNativeTicket}
+                />
+              </BrowserStoreProvider>
+            ))
+          }
         />
         <Show when={browser.session.connectionStatus === "failed"}>
           <div role="status" class="flex items-center justify-between gap-2 px-3 py-2 text-text-weak">
             <Trans id={B.disconnected.id} message={B.disconnected.message} />
-            <Button
-              size="small"
-              disabled={recovering()}
-              onClick={() => (props.clientPresentation === "native" ? retryNative() : void retryRemote())}
-            >
+            <Button size="small" disabled={recovering()} onClick={retryNative}>
               <Trans id={B.retry.id} message={B.retry.message} />
             </Button>
           </div>
@@ -332,19 +402,29 @@ function BrowserPanelInner(props: {
             when={showDevPanel()}
             fallback={
               <Show
-                when={page()}
+                when={page() && page()?.url !== "about:blank"}
                 fallback={
-                  <div class="browser-empty-state">
-                    <div class="browser-empty-mark">
-                      <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+                  <div class="browser-new-tab">
+                    <div class="browser-new-tab-center">
+                      <div class="browser-new-tab-search">
+                        <Icon name={getSemanticIcon("action.search")} size="small" />
+                        <input
+                          aria-label={_(B.enterUrl)}
+                          placeholder={_(B.enterUrl)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" || event.isComposing || !event.currentTarget.value.trim()) return
+                            event.preventDefault()
+                            browser.navigate(event.currentTarget.value.trim())
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div class="browser-empty-title">
-                      <Trans id={B.noPage.id} message={B.noPage.message} />
+                    <div class="browser-new-tab-footer">
+                      <Button size="small" variant="secondary" onClick={() => openData("import")}>
+                        <Icon name={getSemanticIcon("action.import")} size="small" />
+                        <Trans id={B.importData.id} message={B.importData.message} />
+                      </Button>
                     </div>
-                    <div class="browser-empty-text">
-                      <Trans id={B.nextNavigation.id} message={B.nextNavigation.message} />
-                    </div>
-                    <div class="browser-status-pill">{browser.session.connectionStatus}</div>
                   </div>
                 }
               >
@@ -354,14 +434,21 @@ function BrowserPanelInner(props: {
                   ownerKey={ownerKey}
                   clientPresentation={props.clientPresentation}
                   onRetryNative={retryNative}
-                  onRetryRemote={() => void retryRemote()}
                   recovering={recovering()}
-                  recoveryVersion={recoveryVersion()}
                 />
               </Show>
             }
           >
-            <DevPanelContent panel={browser.devPanel()!} />
+            <div class="flex h-full min-h-0 flex-col">
+              <div class="border-b border-border-weak-base p-2">
+                <Button size="small" variant="ghost" onClick={() => browser.setDevPanel("closed")}>
+                  {_({ id: "browser.page.back", message: "Back to webpage" })}
+                </Button>
+              </div>
+              <div class="min-h-0 flex-1">
+                <DevPanelContent panel={browser.devPanel()!} downloadArtifact={downloadArtifact} />
+              </div>
+            </div>
           </Show>
           <AgentAssistant />
           <Show when={showAnnotation()}>
@@ -383,7 +470,10 @@ function BrowserPanelInner(props: {
   )
 }
 
-function DevPanelContent(props: { panel: string }) {
+function DevPanelContent(props: {
+  panel: string
+  downloadArtifact(id: string, operation: "save" | "open" | "draft"): Promise<void>
+}) {
   return (
     <div class="h-full overflow-hidden">
       <Show when={props.panel === "console"}>
@@ -396,7 +486,7 @@ function DevPanelContent(props: { panel: string }) {
         <ElementsPanel />
       </Show>
       <Show when={props.panel === "downloads"}>
-        <DownloadsPanel />
+        <DownloadsPanel onArtifact={props.downloadArtifact} />
       </Show>
       <Show when={props.panel === "assets"}>
         <AssetsPanel />

@@ -36,7 +36,7 @@ Full product and Desktop distribution use the existing release workflow and the 
 
 ## Public extension APIs
 
-Plugin authors compile against `packages/plugin`; `packages/plugin-kit` provides plugin development commands. Host internals live in `packages/plugin-host`. Link transport and host implementations use the shared `packages/synergy-link-protocol` contracts.
+Plugin authors compile against `packages/plugin`; `packages/plugin-kit` provides plugin development commands. Host internals live in `packages/plugin-host`.
 
 The HTTP SDK is generated from the complete Server API. Run `./script/generate.ts` after route/schema changes. A reduced server composition does not remove methods from the full public SDK.
 

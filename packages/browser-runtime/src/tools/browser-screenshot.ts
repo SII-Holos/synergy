@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { BrowserClipSchema, BrowserLocatorSchema } from "@ericsanchezok/synergy-browser-core"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper } from "./browser-shared"
@@ -11,6 +11,7 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
     "Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. Models that accept PNG input receive it directly; other models receive a saved local path and can use look_at when available. A failed requested type never falls back to another capture.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       fullPage: z.literal(true).optional(),
       clip: BrowserClipSchema.optional(),
       target: BrowserLocatorSchema.optional(),
@@ -21,8 +22,8 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
       if (modes <= 1) return
       ctx.addIssue({ code: "custom", message: "Choose only one of fullPage, clip, or target." })
     }),
-  async execute(params, ctx) {
-    const page = await BrowserToolHelper.resolvePage(ctx)
+  async execute({ pageId, ...params }, ctx) {
+    const page = await BrowserToolHelper.resolvePage(ctx, pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       page,
@@ -30,7 +31,7 @@ export const BrowserScreenshotTool = Tool.define("browser_screenshot", {
       "browser_screenshot",
       "Capturing screenshot",
       async () => {
-        const result = await BrowserToolHelper.execute(ctx, {
+        const result = await BrowserToolHelper.execute(ctx, pageId, {
           type: "screenshot",
           fullPage: params.fullPage,
           clip: params.clip,

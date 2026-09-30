@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
-async function cli(args: string[]) {
+async function cli(args: string[], desktop: boolean) {
   const proc = Bun.spawn([process.execPath, "--conditions=browser", "src/index.ts", ...args], {
     cwd: import.meta.dir + "/../..",
-    env: process.env,
+    env: { ...process.env, SYNERGY_DESKTOP_BROWSER: desktop ? "1" : "0" },
     stdout: "pipe",
     stderr: "pipe",
   })
@@ -15,37 +15,13 @@ async function cli(args: string[]) {
   return { stdout, stderr, exitCode, output: stdout + stderr }
 }
 
-describe("browser CLI", () => {
-  test("registers doctor and install under the browser command", async () => {
-    const result = await cli(["browser", "--help"])
+describe("browser CLI boundary", () => {
+  for (const desktop of [false, true])
+    test(`${desktop ? "Desktop" : "CLI"} selection exposes no independent browser installer`, async () => {
+      const result = await cli(["--help"], desktop)
 
-    expect(result.exitCode).toBe(0)
-    expect(result.output).toContain("browser doctor")
-    expect(result.output).toContain("browser install")
-  })
-
-  test("documents machine-readable doctor output", async () => {
-    const result = await cli(["browser", "doctor", "--help"])
-
-    expect(result.exitCode).toBe(0)
-    expect(result.output).toContain("--json")
-    expect(result.output).toMatch(/diagnos|readiness/i)
-  })
-
-  test("documents explicit managed Chromium installation", async () => {
-    const result = await cli(["browser", "install", "--help"])
-
-    expect(result.exitCode).toBe(0)
-    expect(result.output).toContain("--force")
-    expect(result.output).toContain("--json")
-    expect(result.output).toContain("--no-deps")
-    expect(result.output).toMatch(/verified|managed Chromium/i)
-  })
-
-  test("exposes Linux dependency installation separately", async () => {
-    const result = await cli(["browser", "--help"])
-
-    expect(result.exitCode).toBe(0)
-    expect(result.output).toContain("browser install-deps")
-  })
+      expect(result.exitCode).toBe(0)
+      expect(result.output).toContain("synergy server")
+      expect(result.output).not.toMatch(/synergy browser|browser (?:doctor|install|install-deps)/)
+    })
 })

@@ -71,7 +71,26 @@ test("native executor deduplicates effects, drains output and retains the writer
       .map((chunk) => Buffer.from(chunk.data, "base64").toString())
       .join(""),
   ).toBe("error")
-  expect(await coordinator.inspect()).toHaveLength(1)
+  const claims = await coordinator.inspect()
+  expect(claims).toHaveLength(1)
+  const claim = claims[0]!
+  expect(claim.drained).toBe(true)
+  await coordinator.validateRetention(claim, tmp.path)
+  const next = await coordinator.acquire({
+    id: "next-operation",
+    owner: "next-owner",
+    ancestors: [],
+    kind: "process",
+    roots: [],
+    useRoots: [tmp.path],
+  })
+  try {
+    expect(await next.isolated()).toBe(true)
+    expect(await coordinator.isolated(claim)).toBe(true)
+    await coordinator.validateRetention(claim, tmp.path)
+  } finally {
+    await next.release()
+  }
   await executor.close()
   await using recovered = await NativeExecutor.open({ target, directory: path.join(tmp.path, "receipts"), coordinator })
   expect((await recovered.status(request.id))?.state).toBe("exited")

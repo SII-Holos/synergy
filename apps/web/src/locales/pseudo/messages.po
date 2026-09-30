@@ -1216,6 +1216,10 @@ msgid "app.browser.console.empty"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.copyLink"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.assets"
 msgstr ""
 
@@ -1253,6 +1257,10 @@ msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.network.description"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.developerTools"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -1364,6 +1372,22 @@ msgid "app.browser.error.uploadTooLarge"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.next"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.previous"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.importData"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.agentNavigation"
 msgstr ""
 
@@ -1452,6 +1476,18 @@ msgid "app.browser.network.empty"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.openExternal"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.passwords"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.print"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.remote.status.connecting"
 msgstr ""
 
@@ -1480,7 +1516,31 @@ msgid "app.browser.remote.textInput"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resume"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resumeHint"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.savePDF"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.screenshot"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.settings"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.suspended"
 msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
@@ -1529,6 +1589,22 @@ msgstr ""
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.viewport.width.placeholder"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.in"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.out"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.reset"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -9432,6 +9508,370 @@ msgstr ""
 msgid "brand.workbench.synergy"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "browser.capture.add"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.comment"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.full"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.mark"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.reset"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.capture.viewport"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.clearHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.fill"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwords"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.recent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.recentHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.removeHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveConfirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.data.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.accept"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.draft"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.open"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.waiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.access"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.allow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.ask"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.clear"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.create"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.currentDefault"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.deny"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.disable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.downloads"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.enable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.inherit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.openAs"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.origin"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.originPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.policyNote"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.revoke"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.temporary"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.identities.uploads"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.access"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookieHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookies"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.done"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.encrypted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.file"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.fileHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.format"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.hint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.importing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.local"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.locked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.options"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwordHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwords"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.progress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.reading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.replace"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.result"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.safari"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.start"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.stop"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.stopped"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupported"
+msgstr ""
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
 msgstr ""
@@ -9461,7 +9901,39 @@ msgid "browser.label.unsettled"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "browser.recovery.checking"
+msgid "browser.page.back"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.advanced"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.login"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.loginHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.manage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.permissions"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.profiles"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.settings.temporaryHint"
 msgstr ""
 
 #. ── Browser tool summaries ──────────────────────────────────────────
@@ -9506,6 +9978,14 @@ msgstr ""
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.tab.copyAddress"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.tabs.empty"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -16076,30 +16556,6 @@ msgid "settings.catalog.storage.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.label"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.row.linkID"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.row.targetAgentID"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.row.targets"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.searchTerms"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
 msgstr ""
 
@@ -20328,182 +20784,6 @@ msgid "settings.storage.usage.title"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.add.action"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.adding"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.cancel"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.close"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.authorization.approved"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.authorization.revoked"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.authorization.unverified"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.connected"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.reachable"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.unknown"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.unreachable"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.empty.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.empty.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.enabled"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.allowedAgents"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.allowedAgents.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.allowedAgents.placeholder"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.linkID"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.linkID.placeholder"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.name"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.name.placeholder"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.stableTargetID"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.targetAgentID"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.targetAgentID.placeholder"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.host.notObserved"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.host.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.load.error"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.load.retry"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.page.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.page.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.refresh"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.remove"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.remove.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.remove.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.save"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.targets.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.targets.title"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.test"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.created"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.failed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.saved"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.tested"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr ""
 
@@ -21184,10 +21464,6 @@ msgid "tool.misc.executed"
 msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────
-msgid "tool.misc.executed-via-synergy-link"
-msgstr ""
-
-#. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"
 msgstr ""
 
@@ -21352,34 +21628,6 @@ msgid "tool.title.compact-session"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-closing"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-list"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-list-targets"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-opening"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-status"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connected"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
 msgstr ""
 
@@ -21413,10 +21661,6 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.deploy-inference"
-msgstr ""
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.disconnected"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
@@ -22333,6 +22577,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "window.restore"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "workbench.closeRight"
 msgstr ""
 
 #. js-lingui-explicit-id

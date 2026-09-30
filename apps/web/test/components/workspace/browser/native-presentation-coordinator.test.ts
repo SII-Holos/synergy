@@ -13,10 +13,10 @@ function bridge(overrides: Partial<BrowserNativeViewBridge> = {}): BrowserNative
     async resizeView() {},
     async retryPage() {},
     async presentationCapability() {
-      return { protocolVersion: 3, managedLocal: true, status: "ready" }
+      return { protocolVersion: 4, managedLocal: true, status: "ready" }
     },
     async createPresentationTicket() {
-      return { ok: true, protocolVersion: 3, ticket: "native-ticket" }
+      return { ok: true, protocolVersion: 4, ticket: "native-ticket" }
     },
     ...overrides,
   }
@@ -27,22 +27,21 @@ describe("native presentation coordinator", () => {
     expect(await resolveBrowserClientPresentation({ bridge: bridge(), serverUrl: "http://127.0.0.1:4096" })).toBe(
       "native",
     )
-    expect(
-      await resolveBrowserClientPresentation({
+    await expect(
+      resolveBrowserClientPresentation({
         bridge: bridge({
           async presentationCapability() {
-            return { protocolVersion: 3, managedLocal: false, status: "failed" }
+            return { protocolVersion: 4, managedLocal: false, status: "failed" }
           },
         }),
         serverUrl: "https://remote.example.com",
       }),
-    ).toBe("webrtc")
-    expect(await resolveBrowserClientPresentation({ serverUrl: "https://web.example.com" })).toBe("webrtc")
+    ).rejects.toThrow()
+    await expect(resolveBrowserClientPresentation({ serverUrl: "https://web.example.com" })).rejects.toThrow()
   })
-
-  test("falls back to WebRTC when the native capability probe throws", async () => {
-    expect(
-      await resolveBrowserClientPresentation({
+  test("reports a failed native capability probe without an alternate presentation", async () => {
+    await expect(
+      resolveBrowserClientPresentation({
         bridge: bridge({
           async presentationCapability() {
             throw new Error("bridge unavailable")
@@ -50,7 +49,7 @@ describe("native presentation coordinator", () => {
         }),
         serverUrl: "http://127.0.0.1:4096",
       }),
-    ).toBe("webrtc")
+    ).rejects.toThrow()
   })
 
   test("stops native recovery when the capability bridge fails", async () => {
@@ -80,7 +79,7 @@ describe("native presentation coordinator", () => {
         async presentationCapability() {
           capabilityCalls++
           return {
-            protocolVersion: 3,
+            protocolVersion: 4,
             managedLocal: true,
             status: capabilityCalls === 1 ? "connecting" : "ready",
           }
@@ -103,7 +102,7 @@ describe("native presentation coordinator", () => {
     const coordinator = new NativePresentationCoordinator({
       bridge: bridge({
         async presentationCapability() {
-          return { protocolVersion: 3, managedLocal: true, status: "connecting" }
+          return { protocolVersion: 4, managedLocal: true, status: "connecting" }
         },
       }),
       serverUrl: "http://127.0.0.1:4096",

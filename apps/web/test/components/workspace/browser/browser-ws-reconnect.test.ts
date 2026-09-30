@@ -186,3 +186,55 @@ test("a replaced socket cannot overwrite the reconnected session", async () => {
     dispose()
   }
 })
+
+test("background page events preserve selected errors and suspended pages stay detached", async () => {
+  mountNativeWebSocket()
+  bridge = bridgeStub()
+  const { store, handle, dispose } = mountHandle()
+  try {
+    const human = {
+      id: "human",
+      profileId: "personal",
+      status: "suspended" as const,
+      url: "https://example.com",
+      title: "Saved page",
+      isLoading: false,
+      lastActiveAt: null,
+    }
+    store.replacePages([human])
+    store.setHostStatus(human.id, "detached")
+    store.setBrowserError({
+      pageId: human.id,
+      severity: "error",
+      code: "browser_host_disconnected",
+      message: "Resume this page",
+    })
+    await handle.connect()
+    const socket = MockWebSocket.instances[0]!
+    socket.emit("open")
+    socket.emit("message", {
+      data: JSON.stringify({
+        type: "page.created",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        seq: 1,
+        epoch: "test",
+        page: { ...human, id: "background", status: "active" },
+      }),
+    })
+    expect(store.pageId()).toBe(human.id)
+    expect(store.browserError()?.message).toBe("Resume this page")
+    socket.emit("message", {
+      data: JSON.stringify({
+        type: "host.status",
+        protocolVersion: BROWSER_PROTOCOL_VERSION,
+        seq: 2,
+        epoch: "test",
+        status: "ready",
+      }),
+    })
+    expect(store.hostStatus(human.id)).toBe("detached")
+    expect(store.hostStatus("background")).toBe("ready")
+  } finally {
+    dispose()
+  }
+})

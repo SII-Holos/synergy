@@ -1,7 +1,6 @@
 export const SemanticIconToken = {
   // Product entities
   "holos.main": "satellite",
-  "synergyLink.main": "plug-zap",
   "mcp.main": "cable",
   "lsp.main": "braces",
   "cortex.main": "workflow",

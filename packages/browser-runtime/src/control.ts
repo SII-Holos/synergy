@@ -3,7 +3,7 @@ import {
   normalizeBrowserURL,
   type BrowserBackendResult,
   type BrowserPage,
-  type BrowserProtocolErrorData,
+  type BrowserSessionPage,
   type BrowserUserCommand,
 } from "@ericsanchezok/synergy-browser-core"
 import type { BrowserSession } from "./types.js"
@@ -15,8 +15,7 @@ export namespace BrowserControl {
 
   export interface SessionState {
     status: BrowserSession["status"]
-    page: BrowserPage | null
-    error?: BrowserProtocolErrorData
+    pages: BrowserSessionPage[]
   }
 
   export function parseCommand(input: unknown): Command {
@@ -38,11 +37,6 @@ export namespace BrowserControl {
   }
 
   export function sessionState(session: BrowserSession): SessionState {
-    const descriptor = session.descriptor
-    return {
-      status: session.status,
-      page: session.page ? pageState(session.page) : descriptor ? { ...descriptor, isLoading: false } : null,
-      ...(session.error ? { error: session.error } : {}),
-    }
+    return { status: session.status, pages: session.pages }
   }
 }

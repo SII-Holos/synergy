@@ -1,8 +1,9 @@
-import { SynergyLinkProcess } from "@ericsanchezok/synergy-link-protocol"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 
+export type ProcessAction = "list" | "poll" | "log" | "write" | "send-keys" | "kill" | "clear" | "remove"
+
 export interface ProcessParams {
-  action: SynergyLinkProcess.Action
+  action: ProcessAction
   processId?: string
   data?: string
   keys?: string[]
@@ -10,11 +11,28 @@ export interface ProcessParams {
   limit?: number
   block?: boolean
   timeoutSeconds?: number
-  targetID?: string
-  linkID?: string
 }
 
-export type ProcessMetadata = SynergyLinkProcess.ResultMetadata
-export type ProcessResult = SynergyLinkProcess.Result & {
+export interface ProcessMetadata {
+  action: ProcessAction
+  processId?: string
+  status?: string
+  exitCode?: number
+  command?: string
+  description?: string
+  nextOffset?: number
+  processes?: Array<{
+    processId: string
+    status: string
+    command: string
+    description?: string
+    runtimeMs: number
+  }>
+}
+
+export interface ProcessResult {
+  title: string
+  metadata: ProcessMetadata
+  output: string
   attachments?: MessageV2.AttachmentPart[]
 }

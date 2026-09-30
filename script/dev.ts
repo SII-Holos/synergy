@@ -13,17 +13,7 @@ const DEV_PROCESS_OWNER_ENV = "SYNERGY_DEV_PROCESS_OWNER"
 const devProcessOwners = new WeakMap<object, string>()
 
 export interface DevProcessSpec {
-  label:
-    | "server"
-    | "app"
-    | "desktop"
-    | "browser-host"
-    | "send"
-    | "build"
-    | "install"
-    | "generate"
-    | "sandbox"
-    | "build:plugin"
+  label: "server" | "app" | "desktop" | "send" | "build" | "install" | "generate" | "sandbox" | "build:plugin"
   command: string[]
   cwd: string
   env?: Record<string, string | undefined>
@@ -179,6 +169,7 @@ function serverProcess(input: {
   port: number
   hostname: string
   printLogs?: boolean
+  desktop?: boolean
   browserHostSecret?: string
   computerHostSecret?: string
 }): DevProcessSpec {
@@ -202,6 +193,7 @@ function serverProcess(input: {
     cwd: dirs.product,
     env: {
       SYNERGY_CWD: process.env.SYNERGY_CWD ?? input.launchCwd,
+      SYNERGY_DESKTOP_BROWSER: input.desktop ? "1" : undefined,
       SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
       SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET: input.computerHostSecret,
     },
@@ -265,23 +257,6 @@ function desktopProcess(input: {
     command: [input.bunPath, "run", "dev"],
     cwd: dirs.desktop,
     env,
-  }
-}
-
-function browserHostProcess(input: {
-  repoRoot: string
-  bunPath: string
-  serverUrl: string
-  secret: string
-}): DevProcessSpec {
-  return {
-    label: "browser-host",
-    command: [input.bunPath, "run", "browser-host:dev"],
-    cwd: directories(input.repoRoot).desktop,
-    env: {
-      SYNERGY_BROWSER_HOST_SERVER_URL: input.serverUrl,
-      SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.secret,
-    },
   }
 }
 
@@ -385,7 +360,6 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
             }),
           ]),
       appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname }),
-      ...(attach ? [] : [browserHostProcess({ repoRoot, bunPath, serverUrl: attachUrl, secret: browserHostSecret })]),
     ]
     return {
       kind: "run",
@@ -460,6 +434,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
         : [
             serverProcess({
               repoRoot,
+              desktop: true,
               launchCwd,
               bunPath,
               port: serverPort,

@@ -35,7 +35,7 @@ bun dev build desktop
 | ------------------- | ------------------------------------------------------------------------- |
 | `server`            | source server on fixed development port 4096 by default                   |
 | `app`               | Vite app against an existing server; default app port 3000                |
-| `web`               | source server, Vite app, and remote Browser Host                          |
+| `web`               | source server and Vite app                                                |
 | `desktop`           | source server, Vite app, and Electron in external-server mode             |
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
 | `send`              | one-off source CLI execution                                              |
@@ -90,11 +90,11 @@ bun run test:coverage
 bun test --watch
 ```
 
-`test:ci` and `test:coverage` use the same executor in `packages/testing/script/run.ts`. Each stable batch gets an independent test Home, fixture root and `SYNERGY_LINK_HOME`; reports live in `coverage/shards/<id>/` as JUnit, lcov and timing JSON. Local execution runs batches sequentially. CI assigns the four Harness partitions to bounded Linux workers and runs each selected package's complete test inventory once with coverage.
+`test:ci` and `test:coverage` use the same executor in `packages/testing/script/run.ts`. Each stable batch gets an independent test Home and fixture root; reports live in `coverage/shards/<id>/` as JUnit, lcov and timing JSON. Local execution runs batches sequentially. CI distributes four Harness and two Local Runtime partitions across bounded Linux workers, overlaps at most two independent task processes per runner, and runs each selected package's complete test inventory once with coverage.
 
 The root `bun run coverage:check` runs the complete local coverage policy. `bun script/coverage-check.ts --package packages/library` runs a fresh owner check; `--existing` is diagnostic only. CI aggregates only the current plan's successful, complete, checksum-verified reports and retains the same owner thresholds, exemptions and zero coverage for unloaded files. Selection, admission, cold runs and diagnostic commands are defined in [CI verification](../operations/ci.md).
 
-For the full isolation procedure, the guard predicate, and the escape hatch, see the `testing-guide` Skill (`.synergy/skill/testing-guide/SKILL.md`). Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
+For isolation, test selection and review of added, duplicated or obsolete coverage, use the [testing-guide Skill](../../.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost). Run core suites through the package scripts; the only escape hatch for a deliberate real-home test run is `SYNERGY_ALLOW_REAL_HOME=1` (see [Configuration layout](configuration-layout.md)).
 
 The same pinned catalog is the default input for core binary builds. `script/release/shared/build/models-catalog.ts` validates it and requires non-empty OpenAI, Anthropic, and Google entries before compilation; `MODELS_DEV_API_JSON` can override the input for an ordinary local build, while release builds always force the repository-pinned snapshot.
 
@@ -196,7 +196,7 @@ The repository-local `.synergy/skill/` directory is the executable handbook for 
 | HTTP route, OpenAPI schema, generated SDK, or internal Web API call                              | `change-server-api`                                |
 | Durable storage, schema, index, migration, or recovery                                           | `change-persistence`                               |
 | Capability, permission, control-profile, enforcement, or sandbox behavior                        | `change-execution-boundaries`                      |
-| Browser ownership/control, Desktop native presentation, or WebRTC                                | `change-browser-runtime`                           |
+| Browser pages/identities, authorization or Desktop native presentation                           | `change-browser-runtime`                           |
 | Native Computer observation, action admission, model images, quality UI, or Cua packaging        | `change-computer-runtime`                          |
 | Plugin manifest, install/update, runtime, bridge, marketplace, or UI host                        | `change-plugin-runtime`                            |
 | Built-in agent, CLI command, or first-party tool                                                 | `add-agent`, `add-cli-command`, or `add-tool`      |

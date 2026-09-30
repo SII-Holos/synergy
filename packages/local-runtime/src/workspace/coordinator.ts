@@ -149,6 +149,18 @@ export class WorkspaceCoordinator {
     })())
   }
 
+  private async retained(claim: Claim) {
+    if (claim.durable) return true
+    if (claim.drained) return false
+    if (await this.alive(claim)) return true
+    return !!claim.finalizer && (await this.alive(claim.finalizer))
+  }
+
+  private async participating(claim: Claim) {
+    if (claim.drained || claim.state !== "active" || claim.kind === "use" || claim.kind === "exclusive") return false
+    return this.alive(claim, true)
+  }
+
   private async alive(claim: Pick<Claim, "pid" | "startIdentity" | "processTree" | "drained">, fresh = false) {
     if (claim.drained) return false
     if (claim.processTree) {
@@ -191,12 +203,7 @@ export class WorkspaceCoordinator {
           if (error.code !== "ENOENT") throw error
         })
         const ledger = raw === undefined ? { version: 1 as const, claims: [] } : Ledger.parse(JSON.parse(raw))
-        const alive = await Promise.all(
-          ledger.claims.map(
-            async (claim) =>
-              claim.durable || (await this.alive(claim)) || (!!claim.finalizer && (await this.alive(claim.finalizer))),
-          ),
-        )
+        const alive = await Promise.all(ledger.claims.map((claim) => this.retained(claim)))
         const retired = ledger.claims.filter((_claim, index) => !alive[index])
         ledger.claims = ledger.claims.filter((_claim, index) => alive[index])
         const result = await fn(ledger)
@@ -297,7 +304,7 @@ export class WorkspaceCoordinator {
         input.signal?.throwIfAborted()
         if (Date.now() >= deadline) throw new WorkspaceBusyError("Workspace is busy; the writable roots are in use")
         const granted = await this.update(
-          (ledger) => {
+          async (ledger) => {
             const own = ledger.claims.find((claim) => claim.id === request.id)
             if (own && own.owner !== request.owner) throw new Error("Workspace claim identity belongs to another owner")
             if (!registered) {
@@ -396,6 +403,7 @@ export class WorkspaceCoordinator {
                 )
                   continue
                 if (related(current, held) || related(held, current) || !overlaps(view(current), view(held))) continue
+                if (!(await this.participating(held)) || !(await this.participating(current))) continue
                 held.overlappingWrites = true
                 current.overlappingWrites = true
               }

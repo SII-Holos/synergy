@@ -11,6 +11,7 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 import path from "node:path"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
+import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 const runtime = await testRuntime()
 
 function manifest(capabilities: string[] = ["shell.execute"]) {
@@ -51,6 +52,42 @@ async function invoke(input: {
 }
 
 describe("plugin shell.run Host Service", () => {
+  test.each(["success", "failure"])("retains selected resources until shell execution settles (%s)", (outcome) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+      const scope = await tmp.scope()
+      const events: string[] = []
+      const selectResources = EnvironmentResources.select
+      const select = spyOn(EnvironmentResources, "select").mockImplementation(async (input) => {
+        const resources = await selectResources(input)
+        return {
+          ...resources,
+          async [Symbol.asyncDispose]() {
+            events.push("release")
+            await resources[Symbol.asyncDispose]()
+          },
+        }
+      })
+      const failure = new Error("Shell execution failed")
+      const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(async () => {
+        events.push("execute")
+        await Promise.resolve()
+        events.push("settle")
+        if (outcome === "failure") throw failure
+        return { exitCode: 0, stdout: "ok", stderr: "", timedOut: false, truncated: false }
+      })
+      try {
+        const running = invoke({ directory: tmp.path, scopeId: scope.id, params: { command: ["ls"] } })
+        if (outcome === "failure") await expect(running).rejects.toBe(failure)
+        else await expect(running).resolves.toEqual({ exitCode: 0, stdout: "ok", stderr: "" })
+        expect(events).toEqual(["execute", "settle", "release"])
+      } finally {
+        execute.mockRestore()
+        select.mockRestore()
+      }
+    }),
+  )
+
   test(
     "retains host write ownership through detached children and cancels the whole invocation",
     () =>
@@ -162,19 +199,31 @@ describe("plugin shell.run Host Service", () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
       const command = [process.execPath, "-e", 'process.stdout.write("ok")']
-
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, capabilities: [], params: { command } }),
-      ).rejects.toThrow('does not declare capability "shell.execute"')
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, params: { command: command.join(" ") } }),
-      ).rejects.toThrow()
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, params: { command, cwd: "/tmp" } }),
-      ).rejects.toThrow()
-      await expect(
-        invoke({ directory: tmp.path, scopeId: scope.id, params: { command, env: { TOKEN: "secret" } } }),
-      ).rejects.toThrow()
+      const select = EnvironmentResources.select
+      const delayed = spyOn(EnvironmentResources, "select").mockImplementation(async (input) => {
+        const resources = await select(input)
+        return {
+          ...resources,
+          async [Symbol.asyncDispose]() {
+            await Bun.sleep(20)
+            await resources[Symbol.asyncDispose]()
+          },
+        }
+      })
+      try {
+        await expect(
+          invoke({ directory: tmp.path, scopeId: scope.id, capabilities: [], params: { command } }),
+        ).rejects.toThrow('does not declare capability "shell.execute"')
+        await expect(
+          invoke({ directory: tmp.path, scopeId: scope.id, params: { command: command.join(" ") } }),
+        ).rejects.toThrow("non-empty argv command")
+        for (const override of [{ cwd: "/tmp" }, { env: { TOKEN: "secret" } }])
+          await expect(
+            invoke({ directory: tmp.path, scopeId: scope.id, params: { command, ...override } }),
+          ).rejects.toThrow("accepts only command and timeoutMs")
+      } finally {
+        delayed.mockRestore()
+      }
     }))
 
   test("uses the configured shellRunTimeoutMs default when the plugin omits timeoutMs", () =>

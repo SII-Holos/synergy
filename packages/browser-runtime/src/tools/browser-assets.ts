@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import path from "node:path"
 import fs from "node:fs/promises"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -14,6 +14,7 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
     "List a bounded set of page assets or export a real manifest bundle into an authorized workspace directory.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       action: z.enum(["list", "export"]),
       types: z.array(assetType).max(7).optional(),
       outputDir: z.string().min(1).max(20_000).optional(),
@@ -28,11 +29,12 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
         ctx.addIssue({ code: "custom", path: ["outputDir"], message: "outputDir is valid only for export." })
       }
     }),
-  async execute(params, ctx) {
+  async execute({ pageId, ...params }, ctx) {
     const workspace = params.action === "export" ? BrowserExport.capture() : undefined
-    const page = await BrowserToolHelper.resolvePage(ctx)
+    const page = await BrowserToolHelper.resolvePage(ctx, pageId)
     const network = await BrowserToolHelper.execute(
       ctx,
+      pageId,
       { type: "network", action: "list", page: 0, pageSize: params.limit },
       "assets-list",
     )
@@ -64,6 +66,7 @@ export const BrowserAssetsTool = Tool.define("browser_assets", {
           for (const [index, asset] of assets.entries()) {
             const detail = await BrowserToolHelper.execute(
               ctx,
+              pageId,
               {
                 type: "network",
                 action: "get",

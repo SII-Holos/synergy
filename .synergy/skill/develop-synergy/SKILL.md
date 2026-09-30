@@ -69,6 +69,8 @@ Route main-process broadcasts for the application renderer through `DesktopRende
 
 ## Verify and Diagnose
 
+Load [testing-guide](../testing-guide/SKILL.md#review-test-value-and-ci-cost) before changing automated verification. Review affected existing tests together with new coverage, and include consolidation or removal when behavior is obsolete or duplicated. Select the smallest relevant check locally; use the [CI cost policy](../../../docs/operations/ci.md#维护验证成本) for measured changes to expensive preparation or full workflows.
+
 1. Confirm health on the selected server port before opening dependent clients. After workspace or startup entry changes, run `bun test --config /dev/null test/script/dev-entrypoints.test.ts` against the real checkout, start the root development command in an isolated home, and verify Web rendering in a browser. For managed Desktop changes, verify source backend startup, restart and shutdown separately from packaged startup; serving HTML alone does not establish that the UI rendered.
 2. Reproduce the behavior with a new isolated Scope/session. Record only redacted IDs and project-relative evidence in shareable output.
 3. Use `SYNERGY_HOME="$DEV_HOME" synergy logs --dev`, `status --verbose`, or `diagnostics` against the isolated environment. Never inspect the main runtime by accident.
@@ -110,3 +112,9 @@ Keep a native operation's result and errno in the same native call. Capture erro
 Build and load native assets with the same libc selector. Cover source glibc/musl detection, compiled overrides, non-Linux defaults and explicit cross-build targets through `test/process/native-library.test.ts`. Temporary asset selection tests can replace system inputs; they do not establish actual musl compilation or execution.
 
 For modular release changes, verify a packed core and Web selection outside the checkout, then validate the whole release and Desktop inventories. Runtime resources belong to their package; update the shared release layout and installer upgrade/removal contracts together. Preserve checksum validation for filenames containing spaces and reject unlisted module files.
+
+## Isolate native Browser acceptance
+
+Electron userData owns persistent browser partitions and is separate from the backend home. For an isolated source acceptance run, build Desktop and launch a task-owned `.mjs` entry which imports `{ app }` from the workspace Electron package, calls `app.setPath("userData", isolatedDirectory)`, then dynamically imports the absolute `apps/desktop/dist/main.js` path. Set `SYNERGY_HOME` to the isolated home, use the dev channel and explicit alternate server/Web ports, and connect only that local broker. Keep the entry and any registration secret outside the repository. Do not reuse the user's real Electron profile or copy browser credentials.
+
+Launch the actual executable named by Electron's `path.txt` when recording the owned PID; killing a Node package shim may leave Electron running. Check the command line and port before stopping it. For CDP-based UI acceptance, connect Node Playwright to an explicitly enabled local debugging port and disconnect the client after each check; do not change the installed product's debugging settings. Rebuild and restart only the isolated main process after native changes. Use the same isolated userData across a controlled restart when testing login persistence.

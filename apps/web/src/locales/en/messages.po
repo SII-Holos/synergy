@@ -1216,6 +1216,10 @@ msgid "app.browser.console.empty"
 msgstr "No console entries"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.copyLink"
+msgstr "Copy link"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.assets"
 msgstr "Assets"
 
@@ -1254,6 +1258,10 @@ msgstr "Network"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.network.description"
 msgstr "Requests"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.developerTools"
+msgstr "Developer tools"
 
 #. js-lingui-explicit-id
 msgid "app.browser.dialog.alert"
@@ -1329,11 +1337,11 @@ msgstr "Request a snapshot to inspect elements"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.nextNavigation"
-msgstr "The next navigation will appear here."
+msgstr "Enter a URL or search in the address bar."
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.noPage"
-msgstr "No page open"
+msgstr "Start browsing"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.ready"
@@ -1362,6 +1370,22 @@ msgstr "Browser unavailable"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.error.uploadTooLarge"
 msgstr "Choose at most 20 files, no more than 25 MB each and 50 MB total."
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find"
+msgstr "Find in page"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.next"
+msgstr "Next match"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.previous"
+msgstr "Previous match"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.importData"
+msgstr "Import browser data"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.agentNavigation"
@@ -1413,7 +1437,7 @@ msgstr "Native browser recovery failed"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.native.recoveryHint"
-msgstr "Synergy will keep retrying the local browser. You can retry now without switching to a remote stream."
+msgstr "Synergy is reconnecting to the browser. You can retry now."
 
 #. ── Address bar ──
 msgid "app.browser.nav.back"
@@ -1452,6 +1476,18 @@ msgid "app.browser.network.empty"
 msgstr "No network requests"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.openExternal"
+msgstr "Open in default browser"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.passwords"
+msgstr "Passwords and autofill"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.print"
+msgstr "Print"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.remote.status.connecting"
 msgstr "Connecting to remote browser"
 
@@ -1480,8 +1516,32 @@ msgid "app.browser.remote.textInput"
 msgstr "Remote browser text input"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resume"
+msgstr "Resume page"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resumeHint"
+msgstr "Resume to reload this address using its saved identity. Unsaved forms are not restored."
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
 msgstr "Retry"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.savePDF"
+msgstr "Save as PDF"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.screenshot"
+msgstr "Take screenshot"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.settings"
+msgstr "Browser settings"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.suspended"
+msgstr "Page suspended"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.upload.chooseFile"
@@ -1530,6 +1590,22 @@ msgstr "Viewport width"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.viewport.width.placeholder"
 msgstr "W"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom"
+msgstr "Zoom"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.in"
+msgstr "Zoom in"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.out"
+msgstr "Zoom out"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.reset"
+msgstr "Reset zoom"
 
 #. js-lingui-explicit-id
 msgid "app.cancel"
@@ -9432,6 +9508,370 @@ msgstr "Holos"
 msgid "brand.workbench.synergy"
 msgstr "Synergy workspace"
 
+#. js-lingui-explicit-id
+msgid "browser.capture.add"
+msgstr "Add to draft"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.comment"
+msgstr "Describe what you want to change or check…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copied"
+msgstr "Image copied."
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copy"
+msgstr "Copy image"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.full"
+msgstr "Full page"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.hint"
+msgstr "Click the image to mark a location. Add feedback to your draft when ready."
+
+#. js-lingui-explicit-id
+msgid "browser.capture.loading"
+msgstr "Capturing…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.mark"
+msgstr "Marked location"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.reset"
+msgstr "Remove mark"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.save"
+msgstr "Save image"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.title"
+msgstr "Screenshot and feedback"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.viewport"
+msgstr "Visible page"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clear"
+msgstr "Clear recent history"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clearHint"
+msgstr "Remove recent addresses from this browser profile? Passwords and website logins are kept."
+
+#. js-lingui-explicit-id
+msgid "browser.data.empty"
+msgstr "No saved passwords"
+
+#. js-lingui-explicit-id
+msgid "browser.data.fill"
+msgstr "Fill login"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordHint"
+msgstr "Choose an account to fill this website. Sign-in forms are never submitted automatically."
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwords"
+msgstr "Passwords and autofill"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recent"
+msgstr "Recently visited"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recentHint"
+msgstr "The last 100 addresses are kept in this browser profile. Temporary browsing leaves no recent history."
+
+#. js-lingui-explicit-id
+msgid "browser.data.remove"
+msgstr "Delete saved password"
+
+#. js-lingui-explicit-id
+msgid "browser.data.removeHint"
+msgstr "This removes the saved password from this browser profile. Existing website sessions are kept."
+
+#. js-lingui-explicit-id
+msgid "browser.data.save"
+msgstr "Save current login"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveConfirm"
+msgstr "Save this website's login?"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saved"
+msgstr "Login saved."
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveHint"
+msgstr "Enter your username and password on the webpage before saving. An existing entry for this account will be updated."
+
+#. js-lingui-explicit-id
+msgid "browser.data.search"
+msgstr "Search websites or usernames"
+
+#. js-lingui-explicit-id
+msgid "browser.data.title"
+msgstr "Browser data"
+
+#. js-lingui-explicit-id
+msgid "browser.data.unavailable"
+msgstr "Password storage requires a persistent browser profile and an unlocked system password store. You can continue browsing and sign in manually."
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.accept"
+msgstr "Download"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.draft"
+msgstr "Add to draft"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.open"
+msgstr "Save and open"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.save"
+msgstr "Save as…"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.waiting"
+msgstr "Waiting"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.access"
+msgstr "Access"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.allow"
+msgstr "Allow"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.ask"
+msgstr "Ask"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.clear"
+msgstr "Clear website data"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.confirm"
+msgstr "This closes this profile's pages and signs out of its websites. Continue?"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.create"
+msgstr "Add browser profile"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.currentDefault"
+msgstr "Default"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.default"
+msgstr "Use by default"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.deny"
+msgstr "Deny"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.disable"
+msgstr "Disable"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.downloads"
+msgstr "Downloads"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.enable"
+msgstr "Enable"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.inherit"
+msgstr "Use task permissions"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.name"
+msgstr "Profile name"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.openAs"
+msgstr "Open this page with this profile"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.origin"
+msgstr "Website"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.originPlaceholder"
+msgstr "https://example.com"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.policyNote"
+msgstr "Rules apply to agents using this profile. Task permissions still apply. Full Access bypasses approval rules; disabled profiles stay unavailable."
+
+#. js-lingui-explicit-id
+msgid "browser.identities.remove"
+msgstr "Delete profile"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.revoke"
+msgstr "Reset website permissions"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.save"
+msgstr "Save"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.temporary"
+msgstr "Browse temporarily"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.uploads"
+msgstr "Uploads"
+
+#. js-lingui-explicit-id
+msgid "browser.import.access"
+msgstr "Access was not granted. Retry the system prompt or choose an exported file."
+
+#. js-lingui-explicit-id
+msgid "browser.import.choose"
+msgstr "Choose file and import"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookieHint"
+msgstr "Website logins and preferences"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookies"
+msgstr "Cookies"
+
+#. js-lingui-explicit-id
+msgid "browser.import.done"
+msgstr "Done"
+
+#. js-lingui-explicit-id
+msgid "browser.import.encrypted"
+msgstr "Imported passwords stay encrypted on this device. Some websites may ask you to sign in again."
+
+#. js-lingui-explicit-id
+msgid "browser.import.error"
+msgstr "Import is unavailable. Reopen the browser page and try again."
+
+#. js-lingui-explicit-id
+msgid "browser.import.failed"
+msgstr "Some entries could not be imported. Existing entries were preserved. You can use an exported file or sign in on the website."
+
+#. js-lingui-explicit-id
+msgid "browser.import.file"
+msgstr "Exported file"
+
+#. js-lingui-explicit-id
+msgid "browser.import.fileHint"
+msgstr "Use a password CSV or Safari ZIP, or a Cookie JSON file. You’ll choose one file for each selected type."
+
+#. js-lingui-explicit-id
+msgid "browser.import.format"
+msgstr "Choose a supported file under 32 MB: password CSV, Safari ZIP or Cookie JSON."
+
+#. js-lingui-explicit-id
+msgid "browser.import.hint"
+msgstr "Bring your saved passwords and website logins into Synergy."
+
+#. js-lingui-explicit-id
+msgid "browser.import.importing"
+msgstr "Importing…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.loading"
+msgstr "Finding browsers…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.local"
+msgstr "Your Mac may ask for permission. Imported passwords stay encrypted on this device."
+
+#. js-lingui-explicit-id
+msgid "browser.import.locked"
+msgstr "Use a persistent browser profile and unlock the system password store."
+
+#. js-lingui-explicit-id
+msgid "browser.import.options"
+msgstr "Import options"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwordHint"
+msgstr "Saved accounts for signing in"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwords"
+msgstr "Passwords"
+
+#. js-lingui-explicit-id
+msgid "browser.import.progress"
+msgstr "{processed} of {total} entries"
+
+#. js-lingui-explicit-id
+msgid "browser.import.reading"
+msgstr "Reading selected data…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replace"
+msgstr "Replace matching existing entries"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceHint"
+msgstr "Matching saved passwords and cookies will be replaced by the imported entries. Other entries are kept."
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceTitle"
+msgstr "Replace matching browser data?"
+
+#. js-lingui-explicit-id
+msgid "browser.import.result"
+msgstr "{imported} imported · {skipped} skipped · {failed} failed"
+
+#. js-lingui-explicit-id
+msgid "browser.import.safari"
+msgstr "In Safari, choose File → Export Browsing Data, include passwords, then select the exported ZIP or CSV here."
+
+#. js-lingui-explicit-id
+msgid "browser.import.source"
+msgstr "From"
+
+#. js-lingui-explicit-id
+msgid "browser.import.start"
+msgstr "Import"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stop"
+msgstr "Stop import"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stopped"
+msgstr "Import stopped. Entries already imported have been kept."
+
+#. js-lingui-explicit-id
+msgid "browser.import.unavailable"
+msgstr "This data could not be read. Quit the source browser and retry, or use an exported file."
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupported"
+msgstr "Not available from this source"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
 msgstr "{count, plural, one {# asset} other {# assets}}"
@@ -9461,8 +9901,40 @@ msgid "browser.label.unsettled"
 msgstr "unsettled"
 
 #. js-lingui-explicit-id
-msgid "browser.recovery.checking"
-msgstr "Checking the existing page…"
+msgid "browser.page.back"
+msgstr "Back to webpage"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.advanced"
+msgstr "Separate accounts and advanced settings"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.disabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.login"
+msgstr "Saved logins"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.loginHint"
+msgstr "Website logins are remembered across tasks. Add a separate browser profile only when you need another account."
+
+#. js-lingui-explicit-id
+msgid "browser.settings.manage"
+msgstr "Manage this profile"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.permissions"
+msgstr "Agent website permissions"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.profiles"
+msgstr "Browser profile"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.temporaryHint"
+msgstr "Temporary browsing starts signed out and clears website data when its last page closes."
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.condition"
@@ -9507,6 +9979,14 @@ msgstr "URL"
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
 msgstr "Value length"
+
+#. js-lingui-explicit-id
+msgid "browser.tab.copyAddress"
+msgstr "Copy page address"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.tabs.empty"
+msgstr "New tab"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"
@@ -16076,30 +16556,6 @@ msgid "settings.catalog.storage.searchTerms"
 msgstr "storage | snapshot | usage | disk | legacy | migrate | compact"
 
 #. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.description"
-msgstr "Persisted remote Synergy targets, authorization, and observed host details."
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.label"
-msgstr "Synergy Link"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.row.linkID"
-msgstr "Link ID"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.row.targetAgentID"
-msgstr "Target agent ID"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.row.targets"
-msgstr "Targets"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.synergyLink.searchTerms"
-msgstr "synergy link | remote host | target | agent | link id | key"
-
-#. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
 msgstr "Agent worker capacity, subagent concurrency, provider timeouts, and tool timeout controls."
 
@@ -20328,182 +20784,6 @@ msgid "settings.storage.usage.title"
 msgstr "Snapshot usage"
 
 #. js-lingui-explicit-id
-msgid "settings.synergyLink.add.action"
-msgstr "Add target"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.adding"
-msgstr "Adding..."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.cancel"
-msgstr "Cancel"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.close"
-msgstr "Close add target dialog"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.description"
-msgstr "Copy the target agent ID and Link ID from B. B still approves the first connection."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.add.title"
-msgstr "Add target"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.authorization.approved"
-msgstr "Approved"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.authorization.revoked"
-msgstr "Revoked"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.authorization.unverified"
-msgstr "Unverified"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.connected"
-msgstr "Connected"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.reachable"
-msgstr "Reachable"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.unknown"
-msgstr "Unknown"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.availability.unreachable"
-msgstr "Unreachable"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.empty.description"
-msgstr "Add a target so agents can discover and connect to it by a stable target ID."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.empty.title"
-msgstr "No Link targets yet"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.enabled"
-msgstr "Enabled"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.allowedAgents"
-msgstr "Allowed local agents"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.allowedAgents.description"
-msgstr "Comma-separated Synergy agent names. Leave empty to allow every local agent to discover this target."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.allowedAgents.placeholder"
-msgstr "synergy, build"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.linkID"
-msgstr "Link ID"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.linkID.placeholder"
-msgstr "link_…"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.name"
-msgstr "Name"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.name.placeholder"
-msgstr "Build Mac"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.stableTargetID"
-msgstr "Stable target ID"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.targetAgentID"
-msgstr "Target agent ID"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.field.targetAgentID.placeholder"
-msgstr "agent_…"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.host.notObserved"
-msgstr "Not observed yet"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.host.title"
-msgstr "Observed host"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.load.error"
-msgstr "Link targets could not be loaded."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.load.retry"
-msgstr "Retry"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.page.description"
-msgstr "Persist the Synergy hosts this installation can control and inspect their last observed identity."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.page.title"
-msgstr "Synergy Link"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.refresh"
-msgstr "Refresh"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.remove"
-msgstr "Remove"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.remove.description"
-msgstr "Agents will no longer discover this target. This does not change B's trust list."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.remove.title"
-msgstr "Remove Link target?"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.save"
-msgstr "Save"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.targets.description"
-msgstr "A target stores routing identifiers, authorization state, and observed host capabilities. It never stores B's Holos credentials."
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.targets.title"
-msgstr "Targets"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.test"
-msgstr "Test connection"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.created"
-msgstr "Link target added"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.failed"
-msgstr "Synergy Link action failed"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.saved"
-msgstr "Link target saved"
-
-#. js-lingui-explicit-id
-msgid "settings.synergyLink.toast.tested"
-msgstr "Connection test completed"
-
-#. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "These accounts were rejected and remain here until their credentials are recovered."
 
@@ -21184,10 +21464,6 @@ msgid "tool.misc.executed"
 msgstr "Executed"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
-msgid "tool.misc.executed-via-synergy-link"
-msgstr "Executed via Synergy Link"
-
-#. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"
 msgstr "files"
 
@@ -21352,34 +21628,6 @@ msgid "tool.title.compact-session"
 msgstr "Compact Session"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect"
-msgstr "Connect"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-closing"
-msgstr "Closing"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-list"
-msgstr "View connections"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-list-targets"
-msgstr "View Link targets"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-opening"
-msgstr "Opening"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connect-status"
-msgstr "View connection status"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.connected"
-msgstr "Connected"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
 msgstr "Manage session"
 
@@ -21414,10 +21662,6 @@ msgstr "Deny operation"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.deploy-inference"
 msgstr "Deploy inference service"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.disconnected"
-msgstr "Disconnected"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.dismiss-question"
@@ -22334,6 +22578,10 @@ msgstr "Minimize"
 #. js-lingui-explicit-id
 msgid "window.restore"
 msgstr "Restore"
+
+#. js-lingui-explicit-id
+msgid "workbench.closeRight"
+msgstr "Close tabs to the right"
 
 #. js-lingui-explicit-id
 msgid "workbench.discard.action"

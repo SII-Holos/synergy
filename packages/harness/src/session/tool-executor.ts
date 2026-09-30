@@ -26,7 +26,6 @@ export namespace ToolExecutor {
   export function classify(toolName: string, source?: Tool.Source): ToolExecutorKind {
     if (source?.type === "plugin" || source?.type === "local" || toolName.startsWith("plugin__")) return "plugin"
     if (toolName.startsWith("browser_")) return "browser"
-    if (toolName.startsWith("link_") || toolName.startsWith("remote_")) return "link"
     if (processTools.has(toolName)) return "local_process"
     if (fileTools.has(toolName)) return "file"
     return "control_plane"

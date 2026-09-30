@@ -467,6 +467,7 @@ export function buildManagedServerEnv(
     SYNERGY_DESKTOP_CHANNEL: input.channel,
     SYNERGY_DESKTOP_PARENT_PID: String(input.parentPid),
     SYNERGY_DESKTOP_STARTUP_PROGRESS: "1",
+    SYNERGY_DESKTOP_BROWSER: "1",
   }
 }
 

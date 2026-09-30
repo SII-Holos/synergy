@@ -1,3 +1,4 @@
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test, setDefaultTimeout } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -118,7 +119,7 @@ beforeAll(async () => {
       noDiscovery: true,
       include: ["solid-js", "solid-js/web", "@solidjs/router", "@lingui/core", "@lingui/solid", "zod"],
     },
-    server: { host: "127.0.0.1", port: 0, fs: { allow: [path.resolve(source, "../../..")] } },
+    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]
@@ -194,7 +195,9 @@ test("unified search isolates one failed category and its retry retains other re
   await page.goto(url)
   await page.getByRole("textbox", { name: "Search library" }).fill("focus")
   await page.getByRole("button", { name: /frontend-check/ }).waitFor()
-  expect(await page.getByRole("button", { name: /Experience encoding failed/ }).count()).toBe(1)
+  const experienceEntry = page.getByRole("button", { name: /Experience encoding failed/ })
+  await experienceEntry.waitFor()
+  expect(await experienceEntry.count()).toBe(1)
   expect(await page.getByRole("alert").textContent()).toContain("Memories")
   memoryFailure = false
   await page.getByRole("button", { name: "Retry", exact: true }).click()

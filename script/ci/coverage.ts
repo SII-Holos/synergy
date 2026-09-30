@@ -9,7 +9,6 @@ import {
 } from "../coverage-check"
 import { verifyReport, type TaskResult } from "./evidence"
 import { type Plan } from "./plan"
-import { executionBatches } from "../../packages/testing/script/run"
 
 export async function verifyCoverage(root: string, evidenceRoot: string, plan: Plan, results: TaskResult[]) {
   const manifest = await loadManifest(root)
@@ -43,12 +42,7 @@ export async function verifyCoverage(root: string, evidenceRoot: string, plan: P
       )
     }
     if (task.kind === "suite") {
-      const expected =
-        task.partition === undefined
-          ? task.files!
-          : executionBatches(task.files!, path.join(root, task.package!), 4)
-              .filter((batch) => batch.partition === task.partition)
-              .flatMap((batch) => batch.files)
+      const expected = task.files!
       if (executed.toSorted().join("\0") !== expected.toSorted().join("\0"))
         errors.push(`Incomplete or repeated test inventory: ${task.id}`)
     }

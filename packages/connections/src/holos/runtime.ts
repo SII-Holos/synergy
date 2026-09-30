@@ -85,20 +85,6 @@ async function fetchWsToken(apiUrl: string, agentSecret: string, signal: AbortSi
   return body.data.ws_token
 }
 
-async function syncSynergyLink(
-  input: { provider: HolosProvider } | null,
-  reason: "disconnected" | "transport_liveness_lost" = "disconnected",
-) {
-  const { SynergyLinkExecution } = await import("@ericsanchezok/synergy-local-runtime/tools/synergy-link-execution")
-  if (!input) {
-    SynergyLinkExecution.setClient(null, reason)
-    return
-  }
-  const { HolosSynergyLinkClient } = await import("../remote/client")
-  const { HolosSynergyLinkTransport } = await import("./synergy-link-transport")
-  SynergyLinkExecution.setClient(new HolosSynergyLinkClient(new HolosSynergyLinkTransport(input.provider)))
-}
-
 export namespace HolosRuntime {
   export type Status =
     | { status: "connected" }
@@ -130,13 +116,6 @@ export namespace HolosRuntime {
     },
   )
 
-  export type AppEventHandler = (input: {
-    event: string
-    payload: unknown
-    caller: Envelope.Caller
-    source: object
-  }) => boolean | Promise<boolean>
-
   export const Event = {
     Connected: BusEvent.define("holos.connected", z.object({ peerId: z.string() })),
     StatusChanged: BusEvent.define(
@@ -161,7 +140,6 @@ export namespace HolosRuntime {
   }
 
   const runtimeState = RuntimeContext.state(() => ({
-    appEventHandlers: new Set<AppEventHandler>(),
     nativeTunnelPort: null as NativeTunnelPortImpl | null,
   }))
 
@@ -207,31 +185,6 @@ export namespace HolosRuntime {
   export async function getProvider(): Promise<HolosProvider | null> {
     const current = await state()
     return current.provider
-  }
-
-  export function registerAppEventHandler(handler: AppEventHandler): () => void {
-    const instanceState = runtimeState()
-
-    instanceState.appEventHandlers.add(handler)
-    return () => {
-      const instanceState = runtimeState()
-
-      instanceState.appEventHandlers.delete(handler)
-    }
-  }
-
-  export async function dispatchAppEvent(input: {
-    event: string
-    payload: unknown
-    caller: Envelope.Caller
-    source: object
-  }): Promise<boolean> {
-    const instanceState = runtimeState()
-
-    for (const handler of instanceState.appEventHandlers) {
-      if (await handler(input)) return true
-    }
-    return false
   }
 
   export async function status(): Promise<Status> {
@@ -312,9 +265,6 @@ export namespace HolosRuntime {
         }
         current.provider = null
         current.sessionID = null
-        void syncSynergyLink(null, reason === "transport_liveness_lost" ? reason : "disconnected").catch((err) =>
-          log.warn("syncSynergyLink failed", { error: err }),
-        )
         setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
         if (instanceState.nativeTunnelPort) {
@@ -330,7 +280,6 @@ export namespace HolosRuntime {
     current.sessionID = provider.peerId ? `session-${Date.now()}` : null
     current.agentID = provider.peerId
     setStatus(current, { status: "connected" })
-    await syncSynergyLink({ provider })
 
     if (instanceState.nativeTunnelPort) {
       instanceState.nativeTunnelPort.notifyConnectionObservers({
@@ -355,7 +304,6 @@ export namespace HolosRuntime {
     await current.provider?.close()
     current.provider = null
     setStatus(current, { status: "disconnected" })
-    await syncSynergyLink(null).catch((err) => log.warn("syncSynergyLink failed", { error: err }))
     if (instanceState.nativeTunnelPort) {
       instanceState.nativeTunnelPort.notifyConnectionObservers({
         type: "disconnected",
@@ -1003,23 +951,19 @@ export class HolosProvider {
   }
 
   private handleAppEvent(event: string, payload: unknown, caller: Envelope.Caller): void {
-    void HolosRuntime.dispatchAppEvent({ event, payload, caller, source: this })
-      .then((handled) => {
-        if (handled) return
-
-        switch (event) {
-          case "chat.message":
-            return this.handleChatMessage(caller, payload)
-          case "presence.ping":
-            return this.handlePresencePing(caller)
-          case "presence.pong":
-            this.handlePresencePong(caller, payload)
-            return
-          default:
-            log.warn("unknown app event", { event })
-        }
-      })
-      .catch((err) => log.error("app event handler failed", { event, error: err }))
+    void (async () => {
+      switch (event) {
+        case "chat.message":
+          return this.handleChatMessage(caller, payload)
+        case "presence.ping":
+          return this.handlePresencePing(caller)
+        case "presence.pong":
+          this.handlePresencePong(caller, payload)
+          return
+        default:
+          log.warn("unknown app event", { event })
+      }
+    })().catch((error) => log.error("app event handler failed", { event, error }))
   }
 
   private async handleChatMessage(caller: Envelope.Caller, payload: unknown): Promise<void> {

@@ -51,7 +51,7 @@ Installation generations retain code-version floors and explicit package selecti
 | `permissions`, `permission-rules`                                                                   | Persistent permission state                                                                                                                               |
 | `agenda`, `blueprint_loops`, `superplan`, `lattice`, `notes`                                        | Workflow and Note domain records                                                                                                                          |
 | `channel`                                                                                           | Ownership indexes, response cards, thread bindings, provider dedup, outboxes and bounded diagnostics                                                      |
-| `holos`, `synergy_link`                                                                             | Routing, contacts, mailbox and target metadata; credentials stay separate                                                                                 |
+| `holos`                                                                                             | Routing, contacts and mailbox metadata; credentials stay separate                                                                                         |
 | `browser`                                                                                           | Browser Session/page metadata; profiles stay on the filesystem                                                                                            |
 | `plugin-lock`, `plugin-approvals`, `plugin-incompatible`, `registry`                                | Plugin installation, grants and registry records                                                                                                          |
 | `plugin-audit`, `plugin-runtime-state`, `plugin-install-intents`                                    | Plugin audit, health and installation recovery                                                                                                            |
@@ -89,9 +89,7 @@ Trusted Home relocation verifies each source binding against its native director
 
 ## Credentials and independent hosts
 
-Holos account storage at `data/auth/holos-accounts.json` is the canonical multi-account credential store. Synergy and the standalone Link host serialize updates with `data/auth/.locks/`, using the `holos-accounts:write` lock key and atomic file replacement. `api-key.json` is historical migration input, not the steady-state Holos source.
-
-The standalone Synergy Link host owns `SYNERGY_LINK_HOME` (default `~/.synergy-link/`), including its own `state.json`, `migrations.json`, `owner.json`, control socket and logs. It is independent of Agent database ownership and must not share one host state root across live instances. See [Link operations](../operations/qizhi-synergy-link.md).
+Holos account storage at `data/auth/holos-accounts.json` is the canonical multi-account credential store. Synergy serializes updates with `data/auth/.locks/`, using the `holos-accounts:write` lock key and atomic file replacement. `api-key.json` is historical migration input, not the steady-state Holos source.
 
 Physical private writes use flushed temporary files, atomic rename and directory sync where supported. Transient Windows sharing violations retry up to four attempts. Database durability uses the database engine's commit protocol; it is not controlled by a per-record JSON formatting or durability option.
 

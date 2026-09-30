@@ -43,10 +43,7 @@ describe("tool.browser_wait", () => {
   test("reports the satisfied condition with elapsed time and page state", async () => {
     const tool = await BrowserWaitTool.init()
     const result = await tool.execute(
-      {
-        condition: { type: "text", values: ["Ready"], match: "any" },
-        timeoutSeconds: 10,
-      },
+      { pageId: "page-test", condition: { type: "text", values: ["Ready"], match: "any" }, timeoutSeconds: 10 },
       context(),
     )
 
@@ -66,10 +63,7 @@ describe("tool.browser_wait", () => {
     BrowserToolHelper.execute = async () => ({ type: "wait", pageId: "page-test", matched: true }) as never
     const tool = await BrowserWaitTool.init()
     const result = await tool.execute(
-      {
-        condition: { type: "load", state: "load" },
-        timeoutSeconds: 10,
-      },
+      { pageId: "page-test", condition: { type: "load", state: "load" }, timeoutSeconds: 10 },
       context(),
     )
 
