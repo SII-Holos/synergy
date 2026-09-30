@@ -22,7 +22,7 @@ Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立�
 
 压缩业务控制在真实读取、修改和原生压缩后继续执行，并验证磁盘结果、导出与完整用量；完成条件是业务事件，执行上限只防止挂死。四组短语义控制继续覆盖协议、模型与 JIT 的成对配置。历史 ARM/JIT 的四组 120 轮压力复现通过显式诊断开关运行。五种 native harness 均保留实际接入和适配器行为；正常、故障、短语义、压缩等场景组各自执行，公共纯逻辑只验证一次。长流完成态保留 30 MiB 完整性，取消和失败使用小数据保留终态、已接收字节、用量和 Runtime 清理。PostgreSQL 三版本执行登记的 PG 入口，缺少配置必须失败。取舍见 [业务反馈决策](../decisions/implemented/testing/2026-09-30-business-ci-feedback.md)。
 
-执行池上限为 Linux 15（含一个直接启动的 contracts worker）、Docker 8，Windows、PostgreSQL、macOS 各 1。同平台 Windows job 保持串行；原生覆盖率由两个独立 Home 的进程执行，报告目录互不覆盖。普通 Linux 包分片分散到不同 runner，同一 runner 最多两个独立进程，contracts 与本地诊断仍串行。Docker 场景分配到最多八个 job，每个 job 最多并行两个独立 Home、进程和容器的任务，共享只读准备；每个任务独立产生报告，重跑以 job 为单位。公开仓库所在 GitHub Free 组织同时最多 20 个 job，准备任务和其他 PR 共享容量；排队计入实际反馈时间。Linux/macOS 的 Bun 下载、Python 下载和 Rust 编译使用覆盖锁文件、平台、实际工具链及输入的缓存；Windows 跳过实测慢于直接安装的 Bun 缓存解压，Desktop 只安装自身 workspace 依赖；跨 job 构建恢复验证完整清单、摘要和模式。core/full 分发缓存键还包含 tested SHA 和已校验基础构建的完整清单摘要；缓存命中先核对平台、工具链、文件字节与权限，再为当前计划发布产物。缓存保存依赖与构建，不保存测试成功结论或运行 Home。测试子进程移除协调器的 GitHub token 与父级文件选择；需要特殊凭据的夹具必须显式提供。共享 UI 编译在独立进程内完成，按输入摘要锁定编译与发布，避免 Vite 改变调用方环境和并行进程覆盖有效产物。准备等待由 workflow job 超时约束；生产者失败立即报错，完成后一分钟仍缺失产物则要求全量重跑。每日运行或手动 `build_cache=disabled` 跳过跨 run 构建缓存，依赖下载缓存可复用。
+执行池上限为 Linux 12（含一个直接启动的 contracts worker）、Docker 8，Windows、PostgreSQL、macOS 各 1。同平台 Windows job 保持串行；原生覆盖率由两个独立 Home 的进程执行，报告目录互不覆盖。普通 Linux 包分片分散到不同 runner，同一 runner 最多两个独立进程，contracts 与本地诊断仍串行。Docker 场景分配到最多八个 job，每个 job 最多并行两个独立 Home、进程和容器的任务，共享只读准备；每个任务独立产生报告，重跑以 job 为单位。公开仓库所在 GitHub Free 组织同时最多 20 个 job，准备任务和其他 PR 共享容量；排队计入实际反馈时间。Linux/macOS 的 Bun 下载、Python 下载和 Rust 编译使用覆盖锁文件、平台、实际工具链及输入的缓存；Windows 跳过实测慢于直接安装的 Bun 缓存解压，Desktop 只安装自身 workspace 依赖；跨 job 构建恢复验证完整清单、摘要和模式。core/full 分发缓存键还包含 tested SHA 和已校验基础构建的完整清单摘要；缓存命中先核对平台、工具链、文件字节与权限，再为当前计划发布产物。缓存保存依赖与构建，不保存测试成功结论或运行 Home。测试子进程移除协调器的 GitHub token 与父级文件选择；需要特殊凭据的夹具必须显式提供。共享 UI 编译在独立进程内完成，按输入摘要锁定编译与发布，避免 Vite 改变调用方环境和并行进程覆盖有效产物。准备等待由 workflow job 超时约束；生产者失败立即报错，完成后一分钟仍缺失产物则要求全量重跑。每日运行或手动 `build_cache=disabled` 跳过跨 run 构建缓存，依赖下载缓存可复用。
 
 `All checks passed` 始终执行，核对计划摘要、测试 SHA、run、模式、全部选中任务、job 结果、报告摘要和逐文件执行清单。安装和矩阵的 JUnit 场景必须恰好执行一次且成功。结果版本 2 记录 `unit`、`planAttempt`、`executionAttempt`；报告按产物目录隔离。GitHub“仅重跑失败 job”沿用原计划和成功产物，汇总根据 API 的最近一次实际 unit 执行选择证据；最新失败、缺失、重复、损坏、旧 SHA、错误 run 或计划不能通过。产物过期须全量重跑。新提交重新计算当前 PR 影响范围，不能沿用上一个 SHA 的通过结论。覆盖率只合并所选最新完整成功报告，阈值与 exemption 不变。
 
@@ -48,8 +48,10 @@ GitHub 的 `CI diagnostics` 工作流提供相同选择器，执行矩阵最多�
 
 录制完成态保留 30 MiB 完整性，默认 32 KiB 分块；历史 1 KiB checkpoint 压力可显式组合 `SYNERGY_ROLLOUT_LONG_STREAM=1 SYNERGY_ROLLOUT_CHECKPOINT_STRESS=1` 运行 Harness 的 `test/session/rollout-long.test.ts`。
 
-准备依赖对应独立执行队列：普通 Linux 8、core 1、full 5、contracts 1；Docker 无准备依赖 2、冻结准备消费者 6。core/full/冻结消费者在其生产者完成后才申请 runner。`build_cache=disabled` 同时关闭 Rust 编译与经过校验的跨 run 构建缓存，依赖下载缓存仍可复用。
+准备依赖对应独立执行队列：普通 Linux 6、core 1、full 4、contracts 1；Docker 无准备依赖 2、冻结准备消费者 6。core/full/冻结消费者在其生产者完成后才申请 runner。`build_cache=disabled` 同时关闭 Rust 编译与经过校验的跨 run 构建缓存，依赖下载缓存仍可复用。
 
 基础准备在同一 runner 并行执行原生构建与 Web 生产构建，完整产物纳入基础清单。full 分发仅在基础清单验证成功后使用 `--skip-web-build`，缺少生产 manifest 时失败；普通发行与诊断继续自行构建 Web。安装生命周期拆为独立组件、公司 preset/schema 与 Web 三组，各自从新 Home 开始。
 
 Task Home 的真实工具执行和空 provider 停止分为独立任务，保留原生重试策略，按 runner 实测时间分配；pytest 收集检查继续要求全部场景恰好执行一次。构建产物的临时仓库夹具显式设置自身 Web 模式，避免继承全量 CI 的准备配置。
+
+规划 job 仅安装 testing workspace 需要的依赖，不恢复整仓下载缓存。四组短协议/JIT 控制和 Task Home 控制使用两次真实工具调用验证首末阶段；完整文件修改循环继续由业务压缩控制和显式 120 轮诊断承担。

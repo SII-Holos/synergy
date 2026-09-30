@@ -69,6 +69,10 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - uses: ./.github/actions/ci-setup
+        with:
+          dependencies: "false"
+      - name: Install planning dependencies
+        run: bun install --frozen-lockfile --filter @ericsanchezok/synergy-testing
       - name: Resolve exact revisions and plan
         id: plan
         env:
@@ -76,6 +80,7 @@ jobs:
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
           PUSH_BASE: ${{ github.event.before }}
           CI_FORCE_FULL: ${{ vars.SYNERGY_CI_FORCE_FULL }}
+          NODE_PATH: ${{ github.workspace }}/packages/testing/node_modules
         run: |
           tested="$(git rev-parse HEAD)"
           base="${PR_BASE:-${PUSH_BASE:-}}"
@@ -353,7 +358,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 6
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.linux) }}
     env:
@@ -469,7 +474,7 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 4
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.linux_full) }}
     env:

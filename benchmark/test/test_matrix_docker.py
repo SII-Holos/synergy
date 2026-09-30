@@ -403,7 +403,14 @@ async def test_synergy_native_semantics(tmp_path, monkeypatch, bun_jit, protocol
     if "synergy" not in os.environ.get("SYNERGY_BENCH_TEST_HARNESSES", "synergy").split(","):
         pytest.skip("Synergy native semantics belong to the Synergy native matrix")
     await run_native_matrix(
-        tmp_path, monkeypatch, protocol, long_session=True, tool_turns=4, bun_jit=bun_jit, models=(model,)
+        tmp_path,
+        monkeypatch,
+        protocol,
+        long_session=True,
+        tool_turns=2,
+        bun_jit=bun_jit,
+        observations=False,
+        models=(model,),
     )
 
 
@@ -416,7 +423,7 @@ async def test_synergy_preserves_task_home_and_native_stopping(tmp_path, monkeyp
         monkeypatch,
         "chat-completions",
         long_session=True,
-        tool_turns=3,
+        tool_turns=2,
         bun_jit=True,
         task_home=True,
         empty_stop=empty_stop,
@@ -442,6 +449,7 @@ async def run_native_matrix(
     empty_stop=False,
     unattended=False,
     business=False,
+    observations=True,
     models=("fixture-one", "fixture-two"),
 ):
     from synergy_bench.runner import verify_terminal
@@ -567,7 +575,9 @@ async def run_native_matrix(
             ),
             force_tool=force_tool,
             input_tokens=inputs,
-            observation_turn=count if long_session and not probe and not task_home and force_tool else None,
+            observation_turn=count
+            if long_session and observations and not probe and not task_home and force_tool
+            else None,
             completion=(
                 "# Continuation\nThe file /app/observation.txt was read and edited. "
                 + (f"Latest observed snapshot: {anchors[-1]}. " if anchors else "")
@@ -713,7 +723,7 @@ async def run_native_matrix(
                                 records,
                                 tool_turns=business_turns if business else tool_turns,
                                 bun_jit=bun_jit,
-                                observations=not task_home,
+                                observations=observations and not task_home,
                             )
                             assert result["wire_usage"]["attempts"] >= (business_turns if business else tool_turns) + 1
             assert identities == {(harness, model) for harness in harnesses for model in profiles}

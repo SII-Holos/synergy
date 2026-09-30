@@ -115,7 +115,7 @@ test("required plans and installation diagnostics retain every control within th
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "artifacts")
   expect(controls).toHaveLength(9)
-  expect(LIMITS.linux).toBe(15)
+  expect(LIMITS.linux).toBe(12)
   const workspaces = [
     { name: "local-runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
   ]

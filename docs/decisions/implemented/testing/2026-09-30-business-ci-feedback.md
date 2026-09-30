@@ -27,7 +27,7 @@ Linux 基础、core 分发、full 分发和冻结 benchmark 分开准备，消�
 
 Harness、Web、Presets、UI 使用 4、4、4、2 个分片。`script/ci/timings.json` 包含 PR #1509 的真实 batch timing 和本 PR 前几轮托管任务耗时，批次耗时平均到文件，仅用于排序；完整原有隔离批次按累计权重分配，真实执行清单和 pytest 收集分别验证无遗漏、无重复。覆盖率按最新完整成功报告合并，阈值不降低。
 
-Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 15、8、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。重复的三个包 TypeScript 检查由 Linux 完整 workspace 类型检查覆盖；Windows 保留原生 Rust test/build 与实际调用，覆盖原 cargo check 的编译验证。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
+Linux、Docker、Windows、PostgreSQL、macOS 执行上限为 12、8、1、1、1；Linux 含一个 contracts worker。组织采用公开仓库的 GitHub Free 标准 runner，总计 20 个并发 job，准备与其他 PR 共享容量。Windows native 与 Desktop 分开重跑，同平台继续串行。重复的三个包 TypeScript 检查由 Linux 完整 workspace 类型检查覆盖；Windows 保留原生 Rust test/build 与实际调用，覆盖原 cargo check 的编译验证。启动测试使用两个就绪后同时初始化的进程，在退出或失败后回收所有子进程，再删除同 Home 夹具；错误记录具体阶段。
 
 Docker 按耗时分配到八个 job，每个 job 最多两个独立 Home、进程和容器的任务并行，共享只读准备和保留逐任务证据。测试与原有 workflow 校验子进程移除协调器的 GitHub token 与父级文件选择，保持原校验环境，避免污染 provider 凭据与嵌套夹具；Windows 后代清理验证 Job 成员和原生 ActiveProcesses 终态，避免将已退出 PID 的句柄存续误判为执行存续。
 
@@ -68,3 +68,5 @@ Web 生产构建与原生准备在基础 runner 重叠执行，其源码依赖�
 源码输入可含仓库内文件链接，输入摘要同时包含链接目标和实际字节；解析后的仓库根用于 containment 校验，外部或目录链接被拒绝。产物清单继续拒绝所有符号链接。消费者还要求所需生产者成功，避免准备失败后启动无输入的整个矩阵。
 
 后续冷构建调查发现 Task Home 的两个独立场景在同一个 pytest 任务串行耗时约 356 秒，其中工具执行约 143 秒、空 provider 停止约 212 秒。拆为独立任务并按实测 Docker 时间重新分配，保持原生停止与重试语义，收集检查继续要求无遗漏与重复。产物夹具显式选择并恢复 Web 准备模式，避免全量 workflow 的环境变量要求临时仓库具有不存在的 Web package。
+
+后续全量冷构建全部通过，最终耗时 682 秒；full 消费者最长排队 89 秒。按完成报告重新分配任务，普通 Linux 6、core 1、full 4、contracts 1，总计 12，减少关键消费者的槽位等待。规划只安装 testing workspace 的依赖，避免解压约 413 MB 的整仓下载缓存。短协议/JIT 与 Task Home 控制保留两次真实工具调用的首末阶段、配置、用量与停止验证，删除中间重复轮次；文件修改由真实压缩业务链集中验证，历史压力保持完整文件循环。短控制缺失末次记录或配置错误的反例仍必须失败。

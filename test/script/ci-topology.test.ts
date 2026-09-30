@@ -117,9 +117,9 @@ describe("required CI topology", () => {
   })
   test("all execution queues are bounded and preserve failed reports", () => {
     for (const [pool, limit] of Object.entries({
-      linux: 8,
+      linux: 6,
       linux_core: 1,
-      linux_full: 5,
+      linux_full: 4,
       docker_direct: 2,
       contracts: 1,
       docker: 6,

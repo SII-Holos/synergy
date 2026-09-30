@@ -102,6 +102,36 @@ async def test_native_usage_assertion_checks_the_actual_fixture_wire(tmp_path, m
         await server.cleanup()
 
 
+@pytest.mark.parametrize("bun_jit", [False, True])
+def test_short_control_rejects_lost_or_changed_native_process_evidence(bun_jit):
+    records = [
+        {
+            "type": "tool_use",
+            "part": {
+                "callID": phase,
+                "tool": "bash",
+                "state": {
+                    "status": "completed",
+                    "output": f"BENCH_NATIVE_PHASE={phase}\n"
+                    f"BENCH_SYNERGY_WRAPPER_BUN_JSC_useJIT={int(bun_jit)}\n"
+                    f"BENCH_SYNERGY_CLI_BUN_JSC_useJIT={int(bun_jit)}\n",
+                },
+            },
+        }
+        for phase in ["start", "end"]
+    ]
+    assert_native_control(records, tool_turns=2, bun_jit=bun_jit, observations=False)
+    with pytest.raises(AssertionError, match="tool roundtrips"):
+        assert_native_control(records[:-1], tool_turns=2, bun_jit=bun_jit, observations=False)
+    for index in [0, 1]:
+        changed = copy.deepcopy(records)
+        changed[index]["part"]["state"]["output"] = changed[index]["part"]["state"]["output"].replace(
+            f"CLI_BUN_JSC_useJIT={int(bun_jit)}", f"CLI_BUN_JSC_useJIT={int(not bun_jit)}"
+        )
+        with pytest.raises(AssertionError, match="CLI JIT"):
+            assert_native_control(changed, tool_turns=2, bun_jit=bun_jit, observations=False)
+
+
 def test_native_control_rejects_wrong_identity_jit_and_early_completion():
     records = [
         {

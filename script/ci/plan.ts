@@ -97,7 +97,7 @@ export interface Plan {
   digest: string
 }
 
-export const LIMITS: Record<Pool, number> = { linux: 15, docker: 8, postgres: 1, windows: 1, macos: 1 }
+export const LIMITS: Record<Pool, number> = { linux: 12, docker: 8, postgres: 1, windows: 1, macos: 1 }
 export const QUEUES = [
   "contracts",
   "linux",
@@ -159,11 +159,11 @@ export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
         ? [
             {
               entries: ordinary,
-              count: Math.min(8, ordinary.length),
+              count: Math.min(6, ordinary.length),
               name: "linux",
             },
             { entries: core, count: Math.min(1, core.length), name: "linux-core" },
-            { entries: full, count: Math.min(5, full.length), name: "linux-full" },
+            { entries: full, count: Math.min(4, full.length), name: "linux-full" },
           ]
         : pool === "docker" && mode !== "diagnostic"
           ? [
