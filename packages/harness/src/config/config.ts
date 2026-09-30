@@ -1451,17 +1451,17 @@ export namespace Config {
   export async function domainMutateWithChange(
     id: ConfigDomain.Id,
     mutate: (current: Info) => Partial<Info> | Promise<Partial<Info>>,
-    options: { mode?: ConfigDomain.MergeMode } = {},
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
   ) {
     const parsed = ConfigDomain.Id.parse(id)
     if (parsed === "storage")
       throw new Error("Change the active storage target with data storage migrate --target; it cannot be hot-reloaded")
-    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed)}`)
-    const oldConfig = await globalResolved()
-    const current = await domainGet(parsed)
-    const patch = await mutate(structuredClone(current))
+    using _ = await Lock.write(`config-domain:${ConfigDomain.filepath(parsed, options.root)}`)
+    const oldConfig = await (options.root ? current() : globalResolved())
+    const stored = await domainGet(parsed, options.root)
+    const patch = await mutate(structuredClone(stored))
     const result = await domainUpdateUnlocked(parsed, patch, options)
-    const config = await globalResolved()
+    const config = await (options.root ? current() : globalResolved())
     return {
       result,
       change: { oldConfig, config, changedFields: diff(oldConfig, config) } satisfies Change,

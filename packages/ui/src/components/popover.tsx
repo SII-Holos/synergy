@@ -18,6 +18,8 @@ export interface PopoverProps extends ParentProps, Omit<ComponentProps<typeof Ko
   triggerAs?: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
   title?: JSXElement
   description?: JSXElement
+  variant?: "default" | "menu"
+  portalMount?: HTMLElement
   class?: ComponentProps<"div">["class"]
   classList?: ComponentProps<"div">["classList"]
 }
@@ -30,6 +32,8 @@ export function Popover(props: PopoverProps) {
     "triggerAs",
     "title",
     "description",
+    "variant",
+    "portalMount",
     "class",
     "classList",
     "children",
@@ -47,12 +51,13 @@ export function Popover(props: PopoverProps) {
       >
         {(trigger) => <Kobalte.Trigger as={trigger()} data-slot="popover-trigger" />}
       </Show>
-      <Kobalte.Portal mount={parentLayer()}>
+      <Kobalte.Portal mount={local.portalMount ?? parentLayer()}>
         <PortalStyleOwner>
           <OverlayLayerProvider layer={layer}>
             <Kobalte.Content
               ref={setLayer}
               data-component="popover-content"
+              data-variant={local.variant ?? "default"}
               classList={{
                 ...(local.classList ?? {}),
                 [local.class ?? ""]: !!local.class,
@@ -60,15 +65,17 @@ export function Popover(props: PopoverProps) {
             >
               {/* <Kobalte.Arrow data-slot="popover-arrow" /> */}
               <Show when={local.title}>
-                <div data-slot="popover-header">
+                <div data-slot="popover-header" classList={{ "sr-only": local.variant === "menu" }}>
                   <Kobalte.Title data-slot="popover-title">{local.title}</Kobalte.Title>
-                  <Kobalte.CloseButton
-                    data-slot="popover-close-button"
-                    data-component="icon-button"
-                    data-variant="ghost"
-                  >
-                    <Icon name="x" size="small" />
-                  </Kobalte.CloseButton>
+                  <Show when={local.variant !== "menu"}>
+                    <Kobalte.CloseButton
+                      data-slot="popover-close-button"
+                      data-component="icon-button"
+                      data-variant="ghost"
+                    >
+                      <Icon name="x" size="small" />
+                    </Kobalte.CloseButton>
+                  </Show>
                 </div>
               </Show>
               <Show when={local.description}>

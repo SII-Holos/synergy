@@ -140,7 +140,7 @@ function HolosIconButton() {
       gutter={8}
       trigger={
         <Tooltip placement="top" value={label()}>
-          <button type="button" classList={iconButtonClass()}>
+          <button type="button" aria-label={label()} classList={iconButtonClass()}>
             <Icon name={getSemanticIcon("holos.main")} size="small" class="translate-y-px" />
             <div
               classList={{
@@ -584,6 +584,7 @@ export function StatusBar() {
     return workspace ? fileWorkspaceLabel(workspace) : undefined
   })
   const branch = createMemo(() => {
+    if (!params.id) return undefined
     if (isWorktree()) return workspaceField(session(), "branch")
     if (session()?.workspaceID && !session()?.workspace) return undefined
     return workspaceField(session(), "branch") || sync.data.vcs?.branch
@@ -650,22 +651,24 @@ export function StatusBar() {
         </div>
       </Show>
 
-      <PanelSection title={i18n._(copy.workspace)}>
-        <PanelRow>
-          {!session()?.workspace
-            ? i18n._(workspaceCopy.none)
-            : isWorktree()
-              ? i18n._(copy.gitWorktree)
-              : i18n._(workspaceCopy.directory)}
-        </PanelRow>
-        <PanelRow>{scopeLabel()}</PanelRow>
-        <Show when={isWorktree()}>
-          <PanelRow>{workspaceName()}</PanelRow>
-        </Show>
-        <Show keyed when={branch()}>
-          {(currentBranch) => <PanelRow>{currentBranch}</PanelRow>}
-        </Show>
-      </PanelSection>
+      <Show when={params.id}>
+        <PanelSection title={i18n._(copy.workspace)}>
+          <PanelRow>
+            {!session()?.workspace
+              ? i18n._(workspaceCopy.none)
+              : isWorktree()
+                ? i18n._(copy.gitWorktree)
+                : i18n._(workspaceCopy.directory)}
+          </PanelRow>
+          <PanelRow>{scopeLabel()}</PanelRow>
+          <Show when={isWorktree()}>
+            <PanelRow>{workspaceName()}</PanelRow>
+          </Show>
+          <Show keyed when={branch()}>
+            {(currentBranch) => <PanelRow>{currentBranch}</PanelRow>}
+          </Show>
+        </PanelSection>
+      </Show>
 
       <PanelSection title={i18n._(copy.runtime)}>
         <PanelRow>
@@ -725,13 +728,15 @@ export function StatusBar() {
   )
 
   return (
-    <div class="flex flex-col items-center gap-1 pt-3 pb-1 min-w-0 w-full">
+    <div class="session-status-bar flex flex-col items-center gap-1 min-w-0 w-full">
       <UpgradeStatus />
-      <div class="statusbar-glass flex items-center gap-1.5 min-w-0 max-w-full overflow-hidden px-2 py-1.5 rounded-full">
+      <div class="statusbar-glass flex flex-wrap items-center justify-center gap-1.5 min-w-0 max-w-full px-2 py-1 rounded-lg">
         <HolosIconButton />
 
         <Show when={params.dir}>
-          <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} sessionID={params.id} />
+          <Show when={params.id}>
+            <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} sessionID={params.id} />
+          </Show>
           <Show keyed when={branch()}>
             {(currentBranch) => <BranchIconButton branch={currentBranch} />}
           </Show>
@@ -760,7 +765,7 @@ export function StatusBar() {
             gutter={8}
             trigger={
               <Tooltip placement="top" value={i18n._(copy.details)}>
-                <button type="button" classList={iconButtonClass()}>
+                <button type="button" aria-label={i18n._(copy.details)} classList={iconButtonClass()}>
                   <Icon name={getSemanticIcon("app.statusBar.toggle")} size="small" />
                 </button>
               </Tooltip>

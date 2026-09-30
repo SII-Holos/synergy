@@ -894,7 +894,7 @@ Kind: `search.codebase`
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `pattern` | string | yes | The glob pattern to match files against |
-| `path` | string |  | The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided. |
+| `path` | string |  | The directory to search in. If not specified, the task’s main and shared project folders will be searched. IMPORTANT: Omit this field to use the default directory. DO NOT enter "undefined" or "null" - simply omit it for the default behavior. Must be a valid directory path if provided. |
 
 ## grep
 
@@ -905,7 +905,7 @@ Kind: `search.codebase`
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `pattern` | string | yes | The regex pattern to search for in file contents |
-| `path` | string |  | The directory to search in. Defaults to the current working directory. |
+| `path` | string |  | The directory to search in. Defaults to the task’s main and shared project folders. |
 | `include` | string |  | File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}") |
 
 ## lattice_submit

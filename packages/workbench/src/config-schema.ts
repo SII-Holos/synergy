@@ -181,6 +181,14 @@ export const ConfigShape = {
         "worktree = start each new session in an isolated git worktree (default: main). " +
         "Programmatic session creation (API, channels, Cortex) always uses the main checkout.",
     ),
+  defaultSessionEnvironmentProfile: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe(
+      "Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.",
+    ),
   keybinds: Keybinds.optional().describe("Custom keybind configurations"),
   compactReasoning: z.boolean().optional().describe("Show live reasoning in a compact single-line viewport"),
   quick_switcher: QuickSwitcher.optional().describe("Quick switcher model visibility preferences"),
@@ -239,6 +247,7 @@ export function registerConfig() {
         "locale",
         "activityDisplay",
         "defaultSessionWorkspace",
+        "defaultSessionEnvironmentProfile",
         "layout",
       ],
       mergePolicy: "merge",

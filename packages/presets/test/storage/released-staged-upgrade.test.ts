@@ -6,12 +6,27 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 for (const held of [false, true]) {
   test(`the released 3.0.22 completion ledger admits new work before historical import (held=${held})`, async () => {
     await using tmp = await tmpdir()
+    await using main = await tmpdir()
+    await using additional = await tmpdir()
     const fixture = await Bun.file(
       new URL("../../../harness/test/storage/fixtures/v3.0.22.json", import.meta.url),
     ).json()
     const ledger = await Bun.file(new URL("./fixtures/v3.0.22-migration-ledger.json", import.meta.url)).json()
     const heldSessionID = "ses_00000000000000000000000002"
     const loopID = "bll_00000000000000000000000001"
+    const projectID = "released-project"
+    fixture.records.push({
+      key: ["projects", projectID],
+      value: {
+        id: projectID,
+        type: "project",
+        name: "Released project",
+        directory: main.path,
+        worktree: main.path,
+        sandboxes: [additional.path],
+        time: { created: 1700000000000, updated: 1700000000000 },
+      },
+    })
     if (held) {
       fixture.records.push({
         key: ["sessions", "home", heldSessionID, "info"],
@@ -58,7 +73,8 @@ for (const held of [false, true]) {
     const script = `
     const { registerFullPreset } = await import(${JSON.stringify(registration)});
     const { RuntimeContext } = await import(${JSON.stringify(path.join(harness, "lifecycle/context.ts"))});
-    const runtime = RuntimeContext.create({ home: process.env.SYNERGY_HOME, root: ${JSON.stringify(path.join(tmp.path, ".synergy"))}, env: { ...process.env } });
+    const { createLocalHost } = await import("@ericsanchezok/synergy-local-runtime/host");
+    const runtime = RuntimeContext.create(createLocalHost({ home: process.env.SYNERGY_HOME, root: ${JSON.stringify(path.join(tmp.path, ".synergy"))} }));
     await runtime.run(async () => {
     registerFullPreset();
     const { StorageMaintenance } = await import(${JSON.stringify(path.join(harness, "storage/maintenance.ts"))});
@@ -70,6 +86,15 @@ for (const held of [false, true]) {
     await using handle = await StorageMaintenance.open();
     if (handle.manifest.phase !== "active") throw new Error("Global authority did not activate");
     if ((await SessionCompat.stats()).pending !== 1) throw new Error("Release upgrade waited for all history");
+    const folders = await handle.store.read(["project_directories", ${JSON.stringify(projectID)}]);
+    if (folders?.version !== 1 || !folders.mainWorkspaceID || folders.additionalWorkspaceIDs.length !== 1)
+      throw new Error("Project folders were not migrated before admission");
+    const mainFolder = await handle.store.read(["workspace", folders.mainWorkspaceID]);
+    const additionalFolder = await handle.store.read(["workspace", folders.additionalWorkspaceIDs[0]]);
+    if (mainFolder.binding.path !== ${JSON.stringify(main.path)} || additionalFolder.binding.path !== ${JSON.stringify(additional.path)})
+      throw new Error("Project folder locations changed");
+    if (!mainFolder.sharedWritableWorkspaceIDs.includes(additionalFolder.id))
+      throw new Error("Additional project folder access was not migrated");
     if (${held}) {
       const loop = await handle.store.read(["blueprint_loops", "home", ${JSON.stringify(loopID)}]);
       if (loop.status !== "running") throw new Error("Held loop was not migrated at startup");

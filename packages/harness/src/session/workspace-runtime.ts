@@ -9,11 +9,17 @@ export namespace SessionWorkspaceRuntime {
     createWorktree(input: {
       sessionID: string
       name?: string
+      sourceWorkspaceID?: string
       baseRef: "current" | "fresh"
       baseRevision?: string
       bind: boolean
     }): Promise<unknown>
-    enterWorktree(input: { sessionID: string; target: string; force?: boolean }): Promise<unknown>
+    enterWorktree(input: {
+      sessionID: string
+      target: string
+      force?: boolean
+      sourceWorkspaceID?: string
+    }): Promise<unknown>
     releaseSession(session: Pick<Info, "id" | "scope" | "workspace">): Promise<void>
   }
   type Transition = (session: Info, workspace: Info["workspace"]) => Promise<void>

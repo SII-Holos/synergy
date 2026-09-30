@@ -1,6 +1,9 @@
 import type { ControlProfileId } from "@/context/input"
 import type { MessageDescriptor } from "@lingui/core"
-import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
+import type {
+  SessionWorkspaceTransitionRequest,
+  NewSessionWorkspaceSelection,
+} from "@/components/session/worktree-session"
 import type {
   SessionTransitionActions,
   SessionTransitionProgress,
@@ -36,7 +39,6 @@ export type PromptInputStore = {
   popover: PromptPopoverMode
   historyIndex: number
   savedPrompt: import("@/context/prompt").Prompt | null
-  placeholder: number
   dragging: boolean
   mode: PromptInputMode
   applyingHistory: boolean
@@ -44,10 +46,18 @@ export type PromptInputStore = {
 }
 
 export interface PromptInputProps {
+  projectDirectories?: import("@ericsanchezok/synergy-sdk/client").ProjectDirectories
+  projectDirectoryError?: string
+  onProjectDirectoriesRefresh?: () => void
+  onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   readOnly?: boolean
+  locationPending?: boolean
+  onValidateLocation?: () => Promise<void>
   class?: string
   ref?: (el: HTMLDivElement) => void
   newSessionEnvironmentID?: string | null
+  newSessionEnvironmentProfile?: string | null
+  onNewSessionEnvironmentProfileChange?: (profile: string | null | undefined) => void
   newSessionWorkspaceSelection?: NewSessionWorkspaceSelection
   newSessionCanonicalDirectory?: string
   newSessionCurrentDirectory?: string

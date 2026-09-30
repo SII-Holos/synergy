@@ -45,6 +45,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
 
   const searchProps = () => (typeof props.search === "object" ? props.search : {})
   const interactive = () => props.interactive ?? true
+  const isSelected = (item: T) => props.current !== undefined && props.key(item) === props.key(props.current)
   let searchContainerRef: HTMLDivElement | undefined
 
   onMount(() => {
@@ -176,7 +177,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     return (
       <>
         {props.children(row.item)}
-        <Show when={interactive() && row.item === props.current}>
+        <Show when={interactive() && isSelected(row.item)}>
           <span data-slot="list-item-selected-icon">
             <Icon name="check" />
           </span>
@@ -255,7 +256,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                           data-slot="list-item"
                           data-key={props.key(item)}
                           data-active={props.key(item) === active()}
-                          data-selected={item === props.current}
+                          data-selected={isSelected(item)}
                           data-interactive="true"
                           onClick={() => handleSelect(item, i())}
                           type="button"

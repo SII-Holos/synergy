@@ -1,7 +1,7 @@
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { HostView } from "./host-view"
-import { createMemo, createSignal, onCleanup, type Component, type JSX } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, type Component, type JSX } from "solid-js"
 import { ShellSurface } from "./shell-surface"
 import type {
   PluginShellService,
@@ -42,9 +42,21 @@ function selectedShell() {
   })
 }
 
-export function ShellOutlet(props: { shell: PluginShellService; workbench: PluginWorkbenchService }) {
+export function ShellOutlet(props: {
+  shell: PluginShellService
+  workbench: PluginWorkbenchService
+  onBuiltinMount?: () => () => void
+}) {
   const host = usePluginHost()
   const entry = selectedShell()
+  const IntegratedShell: Component<ShellRenderProps> = (bound) => {
+    onMount(() => {
+      const release = props.onBuiltinMount?.()
+      if (release) onCleanup(release)
+    })
+    return <DefaultShellMount {...bound} />
+  }
+  const builtinLoader: ShellEntry["loader"] = async () => ({ default: IntegratedShell })
   return (
     <ShellSurface
       requireOutlets
@@ -53,10 +65,10 @@ export function ShellOutlet(props: { shell: PluginShellService; workbench: Plugi
         if (entry().pluginId) host.shell.failed(entry().id)
       }}
       entry={entry()}
-      loader={entry().loader}
+      loader={entry().loader === builtin.loader ? builtinLoader : entry().loader}
       workbench={props.workbench}
       shell={props.shell}
-      fallback={DefaultShellMount}
+      fallback={IntegratedShell}
     />
   )
 }

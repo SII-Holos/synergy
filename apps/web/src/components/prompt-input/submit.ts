@@ -14,6 +14,8 @@ import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
+import { projectFlowCopy } from "../dialog/project-flow-copy"
+import { resolveTaskEnvironment } from "../session/task-location"
 import { useSessionTransition } from "@/context/session-transition"
 import type {
   FileAttachmentPart,
@@ -54,7 +56,6 @@ import {
   createNewSessionWorkspaceProgress,
   createNewSessionWorkspaceSuccessProgress,
   isWorktreeWorkspaceSelection,
-  worktreeSetupFailureMessage,
 } from "@/components/session/worktree-session"
 import {
   createNewSessionTransitionAcceptedProgress,
@@ -81,6 +82,7 @@ type PromptSubmitInput = {
   props: Pick<
     PromptInputProps,
     | "newSessionEnvironmentID"
+    | "newSessionEnvironmentProfile"
     | "newSessionWorkspaceSelection"
     | "newSessionCanonicalDirectory"
     | "onNewSessionWorkspaceSelectionReset"
@@ -224,6 +226,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       })
       if (submitIntent === "abort") {
         input.abort()
+        return
+      }
+      if (
+        [...prompt.current(), ...prompt.context.items()].some(
+          (part) => part.type === "file" && part.originScopeID && part.originScopeID !== sdk.scopeID,
+        )
+      ) {
+        showToast({ type: "warning", title: i18n._(projectFlowCopy.unavailableReference) })
         return
       }
       if (shouldBlockSubmitForUploadingAttachments({ uploading: input.attachmentsUploading(), intent: submitIntent })) {
@@ -393,7 +403,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         return
       }
       if (armedLightLoop && blueprintSlot) input.clearPendingLightLoop()
-      const environmentID = input.props.newSessionEnvironmentID
+      const { environmentID, environmentProfile } = resolveTaskEnvironment({
+        id: input.props.newSessionEnvironmentID,
+        profile: input.props.newSessionEnvironmentProfile,
+      })
       const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
       const worktreeWorkspaceSelection = isWorktreeWorkspaceSelection(workspaceSelection)
         ? workspaceSelection
@@ -405,6 +418,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             workspaceSelection,
             controlProfile: input.selectedControlProfile(),
             environmentID,
+            environmentProfile,
             plan: armedPlan,
             lattice: armedLattice,
             lightLoop: armedLightLoop,
@@ -464,8 +478,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         session = await client.session
           .create({
             environmentID,
+            environmentProfile,
             controlProfile: input.selectedControlProfile(),
-            workspace: worktreeWorkspaceSelection ? undefined : workspaceSelection,
+            workspace: workspaceSelection,
           })
           .then((x) => x.data ?? undefined)
           .catch((err) => {
@@ -506,37 +521,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           )
           if (binding.isCurrent()) navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
 
-          if (worktreeWorkspaceSelection) {
-            try {
-              if (worktreeWorkspaceSelection.mode === "create") {
-                const result = await client.worktree.create({
-                  scopeID: sessionScopeKey,
-                  worktreeCreateInput: {
-                    sessionID: session.id,
-                    bind: true,
-                  },
-                })
-                const setupFailure = worktreeSetupFailureMessage(result.data)
-                if (setupFailure) throw new Error(setupFailure)
-              } else {
-                await client.worktree.enter({
-                  scopeID: sessionScopeKey,
-                  sessionID: session.id,
-                  worktreeEnterInput: { target: worktreeWorkspaceSelection.target },
-                })
-              }
-              updateNewSessionWorktreeProgress(session.id, "message")
-            } catch (err) {
-              const message = errorMessage(err)
-              showToast({
-                type: "error",
-                title: i18n._(PI.submitFailedWorktree),
-                description: sessionStartFailureMessage(message),
-              })
-              failCreatedSessionSetup(session.id, i18n._(PI.submitFailedWorktree), message)
-              return
-            }
-          }
+          if (worktreeWorkspaceSelection) updateNewSessionWorktreeProgress(session.id, "message")
         }
       }
       if (!session && initialSessionId) {

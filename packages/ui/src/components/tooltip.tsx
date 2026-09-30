@@ -1,7 +1,7 @@
 import { useOverlayLayer } from "../context/overlay-layer"
 import { PortalStyleOwner } from "../context/ui-style"
 import { Tooltip as KobalteTooltip } from "@kobalte/core/tooltip"
-import { children, createSignal, Match, onCleanup, onMount, splitProps, Switch, type JSX } from "solid-js"
+import { children, createSignal, onCleanup, onMount, splitProps, type JSX } from "solid-js"
 import { attachFocusListeners } from "./tooltip-focus"
 import type { ComponentProps } from "solid-js"
 
@@ -37,6 +37,7 @@ export function Tooltip(props: TooltipProps) {
   const [local, others] = splitProps(props, ["children", "class", "inactive"])
 
   const c = children(() => local.children)
+  const enabled = () => !local.inactive && !!others.value
 
   onMount(() => {
     const childElements = c()
@@ -52,24 +53,28 @@ export function Tooltip(props: TooltipProps) {
   })
 
   return (
-    <Switch>
-      <Match when={local.inactive}>{local.children}</Match>
-      <Match when={!others.value}>{local.children}</Match>
-      <Match when={true}>
-        <KobalteTooltip gutter={4} {...others} open={props.open ?? open()} onOpenChange={setOpen}>
-          <KobalteTooltip.Trigger as={"div"} data-component="tooltip-trigger" class={local.class}>
-            {c()}
-          </KobalteTooltip.Trigger>
-          <KobalteTooltip.Portal mount={layer()}>
-            <PortalStyleOwner>
-              <KobalteTooltip.Content data-component="tooltip" data-placement={props.placement}>
-                {others.value}
-                {/* <KobalteTooltip.Arrow data-slot="tooltip-arrow" /> */}
-              </KobalteTooltip.Content>
-            </PortalStyleOwner>
-          </KobalteTooltip.Portal>
-        </KobalteTooltip>
-      </Match>
-    </Switch>
+    <KobalteTooltip
+      gutter={4}
+      openDelay={400}
+      {...others}
+      open={enabled() && (props.open ?? open())}
+      onOpenChange={setOpen}
+    >
+      <KobalteTooltip.Trigger
+        as="div"
+        data-component="tooltip-trigger"
+        data-inactive={!enabled() ? "" : undefined}
+        class={local.class}
+      >
+        {c()}
+      </KobalteTooltip.Trigger>
+      <KobalteTooltip.Portal mount={layer()}>
+        <PortalStyleOwner>
+          <KobalteTooltip.Content data-component="tooltip" data-placement={props.placement}>
+            {others.value}
+          </KobalteTooltip.Content>
+        </PortalStyleOwner>
+      </KobalteTooltip.Portal>
+    </KobalteTooltip>
   )
 }

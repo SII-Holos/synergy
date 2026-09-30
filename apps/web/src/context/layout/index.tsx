@@ -1211,6 +1211,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     const isDesktop = createMediaQuery("(min-width: 768px)")
+    const [navigationWidth, setNavigationWidth] = createSignal<number>()
+    const occupiedWidth = () =>
+      isDesktop()
+        ? (navigationWidth() ?? sidebarOccupancy(true, store.sidebar.opened, effectiveSidebarWidth(store.sidebar)))
+        : 0
 
     return {
       channelProjection: () => channelProjection(),
@@ -1279,6 +1284,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         },
       },
       sidebar: {
+        occupiedWidth,
+        setOccupiedWidth: setNavigationWidth,
         opened: createMemo(() => store.sidebar.opened),
         open() {
           setStore("sidebar", "opened", true)
@@ -1309,10 +1316,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const current = () => store.workbenchSurfaces[sessionKey]?.[surface] ?? {}
         const sizeDefault = () =>
           surface === "side"
-            ? computeDefaultWorkspaceWidth(
-                window.innerWidth -
-                  sidebarOccupancy(isDesktop(), store.sidebar.opened, effectiveSidebarWidth(store.sidebar)),
-              )
+            ? computeDefaultWorkspaceWidth(window.innerWidth - occupiedWidth())
             : BOTTOM_SPACE_DEFAULT_HEIGHT
 
         function ensureSurface() {

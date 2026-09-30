@@ -1,3 +1,4 @@
+import { SessionLocationError } from "@ericsanchezok/synergy-local-runtime/session-api"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { timingSafeEqual } from "node:crypto"
@@ -580,6 +581,7 @@ export namespace Server {
           else if (err instanceof Environment.Unavailable) status = 503
           else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
           else if (
+            err instanceof SessionLocationError ||
             err instanceof WorkspaceCatalog.Invalid ||
             err instanceof Scope.RequiredError ||
             err instanceof Scope.WorkspaceRequiredError ||
@@ -893,6 +895,40 @@ export namespace Server {
             cache: Global.Path.cache,
             log: Global.Path.log,
           })
+        },
+      )
+      .get(
+        "/global/filesystem/directories",
+        describeRoute({
+          summary: "List server directory children",
+          operationId: "global.filesystem.directories",
+          responses: {
+            200: {
+              description: "Directory page",
+              content: { "application/json": { schema: resolver(SynergyFile.DirectoryPage) } },
+            },
+            400: {
+              description: "Directory could not be listed",
+              content: { "application/json": { schema: resolver(SynergyFile.DirectoryError.Schema) } },
+            },
+          },
+        }),
+        validator(
+          "query",
+          z.object({
+            path: z.string(),
+            hidden: z.preprocess((value) => (value === "false" ? false : value), z.coerce.boolean()).optional(),
+            cursor: z.string().optional(),
+            limit: z.coerce.number().int().min(1).max(200).optional(),
+          }),
+        ),
+        async (c) => {
+          try {
+            return c.json(await SynergyFile.directories(c.req.valid("query")))
+          } catch (error) {
+            if (error instanceof SynergyFile.DirectoryError) return c.json(error.toObject(), 400)
+            throw error
+          }
         },
       )
       .get(

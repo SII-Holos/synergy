@@ -147,6 +147,7 @@ mock.module("../../../src/context/local", () => ({
 }))
 
 mock.module("../../../src/context/file", () => ({
+  useProjectFiles: () => ({ roots: () => [], search: async () => [], open: async () => {} }),
   useFile: () => ({
     searchFilesAndDirectories: async () => [],
     view: { selectedLines: () => null },

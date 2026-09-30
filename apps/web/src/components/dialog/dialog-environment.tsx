@@ -1,3 +1,7 @@
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { locationCopy } from "./task-location-copy"
+import "./project-flow.css"
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import type { EnvironmentActivity, EnvironmentInfo, ResourceProfiles } from "@ericsanchezok/synergy-sdk/client"
@@ -163,8 +167,34 @@ export function DialogEnvironment(props: {
     })
   }
   return (
-    <Dialog title={_(copy.title)} description={_(copy.description)} size="form" dismissible={!pending()}>
-      <div data-slot="dialog-form">
+    <Dialog
+      title={_(locationCopy.manageExecution)}
+      description={_(copy.description)}
+      footer={
+        <div data-slot="dialog-actions">
+          <Button variant="ghost" disabled={pending()} onClick={reload}>
+            {_(copy.reload)}
+          </Button>
+          <Button variant="ghost" disabled={pending()} onClick={() => dialog.close()}>
+            {_(copy.close)}
+          </Button>
+          <Button variant="primary" disabled={pending() || loading() || (!!selected() && !record())} onClick={choose}>
+            {_(copy.choose)}
+          </Button>
+        </div>
+      }
+      size="form"
+      dismissible={!pending()}
+      action={
+        <IconButton
+          icon={getSemanticIcon("action.close")}
+          aria-label={_(locationCopy.cancel)}
+          disabled={pending()}
+          onClick={() => dialog.close()}
+        />
+      }
+    >
+      <div data-slot="dialog-form" class="project-flow">
         <Show when={loading()}>
           <p role="status">{_(copy.loading)}</p>
         </Show>
@@ -196,11 +226,11 @@ export function DialogEnvironment(props: {
             </For>
           </fieldset>
         </Show>
-        <div class="flex flex-col gap-1 max-h-48 overflow-auto" aria-label={_(copy.existing)}>
+        <div class="project-flow-list" aria-label={_(copy.existing)}>
           <For each={records.data}>
             {(item) => (
               <Button
-                class="h-auto justify-between whitespace-normal break-all text-left"
+                class="project-flow-row h-auto justify-between whitespace-normal break-all text-left"
                 variant={selected() === item.id ? "secondary" : "ghost"}
                 aria-pressed={selected() === item.id}
                 disabled={pending()}
@@ -333,17 +363,6 @@ export function DialogEnvironment(props: {
             {error()}
           </p>
         </Show>
-        <div data-slot="dialog-actions">
-          <Button variant="ghost" disabled={pending()} onClick={reload}>
-            {_(copy.reload)}
-          </Button>
-          <Button variant="ghost" disabled={pending()} onClick={() => dialog.close()}>
-            {_(copy.close)}
-          </Button>
-          <Button variant="primary" disabled={pending() || loading() || (!!selected() && !record())} onClick={choose}>
-            {_(copy.choose)}
-          </Button>
-        </div>
       </div>
     </Dialog>
   )

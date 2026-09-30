@@ -9,8 +9,8 @@
 .gsm-search-bar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 24px 28px;
+  gap: 12px;
+  padding: 18px 20px;
   border-bottom: 1px solid var(--border-weaker-base);
 }
 
@@ -24,7 +24,7 @@
   border: none;
   outline: none;
   background: transparent;
-  font-size: 22px;
+  font-size: var(--type-ui-section-title-size);
   line-height: 1.35;
   color: var(--text-strong);
 }
@@ -86,9 +86,9 @@
 .gsm-item {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   width: 100%;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: none;
   border-radius: 12px;
   background: transparent;
@@ -201,4 +201,10 @@
   .gsm-spinner {
     animation: none;
   }
+}
+
+.gsm-close-btn:focus-visible,
+.gsm-item:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
 }

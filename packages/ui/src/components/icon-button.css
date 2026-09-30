@@ -37,7 +37,8 @@
     border: transparent;
     background-color: var(--workbench-control-bg, var(--button-secondary-base));
     color: var(--text-strong);
-    box-shadow: var(--shadow-xs-border);
+    box-shadow: none;
+    border: 1px solid var(--border-base);
 
     &:hover:not(:disabled) {
       background-color: var(--workbench-control-bg-hover, var(--button-secondary-hover));

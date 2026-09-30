@@ -32,9 +32,6 @@ export function defaultNewSessionWorkspaceSelection(input: {
   preference?: NewSessionWorkspacePreference
 }): NewSessionWorkspaceSelection {
   if (input.selected) return input.selected
-  if (isWorktreeDirectory(input.currentDirectory, input.canonicalDirectory) && input.currentDirectory) {
-    return { mode: "existing", target: input.currentDirectory }
-  }
   if (input.preference === "worktree") return { mode: "create" }
   return { mode: "current" }
 }

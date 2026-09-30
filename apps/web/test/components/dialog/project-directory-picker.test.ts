@@ -81,6 +81,8 @@ describe("project directory picker", () => {
     ).toBe(false)
     expect(canUseNativeProjectDirectoryPicker(platform({ platform: "web" }), managedRunningStatus)).toBe(false)
     expect(canUseNativeProjectDirectoryPicker(platform(), null)).toBe(false)
+    expect(canUseNativeProjectDirectoryPicker(platform(), managedRunningStatus, "http://127.0.0.1:4000")).toBe(false)
+    expect(canUseNativeProjectDirectoryPicker(platform(), managedRunningStatus, managedRunningStatus.url!)).toBe(true)
   })
 
   test("normalizes native picker selections", () => {

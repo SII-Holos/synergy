@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import {
-  SIDEBAR_RAIL_WIDTH,
   WORKSPACE_DEFAULT_WIDTH,
   WORKSPACE_MIN_WIDTH,
   WORKSPACE_SESSION_MIN_WIDTH,
@@ -47,8 +46,8 @@ describe("sidebarOccupancy", () => {
     expect(sidebarOccupancy(true, true, 360)).toBe(360)
   })
 
-  test("uses the fixed icon rail for the collapsed desktop sidebar", () => {
-    expect(sidebarOccupancy(true, false, 360)).toBe(SIDEBAR_RAIL_WIDTH)
+  test("releases the collapsed desktop sidebar space", () => {
+    expect(sidebarOccupancy(true, false, 360)).toBe(0)
   })
 
   test("occupies no main-area space on mobile where navigation is a drawer", () => {

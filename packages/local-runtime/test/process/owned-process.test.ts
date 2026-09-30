@@ -10,6 +10,82 @@ import { OwnedProtocol } from "../../src/process/owned-protocol"
 
 const nativeTest = test.skipIf(!["darwin", "linux"].includes(process.platform))
 
+nativeTest(
+  "late stdin EOF retains a drained command's output and native completion",
+  async () => {
+    await using tmp = await tmpdir()
+    const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "locks") })
+    const lease = await coordinator.acquire({
+      id: randomUUID(),
+      owner: "owner",
+      ancestors: [],
+      kind: "process",
+      roots: [tmp.path],
+    })
+    const streamsDrained = Promise.withResolvers<void>()
+    const drainControl = Promise.withResolvers<() => void>()
+    const injected = Object.assign(new Error("Completed command no longer accepts stdin controls"), { code: "EPIPE" })
+    const messages = OwnedProtocol.messages
+    const send = OwnedProtocol.send
+    let drained = false
+    using protocol = spyOn(OwnedProtocol, "messages").mockImplementation((socket, receive, failed) =>
+      messages(
+        socket,
+        (raw) => {
+          receive(raw)
+          const event = OwnedProtocol.Event.parse(raw)
+          if (event.type === "stage" && event.stage === "streams-drained") {
+            drained = true
+            streamsDrained.resolve()
+          }
+        },
+        failed,
+      ),
+    )
+    using input = spyOn(OwnedProtocol, "send").mockImplementation((socket, value) => {
+      const control = OwnedProtocol.Control.parse(value)
+      if (control.type === "drained") {
+        drainControl.resolve(() => send(socket, value))
+        return
+      }
+      if (control.type === "stdin-end" && drained) {
+        socket.emit("error", injected)
+        return
+      }
+      send(socket, value)
+    })
+    const owned = await OwnedProcess.prepare({
+      command: process.execPath,
+      args: [
+        "-e",
+        "process.stdout.write('retained output'); process.stderr.write('retained error'); process.exitCode=7",
+      ],
+      cwd: tmp.path,
+      env: {},
+      lease,
+    })
+    const stdout = text(owned.child.stdout)
+    const stderr = text(owned.child.stderr)
+    const closed = ChildProcessClose.wait(owned.child).catch((error: unknown) => error)
+    try {
+      await owned.activate()
+      await streamsDrained.promise
+      const release = await drainControl.promise
+      owned.child.stdin.emit("end")
+      release()
+      expect(await closed).toMatchObject({ code: 7, signal: null, drainTimedOut: false })
+      await owned.completion
+      expect(await stdout).toBe("retained output")
+      expect(await stderr).toBe("retained error")
+      expect(await coordinator.inspect()).toHaveLength(0)
+    } finally {
+      await owned.stop()
+      await Promise.allSettled([closed, stdout, stderr])
+    }
+  },
+  20000,
+)
+
 nativeTest.each([
   ["ready", "ECONNRESET"],
   ["exit", "ECONNRESET"],

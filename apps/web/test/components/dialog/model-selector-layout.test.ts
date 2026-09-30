@@ -75,16 +75,16 @@ describe("model selector responsive layout", () => {
     }
   })
 
-  test("preserves the 28rem by 24rem desktop panel size", async () => {
+  test("uses content height for a short desktop model list", async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
     try {
       await page.setContent(`
         <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
-        <div class="model-selector-popover"></div>
+        <div class="model-selector-popover"><div style="height:120px; flex:none">Models</div></div>
       `)
       const box = await page.locator(".model-selector-popover").boundingBox()
       expect(box?.width).toBe(448)
-      expect(box?.height).toBe(384)
+      expect(box?.height).toBe(120)
     } finally {
       await page.close()
     }

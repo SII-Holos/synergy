@@ -99,6 +99,8 @@ Test:
 
 Use real temporary `SYNERGY_HOME`, Scope, storage, or SQLite fixtures instead of broad mocks. Run the narrow domain test, migration tests, recovery/integration tests, typecheck, and `bun run quality:quick`.
 
+Configuration schema changes, including optional domain extensions and descriptions, must refresh the shipped core/full schemas through `generateSchema()` in `script/release/shared/build-runtime.ts`. Run `bun test --config /dev/null test/script/release/runtime-schema.test.ts`; OpenAPI/SDK generation does not refresh these configuration artifacts.
+
 Update [Storage and paths](../../../docs/reference/storage-and-paths.md) for durable layout changes and the owning architecture document for new invariants. Keep historical narratives in `docs/migrations/`, not current-state docs.
 
 ## Handoff

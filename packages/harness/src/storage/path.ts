@@ -7,6 +7,7 @@ type PartID = Identifier.PartID
 type HistoryID = Identifier.HistoryID
 
 export namespace StoragePath {
+  export const projectDirectories = (scopeID: string) => ["project_directories", scopeID]
   export const environmentCredential = (provider: string, requestID: string) => [
     "environment_credential",
     provider,

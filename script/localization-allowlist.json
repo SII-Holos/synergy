@@ -422,5 +422,13 @@
     "occurrence": 1,
     "category": "brand",
     "reason": "Built-in workbench uses the product brand name."
+  },
+  {
+    "kind": "jsx-text",
+    "literal": "Synergy",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "The task greeting displays the product brand name.",
+    "path": "apps/web/src/components/session/session-new-view.tsx"
   }
 ]

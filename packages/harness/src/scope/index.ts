@@ -369,6 +369,17 @@ export namespace Scope {
     return Storage.scan(StoragePath.scopeRoot())
   }
 
+  export async function registerProject(project: Project): Promise<Project> {
+    return Storage.transaction(async () => {
+      const existing = await readPersisted(project.id)
+      if (existing) return existing
+      const parsed = Info.parse(project)
+      await writePersisted(parsed)
+      await publish(Event.Updated, parsed, parsed.id)
+      return parsed
+    })
+  }
+
   export async function list(): Promise<Scope.Project[]> {
     const ids = await listScopeIDs()
     const results = await Promise.all(ids.map((id) => readPersisted(id)))

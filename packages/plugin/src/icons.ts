@@ -27,6 +27,8 @@ export const SemanticIconToken = {
   "plugins.permission.shell": "crosshair",
   "plugins.permission.hostUi": "building-2",
   "plugins.permission.diff": "diff",
+  "computer.main": "laptop",
+  "project.main": "briefcase-business",
   "workspace.main": "folder",
   "workspace.worktree": "git-fork",
   "workspace.enterWorktree": "worktree-enter",
@@ -48,6 +50,9 @@ export const SemanticIconToken = {
   // Session runtime
   "session.default": "message-square",
   "session.new": "square-pen",
+  "task.develop": "code-xml",
+  "task.research": "telescope",
+  "task.write": "pen",
   "session.running": "loader-circle",
   "session.idle": "circle",
   "session.waiting": "hourglass",

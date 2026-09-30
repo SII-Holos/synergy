@@ -26,6 +26,144 @@ export type GlobalPaths = {
   log: string
 }
 
+export type DirectoryPage = {
+  path: string
+  parent: string | null
+  entries: Array<{
+    name: string
+    path: string
+  }>
+  nextCursor?: string
+}
+
+export type DirectoryBrowseError = {
+  name: "DirectoryBrowseError"
+  data: {
+    code: "not_found" | "not_directory" | "permission_denied" | "invalid_cursor" | "unavailable"
+    path: string
+    message: string
+  }
+}
+
+export type Scope = {
+  type: "project"
+  id: string
+  local: {
+    directory: string
+    worktree: string
+    vcs?: "git"
+    sandboxes: Array<string>
+  } | null
+  name?: string
+  icon?: {
+    url?: string
+    color?: string
+  }
+  pinned?: number
+  time: {
+    created: number
+    updated: number
+    initialized?: number
+    archived?: number
+  }
+}
+
+export type ProjectFolder = {
+  workspaceID: string
+  generation: number
+  path: string
+  available: boolean
+  git: boolean
+}
+
+export type ProjectDirectories = {
+  version: 1
+  scopeID: string
+  revision: number
+  mainWorkspaceID: string | null
+  additionalWorkspaceIDs: Array<string>
+  folders: Array<ProjectFolder>
+}
+
+export type ProjectCreated = {
+  scope: Scope
+  directories: ProjectDirectories
+  existing: boolean
+}
+
+export type ProjectDirectoriesInvalid = {
+  name: "ProjectDirectoriesInvalid"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectDirectoriesConflict = {
+  name: "ProjectDirectoriesConflict"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectCreateInput = {
+  directories: Array<string>
+  mainDirectory: string
+  name: string
+}
+
+export type ProjectDirectoriesUpdate = {
+  directories: Array<string>
+  mainDirectory: string
+  revision: number
+}
+
+export type Worktree = {
+  id: string
+  name: string
+  branch?: string
+  path: string
+  scopeID: string
+  sourceWorkspaceID?: string
+  sourceDirectory?: string
+  head?: string
+  baseRef?: string
+  baseRevision?: string
+  resolvedBaseCommit?: string
+  detached?: boolean
+  bare?: boolean
+  isMain?: boolean
+  managed?: boolean
+  stale?: boolean
+  dirty?: boolean
+  diskBytes?: number
+  owner?:
+    | {
+        type: "session"
+        sessionID: string
+      }
+    | {
+        type: "superplan"
+        runID: string
+        nodeID?: string
+        mergeID?: string
+      }
+    | {
+        type: "user"
+      }
+    | {
+        type: "external"
+      }
+  bindings?: Array<string>
+  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  createdAt?: number
+  updatedAt?: number
+  lastUsedAt?: number
+  setupFailed?: boolean
+  setupError?: string
+  locked?: string
+  prunable?: boolean
+}
+
 export type BadRequestError = {
   data: unknown
   errors: Array<{
@@ -2701,29 +2839,6 @@ export type PinnedResponse = {
 
 export type AgendaWebhookResult = {
   accepted: boolean
-}
-
-export type Scope = {
-  type: "project"
-  id: string
-  local: {
-    directory: string
-    worktree: string
-    vcs?: "git"
-    sandboxes: Array<string>
-  } | null
-  name?: string
-  icon?: {
-    url?: string
-    color?: string
-  }
-  pinned?: number
-  time: {
-    created: number
-    updated: number
-    initialized?: number
-    archived?: number
-  }
 }
 
 export type ScopeNavEntry = {
@@ -5869,6 +5984,10 @@ export type Config = {
    * Default workspace for new sessions started from the Web composer: main = run in the main checkout, worktree = start each new session in an isolated git worktree (default: main). Programmatic session creation (API, channels, Cortex) always uses the main checkout.
    */
   defaultSessionWorkspace?: "main" | "worktree"
+  /**
+   * Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.
+   */
+  defaultSessionEnvironmentProfile?: string | null
   keybinds?: KeybindsConfig
   /**
    * Show live reasoning in a compact single-line viewport
@@ -7088,53 +7207,9 @@ export type ToolListItem = {
 
 export type ToolList = Array<ToolListItem>
 
-export type Worktree = {
-  id: string
-  name: string
-  branch?: string
-  path: string
-  scopeID: string
-  head?: string
-  baseRef?: string
-  baseRevision?: string
-  resolvedBaseCommit?: string
-  detached?: boolean
-  bare?: boolean
-  isMain?: boolean
-  managed?: boolean
-  stale?: boolean
-  dirty?: boolean
-  diskBytes?: number
-  owner?:
-    | {
-        type: "session"
-        sessionID: string
-      }
-    | {
-        type: "superplan"
-        runID: string
-        nodeID?: string
-        mergeID?: string
-      }
-    | {
-        type: "user"
-      }
-    | {
-        type: "external"
-      }
-  bindings?: Array<string>
-  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
-  createdAt?: number
-  updatedAt?: number
-  lastUsedAt?: number
-  setupFailed?: boolean
-  setupError?: string
-  locked?: string
-  prunable?: boolean
-}
-
 export type WorktreeCreateInput = {
   name?: string
+  sourceWorkspaceID?: string
   sessionID?: string
   baseRef?: "current" | "fresh"
   baseRevision?: string
@@ -7148,6 +7223,7 @@ export type WorktreeEnterInput = {
 
 export type WorktreeRemoveInput = {
   target: string
+  sourceWorkspaceID?: string
   force?: boolean
 }
 
@@ -7204,6 +7280,36 @@ export type SessionAgendaResponse = {
   limit: number
   total: number
   hasMore: boolean
+}
+
+export type ProjectTaskDefaults = {
+  defaultSessionWorkspace?: "main" | "worktree"
+  defaultSessionEnvironmentProfile?: string | null
+}
+
+export type ProjectTaskDefaultsResult = {
+  defaults: ProjectTaskDefaults
+  effective: ProjectTaskDefaults
+  editable: boolean
+}
+
+export type ProjectTaskDefaultsInvalid = {
+  name: "ProjectTaskDefaultsInvalid"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectTaskDefaultsConflict = {
+  name: "ProjectTaskDefaultsConflict"
+  data: {
+    message: string
+  }
+}
+
+export type ProjectTaskDefaultsInput = {
+  defaults: ProjectTaskDefaults
+  expected: ProjectTaskDefaults
 }
 
 export type SessionNavResponse = {
@@ -7976,6 +8082,21 @@ export type DagNode = {
   result?: string
 }
 
+export type SessionLocationError = {
+  name: "SessionLocationError"
+  data: {
+    message: string
+    code: "conflicting_selection" | "incompatible_files"
+  }
+}
+
+export type WorktreeStartCommandFailedError = {
+  name: "WorktreeStartCommandFailedError"
+  data: {
+    message: string
+  }
+}
+
 export type SessionWorkspaceSelection =
   | {
       mode: "none"
@@ -7991,10 +8112,12 @@ export type SessionWorkspaceSelection =
   | {
       mode: "existing"
       target: string
+      sourceWorkspaceID?: string
       force?: boolean
     }
   | {
       mode: "create"
+      sourceWorkspaceID?: string
       name?: string
       baseRef?: "current" | "fresh"
       baseRevision?: string
@@ -9576,6 +9699,9 @@ export type RuntimeShuttingDownError = {
 
 export type ResourceProfiles = {
   defaultEnvironment: string | null
+  bindings?: {
+    [key: string]: Array<string>
+  }
   environments: Array<{
     name: string
     provider: string
@@ -12526,6 +12652,42 @@ export type GlobalPathsGetResponses = {
 
 export type GlobalPathsGetResponse = GlobalPathsGetResponses[keyof GlobalPathsGetResponses]
 
+export type GlobalFilesystemDirectoriesData = {
+  body?: never
+  path?: never
+  query: {
+    path: string
+    hidden?: boolean
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/filesystem/directories"
+}
+
+export type GlobalFilesystemDirectoriesErrors = {
+  /**
+   * Directory could not be listed
+   */
+  400: DirectoryBrowseError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type GlobalFilesystemDirectoriesError =
+  GlobalFilesystemDirectoriesErrors[keyof GlobalFilesystemDirectoriesErrors]
+
+export type GlobalFilesystemDirectoriesResponses = {
+  /**
+   * Directory page
+   */
+  200: DirectoryPage
+}
+
+export type GlobalFilesystemDirectoriesResponse =
+  GlobalFilesystemDirectoriesResponses[keyof GlobalFilesystemDirectoriesResponses]
+
 export type GlobalFilesystemBrowseData = {
   body?: never
   path?: never
@@ -12555,6 +12717,129 @@ export type GlobalFilesystemBrowseResponses = {
 }
 
 export type GlobalFilesystemBrowseResponse = GlobalFilesystemBrowseResponses[keyof GlobalFilesystemBrowseResponses]
+
+export type ProjectCreateData = {
+  body?: ProjectCreateInput
+  path?: never
+  query?: never
+  url: "/global/project"
+}
+
+export type ProjectCreateErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectCreateError = ProjectCreateErrors[keyof ProjectCreateErrors]
+
+export type ProjectCreateResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectCreated
+}
+
+export type ProjectCreateResponse = ProjectCreateResponses[keyof ProjectCreateResponses]
+
+export type ProjectDirectoriesData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/directories"
+}
+
+export type ProjectDirectoriesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectDirectoriesError = ProjectDirectoriesErrors[keyof ProjectDirectoriesErrors]
+
+export type ProjectDirectoriesResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectDirectories
+}
+
+export type ProjectDirectoriesResponse = ProjectDirectoriesResponses[keyof ProjectDirectoriesResponses]
+
+export type ProjectUpdateDirectoriesData = {
+  body?: ProjectDirectoriesUpdate
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/directories"
+}
+
+export type ProjectUpdateDirectoriesErrors = {
+  /**
+   * Project folders
+   */
+  400: ProjectDirectoriesInvalid
+  /**
+   * Project folders
+   */
+  409: ProjectDirectoriesConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectUpdateDirectoriesError = ProjectUpdateDirectoriesErrors[keyof ProjectUpdateDirectoriesErrors]
+
+export type ProjectUpdateDirectoriesResponses = {
+  /**
+   * Project folders
+   */
+  200: ProjectDirectories
+}
+
+export type ProjectUpdateDirectoriesResponse =
+  ProjectUpdateDirectoriesResponses[keyof ProjectUpdateDirectoriesResponses]
+
+export type ProjectWorktreesData = {
+  body?: never
+  path: {
+    scopeID: string
+  }
+  query?: never
+  url: "/global/project/{scopeID}/worktrees"
+}
+
+export type ProjectWorktreesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectWorktreesError = ProjectWorktreesErrors[keyof ProjectWorktreesErrors]
+
+export type ProjectWorktreesResponses = {
+  /**
+   * Project folders
+   */
+  200: Array<Worktree>
+}
+
+export type ProjectWorktreesResponse = ProjectWorktreesResponses[keyof ProjectWorktreesResponses]
 
 export type GlobalGitInitData = {
   body?: {
@@ -16321,6 +16606,71 @@ export type SessionAgendaResponses = {
 
 export type SessionAgendaResponse2 = SessionAgendaResponses[keyof SessionAgendaResponses]
 
+export type ProjectTaskDefaultsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/project/task-defaults"
+}
+
+export type ProjectTaskDefaultsGetErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectTaskDefaultsGetError = ProjectTaskDefaultsGetErrors[keyof ProjectTaskDefaultsGetErrors]
+
+export type ProjectTaskDefaultsGetResponses = {
+  /**
+   * Project task defaults
+   */
+  200: ProjectTaskDefaultsResult
+}
+
+export type ProjectTaskDefaultsGetResponse = ProjectTaskDefaultsGetResponses[keyof ProjectTaskDefaultsGetResponses]
+
+export type ProjectTaskDefaultsUpdateData = {
+  body?: ProjectTaskDefaultsInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/project/task-defaults"
+}
+
+export type ProjectTaskDefaultsUpdateErrors = {
+  /**
+   * Invalid defaults
+   */
+  400: ProjectTaskDefaultsInvalid
+  /**
+   * Concurrent project edit
+   */
+  409: ProjectTaskDefaultsConflict
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProjectTaskDefaultsUpdateError = ProjectTaskDefaultsUpdateErrors[keyof ProjectTaskDefaultsUpdateErrors]
+
+export type ProjectTaskDefaultsUpdateResponses = {
+  /**
+   * Project task defaults
+   */
+  200: ProjectTaskDefaultsResult
+}
+
+export type ProjectTaskDefaultsUpdateResponse =
+  ProjectTaskDefaultsUpdateResponses[keyof ProjectTaskDefaultsUpdateResponses]
+
 export type VcsGetData = {
   body?: never
   path?: never
@@ -16572,6 +16922,7 @@ export type SessionCreateData = {
     controlProfile?: "guarded" | "autonomous" | "full_access"
     workspace?: SessionWorkspaceSelection
     environmentID?: string | null
+    environmentProfile?: string
     completionNotice?: {
       silent?: boolean
     }
@@ -16586,9 +16937,20 @@ export type SessionCreateData = {
 
 export type SessionCreateErrors = {
   /**
-   * Bad request
+   * Invalid working location
    */
-  400: BadRequestError
+  400: BadRequestError | SessionLocationError | WorktreeStartCommandFailedError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
   /**
    * Runtime shutting down
    */

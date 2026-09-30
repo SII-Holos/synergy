@@ -1,162 +1,277 @@
-import { createSignal, For } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show } from "solid-js"
+import type {
+  ProjectDirectories,
+  ProjectTaskDefaults,
+  ProjectTaskDefaultsResult,
+} from "@ericsanchezok/synergy-sdk/client"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useLingui } from "@lingui/solid"
-import { dialog } from "@/locales/messages"
 import { useGlobalSDK } from "@/context/global-sdk"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { getScopeLabel } from "@/utils/scope"
 import type { LocalScope } from "@/context/layout"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useProjectDirectoryPicker } from "./project-directory-picker"
 import { scopeUpdateErrorMessage, scopeUpdateRequest } from "./project-scope-edit-model"
+import { useConfirm } from "./confirm-dialog"
+import { locationCopy as common } from "./task-location-copy"
+import { projectEntryCopy as copy } from "./project-entry-copy"
+import { DialogWorktrees } from "./dialog-worktrees"
+import { ProjectFolderFields } from "./project-folder-fields"
+import { useComputerLabel } from "./computer-menu"
+import "./project-flow.css"
 
-export function DialogScopeEdit(props: { scope: LocalScope }) {
-  const dialogContext = useDialog()
-  const globalSDK = useGlobalSDK()
+export function DialogScopeEdit(props: { scope: LocalScope; onSaved?: () => void }) {
+  const dialog = useDialog()
+  const sdk = useGlobalSDK()
+  const client = sdk.client
+  createEffect(() => {
+    if (sdk.client !== client) dialog.close()
+  })
+  const confirm = useConfirm()
   const { _ } = useLingui()
-  const { pickProjectDirectories } = useProjectDirectoryPicker()
+  const label = useComputerLabel()
+  const picker = useProjectDirectoryPicker()
+  const controller = new AbortController()
+  const options = { signal: controller.signal, throwOnError: true as const }
+  onCleanup(() => controller.abort())
   const [name, setName] = createSignal(props.scope.name ?? "")
-  const [folders, setFolders] = createSignal<string[]>(props.scope.local?.sandboxes ?? [])
-  const [saving, setSaving] = createSignal(false)
-
-  const mainFolder = () => props.scope.local?.worktree
-
-  const handleSave = async () => {
-    setSaving(true)
+  const [savedName, setSavedName] = createSignal(name())
+  const [folders, setFolders] = createSignal<string[]>([])
+  const [main, setMain] = createSignal("")
+  const [loadedFolders, setLoadedFolders] = createSignal<ProjectDirectories>()
+  const [defaults, setDefaults] = createSignal<ProjectTaskDefaults>({})
+  const [loaded, setLoaded] = createSignal<ProjectTaskDefaultsResult>()
+  const [pending, setPending] = createSignal<string>()
+  const [error, setError] = createSignal<{ section: string; message: string }>()
+  const [saved, setSaved] = createSignal<string>()
+  const initialFolders = () => loadedFolders()?.folders.map((folder) => folder.path) ?? []
+  const initialMain = () =>
+    loadedFolders()?.folders.find((folder) => folder.workspaceID === loadedFolders()?.mainWorkspaceID)?.path ?? ""
+  const basicsDirty = () => name() !== savedName()
+  const filesDirty = () => JSON.stringify(folders()) !== JSON.stringify(initialFolders()) || main() !== initialMain()
+  const defaultsDirty = () => JSON.stringify(defaults()) !== JSON.stringify(loaded()?.defaults ?? {})
+  const dirty = () => basicsDirty() || filesDirty() || defaultsDirty()
+  const mainGit = createMemo(() => loadedFolders()?.folders.find((folder) => folder.path === main())?.git)
+  async function close() {
+    if (pending()) return
+    if (
+      dirty() &&
+      !(await confirm.ask({
+        title: common.discard,
+        description: common.discardDescription,
+        confirmLabel: common.discard,
+        tone: "warning",
+      }))
+    )
+      return
+    dialog.close()
+  }
+  async function perform(section: string, action: () => Promise<void>) {
+    if (pending() || controller.signal.aborted) return
+    setPending(section)
+    setError(undefined)
+    setSaved(undefined)
     try {
-      const request = scopeUpdateRequest(props.scope, {
-        name: name().trim(),
-        sandboxes: folders(),
-      })
-      await globalSDK.client.scope.update(request)
-      showToast({ type: "info", title: _(dialog.scopeUpdated), description: name() || getScopeLabel(props.scope) })
-      dialogContext.close()
-    } catch (error) {
-      showToast({
-        type: "error",
-        title: _(dialog.scopeUpdateFailed),
-        description: scopeUpdateErrorMessage(error, _(dialog.scopeUpdateUnknownError)),
-      })
+      await action()
+      if (!controller.signal.aborted && section !== "load") {
+        setSaved(section)
+        props.onSaved?.()
+      }
+    } catch (failure) {
+      if (!controller.signal.aborted) setError({ section, message: scopeUpdateErrorMessage(failure, _(copy.failed)) })
     } finally {
-      setSaving(false)
+      if (!controller.signal.aborted) setPending(undefined)
     }
   }
-
-  const handleAddFolder = async () => {
-    const result = await pickProjectDirectories({
-      title: _(dialog.projectFoldersAddTitle),
-      multiple: true,
+  async function load() {
+    if (
+      dirty() &&
+      !(await confirm.ask({
+        title: common.discard,
+        description: common.discardDescription,
+        confirmLabel: common.discard,
+        tone: "warning",
+      }))
+    )
+      return
+    await perform("load", async () => {
+      const [configuration, result] = await Promise.all([
+        sdk.client.project.directories({ scopeID: props.scope.id }, options),
+        sdk.client.project.taskDefaults.get({ scopeID: props.scope.id }, options),
+      ])
+      if (controller.signal.aborted) return
+      setLoadedFolders(configuration.data)
+      setFolders(configuration.data.folders.map((folder) => folder.path))
+      setMain(
+        configuration.data.folders.find((folder) => folder.workspaceID === configuration.data.mainWorkspaceID)?.path ??
+          "",
+      )
+      setLoaded(result.data)
+      setDefaults(result.data.defaults)
     })
-    if (!result) return
-    const next = [...folders(), ...result.directoryPaths]
-    setFolders([...new Set(next)])
   }
-
-  const handleRemoveFolder = (folder: string) => {
-    setFolders(folders().filter((item) => item !== folder))
-  }
-
+  onMount(() => void load())
+  const saveName = () =>
+    perform("name", async () => {
+      await sdk.client.scope.update({ ...scopeUpdateRequest(props.scope, {}), name: name().trim() }, options)
+      setSavedName(name())
+    })
+  const saveFolders = () =>
+    perform("folders", async () => {
+      const result = await sdk.client.project.updateDirectories(
+        {
+          scopeID: props.scope.id,
+          projectDirectoriesUpdate: {
+            directories: folders(),
+            mainDirectory: main(),
+            revision: loadedFolders()!.revision,
+          },
+        },
+        options,
+      )
+      setLoadedFolders(result.data)
+      setFolders(result.data.folders.map((folder) => folder.path))
+      setMain(result.data.folders.find((folder) => folder.workspaceID === result.data.mainWorkspaceID)?.path ?? "")
+    })
+  const saveDefaults = () =>
+    perform("defaults", async () => {
+      const result = await sdk.client.project.taskDefaults.update(
+        { scopeID: props.scope.id, projectTaskDefaultsInput: { defaults: defaults(), expected: loaded()!.defaults } },
+        options,
+      )
+      setLoaded(result.data)
+      setDefaults(result.data.defaults)
+    })
+  const feedback = (section: string) => (
+    <>
+      <Show when={error()?.section === section}>
+        <p role="alert" class="project-inline-error">
+          {error()?.message}
+        </p>
+      </Show>
+      <Show when={saved() === section}>
+        <p role="status" class="project-inline-note">
+          {_(common.saved)}
+        </p>
+      </Show>
+    </>
+  )
+  const selectedStart = () =>
+    defaults().defaultSessionWorkspace ?? loaded()?.effective.defaultSessionWorkspace ?? "main"
   return (
-    <Dialog title={_(dialog.editProject)} size="form">
-      <div data-slot="dialog-form">
-        <TextField
-          label={_(dialog.projectName)}
-          type="text"
-          placeholder={getScopeLabel(props.scope)}
-          value={name()}
-          onChange={setName}
-        />
-
-        <div data-slot="dialog-meta-list" aria-label={_(dialog.projectDetails)}>
-          <div data-slot="dialog-meta-row">
-            <span data-slot="dialog-meta-icon" aria-hidden="true">
-              <Icon name={getSemanticIcon("workspace.main")} size="small" />
-            </span>
-            <span data-slot="dialog-meta-label">{_(dialog.worktree)}</span>
-            <code data-slot="dialog-meta-value">{props.scope.local?.worktree}</code>
-          </div>
-          {props.scope.local?.directory && props.scope.local?.directory !== props.scope.local?.worktree && (
-            <div data-slot="dialog-meta-row">
-              <span data-slot="dialog-meta-icon" aria-hidden="true">
-                <Icon name={getSemanticIcon("workspace.main")} size="small" />
-              </span>
-              <span data-slot="dialog-meta-label">{_(dialog.directory)}</span>
-              <code data-slot="dialog-meta-value">{props.scope.local?.directory}</code>
-            </div>
-          )}
-          {props.scope.type && (
-            <div data-slot="dialog-meta-row">
-              <span data-slot="dialog-meta-icon" aria-hidden="true">
-                <Icon name={getSemanticIcon("notes.tag")} size="small" />
-              </span>
-              <span data-slot="dialog-meta-label">{_(dialog.scopeType)}</span>
-              <code data-slot="dialog-meta-value">{props.scope.type}</code>
-            </div>
-          )}
-          {props.scope.id && (
-            <div data-slot="dialog-meta-row">
-              <span data-slot="dialog-meta-icon" aria-hidden="true">
-                <Icon name={getSemanticIcon("workspace.identity")} size="small" />
-              </span>
-              <span data-slot="dialog-meta-label">{_(dialog.scopeID)}</span>
-              <code data-slot="dialog-meta-value">{props.scope.id}</code>
-            </div>
-          )}
+    <Dialog
+      title={_(copy.settings)}
+      description={label(sdk.url)}
+      size="list"
+      class="project-settings-dialog"
+      dismissible={false}
+      onEscapeKeyDown={(event) => {
+        event.preventDefault()
+        void close()
+      }}
+      action={
+        <button
+          type="button"
+          class="project-icon-button"
+          aria-label={_(common.cancel)}
+          disabled={!!pending()}
+          onClick={() => void close()}
+        >
+          <Icon name={getSemanticIcon("action.close")} size="small" />
+        </button>
+      }
+      footer={
+        <div data-slot="dialog-actions">
+          <Button variant="secondary" size="large" disabled={!!pending()} onClick={() => void close()}>
+            {_(common.cancel)}
+          </Button>
         </div>
-
-        <div data-slot="dialog-meta-list" aria-label={_(dialog.projectFolders)}>
-          <div data-slot="dialog-meta-row">
-            <span data-slot="dialog-meta-icon" aria-hidden="true">
-              <Icon name={getSemanticIcon("workspace.main")} size="small" />
-            </span>
-            <span data-slot="dialog-meta-label">{_(dialog.projectFoldersMain)}</span>
-            <code data-slot="dialog-meta-value">{mainFolder()}</code>
-          </div>
-          <For each={folders()}>
-            {(folder) => (
-              <div data-slot="dialog-meta-row">
-                <span data-slot="dialog-meta-icon" aria-hidden="true">
-                  <Icon name={getSemanticIcon("workspace.add")} size="small" />
-                </span>
-                <span data-slot="dialog-meta-label">{_(dialog.projectFolders)}</span>
-                <span data-slot="dialog-meta-value">
-                  <code>{folder}</code>
-                  <IconButton
-                    icon={getSemanticIcon("action.remove")}
-                    size="normal"
-                    variant="ghost"
-                    aria-label={_(dialog.projectFoldersRemove)}
-                    onClick={() => handleRemoveFolder(folder)}
-                  />
-                </span>
-              </div>
-            )}
-          </For>
-          <div data-slot="dialog-meta-row">
-            <span data-slot="dialog-meta-icon" aria-hidden="true">
-              <Icon name={getSemanticIcon("action.add")} size="small" />
-            </span>
-            <span data-slot="dialog-meta-label" />
-            <Button type="button" variant="ghost" size="normal" onClick={handleAddFolder}>
-              {_(dialog.projectFoldersAdd)}
+      }
+    >
+      <div class="project-form">
+        <section class="project-settings-section">
+          <TextField label={_(copy.name)} value={name()} onChange={setName} disabled={!!pending()} />
+          {feedback("name")}
+          <div class="project-flow-actions">
+            <Button
+              variant="secondary"
+              disabled={!!pending() || !basicsDirty() || !name().trim()}
+              onClick={() => void saveName()}
+            >
+              {_(pending() === "name" ? copy.loading : common.save)}
             </Button>
           </div>
-          <div data-slot="dialog-meta-hint">{_(dialog.projectFoldersHint)}</div>
-        </div>
-
-        <div data-slot="dialog-actions">
-          <Button type="button" variant="ghost" size="large" onClick={() => dialogContext.close()}>
-            {_(dialog.cancel)}
+        </section>
+        <section class="project-settings-section">
+          <ProjectFolderFields
+            folders={folders()}
+            main={main()}
+            disabled={!!pending() || !loadedFolders()}
+            onChange={(values, value) => {
+              setFolders(values)
+              setMain(value)
+            }}
+            onAdd={async () => {
+              const result = await picker.pickProjectDirectories({ title: _(copy.chooseFolders), multiple: true })
+              if (result && !controller.signal.aborted) {
+                setFolders((previous) => [...new Set([...previous, ...result.directoryPaths])])
+                if (!main()) setMain(result.directoryPaths[0])
+              }
+            }}
+          />
+          {feedback("folders")}
+          <Show when={filesDirty()}>
+            <p class="project-inline-note">{_(copy.folderImpact)}</p>
+          </Show>
+          <div class="project-flow-actions">
+            <Button
+              variant="secondary"
+              disabled={!!pending() || !loadedFolders() || !filesDirty() || !main()}
+              onClick={() => void saveFolders()}
+            >
+              {_(pending() === "folders" ? copy.loading : common.save)}
+            </Button>
+          </div>
+        </section>
+        <section class="project-settings-section">
+          <label>{_(copy.start)}</label>
+          <div class="project-start-options" role="group" aria-label={_(copy.start)}>
+            <button
+              type="button"
+              aria-pressed={selectedStart() === "main"}
+              disabled={!!pending() || !loaded()?.editable}
+              onClick={() => setDefaults((previous) => ({ ...previous, defaultSessionWorkspace: "main" }))}
+            >
+              {_(copy.main)}
+            </button>
+            <button
+              type="button"
+              aria-pressed={selectedStart() === "worktree"}
+              disabled={!!pending() || !loaded()?.editable || !mainGit()}
+              onClick={() => setDefaults((previous) => ({ ...previous, defaultSessionWorkspace: "worktree" }))}
+            >
+              {_(copy.newWorktree)}
+            </button>
+          </div>
+          {feedback("defaults")}
+          <div class="project-flow-actions">
+            <Button variant="secondary" disabled={!!pending() || !defaultsDirty()} onClick={() => void saveDefaults()}>
+              {_(pending() === "defaults" ? copy.loading : common.save)}
+            </Button>
+          </div>
+        </section>
+        <Button variant="ghost" onClick={() => dialog.push(() => <DialogWorktrees scopeID={props.scope.id} />)}>
+          {_(copy.manageWorktrees)}
+        </Button>
+        {feedback("load")}
+        <Show when={error()}>
+          <Button variant="ghost" disabled={!!pending()} onClick={() => void load()}>
+            {_(copy.retry)}
           </Button>
-          <Button type="button" variant="primary" size="large" disabled={saving()} onClick={handleSave}>
-            {saving() ? _(dialog.saving) : _(dialog.save)}
-          </Button>
-        </div>
+        </Show>
       </div>
     </Dialog>
   )

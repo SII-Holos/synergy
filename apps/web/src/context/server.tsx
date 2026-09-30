@@ -53,13 +53,13 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
       setActiveRaw(url)
     }
 
-    function add(input: string) {
+    function add(input: string, activate = true) {
       const url = normalizeServerUrl(input)
       if (!url) return
 
       const fallback = normalizeServerUrl(props.defaultUrl)
       if (fallback && url === fallback) {
-        setActiveRaw(url)
+        if (activate) setActiveRaw(url)
         return
       }
 
@@ -67,7 +67,7 @@ export const { use: useServer, provider: ServerProvider } = createSimpleContext(
         if (!store.list.includes(url)) {
           setStore("list", store.list.length, url)
         }
-        setActiveRaw(url)
+        if (activate) setActiveRaw(url)
       })
     }
 

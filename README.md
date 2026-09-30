@@ -87,6 +87,8 @@ Methodology: official leaderboard numbers from deepswe.datacurve.ai (v1.1, fetch
 
 ### Desktop
 
+Choose a project in the task composer or start without project files. See [project task entry](docs/product/workspaces-and-sessions.md#starting-a-project-task) for file locations and independent copies.
+
 Download the latest installer from [GitHub Releases](https://github.com/SII-Holos/synergy/releases/latest). Desktop installers include the app and expose the packaged runtime as the `synergy` CLI.
 
 | Platform | Installer   |
@@ -243,7 +245,7 @@ synergy-plugin build
 synergy-plugin validate --runtime-discovery
 ```
 
-UI API 5 supports replaceable workbenches, typed frontend services and structured Skins. `synergy-plugin preview` runs an isolated production host for authoring.
+UI API 6 supports replaceable workbenches, typed frontend services and structured Skins. `synergy-plugin preview` runs an isolated production host for authoring.
 
 Start with the [plugin documentation](docs/plugins/README.md) and the [`@ericsanchezok/synergy-plugin` API reference](packages/plugin/README.md).
 

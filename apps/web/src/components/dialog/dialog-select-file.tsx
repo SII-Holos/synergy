@@ -5,10 +5,10 @@ import { List } from "@ericsanchezok/synergy-ui/list"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { useLingui } from "@lingui/solid"
 import { dialog } from "@/locales/messages"
-import { useFile } from "@/context/file"
+import { useProjectFiles } from "@/context/file"
 
 export function DialogSelectFile(props: { onSelect?: (path: string) => void }) {
-  const file = useFile()
+  const files = useProjectFiles()
   const dialogContext = useDialog()
   const { _ } = useLingui()
   return (
@@ -17,12 +17,12 @@ export function DialogSelectFile(props: { onSelect?: (path: string) => void }) {
         search={{ placeholder: _(dialog.searchFiles), autofocus: true }}
         emptyMessage={_(dialog.noFilesFound)}
         items={(query) =>
-          file
-            .searchFiles(query)
-            .then((response) =>
-              (response?.items ?? [])
-                .filter((item) => item.kind === "file" && item.type === "file")
-                .map((item) => item.path),
+          files
+            .search(query)
+            .then((items) =>
+              items.map((item) =>
+                item.workspace.path ? `${item.workspace.path.replace(/\/$/, "")}/${item.path}` : item.path,
+              ),
             )
         }
         key={(x) => x}

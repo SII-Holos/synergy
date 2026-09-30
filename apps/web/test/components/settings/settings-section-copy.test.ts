@@ -51,7 +51,7 @@ describe("settings section localization", () => {
         "Monospace font",
         "界面语言",
         "Activity display",
-        "New Session Workspace",
+        "New task starting point",
         "Product Updates",
         "Notifications",
         "Toast Duration",

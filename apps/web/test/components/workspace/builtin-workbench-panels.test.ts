@@ -32,6 +32,7 @@ mock.module("@/context/terminal", () => ({
   useTerminal: () => ({ new: async () => undefined, all: () => [], close: async () => {} }),
 }))
 mock.module("@/context/file", () => ({
+  useProjectFiles: () => ({ roots: () => [], search: async () => [], open: async () => {} }),
   useFile: () => ({ explorer: { setOpen: () => {} } }),
 }))
 mock.module("@/context/locale", () => ({

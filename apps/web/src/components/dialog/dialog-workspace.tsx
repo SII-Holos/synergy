@@ -1,6 +1,14 @@
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useConfirm } from "./confirm-dialog"
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
-import type { ResourceProfiles, SessionWorkspaceSelection, WorkspaceInfo } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ResourceProfiles,
+  Session,
+  SessionWorkspaceSelection,
+  WorkspaceInfo,
+} from "@ericsanchezok/synergy-sdk/client"
 import { useLingui } from "@lingui/solid"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -11,9 +19,15 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { requestErrorMessage } from "@/utils/error"
 import { useProjectDirectoryPicker } from "./project-directory-picker"
+import { locationCopy } from "./task-location-copy"
+import "./project-flow.css"
 import { workspaceCopy as copy } from "./workspace-dialog-copy"
 
 export function DialogWorkspace(props: {
+  mode?: "select" | "manage"
+  copiesOnly?: boolean
+  environmentProfile?: string | null
+  environmentID?: string | null
   sessionID?: string
   selection?: SessionWorkspaceSelection
   onSelect?: (selection: SessionWorkspaceSelection) => void
@@ -22,6 +36,7 @@ export function DialogWorkspace(props: {
   const sync = useSync()
   const dialog = useDialog()
   const { _ } = useLingui()
+  const confirm = useConfirm()
   const picker = useProjectDirectoryPicker()
   const scopeID = sdk.scopeID
   const client = sdk.client
@@ -35,6 +50,9 @@ export function DialogWorkspace(props: {
         : props.sessionID
           ? sync.session.get(props.sessionID)?.workspaceID
           : sync.data.path.workspace?.id
+  const [directoryBrowsing, setDirectoryBrowsing] = createSignal(props.mode === "manage")
+  const [sessions, setSessions] = createSignal<Session[]>([])
+  const [sessionsLoaded, setSessionsLoaded] = createSignal(false)
   const [selected, setSelected] = createSignal<string | null>(initial ?? null)
   const [sharing, setSharing] = createSignal<string[]>([])
   const [sharingRevision, setSharingRevision] = createSignal<number>()
@@ -43,7 +61,7 @@ export function DialogWorkspace(props: {
   const [workspaceName, setWorkspaceName] = createSignal("")
   const [savedRevision, setSavedRevision] = createSignal<number>()
   const label = (item: WorkspaceInfo) =>
-    item.binding.path ?? (typeof item.metadata.name === "string" ? item.metadata.name : item.id)
+    typeof item.metadata.name === "string" ? item.metadata.name : (item.binding.path ?? item.id)
   const [search, setSearch] = createSignal("")
   const [bindingPath, setBindingPath] = createSignal("")
   const [bindingRevision, setBindingRevision] = createSignal<number>()
@@ -51,13 +69,21 @@ export function DialogWorkspace(props: {
   const [loading, setLoading] = createSignal(true)
   const [error, setError] = createSignal("")
   const record = createMemo(() => records.data.find((item) => item.id === selected()))
+  const affected = () => sessions().filter((item) => item.workspaceID === selected())
+  const compatible = (item: WorkspaceInfo) =>
+    props.mode === "manage" || directoryBrowsing() || item.backend?.provider === "objects"
   const available = (item: WorkspaceInfo) =>
+    compatible(item) &&
     item.lifecycle === "active" &&
     item.binding.state === "bound" &&
     item.activeMount?.state !== "unavailable" &&
     (item.backend?.provider === "objects" || (!!item.binding.path && !!item.binding.physicalID))
   const filtered = createMemo(() =>
-    records.data.filter((item) => `${label(item)} ${item.id}`.toLowerCase().includes(search().toLowerCase())),
+    records.data.filter(
+      (item) =>
+        (!props.copiesOnly || item.type === "git_worktree") &&
+        `${label(item)} ${item.id}`.toLowerCase().includes(search().toLowerCase()),
+    ),
   )
   const sharingDirty = createMemo(() => {
     const current = record()
@@ -75,6 +101,25 @@ export function DialogWorkspace(props: {
     const index = records.data.findIndex((record) => record.id === item.id)
     if (index < 0) setRecords("data", records.data.length, item)
     else if (records.data[index]!.revision <= item.revision) setRecords("data", index, reconcile(item))
+  }
+  async function discard() {
+    return (
+      !(sharingDirty() || bindingPath()) ||
+      (await confirm.ask({
+        title: locationCopy.discard,
+        description: locationCopy.discardDescription,
+        confirmLabel: locationCopy.discard,
+        tone: "warning",
+      }))
+    )
+  }
+  async function close() {
+    if (pending() || !(await discard())) return
+    dialog.close()
+  }
+  async function changeSelection(id: string | null) {
+    if (!(await discard())) return
+    select(id)
   }
   function select(id: string | null) {
     setSelected(id)
@@ -102,12 +147,42 @@ export function DialogWorkspace(props: {
       if (!controller.signal.aborted) setPending(false)
     }
   }
+  async function loadSessions() {
+    setSessionsLoaded(false)
+    const all: Session[] = []
+    for (let offset = 0; ; offset += 100) {
+      const result = await client.session.list({ scopeID, offset, limit: 100 }, options)
+      all.push(...result.data.data)
+      if (!result.data.data.length || all.length >= result.data.total) break
+    }
+    if (controller.signal.aborted) return
+    setSessions(all)
+    setSessionsLoaded(true)
+  }
   async function reload() {
+    if (!(await discard())) return
     await perform(async () => {
+      if (props.mode === "manage") await loadSessions()
       const result = await client.workspace.list({ scopeID }, options)
       for (const item of result.data) upsert(item)
       if (!controller.signal.aborted) select(selected())
       const profiles = await client.environment.profiles({ scopeID }, options)
+      const id = props.sessionID ? (sync.session.get(props.sessionID)?.environmentID ?? null) : props.environmentID
+      const name =
+        props.environmentProfile === undefined
+          ? sync.data.config?.defaultSessionEnvironmentProfile === undefined
+            ? profiles.data.defaultEnvironment
+            : sync.data.config.defaultSessionEnvironmentProfile
+          : props.environmentProfile
+      const provider = id
+        ? (await client.environment.get({ scopeID, environmentID: id }, options)).data.provider
+        : name
+          ? profiles.data.environments.find((item) => item.name === name)?.provider
+          : undefined
+      if (!controller.signal.aborted)
+        setDirectoryBrowsing(
+          props.mode === "manage" || (id ? provider === "native" : id === null || !name || provider === "native"),
+        )
       if (!controller.signal.aborted) {
         setStores(profiles.data.stores)
         if (!profiles.data.stores.some((item) => item.name === storeProfile()))
@@ -125,6 +200,8 @@ export function DialogWorkspace(props: {
   }
   const register = () =>
     perform(async () => {
+      if (!directoryBrowsing()) return
+      if (!(await discard())) return
       const path = await pick()
       if (!path) return
       const result = await client.workspace.register({ scopeID, path }, options)
@@ -134,6 +211,7 @@ export function DialogWorkspace(props: {
   const createStored = () =>
     perform(async () => {
       if (!storeProfile() || !workspaceName().trim()) return
+      if (!(await discard())) return
       const result = await client.workspace.createObjects(
         { scopeID, profile: storeProfile(), name: workspaceName().trim() },
         options,
@@ -179,6 +257,20 @@ export function DialogWorkspace(props: {
       const current = record()
       const expectedRevision = bindingRevision()
       if (!current || expectedRevision === undefined || !bindingPath().trim()) return
+      await loadSessions()
+      if (
+        !(await confirm.ask({
+          title: copy.rebind,
+          description: `${_(copy.rebindDescription)}\n${
+            affected()
+              .map((item) => item.title)
+              .join("\n") || _(locationCopy.noAssociated)
+          }`,
+          confirmLabel: copy.applyBinding,
+          tone: "warning",
+        }))
+      )
+        return
       const result = await client.workspace.rebind(
         { scopeID, workspaceID: current.id, expectedRevision, path: bindingPath().trim() },
         options,
@@ -204,18 +296,67 @@ export function DialogWorkspace(props: {
     })
 
   return (
-    <Dialog title={_(copy.title)} description={_(copy.description)} size="form" dismissible={!pending()}>
-      <div data-slot="dialog-form">
-        <TextField label={_(copy.search)} value={search()} onChange={setSearch} autofocus />
+    <Dialog
+      title={_(
+        props.mode === "manage"
+          ? locationCopy.manageFiles
+          : props.copiesOnly
+            ? locationCopy.continueCopy
+            : locationCopy.chooseFiles,
+      )}
+      description={_(locationCopy.fileDescription)}
+      footer={
+        <div data-slot="dialog-actions">
+          <Button variant="ghost" onClick={() => void close()} disabled={pending()}>
+            {_(copy.cancel)}
+          </Button>
+          <Show when={props.mode !== "manage" || props.sessionID || props.onSelect}>
+            <Button
+              variant="primary"
+              onClick={choose}
+              disabled={
+                pending() || loading() || sharingDirty() || (!!selected() && (!record() || !available(record()!)))
+              }
+            >
+              {_(props.mode === "manage" ? copy.choose : locationCopy.useFiles)}
+            </Button>
+          </Show>
+        </div>
+      }
+      size="form"
+      dismissible={false}
+      onEscapeKeyDown={(event) => {
+        event.preventDefault()
+        void close()
+      }}
+      action={
+        <IconButton
+          icon={getSemanticIcon("action.close")}
+          aria-label={_(copy.cancel)}
+          disabled={pending()}
+          onClick={() => void close()}
+        />
+      }
+    >
+      <div data-slot="dialog-form" class="project-flow">
+        <TextField
+          label={_(props.mode === "manage" ? copy.search : locationCopy.searchFiles)}
+          value={search()}
+          onChange={setSearch}
+          autofocus
+        />
         <div class="flex gap-2">
-          <Button onClick={register} disabled={pending()}>
-            {_(copy.register)}
+          <Button onClick={register} disabled={pending() || props.copiesOnly || !directoryBrowsing()}>
+            {_(props.mode === "manage" ? copy.register : locationCopy.browse)}
           </Button>
           <Button variant="ghost" onClick={reload} disabled={pending()}>
             {_(copy.reload)}
           </Button>
         </div>
-        <Show when={stores().length}>
+        <Show when={!loading() && !directoryBrowsing()}>
+          <p>{_(locationCopy.cannotBrowse)}</p>
+        </Show>
+        <Show when={props.mode === "manage" && stores().length}>
           <details>
             <summary class="cursor-pointer text-base font-medium">{_(copy.createStored)}</summary>
             <div class="flex flex-col gap-2 pt-2">
@@ -248,28 +389,30 @@ export function DialogWorkspace(props: {
         <Show when={loading()}>
           <p role="status">{_(copy.loading)}</p>
         </Show>
-        <div class="flex flex-col gap-1 max-h-64 overflow-auto" aria-label={_(copy.title)}>
+        <div class="project-flow-list" aria-label={_(copy.title)}>
           <Button
             variant={selected() === null ? "secondary" : "ghost"}
             aria-pressed={selected() === null}
-            onClick={() => select(null)}
+            onClick={() => void changeSelection(null)}
             disabled={pending()}
           >
-            {_(copy.none)}
+            {_(locationCopy.noFiles)}
           </Button>
           <For each={filtered()}>
             {(item) => (
               <Button
                 variant={selected() === item.id ? "secondary" : "ghost"}
                 aria-pressed={selected() === item.id}
-                onClick={() => select(item.id)}
+                onClick={() => void changeSelection(item.id)}
                 disabled={pending()}
-                class="h-auto justify-start whitespace-normal break-all text-left"
+                class="project-flow-row"
               >
                 <span>
                   {label(item)}
                   <Show when={!available(item)}>
-                    <span class="block text-small text-text-weak">{_(copy.unavailable)}</span>
+                    <span class="block text-small text-text-weak">
+                      {_(compatible(item) ? copy.unavailable : locationCopy.incompatible)}
+                    </span>
                   </Show>
                 </span>
               </Button>
@@ -279,9 +422,18 @@ export function DialogWorkspace(props: {
             <p class="text-small text-text-weak">{_(copy.empty)}</p>
           </Show>
         </div>
-        <Show when={record()}>
+        <Show when={props.mode === "manage" && record()}>
           {(current) => (
             <>
+              <section class="project-flow-section">
+                <h3>{_(locationCopy.associated)}</h3>
+                <Show when={sessionsLoaded()} fallback={<p role="alert">{_(locationCopy.associatedFailed)}</p>}>
+                  <For each={affected()}>{(session) => <p>{session.title}</p>}</For>
+                  <Show when={!affected().length}>
+                    <p>{_(locationCopy.noAssociated)}</p>
+                  </Show>
+                </Show>
+              </section>
               <Show
                 when={
                   current().backend?.provider === "objects" && current().binding.state === "bound" && stores().length
@@ -349,7 +501,10 @@ export function DialogWorkspace(props: {
                       >
                         {_(copy.pick)}
                       </Button>
-                      <Button onClick={rebind} disabled={pending() || !bindingPath().trim() || sharingDirty()}>
+                      <Button
+                        onClick={rebind}
+                        disabled={pending() || !sessionsLoaded() || !bindingPath().trim() || sharingDirty()}
+                      >
                         {_(copy.applyBinding)}
                       </Button>
                     </div>
@@ -359,26 +514,14 @@ export function DialogWorkspace(props: {
             </>
           )}
         </Show>
-        <p class="text-small text-text-weak">{_(copy.busy)}</p>
+        <Show when={props.sessionID}>
+          <p class="text-small text-text-weak">{_(copy.busy)}</p>
+        </Show>
         <Show when={error()}>
           <p role="alert" class="text-small text-text-error break-words">
             {error()}
           </p>
         </Show>
-        <div data-slot="dialog-actions">
-          <Button variant="ghost" onClick={() => dialog.close()} disabled={pending()}>
-            {_(copy.cancel)}
-          </Button>
-          <Button
-            variant="primary"
-            onClick={choose}
-            disabled={
-              pending() || loading() || sharingDirty() || (!!selected() && (!record() || !available(record()!)))
-            }
-          >
-            {_(copy.choose)}
-          </Button>
-        </div>
       </div>
     </Dialog>
   )

@@ -5,6 +5,7 @@ export function createFilePill(part: FileAttachmentPart) {
   pill.textContent = part.content
   pill.setAttribute("data-type", "file")
   pill.setAttribute("data-path", part.path)
+  if (part.originScopeID) pill.dataset.originScopeId = part.originScopeID
   pill.setAttribute("contenteditable", "false")
   pill.style.userSelect = "text"
   pill.style.cursor = "default"

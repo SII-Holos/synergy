@@ -47,6 +47,7 @@ export function sanitizeContextItemsValue(value: unknown): Record<string, unknow
     items.push({
       type: "file",
       path,
+      ...(typeof item.originScopeID === "string" ? { originScopeID: item.originScopeID } : {}),
       selection: selection
         ? {
             startLine: numberValue(selection.startLine),
@@ -89,6 +90,7 @@ function sanitizePromptPart(part: unknown): Record<string, unknown> | undefined 
     return {
       type,
       path,
+      ...(typeof part.originScopeID === "string" ? { originScopeID: part.originScopeID } : {}),
       content,
       start: numberValue(part.start),
       end: numberValue(part.end, content.length),

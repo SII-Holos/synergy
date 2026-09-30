@@ -137,6 +137,83 @@
         ]
       }
     },
+    "/global/filesystem/directories": {
+      "get": {
+        "operationId": "global.filesystem.directories",
+        "summary": "List server directory children",
+        "responses": {
+          "200": {
+            "description": "Directory page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Directory could not be listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryBrowseError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "hidden",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.filesystem.directories({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/filesystem/browse": {
       "get": {
         "operationId": "global.filesystem.browse",
@@ -206,6 +283,234 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.filesystem.browse({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/project": {
+      "post": {
+        "operationId": "project.create",
+        "summary": "Create a project from folders",
+        "responses": {
+          "200": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectoriesInvalid"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectoriesConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.project.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/project/{scopeID}/directories": {
+      "get": {
+        "operationId": "project.directories",
+        "summary": "Get project folders",
+        "responses": {
+          "200": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectories"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.project.directories({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "project.updateDirectories",
+        "summary": "Save main and additional project folders",
+        "responses": {
+          "200": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectories"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectoriesInvalid"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectoriesConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectDirectoriesUpdate"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.project.updateDirectories({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/project/{scopeID}/worktrees": {
+      "get": {
+        "operationId": "project.worktrees",
+        "summary": "List project Worktrees with their original repositories",
+        "responses": {
+          "200": {
+            "description": "Project folders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Worktree"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scopeID",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.project.worktrees({\n  ...\n})"
           }
         ]
       }
@@ -7841,6 +8146,134 @@
         ]
       }
     },
+    "/project/task-defaults": {
+      "get": {
+        "operationId": "project.taskDefaults.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get project new-task defaults",
+        "responses": {
+          "200": {
+            "description": "Project task defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTaskDefaultsResult"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.project.taskDefaults.get({\n  ...\n})"
+          }
+        ]
+      },
+      "patch": {
+        "operationId": "project.taskDefaults.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Save project new-task defaults",
+        "description": "Updates only Web and Desktop new-task defaults. Existing sessions and runtime creation rules are unchanged.",
+        "responses": {
+          "200": {
+            "description": "Project task defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTaskDefaultsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid defaults",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTaskDefaultsInvalid"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Concurrent project edit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectTaskDefaultsConflict"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectTaskDefaultsInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.project.taskDefaults.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/vcs": {
       "get": {
         "operationId": "vcs.get",
@@ -8433,11 +8866,48 @@
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid working location",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionLocationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/WorktreeStartCommandFailedError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
                 }
               }
             }
@@ -8488,6 +8958,10 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "environmentProfile": {
+                    "type": "string",
+                    "minLength": 1
                   },
                   "completionNotice": {
                     "type": "object",
@@ -32236,6 +32710,462 @@
         },
         "required": ["home", "root", "data", "config", "state", "cache", "log"]
       },
+      "DirectoryPage": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": ["name", "path"]
+            }
+          },
+          "nextCursor": {
+            "type": "string"
+          }
+        },
+        "required": ["path", "parent", "entries"]
+      },
+      "DirectoryBrowseError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "DirectoryBrowseError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": ["not_found", "not_directory", "permission_denied", "invalid_cursor", "unavailable"]
+              },
+              "path": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "path", "message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "Scope": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "project"
+          },
+          "id": {
+            "type": "string"
+          },
+          "local": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "directory": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "worktree": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "vcs": {
+                    "type": "string",
+                    "const": "git"
+                  },
+                  "sandboxes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["directory", "worktree", "sandboxes"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              }
+            }
+          },
+          "pinned": {
+            "type": "number"
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number"
+              },
+              "updated": {
+                "type": "number"
+              },
+              "initialized": {
+                "type": "number"
+              },
+              "archived": {
+                "type": "number"
+              }
+            },
+            "required": ["created", "updated"]
+          }
+        },
+        "required": ["type", "id", "local", "time"]
+      },
+      "ProjectFolder": {
+        "type": "object",
+        "properties": {
+          "workspaceID": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "path": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "git": {
+            "type": "boolean"
+          }
+        },
+        "required": ["workspaceID", "generation", "path", "available", "git"]
+      },
+      "ProjectDirectories": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "mainWorkspaceID": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "additionalWorkspaceIDs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectFolder"
+            }
+          }
+        },
+        "required": ["version", "scopeID", "revision", "mainWorkspaceID", "additionalWorkspaceIDs", "folders"]
+      },
+      "ProjectCreated": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          },
+          "directories": {
+            "$ref": "#/components/schemas/ProjectDirectories"
+          },
+          "existing": {
+            "type": "boolean"
+          }
+        },
+        "required": ["scope", "directories", "existing"]
+      },
+      "ProjectDirectoriesInvalid": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProjectDirectoriesInvalid"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ProjectDirectoriesConflict": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProjectDirectoriesConflict"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ProjectCreateInput": {
+        "type": "object",
+        "properties": {
+          "directories": {
+            "minItems": 1,
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "mainDirectory": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          }
+        },
+        "required": ["directories", "mainDirectory", "name"]
+      },
+      "ProjectDirectoriesUpdate": {
+        "type": "object",
+        "properties": {
+          "directories": {
+            "minItems": 1,
+            "maxItems": 32,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "mainDirectory": {
+            "type": "string",
+            "minLength": 1
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["directories", "mainDirectory", "revision"]
+      },
+      "Worktree": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sourceWorkspaceID": {
+            "type": "string"
+          },
+          "sourceDirectory": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string"
+          },
+          "baseRef": {
+            "type": "string"
+          },
+          "baseRevision": {
+            "type": "string"
+          },
+          "resolvedBaseCommit": {
+            "type": "string"
+          },
+          "detached": {
+            "type": "boolean"
+          },
+          "bare": {
+            "type": "boolean"
+          },
+          "isMain": {
+            "type": "boolean"
+          },
+          "managed": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "dirty": {
+            "type": "boolean"
+          },
+          "diskBytes": {
+            "type": "number"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "sessionID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "sessionID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "superplan"
+                  },
+                  "runID": {
+                    "type": "string",
+                    "pattern": "^spr.*"
+                  },
+                  "nodeID": {
+                    "type": "string",
+                    "pattern": "^spn.*"
+                  },
+                  "mergeID": {
+                    "type": "string",
+                    "pattern": "^spm.*"
+                  }
+                },
+                "required": ["type", "runID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "user"
+                  }
+                },
+                "required": ["type"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "external"
+                  }
+                },
+                "required": ["type"]
+              }
+            ]
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": ["active", "detached", "gc_candidate", "deleted"]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "lastUsedAt": {
+            "type": "number"
+          },
+          "setupFailed": {
+            "type": "boolean"
+          },
+          "setupError": {
+            "type": "string"
+          },
+          "locked": {
+            "type": "string"
+          },
+          "prunable": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "name", "path", "scopeID"]
+      },
       "BadRequestError": {
         "type": "object",
         "properties": {
@@ -42368,85 +43298,6 @@
         },
         "required": ["accepted"]
       },
-      "Scope": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "project"
-          },
-          "id": {
-            "type": "string"
-          },
-          "local": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "directory": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "worktree": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "vcs": {
-                    "type": "string",
-                    "const": "git"
-                  },
-                  "sandboxes": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": ["directory", "worktree", "sandboxes"]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "name": {
-            "type": "string"
-          },
-          "icon": {
-            "type": "object",
-            "properties": {
-              "url": {
-                "type": "string"
-              },
-              "color": {
-                "type": "string"
-              }
-            }
-          },
-          "pinned": {
-            "type": "number"
-          },
-          "time": {
-            "type": "object",
-            "properties": {
-              "created": {
-                "type": "number"
-              },
-              "updated": {
-                "type": "number"
-              },
-              "initialized": {
-                "type": "number"
-              },
-              "archived": {
-                "type": "number"
-              }
-            },
-            "required": ["created", "updated"]
-          }
-        },
-        "required": ["type", "id", "local", "time"]
-      },
       "ScopeNavEntry": {
         "type": "object",
         "properties": {
@@ -48713,6 +49564,18 @@
             "type": "string",
             "enum": ["main", "worktree"]
           },
+          "defaultSessionEnvironmentProfile": {
+            "description": "Execution profile for new Web/Desktop composer sessions. Omitted follows the global resource default; null disables execution selection. References an existing global profile without defining hosts or credentials.",
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "keybinds": {
             "$ref": "#/components/schemas/KeybindsConfig"
           },
@@ -52103,154 +52966,13 @@
           "$ref": "#/components/schemas/ToolListItem"
         }
       },
-      "Worktree": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "branch": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "scopeID": {
-            "type": "string"
-          },
-          "head": {
-            "type": "string"
-          },
-          "baseRef": {
-            "type": "string"
-          },
-          "baseRevision": {
-            "type": "string"
-          },
-          "resolvedBaseCommit": {
-            "type": "string"
-          },
-          "detached": {
-            "type": "boolean"
-          },
-          "bare": {
-            "type": "boolean"
-          },
-          "isMain": {
-            "type": "boolean"
-          },
-          "managed": {
-            "type": "boolean"
-          },
-          "stale": {
-            "type": "boolean"
-          },
-          "dirty": {
-            "type": "boolean"
-          },
-          "diskBytes": {
-            "type": "number"
-          },
-          "owner": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "session"
-                  },
-                  "sessionID": {
-                    "type": "string"
-                  }
-                },
-                "required": ["type", "sessionID"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "superplan"
-                  },
-                  "runID": {
-                    "type": "string",
-                    "pattern": "^spr.*"
-                  },
-                  "nodeID": {
-                    "type": "string",
-                    "pattern": "^spn.*"
-                  },
-                  "mergeID": {
-                    "type": "string",
-                    "pattern": "^spm.*"
-                  }
-                },
-                "required": ["type", "runID"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "user"
-                  }
-                },
-                "required": ["type"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "external"
-                  }
-                },
-                "required": ["type"]
-              }
-            ]
-          },
-          "bindings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "lifecycle": {
-            "type": "string",
-            "enum": ["active", "detached", "gc_candidate", "deleted"]
-          },
-          "createdAt": {
-            "type": "number"
-          },
-          "updatedAt": {
-            "type": "number"
-          },
-          "lastUsedAt": {
-            "type": "number"
-          },
-          "setupFailed": {
-            "type": "boolean"
-          },
-          "setupError": {
-            "type": "string"
-          },
-          "locked": {
-            "type": "string"
-          },
-          "prunable": {
-            "type": "boolean"
-          }
-        },
-        "required": ["id", "name", "path", "scopeID"]
-      },
       "WorktreeCreateInput": {
         "type": "object",
         "properties": {
           "name": {
+            "type": "string"
+          },
+          "sourceWorkspaceID": {
             "type": "string"
           },
           "sessionID": {
@@ -52291,6 +53013,9 @@
           "target": {
             "type": "string",
             "minLength": 1
+          },
+          "sourceWorkspaceID": {
+            "type": "string"
           },
           "force": {
             "default": false,
@@ -52409,6 +53134,91 @@
           }
         },
         "required": ["sessionID", "count", "hasActiveAgenda", "items", "offset", "limit", "total", "hasMore"]
+      },
+      "ProjectTaskDefaults": {
+        "type": "object",
+        "properties": {
+          "defaultSessionWorkspace": {
+            "type": "string",
+            "enum": ["main", "worktree"]
+          },
+          "defaultSessionEnvironmentProfile": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ProjectTaskDefaultsResult": {
+        "type": "object",
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/ProjectTaskDefaults"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/ProjectTaskDefaults"
+          },
+          "editable": {
+            "type": "boolean"
+          }
+        },
+        "required": ["defaults", "effective", "editable"]
+      },
+      "ProjectTaskDefaultsInvalid": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProjectTaskDefaultsInvalid"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ProjectTaskDefaultsConflict": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProjectTaskDefaultsConflict"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ProjectTaskDefaultsInput": {
+        "type": "object",
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/ProjectTaskDefaults"
+          },
+          "expected": {
+            "$ref": "#/components/schemas/ProjectTaskDefaults"
+          }
+        },
+        "required": ["defaults", "expected"]
       },
       "SessionNavResponse": {
         "type": "object",
@@ -54977,6 +55787,48 @@
         },
         "required": ["id", "content", "status", "deps"]
       },
+      "SessionLocationError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionLocationError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string",
+                "enum": ["conflicting_selection", "incompatible_files"]
+              }
+            },
+            "required": ["message", "code"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "WorktreeStartCommandFailedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorktreeStartCommandFailedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "SessionWorkspaceSelection": {
         "anyOf": [
           {
@@ -55029,6 +55881,9 @@
                 "type": "string",
                 "minLength": 1
               },
+              "sourceWorkspaceID": {
+                "type": "string"
+              },
               "force": {
                 "type": "boolean"
               }
@@ -55041,6 +55896,9 @@
               "mode": {
                 "type": "string",
                 "const": "create"
+              },
+              "sourceWorkspaceID": {
+                "type": "string"
               },
               "name": {
                 "type": "string"
@@ -59814,6 +60672,18 @@
                 "type": "null"
               }
             ]
+          },
+          "bindings": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           },
           "environments": {
             "type": "array",

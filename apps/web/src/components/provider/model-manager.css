@@ -1,0 +1,9 @@
+.model-quick-switcher [data-slot="list-item"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  column-gap: 8px;
+}
+.model-quick-switcher [data-slot="list-item-selected-icon"] {
+  grid-column: 2;
+  justify-self: center;
+}

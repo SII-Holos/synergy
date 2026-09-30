@@ -4,10 +4,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 58px;
+  height: 48px;
   padding: 0 22px;
-  background: var(--background-base);
-  border-bottom: 1px solid var(--border-weaker-base);
+  background: var(--background-stronger);
   gap: 16px;
   pointer-events: none;
 }
@@ -24,6 +23,10 @@
 .stb-folder {
   flex-shrink: 0;
   color: var(--icon-base);
+}
+
+.stb-drag-region {
+  display: none;
 }
 
 .stb-project {
@@ -59,6 +62,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex: 1;
   overflow: visible;
 }
 
@@ -88,7 +92,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: max-content;
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
   height: 32px;
   padding: 0 8px;
   border-radius: 8px;
@@ -118,8 +124,22 @@
 
 .stb-selector-label {
   white-space: nowrap;
-  overflow: visible;
+  overflow: hidden;
+  text-overflow: ellipsis;
   line-height: 20px;
+}
+
+.stb-left > [data-component="tooltip-trigger"] {
+  min-width: 0;
+}
+.stb-left > [data-component="tooltip-trigger"]:first-child {
+  flex: 0 1 auto;
+}
+.stb-left > button {
+  flex-shrink: 0;
+}
+.stb-left + .stb-right {
+  margin-left: 8px;
 }
 .stb-variant-label {
   font-size: var(--font-size-small);
@@ -226,6 +246,7 @@
   .stb-root {
     height: 48px;
     padding: 0 12px;
+    padding-left: max(12px, var(--workbench-native-inset, 0px));
     gap: 8px;
   }
 
@@ -288,5 +309,37 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     line-height: 14px;
+  }
+}
+
+.stb-selector-btn[aria-expanded="true"] {
+  background: var(--surface-raised-base-hover);
+}
+.stb-selector-btn[data-appearance="toolbar"] {
+  gap: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+}
+
+.session-workbench-controls {
+  display: none;
+}
+@media (min-width: 768px) {
+  .session-workbench-controls {
+    position: absolute;
+    z-index: 31;
+    top: 0;
+    right: 22px;
+    display: flex;
+    height: 48px;
+    align-items: center;
+    -webkit-app-region: no-drag;
+  }
+  [data-default-session]:not(:has(.workbench-surface--side.workbench-surface--open)) .stb-root {
+    padding-right: 64px;
+  }
+  [data-default-session] .workbench-surface--side .workbench-surface-tabs {
+    padding-right: 64px;
   }
 }

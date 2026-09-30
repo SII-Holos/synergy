@@ -1,4 +1,4 @@
-export { NewSessionView, NewSessionGreeting } from "./session-new-view"
+export { NewSessionGreeting } from "./session-new-view"
 export { QuestionPrompt } from "./question-prompt"
 export { PermissionDock } from "./permission-dock"
 export { SessionTimeline } from "./session-timeline"
