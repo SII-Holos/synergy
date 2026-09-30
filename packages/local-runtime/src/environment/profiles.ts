@@ -67,7 +67,12 @@ export namespace ResourceProfiles {
     const profiles = Object.entries({ native, ...settings.environments }).filter(([, profile]) =>
       available.has(profile.provider),
     )
-    const selected = settings.defaultEnvironment === undefined ? "native" : settings.defaultEnvironment
+    const selected =
+      settings.defaultEnvironment === undefined
+        ? available.has(native.provider)
+          ? "native"
+          : null
+        : settings.defaultEnvironment
     const bindings = scopeID
       ? Object.fromEntries(
           (await Environment.list(scopeID)).map((info) => [

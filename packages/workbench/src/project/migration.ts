@@ -5,7 +5,8 @@ import { ProjectDirectories } from "./directories"
 export const projectMigrations = [
   {
     id: "20260929-project-directories",
-    scope: "scope" as const,
+    scope: "global" as const,
+    execution: "startup" as const,
     description: "Separate project folders from historical Worktrees without changing Scope identity",
     async up(progress: (current: number, total: number) => void) {
       const projects = await Scope.list()
