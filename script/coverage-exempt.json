@@ -731,8 +731,24 @@
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
+          "glob": "src/components/workspace/browser/browser-data-settings.tsx",
+          "reason": "Account filtering and origin-scoped fill are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-import-dialog.tsx",
+          "reason": "Source selection, data switches, narrow layout and partial results are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
+        },
+        {
           "glob": "src/components/workspace/browser/browser-panel.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-result-dialog.tsx",
+          "reason": "Keyboard annotation bounds and attachment feedback are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source; browser-draft.test.ts measures draft attachment logic directly"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-settings.tsx",
+          "reason": "Settings focus return and native page preservation are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
         {
           "glob": "src/components/workspace/browser/browser-surface.tsx",
@@ -741,6 +757,10 @@
         {
           "glob": "src/components/workspace/browser/browser-view-effects.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-workbench-sync.tsx",
+          "reason": "Background page reconciliation is exercised by browser-workbench-sync.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source; workbench model and API behavior remain directly measured"
         },
         {
           "glob": "src/components/workspace/browser/console-panel.tsx",
@@ -756,10 +776,6 @@
         },
         {
           "glob": "src/components/workspace/browser/network-panel.tsx",
-          "reason": "workspace/browser surfaces require a live runtime"
-        },
-        {
-          "glob": "src/components/workspace/browser/remote-browser-surface.tsx",
           "reason": "workspace/browser surfaces require a live runtime"
         },
         {
@@ -1229,10 +1245,6 @@
         "functions": 75
       },
       "exempt": [
-        {
-          "glob": "src/driver.ts",
-          "reason": "requires a real browser runtime"
-        },
         {
           "glob": "src/page.ts",
           "reason": "requires a real browser runtime"

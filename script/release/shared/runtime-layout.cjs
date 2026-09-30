@@ -26,7 +26,8 @@ function requiredRuntimeArtifactPaths(name, profile = "full") {
     ...(profile === "full"
       ? [
           `${modules}@ericsanchezok/synergy-web-app/app/index.html`,
-          ...["package.json", "index.js", "lib/coreBundle.js"].map((file) => `${modules}playwright-core/${file}`),
+          `${modules}@ericsanchezok/synergy-browser-runtime/package.json`,
+          `${modules}@ericsanchezok/synergy-browser-runtime/dist/component.js`,
           `${library}/ort-wasm-simd-threaded.asyncify.mjs`,
           `${library}/ort-wasm-simd-threaded.asyncify.wasm`,
           ...[

@@ -35,14 +35,17 @@ describe("Browser runtime session lifecycle", () => {
           })
           const owner = sessionOwner(child)
           await BrowserStorage.save(owner, {
-            status: "active",
-            page: {
-              id: "page-terminal-cleanup",
-              url: "https://example.com/",
-              title: "Terminal cleanup",
-              lastActiveAt: Date.now(),
-            },
-            panelWidth: 400,
+            pages: [
+              {
+                profileId: "personal",
+                status: "suspended",
+                isLoading: false,
+                id: "page-terminal-cleanup",
+                url: "https://example.com/",
+                title: "Terminal cleanup",
+                lastActiveAt: Date.now(),
+              },
+            ],
             timestamp: Date.now(),
             annotations: [],
           })
@@ -56,10 +59,9 @@ describe("Browser runtime session lifecycle", () => {
           const restored = await BrowserRuntime.getOrCreateSession(owner)
           expect(restored).not.toBe(active)
           expect(restored.status).toBe("suspended")
-          expect(restored.descriptor).toMatchObject({ id: "page-terminal-cleanup", url: "https://example.com/" })
+          expect(restored.pages[0]).toMatchObject({ id: "page-terminal-cleanup", url: "https://example.com/" })
           expect(await BrowserStorage.load(owner)).toMatchObject({
-            status: "suspended",
-            page: { id: "page-terminal-cleanup", url: "https://example.com/" },
+            pages: [{ id: "page-terminal-cleanup", url: "https://example.com/", status: "suspended" }],
           })
         },
       })

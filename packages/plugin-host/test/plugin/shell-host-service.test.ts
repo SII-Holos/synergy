@@ -52,6 +52,42 @@ async function invoke(input: {
 }
 
 describe("plugin shell.run Host Service", () => {
+  test.each(["success", "failure"])("retains selected resources until shell execution settles (%s)", (outcome) =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true, config: { controlProfile: "full_access" } })
+      const scope = await tmp.scope()
+      const events: string[] = []
+      const selectResources = EnvironmentResources.select
+      const select = spyOn(EnvironmentResources, "select").mockImplementation(async (input) => {
+        const resources = await selectResources(input)
+        return {
+          ...resources,
+          async [Symbol.asyncDispose]() {
+            events.push("release")
+            await resources[Symbol.asyncDispose]()
+          },
+        }
+      })
+      const failure = new Error("Shell execution failed")
+      const execute = spyOn(SandboxBackend, "executeAsync").mockImplementation(async () => {
+        events.push("execute")
+        await Promise.resolve()
+        events.push("settle")
+        if (outcome === "failure") throw failure
+        return { exitCode: 0, stdout: "ok", stderr: "", timedOut: false, truncated: false }
+      })
+      try {
+        const running = invoke({ directory: tmp.path, scopeId: scope.id, params: { command: ["ls"] } })
+        if (outcome === "failure") await expect(running).rejects.toBe(failure)
+        else await expect(running).resolves.toEqual({ exitCode: 0, stdout: "ok", stderr: "" })
+        expect(events).toEqual(["execute", "settle", "release"])
+      } finally {
+        execute.mockRestore()
+        select.mockRestore()
+      }
+    }),
+  )
+
   test(
     "retains host write ownership through detached children and cancels the whole invocation",
     () =>

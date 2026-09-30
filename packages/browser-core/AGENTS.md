@@ -4,9 +4,9 @@ These rules apply to the private `@ericsanchezok/synergy-browser-core` workspace
 
 ## Ownership
 
-- This package owns strict Protocol v2 schemas and types, the transport-independent CDP controller, structured locators and errors, navigation leases, redaction, staging, and filename safety.
+- This package owns strict Protocol v4 schemas and types, the transport-independent CDP controller, structured locators and errors, navigation leases, redaction, staging, and filename safety.
 - It does not own Synergy sessions, persistence, routes, permissions, the network gateway, Electron lifecycle, or Web presentation state.
-- Keep protocol unions strict, versioned, bounded, and backend-neutral. Native, WebRTC, and Playwright must share command and result semantics without adapters or fallback protocols.
+- Keep protocol unions strict, versioned, bounded, and backend-neutral. Desktop native pages share command and result semantics; test transports do not authorize additional product engines.
 - Owner keys are encoded here, but the server is their canonical source for clients. Do not derive client owner identity from route directories.
 - Keep Chromium responsible for webpage network security. Do not introduce IP ranges, DNS policy, localhost port lists, or presentation-specific navigation behavior here.
 

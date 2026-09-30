@@ -1216,6 +1216,10 @@ msgid "app.browser.console.empty"
 msgstr "没有控制台记录"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.copyLink"
+msgstr "复制链接"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.assets"
 msgstr "资源"
 
@@ -1254,6 +1258,10 @@ msgstr "网络"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.dev.network.description"
 msgstr "请求"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.developerTools"
+msgstr "开发者工具"
 
 #. js-lingui-explicit-id
 msgid "app.browser.dialog.alert"
@@ -1329,11 +1337,11 @@ msgstr "获取页面快照后即可检查元素"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.nextNavigation"
-msgstr "下一次导航将显示在这里。"
+msgstr "在地址栏输入网址或搜索内容。"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.noPage"
-msgstr "未打开页面"
+msgstr "开始浏览"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.empty.ready"
@@ -1362,6 +1370,22 @@ msgstr "浏览器不可用"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.error.uploadTooLarge"
 msgstr "最多选择 20 个文件，每个不超过 25 MB，总计不超过 50 MB。"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find"
+msgstr "在页面中查找"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.next"
+msgstr "下一个匹配项"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.find.previous"
+msgstr "上一个匹配项"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.importData"
+msgstr "导入浏览器数据"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.menu.agentNavigation"
@@ -1413,7 +1437,7 @@ msgstr "原生浏览器恢复失败"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.native.recoveryHint"
-msgstr "Synergy 将继续重试本地浏览器。你可以立即重试，系统不会切换到远程画面。"
+msgstr "Synergy 正在重新连接浏览器，也可以立即重试。"
 
 #. ── Address bar ──
 msgid "app.browser.nav.back"
@@ -1452,6 +1476,18 @@ msgid "app.browser.network.empty"
 msgstr "没有网络请求"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.openExternal"
+msgstr "在默认浏览器中打开"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.passwords"
+msgstr "密码和自动填充"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.print"
+msgstr "打印"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.remote.status.connecting"
 msgstr "正在连接远程浏览器"
 
@@ -1480,8 +1516,32 @@ msgid "app.browser.remote.textInput"
 msgstr "远程浏览器文本输入"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resume"
+msgstr "恢复页面"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.resumeHint"
+msgstr "恢复后会使用此页面的身份重新加载网址，未保存的表单不会恢复。"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
 msgstr "重试"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.savePDF"
+msgstr "另存为 PDF"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.screenshot"
+msgstr "截取屏幕截图"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.settings"
+msgstr "浏览器设置"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.suspended"
+msgstr "页面已挂起"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.upload.chooseFile"
@@ -1530,6 +1590,22 @@ msgstr "视口宽度"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.viewport.width.placeholder"
 msgstr "宽"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom"
+msgstr "缩放"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.in"
+msgstr "放大"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.out"
+msgstr "缩小"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "app.browser.zoom.reset"
+msgstr "重置缩放"
 
 #. js-lingui-explicit-id
 msgid "app.cancel"
@@ -9432,6 +9508,370 @@ msgstr "Holos"
 msgid "brand.workbench.synergy"
 msgstr "Synergy 工作台"
 
+#. js-lingui-explicit-id
+msgid "browser.capture.add"
+msgstr "加入草稿"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.comment"
+msgstr "描述你想修改或检查的内容…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copied"
+msgstr "图片已复制。"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.copy"
+msgstr "复制图片"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.full"
+msgstr "完整页面"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.hint"
+msgstr "点击图片标记位置，准备好后将反馈加入草稿。"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.loading"
+msgstr "正在截图…"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.mark"
+msgstr "标记位置"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.reset"
+msgstr "移除标记"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.save"
+msgstr "保存图片"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.title"
+msgstr "截图和反馈"
+
+#. js-lingui-explicit-id
+msgid "browser.capture.viewport"
+msgstr "当前可见页面"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clear"
+msgstr "清除最近访问"
+
+#. js-lingui-explicit-id
+msgid "browser.data.clearHint"
+msgstr "清除当前浏览器账号的最近访问？密码和网站登录状态会保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.empty"
+msgstr "还没有保存的密码"
+
+#. js-lingui-explicit-id
+msgid "browser.data.fill"
+msgstr "填充"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwordHint"
+msgstr "选择账号以填充当前网站，填写后由你确认登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.passwords"
+msgstr "密码和自动填充"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recent"
+msgstr "最近访问"
+
+#. js-lingui-explicit-id
+msgid "browser.data.recentHint"
+msgstr "当前浏览器账号保留最近 100 个地址，临时浏览不保存访问记录。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.remove"
+msgstr "删除密码"
+
+#. js-lingui-explicit-id
+msgid "browser.data.removeHint"
+msgstr "删除这个浏览器账号保存的密码，保留网站当前登录状态。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.save"
+msgstr "保存当前登录信息"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveConfirm"
+msgstr "保存这个网站的登录信息？"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saved"
+msgstr "登录信息已保存。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.saveHint"
+msgstr "请先在网页中填写用户名和密码，再保存。已有的同一账号将被更新。"
+
+#. js-lingui-explicit-id
+msgid "browser.data.search"
+msgstr "搜索网站或用户名"
+
+#. js-lingui-explicit-id
+msgid "browser.data.title"
+msgstr "浏览器数据"
+
+#. js-lingui-explicit-id
+msgid "browser.data.unavailable"
+msgstr "保存密码需要持久浏览器账号，以及已解锁的系统密码存储。你仍可正常浏览并手动登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.accept"
+msgstr "接收"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.draft"
+msgstr "加入草稿"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.open"
+msgstr "保存并打开"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.save"
+msgstr "另存为…"
+
+#. js-lingui-explicit-id
+msgid "browser.downloads.waiting"
+msgstr "待确认"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.access"
+msgstr "访问"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.allow"
+msgstr "允许"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.ask"
+msgstr "询问"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.clear"
+msgstr "清除网站数据"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.confirm"
+msgstr "这会关闭使用此资料的页面，并退出已登录的网站。是否继续？"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.create"
+msgstr "添加登录资料"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.currentDefault"
+msgstr "默认"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.default"
+msgstr "设为默认"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.deny"
+msgstr "拒绝"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.disable"
+msgstr "停用"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.downloads"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.enable"
+msgstr "启用"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.inherit"
+msgstr "沿用任务权限"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.name"
+msgstr "资料名称"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.openAs"
+msgstr "用此资料打开当前页面副本"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.origin"
+msgstr "网站"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.originPlaceholder"
+msgstr "https://example.com"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.policyNote"
+msgstr "规则约束使用此资料的智能体，仍受任务权限限制。完全访问模式跳过审批规则；停用的资料始终不可用。"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.remove"
+msgstr "删除资料"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.revoke"
+msgstr "重置网站权限"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.save"
+msgstr "保存"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.temporary"
+msgstr "临时浏览"
+
+#. js-lingui-explicit-id
+msgid "browser.identities.uploads"
+msgstr "上传"
+
+#. js-lingui-explicit-id
+msgid "browser.import.access"
+msgstr "未获得访问权限。请重新授权，或选择导出的文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.choose"
+msgstr "选择文件并导入"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookieHint"
+msgstr "网站登录状态和偏好设置"
+
+#. js-lingui-explicit-id
+msgid "browser.import.cookies"
+msgstr "Cookie"
+
+#. js-lingui-explicit-id
+msgid "browser.import.done"
+msgstr "完成"
+
+#. js-lingui-explicit-id
+msgid "browser.import.encrypted"
+msgstr "导入的密码会在此设备上加密保存。部分网站可能仍需要重新登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.error"
+msgstr "暂时无法导入。请重新打开浏览器页面后重试。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.failed"
+msgstr "部分条目未能导入，原有数据已保留。你可以使用导出的文件，或在网站上重新登录。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.file"
+msgstr "导出的文件"
+
+#. js-lingui-explicit-id
+msgid "browser.import.fileHint"
+msgstr "支持密码 CSV、Safari ZIP 和 Cookie JSON。每种所选数据分别选择一个文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.format"
+msgstr "请选择小于 32 MB 的密码 CSV、Safari ZIP 或 Cookie JSON 文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.hint"
+msgstr "将已有密码和网站登录状态导入 Synergy。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.importing"
+msgstr "正在导入…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.loading"
+msgstr "正在查找浏览器…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.local"
+msgstr "Mac 可能会请求访问权限。导入的密码会在此设备上加密保存。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.locked"
+msgstr "请使用非临时浏览器配置，并解锁系统密码存储。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.options"
+msgstr "导入选项"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwordHint"
+msgstr "用于登录网站的已保存账号"
+
+#. js-lingui-explicit-id
+msgid "browser.import.passwords"
+msgstr "密码"
+
+#. js-lingui-explicit-id
+msgid "browser.import.progress"
+msgstr "已处理 {processed} / {total} 条"
+
+#. js-lingui-explicit-id
+msgid "browser.import.reading"
+msgstr "正在读取所选数据…"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replace"
+msgstr "替换已有的匹配条目"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceHint"
+msgstr "匹配的已保存密码和 Cookie 将被导入的数据替换，其他条目会保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.replaceTitle"
+msgstr "替换匹配的浏览器数据？"
+
+#. js-lingui-explicit-id
+msgid "browser.import.result"
+msgstr "已导入 {imported} 条 · 跳过 {skipped} 条 · 失败 {failed} 条"
+
+#. js-lingui-explicit-id
+msgid "browser.import.safari"
+msgstr "在 Safari 中选择「文件 → 导出浏览数据」，勾选密码，再在这里选择导出的 ZIP 或 CSV。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.source"
+msgstr "来源"
+
+#. js-lingui-explicit-id
+msgid "browser.import.start"
+msgstr "导入"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stop"
+msgstr "停止导入"
+
+#. js-lingui-explicit-id
+msgid "browser.import.stopped"
+msgstr "导入已停止，已经导入的条目已保留。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.unavailable"
+msgstr "无法读取这些数据。请退出来源浏览器后重试，或使用导出的文件。"
+
+#. js-lingui-explicit-id
+msgid "browser.import.unsupported"
+msgstr "此来源不支持"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.assets"
 msgstr "{count} 个资源"
@@ -9461,8 +9901,40 @@ msgid "browser.label.unsettled"
 msgstr "未稳定"
 
 #. js-lingui-explicit-id
-msgid "browser.recovery.checking"
-msgstr "正在核对已有页面……"
+msgid "browser.page.back"
+msgstr "返回网页"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.advanced"
+msgstr "独立账号和高级设置"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.disabled"
+msgstr "已停用"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.login"
+msgstr "登录与网站权限"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.loginHint"
+msgstr "网站登录会在任务间保留。只有需要使用其他账号时，才需要添加独立的浏览器资料。"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.manage"
+msgstr "管理此资料"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.permissions"
+msgstr "智能体网站权限"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.profiles"
+msgstr "登录资料"
+
+#. js-lingui-explicit-id
+msgid "browser.settings.temporaryHint"
+msgstr "临时浏览不会使用已有登录；关闭最后一个页面后会清除网站数据。"
 
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.condition"
@@ -9507,6 +9979,14 @@ msgstr "URL"
 #. ── Browser tool summaries ──────────────────────────────────────────
 msgid "browser.summary.value-length"
 msgstr "输入长度"
+
+#. js-lingui-explicit-id
+msgid "browser.tab.copyAddress"
+msgstr "复制页面地址"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.tabs.empty"
+msgstr "新标签页"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"
@@ -21982,6 +22462,10 @@ msgstr "最小化"
 #. js-lingui-explicit-id
 msgid "window.restore"
 msgstr "恢复"
+
+#. js-lingui-explicit-id
+msgid "workbench.closeRight"
+msgstr "关闭右侧标签页"
 
 #. js-lingui-explicit-id
 msgid "workbench.discard.action"

@@ -31,11 +31,6 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
   const baselineFlag = process.argv.includes("--baseline")
   const skipInstall = process.argv.includes("--skip-install")
   const requireSandboxAssets = process.env.SYNERGY_REQUIRE_SANDBOX_ASSETS === "1"
-  const browserManifestPublicKey =
-    process.env.SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY ?? process.env.SYNERGY_BROWSER_HOST_PUBLIC_KEY ?? ""
-  if (profile === "full" && process.env.SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY === "1" && !browserManifestPublicKey) {
-    throw new Error("SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY is required for a product release build")
-  }
   const requestedTargets = new Set(
     (process.env.SYNERGY_BUILD_TARGETS ?? "")
       .split(",")
@@ -200,7 +195,6 @@ export async function buildRuntime(profile: RuntimeArtifactProfile) {
           SYNERGY_VERSION: JSON.stringify(Script.version),
           SYNERGY_CHANNEL: JSON.stringify(Script.channel),
           SYNERGY_LIBC: JSON.stringify(item.os === "linux" ? (item.abi ?? "glibc") : "glibc"),
-          SYNERGY_BROWSER_MANIFEST_PUBLIC_KEY: JSON.stringify(browserManifestPublicKey),
           SYNERGY_SANDBOX_HELPER_SHA256: JSON.stringify(sandboxAsset?.sha256 ?? ""),
           SYNERGY_STANDALONE: "true",
         },

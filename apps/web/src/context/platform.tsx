@@ -11,6 +11,14 @@ import type {
 } from "@ericsanchezok/synergy-browser-core"
 
 export type BrowserNativeViewBridge = {
+  fileAction?(input: import("@ericsanchezok/synergy-browser-core").BrowserFileAction): Promise<{ cancelled: boolean }>
+
+  dataAction?(
+    input: import("@ericsanchezok/synergy-browser-core").BrowserDataRequest,
+  ): Promise<import("@ericsanchezok/synergy-browser-core").BrowserDataResult>
+  pageAction?(
+    input: import("@ericsanchezok/synergy-browser-core").BrowserPageActionRequest,
+  ): Promise<import("@ericsanchezok/synergy-browser-core").BrowserPageActionResult>
   attachView(input: BrowserNativeAttachRequest): Promise<void>
   detachView(input: BrowserNativePageRequest): Promise<void>
   focusView(input: BrowserNativePageRequest): Promise<void>

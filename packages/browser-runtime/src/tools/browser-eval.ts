@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper } from "./browser-shared"
 
@@ -7,6 +7,7 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
     "Evaluate JavaScript in the current page. readonly runs with CDP side-effect rejection; trusted permits mutations and requires its dedicated capability.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       expression: z.string().min(1).max(1_000_000),
       mode: z.enum(["readonly", "trusted"]).default("readonly"),
       timeoutSeconds: z
@@ -19,8 +20,8 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
       maxChars: z.number().int().min(1).max(200_000).default(64_000),
     })
     .strict(),
-  async execute(params, ctx) {
-    const page = await BrowserToolHelper.resolvePage(ctx)
+  async execute({ pageId, ...params }, ctx) {
+    const page = await BrowserToolHelper.resolvePage(ctx, pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       page,
@@ -28,7 +29,7 @@ export const BrowserEvalTool = Tool.define("browser_eval", {
       "browser_eval",
       `Evaluating ${params.mode} script`,
       async () => {
-        const result = await BrowserToolHelper.execute(ctx, {
+        const result = await BrowserToolHelper.execute(ctx, pageId, {
           type: "evaluate",
           mode: params.mode,
           expression: params.expression,

@@ -274,6 +274,8 @@
     "apps/desktop": {
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      // Electron supplies this Node built-in; the Bun-based analyzer does not list it.
+      "ignoreDependencies": ["node:sqlite"],
     },
     ".": {
       "ignoreDependencies": ["dependency-cruiser"],

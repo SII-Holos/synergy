@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserExport } from "../export"
@@ -7,6 +7,7 @@ export const BrowserPerformanceTool = Tool.define("browser_performance", {
   description: "Measure Web Vitals, long tasks and resource timing, or start/stop a CDP performance trace.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       action: z.enum(["measure", "startTrace", "stopTrace"]),
       exportPath: z
         .string()
@@ -21,10 +22,10 @@ export const BrowserPerformanceTool = Tool.define("browser_performance", {
         ctx.addIssue({ code: "custom", path: ["exportPath"], message: "exportPath is valid only with stopTrace." })
       }
     }),
-  async execute(params, ctx) {
+  async execute({ pageId, ...params }, ctx) {
     const workspace = params.exportPath ? BrowserExport.capture() : undefined
-    const page = await BrowserToolHelper.resolvePage(ctx)
-    const result = await BrowserToolHelper.execute(ctx, { type: "performance", action: params.action })
+    const page = await BrowserToolHelper.resolvePage(ctx, pageId)
+    const result = await BrowserToolHelper.execute(ctx, pageId, { type: "performance", action: params.action })
     if (result.type !== "data") throw new Error("Browser performance returned an unexpected result.")
     let exported: string | undefined
     if (params.exportPath) {

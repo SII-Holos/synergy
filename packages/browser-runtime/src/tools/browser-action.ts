@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import {
   BrowserActionSchema,
   BrowserBackendResultSchema,
@@ -15,9 +15,14 @@ import {
 export const BrowserActionTool = Tool.define("browser_action", {
   description:
     "Perform one deterministic browser interaction. The tool waits for the target to be actionable, dispatches the input, then settles with networkquiet for up to 10s by default (hard cap 30s) and returns a fresh accessibility snapshot when available. Agent navigation uses load for up to 15s. Use browser_wait only for a specific business condition; settled:false is a settle outcome, not an action failure, and results never claim business completion.",
-  parameters: z.object({ action: BrowserActionSchema }).strict(),
-  async execute(params, ctx) {
-    const page = await BrowserToolHelper.resolvePage(ctx)
+  parameters: z
+    .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
+      action: BrowserActionSchema,
+    })
+    .strict(),
+  async execute({ pageId, ...params }, ctx) {
+    const page = await BrowserToolHelper.resolvePage(ctx, pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       page,
@@ -27,7 +32,7 @@ export const BrowserActionTool = Tool.define("browser_action", {
       async () => {
         let result
         try {
-          result = await BrowserToolHelper.execute(ctx, { type: "action", action: params.action })
+          result = await BrowserToolHelper.execute(ctx, pageId, { type: "action", action: params.action })
         } catch (error) {
           throw withUnknownOutcomeGuidance(error, `browser_action ${params.action.type}`)
         }

@@ -40,7 +40,7 @@ Synergy runs as a standalone local workspace. Connecting a Holos agent adds acco
 - **Durable by default** — Keep recoverable sessions attached to an explicit home or project Scope, with complete history even when older model context is compacted.
 - **One runtime, every surface** — Use the same sessions and state from the Web workbench, Desktop app, CLI, server API, and SDK.
 - **First-class agent coordination** — Delegate to specialist subagents, plan durable Blueprints, run independently reviewed BlueprintLoops, keep focused work moving with Light Loop, or orchestrate a tree of persistent specialist workers with Boss Mode.
-- **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside a session-owned Browser page without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
+- **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
 - **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins and Channels while keeping local ownership of projects and data.
@@ -136,7 +136,7 @@ Upgrade with `synergy upgrade`, or install a specific version by passing `--vers
 
 `synergy uninstall` keeps its existing defaults and removes data, cache, config, and state unless you pass `--keep-data` or `--keep-config`. To remove only one installation channel while preserving shared data, cache, config, and state, run `synergy uninstall --installation-only --method <channel>`; standalone removal deletes only installer-owned files under `~/.synergy/` and the exact shell PATH entries the installer wrote.
 
-Headless Browser tools require Chromium. Run `synergy browser install` to install the verified managed version and `synergy browser doctor` to check readiness, or set `CHROMIUM_PATH` to a separately installed executable. Desktop Browser presentation uses Electron's bundled Chromium. macOS Desktop also supports native application Computer Use in Full Access mode, with Accessibility and Screen Recording permissions. See [Native Computer Use](docs/architecture/computer-use.md).
+The built-in Browser is Desktop-local and uses Electron's bundled Chromium, with peer workbench page tabs and reusable website logins; separate and temporary profiles live in Browser settings. CLI and Web use search, fetch and MCP integrations. macOS Desktop also supports native application Computer Use in Full Access mode, with Accessibility and Screen Recording permissions. See [Native Computer Use](docs/architecture/computer-use.md).
 
 Holos is optional. Connect an agent from the Web account surface or run `synergy holos login`.
 
@@ -148,7 +148,7 @@ For headless tasks, versioned experiment settings, durable execution evidence an
 
 | Surface            | Purpose                                                                                                                                                         |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Web                | Primary workbench for sessions, project files, Browser, Notes, Library, Agenda, plugins, settings, and operational views.                                       |
+| Web                | Primary workbench for sessions, project files, Notes, Library, Agenda, plugins, settings, and operational views.                                                |
 | Desktop            | Electron product with a managed packaged server, native Browser presentation, local folder selection, protocol handling, keep-awake while running, and updates. |
 | CLI                | Runtime management, one-off `send` execution, configuration, sessions, integrations, diagnostics, and development workflows.                                    |
 | Server API and SDK | Shared contract used by first-party clients and integrations.                                                                                                   |

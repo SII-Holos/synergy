@@ -10,7 +10,6 @@
     "./access": "./src/access/index.ts",
     "./registration": "./src/registration.ts",
     ".": "./src/index.ts",
-    "./script/playwright-runtime-assets": "./script/playwright-runtime-assets.ts",
     "./cli-commands": "./src/cli-commands.ts",
     "./cli/server": "./src/cli/server.ts",
     "./cli/web": "./src/cli/web.ts",
@@ -35,7 +34,6 @@
     "@clack/prompts": "1.0.0-alpha.1",
     "@ericsanchezok/synergy-acp": "workspace:*",
     "@ericsanchezok/synergy-agent-runtime": "workspace:*",
-    "@ericsanchezok/synergy-browser-runtime": "workspace:*",
     "@ericsanchezok/synergy-cli": "workspace:*",
     "@ericsanchezok/synergy-code-tools": "workspace:*",
     "@ericsanchezok/synergy-computer-runtime": "workspace:*",
@@ -62,6 +60,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-browser-runtime": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@tsconfig/bun": "catalog:",
@@ -97,6 +96,14 @@
       "@ericsanchezok/synergy-library": "1.1.26",
       "@ericsanchezok/synergy-workflows": "1.1.26",
       "@ericsanchezok/synergy-connections": "1.1.26"
+    }
+  },
+  "peerDependencies": {
+    "@ericsanchezok/synergy-browser-runtime": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@ericsanchezok/synergy-browser-runtime": {
+      "optional": true
     }
   }
 }

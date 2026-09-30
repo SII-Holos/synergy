@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, truncateBrowserOutput } from "./browser-shared"
 
@@ -8,6 +8,7 @@ export const BrowserClipboardTool = Tool.define("browser_clipboard", {
   description: "Read, write, or clear page clipboard text through the dedicated browser clipboard capability.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       action: z.enum(["read", "write", "clear"]),
       text: z.string().max(1_000_000).optional().describe("Required only for write."),
     })
@@ -20,12 +21,16 @@ export const BrowserClipboardTool = Tool.define("browser_clipboard", {
         ctx.addIssue({ code: "custom", path: ["text"], message: "text is valid only for write." })
       }
     }),
-  async execute(params, ctx) {
+  async execute({ pageId, ...params }, ctx) {
     if (params.text && Buffer.byteLength(params.text, "utf8") > MAX_CLIPBOARD_BYTES) {
       throw new Error("Clipboard text exceeds the 1 MB limit.")
     }
-    const page = await BrowserToolHelper.resolvePage(ctx)
-    const result = await BrowserToolHelper.execute(ctx, { type: "clipboard", action: params.action, text: params.text })
+    const page = await BrowserToolHelper.resolvePage(ctx, pageId)
+    const result = await BrowserToolHelper.execute(ctx, pageId, {
+      type: "clipboard",
+      action: params.action,
+      text: params.text,
+    })
     if (result.type !== "data") throw new Error("Browser clipboard returned an unexpected result.")
     const data = result.data as { text?: string; byteLength?: number }
     const formatted = truncateBrowserOutput(

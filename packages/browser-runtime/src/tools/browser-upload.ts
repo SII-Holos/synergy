@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { BrowserLocatorSchema, sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser-core"
@@ -19,15 +19,16 @@ export const BrowserUploadTool = Tool.define(
       "Upload permission-reviewed workspace files to one uniquely matched file input through isolated staging.",
     parameters: z
       .object({
+        pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
         target: BrowserLocatorSchema,
         paths: z.array(z.string().min(1).max(20_000)).min(1).max(20),
       })
       .strict(),
-    async execute(params, ctx) {
+    async execute({ pageId, ...params }, ctx) {
       return WorkspaceAccess.withinTask(async () => {
         ctx.abort.throwIfAborted()
         const workspace = ScopeContext.current.workspace!
-        const page = await BrowserToolHelper.resolvePage(ctx)
+        const page = await BrowserToolHelper.resolvePage(ctx, pageId)
         const files: Array<{ name: string; mimeType: string; dataBase64: string }> = []
         let totalBytes = 0
         for (const input of params.paths) {
@@ -95,7 +96,7 @@ export const BrowserUploadTool = Tool.define(
         }
         ctx.abort.throwIfAborted()
         await WorkspaceBinding.validate(workspace.id!, workspace.scopeID, workspace.generation)
-        const result = await BrowserToolHelper.execute(ctx, { type: "upload", target: params.target, files })
+        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "upload", target: params.target, files })
         if (result.type !== "data") throw new Error("Browser upload returned an unexpected result.")
         const formatted = formatBrowserJSON(result.data)
         return {

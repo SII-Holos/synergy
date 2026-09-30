@@ -402,6 +402,7 @@ export class CdpPageController {
         }
         return { type: "data", pageId: this.options.pageId, data: await this.restoreCheckpoint(command.checkpoint) }
       }
+      case "download.accept":
       case "download.cancel":
         await this.options.transport.send("Browser.cancelDownload", { guid: command.id })
         return { type: "void" }

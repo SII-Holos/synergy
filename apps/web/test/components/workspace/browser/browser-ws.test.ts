@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
 import { BrowserUserCommandSchema } from "@ericsanchezok/synergy-browser-core"
-import { createBrowserWebRTCSignalingUrl } from "../../../../src/components/workspace/browser/browser-webrtc"
 import {
   browserControlCommandFromMessage,
   shouldResumeBrowserSession,
@@ -80,57 +79,6 @@ describe("createBrowserWebSocketUrl", () => {
     expect(parsed.searchParams.has("client")).toBe(false)
   })
 
-  test("builds the WebRTC signaling URL without using the frame stream route", () => {
-    const url = createBrowserWebRTCSignalingUrl({
-      serverUrl: "https://synergy.local",
-      sessionID: "ses_4",
-      routeDirectory: "project-route",
-      directory: "/Users/eric/project",
-    })
-
-    expect(url).not.toBeNull()
-    const parsed = new URL(url!)
-    expect(parsed.protocol).toBe("wss:")
-    expect(parsed.pathname).toBe("/project-route/browser/webrtc/connect")
-    expect(parsed.searchParams.get("presentation")).toBe("webrtc")
-    expect(parsed.searchParams.get("directory")).toBe("/Users/eric/project")
-  })
-
-  test("can bind WebRTC signaling to a specific page", () => {
-    const url = createBrowserWebRTCSignalingUrl({
-      serverUrl: "https://synergy.local",
-      sessionID: "ses_4",
-      pageId: "page_123",
-      routeDirectory: "project-route",
-      directory: "/Users/eric/project",
-    })
-
-    expect(url).not.toBeNull()
-    const parsed = new URL(url!)
-    expect(parsed.searchParams.get("pageId")).toBe("page_123")
-  })
-
-  test("adds trace ids to browser route URLs", () => {
-    const eventsUrl = createBrowserEventsWebSocketUrl({
-      serverUrl: "http://localhost:4096",
-      sessionID: "ses_trace",
-      routeDirectory: "aG9tZQ",
-      scopeID: "home",
-      traceId: "browser_trace_1",
-    })
-    const webrtcUrl = createBrowserWebRTCSignalingUrl({
-      serverUrl: "http://localhost:4096",
-      sessionID: "ses_trace",
-      pageId: "page_1",
-      routeDirectory: "aG9tZQ",
-      scopeID: "home",
-      traceId: "browser_trace_1",
-    })
-
-    expect(new URL(eventsUrl!).searchParams.get("traceId")).toBe("browser_trace_1")
-    expect(new URL(webrtcUrl!).searchParams.get("traceId")).toBe("browser_trace_1")
-  })
-
   test("returns null when no route or scope is available", () => {
     expect(createBrowserEventsWebSocketUrl({ serverUrl: "http://localhost:4096", sessionID: "ses_1" })).toBeNull()
   })
@@ -161,10 +109,20 @@ describe("browserControlCommandFromMessage", () => {
 describe("Browser session bootstrap", () => {
   const state = {
     type: "session.state" as const,
-    protocolVersion: 3 as const,
+    protocolVersion: 4 as const,
     ownerKey: "owner-1",
     status: "active" as const,
-    page: { id: "page-1", url: "https://example.com", title: "", isLoading: false, lastActiveAt: null },
+    pages: [
+      {
+        id: "page-1",
+        profileId: "personal",
+        status: "active" as const,
+        url: "https://example.com",
+        title: "",
+        isLoading: false,
+        lastActiveAt: null,
+      },
+    ],
     presentation: null,
     hostStatus: "detached" as const,
     seq: 0,
@@ -174,7 +132,13 @@ describe("Browser session bootstrap", () => {
   test("resumes only active pages that are not attached to a Host", () => {
     expect(shouldResumeBrowserSession(state)).toBe(true)
     expect(shouldResumeBrowserSession({ ...state, hostStatus: "ready" })).toBe(false)
-    expect(shouldResumeBrowserSession({ ...state, status: "suspended" })).toBe(false)
-    expect(shouldResumeBrowserSession({ ...state, status: "empty", page: null })).toBe(false)
+    expect(
+      shouldResumeBrowserSession({
+        ...state,
+        status: "suspended",
+        pages: [{ ...state.pages[0]!, status: "suspended" }],
+      }),
+    ).toBe(false)
+    expect(shouldResumeBrowserSession({ ...state, status: "empty", pages: [] })).toBe(false)
   })
 })

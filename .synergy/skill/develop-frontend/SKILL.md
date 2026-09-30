@@ -100,7 +100,7 @@ Rewind and redo must converge through the server's effective message window, inc
 
 ## Preserve Loading Boundaries
 
-1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
+1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell. Browser pages are resource tabs in that same strip; follow [change-browser-runtime](../change-browser-runtime/SKILL.md) for page reconciliation and settings. Do not nest another Browser tab strip or expose backend profile terminology in the everyday toolbar.
 2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
 3. Do not evaluate JSX child getters to detect detail presence: use an explicit availability value or property presence, then instantiate children only inside the mounted disclosure. Test closed → open → closed imperative-renderer counts. Bound tool previews and retained expanded-render caches by capacity; use resource identity to open full content on demand. See [bounded tool rendering](../../../docs/decisions/implemented/bug-fix/2026-09-07-bound-tool-rendering-memory.md).
 4. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
@@ -186,5 +186,7 @@ For mobile drawers, use the shared modal stack instead of a document-wide keyboa
 For collection navigation changes, verify every existing category against its own projection and preserve nested ownership and pagination. Check actual category controls and list bounds at the minimum sidebar width in both supported locales; full-width controls plus outer margins must not exceed their container. Keep intentional resize hit areas separate from content-overflow assertions, and verify fixed controls while the collection scrolls. For independent disclosures, verify simultaneous expansion, preserved nested state and keyboard exclusion while hidden. Exercise keyboard activation with the real session typing-autofocus handler mounted; it must not redirect a focused control’s Space or typeahead keys into the Composer.
 
 For Environment selection, test zero allocation when browsing profiles, conditional Session updates, stable creation request IDs after a lost reply, and draft restoration after startup failure. Activity recovery must address the original operation; never submit its command again.
+
+For Browser results, use the existing draft capture/retention API before asynchronous upload and reject a changed conversation. Screenshots and feedback remain editable until the person sends. Use Dialog size presets rather than competing max-width utilities; verify the footer and body scroll in a small Desktop window. Native overlay covers are bounded still images only, scoped to the selected page and cleared when native content resumes.
 
 Build shared UI DOM fixtures in a separate process with the test environment. Vite can set `NODE_ENV=production` in its caller; do not propagate that mutation to test batches, whose Lingui fixtures require runtime message compilation.

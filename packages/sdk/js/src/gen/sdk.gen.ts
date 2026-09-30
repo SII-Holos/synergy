@@ -104,14 +104,24 @@ import type {
   BrowserControlResponses,
   BrowserCreateAnnotationErrors,
   BrowserCreateAnnotationResponses,
-  BrowserCreateViewerTicketErrors,
-  BrowserCreateViewerTicketResponses,
+  BrowserCreateProfileErrors,
+  BrowserCreateProfileResponses,
   BrowserDiagnosticsErrors,
   BrowserDiagnosticsRequest,
   BrowserDiagnosticsResponses,
+  BrowserDownloadArtifactErrors,
+  BrowserDownloadArtifactResponses,
+  BrowserManageProfile,
+  BrowserManageProfileErrors,
+  BrowserManageProfileResponses,
+  BrowserOpenPage,
+  BrowserOpenPageErrors,
+  BrowserOpenPageResponses,
+  BrowserProfileCreate,
+  BrowserProfilesErrors,
+  BrowserProfilesResponses,
   BrowserSessionErrors,
   BrowserSessionResponses,
-  BrowserViewerTicketRequest,
   ChannelAppResetErrors,
   ChannelAppResetResponses,
   ChannelAppSessionErrors,
@@ -12381,23 +12391,21 @@ export class Asset extends HeyApiClient {
 
 export class Browser extends HeyApiClient {
   /**
-   * Create a Browser viewer ticket
-   *
-   * Create a short-lived single-use ticket for the active Browser page's WebRTC viewer.
+   * Open a browser page
    */
-  public createViewerTicket<ThrowOnError extends boolean = false>(
+  public openPage<ThrowOnError extends boolean = false>(
     parameters: {
       path_directory: string
       query_directory?: string
       scopeID?: string
       mode?: "session" | "scope"
       sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
+      presentation?: "auto" | "native"
       protocolVersion?: number
       sinceSeq?: number
       epoch?: string
       nativeTicket?: string
-      browserViewerTicketRequest?: BrowserViewerTicketRequest
+      browserOpenPage?: BrowserOpenPage
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -12424,17 +12432,193 @@ export class Browser extends HeyApiClient {
             { in: "query", key: "sinceSeq" },
             { in: "query", key: "epoch" },
             { in: "query", key: "nativeTicket" },
-            { key: "browserViewerTicketRequest", map: "body" },
+            { key: "browserOpenPage", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<BrowserOpenPageResponses, BrowserOpenPageErrors, ThrowOnError>({
+      url: "/{directory}/browser/pages",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * List browser identities
+   */
+  public profiles<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<BrowserProfilesResponses, BrowserProfilesErrors, ThrowOnError>({
+      url: "/{directory}/browser/profiles",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Create a browser identity
+   */
+  public createProfile<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserProfileCreate?: BrowserProfileCreate
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserProfileCreate", map: "body" },
           ],
         },
       ],
     )
     return (options?.client ?? this.client).post<
-      BrowserCreateViewerTicketResponses,
-      BrowserCreateViewerTicketErrors,
+      BrowserCreateProfileResponses,
+      BrowserCreateProfileErrors,
       ThrowOnError
     >({
-      url: "/{directory}/browser/webrtc/ticket",
+      url: "/{directory}/browser/profiles",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Manage a browser identity
+   */
+  public manageProfile<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      profileId: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      browserManageProfile?: BrowserManageProfile
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            { in: "path", key: "profileId" },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { key: "browserManageProfile", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BrowserManageProfileResponses,
+      BrowserManageProfileErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/profiles/{profileId}/manage",
       ...options,
       ...params,
       headers: {
@@ -12457,7 +12641,7 @@ export class Browser extends HeyApiClient {
       scopeID?: string
       mode?: "session" | "scope"
       sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
+      presentation?: "auto" | "native"
       protocolVersion?: number
       sinceSeq?: number
       epoch?: string
@@ -12522,7 +12706,7 @@ export class Browser extends HeyApiClient {
       scopeID?: string
       mode?: "session" | "scope"
       sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
+      presentation?: "auto" | "native"
       protocolVersion?: number
       sinceSeq?: number
       epoch?: string
@@ -12572,6 +12756,69 @@ export class Browser extends HeyApiClient {
   }
 
   /**
+   * Prepare a completed Browser download
+   */
+  public downloadArtifact<ThrowOnError extends boolean = false>(
+    parameters: {
+      path_directory: string
+      query_directory?: string
+      scopeID?: string
+      mode?: "session" | "scope"
+      sessionID?: string
+      presentation?: "auto" | "native"
+      protocolVersion?: number
+      sinceSeq?: number
+      epoch?: string
+      nativeTicket?: string
+      id?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            {
+              in: "path",
+              key: "path_directory",
+              map: "directory",
+            },
+            {
+              in: "query",
+              key: "query_directory",
+              map: "directory",
+            },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "mode" },
+            { in: "query", key: "sessionID" },
+            { in: "query", key: "presentation" },
+            { in: "query", key: "protocolVersion" },
+            { in: "query", key: "sinceSeq" },
+            { in: "query", key: "epoch" },
+            { in: "query", key: "nativeTicket" },
+            { in: "body", key: "id" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      BrowserDownloadArtifactResponses,
+      BrowserDownloadArtifactErrors,
+      ThrowOnError
+    >({
+      url: "/{directory}/browser/download-artifact",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Get Browser session state
    *
    * Read the browser session descriptor without creating, resuming, or navigating a page.
@@ -12583,7 +12830,7 @@ export class Browser extends HeyApiClient {
       scopeID?: string
       mode?: "session" | "scope"
       sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
+      presentation?: "auto" | "native"
       protocolVersion?: number
       sinceSeq?: number
       epoch?: string
@@ -12637,7 +12884,7 @@ export class Browser extends HeyApiClient {
       scopeID?: string
       mode?: "session" | "scope"
       sessionID?: string
-      presentation?: "auto" | "native" | "webrtc"
+      presentation?: "auto" | "native"
       protocolVersion?: number
       sinceSeq?: number
       epoch?: string

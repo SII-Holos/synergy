@@ -35,7 +35,7 @@ bun dev build desktop
 | ------------------- | ------------------------------------------------------------------------- |
 | `server`            | source server on fixed development port 4096 by default                   |
 | `app`               | Vite app against an existing server; default app port 3000                |
-| `web`               | source server, Vite app, and remote Browser Host                          |
+| `web`               | source server and Vite app                                                |
 | `desktop`           | source server, Vite app, and Electron in external-server mode             |
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
 | `send`              | one-off source CLI execution                                              |
@@ -196,7 +196,7 @@ The repository-local `.synergy/skill/` directory is the executable handbook for 
 | HTTP route, OpenAPI schema, generated SDK, or internal Web API call                              | `change-server-api`                                |
 | Durable storage, schema, index, migration, or recovery                                           | `change-persistence`                               |
 | Capability, permission, control-profile, enforcement, or sandbox behavior                        | `change-execution-boundaries`                      |
-| Browser ownership/control, Desktop native presentation, or WebRTC                                | `change-browser-runtime`                           |
+| Browser pages/identities, authorization or Desktop native presentation                           | `change-browser-runtime`                           |
 | Plugin manifest, install/update, runtime, bridge, marketplace, or UI host                        | `change-plugin-runtime`                            |
 | Built-in agent, CLI command, or first-party tool                                                 | `add-agent`, `add-cli-command`, or `add-tool`      |
 | Test selection, isolated runtime, or Git operation                                               | `testing-guide`, `develop-synergy`, or `git-guide` |

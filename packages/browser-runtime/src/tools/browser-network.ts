@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { BrowserToolHelper, formatBrowserJSON } from "./browser-shared"
 
@@ -7,6 +7,7 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
     "Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get a specific id. Sensitive headers and payload data are redacted by default.",
   parameters: z
     .object({
+      pageId: z.string().min(1).max(200).describe("Page ID from browser_navigation."),
       action: z.enum(["list", "get", "clear"]).default("list"),
       id: z.string().max(20_000).optional().describe("Required only for get."),
       resourceTypes: z.array(z.string().max(1_000)).max(100).optional(),
@@ -40,8 +41,8 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
           message: "includeSensitive is valid only for list or get.",
         })
     }),
-  async execute(params, ctx) {
-    const browserPage = await BrowserToolHelper.resolvePage(ctx)
+  async execute({ pageId, ...params }, ctx) {
+    const browserPage = await BrowserToolHelper.resolvePage(ctx, pageId)
     return BrowserToolHelper.withActivity(
       ctx,
       browserPage,
@@ -49,7 +50,7 @@ export const BrowserNetworkTool = Tool.define("browser_network", {
       "browser_network",
       `${params.action} network`,
       async () => {
-        const result = await BrowserToolHelper.execute(ctx, { type: "network", ...params })
+        const result = await BrowserToolHelper.execute(ctx, pageId, { type: "network", ...params })
         if (result.type !== "data") throw new Error("Browser network returned an unexpected result.")
         const formatted = formatBrowserJSON(result.data)
         return {

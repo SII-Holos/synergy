@@ -1,13 +1,13 @@
 # browser-runtime Package
 
-Browser backend state, page ownership, profiles, tools, routes, installation, lifecycle, and recovery. Keep one page per session. Native WebContentsView and WebRTC/data-channel modes are both supported. Browser cleanup consumes generic session terminal events; native hosting stays in apps/desktop and shared schemas in packages/browser-core. Read the root AGENTS.md and the owning architecture document before changes.
+Desktop Browser backend state, page collections, persistent identities, authorization, tools, routes, lifecycle and recovery. Every command targets a page; user selection is presentation state. Browser cleanup consumes generic session terminal events; native hosting stays in apps/desktop and shared schemas in packages/browser-core. Read the root AGENTS.md and the owning architecture document before changes.
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.
 - Workspace exports use the Harness file-import Host contract, implemented by Local Runtime. Capture the Workspace generation before collecting browser data, stage bundles privately, and publish through native write admission with cancellation and qualified file events. Keep native implementations out of this package's production dependency graph.
 
-Uploads pin the Workspace binding through dispatch, enforce actual bytes while reading, and revalidate open-handle and pathname identity. Keep shared protocol, headless staging and native-host staging behavior aligned, including zero-byte files.
+Uploads pin the Workspace binding through dispatch, enforce actual bytes while reading, and revalidate open-handle and pathname identity. Keep shared protocol and native staging behavior aligned, including zero-byte files.
 
 Commands and idle suspension acquire the Session binding lease before the command queue. Session transitions and Workspace resource disposal close old pages before publishing new file authority, clear command replay results, and preserve owner presentation and history. Test selection, rebind, cancellation and failed Host closure with `test/workspace-lifecycle.test.ts`.
 
@@ -19,4 +19,4 @@ Expose composition through `./component`; keep registration side-effect free unt
 
 Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
 
-Resolve Playwright Core from the module dependency graph. Only an explicit executable path may select legacy sidecar assets; normal module startup cannot accidentally bind to another installation.
+Production uses the local Desktop broker only. Playwright Core is a test-only development dependency for controller conformance fixtures; never publish its execution transport or install a separate browser engine.

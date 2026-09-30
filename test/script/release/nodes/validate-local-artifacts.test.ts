@@ -2,13 +2,8 @@ import { describe, expect, test } from "bun:test"
 import { requiredRuntimeArtifactPaths } from "../../../../script/release/shared/runtime-contract"
 
 describe("release runtime artifact contract", () => {
-  test("requires the filesystem-backed Playwright Core runtime", () => {
-    expect(requiredRuntimeArtifactPaths("synergy-linux-x64")).toContain(
-      "runtime/node_modules/playwright-core/package.json",
-    )
-    expect(requiredRuntimeArtifactPaths("synergy-darwin-arm64")).toContain(
-      "runtime/node_modules/playwright-core/lib/coreBundle.js",
-    )
+  test("has no separate browser engine in the CLI runtime", () => {
+    expect(requiredRuntimeArtifactPaths("synergy-linux-x64").some((file) => file.includes("playwright"))).toBe(false)
   })
 
   test("requires the filesystem-backed ONNX Web embedding runtime", () => {

@@ -1,4 +1,5 @@
-import { For, Show, createMemo } from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
+import { For, Show, createMemo, createSignal } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useBrowser, type DownloadEntry } from "./browser-store"
 import { downloadsPanel as P } from "@/locales/messages"
@@ -7,6 +8,11 @@ const STATE_META: Record<
   DownloadEntry["state"],
   { label: { id: string; message: string }; color: string; bg: string }
 > = {
+  awaiting_approval: {
+    label: { id: "browser.downloads.waiting", message: "Waiting" },
+    color: "text-text-on-warning-base",
+    bg: "bg-surface-warning-weak",
+  },
   in_progress: {
     label: P.stateDownloading,
     color: "text-text-on-info-base",
@@ -43,79 +49,117 @@ function formatBytes(bytes: number): string {
   return `${i === 0 ? val.toFixed(0) : val.toFixed(1)} ${BYTE_UNITS[i]}`
 }
 
-function truncateUrl(url: string, max = 60): string {
-  if (url.length <= max) return url
-  return url.slice(0, max - 3) + "..."
-}
-
 function formatTime(ts: number): string {
   const d = new Date(ts)
   const pad = (n: number) => String(n).padStart(2, "0")
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-export function DownloadsPanel() {
-  const { pageId: currentPageId, downloads } = useBrowser()
+export function DownloadsPanel(props: { onArtifact(id: string, operation: "save" | "open" | "draft"): Promise<void> }) {
+  const [busy, setBusy] = createSignal("")
+  const [error, setError] = createSignal("")
+  const artifact = async (id: string, operation: "save" | "open" | "draft") => {
+    if (busy()) return
+    setBusy(id)
+    setError("")
+    try {
+      await props.onArtifact(id, operation)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure))
+    } finally {
+      setBusy("")
+    }
+  }
+  const { pageId: currentPageId, downloads, send } = useBrowser()
   const lingui = useLingui()
 
   const entries = createMemo((): DownloadEntry[] => {
-    const pageId = currentPageId()
-    if (!pageId) return []
-    return downloads[pageId] ?? []
+    return [
+      ...new Map(
+        Object.values(downloads)
+          .flat()
+          .map((entry) => [entry.id, entry]),
+      ).values(),
+    ].sort((a, b) => b.timestamp - a.timestamp)
   })
 
   return (
-    <div class="flex flex-col h-full">
+    <div class="flex h-full flex-col overflow-auto p-4">
+      <Show when={error()}>
+        <p role="alert" class="mb-3 text-12 text-text-on-critical-base">
+          {error()}
+        </p>
+      </Show>
       <Show
-        when={entries().length > 0}
+        when={entries().length}
         fallback={
-          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">
+          <div class="flex flex-1 items-center justify-center text-13 text-text-weak">
             {lingui._({ id: P.empty.id, message: P.empty.message })}
           </div>
         }
       >
-        <div class="flex-1 overflow-y-auto font-mono">
-          <div class="sticky top-0 z-10 flex gap-2 px-3 py-1.5 bg-surface-raised-base border-b border-border-weak-base text-11-medium text-text-weak uppercase tracking-wider">
-            <span class="w-20 shrink-0">{lingui._({ id: P.stateCol.id, message: P.stateCol.message })}</span>
-            <span class="w-32 shrink-0">{lingui._({ id: P.fileCol.id, message: P.fileCol.message })}</span>
-            <span class="w-16 shrink-0">{lingui._({ id: P.sizeCol.id, message: P.sizeCol.message })}</span>
-            <span class="flex-1">{lingui._({ id: P.urlCol.id, message: P.urlCol.message })}</span>
-            <span class="w-16 shrink-0 text-right">{lingui._({ id: P.timeCol.id, message: P.timeCol.message })}</span>
-          </div>
+        <div class="divide-y divide-border-weak-base">
           <For each={entries()}>
-            {(entry) => {
-              const meta = STATE_META[entry.state] ?? STATE_META.in_progress
-
-              return (
-                <div class="flex gap-2 px-3 py-1.5 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
-                  <span class="w-20 shrink-0">
-                    <span class={`inline-flex items-center px-1.5 rounded text-10-medium ${meta.color} ${meta.bg}`}>
-                      {lingui._(meta.label)}
-                    </span>
-                  </span>
+            {(entry) => (
+              <div class="flex flex-col gap-2 py-3">
+                <div class="flex items-start gap-2">
+                  <span class="min-w-0 flex-1 break-all text-14-medium text-text-strong">{entry.fileName}</span>
                   <span
-                    class="w-32 shrink-0 text-text-strong truncate"
-                    title={entry.warning ?? `${entry.fileName} (${entry.mimeType})`}
+                    class={`shrink-0 rounded px-2 py-1 text-11 ${STATE_META[entry.state].color} ${STATE_META[entry.state].bg}`}
                   >
-                    {entry.fileName || "—"}
-                  </span>
-                  <span class="w-16 shrink-0 text-text-weaker tabular-nums">
-                    <Show
-                      when={entry.state === "in_progress" && entry.totalBytes > 0}
-                      fallback={formatBytes(entry.receivedBytes)}
-                    >
-                      {formatBytes(entry.receivedBytes)} / {formatBytes(entry.totalBytes)}
-                    </Show>
-                  </span>
-                  <span class="flex-1 text-text-strong truncate" title={entry.url}>
-                    {truncateUrl(entry.url)}
-                  </span>
-                  <span class="w-16 shrink-0 text-text-weaker tabular-nums text-right">
-                    {formatTime(entry.timestamp)}
+                    {lingui._(STATE_META[entry.state].label)}
                   </span>
                 </div>
-              )
-            }}
+                <p class="truncate text-12 text-text-weak" title={entry.url}>
+                  {entry.url}
+                </p>
+                <div class="flex flex-wrap items-center gap-2 text-12 text-text-weak">
+                  <span>
+                    {formatBytes(entry.receivedBytes)}
+                    <Show when={entry.state === "in_progress" && entry.totalBytes}>
+                      {" "}
+                      / {formatBytes(entry.totalBytes)}
+                    </Show>{" "}
+                    · {formatTime(entry.timestamp)}
+                  </span>
+                  <Show when={entry.state === "awaiting_approval"}>
+                    <Button
+                      size="small"
+                      onClick={() =>
+                        send({ type: "download.accept", id: entry.id, pageId: entry.pageId ?? currentPageId() })
+                      }
+                    >
+                      {lingui._({ id: "browser.downloads.accept", message: "Download" })}
+                    </Button>
+                  </Show>
+                  <Show when={entry.state === "awaiting_approval" || entry.state === "in_progress"}>
+                    <Button
+                      size="small"
+                      variant="ghost"
+                      onClick={() =>
+                        send({ type: "download.cancel", id: entry.id, pageId: entry.pageId ?? currentPageId() })
+                      }
+                    >
+                      {lingui._({ id: "browser.downloads.cancel", message: "Cancel" })}
+                    </Button>
+                  </Show>
+                  <Show when={entry.state === "completed"}>
+                    <Button size="small" disabled={Boolean(busy())} onClick={() => void artifact(entry.id, "save")}>
+                      {lingui._({ id: "browser.downloads.save", message: "Save as…" })}
+                    </Button>
+                    <Button size="small" disabled={Boolean(busy())} onClick={() => void artifact(entry.id, "open")}>
+                      {lingui._({ id: "browser.downloads.open", message: "Save and open" })}
+                    </Button>
+                    <Button size="small" disabled={Boolean(busy())} onClick={() => void artifact(entry.id, "draft")}>
+                      {lingui._({ id: "browser.downloads.draft", message: "Add to draft" })}
+                    </Button>
+                  </Show>
+                </div>
+                <Show when={entry.warning}>
+                  <p class="text-12 text-text-weak">{entry.warning}</p>
+                </Show>
+              </div>
+            )}
           </For>
         </div>
       </Show>

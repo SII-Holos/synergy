@@ -34,7 +34,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [Execution boundaries](execution-boundaries.md)  | Tool visibility, capability classification, control profiles, permissions, SmartAllow, and OS sandboxing.                       |
 | [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                            |
 | [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                            |
-| [Browser runtime](browser-runtime.md)            | Page ownership, control, native/WebRTC presentation, navigation policy, input, and lifecycle.                                   |
+| [Browser runtime](browser-runtime.md)            | Desktop pages, identities, permissions, native presentation, migration and recovery.                                            |
 | [GitHub Channel](github-channel.md)              | GitHub as a Channel: polling, event gating, per-thread checkouts, agentic review/QA/fix sessions, and comment delivery.         |
 | [Push notifications](push.md)                    | Web Push delivery: event bridge, per-subscription categories, VAPID keys, routes, service-worker contract, and iOS PWA limits.  |
 

@@ -1,7 +1,9 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import fs from "node:fs/promises"
 import path from "node:path"
-import { sanitizeBrowserFilename } from "@ericsanchezok/synergy-browser-core"
+import { sanitizeBrowserFilename, BROWSER_MAX_DOWNLOAD_BYTES } from "@ericsanchezok/synergy-browser-core"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
+import { constants } from "node:fs"
 import { BrowserOwner } from "./owner.js"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -15,7 +17,7 @@ export namespace BrowserDownloads {
     url: string
     suggestedFilename: string
     mimeType?: string
-    state: "pending" | "completed" | "failed" | "blocked" | "cancelled"
+    state: "awaiting_approval" | "pending" | "completed" | "failed" | "blocked" | "cancelled"
     path?: string
     size?: number
     createdAt: number
@@ -69,7 +71,7 @@ export namespace BrowserDownloads {
     const entry = instanceState.records.get(BrowserOwner.key(owner))?.get(id)
     if (!entry) throw new Error(`Download ${id} was not found for this browser owner.`)
     if (entry.record.state === "cancelled") return { ...entry.record }
-    if (entry.record.state !== "pending") {
+    if (entry.record.state !== "pending" && entry.record.state !== "awaiting_approval") {
       throw new Error(`Download ${id} cannot be cancelled after reaching ${entry.record.state} state.`)
     }
     entry.record.state = "cancelled"
@@ -142,6 +144,41 @@ export namespace BrowserDownloads {
     instanceState.records.clear()
   }
 
+  export async function artifact(owner: BrowserOwner.Info, id: string) {
+    const record = get(owner, id)
+    if (record?.state !== "completed" || !record.path) throw new Error("This download is not complete.")
+    const root = await fs.realpath(await managedDirectory(owner))
+    const source = await fs.realpath(record.path)
+    if (!source.startsWith(root + path.sep)) throw new Error("Download is outside its owner storage.")
+    const file = await fs.open(record.path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const info = await file.stat()
+      const named = await fs.lstat(record.path)
+      if (
+        !info.isFile() ||
+        named.isSymbolicLink() ||
+        info.dev !== named.dev ||
+        info.ino !== named.ino ||
+        info.size > BROWSER_MAX_DOWNLOAD_BYTES
+      )
+        throw new Error("Download is unavailable or exceeds the supported size.")
+      const buffer = Buffer.alloc(info.size + 1)
+      let size = 0
+      while (size < buffer.length) {
+        const read = await file.read(buffer, size, buffer.length - size, size)
+        if (!read.bytesRead) break
+        size += read.bytesRead
+      }
+      if (size !== info.size) throw new Error("Download changed while reading. Retry the operation.")
+      const mime = record.mimeType ?? "application/octet-stream"
+      const filename = sanitizeBrowserFilename(record.suggestedFilename, "download")
+      const assetID = await Asset.write(buffer.subarray(0, size), mime, filename)
+      return { id: assetID, url: `asset://${assetID}`, filename, mime, size }
+    } finally {
+      await file.close()
+    }
+  }
+
   export function restore(owner: BrowserOwner.Info, restored: DownloadRecord[]): void {
     const instanceState = runtimeState()
 
@@ -154,7 +191,7 @@ export namespace BrowserDownloads {
       ownerRecords.set(record.id, {
         record: {
           ...record,
-          state: record.state === "pending" ? "failed" : record.state,
+          state: ["pending", "awaiting_approval"].includes(record.state) ? "failed" : record.state,
           ...(managedPath ? { path: managedPath } : {}),
         },
       })

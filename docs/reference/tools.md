@@ -35,11 +35,11 @@ Generated from the builtin tool registry in `packages/harness/src/tool/registry.
 | `browser_clipboard` | `browser.interact` | Read, write, or clear page clipboard text through the dedicated browser clipboard capability. |
 | `browser_console` | `browser.inspect` | Read or clear redacted Chromium console logs and page errors, including source and stack information. For debugging, clear immediately before reproducing, then list entries and get a specific id for f |
 | `browser_dialog` | `browser.interact` | Inspect, accept, or dismiss the currently open JavaScript dialog, optionally supplying prompt text. |
-| `browser_downloads` | `browser.download` | List, wait for, cancel, or export owner-isolated managed browser downloads. |
+| `browser_downloads` | `browser.download` | List downloads across pages. Accept a waiting download, wait for completion, cancel, or export it to the Workspace. |
 | `browser_emulate` | `browser.inspect` | Apply viewport, DPR, mobile/touch, color scheme, motion, forced colors, locale/timezone, CPU, or network emulation. |
 | `browser_eval` | `browser.inspect` | Evaluate JavaScript in the current page. readonly runs with CDP side-effect rejection; trusted permits mutations and requires its dedicated capability. |
 | `browser_inspect` | `browser.inspect` | Inspect one uniquely matched element, including attributes, HTML, computed styles, box model, accessibility properties, and registered listeners. |
-| `browser_navigation` | `browser.navigate` | Navigate, resume, close, or read the one browser page owned by the current session. Agent navigation uses load for up to 15s by default; actions use networkquiet for up to 10s; every settle request ha |
+| `browser_navigation` | `browser.navigate` | List or open browser pages; navigate, inspect or recover a page by pageId. Pages keep their identity and do not change the user's selected tab. Inspect page state before repeating an uncertain action. |
 | `browser_network` | `browser.inspect` | Read or clear Chromium network requests, responses, failures, redirects, timing, and resource types. For debugging, clear immediately before reproducing, list failed/status-filtered records, then get  |
 | `browser_performance` | `browser.inspect` | Measure Web Vitals, long tasks and resource timing, or start/stop a CDP performance trace. |
 | `browser_read` | `browser.inspect` | Read a bounded text, Markdown, or HTML representation of the current page or one uniquely matched element. |
@@ -406,6 +406,7 @@ Perform one deterministic browser interaction. The tool waits for the target to 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | BrowserActionSchema | yes |  |
 
 ## browser_annotate
@@ -434,6 +435,7 @@ List a bounded set of page assets or export a real manifest bundle into an autho
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "export" | yes |  |
 | `types` | array |  |  |
 | `outputDir` | string |  |  |
@@ -447,6 +449,7 @@ Audit the current document for accessibility, semantic HTML, SEO, and frontend b
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `categories` | array |  |  |
 
 ## browser_clipboard
@@ -457,6 +460,7 @@ Read, write, or clear page clipboard text through the dedicated browser clipboar
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "read" \| "write" \| "clear" | yes |  |
 | `text` | string |  | Required only for write. |
 
@@ -468,6 +472,7 @@ Read or clear redacted Chromium console logs and page errors, including source a
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "get" \| "clear" |  |  |
 | `id` | string |  | Required only for get. |
 | `level` | string |  | Optional console level filter for list. |
@@ -483,6 +488,7 @@ Inspect, accept, or dismiss the currently open JavaScript dialog, optionally sup
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "status" \| "accept" \| "dismiss" | yes |  |
 | `promptText` | string |  | Valid only for accept. |
 
@@ -490,12 +496,12 @@ Inspect, accept, or dismiss the currently open JavaScript dialog, optionally sup
 
 Kind: `browser.download`
 
-List, wait for, cancel, or export owner-isolated managed browser downloads.
+List downloads across pages. Accept a waiting download, wait for completion, cancel, or export it to the Workspace.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `action` | "list" \| "wait" \| "cancel" \| "export" | yes |  |
-| `id` | string |  | Required for wait, cancel, and export. |
+| `action` | "list" \| "accept" \| "wait" \| "cancel" \| "export" | yes |  |
+| `id` | string |  | Required except for list. |
 | `timeoutSeconds` | number |  | Valid only for wait; defaults to 30. |
 | `path` | string |  | Required only for export. |
 | `page` | number |  | Valid only for list; defaults to 0. |
@@ -509,6 +515,7 @@ Apply viewport, DPR, mobile/touch, color scheme, motion, forced colors, locale/t
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `emulation` | BrowserEmulationSchema | yes |  |
 
 ## browser_eval
@@ -519,6 +526,7 @@ Evaluate JavaScript in the current page. readonly runs with CDP side-effect reje
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `expression` | string | yes |  |
 | `mode` | "readonly" \| "trusted" |  |  |
 | `timeoutSeconds` | number |  | Maximum seconds to evaluate the script (1-120); defaults to 10. |
@@ -532,6 +540,7 @@ Inspect one uniquely matched element, including attributes, HTML, computed style
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `target` | BrowserLocatorSchema | yes |  |
 | `computedStyles` | array |  |  |
 
@@ -539,16 +548,18 @@ Inspect one uniquely matched element, including attributes, HTML, computed style
 
 Kind: `browser.navigate`
 
-Navigate, resume, close, or read the one browser page owned by the current session. Agent navigation uses load for up to 15s by default; actions use networkquiet for up to 10s; every settle request has a 30s hard cap and returns current page state plus a best-effort snapshot. A settle timeout reports settled:false rather than an action failure, so inspect the current state before using browser_wait for a specific condition. Results report observed engine state and never claim business completion.
+List or open browser pages; navigate, inspect or recover a page by pageId. Pages keep their identity and do not change the user's selected tab. Inspect page state before repeating an uncertain action.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `action` | z.enum | yes |  |
-| `url` | string |  | Required only for goto. |
-| `ignoreCache` | boolean |  | Valid only for reload. |
-| `settleMode` | "networkquiet" \| "load" \| "none" |  | How long to wait after navigation before returning. load is the default for agent navigation (up to 15s); networkquiet waits up to settleTimeoutMs for the page to stop loading and go quiet; none returns immediately. |
-| `settleTimeoutMs` | number |  | Maximum milliseconds to wait for the page to settle (default 15s for navigation, hard cap 30s). A timeout does not fail the navigation; the result reports settled:false so you can decide what to wait for with browser_wait. |
-| `includeSnapshot` | boolean |  | Return a fresh accessibility snapshot after navigation settles (default true). Set false when the destination is a download or you only need the URL/title. |
+| `action` | "list" \| "open" \| "goto" \| "back" \| "forward" \| "reload" \| "stop" \| "resume" \| "close" \| "current" | yes |  |
+| `pageId` | BrowserPageIdSchema.optional |  | Required except for list and open. |
+| `profileId` | BrowserProfileIdSchema.optional |  |  |
+| `url` | string |  |  |
+| `ignoreCache` | boolean |  |  |
+| `settleMode` | "networkquiet" \| "load" \| "none" |  | Navigation defaults to load (15s). |
+| `settleTimeoutMs` | number |  |  |
+| `includeSnapshot` | boolean |  | Include current page evidence; defaults to true. |
 
 ## browser_network
 
@@ -558,6 +569,7 @@ Read or clear Chromium network requests, responses, failures, redirects, timing,
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "list" \| "get" \| "clear" |  |  |
 | `id` | string |  | Required only for get. |
 | `resourceTypes` | array |  |  |
@@ -576,6 +588,7 @@ Measure Web Vitals, long tasks and resource timing, or start/stop a CDP performa
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `action` | "measure" \| "startTrace" \| "stopTrace" | yes |  |
 | `exportPath` | string |  | Workspace-relative JSON path for a stopped trace. |
 
@@ -587,6 +600,7 @@ Read a bounded text, Markdown, or HTML representation of the current page or one
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `format` | "text" \| "markdown" \| "html" |  |  |
 | `target` | BrowserLocatorSchema.optional |  |  |
 | `maxChars` | number |  |  |
@@ -599,6 +613,7 @@ Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `fullPage` | literal |  |  |
 | `clip` | BrowserClipSchema.optional |  |  |
 | `target` | BrowserLocatorSchema.optional |  |  |
@@ -611,6 +626,7 @@ Capture the current accessibility and interactive DOM snapshot. Returned opaque 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `query` | string |  | Bounded text query; matching nodes include their ancestor path. |
 | `maxNodes` | number |  |  |
 | `interactiveOnly` | boolean |  |  |
@@ -624,6 +640,7 @@ Upload permission-reviewed workspace files to one uniquely matched file input th
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `target` | BrowserLocatorSchema | yes |  |
 | `paths` | array | yes |  |
 
@@ -645,6 +662,7 @@ Wait for a specific page condition: load state, URL, title, text, locator state,
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
+| `pageId` | string | yes | Page ID from browser_navigation. |
 | `condition` | BrowserWaitConditionSchema | yes |  |
 | `timeoutSeconds` | number |  | Maximum seconds to wait for the condition (1-60); defaults to 10. |
 

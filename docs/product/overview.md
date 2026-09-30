@@ -169,16 +169,7 @@ Plugins participate in the same product contracts as first-party features: tool 
 
 ## Browser Workspace
 
-Browser is a session-owned workspace where humans and browser tools operate on the same page.
-
-Each session has at most one Browser page. Reading Browser state or opening an interactive viewer does not create that page; the first user or tool navigation creates it, and later navigation reuses it.
-
-Interactive presentation has two first-class modes:
-
-- Desktop presents the page through a native Electron `WebContentsView`.
-- Web presents a remote Browser host through WebRTC media and data-channel input.
-
-Both modes preserve normal browser interaction such as pointer focus, text caret, IME composition, paste, wheel, and keyboard shortcuts. Navigation and file access pass safety checks, and agent-driven Browser actions remain subject to the active control profile.
+Desktop Browser gives each task multiple real native pages, with persistent Personal/named website identities or temporary identities. Human tab selection and explicit Agent page targets remain independent. State reads create no page; open and resume are explicit operations. See [Browser workspace](browser.md) for identity, permission and recovery behavior.
 
 ## Control Boundaries
 
