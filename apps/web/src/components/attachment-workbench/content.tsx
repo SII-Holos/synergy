@@ -6,7 +6,6 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useData } from "@ericsanchezok/synergy-ui/context/data"
-import { useFile } from "@/context/file"
 import { usePlatform } from "@/context/platform"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useSDK } from "@/context/sdk"
@@ -16,10 +15,11 @@ import { attachmentResourceState, findAttachmentByLocator } from "./model"
 import { AttachmentPreview } from "./preview"
 import "./styles.css"
 
-export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
+export function AttachmentWorkbenchContent(
+  props: WorkbenchPanelContentProps & { sourceFileAction?: (path: string) => (() => void) | undefined },
+) {
   const lingui = useLingui()
   const data = useData()
-  const file = useFile()
   const platform = usePlatform()
   const sdk = useSDK()
   const workbench = useWorkbenchPanels()
@@ -52,7 +52,10 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
     const value = locator()
     return local() ?? (value ? findAttachmentByLocator(remoteParts(), value) : undefined)
   })
-  const sourcePath = createMemo(() => file.normalize(attachmentSourcePath(attachment() ?? { mime: "" }) ?? ""))
+  const sourceFileAction = createMemo(() => {
+    const path = attachmentSourcePath(attachment() ?? { mime: "" })
+    return path ? props.sourceFileAction?.(path) : undefined
+  })
   return (
     <Show
       when={attachment()}
@@ -70,7 +73,7 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
           file={current()}
           serverUrl={sdk.url}
           fetcher={platform.fetch}
-          onOpenSource={sourcePath() ? () => void file.openWorkspaceFile(sourcePath()!) : undefined}
+          onOpenSource={sourceFileAction()}
           onOpenBrowser={openInBrowserPanel}
           onOpenExternal={platform.openLink}
         />

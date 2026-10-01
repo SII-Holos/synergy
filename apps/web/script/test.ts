@@ -64,6 +64,7 @@ const playwrightIsolated = [
   "test/components/attachment-workbench/xlsx-reader.dom.test.ts",
   "test/components/attachment-workbench/pptx-reader.dom.test.ts",
   "test/components/attachment-workbench/office-preview.dom.test.ts",
+  "test/components/attachment-workbench/content.dom.test.ts",
   "test/components/prompt-input/composer-resize.dom.test.ts",
   "test/components/library/filter-menu-surface.test.ts",
   "test/components/menu-field/menu-field.test.ts",

@@ -14,7 +14,7 @@ import { normalizeBrowserError } from "./browser/browser-error"
 import { useTerminal } from "@/context/terminal"
 import { workspaceFilePath } from "@/context/file/workspace"
 import { useFile } from "@/context/file"
-import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
+import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
 import { panels as P, browser as B } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
@@ -119,9 +119,20 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         launchable: false,
         pluginId: "builtin",
         order: 17,
-        loader: async () => ({
-          default: (await import("@/components/attachment-workbench/content")).AttachmentWorkbenchContent,
-        }),
+        loader: async () => {
+          const { AttachmentWorkbenchContent } = await import("@/components/attachment-workbench/content")
+          return {
+            default: (props: WorkbenchPanelContentProps) => (
+              <AttachmentWorkbenchContent
+                {...props}
+                sourceFileAction={(path) => {
+                  const normalized = file.normalize(path)
+                  return normalized ? () => void file.openWorkspaceFile(normalized) : undefined
+                }}
+              />
+            ),
+          }
+        },
         title: (tab) => tab.title ?? i18n._(P.attachment),
         tabIcon(tab) {
           return <FileIcon node={{ path: tab.title ?? "attachment", type: "file" }} class="size-4" />

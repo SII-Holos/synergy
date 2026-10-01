@@ -14,6 +14,8 @@ Draft attachments mount this component in a temporary modal. The modal belongs t
 
 Sent user attachments prefer their canonical session, message and attachment identity before an optional workspace path. Images can therefore reopen in the same attachment panel. Other shared-card consumers preserve their existing default opening behavior.
 
+The canonical attachment panel reads uploaded assets without a file workspace provider. The built-in registration captures workspace navigation and supplies it as an optional internal callback, so source-file actions retain their owner without making historical or uploaded resources depend on a file editor context.
+
 ## Alternatives considered
 
 **Assign a synthetic session to draft previews.** This creates invalid persistent resource identities and complicates cleanup.
