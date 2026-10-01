@@ -998,6 +998,7 @@ export namespace SessionInvoke {
               const workflowContext = {
                 deliveryMetadata: channelDeliveryMetadata(msgs, lastFinishedIndex),
                 agentName: agent.name,
+                toolIDs: Object.freeze(toolDefinitions.map((tool) => tool.id)),
               }
               if (session) {
                 const contribution = workflowKind ? WorkflowPromptRegistry.get(workflowKind) : undefined

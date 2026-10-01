@@ -3,6 +3,11 @@ import type { Info } from "./types"
 import type { WorkflowPromptRegistry } from "./workflow-prompt-registry"
 
 export namespace SessionExecutionContributions {
+  export type PromptContext = WorkflowPromptRegistry.PromptContext & {
+    agentName: string
+    /** Callable definitions after permission, availability and host selection. */
+    toolIDs: readonly string[]
+  }
   export interface Contribution {
     id: string
     advisory?(sessionID: string, scopeID: string, signal: AbortSignal): Promise<string[]>
@@ -13,10 +18,7 @@ export namespace SessionExecutionContributions {
     abandonWorkflow?(session: Info): Promise<boolean>
     hasContinuation?(session: Info): boolean
     assertWorkflowAllowed?(session: Info, kind: string): Promise<void>
-    system?(
-      session: Info,
-      context: WorkflowPromptRegistry.PromptContext & { agentName: string },
-    ): Promise<string[]> | string[]
+    system?(session: Info, context: PromptContext): Promise<string[]> | string[]
     archive?(session: Info): Promise<Record<string, unknown>>
   }
   const runtimeState = RuntimeContext.state(() => ({
@@ -66,12 +68,13 @@ export namespace SessionExecutionContributions {
 
     for (const entry of instanceState.contributions.values()) await entry.assertWorkflowAllowed?.(session, kind)
   }
-  export async function system(session: Info, context: WorkflowPromptRegistry.PromptContext & { agentName: string }) {
+  export async function system(session: Info, context: PromptContext) {
     const instanceState = runtimeState()
 
+    const snapshot = { ...context, toolIDs: Object.freeze([...context.toolIDs]) }
     const parts: string[] = []
     for (const entry of instanceState.contributions.values())
-      parts.push(...((await entry.system?.(session, context)) ?? []))
+      parts.push(...((await entry.system?.(session, snapshot)) ?? []))
     return parts
   }
   export async function archive(session: Info) {

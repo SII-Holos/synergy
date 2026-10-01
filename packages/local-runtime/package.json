@@ -104,7 +104,8 @@
     "./cli/network": "./src/cli/network.ts",
     "./cli/scope": "./src/cli/scope.ts",
     "./component": "./src/component.ts",
-    "./reload": "./src/reload.ts"
+    "./reload": "./src/reload.ts",
+    "./skill/selection": "./src/skill/selection.ts"
   },
   "scripts": {
     "build:execution-host": "bun script/build-execution-host.ts",
