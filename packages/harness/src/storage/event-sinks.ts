@@ -18,8 +18,13 @@ export namespace StorageEventSinks {
   export type Delivery = z.infer<typeof DeliverySchema>
   export interface Sink {
     id: string
-    /** Pure selection and projection inside the fact's transaction; no external effects. */
-    capture(event: Readonly<StoredEvent>): { partition: string; payload: unknown } | undefined
+    /** Transaction-local selection and projection; reads may await, external effects are forbidden. */
+    capture(
+      event: Readonly<StoredEvent>,
+    ):
+      | { partition: string; payload: unknown }
+      | undefined
+      | Promise<{ partition: string; payload: unknown } | undefined>
     /** Acknowledges durable acceptance. Receivers deduplicate by eventID and sinkID. */
     deliver(delivery: Readonly<Delivery>): Promise<void>
   }
@@ -40,7 +45,7 @@ export namespace StorageEventSinks {
   /** Called by Storage.enqueue; the external queue is independent of Runtime Bus epochs. */
   export async function capture(tx: StoreTransaction, event: StoredEvent) {
     for (const sink of state().sinks.values()) {
-      const selected = sink.capture(structuredClone(event))
+      const selected = await sink.capture(structuredClone(event))
       if (selected === undefined) continue
       const partition = z.string().min(1).max(256).parse(selected.partition)
       const meta = ["event_delivery_meta", sink.id, partition]

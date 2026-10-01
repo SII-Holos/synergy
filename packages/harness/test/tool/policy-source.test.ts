@@ -6,6 +6,7 @@ import { PermissionNext } from "../../src/permission/next"
 import { z } from "zod"
 import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
+import { ToolDiscovery } from "../../src/tool/discovery"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { SessionProcessor } from "../../src/session/processor"
@@ -69,6 +70,52 @@ test("host tool policy is isolated, sealed, and cannot widen the candidate catal
     },
   })
   await expect(invalid.run(() => ToolPolicySource.select(input))).rejects.toThrow("host tool policy")
+})
+
+test("manual discovery and expansion candidates obey host selection", async () => {
+  await using runtime = await testRuntime({
+    register() {
+      ToolRegistry.registerToolProvider("discovery-policy-fixture", () => [
+        Tool.define(
+          "denied_probe",
+          {
+            description: "Deferred capability denied by the host",
+            parameters: z.object({}),
+            async execute() {
+              throw new Error("must not execute")
+            },
+          },
+          { exposure: { mode: "search" } },
+        ),
+      ])
+      ToolPolicySource.register({
+        async select(input) {
+          return input.toolIDs.filter((id) => id !== "denied_probe")
+        },
+      })
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const session = await Session.create({ workspace: null })
+        const catalog = await ToolDiscovery.collect({
+          providerID: model.providerID,
+          model,
+          agent,
+          session,
+          includeMCP: false,
+        })
+        expect(catalog.disabled.has("denied_probe")).toBe(true)
+        expect(ToolDiscovery.nonResidentEntries(catalog).some((entry) => entry.id === "denied_probe")).toBe(false)
+        expect(ToolDiscovery.visibleTools(catalog, [], ["denied_probe"])).not.toContain("denied_probe")
+        await expect(
+          ToolDiscovery.collect({ providerID: model.providerID, agent, session, includeMCP: false }),
+        ).rejects.toThrow("host tool policy")
+      },
+    }),
+  )
 })
 
 test("host selection removes deferred expansion candidates as well as visible tools", async () => {

@@ -18,4 +18,6 @@ Register an optional Runtime-scoped ToolPolicySource before composition seals. S
 
 ## Consequences
 
+Manual discovery and deferred expansion apply the same host selection as model-visible resolution. A registered host selection requires a concrete Session and model for discovery; missing context fails closed. This selection affects visibility and activation candidates, while execution authorization still runs before resources and dispatch.
+
 Hosts can bind tool use to their own durable authority without exporting resolver or processor implementations. An absent source preserves default product behavior. The host's policy applies to diagnostic, native, ephemeral and MCP calls at the same final dispatch boundary.

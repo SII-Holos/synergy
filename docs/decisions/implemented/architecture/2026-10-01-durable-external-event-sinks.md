@@ -10,6 +10,8 @@ Runtime Bus notifications belong to the current epoch. Recovery discards old not
 
 Hosts explicitly register Runtime-owned StorageEventSinks. A pure capture callback projects selected stored events into an independent delivery record and allocates a partition sequence in the same SQL transaction as the fact. Capture is serialized within that transaction, including concurrent publications. Hosts pump bounded batches outside transactions. A record is removed only after durable external acknowledgment; native notification reconciliation cannot remove it.
 
+Capture may await transaction-local reads to resolve persisted ownership. Its promise is awaited before the fact can commit, and a projection failure rolls the fact and queue back together. Network effects remain forbidden inside capture.
+
 ## Alternatives considered
 
 Replaying arbitrary Bus subscribers can duplicate external effects. Publishing from a subscriber loses events after a crash. A host-side queue written after the fact leaves a commit gap. An exactly-once network promise cannot resolve a lost response.

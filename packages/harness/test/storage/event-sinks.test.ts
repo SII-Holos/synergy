@@ -23,6 +23,46 @@ function capture(event: Parameters<StorageEventSinks.Sink["capture"]>[0]) {
 
 for (const backend of storageTestBackends()) {
   describe(`${backend} durable external event sinks`, () => {
+    test("transaction-local projection reads the committed owner and rolls back on async failure", async () => {
+      await using runtime = await testRuntime({
+        postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,
+        register: () =>
+          StorageEventSinks.register({
+            id: "owner-projection",
+            async capture(event) {
+              if (event.type !== Changed.type) return
+              expect(Storage.inTransaction()).toBe(true)
+              const owner = await Storage.read<{ run: string }>(["test-owner"])
+              if (owner.run === "reject") throw new Error("invalid owner")
+              return { partition: owner.run, payload: { run: owner.run, value: capture(event)!.payload } }
+            },
+            async deliver() {},
+          }),
+      })
+      await runtime.run(() =>
+        ScopeContext.provide({
+          scope: Scope.home(),
+          fn: async () => {
+            await expect(
+              Storage.transaction(async () => {
+                await Storage.write(["test-owner"], { run: "reject" })
+                await Bus.publish(Changed, { partition: "source", value: 1 })
+              }),
+            ).rejects.toThrow("invalid owner")
+            expect(await Storage.readMany([["test-owner"]])).toEqual([undefined])
+            expect(await Storage.query({ kind: "event_delivery" })).toEqual([])
+            await Storage.transaction(async () => {
+              await Storage.write(["test-owner"], { run: "run-owned" })
+              await Bus.publish(Changed, { partition: "source", value: 2 })
+            })
+            const records = await Storage.query<StorageEventSinks.Delivery>({ kind: "event_delivery" })
+            expect(records[0]!.value.partition).toBe("run-owned")
+            expect(records[0]!.value.payload).toEqual({ run: "run-owned", value: { partition: "source", value: 2 } })
+          },
+        }),
+      )
+    })
+
     test("delivery records and partition sequences commit with Bus facts and roll back together", async () => {
       await using runtime = await testRuntime({
         postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined,

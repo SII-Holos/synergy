@@ -52,6 +52,19 @@ export namespace ToolPolicySource {
     }
   }
 
+  /** Discovery runs under the same host policy; incomplete host context fails closed. */
+  export async function selectDiscovery(input: {
+    session?: Session.Info
+    agent: Agent.Info
+    model?: Provider.Model
+    toolIDs: readonly string[]
+  }): Promise<string[]> {
+    if (!state().source?.select) return [...input.toolIDs]
+    if (!input.session || !input.model)
+      throw new DeniedError(new Error("Host discovery requires session and model context"))
+    return select({ ...input, sessionID: input.session.id, model: input.model })
+  }
+
   export async function authorize(input: ExecutionInput) {
     input.signal?.throwIfAborted()
     const source = state().source

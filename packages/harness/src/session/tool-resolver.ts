@@ -2388,6 +2388,7 @@ export namespace ToolResolver {
     const { ToolDiscovery } = await import("../tool/discovery")
     const catalog = await ToolDiscovery.collect({
       providerID: ToolDiscovery.providerIDFromModel(input.model),
+      model: input.model,
       agent: input.agent,
       session,
       userTools: input.userTools,
