@@ -23,13 +23,10 @@ export function registerNoteTools(): void {
   if (instanceState.registered) return
   instanceState.registered = true
 
-  ToolRegistry.registerToolProvider("note", () => [
-    NoteArchiveTool,
-    NoteListTool,
-    NoteReadTool,
-    NoteSearchTool,
-    NoteWriteTool,
-    NoteEditTool,
-    NoteDeleteTool,
-  ])
+  ToolRegistry.registerToolProvider("note", noteTools)
+}
+
+/** Complete toolkit for hosts that own group metadata and registration. */
+export function noteTools() {
+  return [NoteArchiveTool, NoteListTool, NoteReadTool, NoteSearchTool, NoteWriteTool, NoteEditTool, NoteDeleteTool]
 }
