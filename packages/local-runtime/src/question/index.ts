@@ -30,6 +30,11 @@ export namespace Question {
       header: z.string().max(12).describe("Very short label (max 12 chars)"),
       options: z.array(Option).describe("Available choices"),
       multiple: z.boolean().optional().describe("Allow selecting multiple choices"),
+      allow_custom: z.boolean().optional().describe("Allow a custom free-form answer; defaults to true"),
+      input_type: z
+        .enum(["text", "password"])
+        .optional()
+        .describe("Direct input; password replies are redacted from lifecycle events"),
     })
     .meta({
       ref: "QuestionInfo",
@@ -112,7 +117,9 @@ export namespace Question {
     sessionID: string
     questions: Info[]
     tool?: { messageID: string; callID: string }
+    signal?: AbortSignal
   }): Promise<Answer[]> {
+    input.signal?.throwIfAborted()
     const s = await state()
     const id = Identifier.ascending("question")
     const createdAt = Date.now()
@@ -203,7 +210,16 @@ export namespace Question {
         existing.reject(error instanceof Error ? error : new Error(String(error)))
       })
 
-    return promise
+    const onAbort = () => {
+      const entry = s.pending[id]
+      if (!entry) return
+      delete s.pending[id]
+      Bus.publish(Event.Rejected, { sessionID: input.sessionID, requestID: id })
+      entry.reject(input.signal?.reason ?? new DOMException("Question cancelled", "AbortError"))
+    }
+    input.signal?.addEventListener("abort", onAbort, { once: true })
+    if (input.signal?.aborted) onAbort()
+    return promise.finally(() => input.signal?.removeEventListener("abort", onAbort))
   }
 
   export async function reply(input: { requestID: string; answers: Answer[] }): Promise<void> {
@@ -219,16 +235,23 @@ export namespace Question {
     }
     delete s.pending[input.requestID]
 
-    log.info("replied", { requestID: input.requestID, answers: input.answers })
+    const answers = redactAnswers(existing.info.questions, input.answers)
+    log.info("replied", { requestID: input.requestID, answers })
 
     Bus.publish(Event.Replied, {
       sessionID: existing.info.sessionID,
       requestID: existing.info.id,
-      answers: input.answers,
+      answers,
     })
 
     existing.resolve(input.answers)
     return true
+  }
+
+  export function redactAnswers(questions: readonly Info[], answers: readonly Answer[]): Answer[] {
+    return answers.map((answer, index) =>
+      questions[index]?.input_type === "password" ? answer.map(() => "[redacted]") : [...answer],
+    )
   }
 
   export async function reject(requestID: string): Promise<void> {
