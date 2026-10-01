@@ -11409,6 +11409,10 @@ msgid "prompt.attachments.pendingSummary"
 msgstr "{uploading} uploading · {failed} failed"
 
 #. js-lingui-explicit-id
+msgid "prompt.attachments.previewTitle"
+msgstr "Attachment preview"
+
+#. js-lingui-explicit-id
 msgid "prompt.attachments.resolveFailed"
 msgstr "Review failed attachments"
 

@@ -113,7 +113,11 @@ export function AttachmentCard(props: {
       props.onOpen(props.file)
       return
     }
-    if (props.compact === "user" && resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl })) return
+    if (
+      props.compact === "user" &&
+      resourceOpen?.openAttachment(props.file, { serverUrl: props.serverUrl, prefer: "workspace" })
+    )
+      return
     const preview = props.imagePreview
     if (preview) {
       const images = preview.images.map((image) => ({

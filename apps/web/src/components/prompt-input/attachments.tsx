@@ -33,7 +33,7 @@ export function PromptAttachments(props: {
   retryAttachment: (id: string) => Promise<void>
   serverUrl: string
   removeAttachment: (id: string) => void
-  onOpen?: (file: AttachmentFile) => void
+  onOpen?: (file: AttachmentFile, id: string) => void
 }) {
   const { i18n } = useLocale()
   const [expanded, setExpanded] = createSignal(false)
@@ -145,7 +145,7 @@ export function PromptAttachments(props: {
                     file={entry.value.file}
                     serverUrl={props.serverUrl}
                     compact="draft"
-                    onOpen={props.onOpen}
+                    onOpen={props.onOpen ? (file) => props.onOpen?.(file, entry.id) : undefined}
                     imagePreview={
                       entry.value.imagePreviewIndex !== undefined
                         ? { images: previewImages(), index: entry.value.imagePreviewIndex }

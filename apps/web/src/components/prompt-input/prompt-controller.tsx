@@ -19,6 +19,8 @@ import {
   createSignal,
   createResource,
   untrack,
+  lazy,
+  Suspense,
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { createFocusSignal } from "@solid-primitives/active-element"
@@ -195,6 +197,12 @@ function WorkflowChip(props: {
     </Tooltip>
   )
 }
+
+const DraftAttachmentPreview = lazy(() =>
+  import("@/components/attachment-workbench/draft-preview").then((module) => ({
+    default: module.DraftAttachmentPreview,
+  })),
+)
 
 export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
@@ -1387,6 +1395,39 @@ export function createPromptInputController(props: PromptInputProps) {
   const uploadedAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "attachment") as UploadedAttachmentPart[],
   )
+  let draftPreviewId: string | undefined
+  onCleanup(() => {
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+  })
+  const openDraftAttachment = (
+    file: import("@ericsanchezok/synergy-ui/attachment-card").AttachmentFile,
+    id: string,
+  ) => {
+    const owner = sessionKey()
+    const serverUrl = sdk.url
+    if (draftPreviewId) workflowDialog.close(draftPreviewId)
+    draftPreviewId = workflowDialog.push(
+      () => (
+        <Suspense>
+          <DraftAttachmentPreview
+            file={file}
+            serverUrl={serverUrl}
+            isValid={() =>
+              sessionKey() === owner &&
+              sdk.url === serverUrl &&
+              uploadedAttachments().some((part) => part.id === id && part.url === file.url)
+            }
+            onInvalid={() => {
+              if (draftPreviewId) workflowDialog.close(draftPreviewId)
+            }}
+          />
+        </Suspense>
+      ),
+      () => {
+        draftPreviewId = undefined
+      },
+    )
+  }
   const noteAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "note") as NoteAttachmentPart[],
   )
@@ -2157,6 +2198,7 @@ export function createPromptInputController(props: PromptInputProps) {
             order={() => prompt.current().flatMap((part) => ("id" in part ? [part.id] : []))}
             serverUrl={sdk.url}
             removeAttachment={removeAttachment}
+            onOpen={openDraftAttachment}
           />
         </Show>
       </>

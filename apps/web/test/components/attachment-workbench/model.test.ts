@@ -4,6 +4,7 @@ import {
   ATTACHMENT_PDF_MAX_BYTES,
   ATTACHMENT_TEXT_MAX_BYTES,
   attachmentOpenInBrowserUrl,
+  attachmentSourceMarkdown,
   attachmentWorkbenchPanelInit,
   attachmentResourceId,
   attachmentResourceState,
@@ -46,6 +47,18 @@ describe("attachment workspace identity", () => {
 })
 
 describe("bounded attachment reads", () => {
+  test("a cancelled reader discards late results even when the transport ignores abort", async () => {
+    const reply = Promise.withResolvers<Response>()
+    const reader = createAttachmentPreviewReader(() => reply.promise)
+    const pending = reader.read("https://example.com/draft.txt", 1024)
+    reader.cancel()
+    reply.resolve(new Response("stale"))
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+  })
+  test("images have a direct reading capability without a fabricated session identity", () => {
+    expect(classifyAttachmentPreview("image/png", "sample.png").kind).toBe("image")
+    expect(attachmentWorkbenchPanelInit({ filename: "sample.png" })).toBeUndefined()
+  })
   test("rejects declared and streamed payloads above the preview limit", async () => {
     await expect(
       fetchAttachmentBytes(
@@ -219,4 +232,10 @@ describe("attachment open-in-browser eligibility", () => {
     expect(attachmentOpenInBrowserUrl("html", undefined)).toBeUndefined()
     expect(attachmentOpenInBrowserUrl(undefined, url)).toBeUndefined()
   })
+})
+
+test("read-only source retains Markdown and HTML as code even with fence characters", () => {
+  expect(attachmentSourceMarkdown("~~~\n<script>raw</script>\n# 原文", "notes.md")).toBe(
+    "~~~~markdown\n~~~\n<script>raw</script>\n# 原文\n~~~~",
+  )
 })

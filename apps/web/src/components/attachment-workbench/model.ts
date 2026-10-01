@@ -17,7 +17,7 @@ export interface AttachmentWorkbenchPanelInit {
   state: AttachmentResourceState
 }
 
-export type AttachmentPreviewKind = "pdf" | "markdown" | "html" | "source" | "video" | "audio" | "unsupported"
+export type AttachmentPreviewKind = "image" | "pdf" | "markdown" | "html" | "source" | "video" | "audio" | "unsupported"
 
 export interface AttachmentPreviewCapability {
   kind: AttachmentPreviewKind
@@ -112,7 +112,9 @@ function extension(filename: string | undefined) {
 }
 
 export function classifyAttachmentPreview(mime: string, filename?: string): AttachmentPreviewCapability {
+  mime = mime.split(";")[0]!.trim().toLowerCase()
   const ext = extension(filename)
+  if (mime.startsWith("image/")) return { kind: "image", defaultMode: "preview", dual: false }
   if (mime === "application/pdf" || ext === "pdf") {
     return { kind: "pdf", defaultMode: "preview", dual: false, maxBytes: ATTACHMENT_PDF_MAX_BYTES }
   }
@@ -142,13 +144,16 @@ export async function fetchAttachmentBytes(
   maxBytes: number,
   signal?: AbortSignal,
 ): Promise<Uint8Array> {
+  signal?.throwIfAborted()
   const response = await fetcher(url, { signal })
+  signal?.throwIfAborted()
   if (!response.ok) throw new Error(`Attachment request failed (${response.status})`)
   const declared = Number(response.headers.get("content-length"))
   if (Number.isFinite(declared) && declared > maxBytes) throw new AttachmentTooLargeError(maxBytes, declared)
 
   if (!response.body) {
     const bytes = new Uint8Array(await response.arrayBuffer())
+    signal?.throwIfAborted()
     if (bytes.byteLength > maxBytes) throw new AttachmentTooLargeError(maxBytes, bytes.byteLength)
     return bytes
   }
@@ -159,6 +164,7 @@ export async function fetchAttachmentBytes(
   try {
     while (true) {
       const chunk = await reader.read()
+      signal?.throwIfAborted()
       if (chunk.done) break
       total += chunk.value.byteLength
       if (total > maxBytes) {
@@ -167,6 +173,9 @@ export async function fetchAttachmentBytes(
       }
       chunks.push(chunk.value)
     }
+  } catch (error) {
+    await reader.cancel().catch(() => {})
+    throw error
   } finally {
     reader.releaseLock()
   }
@@ -208,4 +217,33 @@ export function attachmentOpenInBrowserUrl(
   url: string | undefined,
 ): string | undefined {
   return kind === "html" && url ? url : undefined
+}
+
+export function attachmentSourceMarkdown(text: string, filename?: string): string {
+  const languages: Record<string, string> = {
+    ts: "typescript",
+    tsx: "tsx",
+    js: "javascript",
+    jsx: "jsx",
+    py: "python",
+    rs: "rust",
+    sh: "bash",
+    yml: "yaml",
+    md: "markdown",
+    svg: "xml",
+    json: "json",
+    html: "html",
+    css: "css",
+    xml: "xml",
+    yaml: "yaml",
+    go: "go",
+  }
+  let longest = 0,
+    run = 0
+  for (const character of text) {
+    run = character === "~" ? run + 1 : 0
+    longest = Math.max(longest, run)
+  }
+  const fence = "~".repeat(Math.max(3, longest + 1))
+  return `${fence}${languages[extension(filename) ?? ""] ?? ""}\n${text}\n${fence}`
 }

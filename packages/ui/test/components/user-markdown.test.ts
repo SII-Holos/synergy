@@ -50,3 +50,11 @@ describe("user Markdown", () => {
     expect(html).toContain("highlighted")
   })
 })
+
+test("failed optional highlighting keeps readable source and the surrounding Markdown", async () => {
+  const html = await renderUserMarkdown("# 标题\n\n```js\n<script>原文😀</script>\n```", [], async () => {
+    throw new Error("highlighter unavailable")
+  })
+  expect(html).toContain("<h1>标题</h1>")
+  expect(html).toContain("<pre><code>&#x3C;script>原文😀&#x3C;/script></code></pre>")
+})

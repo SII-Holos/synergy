@@ -46,9 +46,11 @@ export async function renderUserMarkdown(
     const end = node.position?.end.offset
     if (renderBlock && start !== undefined && end !== undefined && ["code", "math", "inlineMath"].includes(node.type)) {
       pending.push(
-        renderBlock(source.slice(start, end), node.type === "inlineMath").then((html) => {
-          blocks.set(start, html)
-        }),
+        renderBlock(source.slice(start, end), node.type === "inlineMath")
+          .then((html) => {
+            blocks.set(start, html)
+          })
+          .catch(() => {}),
       )
     }
     if (node.type === "text" && !protectedText && start !== undefined && end !== undefined) {
