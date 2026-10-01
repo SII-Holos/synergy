@@ -144,7 +144,7 @@ export function DialogCreateProject(props: {
       }
       footer={
         <div data-slot="dialog-actions">
-          <Button variant="secondary" size="large" disabled={pending() || picking()} onClick={() => void close()}>
+          <Button variant="ghost" size="large" disabled={pending() || picking()} onClick={() => void close()}>
             {_(locationCopy.cancel)}
           </Button>
           <Button

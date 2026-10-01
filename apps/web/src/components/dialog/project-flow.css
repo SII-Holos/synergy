@@ -243,8 +243,11 @@
 }
 .project-create-dialog [data-slot="dialog-header"] {
   position: relative;
-  padding: 32px 24px 24px;
+  padding: 24px 24px 16px;
   justify-content: center;
+}
+.project-create-dialog .project-form {
+  gap: 20px;
 }
 .project-create-dialog [data-slot="dialog-header"] > button {
   position: absolute;
@@ -255,21 +258,21 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .project-create-icon {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 12px;
   background: var(--workbench-control-bg);
   color: var(--icon-base);
 }
 .project-create-icon [data-component="icon"] {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 .project-create-dialog [data-slot="dialog-footer"] {
   border-top: 0;
