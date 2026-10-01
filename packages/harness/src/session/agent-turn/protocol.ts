@@ -150,6 +150,10 @@ export namespace AgentTurnProtocol {
         ),
       retries: z.number().int().nonnegative().optional(),
       maxOutputTokens: z.number().int().positive().optional(),
+      toolChoice: z
+        .object({ type: z.literal("tool"), toolName: z.string().min(1).max(256) })
+        .strict()
+        .optional(),
       prepared: z
         .object({
           system: z.array(z.string()),

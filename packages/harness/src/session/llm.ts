@@ -185,6 +185,7 @@ export namespace LLM {
     activeToolIDs?: string[]
     retries?: number
     maxOutputTokens?: number
+    toolChoice?: { type: "tool"; toolName: string }
     /** Codex remote-compaction replay plan for this turn (fetch-layer splice). */
     codexReplay?: CodexReplayPlan
     memoryTurn?: LLMTurnMemory.Handle
@@ -537,6 +538,7 @@ export namespace LLM {
         topK: params.topK,
         providerOptions: ProviderTransform.providerOptions(input.model, params.options),
         activeTools: input.activeToolIDs ?? Object.keys(tools),
+        toolChoice: input.toolChoice,
         tools,
         stopWhen: stepCountIs(1),
         maxOutputTokens,
