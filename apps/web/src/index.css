@@ -685,9 +685,14 @@ a {
   padding: 8px 10px 0;
 }
 .prompt-attachments [data-slot="attachment-row-layout"] {
-  max-height: min(240px, calc(var(--composer-available-height, 480px) * 0.35));
-  overflow-y: auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.prompt-attachments [data-slot="attachment-row-entry"] {
+  flex-shrink: 0;
 }
 .prompt-attachment-entry:has([data-slot="attachment-card-preview"] img) [data-slot="attachment-card-preview"] {
   width: 64px;

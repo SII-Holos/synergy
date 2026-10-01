@@ -11457,6 +11457,10 @@ msgid "prompt.attachments.failed"
 msgstr "上传失败"
 
 #. js-lingui-explicit-id
+msgid "prompt.attachments.list"
+msgstr "附件"
+
+#. js-lingui-explicit-id
 msgid "prompt.attachments.pendingSummary"
 msgstr "{uploading} 个上传中 · {failed} 个失败"
 
