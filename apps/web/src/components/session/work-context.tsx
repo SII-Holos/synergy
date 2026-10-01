@@ -23,7 +23,7 @@ import { DialogWorktrees } from "../dialog/dialog-worktrees"
 import { DialogWorkingLocation } from "../dialog/dialog-working-location"
 import { projectEntryCopy as copy } from "../dialog/project-entry-copy"
 
-export function SessionWorkContext(props: {
+type SessionWorkContextProps = {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
   running?: boolean
   environmentID?: string | null
@@ -39,7 +39,18 @@ export function SessionWorkContext(props: {
   directoryError?: string
   onRefresh?: () => void
   onSelect?: (selection: SessionWorkspaceSelection) => void
-}) {
+}
+
+export function SessionWorkContext(props: SessionWorkContextProps) {
+  const params = useParams()
+  return (
+    <Show when={!params.id}>
+      <WorkContextChoices {...props} />
+    </Show>
+  )
+}
+
+function WorkContextChoices(props: SessionWorkContextProps) {
   const { _ } = useLingui()
   const sdk = useSDK()
   const globalSDK = useGlobalSDK()

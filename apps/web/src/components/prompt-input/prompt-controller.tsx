@@ -62,10 +62,8 @@ import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getAgentVisual } from "@/components/agent-visual"
 import type { Message } from "@ericsanchezok/synergy-sdk/client"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import { QuickActions } from "./quick-actions"
 import { isHomeScope } from "@/utils/scope"
 import { computeWorkingPhrase, titlecaseStatusLabel } from "@ericsanchezok/synergy-ui/session-status"
-import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
 import { FILE_INPUT_ACCEPT } from "@/components/prompt-input/files"
 import { permissionModeVisual } from "@/components/prompt-input/permission-modes"
 import type {
@@ -86,7 +84,6 @@ import { SessionWorkContext } from "@/components/session/work-context"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
-import { sendSessionCommand } from "@/components/prompt-input/session-command"
 import { inlineLength, inlineText } from "@/components/prompt-input/content"
 import {
   resolvePromptSubmitIntent,
@@ -2025,28 +2022,6 @@ export function createPromptInputController(props: PromptInputProps) {
     requestAnimationFrame(() => void handleSubmit(new Event("submit", { cancelable: true })))
   })
 
-  const runRuntimeCommand = (name: string) => {
-    const sessionID = params.id
-    const currentModel = local.model.current()
-    const currentAgent = local.agent.current()
-    if (!sessionID || !currentModel || !currentAgent) return
-
-    sendSessionCommand({
-      client: sdk.client,
-      sessionID,
-      command: name,
-      agent: currentAgent.name,
-      model: { modelID: currentModel.id, providerID: currentModel.provider.id },
-      variant: local.model.variant.current(),
-    }).catch((err) => {
-      showToast({
-        type: "error",
-        title: i18n._(PI.commandSendFailed),
-        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
-      })
-    })
-  }
-
   const views: Record<PluginInputViewPart, () => import("solid-js").JSX.Element> = {
     leading: () => (
       <>
@@ -2080,21 +2055,7 @@ export function createPromptInputController(props: PromptInputProps) {
           onEnvironmentChange={props.onNewSessionEnvironmentChange}
           startOptions={newSessionStartOptions()}
           disabled={!!props.readOnly || composerSubmitting() || !!props.sessionTransitionPending}
-        >
-          {" "}
-          <Show when={params.id}>
-            <div class="relative z-20 ml-auto hidden md:flex items-center gap-1.5">
-              <SessionAgendaWakeIndicator sessionID={params.id!} />
-              <QuickActions
-                class="relative"
-                onCommand={(id) => command.trigger(id)}
-                onRuntimeCommand={runRuntimeCommand}
-                commandsDisabled={working()}
-                commands={command.options}
-              />
-            </div>
-          </Show>
-        </SessionWorkContext>
+        />
       </>
     ),
     context: () => (

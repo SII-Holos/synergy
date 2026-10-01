@@ -13,6 +13,7 @@ const root = path.resolve(import.meta.dir, "..")
 const playwrightIsolated = [
   "test/components/session/workbench-navigation.render.test.ts",
   "test/components/session/workbench-layout.dom.test.tsx",
+  "test/components/session/work-context.dom.test.ts",
 
   "test/components/workspace/builtin-workbench-panels.test.ts",
   "test/components/workspace/browser/browser-draft.test.ts",
