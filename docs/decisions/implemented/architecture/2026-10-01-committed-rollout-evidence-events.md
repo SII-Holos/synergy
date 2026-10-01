@@ -19,3 +19,5 @@ Capturing the SDK a second time produces competing evidence. Periodic snapshots 
 ## Consequences
 
 Hosts retain one authoritative rollout producer and use the existing portable SQLite/PostgreSQL outbox. The public boundary contains records and artifact references rather than execution internals. Tests verify atomic projection, rollback and subsequent revision/sequence behavior on both storage backends.
+
+Artifact exporters read verified immutable chunks by index. This keeps retry and recovery work bounded without exposing blob keys or rereading a large prefix. Full-stream reads still verify the overall length and complete-content hash; individual chunk reads verify their stored size and hash and reject indices outside the captured reference.
