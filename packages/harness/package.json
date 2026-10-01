@@ -5,6 +5,8 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./config/source": "./src/config/source.ts",
+    "./tool/output-source": "./src/tool/output-source.ts",
     "./workspace/archive": "./src/workspace/archive.ts",
     "./environment/control": "./src/environment/control.ts",
     "./environment/process": "./src/environment/process.ts",

@@ -127,6 +127,8 @@ Never relax TLS verification to work around an endpoint failure — no `rejectUn
 
 ## Handoff
 
+Embedded hosts select ConfigSource for authoritative JSON configuration and ToolOutputSource for model-readable long-output storage before sealing composition. Verify schema failure and save failure stop the boundary, and retain default product behavior tests. Do not copy the configuration loader or truncation algorithm into an adapter.
+
 Report why the operation is sessionless, existing-session, Cortex, or bootstrap; the agent/model role; timeout/retry/tool/output policy; persistence and visibility; redaction; and verification.
 
 Capture provider service-tier metadata when available; unresolved nonstandard pricing must remain unknown. Preserve live authorization evidence before side effects and inherit task snapshots during request preparation, including independent non-chat operations.

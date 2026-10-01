@@ -2,6 +2,7 @@ import path from "path"
 import { Global } from "../global"
 import { Identifier } from "../id/id"
 import type { Agent } from "../agent/agent"
+import { ToolOutputSource } from "./output-source"
 
 export namespace Truncate {
   export const MAX_LINES = 2000
@@ -18,7 +19,12 @@ export namespace Truncate {
     direction?: "head" | "tail"
   }
 
-  export async function output(text: string, options: Options = {}, _agent?: Agent.Info): Promise<Result> {
+  export async function output(
+    text: string,
+    options: Options = {},
+    _agent?: Agent.Info,
+    origin?: ToolOutputSource.Origin,
+  ): Promise<Result> {
     const maxLines = options.maxLines ?? MAX_LINES
     const maxBytes = options.maxBytes ?? MAX_BYTES
     const direction = options.direction ?? "head"
@@ -61,8 +67,9 @@ export namespace Truncate {
     const preview = out.join("\n")
 
     const id = Identifier.ascending("tool")
-    const filepath = path.join(directory(), id)
-    await Bun.write(Bun.file(filepath), text)
+    const source = ToolOutputSource.get()
+    const filepath = source ? await ToolOutputSource.save(source, { id, text, origin }) : path.join(directory(), id)
+    if (!source) await Bun.write(Bun.file(filepath), text)
 
     const hint = `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nSearch the saved output or read a targeted range with offset/limit. Delegate only when a separate analysis task would help.`
 

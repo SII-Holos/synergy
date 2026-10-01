@@ -8,6 +8,8 @@ Register `ProviderCatalogSource` for an exclusive host model inventory and `Prov
 
 An exclusive host catalog also avoids importing the product's bundled catalog macro when consuming source packages from `node_modules`. Include the platform storage resources required by the selected backend; this does not provide a fallback inventory.
 
+Register `ConfigSource` from Harness `config/source` when configuration belongs to the embedding host. Its validated JSON snapshot replaces implicit file, remote and inline discovery, and Config mutation APIs reject writes. Register `ToolOutputSource` from `tool/output-source` to persist long tool output in host-owned storage and return a model-readable reference. Save failures propagate; the generic truncation algorithm does not choose a native fallback.
+
 ```ts
 import { openAgentRuntime } from "@ericsanchezok/synergy-agent-runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
