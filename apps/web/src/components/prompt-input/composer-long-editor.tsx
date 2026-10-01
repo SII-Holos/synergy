@@ -2,8 +2,6 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, type JSX 
 import { useLingui } from "@lingui/solid"
 import { UserMarkdown } from "@ericsanchezok/synergy-ui/user-markdown"
 import { useResourceOpen } from "@ericsanchezok/synergy-ui/context/resource-open"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { translateDescriptor } from "@/locales/translate"
 import type { PluginInputService } from "@ericsanchezok/synergy-plugin"
@@ -187,41 +185,5 @@ export function ComposerLongEditor(props: {
         </Show>
       </div>
     </div>
-  )
-}
-
-export function ComposerExpandButton(props: { input: PluginInputService }) {
-  const binding = composerPresentation(props.input)
-  const { _ } = useLingui()
-  const [version, setVersion] = createSignal(0)
-  if (binding) onCleanup(binding.state.subscribe(() => setVersion((value) => value + 1)))
-  const expanded = () => {
-    version()
-    return !!binding?.state.expanded
-  }
-  return (
-    <Show when={binding && props.input.current().mode === "normal"}>
-      <Tooltip
-        value={
-          expanded()
-            ? _({ id: "prompt.long.collapse", message: "Collapse editor" })
-            : _({ id: "prompt.long.expand", message: "Expand editor" })
-        }
-      >
-        <button
-          type="button"
-          class="composer-expand-control"
-          aria-label={
-            expanded()
-              ? _({ id: "prompt.long.collapse", message: "Collapse editor" })
-              : _({ id: "prompt.long.expand", message: "Expand editor" })
-          }
-          aria-expanded={expanded()}
-          onClick={() => (expanded() ? binding?.state.collapse() : binding?.state.expand())}
-        >
-          <Icon name={getSemanticIcon(expanded() ? "window.restore" : "window.maximize")} size="small" />
-        </button>
-      </Tooltip>
-    </Show>
   )
 }

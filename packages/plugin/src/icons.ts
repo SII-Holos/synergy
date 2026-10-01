@@ -46,6 +46,8 @@ export const SemanticIconToken = {
   "agenda.main": "calendar-clock",
   "kanban.main": "kanban",
   "terminal.main": "code",
+  "composer.expand": "maximize-2",
+  "composer.collapse": "shrink",
 
   // Session runtime
   "session.default": "message-square",

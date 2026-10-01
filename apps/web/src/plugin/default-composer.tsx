@@ -2,7 +2,8 @@ import { DefaultComposerEditor } from "./default-composer-editor"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { PluginComponentProps, PluginInputService } from "@ericsanchezok/synergy-plugin"
 import { createSignal, createMemo, createEffect, on, onCleanup, onMount, Show } from "solid-js"
-import { ComposerLongEditor, ComposerExpandButton } from "@/components/prompt-input/composer-long-editor"
+import { ComposerLongEditor } from "@/components/prompt-input/composer-long-editor"
+import { ComposerExpandButton } from "@/components/prompt-input/composer-expand-button"
 import { composerPresentation } from "@/components/prompt-input/composer-presentation"
 import { ComposerResizeControls } from "@/components/prompt-input/composer-resize-controls"
 
@@ -101,7 +102,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
           void input.drop(event).catch(report)
         }}
         classList={{
-          "prompt-input-shell bg-input-base relative overflow-hidden": true,
+          "prompt-input-shell bg-input-base relative overflow-visible": true,
           "prompt-input-shell-dragging": input.dragging(),
           "border border-border-base": !input.dragging(),
           "border border-icon-info-active border-dashed": input.dragging(),

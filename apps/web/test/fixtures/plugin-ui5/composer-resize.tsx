@@ -1,9 +1,10 @@
 import { I18nProvider } from "@lingui/solid"
 import { createSignal, onCleanup } from "solid-js"
 import { render } from "solid-js/web"
-import "@ericsanchezok/synergy-ui/styles"
+import "../../../src/index.css"
 import { setupI18n } from "@lingui/core"
 import { ComposerResizeControls } from "../../../src/components/prompt-input/composer-resize-controls"
+import { ComposerExpandButton } from "../../../src/components/prompt-input/composer-expand-button"
 import {
   ComposerPresentation,
   bindComposerPresentation,
@@ -30,16 +31,18 @@ function Fixture() {
             "prompt.long.autoSize": "Automatic height",
             "prompt.long.tallSize": "Taller editor",
             "prompt.long.expand": "Expand editor",
+            "prompt.long.collapse": "Collapse editor",
             "prompt.long.releaseExpand": "Release to expand",
           },
         },
       })}
     >
-      <style>{`body {margin:0} .frame {position:relative;width:320px;height:500px} form {position:absolute;bottom:0;width:100%;margin:0} .composer-resize-controls{height:24px;position:relative;display:flex;justify-content:center} .composer-resize-handle{width:64px;height:24px;touch-action:none} .composer-size-menu{position:absolute;right:40px;top:0;width:32px;height:24px;display:flex;align-items:center;justify-content:center} .session-composer-editor{height:96px} .footer{height:36px}`}</style>
-      <div class="frame">
-        <form>
+      <style>{`body {margin:0} .frame {position:relative;width:min(320px,100%);height:500px} form {position:absolute;bottom:0;width:100%;margin:0} .footer{height:36px}`}</style>
+      <div class="frame session-composer" data-expanded={(version(), state.expanded) ? "" : undefined}>
+        <form class="prompt-input-shell">
           <ComposerResizeControls input={input} availableHeight={500} />
-          <div class="session-composer-editor" style={{ height: `${height()}px` }} />
+          <ComposerExpandButton input={input} />
+          <div class="session-composer-editor" style={{ height: `${height()}px`, "max-height": "none" }} />
           <div class="footer" />
         </form>
       </div>

@@ -12128,10 +12128,6 @@ msgid "prompt.lightLoop.waitStop"
 msgstr "Wait for Light Loop to stop before equipping a Blueprint."
 
 #. js-lingui-explicit-id
-msgid "prompt.long.autoSize"
-msgstr "Automatic height"
-
-#. js-lingui-explicit-id
 msgid "prompt.long.bold"
 msgstr "Bold"
 
@@ -12192,16 +12188,8 @@ msgid "prompt.long.shortcut"
 msgstr "Ctrl/⌘ + Enter to send"
 
 #. js-lingui-explicit-id
-msgid "prompt.long.size"
-msgstr "Editor size"
-
-#. js-lingui-explicit-id
 msgid "prompt.long.strike"
 msgstr "Strikethrough"
-
-#. js-lingui-explicit-id
-msgid "prompt.long.tallSize"
-msgstr "Taller editor"
 
 #. js-lingui-explicit-id
 msgid "prompt.long.view"

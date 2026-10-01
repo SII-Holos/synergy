@@ -14,7 +14,7 @@ Expanded Enter inserts a line break and Control/Command+Enter submits. Completio
 
 Normal editor height starts at 96 pixels and grows within the measured chat height, up to the smaller of 240 pixels and 40 percent. The safe-area and available viewport constrain short windows. The expanded surface leaves side resources and the surrounding navigation available.
 
-A pointer-captured resize separator follows the gesture immediately. Manual height, including composer controls, is bounded by 60 percent of the measured chat area. Dragging a further 32 pixels arms expansion; returning to the height boundary disarms it. Pointer cancellation or Escape restores the previous automatic/manual height. The focusable separator also supports arrows, Home, End and Enter; a size menu offers automatic height, taller editing and expansion without dragging. Pasting, auto-growth and viewport changes never expand the editor.
+A pointer-captured resize separator follows the gesture immediately. Manual height, including composer controls, is bounded by 60 percent of the measured chat area. Dragging a further 32 pixels arms expansion; returning to the height boundary disarms it. Pointer cancellation or Escape restores the previous automatic/manual height. The focusable separator also supports arrows, Home, End and Enter; the floating corner action offers expansion without dragging. The sizing controls follow [quiet composer sizing](../simplification/2026-10-02-quiet-composer-sizing.md). Pasting, auto-growth and viewport changes never expand the editor.
 
 ## Alternatives considered
 

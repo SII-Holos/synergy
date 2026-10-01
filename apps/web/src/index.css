@@ -377,74 +377,105 @@ a {
   max-height: min(240px, calc(var(--composer-available-height, 480px) * 0.4));
 }
 .composer-resize-controls {
-  position: relative;
+  position: absolute;
+  inset-inline: 0;
+  top: 4px;
   display: flex;
   justify-content: center;
-  min-height: 24px;
-  flex-shrink: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.prompt-input-shell:has(.composer-resize-controls) {
+  padding-top: 8px;
 }
 .composer-resize-handle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
+  width: 80px;
   height: 24px;
+  transform: translateY(-50%);
+  pointer-events: auto;
   cursor: ns-resize;
   touch-action: none;
   border-radius: var(--radius-md);
 }
 .composer-resize-handle span {
-  width: 32px;
-  height: 3px;
+  width: 28px;
+  height: 2px;
   border-radius: var(--radius-full);
   background: var(--border-base);
   pointer-events: none;
 }
-.composer-resize-handle:hover span {
+.composer-resize-handle:hover span,
+.composer-resize-handle:focus-visible span {
   background: var(--text-weak);
 }
-.composer-size-menu {
-  position: absolute;
-  right: 44px;
-  top: 6px;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  color: var(--text-weak);
-  cursor: pointer;
-}
-.composer-size-menu:hover {
-  background: var(--surface-raised-base-hover);
+.composer-resize-handle:focus-visible,
+.composer-expand-control:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 .composer-resize-cue {
   position: absolute;
-  bottom: 100%;
+  bottom: 16px;
   font-size: 12px;
   color: var(--text-base);
   background: var(--surface-raised-base);
   border-radius: var(--radius-md);
   padding-inline: 8px;
 }
-
+.composer-expand-region {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  width: 52px;
+  height: 44px;
+  z-index: 3;
+}
 .composer-expand-control {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: 4px;
+  inset-inline-end: 8px;
   width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   color: var(--text-weak);
   cursor: pointer;
   z-index: 2;
 }
+.composer-expand-control [data-component="icon"] {
+  width: 16px;
+  height: 16px;
+}
 .composer-expand-control:hover {
   background: var(--surface-raised-base-hover);
+}
+@media (hover: hover) and (pointer: fine) {
+  .composer-expand-control {
+    opacity: 0;
+  }
+  .composer-expand-region:hover .composer-expand-control,
+  .composer-expand-control:focus-visible {
+    opacity: 1;
+  }
+}
+@media (pointer: coarse) {
+  .composer-expand-control {
+    top: 0;
+    inset-inline-end: 4px;
+    width: 44px;
+    height: 44px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .composer-expand-control {
+    transition: opacity 120ms cubic-bezier(0.2, 0, 0, 1);
+  }
 }
 .session-composer[data-expanded] {
   height: var(--composer-available-height);
@@ -458,9 +489,6 @@ a {
 }
 .session-composer[data-expanded] .session-composer-context {
   flex-shrink: 0;
-}
-.session-composer[data-expanded] .composer-expand-control {
-  top: 8px;
 }
 .composer-long-content[data-expanded] {
   display: flex;
@@ -683,6 +711,7 @@ a {
 .prompt-attachments {
   min-width: 0;
   padding: 8px 10px 0;
+  padding-inline-end: 48px;
 }
 .prompt-attachments [data-slot="attachment-row-layout"] {
   flex-wrap: nowrap;

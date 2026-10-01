@@ -90,6 +90,11 @@ function componentIconNames(): Set<string> {
 }
 
 describe("semantic icons", () => {
+  test("composer sizing uses diagonal expansion and contraction arrows", () => {
+    expect(getSemanticIcon("composer.expand")).toBe("maximize-2")
+    expect(getSemanticIcon("composer.collapse")).toBe("shrink")
+    expect(getSemanticIcon("window.maximize")).toBe("square")
+  })
   test("every token resolves to its configured icon key", () => {
     for (const token of Object.keys(SemanticIconToken) as Array<keyof typeof SemanticIconToken>) {
       expect(getSemanticIcon(token)).toBe(SemanticIconToken[token])

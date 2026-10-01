@@ -12128,10 +12128,6 @@ msgid "prompt.lightLoop.waitStop"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "prompt.long.autoSize"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "prompt.long.bold"
 msgstr ""
 
@@ -12192,15 +12188,7 @@ msgid "prompt.long.shortcut"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "prompt.long.size"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "prompt.long.strike"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "prompt.long.tallSize"
 msgstr ""
 
 #. js-lingui-explicit-id

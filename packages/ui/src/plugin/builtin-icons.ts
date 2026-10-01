@@ -131,6 +131,7 @@ const builtinIconNames = [
   "mail-search",
   "map",
   "maximize",
+  "maximize-2",
   "megaphone",
   "memory-stick",
   "menu",

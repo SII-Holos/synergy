@@ -1,9 +1,6 @@
 import { Show, createSignal, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { PluginInputService } from "@ericsanchezok/synergy-plugin"
-import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { ComposerResizeGesture, composerBodyLimits, composerPresentation } from "./composer-presentation"
 
 export function ComposerResizeControls(props: { input: Pick<PluginInputService, "current">; availableHeight: number }) {
@@ -117,55 +114,6 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
         <div class="composer-resize-cue" role="status">
           {armed() ? _({ id: "prompt.long.releaseExpand", message: "Release to expand" }) : ""}
         </div>
-        <ToolbarSelectorPopover
-          title={_({ id: "prompt.long.size", message: "Editor size" })}
-          placement="top-end"
-          triggerAs={(triggerProps) => (
-            <button
-              {...triggerProps}
-              type="button"
-              class="composer-size-menu"
-              aria-label={_({ id: "prompt.long.size", message: "Editor size" })}
-            >
-              <Icon name={getSemanticIcon("action.more")} size="small" />
-            </button>
-          )}
-        >
-          {(close) => (
-            <div class="flex flex-col gap-1 p-1">
-              <button
-                type="button"
-                class="p-2 text-start rounded-md hover:bg-surface-raised-base-hover"
-                onClick={() => {
-                  binding?.state.setHeight(undefined)
-                  close()
-                }}
-              >
-                {_({ id: "prompt.long.autoSize", message: "Automatic height" })}
-              </button>
-              <button
-                type="button"
-                class="p-2 text-start rounded-md hover:bg-surface-raised-base-hover"
-                onClick={() => {
-                  binding?.state.setHeight(limits().manual)
-                  close()
-                }}
-              >
-                {_({ id: "prompt.long.tallSize", message: "Taller editor" })}
-              </button>
-              <button
-                type="button"
-                class="p-2 text-start rounded-md hover:bg-surface-raised-base-hover"
-                onClick={() => {
-                  binding?.state.expand()
-                  close()
-                }}
-              >
-                {_({ id: "prompt.long.expand", message: "Expand editor" })}
-              </button>
-            </div>
-          )}
-        </ToolbarSelectorPopover>
       </div>
     </Show>
   )
