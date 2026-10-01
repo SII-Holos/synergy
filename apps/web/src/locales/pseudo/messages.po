@@ -11053,6 +11053,10 @@ msgid "project.entry.computer"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "project.entry.computerName"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "project.entry.connected"
 msgstr ""
 
@@ -11110,6 +11114,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.entry.locationOptions"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -11210,6 +11218,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "project.flow.choose"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "project.flow.currentProject"
 msgstr ""
 
 #. js-lingui-explicit-id

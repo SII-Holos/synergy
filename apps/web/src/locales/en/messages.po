@@ -11053,6 +11053,10 @@ msgid "project.entry.computer"
 msgstr "Computer"
 
 #. js-lingui-explicit-id
+msgid "project.entry.computerName"
+msgstr "Computer: {name}"
+
+#. js-lingui-explicit-id
 msgid "project.entry.connected"
 msgstr "Connected"
 
@@ -11111,6 +11115,10 @@ msgstr "Folders"
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
 msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.locationOptions"
+msgstr "Location options"
 
 #. js-lingui-explicit-id
 msgid "project.entry.main"
@@ -11211,6 +11219,10 @@ msgstr "The draft changed. Choose the project again to keep your latest edits."
 #. js-lingui-explicit-id
 msgid "project.flow.choose"
 msgstr "Choose project"
+
+#. js-lingui-explicit-id
+msgid "project.flow.currentProject"
+msgstr "Project: {name}"
 
 #. js-lingui-explicit-id
 msgid "project.flow.description"

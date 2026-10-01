@@ -11053,6 +11053,10 @@ msgid "project.entry.computer"
 msgstr "电脑"
 
 #. js-lingui-explicit-id
+msgid "project.entry.computerName"
+msgstr "电脑：{name}"
+
+#. js-lingui-explicit-id
 msgid "project.entry.connected"
 msgstr "已连接"
 
@@ -11111,6 +11115,10 @@ msgstr "文件夹"
 #. js-lingui-explicit-id
 msgid "project.entry.loading"
 msgstr "正在加载…"
+
+#. js-lingui-explicit-id
+msgid "project.entry.locationOptions"
+msgstr "位置选项"
 
 #. js-lingui-explicit-id
 msgid "project.entry.main"
@@ -11211,6 +11219,10 @@ msgstr "草稿已发生变化。请重新选择项目，以保留最新编辑。
 #. js-lingui-explicit-id
 msgid "project.flow.choose"
 msgstr "选择项目"
+
+#. js-lingui-explicit-id
+msgid "project.flow.currentProject"
+msgstr "项目：{name}"
 
 #. js-lingui-explicit-id
 msgid "project.flow.description"

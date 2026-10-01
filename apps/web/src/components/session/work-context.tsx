@@ -59,6 +59,7 @@ function WorkContextChoices(props: SessionWorkContextProps) {
   const dialog = useDialog()
   const params = useParams()
   const [open, setOpen] = createSignal(false)
+  const [optionsOpen, setOptionsOpen] = createSignal(false)
   const [pending, setPending] = createSignal(false)
   const [error, setError] = createSignal("")
   const scope = createMemo(() => resolveProjectScope(sdk.scopeKey, sync.scope, layout.scopes.list()))
@@ -88,6 +89,7 @@ function WorkContextChoices(props: SessionWorkContextProps) {
   const actual = () => session()?.workspace
   const selectedTree = () =>
     props.workspaceSelection?.mode === "existing" ? props.workspaceSelection.target : undefined
+  const selectedWorkspace = () => trees()?.find((tree) => tree.id === selectedTree() || tree.path === selectedTree())
   const mainSelected = () =>
     params.id
       ? session()?.workspaceID === main()?.workspaceID
@@ -102,11 +104,20 @@ function WorkContextChoices(props: SessionWorkContextProps) {
             ? _(copy.originalMain)
             : _(copy.unavailable)
     if (props.workspaceSelection?.mode === "create") return _(copy.newWorktree)
-    return (
-      trees()?.find((tree) => tree.id === selectedTree() || tree.path === selectedTree())?.branch ??
-      (selectedTree() ? getFilename(selectedTree()!) : _(copy.main))
-    )
+    return selectedWorkspace()?.branch ?? (selectedTree() ? getFilename(selectedTree()!) : _(copy.main))
   }
+  const location = () =>
+    [
+      label(),
+      props.workspaceSelection?.mode === "create" ? _(copy.onSend) : undefined,
+      actual()?.path ?? (selectedTree() ? selectedWorkspace()?.path : main()?.path),
+    ]
+      .filter(Boolean)
+      .join("\n")
+  const worktreeSelected = () =>
+    actual()?.type === "git_worktree" ||
+    props.workspaceSelection?.mode === "create" ||
+    props.workspaceSelection?.mode === "existing"
   async function select(selection: SessionWorkspaceSelection) {
     if (pending() || props.running || props.disabled) return false
     setPending(true)
@@ -160,6 +171,7 @@ function WorkContextChoices(props: SessionWorkContextProps) {
       <ComputerMenu disabled={props.disabled || props.uploading || pending()} />
       <ProjectTaskButton
         label={getScopeLabel(scope(), sdk.scopeKey)}
+        path={main()?.path}
         disabled={props.disabled || pending()}
         uploading={props.uploading}
         onSettings={sdk.isHome ? undefined : settings}
@@ -181,16 +193,18 @@ function WorkContextChoices(props: SessionWorkContextProps) {
           placement="top-start"
           class="project-select-popover"
           triggerAs={(attributes) => (
-            <Tooltip value={open() || dialog.active ? "" : (actual()?.path ?? main()?.path ?? "")}>
+            <Tooltip value={open() || dialog.active ? "" : location()}>
               <button
                 {...attributes}
                 class="session-work-context-button"
                 data-worktree-task-selector
                 disabled={props.disabled || pending()}
-                aria-label={label()}
+                aria-label={location()}
               >
-                <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
-                <span>{label()}</span>
+                <Icon
+                  name={getSemanticIcon(worktreeSelected() ? "workspace.worktree" : "workspace.main")}
+                  size="small"
+                />
               </button>
             </Tooltip>
           )}
@@ -304,17 +318,61 @@ function WorkContextChoices(props: SessionWorkContextProps) {
           </div>
         </Popover>
       </Show>
-      <Show when={props.directoryError}>
-        <button class="session-work-context-button" data-unavailable="true" onClick={props.onRefresh}>
-          {_(copy.retry)}
-        </button>
-      </Show>
-      <Show when={custom()}>
-        <Tooltip value={_(copy.unsupported)}>
-          <button class="session-work-context-button" data-unavailable="true" onClick={advanced}>
-            {_(copy.developer)}
-          </button>
-        </Tooltip>
+      <Show when={props.directoryError || custom()}>
+        <Popover
+          variant="menu"
+          title={_(copy.locationOptions)}
+          open={optionsOpen()}
+          onOpenChange={setOptionsOpen}
+          placement="top-end"
+          class="project-select-popover"
+          triggerAs={(attributes) => (
+            <Tooltip value={optionsOpen() || dialog.active ? "" : props.directoryError || _(copy.unsupported)}>
+              <button
+                {...attributes}
+                type="button"
+                class="session-work-context-button"
+                data-location-options
+                data-unavailable="true"
+                disabled={props.disabled || pending()}
+                aria-label={_(copy.locationOptions)}
+              >
+                <Icon name={getSemanticIcon(props.directoryError ? "state.warning" : "action.more")} size="small" />
+              </button>
+            </Tooltip>
+          )}
+        >
+          <Show when={props.directoryError}>
+            <p class="project-inline-error" role="alert">
+              {props.directoryError}
+            </p>
+            <button
+              type="button"
+              class="project-flow-row"
+              onClick={() => {
+                setOptionsOpen(false)
+                props.onRefresh?.()
+              }}
+            >
+              <Icon name={getSemanticIcon("action.refresh")} size="small" />
+              {_(copy.retry)}
+            </button>
+          </Show>
+          <Show when={custom()}>
+            <button
+              type="button"
+              class="project-flow-row"
+              onClick={() => {
+                setOptionsOpen(false)
+                document.querySelector<HTMLButtonElement>("[data-location-options]")?.focus({ preventScroll: true })
+                advanced()
+              }}
+            >
+              <Icon name={getSemanticIcon("settings.general")} size="small" />
+              {_(copy.developer)}
+            </button>
+          </Show>
+        </Popover>
       </Show>
       {props.children}
     </div>

@@ -157,6 +157,13 @@
   gap: 8px;
   margin-bottom: 8px;
 }
+.project-field-heading > label {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.project-field-heading > .project-computer-control {
+  max-width: min(240px, calc(100% - 64px));
+}
 .project-folder-field {
   min-width: 0;
 }
@@ -284,6 +291,21 @@
 }
 .project-computer-menu {
   width: min(320px, calc(100vw - 24px));
+}
+.project-computer-control {
+  flex: 0 1 auto;
+  width: max-content;
+  min-width: 0;
+  max-width: 100%;
+}
+.project-computer-control[data-component="tooltip-trigger"][data-inactive] {
+  display: flex;
+}
+.project-computer-control > button {
+  width: 100%;
+}
+.project-computer-control [data-component="icon"] {
+  flex-shrink: 0;
 }
 .project-folder-actions {
   width: 220px;

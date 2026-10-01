@@ -23,6 +23,7 @@ import { projectFlowCopy as copy } from "../dialog/project-flow-copy"
 
 export function ProjectTaskButton(props: {
   label: string
+  path?: string
   disabled: boolean
   uploading?: boolean
   onSettings?: () => void
@@ -128,14 +129,15 @@ export function ProjectTaskButton(props: {
       class="project-select-popover"
       triggerAs={(attributes) => (
         <Tooltip
+          class="session-work-context-project"
           value={
             opened() || dialog.active
               ? ""
               : props.uploading
                 ? _(copy.uploading)
-                : params.id
-                  ? _(copy.newTask)
-                  : _(copy.choose)
+                : [sdk.isHome ? undefined : props.label, props.path, params.id ? _(copy.newTask) : _(copy.choose)]
+                    .filter(Boolean)
+                    .join("\n")
           }
           placement="top"
         >
@@ -145,7 +147,14 @@ export function ProjectTaskButton(props: {
             class="session-work-context-button"
             data-project-task-selector
             disabled={props.disabled || props.uploading}
-            aria-label={params.id ? _(copy.newTask) : _(copy.choose)}
+            aria-label={
+              params.id
+                ? _(copy.newTask)
+                : sdk.isHome
+                  ? _(copy.choose)
+                  : _({ ...copy.currentProject, values: { name: props.label } })
+            }
+            aria-description={props.path}
             onClick={(event) => {
               if (!desktop()) {
                 event.preventDefault()

@@ -3,6 +3,7 @@ import { useLingui } from "@lingui/solid"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { normalizeServerUrl, serverDisplayName, useServer } from "@/context/server"
@@ -31,6 +32,8 @@ export function ComputerMenu(props: { value?: string; onChange?: (url: string) =
   const dialog = useDialog()
   const label = useComputerLabel()
   const [open, setOpen] = createSignal(false)
+  const current = () => props.value ?? server.url
+  const identity = (url: string) => [...new Set([label(url), serverDisplayName(url)])].join("\n")
   const urls = createMemo(() => [...new Set([props.value ?? server.url, server.url, ...server.list])])
   const [health] = createResource(
     () => (open() ? urls() : false),
@@ -63,16 +66,20 @@ export function ComputerMenu(props: { value?: string; onChange?: (url: string) =
       onOpenChange={setOpen}
       class="project-computer-menu"
       triggerAs={(attributes) => (
-        <button
-          {...attributes}
-          type="button"
-          class="session-work-context-button"
-          disabled={props.disabled}
-          aria-label={_(copy.computer)}
-        >
-          <Icon name={getSemanticIcon("computer.main")} size="small" />
-          <span>{label(props.value ?? server.url)}</span>
-        </button>
+        <Tooltip class="project-computer-control" value={open() ? "" : identity(current())}>
+          <button
+            {...attributes}
+            type="button"
+            class="session-work-context-button"
+            data-computer-selector
+            disabled={props.disabled}
+            aria-label={_({ ...copy.computerName, values: { name: label(current()) } })}
+            aria-description={serverDisplayName(current())}
+          >
+            <Icon name={getSemanticIcon("computer.main")} size="small" />
+            <span>{label(current())}</span>
+          </button>
+        </Tooltip>
       )}
     >
       <For each={urls()}>
@@ -80,6 +87,8 @@ export function ComputerMenu(props: { value?: string; onChange?: (url: string) =
           <button
             type="button"
             class="project-flow-row"
+            title={identity(url)}
+            aria-description={serverDisplayName(url)}
             aria-pressed={url === (props.value ?? server.url)}
             disabled={health()?.[url] === false}
             onClick={() => {

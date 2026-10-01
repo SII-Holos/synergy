@@ -163,7 +163,7 @@ bun run localization:check
 
 ## Handoff
 
-When a menu suppresses its trigger Tooltip, preserve the trigger element and focus listeners. Exercise focus → open → Escape → focus return with the real composed controls. A menu action that opens a Dialog must hand off a connected return-focus target; an unmounted menu item is not one. Distinguish a visible path Tooltip consuming Escape from a parent dialog failing to close.
+When a menu suppresses its trigger Tooltip, preserve the trigger element, focus listeners and flex-item wrapper geometry. Verify suppression inside a dialog as well as the Composer; long names must not push adjacent labels onto another line. Exercise focus → open → Escape → focus return with the real composed controls. A menu action that opens a Dialog must hand off a connected return-focus target; an unmounted menu item is not one. Distinguish a visible path Tooltip consuming Escape from a parent dialog failing to close.
 
 Report state ownership, API path, semantic icon token, shared primitives, accessibility states, tests, visual checks, and any durable `PRODUCT.md` or Skill update.
 
@@ -212,6 +212,8 @@ Native titlebar acceptance must include OS-level coordinate clicks on restore, S
 For project-entry changes, test the real Prompt provider and project picker together: destination-first merging, both revision checks, cancel, upload blocking, same-connection ownership and file-reference provenance. Verify independent section saves and unsaved dismissal in project settings. Inspect real computer/project/main-folder and Worktree controls at narrow and short viewports, 200% zoom, both themes and keyboard focus return. Folder selection must retain the underlying dialog state and distinguish the connected service from Desktop's machine.
 
 Use the shared Dialog footer for actions that must remain reachable while project forms or directory results scroll. Cover short windows and keyboard focus return. During directory loading, edit the path before the response arrives and verify that the response preserves the newer input.
+
+For Composer setup density, use its named container width rather than viewport breakpoints. Verify long computer/project names in a narrow pane inside a wide window, 320/375px windows, 200% zoom, main and deferred/existing Worktrees, and simultaneous repair/custom-location actions with touch targets. Compact labels must retain full identity, paths and pending state through Tooltips and accessibility.
 
 For initialization-only Composer controls, gate presentation on the route Session ID rather than activity, message count or snapshot availability. Verify failed creation, accepted identity, running/paused/completed states, switching and reconnects while preserving the editor, extensions, attachments and decision/error surfaces.
 

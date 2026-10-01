@@ -361,13 +361,18 @@ a {
   overscroll-behavior: contain;
 }
 
+.session-composer {
+  container-type: inline-size;
+  container-name: session-composer;
+}
+
 [data-default-shell] .prompt-input-mobile-model {
   display: none;
 }
 
 .session-work-context {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px 6px;
   padding: 6px 8px 14px;
@@ -382,6 +387,31 @@ a {
 .session-work-context [data-component="tooltip-trigger"] {
   min-width: 0;
   max-width: 100%;
+}
+.session-work-context > .project-computer-control,
+.session-work-context > :has([data-worktree-task-selector], [data-location-options]) {
+  flex: 0 0 auto;
+}
+.session-work-context > .session-work-context-project {
+  flex: 0 1 auto;
+}
+.session-work-context-project[data-component="tooltip-trigger"][data-inactive] {
+  display: flex;
+}
+.session-work-context [data-project-task-selector] {
+  width: 100%;
+}
+.session-work-context [data-component="icon"] {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+.session-work-context [data-worktree-task-selector],
+.session-work-context [data-location-options] {
+  width: 32px;
+  flex-shrink: 0;
+  padding: 0;
+  justify-content: center;
 }
 .session-work-context-button,
 .session-work-context .prompt-input-toolbar-button {
@@ -419,6 +449,36 @@ a {
 }
 .session-work-context-button:disabled {
   opacity: 0.5;
+}
+
+@container session-composer (width < 560px) {
+  .session-work-context [data-computer-selector] {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .session-work-context [data-computer-selector] > span {
+    display: none;
+  }
+}
+@container session-composer (width < 240px) {
+  .session-work-context {
+    gap: 2px;
+  }
+  .session-work-context [data-project-task-selector] {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .session-work-context [data-project-task-selector] > span {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  .session-work-context .session-work-context-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 .session-composer-context {
