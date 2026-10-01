@@ -20,6 +20,19 @@ export namespace WorkspaceTree {
   export const chunkBytes = 4 * 1024 * 1024
   export const manifestBytes = 64 * 1024 * 1024
   export const Hash = z.string().regex(/^[a-f0-9]{64}$/)
+  export const VirtualRoot = z
+    .string()
+    .min(1)
+    .max(1024)
+    .refine(
+      (value) =>
+        path.posix.isAbsolute(value) &&
+        path.posix.normalize(value) === value &&
+        (value === "/" || !value.endsWith("/")) &&
+        !value.includes("\\") &&
+        !/[\x00-\x1f]/.test(value),
+      "Expected a canonical absolute Workspace reference root",
+    )
   export const Path = z
     .string()
     .min(1)

@@ -42,7 +42,15 @@ export namespace FileView {
         .replaceAll("\\", "/")
     }
     const root = directory()
-    const candidate = root && api.isAbsolute(filename) ? api.relative(root, filename) : filename
+    const virtual = EnvironmentResources.virtualRoot(EnvironmentResources.current()?.workspace)
+    const logical = virtual && api.isAbsolute(filename) ? api.relative(virtual, filename) : undefined
+    const insideVirtual =
+      logical !== undefined && logical !== ".." && !logical.startsWith("../") && !api.isAbsolute(logical)
+    const candidate = insideVirtual
+      ? logical
+      : root && api.isAbsolute(filename)
+        ? api.relative(root, filename)
+        : filename
     if (!candidate || candidate === ".") return ""
     return WorkspaceTree.Path.parse(api.normalize(candidate).replaceAll(api.sep, "/").replace(/\/$/, ""))
   }
